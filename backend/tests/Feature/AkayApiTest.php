@@ -55,7 +55,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -73,7 +73,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'bhw-scope@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $ownBhc->id,
         ]);
@@ -97,7 +97,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'medicine-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -148,7 +148,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'medicine-scope-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $ownBhc->id,
         ]);
@@ -156,7 +156,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'medicine-scope-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -210,7 +210,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -261,7 +261,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'conditional-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -303,7 +303,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'child-profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -349,7 +349,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'infant-profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -413,7 +413,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'referral-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -421,7 +421,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -457,7 +457,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'notifications-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -465,7 +465,7 @@ class AkayApiTest extends TestCase
             'name' => 'Other RHU Staff',
             'email' => 'notifications-other@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -546,7 +546,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'idempotent-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -554,7 +554,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'idempotent-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -604,7 +604,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'received-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -612,7 +612,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'received-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -665,7 +665,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'family-planning-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -723,13 +723,13 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'empty-report@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
 
         $this->actingAs($bhw, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertJsonPath('data.total_referrals', 0)
             ->assertJsonPath('data.completed_referrals', 0);

@@ -22,7 +22,7 @@ class FacilityAccessService
             return true;
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             return $user->barangay_health_center_id !== null
                 && $user->rural_health_unit_id === null
                 && $user->barangayHealthCenter()
@@ -30,7 +30,7 @@ class FacilityAccessService
                     ->exists();
         }
 
-        if ($user->isRhuStaff()) {
+        if ($user->isRhu()) {
             return $user->rural_health_unit_id !== null
                 && $user->barangay_health_center_id === null
                 && $user->ruralHealthUnit()
@@ -60,7 +60,7 @@ class FacilityAccessService
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             return $query->where(
                 'barangay_health_center_id',
                 $user->barangay_health_center_id
@@ -84,7 +84,7 @@ class FacilityAccessService
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             return $query
                 ->where('barangay_health_center_id', $user->barangay_health_center_id)
                 ->whereHas('patient', fn (Builder $patients) => $patients
@@ -99,7 +99,7 @@ class FacilityAccessService
 
     public function scopePatientHealthRecords(Builder|Relation $query, User $user): Builder|Relation
     {
-        if ($user->isAdmin() || $user->isBhw()) {
+        if ($user->isAdmin() || $user->isBhc()) {
             return $this->scopeHealthRecords($query, $user);
         }
 
@@ -127,7 +127,7 @@ class FacilityAccessService
             return $query->whereRaw('1 = 0');
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             return $query
                 ->where('barangay_health_center_id', $user->barangay_health_center_id)
                 ->whereHas('patient', fn (Builder $patients) => $patients
@@ -156,7 +156,7 @@ class FacilityAccessService
             return $query;
         }
 
-        if (! $user->isBhw() || ! $this->hasValidFacilityAssignment($user)) {
+        if (! $user->isBhc() || ! $this->hasValidFacilityAssignment($user)) {
             return $query->whereRaw('1 = 0');
         }
 
@@ -205,11 +205,11 @@ class FacilityAccessService
             return null;
         }
 
-        if ($user->isRhuStaff()) {
+        if ($user->isRhu()) {
             return (int) $user->rural_health_unit_id;
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             $mappedId = $user->barangayHealthCenter()
                 ->where('status', 'active')
                 ->value('rural_health_unit_id');
@@ -227,7 +227,7 @@ class FacilityAccessService
     public function authorizeProviderManagement(User $user, ?RhuProvider $provider = null): void
     {
         abort_unless(
-            $user->isRhuStaff() && $this->hasValidFacilityAssignment($user),
+            $user->isRhu() && $this->hasValidFacilityAssignment($user),
             403,
             self::DENIED_MESSAGE
         );
@@ -256,7 +256,7 @@ class FacilityAccessService
             return false;
         }
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             return $this->sameAssignedId(
                 $patient->barangay_health_center_id,
                 $user->barangay_health_center_id
@@ -281,10 +281,10 @@ class FacilityAccessService
             return false;
         }
 
-        return ($user->isBhw() && $this->sameAssignedId(
+        return ($user->isBhc() && $this->sameAssignedId(
             $patient->barangay_health_center_id,
             $user->barangay_health_center_id
-        )) || ($user->isRhuStaff() && $this->sameAssignedId(
+        )) || ($user->isRhu() && $this->sameAssignedId(
             $patient->rural_health_unit_id,
             $user->rural_health_unit_id
         ));
@@ -309,13 +309,13 @@ class FacilityAccessService
         $record->loadMissing('patient');
         $allowed = $record->patient !== null
                 && $this->hasValidFacilityAssignment($user)
-                && (($user->isBhw() && $this->sameAssignedId(
+                && (($user->isBhc() && $this->sameAssignedId(
                     $record->barangay_health_center_id,
                     $user->barangay_health_center_id
                 ) && $this->sameAssignedId(
                     $record->patient->barangay_health_center_id,
                     $user->barangay_health_center_id
-                )) || ($user->isRhuStaff() && (
+                )) || ($user->isRhu() && (
                     ($this->sameAssignedId(
                         $record->rural_health_unit_id,
                         $user->rural_health_unit_id
@@ -354,7 +354,7 @@ class FacilityAccessService
 
         $allowed = $this->hasValidFacilityAssignment($user)
             && $relationshipsAreConsistent
-            && (($user->isBhw()
+            && (($user->isBhc()
                 && $this->sameAssignedId(
                     $referral->barangay_health_center_id,
                     $user->barangay_health_center_id
@@ -367,7 +367,7 @@ class FacilityAccessService
                     $referral->healthRecord->barangay_health_center_id,
                     $user->barangay_health_center_id
                 )))
-            || ($user->isRhuStaff() && $this->sameAssignedId(
+            || ($user->isRhu() && $this->sameAssignedId(
                 $referral->rural_health_unit_id,
                 $user->rural_health_unit_id
             )));
@@ -377,7 +377,7 @@ class FacilityAccessService
 
     public function authorizeRhuReferralAction(User $user, Referral $referral): void
     {
-        abort_unless($user->isRhuStaff(), 403, self::DENIED_MESSAGE);
+        abort_unless($user->isRhu(), 403, self::DENIED_MESSAGE);
         $this->authorizeReferral($user, $referral);
     }
 
@@ -388,7 +388,7 @@ class FacilityAccessService
         }
 
         $task->loadMissing(['patient', 'healthRecord']);
-        $allowed = $user->isBhw()
+        $allowed = $user->isBhc()
             && $this->hasValidFacilityAssignment($user)
             && $task->patient !== null
             && $task->healthRecord !== null
@@ -412,14 +412,14 @@ class FacilityAccessService
     public function authorizeMedicine(User $user, Medicine $medicine): void
     {
         $allowed = $user->isAdmin()
-            || ($user->isBhw()
+            || ($user->isBhc()
                 && $this->hasValidFacilityAssignment($user)
                 && $medicine->rural_health_unit_id === null
                 && $this->sameAssignedId(
                     $medicine->barangay_health_center_id,
                     $user->barangay_health_center_id
                 ))
-            || ($user->isRhuStaff()
+            || ($user->isRhu()
                 && $this->hasValidFacilityAssignment($user)
                 && $this->sameAssignedId(
                     $medicine->rural_health_unit_id,
@@ -446,7 +446,7 @@ class FacilityAccessService
         Medicine $medicine,
         mixed $barangayHealthCenterId
     ): bool {
-        return $user->isBhw()
+        return $user->isBhc()
             && ActionPermissions::allows($user, 'items.dispense')
             && $this->hasValidFacilityAssignment($user)
             && $medicine->rural_health_unit_id === null

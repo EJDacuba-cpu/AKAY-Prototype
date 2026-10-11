@@ -18,11 +18,11 @@ class StaffRolesTest extends TestCase
 
     public function test_allowed_at(): void
     {
-        $this->assertFalse(StaffRoles::allowedAt('nurse', 'bhw'));
-        $this->assertFalse(StaffRoles::allowedAt('midwife', 'rhu_staff'));
-        $this->assertFalse(StaffRoles::allowedAt('encoder', 'rhu_staff'));
-        $this->assertTrue(StaffRoles::allowedAt('encoder', 'bhw'));
-        $this->assertTrue(StaffRoles::allowedAt('doctor', 'rhu_staff'));
+        $this->assertFalse(StaffRoles::allowedAt('nurse', 'bhc'));
+        $this->assertFalse(StaffRoles::allowedAt('midwife', 'rhu'));
+        $this->assertFalse(StaffRoles::allowedAt('encoder', 'rhu'));
+        $this->assertTrue(StaffRoles::allowedAt('encoder', 'bhc'));
+        $this->assertTrue(StaffRoles::allowedAt('doctor', 'rhu'));
         $this->assertFalse(StaffRoles::allowedAt('midwife', null));
     }
 
@@ -49,9 +49,9 @@ class StaffRolesTest extends TestCase
         $this->assertCount(5, $api['roles']);
         $this->assertSame(['midwife', 'bhw', 'encoder', 'nurse', 'doctor'], array_column($api['roles'], 'key'));
         $midwife = $api['roles'][0];
-        $this->assertSame(['key' => 'midwife', 'label' => 'Midwife', 'tier' => 'bhw', 'licensed' => true], array_intersect_key($midwife, array_flip(['key', 'label', 'tier', 'licensed'])));
+        $this->assertSame(['key' => 'midwife', 'label' => 'Midwife', 'tier' => 'bhc', 'licensed' => true], array_intersect_key($midwife, array_flip(['key', 'label', 'tier', 'licensed'])));
         $this->assertCount(10, $midwife['defaults']);
-        $this->assertSame(['bhw', 'rhu_staff'], array_keys($api['available']));
+        $this->assertSame(['bhc', 'rhu'], array_keys($api['available']));
     }
 
     public function test_labels_and_defaults_for_unknown_roles(): void

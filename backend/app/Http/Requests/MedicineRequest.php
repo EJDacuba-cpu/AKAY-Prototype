@@ -11,7 +11,7 @@ class MedicineRequest extends FormRequest
     public function authorize(): bool
     {
         $user = $this->user();
-        if (! $user || ! ($user->isBhw() || $user->isRhuStaff() || $user->isAdmin())) {
+        if (! $user || ! ($user->isBhc() || $user->isRhu() || $user->isAdmin())) {
             return false;
         }
 

@@ -28,7 +28,7 @@ class FollowUpEpisodeTest extends TestCase
             'name' => 'Episode BHW',
             'email' => 'episode-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -89,7 +89,7 @@ class FollowUpEpisodeTest extends TestCase
             'name' => 'Marker BHW',
             'email' => 'marker-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);

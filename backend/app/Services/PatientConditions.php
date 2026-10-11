@@ -30,7 +30,7 @@ class PatientConditions
     {
         return $user !== null
             && ActionPermissions::allows($user, 'conditions.confirm')
-            && $user->workflowRole() === User::ROLE_RHU_STAFF;
+            && $user->workflowRole() === User::ROLE_RHU;
     }
 
     public static function rules(string $prefix = 'condition_confirmations'): array

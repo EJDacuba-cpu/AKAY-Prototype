@@ -28,7 +28,7 @@ class EnforceActionPermissions
             str_contains($path, '/follow-up-tasks') => $read ? 'clinical.history' : 'followups.manage',
             str_contains($path, '/reports') => 'reports.view',
             str_contains($path, '/referral-routing') => 'consultations.encode',
-            str_contains($path, '/referrals') => $read ? 'clinical.history' : ($request->user()->isBhw() ? 'referrals.submit' : 'rhu.manage'),
+            str_contains($path, '/referrals') => $read ? 'clinical.history' : ($request->user()->isBhc() ? 'referrals.submit' : 'rhu.manage'),
             str_contains($path, '/referral-holds') => 'referrals.submit',
             str_contains($path, '/feedback'), str_contains($path, '/incoming-referrals'), str_contains($path, '/rhu-patient-volumes') => 'rhu.manage',
             default => null,

@@ -44,7 +44,7 @@ class HealthRecordIdempotencyTest extends TestCase
         $this->createUser(
             'RHU Receiver',
             'idempotency-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             $this->rhu->id
         );
         $this->patient = $this->createPatient('Primary', 'Patient');
@@ -409,7 +409,7 @@ class HealthRecordIdempotencyTest extends TestCase
     private function createUser(
         string $name,
         string $email,
-        string $role = User::ROLE_BHW,
+        string $role = User::ROLE_BHC,
         ?int $rhuId = null
     ): User {
         return User::create([
@@ -418,10 +418,10 @@ class HealthRecordIdempotencyTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => $role,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $role === User::ROLE_BHW ? $this->bhc->id : null,
+            'barangay_health_center_id' => $role === User::ROLE_BHC ? $this->bhc->id : null,
             'rural_health_unit_id' => $rhuId,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
+            ...($role === User::ROLE_BHC ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }

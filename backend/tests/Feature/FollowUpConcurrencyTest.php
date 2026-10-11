@@ -41,13 +41,13 @@ class FollowUpConcurrencyTest extends TestCase
         $this->bhw = $this->user(
             'Concurrency BHW',
             'concurrency-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhc->id
         );
         $this->user(
             'Concurrency RHU Staff',
             'concurrency-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             $this->rhu->id
         );
         $this->patient = $this->patient('Concurrency', 'Patient', $this->bhc);
@@ -215,7 +215,7 @@ class FollowUpConcurrencyTest extends TestCase
         $otherBhw = $this->user(
             'Other Concurrency BHW',
             'other-concurrency-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $otherBhc->id
         );
 
@@ -234,7 +234,7 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $this->patient->update(['rural_health_unit_id' => $this->rhu->id]);
         $parent->update(['rural_health_unit_id' => $this->rhu->id]);
-        $rhuStaff = User::where('role', User::ROLE_RHU_STAFF)->firstOrFail();
+        $rhuStaff = User::where('role', User::ROLE_RHU)->firstOrFail();
 
         $this->postRecord(
             $rhuStaff,
@@ -436,10 +436,10 @@ class FollowUpConcurrencyTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => $role,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $role === User::ROLE_BHW ? $facilityId : null,
-            'rural_health_unit_id' => $role === User::ROLE_RHU_STAFF ? $facilityId : null,
+            'barangay_health_center_id' => $role === User::ROLE_BHC ? $facilityId : null,
+            'rural_health_unit_id' => $role === User::ROLE_RHU ? $facilityId : null,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
+            ...($role === User::ROLE_BHC ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }

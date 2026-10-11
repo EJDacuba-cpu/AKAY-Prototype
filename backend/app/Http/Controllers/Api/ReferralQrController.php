@@ -95,7 +95,7 @@ class ReferralQrController extends Controller
                     (string) $lockedReferral->qr_token_hash,
                     $this->qrTokens->hash($token)
                 )
-                || ! $request->user()->isRhuStaff()
+                || ! $request->user()->isRhu()
                 || ! $this->facilityAccess->canAccessReferral($request->user(), $lockedReferral)
             ) {
                 return null;
@@ -123,7 +123,7 @@ class ReferralQrController extends Controller
     {
         $user = $request->user();
         abort_unless(
-            ($user->isBhw() || $user->isRhuStaff())
+            ($user->isBhc() || $user->isRhu())
                 && $this->facilityAccess->canAccessReferral($user, $referral),
             403,
             'This resource is outside your assigned facility.'

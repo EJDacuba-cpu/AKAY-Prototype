@@ -20,7 +20,7 @@ class TbRecordDetectionTest extends TestCase
     {
         $rhu = RuralHealthUnit::create(['name' => 'TB RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'TB BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'TB BHW', 'email' => 'tb@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = User::create(['name' => 'TB BHW', 'email' => 'tb@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $patient = Patient::create(['first_name' => 'TB', 'last_name' => 'Patient', 'sex' => 'Male', 'barangay_health_center_id' => $bhc->id]);
         $legacy = HealthRecord::create(['patient_id' => $patient->id, 'category' => 'TB DOTS / TB Monitoring', 'barangay_health_center_id' => $bhc->id]);
         $new = HealthRecord::create(['patient_id' => $patient->id, 'category' => 'General Consultation', 'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-1']], 'barangay_health_center_id' => $bhc->id]);

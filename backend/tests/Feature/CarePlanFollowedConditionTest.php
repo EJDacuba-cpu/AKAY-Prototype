@@ -34,7 +34,7 @@ class CarePlanFollowedConditionTest extends TestCase
 
     private function user(array $permissions): User
     {
-        return User::create(['name' => 'Followed BHW '.Str::random(4), 'email' => Str::random(8).'@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => $permissions]);
+        return User::create(['name' => 'Followed BHW '.Str::random(4), 'email' => Str::random(8).'@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => $permissions]);
     }
 
     private function save(array $diagnoses, array $carePlan = [], array $extra = [])

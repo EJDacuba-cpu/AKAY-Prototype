@@ -29,7 +29,7 @@ class HealthRecordDraftService
 
     public function listFor(User $user, int $perPage): LengthAwarePaginator
     {
-        $this->ensureBhw($user);
+        $this->ensureBhc($user);
         $this->expireOwnedDrafts($user);
 
         return HealthRecordDraft::query()
@@ -65,7 +65,7 @@ class HealthRecordDraftService
 
     public function create(User $user, array $data): HealthRecordDraft
     {
-        $this->ensureBhw($user);
+        $this->ensureBhc($user);
         $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
         $consultationUuid = $this->normalizeConsultationUuid(
             $data['consultation_uuid'] ?? null
@@ -149,7 +149,7 @@ class HealthRecordDraftService
 
     public function loadOwnedActive(User $user, string $publicId): HealthRecordDraft
     {
-        $this->ensureBhw($user);
+        $this->ensureBhc($user);
         $this->expireOwnedDrafts($user, $publicId);
 
         $draft = HealthRecordDraft::query()
@@ -337,7 +337,7 @@ class HealthRecordDraftService
             );
         }
 
-        $this->ensureBhw($user);
+        $this->ensureBhc($user);
         $draft = HealthRecordDraft::query()
             ->where('public_id', $publicId)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
@@ -388,7 +388,7 @@ class HealthRecordDraftService
             );
         }
 
-        $this->ensureBhw($user);
+        $this->ensureBhc($user);
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
@@ -576,9 +576,9 @@ class HealthRecordDraftService
         }
     }
 
-    private function ensureBhw(User $user): void
+    private function ensureBhc(User $user): void
     {
-        abort_unless($user->isBhw(), 403, 'This action is not allowed for your role.');
+        abort_unless($user->isBhc(), 403, 'This action is not allowed for your role.');
         $this->facilityAccess->ensureValidFacilityAssignment($user);
         ActionPermissions::ensure($user, 'consultations.encode');
     }

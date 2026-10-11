@@ -34,7 +34,7 @@ class RhuConditionConfirmationTest extends TestCase
         $this->rhu = RuralHealthUnit::create(['name' => 'Confirm RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Confirm BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
         $this->rhuUser = $this->user('rhu@example.test', [
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'rural_health_unit_id' => $this->rhu->id,
             'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm'],
         ]);
@@ -148,7 +148,7 @@ class RhuConditionConfirmationTest extends TestCase
     public function test_a_bhc_user_sending_confirmations_is_forbidden_and_nothing_saves(): void
     {
         $bhw = $this->user('bhw@example.test', [
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'barangay_health_center_id' => $this->bhc->id,
             'permissions' => StaffRoles::defaults('midwife'),
         ]);

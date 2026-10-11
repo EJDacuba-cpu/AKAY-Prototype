@@ -31,12 +31,12 @@ class PatientConditionReadTest extends TestCase
         $rhu = RuralHealthUnit::create(['name' => 'Read RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Read BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
         $this->patient = Patient::create(['first_name' => 'Read', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id, 'rural_health_unit_id' => $rhu->id]);
-        $this->rhuUser = User::create(['name' => 'Dr. Rhu', 'email' => 'rhu-read@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_RHU_STAFF, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => $rhu->id]);
+        $this->rhuUser = User::create(['name' => 'Dr. Rhu', 'email' => 'rhu-read@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_RHU, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => $rhu->id]);
     }
 
     private function bhw(array $permissions, ?BarangayHealthCenter $bhc = null, string $email = 'bhw-read@example.test'): User
     {
-        return User::create(['name' => 'Read BHW', 'email' => $email, 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => ($bhc ?? $this->bhc)->id, 'permissions' => $permissions]);
+        return User::create(['name' => 'Read BHW', 'email' => $email, 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => ($bhc ?? $this->bhc)->id, 'permissions' => $permissions]);
     }
 
     private function condition(string $name, string $identity, string $status, array $attributes = []): PatientCondition

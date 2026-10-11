@@ -64,7 +64,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->bhw = $this->user(
             'Session BHW',
             'security-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id
         );
     }
@@ -92,7 +92,7 @@ class AuthenticationSessionSecurityTest extends TestCase
     public function test_login_failures_are_generic_for_credentials_status_role_and_facility(): void
     {
         $inactive = $this->user('Inactive', 'inactive-session@example.test', User::ROLE_ADMIN, null, null, User::STATUS_INACTIVE);
-        $unassigned = $this->user('Unassigned', 'unassigned-session@example.test', User::ROLE_BHW);
+        $unassigned = $this->user('Unassigned', 'unassigned-session@example.test', User::ROLE_BHC);
         $invalidRole = $this->user('Invalid Role', 'invalid-role-session@example.test', 'legacy_role');
 
         $attempts = [
@@ -321,7 +321,7 @@ class AuthenticationSessionSecurityTest extends TestCase
 
         $this->usingToken($adminToken)
             ->patchJson("/api/users/{$this->bhw->id}", [
-                'role' => User::ROLE_RHU_STAFF,
+                'role' => User::ROLE_RHU,
                 'staff_role' => 'nurse',
                 'permissions' => StaffRoles::defaults('nurse'),
                 'permissions_confirmed' => true,
@@ -333,7 +333,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($token)->getJson('/api/auth/profile')->assertUnauthorized();
         $this->login($this->bhw->fresh())
             ->assertOk()
-            ->assertJsonPath('user.role', User::ROLE_RHU_STAFF)
+            ->assertJsonPath('user.role', User::ROLE_RHU)
             ->assertJsonPath('user.rural_health_unit_id', $this->rhuB->id);
     }
 
@@ -343,7 +343,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $rhuUser = $this->user(
             'Session RHU Staff',
             'security-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuA->id
         );
@@ -368,7 +368,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $mixed = $this->user(
             'Mixed Assignment',
             'mixed-session@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             $this->rhuA->id
         );

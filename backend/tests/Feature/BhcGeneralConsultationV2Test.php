@@ -44,7 +44,7 @@ class BhcGeneralConsultationV2Test extends TestCase
         parent::setUp();
         $this->rhu = RuralHealthUnit::create(['name' => 'V2 RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'V2 BHC', 'rural_health_unit_id' => $this->rhu->id]);
-        $this->worker = User::create(['name' => 'V2 Worker', 'email' => 'v2@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active', 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $this->worker = User::create(['name' => 'V2 Worker', 'email' => 'v2@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '2000-01-01', 'barangay_health_center_id' => $this->bhc->id, 'rural_health_unit_id' => $this->rhu->id, 'created_by' => $this->worker->id]);
         Sanctum::actingAs($this->worker, ['akay:access']);
     }
@@ -90,7 +90,7 @@ class BhcGeneralConsultationV2Test extends TestCase
 
     public function test_rhu_user_cannot_send_v2(): void
     {
-        $rhuUser = User::create(['name' => 'V2 RHU Staff', 'email' => 'v2rhu@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU_STAFF, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
+        $rhuUser = User::create(['name' => 'V2 RHU Staff', 'email' => 'v2rhu@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
         Sanctum::actingAs($rhuUser, ['akay:access']);
 
         $this->v2()->assertUnprocessable()->assertJsonValidationErrors(['consultation_workflow']);
@@ -562,7 +562,7 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertArrayNotHasKey('consultationWorkflow', HealthRecord::findOrFail($bhcId)->monitoring_data ?? []);
         $this->assertFalse(HealthRecord::findOrFail($bhcId)->isBhcGeneralV2());
 
-        $rhuUser = User::create(['name' => 'V2 RHU Forger', 'email' => 'v2rhuforge@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU_STAFF, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
+        $rhuUser = User::create(['name' => 'V2 RHU Forger', 'email' => 'v2rhuforge@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
         Sanctum::actingAs($rhuUser, ['akay:access']);
 
         $rhuId = $this->legacy($forged)->assertCreated()->json('data.id');
@@ -609,7 +609,7 @@ class BhcGeneralConsultationV2Test extends TestCase
 
     public function test_rhu_health_record_save_unaffected(): void
     {
-        $rhuUser = User::create(['name' => 'V2 RHU Saver', 'email' => 'v2rhusave@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU_STAFF, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
+        $rhuUser = User::create(['name' => 'V2 RHU Saver', 'email' => 'v2rhusave@example.test', 'password' => 'password123', 'role' => User::ROLE_RHU, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm']]);
 
         $response = $this->actingAs($rhuUser, 'sanctum')
             ->withHeader('Idempotency-Key', (string) Str::uuid())

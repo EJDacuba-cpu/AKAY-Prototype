@@ -77,13 +77,13 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::post('/referrals/{referral}/qr/regenerate', [ReferralQrController::class, 'regenerate'])
             ->middleware('throttle:referral-qr-regenerate');
         Route::apiResource('referrals', ReferralController::class)->except(['store', 'update']);
-        Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhw');
-        Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
+        Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhc');
+        Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu');
         // D-1 FINAL - No-Show referrals only. Deliberately NOT a status
         // transition: the referral stays No-Show and TRK-02 gains no value.
-        Route::post('/referrals/{referral}/reschedule', [ReferralController::class, 'reschedule'])->middleware('role:rhu_staff');
+        Route::post('/referrals/{referral}/reschedule', [ReferralController::class, 'reschedule'])->middleware('role:rhu');
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
-        Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
+        Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu');
         Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
         Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
         Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
@@ -96,23 +96,23 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         // DOC-20/DOC-22 - roster reads for RHU staff and admin, writes for the
         // owning RHU only (DOC-15: admin is intentionally read-only here).
         Route::get('/rhu-providers', [RhuProviderController::class, 'index'])
-            ->middleware('role:rhu_staff,admin');
+            ->middleware('role:rhu,admin');
         Route::post('/rhu-providers', [RhuProviderController::class, 'store'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
         Route::patch('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'update'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
         Route::delete('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'destroy'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
 
         Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
         Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
 
-        Route::middleware('role:rhu_staff')->group(function () {
+        Route::middleware('role:rhu')->group(function () {
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
             Route::get('/reports/rhu', [ReportController::class, 'rhu']);
         });
 
-        Route::middleware('role:bhw')->group(function () {
+        Route::middleware('role:bhc')->group(function () {
             Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
             Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
             Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
@@ -133,7 +133,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
             Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
             Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
-            Route::get('/reports/bhw', [ReportController::class, 'bhw']);
+            Route::get('/reports/bhc', [ReportController::class, 'bhc']);
         });
     });
 

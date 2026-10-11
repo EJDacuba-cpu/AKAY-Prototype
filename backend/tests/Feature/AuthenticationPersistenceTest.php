@@ -91,7 +91,7 @@ class AuthenticationPersistenceTest extends TestCase
 
         $response = $this->refresh($oldCookie->getValue())
             ->assertOk()
-            ->assertJsonPath('user.role', User::ROLE_BHW)
+            ->assertJsonPath('user.role', User::ROLE_BHC)
             ->assertJsonPath('user.facility.id', $this->bhc->id)
             ->assertJsonPath('user.navigation.home', '/bhc/dashboard');
         $newCookie = $this->refreshCookieFrom($response);
@@ -324,7 +324,7 @@ class AuthenticationPersistenceTest extends TestCase
             'name' => 'Persistent BHW',
             'email' => $email,
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
         ]);

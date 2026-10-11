@@ -27,7 +27,7 @@ class AccountFacilityRevisionTest extends TestCase
         $home = RuralHealthUnit::create(['name' => 'Home RHU']);
         $receiving = RuralHealthUnit::create(['name' => 'Receiving RHU']);
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan', 'rural_health_unit_id' => $receiving->id]);
-        $nurse = $this->user(['role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $home->id]);
+        $nurse = $this->user(['role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $home->id]);
         Sanctum::actingAs($this->user(), ['*']);
         $data = ['user_id' => $nurse->id, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife'), 'starts_on' => today()->toDateString(), 'assignment_type' => 'temporary'];
         $this->postJson('/api/staff-assignments', $data)->assertUnprocessable()->assertJsonValidationErrors('ends_on');
@@ -45,10 +45,10 @@ class AccountFacilityRevisionTest extends TestCase
         $bhc = BarangayHealthCenter::create(['name' => 'BHC']);
         Sanctum::actingAs($this->user(), ['*']);
         foreach (['doctor', 'midwife', null] as $staffRole) {
-            $staff = $this->user(['role' => 'rhu_staff', 'staff_role' => $staffRole, 'rural_health_unit_id' => $rhu->id]);
+            $staff = $this->user(['role' => 'rhu', 'staff_role' => $staffRole, 'rural_health_unit_id' => $rhu->id]);
             $this->postJson('/api/staff-assignments', ['user_id' => $staff->id, 'barangay_health_center_id' => $bhc->id, 'permissions' => ['consultations.encode'], 'starts_on' => today()->toDateString(), 'assignment_type' => 'ongoing'])->assertUnprocessable();
         }
-        $nurse = $this->user(['role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        $nurse = $this->user(['role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
         $nurse->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => ['consultations.encode'], 'starts_on' => today()->addDay(), 'assignment_type' => 'ongoing']);
         $nurse->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => ['consultations.encode'], 'starts_on' => today()->subDays(3), 'ends_on' => today()->subDay(), 'assignment_type' => 'temporary']);
         $this->assertCount(1, app(WorkingFacilityService::class)->available($nurse));
@@ -63,7 +63,7 @@ class AccountFacilityRevisionTest extends TestCase
         $bhc->alternativeRhus()->attach($alternative);
         $this->seedAvailableProvider($alternative);
         $this->seedAvailableProvider($rogue);
-        $user = $this->user(['role' => 'bhw', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = $this->user(['role' => 'bhc', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $patient = Patient::create(['first_name' => 'Sample', 'last_name' => 'Patient', 'sex' => 'Female', 'created_by' => $user->id, 'barangay_health_center_id' => $bhc->id]);
         Sanctum::actingAs($user, ['*']);
         $data = ['patient_id' => $patient->id, 'urgency_level' => 'Routine', 'reason_for_referral' => 'Clinical review'];
@@ -81,7 +81,7 @@ class AccountFacilityRevisionTest extends TestCase
         $bhc = BarangayHealthCenter::create(['name' => 'Pitpitan', 'rural_health_unit_id' => $default->id]);
         $bhc->alternativeRhus()->attach($alternative);
         $this->seedAvailableProvider($default);
-        $user = $this->user(['role' => 'bhw', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = $this->user(['role' => 'bhc', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $patient = Patient::create(['first_name' => 'Sample', 'last_name' => 'Patient', 'sex' => 'Female', 'created_by' => $user->id, 'barangay_health_center_id' => $bhc->id]);
         Sanctum::actingAs($user, ['*']);
         $this->getJson('/api/rhu-providers/availability?rural_health_unit_id='.$alternative->id)->assertOk()->assertJsonPath('data.can_submit_referral', false);
@@ -98,7 +98,7 @@ class AccountFacilityRevisionTest extends TestCase
     {
         Sanctum::actingAs($this->user(), ['*']);
         $rhu = RuralHealthUnit::create(['name' => 'Home']);
-        $data = ['name' => 'Nurse', 'email' => 'nurse@example.test', 'password' => 'password123', 'password_confirmation' => 'password123', 'contact_number' => '09171234567', 'role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')];
+        $data = ['name' => 'Nurse', 'email' => 'nurse@example.test', 'password' => 'password123', 'password_confirmation' => 'password123', 'contact_number' => '09171234567', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')];
         $this->postJson('/api/users', $data)->assertUnprocessable()->assertJsonValidationErrors('permissions_confirmed');
         $this->postJson('/api/users', [...$data, 'permissions_confirmed' => true, 'facility_assignments' => [['barangay_health_center_id' => 1]]])->assertUnprocessable()->assertJsonValidationErrors('facility_assignments');
         $this->postJson('/api/users', [...$data, 'permissions_confirmed' => true])->assertCreated();
@@ -110,7 +110,7 @@ class AccountFacilityRevisionTest extends TestCase
         $rhu = RuralHealthUnit::create(['name' => 'RHU']);
         $other = RuralHealthUnit::create(['name' => 'Alternative']);
         $bhc = BarangayHealthCenter::create(['name' => 'BHC', 'rural_health_unit_id' => $rhu->id]);
-        $nurse = $this->user(['role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $other->id]);
+        $nurse = $this->user(['role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $other->id]);
         Sanctum::actingAs($this->user(), ['*']);
         $this->patchJson('/api/barangay-health-centers/'.$bhc->id, ['rural_health_unit_id' => $rhu->id, 'alternative_rhu_ids' => [$other->id]])->assertOk();
         $this->assertCount(1, app(WorkingFacilityService::class)->available($nurse));
@@ -121,7 +121,7 @@ class AccountFacilityRevisionTest extends TestCase
     {
         $rhu = RuralHealthUnit::create(['name' => 'Home']);
         $bhc = BarangayHealthCenter::create(['name' => 'BHC']);
-        $nurse = $this->user(['role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        $nurse = $this->user(['role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
         $data = ['user_id' => $nurse->id, 'barangay_health_center_id' => $bhc->id, 'starts_on' => today()->toDateString(), 'assignment_type' => 'ongoing', 'permissions' => ['patients.register', 'consultations.encode']];
         Sanctum::actingAs($nurse, ['*']);
         $this->postJson('/api/staff-assignments', $data)->assertForbidden();
@@ -139,7 +139,7 @@ class AccountFacilityRevisionTest extends TestCase
         $home = RuralHealthUnit::create(['name' => 'Home']);
         $selected = RuralHealthUnit::create(['name' => 'Selected']);
         $bhc = BarangayHealthCenter::create(['name' => 'BHC', 'rural_health_unit_id' => $selected->id]);
-        $nurse = $this->user(['role' => 'rhu_staff', 'staff_role' => 'nurse', 'rural_health_unit_id' => $home->id, 'permissions' => StaffRoles::defaults('nurse')]);
+        $nurse = $this->user(['role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $home->id, 'permissions' => StaffRoles::defaults('nurse')]);
         $assignment = $nurse->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'starts_on' => today(), 'assignment_type' => 'ongoing', 'permissions' => StaffRoles::defaults('midwife')]);
         $patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Patient', 'sex' => 'Female', 'created_by' => $nurse->id, 'barangay_health_center_id' => $bhc->id]);
         $holds = app(\App\Services\ReferralHoldService::class);
@@ -159,7 +159,7 @@ class AccountFacilityRevisionTest extends TestCase
         $old = RuralHealthUnit::create(['name' => 'Old']);
         $next = RuralHealthUnit::create(['name' => 'New']);
         $bhc = BarangayHealthCenter::create(['name' => 'BHC', 'rural_health_unit_id' => $old->id]);
-        $user = $this->user(['role' => 'bhw', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = $this->user(['role' => 'bhc', 'staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Patient', 'sex' => 'Female', 'created_by' => $user->id, 'barangay_health_center_id' => $bhc->id]);
         $this->seedAvailableProvider($old);
         Sanctum::actingAs($user, ['*']);

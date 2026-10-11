@@ -57,10 +57,10 @@ class SecureServerCacheTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('Cache BHW A', 'cache-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwB = $this->user('Cache BHW B', 'cache-bhw-b@example.test', User::ROLE_BHW, $this->bhcB->id);
-        $this->rhuStaffA = $this->user('Cache RHU A', 'cache-rhu-a@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('Cache RHU B', 'cache-rhu-b@example.test', User::ROLE_RHU_STAFF, null, $this->rhuB->id);
+        $this->bhwA = $this->user('Cache BHW A', 'cache-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwB = $this->user('Cache BHW B', 'cache-bhw-b@example.test', User::ROLE_BHC, $this->bhcB->id);
+        $this->rhuStaffA = $this->user('Cache RHU A', 'cache-rhu-a@example.test', User::ROLE_RHU, null, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('Cache RHU B', 'cache-rhu-b@example.test', User::ROLE_RHU, null, $this->rhuB->id);
     }
 
     public function test_medicine_cache_records_miss_then_hit_with_identical_allowlisted_response(): void
@@ -196,7 +196,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->assertSame($safeValue, $result);
         $this->assertSame($safeValue, Cache::get($key));
-        $this->assertStringContainsString(':bhw:bhc:'.$this->bhcA->id.':', $key);
+        $this->assertStringContainsString(':bhc:bhc:'.$this->bhcA->id.':', $key);
         foreach (['Patient Name', 'patient@example.test', 'diagnosis', 'token-123'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $key);
             $this->assertStringNotContainsString($forbidden, json_encode(Cache::get($key), JSON_THROW_ON_ERROR));
@@ -284,8 +284,8 @@ class SecureServerCacheTest extends TestCase
             'barangay_health_center_id' => $this->bhcA->id,
         ]);
 
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
-        $this->primeReportCache($this->bhwB, '/api/reports/bhw');
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
+        $this->primeReportCache($this->bhwB, '/api/reports/bhc');
         $this->primeReportCache($this->rhuStaffA, '/api/reports/rhu');
 
         $this->actingAs($this->bhwA, 'sanctum')
@@ -297,7 +297,7 @@ class SecureServerCacheTest extends TestCase
             ->assertCreated();
 
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.total_referrals', 1);
@@ -307,7 +307,7 @@ class SecureServerCacheTest extends TestCase
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.total_referrals', 1);
         $this->actingAs($this->bhwB, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertHeader('X-AKAY-Cache', 'HIT')
             ->assertJsonPath('data.total_referrals', 0);
@@ -365,7 +365,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertCreated()
             ->json('data.id');
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
         $this->primeReportCache($this->rhuStaffA, '/api/reports/rhu');
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -375,7 +375,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertOk();
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.referrals_by_status.Received', 1);
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -390,7 +390,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertCreated();
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.completed_referrals', 1);
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -406,10 +406,10 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertCreated()
             ->json('data.id');
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
         $this->assertTrue(app(ReferralWorkflowService::class)->markNoShow((int) $noShowId));
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.no_show_referrals', 1);
     }
@@ -421,7 +421,7 @@ class SecureServerCacheTest extends TestCase
         $inactive = $this->user(
             'Inactive Cache User',
             'inactive-cache@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             null,
             User::STATUS_INACTIVE
@@ -429,7 +429,7 @@ class SecureServerCacheTest extends TestCase
         $unassigned = $this->user(
             'Unassigned Cache User',
             'unassigned-cache@example.test',
-            User::ROLE_BHW
+            User::ROLE_BHC
         );
 
         Cache::shouldReceive('get')->never();

@@ -26,7 +26,7 @@ class HouseholdParentLinkTest extends TestCase
         $this->bhc = BarangayHealthCenter::create(['name' => 'Household BHC']);
         Sanctum::actingAs(User::create([
             'name' => 'Household BHW', 'email' => 'household@example.test',
-            'password' => 'password123', 'status' => 'active', 'role' => 'bhw',
+            'password' => 'password123', 'status' => 'active', 'role' => 'bhc',
             'staff_role' => 'midwife',
             'permissions' => ['patients.register', 'clinical.history'],
             'barangay_health_center_id' => $this->bhc->id,

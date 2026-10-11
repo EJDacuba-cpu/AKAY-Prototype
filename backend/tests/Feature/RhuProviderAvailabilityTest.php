@@ -49,9 +49,9 @@ class RhuProviderAvailabilityTest extends TestCase
             'rural_health_unit_id' => $this->rhuA->id,
         ]);
 
-        $this->rhuStaffA = $this->user('RHU A Staff', 'prov-rhu-a@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('RHU B Staff', 'prov-rhu-b@example.test', User::ROLE_RHU_STAFF, null, $this->rhuB->id);
-        $this->bhwA = $this->user('BHW A', 'prov-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
+        $this->rhuStaffA = $this->user('RHU A Staff', 'prov-rhu-a@example.test', User::ROLE_RHU, null, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('RHU B Staff', 'prov-rhu-b@example.test', User::ROLE_RHU, null, $this->rhuB->id);
+        $this->bhwA = $this->user('BHW A', 'prov-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
         $this->admin = $this->user('Provider Admin', 'prov-admin@example.test', User::ROLE_ADMIN);
     }
 

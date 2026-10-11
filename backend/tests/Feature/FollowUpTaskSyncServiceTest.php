@@ -41,7 +41,7 @@ class FollowUpTaskSyncServiceTest extends TestCase
             'name' => 'Sync BHW',
             'email' => 'sync-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
         ]);

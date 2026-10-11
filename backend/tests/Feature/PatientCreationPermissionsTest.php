@@ -19,12 +19,12 @@ class PatientCreationPermissionsTest extends TestCase
     {
         return [
             'admin' => ['admin', null, null, true],
-            'clinical BHC staff' => ['bhw', 'midwife', ['patients.register', 'clinical.history'], true],
-            'registration only' => ['bhw', 'encoder', ['patients.register'], false],
-            'encoder granted history' => ['bhw', 'encoder', ['patients.register', 'clinical.history'], true],
-            'midwife without history' => ['bhw', 'midwife', ['patients.register'], false],
-            'RHU staff' => ['rhu_staff', 'nurse', ['patients.register', 'clinical.history'], true],
-            'RHU registration only' => ['rhu_staff', 'nurse', ['patients.register'], false],
+            'clinical BHC staff' => ['bhc', 'midwife', ['patients.register', 'clinical.history'], true],
+            'registration only' => ['bhc', 'encoder', ['patients.register'], false],
+            'encoder granted history' => ['bhc', 'encoder', ['patients.register', 'clinical.history'], true],
+            'midwife without history' => ['bhc', 'midwife', ['patients.register'], false],
+            'RHU staff' => ['rhu', 'nurse', ['patients.register', 'clinical.history'], true],
+            'RHU registration only' => ['rhu', 'nurse', ['patients.register'], false],
         ];
     }
 
@@ -34,7 +34,7 @@ class PatientCreationPermissionsTest extends TestCase
     ): void {
         $bhc = BarangayHealthCenter::create(['name' => 'Registration BHC']);
         $rhu = RuralHealthUnit::create(['name' => 'Registration RHU']);
-        $facility = $role === 'rhu_staff'
+        $facility = $role === 'rhu'
             ? ['rural_health_unit_id' => $rhu->id]
             : ['barangay_health_center_id' => $bhc->id];
         $user = User::create([
@@ -81,7 +81,7 @@ class PatientCreationPermissionsTest extends TestCase
         $bhc = BarangayHealthCenter::create(['name' => 'BHC']);
         $user = User::create([
             'name' => 'History only', 'email' => 'history@example.test', 'password' => 'password123',
-            'status' => 'active', 'role' => 'bhw', 'barangay_health_center_id' => $bhc->id,
+            'status' => 'active', 'role' => 'bhc', 'barangay_health_center_id' => $bhc->id,
             'permissions' => ['clinical.history'],
         ]);
         Sanctum::actingAs($user, ['akay:access']);

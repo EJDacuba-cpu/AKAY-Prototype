@@ -30,7 +30,7 @@ class PatientConditionsServiceTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Cond RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Cond BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->rhuUser = $this->user('rhu@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')]);
+        $this->rhuUser = $this->user('rhu@example.test', ['role' => User::ROLE_RHU, 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')]);
     }
 
     private function user(string $email, array $attributes): User
@@ -258,7 +258,7 @@ class PatientConditionsServiceTest extends TestCase
         $onDuty->workingFacility = ['id' => $this->bhc->id, 'name' => $this->bhc->name, 'type' => 'bhc', 'is_home' => false, 'permissions' => StaffRoles::defaults('nurse')];
         $this->assertFalse(PatientConditions::canConfirm($onDuty));
 
-        $clinical = $this->user('bhw@example.test', ['role' => User::ROLE_BHW, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $clinical = $this->user('bhw@example.test', ['role' => User::ROLE_BHC, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->assertFalse(PatientConditions::canConfirm($clinical));
     }
 }

@@ -357,7 +357,7 @@ class HealthRecordController extends Controller
                         if ($exception->blockCode !== 'NO_PROVIDER_AVAILABLE') {
                             throw $exception;
                         }
-                        $route = app(ReferralRoutingService::class)->resolveForBhw($request->user(), $referralData['rural_health_unit_id'] ?? null);
+                        $route = app(ReferralRoutingService::class)->resolveForBhc($request->user(), $referralData['rural_health_unit_id'] ?? null);
                         $hold = app(ReferralHoldService::class)->recordBlockedAttempt($request->user(), $patient, $route['bhc']->id, $route['rhu'], [...$referralData, 'health_record_id' => $record->id]);
                         $record->update(['monitoring_data' => [...($record->monitoring_data ?? []), 'pendingReferral' => $referralData, 'referralHoldId' => $hold->id, 'referralStatus' => 'Awaiting Doctor Availability', 'submissionStatus' => 'Not Yet Submitted']]);
                     }

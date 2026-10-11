@@ -15,17 +15,17 @@ class StaffRoles
     private const RHU_DEFAULTS = ['patients.register', 'clinical.history', 'rhu.manage', 'conditions.confirm', 'inventory.view', 'reports.view'];
 
     public const ROLES = [
-        'midwife' => ['label' => 'Midwife', 'tier' => User::ROLE_BHW, 'licensed' => true, 'defaults' => self::MIDWIFE_DEFAULTS],
-        'bhw' => ['label' => 'BHW', 'tier' => User::ROLE_BHW, 'licensed' => false, 'defaults' => ['patients.register']],
-        'encoder' => ['label' => 'Encoder', 'tier' => User::ROLE_BHW, 'licensed' => false, 'defaults' => ['patients.register', 'consultations.encode', 'inventory.view']],
-        'nurse' => ['label' => 'Nurse', 'tier' => User::ROLE_RHU_STAFF, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
-        'doctor' => ['label' => 'Doctor', 'tier' => User::ROLE_RHU_STAFF, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
+        'midwife' => ['label' => 'Midwife', 'tier' => User::ROLE_BHC, 'licensed' => true, 'defaults' => self::MIDWIFE_DEFAULTS],
+        'bhw' => ['label' => 'BHW', 'tier' => User::ROLE_BHC, 'licensed' => false, 'defaults' => ['patients.register']],
+        'encoder' => ['label' => 'Encoder', 'tier' => User::ROLE_BHC, 'licensed' => false, 'defaults' => ['patients.register', 'consultations.encode', 'inventory.view']],
+        'nurse' => ['label' => 'Nurse', 'tier' => User::ROLE_RHU, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
+        'doctor' => ['label' => 'Doctor', 'tier' => User::ROLE_RHU, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
     ];
 
     /** Duties that work at each facility tier; the rest have no screen there. */
     public const AVAILABLE = [
-        User::ROLE_BHW => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'reports.view'],
-        User::ROLE_RHU_STAFF => ['patients.register', 'clinical.history', 'inventory.view', 'reports.view', 'rhu.manage', 'conditions.confirm'],
+        User::ROLE_BHC => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'reports.view'],
+        User::ROLE_RHU => ['patients.register', 'clinical.history', 'inventory.view', 'reports.view', 'rhu.manage', 'conditions.confirm'],
     ];
 
     public static function keys(): array

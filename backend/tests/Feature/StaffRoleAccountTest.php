@@ -34,7 +34,7 @@ class StaffRoleAccountTest extends TestCase
         return [
             'name' => 'Joshua', 'email' => 'joshua@example.test', 'contact_number' => '09171234567',
             'password' => 'password123', 'password_confirmation' => 'password123',
-            'role' => 'bhw', 'staff_role' => 'encoder', 'barangay_health_center_id' => $this->bhc->id,
+            'role' => 'bhc', 'staff_role' => 'encoder', 'barangay_health_center_id' => $this->bhc->id,
             'permissions' => StaffRoles::defaults('encoder'), 'permissions_confirmed' => true,
             ...$overrides,
         ];
@@ -42,7 +42,7 @@ class StaffRoleAccountTest extends TestCase
 
     private function rhuPayload(string $staffRole, array $overrides = []): array
     {
-        return $this->payload(['role' => 'rhu_staff', 'staff_role' => $staffRole, 'barangay_health_center_id' => null,
+        return $this->payload(['role' => 'rhu', 'staff_role' => $staffRole, 'barangay_health_center_id' => null,
             'rural_health_unit_id' => $this->rhu->id, 'permissions' => StaffRoles::defaults('nurse'), ...$overrides]);
     }
 
@@ -120,7 +120,7 @@ class StaffRoleAccountTest extends TestCase
 
     public function test_status_only_patch_on_legacy_account_succeeds(): void
     {
-        $legacy = User::create(['name' => 'Legacy', 'email' => 'legacy@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active',
+        $legacy = User::create(['name' => 'Legacy', 'email' => 'legacy@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active',
             'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('encoder')]);
 
         $this->patchJson("/api/users/{$legacy->id}", ['status' => 'inactive'])->assertOk();
@@ -142,7 +142,7 @@ class StaffRoleAccountTest extends TestCase
 
     public function test_legacy_account_must_pick_role_when_access_changes(): void
     {
-        $legacy = User::create(['name' => 'Legacy', 'email' => 'legacy@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active',
+        $legacy = User::create(['name' => 'Legacy', 'email' => 'legacy@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active',
             'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('encoder')]);
 
         $this->patchJson("/api/users/{$legacy->id}", ['permissions' => ['patients.register'], 'permissions_confirmed' => true])
@@ -151,9 +151,9 @@ class StaffRoleAccountTest extends TestCase
 
     public function test_staff_roles_endpoint(): void
     {
-        $this->getJson('/api/staff-roles')->assertOk()->assertJsonPath('data.roles.0.key', 'midwife')->assertJsonPath('data.available.rhu_staff', StaffRoles::available('rhu_staff'));
+        $this->getJson('/api/staff-roles')->assertOk()->assertJsonPath('data.roles.0.key', 'midwife')->assertJsonPath('data.available.rhu', StaffRoles::available('rhu'));
 
-        $bhw = User::create(['name' => 'Midwife', 'email' => 'mw@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active',
+        $bhw = User::create(['name' => 'Midwife', 'email' => 'mw@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active',
             'staff_role' => 'midwife', 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         Sanctum::actingAs($bhw, ['akay:access']);
         $this->getJson('/api/staff-roles')->assertForbidden();
@@ -162,7 +162,7 @@ class StaffRoleAccountTest extends TestCase
     public function test_nurse_assignment_eligibility_uses_staff_role(): void
     {
         foreach (['nurse', 'doctor'] as $role) {
-            User::create(['name' => ucfirst($role), 'email' => "{$role}@example.test", 'password' => 'password123', 'role' => 'rhu_staff', 'status' => 'active',
+            User::create(['name' => ucfirst($role), 'email' => "{$role}@example.test", 'password' => 'password123', 'role' => 'rhu', 'status' => 'active',
                 'staff_role' => $role, 'rural_health_unit_id' => $this->rhu->id, 'permissions' => StaffRoles::defaults($role)]);
         }
 

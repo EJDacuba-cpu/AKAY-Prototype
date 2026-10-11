@@ -27,8 +27,8 @@ class AuthController extends Controller
 
         $validRole = $user && in_array($user->role, [
             User::ROLE_ADMIN,
-            User::ROLE_BHW,
-            User::ROLE_RHU_STAFF,
+            User::ROLE_BHC,
+            User::ROLE_RHU,
         ], true);
         $validAccount = $user
             && Hash::check($request->validated('password'), $user->password)
@@ -156,13 +156,13 @@ class AuthController extends Controller
     {
         $choices = app(\App\Services\WorkingFacilityService::class)->available($user);
         $user->loadMissing(['barangayHealthCenter:id,name', 'ruralHealthUnit:id,name']);
-        $facility = $user->isBhw()
+        $facility = $user->isBhc()
             ? $user->barangayHealthCenter
-            : ($user->isRhuStaff() ? $user->ruralHealthUnit : null);
-        $facilityType = $user->isBhw() ? 'bhc' : ($user->isRhuStaff() ? 'rhu' : null);
+            : ($user->isRhu() ? $user->ruralHealthUnit : null);
+        $facilityType = $user->isBhc() ? 'bhc' : ($user->isRhu() ? 'rhu' : null);
         $homePath = match ($user->role) {
-            User::ROLE_BHW => '/bhc/dashboard',
-            User::ROLE_RHU_STAFF => '/rhu/dashboard',
+            User::ROLE_BHC => '/bhc/dashboard',
+            User::ROLE_RHU => '/rhu/dashboard',
             default => '/admin/dashboard',
         };
 

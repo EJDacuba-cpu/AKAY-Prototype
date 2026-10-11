@@ -60,26 +60,26 @@ class FacilityIsolationSecurityTest extends TestCase
         $this->bhwA = $this->createUser(
             'BHW A',
             'security-bhw-a@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id
         );
         $this->bhwB = $this->createUser(
             'BHW B',
             'security-bhw-b@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcB->id
         );
         $this->rhuStaffA = $this->createUser(
             'RHU Staff A',
             'security-rhu-a@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuA->id
         );
         $this->rhuStaffB = $this->createUser(
             'RHU Staff B',
             'security-rhu-b@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuB->id
         );
@@ -118,7 +118,7 @@ class FacilityIsolationSecurityTest extends TestCase
     public function test_rejects_bhw_without_bhc_assignment(): void
     {
         $this->actingAs($this->admin, 'sanctum')
-            ->postJson('/api/users', $this->userPayload('bhw-no-bhc@example.test', User::ROLE_BHW))
+            ->postJson('/api/users', $this->userPayload('bhw-no-bhc@example.test', User::ROLE_BHC))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('barangay_health_center_id');
     }
@@ -127,7 +127,7 @@ class FacilityIsolationSecurityTest extends TestCase
     {
         $this->actingAs($this->admin, 'sanctum')
             ->postJson('/api/users', [
-                ...$this->userPayload('bhw-both@example.test', User::ROLE_BHW),
+                ...$this->userPayload('bhw-both@example.test', User::ROLE_BHC),
                 'barangay_health_center_id' => $this->bhcA->id,
                 'rural_health_unit_id' => $this->rhuA->id,
             ])
@@ -138,7 +138,7 @@ class FacilityIsolationSecurityTest extends TestCase
     public function test_rejects_rhu_staff_without_rhu_assignment(): void
     {
         $this->actingAs($this->admin, 'sanctum')
-            ->postJson('/api/users', $this->userPayload('rhu-no-rhu@example.test', User::ROLE_RHU_STAFF))
+            ->postJson('/api/users', $this->userPayload('rhu-no-rhu@example.test', User::ROLE_RHU))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('rural_health_unit_id');
     }
@@ -147,7 +147,7 @@ class FacilityIsolationSecurityTest extends TestCase
     {
         $this->actingAs($this->admin, 'sanctum')
             ->postJson('/api/users', [
-                ...$this->userPayload('rhu-both@example.test', User::ROLE_RHU_STAFF),
+                ...$this->userPayload('rhu-both@example.test', User::ROLE_RHU),
                 'barangay_health_center_id' => $this->bhcA->id,
                 'rural_health_unit_id' => $this->rhuA->id,
             ])
@@ -159,7 +159,7 @@ class FacilityIsolationSecurityTest extends TestCase
     {
         $this->actingAs($this->admin, 'sanctum')
             ->postJson('/api/users', [
-                ...$this->userPayload('bhw-missing-bhc@example.test', User::ROLE_BHW),
+                ...$this->userPayload('bhw-missing-bhc@example.test', User::ROLE_BHC),
                 'barangay_health_center_id' => 999999,
             ])
             ->assertUnprocessable()
@@ -170,7 +170,7 @@ class FacilityIsolationSecurityTest extends TestCase
     {
         $this->actingAs($this->admin, 'sanctum')
             ->postJson('/api/users', [
-                ...$this->userPayload('rhu-missing@example.test', User::ROLE_RHU_STAFF),
+                ...$this->userPayload('rhu-missing@example.test', User::ROLE_RHU),
                 'rural_health_unit_id' => 999999,
             ])
             ->assertUnprocessable()
@@ -183,7 +183,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
         $this->actingAs($this->admin, 'sanctum')
             ->postJson('/api/users', [
-                ...$this->userPayload('bhw-inactive-bhc@example.test', User::ROLE_BHW),
+                ...$this->userPayload('bhw-inactive-bhc@example.test', User::ROLE_BHC),
                 'barangay_health_center_id' => $this->bhcA->id,
             ])
             ->assertUnprocessable()
@@ -216,7 +216,7 @@ class FacilityIsolationSecurityTest extends TestCase
 
     public function test_unassigned_clinical_account_cannot_access_null_facility_patient(): void
     {
-        $unassigned = $this->createUser('Unassigned BHW', 'unassigned@example.test', User::ROLE_BHW);
+        $unassigned = $this->createUser('Unassigned BHW', 'unassigned@example.test', User::ROLE_BHC);
         $patient = $this->createPatient('Null', 'Facility');
 
         $this->actingAs($unassigned, 'sanctum')
@@ -229,7 +229,7 @@ class FacilityIsolationSecurityTest extends TestCase
         $mixed = $this->createUser(
             'Mixed BHW',
             'mixed@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             $this->rhuA->id
         );
@@ -625,7 +625,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
             // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
-            ...($role === User::ROLE_BHW ? ['permissions' => StaffRoles::defaults('midwife')] : []),
+            ...($role === User::ROLE_BHC ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 
@@ -722,7 +722,7 @@ class FacilityIsolationSecurityTest extends TestCase
             'password_confirmation' => 'password123',
             'contact_number' => '09171234567',
             'role' => $role,
-            'staff_role' => $staffRole = $role === User::ROLE_RHU_STAFF ? 'nurse' : 'encoder',
+            'staff_role' => $staffRole = $role === User::ROLE_RHU ? 'nurse' : 'encoder',
             'permissions' => StaffRoles::defaults($staffRole),
             'permissions_confirmed' => true,
         ];

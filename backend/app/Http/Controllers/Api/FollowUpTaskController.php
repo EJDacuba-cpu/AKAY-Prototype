@@ -20,7 +20,7 @@ class FollowUpTaskController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
         $data = $request->validate([
             'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
             'active' => ['nullable', 'boolean'],
@@ -97,7 +97,7 @@ class FollowUpTaskController extends Controller
      */
     public function calendar(Request $request)
     {
-        abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
         $data = $request->validate([
             'start' => ['required', 'date'],
             'end' => ['required', 'date', 'after_or_equal:start'],
@@ -126,7 +126,7 @@ class FollowUpTaskController extends Controller
 
     public function show(Request $request, FollowUpTask $followUpTask)
     {
-        abort_unless($request->user()->isBhw() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
         $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
 
         return response()->json([

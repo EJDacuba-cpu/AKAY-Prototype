@@ -27,7 +27,7 @@ class UserRequest extends FormRequest
             'email' => [$isUpdate ? 'sometimes' : 'required', 'email', Rule::unique('users', 'email')->ignore($userId)],
             'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'min:8', 'confirmed'],
             'contact_number' => [$isUpdate ? 'sometimes' : 'required', 'required', 'regex:/^09\d{9}$/'],
-            'role' => [$isUpdate ? 'sometimes' : 'required', Rule::in([User::ROLE_ADMIN, User::ROLE_BHW, User::ROLE_RHU_STAFF])],
+            'role' => [$isUpdate ? 'sometimes' : 'required', Rule::in([User::ROLE_ADMIN, User::ROLE_BHC, User::ROLE_RHU])],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
             'staff_role' => ['nullable', Rule::in(StaffRoles::keys())],
             'permissions' => [$isUpdate ? 'sometimes' : 'present', 'array'],
@@ -60,11 +60,11 @@ class UserRequest extends FormRequest
                 $validator->errors()->add('staff_role', 'Municipal Health Officer accounts do not have a staff role.');
             }
             if ($role !== User::ROLE_ADMIN && $this->hasAny(['permissions', 'staff_role', 'role'])) {
-                $tierLabel = $role === User::ROLE_RHU_STAFF ? 'RHU' : 'BHC';
+                $tierLabel = $role === User::ROLE_RHU ? 'RHU' : 'BHC';
                 if ($staffRole === null) {
                     $validator->errors()->add('staff_role', 'Select a role for this account.');
                 } elseif (! StaffRoles::allowedAt($staffRole, $role)) {
-                    $facility = StaffRoles::ROLES[$staffRole]['tier'] === User::ROLE_RHU_STAFF ? 'Rural Health Unit' : 'Barangay Health Center';
+                    $facility = StaffRoles::ROLES[$staffRole]['tier'] === User::ROLE_RHU ? 'Rural Health Unit' : 'Barangay Health Center';
                     $validator->errors()->add('staff_role', 'A '.StaffRoles::label($staffRole)." account must be based at a {$facility}.");
                 }
                 foreach (array_diff($permissions, StaffRoles::available($role)) as $permission) {
@@ -81,11 +81,11 @@ class UserRequest extends FormRequest
                 $validator->errors()->add('role', 'Administrative accounts do not have a clinical home facility.');
             }
 
-            if ($role === User::ROLE_BHW) {
+            if ($role === User::ROLE_BHC) {
                 if (! $bhcId) {
                     $validator->errors()->add(
                         'barangay_health_center_id',
-                        'A BHC assignment is required for BHW accounts.'
+                        'A BHC assignment is required for BHC accounts.'
                     );
                 } elseif (! BarangayHealthCenter::query()
                     ->whereKey($bhcId)
@@ -100,16 +100,16 @@ class UserRequest extends FormRequest
                 if ($rhuId) {
                     $validator->errors()->add(
                         'rural_health_unit_id',
-                        'BHW accounts cannot also be assigned to an RHU.'
+                        'BHC accounts cannot also be assigned to an RHU.'
                     );
                 }
             }
 
-            if ($role === User::ROLE_RHU_STAFF) {
+            if ($role === User::ROLE_RHU) {
                 if (! $rhuId) {
                     $validator->errors()->add(
                         'rural_health_unit_id',
-                        'An RHU assignment is required for RHU staff accounts.'
+                        'An RHU assignment is required for RHU accounts.'
                     );
                 } elseif (! RuralHealthUnit::query()
                     ->whereKey($rhuId)
@@ -124,7 +124,7 @@ class UserRequest extends FormRequest
                 if ($bhcId) {
                     $validator->errors()->add(
                         'barangay_health_center_id',
-                        'RHU staff accounts cannot also be assigned to a BHC.'
+                        'RHU accounts cannot also be assigned to a BHC.'
                     );
                 }
             }

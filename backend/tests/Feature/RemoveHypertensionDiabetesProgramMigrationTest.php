@@ -26,7 +26,7 @@ class RemoveHypertensionDiabetesProgramMigrationTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Removal RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Removal BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->worker = User::create(['name' => 'Removal BHW', 'email' => 'removal@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id]);
+        $this->worker = User::create(['name' => 'Removal BHW', 'email' => 'removal@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id]);
         $this->patient = Patient::create(['first_name' => 'Synthetic', 'last_name' => 'Removal', 'sex' => 'Female', 'birthdate' => '1990-01-01', 'barangay_health_center_id' => $bhc->id]);
     }
 

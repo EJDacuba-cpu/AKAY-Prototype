@@ -27,7 +27,7 @@ class ReferralHoldController extends Controller
             $access->authorizeHealthRecord($user, $record);
             abort_unless((int) $record->patient_id === (int) $patient->id, 422, 'The consultation must belong to this patient.');
         }
-        $route = app(ReferralRoutingService::class)->resolveForBhw($user, (int) $data['rural_health_unit_id']);
+        $route = app(ReferralRoutingService::class)->resolveForBhc($user, (int) $data['rural_health_unit_id']);
         abort_if(app(ProviderAvailabilityService::class)->availableCountForRhu($route['rhu']->id) > 0, 409, 'A doctor is now available. Review and submit the referral.');
         $hold = $holds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], $data);
 

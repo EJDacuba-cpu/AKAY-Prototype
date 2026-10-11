@@ -10,7 +10,7 @@ class ReferralRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isBhw() ?? false;
+        return $this->user()?->isBhc() ?? false;
     }
 
     public function rules(): array

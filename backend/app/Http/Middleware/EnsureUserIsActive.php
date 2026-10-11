@@ -32,8 +32,8 @@ class EnsureUserIsActive
 
         if (! in_array($user->role, [
             User::ROLE_ADMIN,
-            User::ROLE_BHW,
-            User::ROLE_RHU_STAFF,
+            User::ROLE_BHC,
+            User::ROLE_RHU,
         ], true)) {
             $this->sessions->revokeAllTokens($user, 'invalid-role');
 

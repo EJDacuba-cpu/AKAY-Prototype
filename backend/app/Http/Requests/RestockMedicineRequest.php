@@ -11,7 +11,7 @@ class RestockMedicineRequest extends FormRequest
     public function authorize(): bool
     {
         $user = $this->user();
-        if (! $user || ! ($user->isBhw() || $user->isRhuStaff())) {
+        if (! $user || ! ($user->isBhc() || $user->isRhu())) {
             return false;
         }
 

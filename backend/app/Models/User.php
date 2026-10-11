@@ -48,12 +48,12 @@ class User extends Authenticatable
 
     public function workflowRole(): string
     {
-        return $this->workingFacility === null ? $this->role : ($this->workingFacility['type'] === 'bhc' ? self::ROLE_BHW : self::ROLE_RHU_STAFF);
+        return $this->workingFacility === null ? $this->role : $this->workingFacility['type'];
     }
 
     public const ROLE_ADMIN = 'admin';
-    public const ROLE_BHW = 'bhw';
-    public const ROLE_RHU_STAFF = 'rhu_staff';
+    public const ROLE_BHC = 'bhc';
+    public const ROLE_RHU = 'rhu';
 
     public const STATUS_ACTIVE = 'active';
     public const STATUS_INACTIVE = 'inactive';
@@ -82,14 +82,14 @@ class User extends Authenticatable
         return $this->role === self::ROLE_ADMIN;
     }
 
-    public function isBhw(): bool
+    public function isBhc(): bool
     {
-        return $this->workflowRole() === self::ROLE_BHW;
+        return $this->workflowRole() === self::ROLE_BHC;
     }
 
-    public function isRhuStaff(): bool
+    public function isRhu(): bool
     {
-        return $this->workflowRole() === self::ROLE_RHU_STAFF;
+        return $this->workflowRole() === self::ROLE_RHU;
     }
 
     public function barangayHealthCenter(): BelongsTo

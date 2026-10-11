@@ -118,13 +118,13 @@ class PatientController extends Controller
         $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
         $data['created_by'] = $user->id;
 
-        if ($user->isBhw()) {
+        if ($user->isBhc()) {
             unset($data['rural_health_unit_id']);
             $data['barangay_health_center_id'] = $user->barangay_health_center_id;
             $data['rural_health_unit_id'] = null;
         }
 
-        if ($user->isRhuStaff()) {
+        if ($user->isRhu()) {
             unset($data['barangay_health_center_id']);
             $data['barangay_health_center_id'] = null;
             $data['rural_health_unit_id'] = $user->rural_health_unit_id;

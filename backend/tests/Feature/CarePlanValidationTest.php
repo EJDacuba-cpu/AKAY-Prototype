@@ -23,7 +23,7 @@ class CarePlanValidationTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'CP RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'CP BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'CP BHW', 'email' => 'cp@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = User::create(['name' => 'CP BHW', 'email' => 'cp@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'CP', 'last_name' => 'Patient', 'sex' => 'Male', 'barangay_health_center_id' => $bhc->id]);
         $this->actingAs($user, 'sanctum');
     }

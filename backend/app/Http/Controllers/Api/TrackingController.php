@@ -21,7 +21,7 @@ class TrackingController extends Controller
 
         if (
             preg_match('/^AKY-\d{8}-[A-Z0-9]{6}$/D', $trackingId) !== 1
-            || (! $user->isBhw() && ! $user->isRhuStaff())
+            || (! $user->isBhc() && ! $user->isRhu())
         ) {
             return $this->lookupFailed();
         }
@@ -38,7 +38,7 @@ class TrackingController extends Controller
             'Resolved an authorized referral tracking ID.'
         );
 
-        $rolePath = $user->isBhw() ? 'bhc' : 'rhu';
+        $rolePath = $user->isBhc() ? 'bhc' : 'rhu';
 
         return response()->json(['data' => [
             'referral_id' => $referral->id,

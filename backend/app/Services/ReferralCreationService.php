@@ -29,10 +29,10 @@ class ReferralCreationService
         ?HealthRecord $healthRecord = null
     ): Referral {
         $user = $request->user();
-        abort_unless($user?->isBhw(), 403, 'Only BHW accounts can create referrals.');
+        abort_unless($user?->isBhc(), 403, 'Only BHW accounts can create referrals.');
 
         ActionPermissions::ensure($user, 'referrals.submit');
-        $route = $this->referralRouting->resolveForBhw($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
+        $route = $this->referralRouting->resolveForBhc($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
         $this->facilityAccess->authorizePatientModification($user, $patient);
 
         if ($healthRecord) {
@@ -80,7 +80,7 @@ class ReferralCreationService
         $bhcName = $referral->barangayHealthCenter?->name ?: 'BHC';
 
         $this->notifications->notifyUsersOnce(
-            User::where('role', User::ROLE_RHU_STAFF)
+            User::where('role', User::ROLE_RHU)
                 ->where('rural_health_unit_id', $referral->rural_health_unit_id)
                 ->where('status', User::STATUS_ACTIVE)
                 ->get(),
@@ -94,7 +94,7 @@ class ReferralCreationService
         );
 
         $this->notifications->notifyUsersOnce(
-            User::where('role', User::ROLE_BHW)
+            User::where('role', User::ROLE_BHC)
                 ->where('barangay_health_center_id', $referral->barangay_health_center_id)
                 ->where('status', User::STATUS_ACTIVE)
                 ->get(),

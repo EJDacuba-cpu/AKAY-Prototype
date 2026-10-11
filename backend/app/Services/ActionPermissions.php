@@ -47,8 +47,8 @@ class ActionPermissions
 
         // An account without a role falls back to the most limited defaults of its facility tier.
         return match ($user->getRawOriginal('role')) {
-            User::ROLE_BHW => StaffRoles::defaults('encoder'),
-            User::ROLE_RHU_STAFF => StaffRoles::defaults('nurse'),
+            User::ROLE_BHC => StaffRoles::defaults('encoder'),
+            User::ROLE_RHU => StaffRoles::defaults('nurse'),
             default => [],
         };
     }

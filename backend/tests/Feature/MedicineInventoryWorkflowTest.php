@@ -42,9 +42,9 @@ class MedicineInventoryWorkflowTest extends TestCase
             'name' => 'Other Inventory BHC',
             'rural_health_unit_id' => $this->rhu->id,
         ]);
-        $this->bhw = $this->user('Inventory BHW', 'inventory-bhw@example.test', User::ROLE_BHW, $this->bhc->id);
-        $this->otherBhw = $this->user('Other BHW', 'other-inventory-bhw@example.test', User::ROLE_BHW, $this->otherBhc->id);
-        $this->rhuStaff = $this->user('Inventory RHU', 'inventory-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhu->id);
+        $this->bhw = $this->user('Inventory BHW', 'inventory-bhw@example.test', User::ROLE_BHC, $this->bhc->id);
+        $this->otherBhw = $this->user('Other BHW', 'other-inventory-bhw@example.test', User::ROLE_BHC, $this->otherBhc->id);
+        $this->rhuStaff = $this->user('Inventory RHU', 'inventory-rhu@example.test', User::ROLE_RHU, null, $this->rhu->id);
     }
 
     public function test_creation_derives_facility_and_records_only_positive_opening_balance(): void
@@ -407,7 +407,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $formerStaff = $this->user(
             'Former Inventory Staff',
             'former-inventory-staff@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhc->id
         );
         $transaction = MedicineInventoryTransaction::create([
@@ -467,7 +467,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $otherRhuStaff = $this->user(
             'Other Inventory RHU Staff',
             'other-inventory-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $otherRhu->id
         );

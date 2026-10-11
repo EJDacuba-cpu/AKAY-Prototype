@@ -18,7 +18,7 @@ class ApprovedFacilityPermissionsTest extends TestCase
 
     private function account(array $attributes = []): User
     {
-        return User::create([...['name' => 'Personal Account', 'email' => uniqid().'@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active', 'barangay_health_center_id' => BarangayHealthCenter::create(['name' => 'Home'])->id], ...$attributes]);
+        return User::create([...['name' => 'Personal Account', 'email' => uniqid().'@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => BarangayHealthCenter::create(['name' => 'Home'])->id], ...$attributes]);
     }
 
     public function test_encoder_cannot_browse_clinical_history_or_finalize_via_direct_api(): void
@@ -28,7 +28,7 @@ class ApprovedFacilityPermissionsTest extends TestCase
         Sanctum::actingAs($user, ['access']);
         $this->getJson('/api/patients/'.$patient->id)->assertOk()->assertJsonPath('data.first_name', 'Ana')->assertJsonMissingPath('data.medical_background')->assertJsonMissingPath('data.health_records');
         $this->getJson('/api/health-records')->assertForbidden();
-        $this->getJson('/api/reports/bhw')->assertForbidden();
+        $this->getJson('/api/reports/bhc')->assertForbidden();
         $this->postJson('/api/health-records', [])->assertForbidden();
         $this->postJson('/api/referrals', [])->assertForbidden();
         $this->postJson('/api/medicines', [])->assertForbidden();
@@ -38,7 +38,7 @@ class ApprovedFacilityPermissionsTest extends TestCase
     {
         $home = RuralHealthUnit::create(['name' => 'RHU Home']);
         $bhc = BarangayHealthCenter::create(['name' => 'Duty BHC']);
-        $user = $this->account(['role' => 'rhu_staff', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $home->id, 'staff_role' => 'nurse']);
+        $user = $this->account(['role' => 'rhu', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $home->id, 'staff_role' => 'nurse']);
         $assignment = $user->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife'), 'starts_on' => today(), 'ends_on' => today()]);
         $patient = Patient::create(['first_name' => 'Duty', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id, 'created_by' => $user->id]);
         Sanctum::actingAs($user, ['access']);

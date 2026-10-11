@@ -30,10 +30,10 @@ class ConditionsConfirmPermissionTest extends TestCase
         $rhu = RuralHealthUnit::create(['name' => 'Perm RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Perm BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
         $make = fn (string $email, array $attributes) => User::create([...['name' => $email, 'email' => $email, 'password' => bcrypt('test-password'), 'status' => User::STATUS_ACTIVE], ...$attributes]);
-        $rhuUser = $make('rhu@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => ['patients.register', 'rhu.manage']]);
-        $alreadyGranted = $make('done@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => ['rhu.manage', 'conditions.confirm']]);
-        $bhw = $make('bhw@example.test', ['role' => User::ROLE_BHW, 'barangay_health_center_id' => $bhc->id, 'permissions' => ['patients.register', 'consultations.encode']]);
-        $legacy = $make('legacy@example.test', ['role' => User::ROLE_RHU_STAFF, 'rural_health_unit_id' => $rhu->id, 'permissions' => null]);
+        $rhuUser = $make('rhu@example.test', ['role' => User::ROLE_RHU, 'rural_health_unit_id' => $rhu->id, 'permissions' => ['patients.register', 'rhu.manage']]);
+        $alreadyGranted = $make('done@example.test', ['role' => User::ROLE_RHU, 'rural_health_unit_id' => $rhu->id, 'permissions' => ['rhu.manage', 'conditions.confirm']]);
+        $bhw = $make('bhw@example.test', ['role' => User::ROLE_BHC, 'barangay_health_center_id' => $bhc->id, 'permissions' => ['patients.register', 'consultations.encode']]);
+        $legacy = $make('legacy@example.test', ['role' => User::ROLE_RHU, 'rural_health_unit_id' => $rhu->id, 'permissions' => null]);
         $granted = FacilityAssignment::create(['user_id' => $bhw->id, 'barangay_health_center_id' => $bhc->id, 'permissions' => ['rhu.manage', 'inventory.view']]);
         $other = FacilityAssignment::create(['user_id' => $bhw->id, 'rural_health_unit_id' => $rhu->id, 'permissions' => ['inventory.view']]);
 

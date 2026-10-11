@@ -30,7 +30,7 @@ class MedicineController extends Controller
             ->where('is_active', true)
             ->with(['ruralHealthUnit', 'barangayHealthCenter']);
 
-        if ($request->user()->isBhw()) {
+        if ($request->user()->isBhc()) {
             $query->where(function ($query) use ($request) {
                 if ($request->user()->barangay_health_center_id) {
                     $query->where('barangay_health_center_id', $request->user()->barangay_health_center_id);
@@ -40,7 +40,7 @@ class MedicineController extends Controller
 
                 $query->orWhereNotNull('rural_health_unit_id');
             });
-        } elseif ($request->user()->isRhuStaff()) {
+        } elseif ($request->user()->isRhu()) {
             $query->where('rural_health_unit_id', $request->user()->rural_health_unit_id);
         }
 
@@ -64,7 +64,7 @@ class MedicineController extends Controller
             'search' => mb_strtolower(trim((string) $request->query('search', ''))),
             'per_page' => $perPage,
         ];
-        $dependencies = $request->user()->isBhw()
+        $dependencies = $request->user()->isBhc()
             ? [$this->cache->medicineRhuFeedDependency()]
             : [];
         $data = $this->cache->rememberForUser(
@@ -92,10 +92,10 @@ class MedicineController extends Controller
         $openingQuantity = (int) $data['quantity'];
         unset($data['quantity']);
 
-        if ($request->user()->isRhuStaff()) {
+        if ($request->user()->isRhu()) {
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
             $data['barangay_health_center_id'] = null;
-        } elseif ($request->user()->isBhw()) {
+        } elseif ($request->user()->isBhc()) {
             $data['rural_health_unit_id'] = null;
             $data['barangay_health_center_id'] = $request->user()->barangay_health_center_id;
         } else {

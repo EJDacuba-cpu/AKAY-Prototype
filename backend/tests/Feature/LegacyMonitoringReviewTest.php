@@ -38,7 +38,7 @@ class LegacyMonitoringReviewTest extends TestCase
         $this->rhu = RuralHealthUnit::create(['name' => 'Legacy RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Legacy BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
         $this->rhuUser = $this->user('rhu@example.test', [
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'rural_health_unit_id' => $this->rhu->id,
             'permissions' => [...StaffRoles::defaults('midwife'), 'rhu.manage', 'conditions.confirm'],
         ]);
@@ -232,7 +232,7 @@ class LegacyMonitoringReviewTest extends TestCase
     {
         $monitoring = $this->legacy();
         $bhw = $this->user('bhw@example.test', [
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'barangay_health_center_id' => $this->bhc->id,
             'permissions' => StaffRoles::defaults('midwife'),
         ]);

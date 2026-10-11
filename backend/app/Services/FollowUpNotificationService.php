@@ -52,7 +52,7 @@ class FollowUpNotificationService
         $bhwCache = [];
         $bhwsFor = function (int $barangayHealthCenterId) use (&$bhwCache): Collection {
             return $bhwCache[$barangayHealthCenterId] ??= User::query()
-                ->where('role', User::ROLE_BHW)
+                ->where('role', User::ROLE_BHC)
                 ->where('barangay_health_center_id', $barangayHealthCenterId)
                 ->where('status', User::STATUS_ACTIVE)
                 ->get();

@@ -32,7 +32,7 @@ class CareOverviewTest extends TestCase
 
     private function actAs(array $permissions): void
     {
-        $user = User::create(['name' => 'CO User '.count($permissions), 'email' => 'co'.count($permissions).'@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => $permissions]);
+        $user = User::create(['name' => 'CO User '.count($permissions), 'email' => 'co'.count($permissions).'@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => $permissions]);
         $this->actingAs($user, 'sanctum');
     }
 

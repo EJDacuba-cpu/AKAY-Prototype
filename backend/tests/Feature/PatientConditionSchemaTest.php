@@ -33,7 +33,7 @@ class PatientConditionSchemaTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Cond RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Cond BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->rhuUser = User::create(['name' => 'Cond RHU Staff', 'email' => 'cond-rhu@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_RHU_STAFF, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')]);
+        $this->rhuUser = User::create(['name' => 'Cond RHU Staff', 'email' => 'cond-rhu@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_RHU, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')]);
         $this->patient = Patient::create(['first_name' => 'Cond', 'last_name' => 'One', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
         $this->otherPatient = Patient::create(['first_name' => 'Cond', 'last_name' => 'Two', 'sex' => 'Male', 'barangay_health_center_id' => $this->bhc->id]);
     }

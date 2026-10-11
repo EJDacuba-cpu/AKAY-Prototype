@@ -23,7 +23,7 @@ class ConsultationProgramsTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Programs RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Programs BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'Programs BHW', 'email' => 'programs@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = User::create(['name' => 'Programs BHW', 'email' => 'programs@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Programs', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id]);
         $this->actingAs($user, 'sanctum');
     }

@@ -128,7 +128,7 @@ class ReferralController extends Controller
             // Recorded only after the transaction above has already rolled
             // back, in its own fresh transaction - see ReferralHoldService.
             if ($exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE) {
-                $route = $referralRouting->resolveForBhw($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
+                $route = $referralRouting->resolveForBhc($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
 
                 $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
                     'health_record_id' => $record?->id,

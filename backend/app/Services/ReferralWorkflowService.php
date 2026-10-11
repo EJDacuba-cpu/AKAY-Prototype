@@ -364,7 +364,7 @@ class ReferralWorkflowService
     private function bhcUsers(Referral $referral)
     {
         return User::query()
-            ->where('role', User::ROLE_BHW)
+            ->where('role', User::ROLE_BHC)
             ->where('barangay_health_center_id', $referral->barangay_health_center_id)
             ->where('status', User::STATUS_ACTIVE)
             ->get();

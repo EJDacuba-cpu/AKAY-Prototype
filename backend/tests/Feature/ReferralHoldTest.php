@@ -47,9 +47,9 @@ class ReferralHoldTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhu->id,
         ]);
-        $this->bhw = $this->user('Hold BHW', 'hold-bhw@example.test', User::ROLE_BHW, $this->bhc->id);
-        $this->otherBhw = $this->user('Other Hold BHW', 'hold-bhw-2@example.test', User::ROLE_BHW, $this->bhc->id);
-        $this->rhuStaff = $this->user('Hold RHU Staff', 'hold-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhu->id);
+        $this->bhw = $this->user('Hold BHW', 'hold-bhw@example.test', User::ROLE_BHC, $this->bhc->id);
+        $this->otherBhw = $this->user('Other Hold BHW', 'hold-bhw-2@example.test', User::ROLE_BHC, $this->bhc->id);
+        $this->rhuStaff = $this->user('Hold RHU Staff', 'hold-rhu@example.test', User::ROLE_RHU, null, $this->rhu->id);
         $this->patient = Patient::create([
             'first_name' => 'Hold',
             'last_name' => 'Patient',

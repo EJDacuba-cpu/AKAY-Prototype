@@ -184,7 +184,7 @@ class MedicineStockService
         }
 
         $user = $request->user();
-        abort_unless($user->isBhw(), 422, 'Medicine dispensing is only available for BHC visits.');
+        abort_unless($user->isBhc(), 422, 'Medicine dispensing is only available for BHC visits.');
         $context = $this->facilityContext($user);
         abort_unless(
             $context['type'] === 'bhc'
@@ -488,11 +488,11 @@ class MedicineStockService
 
     private function facilityContext(User $user): array
     {
-        if ($user->isBhw() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
+        if ($user->isBhc() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
             return ['type' => 'bhc', 'id' => (int) $user->barangay_health_center_id];
         }
 
-        if ($user->isRhuStaff() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
+        if ($user->isRhu() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
             return ['type' => 'rhu', 'id' => (int) $user->rural_health_unit_id];
         }
 

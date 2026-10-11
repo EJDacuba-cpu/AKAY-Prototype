@@ -64,10 +64,10 @@ class HealthRecordDraftTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('Draft Owner', 'draft-owner@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwSameBhc = $this->user('Other Draft Owner', 'draft-other@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwB = $this->user('Draft BHW B', 'draft-b@example.test', User::ROLE_BHW, $this->bhcB->id);
-        $this->rhuStaff = $this->user('Draft RHU Staff', 'draft-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
+        $this->bhwA = $this->user('Draft Owner', 'draft-owner@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwSameBhc = $this->user('Other Draft Owner', 'draft-other@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwB = $this->user('Draft BHW B', 'draft-b@example.test', User::ROLE_BHC, $this->bhcB->id);
+        $this->rhuStaff = $this->user('Draft RHU Staff', 'draft-rhu@example.test', User::ROLE_RHU, null, $this->rhuA->id);
         $this->patientA = $this->patient('Clinical', 'Draft Patient', $this->bhcA->id);
         $this->patientB = $this->patient('Other', 'Facility Patient', $this->bhcB->id);
         $this->medicineA = $this->medicine('Draft Medicine A', 5, $this->bhcA->id, $this->bhwA->id);
@@ -163,16 +163,16 @@ class HealthRecordDraftTest extends TestCase
         $inactive = $this->user(
             'Inactive Draft BHW',
             'inactive-draft@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             null,
             User::STATUS_INACTIVE
         );
-        $missing = $this->user('Missing Draft BHW', 'missing-draft@example.test', User::ROLE_BHW);
+        $missing = $this->user('Missing Draft BHW', 'missing-draft@example.test', User::ROLE_BHC);
         $mixed = $this->user(
             'Mixed Draft BHW',
             'mixed-draft@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             $this->rhuA->id
         );

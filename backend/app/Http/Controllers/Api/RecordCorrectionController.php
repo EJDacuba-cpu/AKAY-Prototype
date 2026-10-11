@@ -22,7 +22,7 @@ class RecordCorrectionController extends Controller
     {
         ActionPermissions::ensure($request->user(), 'records.correct');
         $access->authorizeHealthRecord($request->user(), $healthRecord);
-        abort_unless($request->user()->isBhw(), 403);
+        abort_unless($request->user()->isBhc(), 403);
         $data = $request->validate(['original_entry' => ['required', 'string', 'max:10000'], 'addendum' => ['required', 'string', 'max:10000'], 'reason' => ['required', 'string', 'max:2000']]);
         $id = DB::transaction(function () use ($request, $healthRecord, $audit, $data) {
             HealthRecord::whereKey($healthRecord->id)->lockForUpdate()->firstOrFail();

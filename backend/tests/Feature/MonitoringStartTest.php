@@ -39,7 +39,7 @@ class MonitoringStartTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Start RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Start BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $user = User::create(['name' => 'Start BHW', 'email' => 'start@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHW, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $user = User::create(['name' => 'Start BHW', 'email' => 'start@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $this->bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Start', 'last_name' => 'One', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
         $this->otherPatient = Patient::create(['first_name' => 'Start', 'last_name' => 'Two', 'sex' => 'Male', 'barangay_health_center_id' => $this->bhc->id]);
         $this->actingAs($user, 'sanctum');

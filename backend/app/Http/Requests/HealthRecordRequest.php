@@ -60,7 +60,7 @@ class HealthRecordRequest extends FormRequest
 
         $rules['consultation_workflow'] = $this->isMethod('post')
             ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2]), function (string $attribute, mixed $value, \Closure $fail): void {
-                if ($value !== null && ! $this->user()?->isBhw()) {
+                if ($value !== null && ! $this->user()?->isBhc()) {
                     $fail('This consultation workflow is for BHC consultations only.');
                 }
             }]

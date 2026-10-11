@@ -20,7 +20,7 @@ class ConsultationWorkflowRevisionTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Revision RHU', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Revision BHC', 'rural_health_unit_id' => $rhu->id]);
-        $this->worker = User::create(['name' => 'Reviewer', 'email' => 'revision@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
+        $this->worker = User::create(['name' => 'Reviewer', 'email' => 'revision@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->patient = Patient::create(['first_name' => 'Test', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '2000-01-01', 'barangay_health_center_id' => $bhc->id, 'rural_health_unit_id' => $rhu->id, 'created_by' => $this->worker->id]);
         Sanctum::actingAs($this->worker, ['akay:access']);
     }
@@ -71,7 +71,7 @@ class ConsultationWorkflowRevisionTest extends TestCase
 
     public function test_encoder_can_submit_incomplete_forms_and_reviewer_can_correct_without_returning(): void
     {
-        $encoder = User::create(['name' => 'Encoder', 'email' => 'encoder@example.test', 'password' => 'password123', 'role' => 'bhw', 'status' => 'active', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'permissions' => StaffRoles::defaults('encoder')]);
+        $encoder = User::create(['name' => 'Encoder', 'email' => 'encoder@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'permissions' => StaffRoles::defaults('encoder')]);
         Sanctum::actingAs($encoder, ['akay:access']);
         $payload = ['chiefComplaint' => 'Concern', 'selectedPrograms' => ['Family Planning'], 'primaryProgram' => 'Family Planning'];
         $data = ['patient_id' => $this->patient->id, 'classification' => 'Family Planning', 'payload' => $payload];

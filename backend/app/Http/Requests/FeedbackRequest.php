@@ -10,7 +10,7 @@ class FeedbackRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRhuStaff() ?? false;
+        return $this->user()?->isRhu() ?? false;
     }
 
     public function rules(): array

@@ -20,7 +20,7 @@ class StaffAssignmentController extends Controller
 
     public function eligible()
     {
-        return response()->json(['data' => User::where('role', 'rhu_staff')->where('status', 'active')->where('staff_role', 'nurse')->whereNotNull('rural_health_unit_id')->whereNull('barangay_health_center_id')->whereHas('ruralHealthUnit', fn ($q) => $q->where('status', 'active'))->with('ruralHealthUnit:id,name')->get(['id', 'name', 'email', 'staff_role', 'rural_health_unit_id'])]);
+        return response()->json(['data' => User::where('role', 'rhu')->where('status', 'active')->where('staff_role', 'nurse')->whereNotNull('rural_health_unit_id')->whereNull('barangay_health_center_id')->whereHas('ruralHealthUnit', fn ($q) => $q->where('status', 'active'))->with('ruralHealthUnit:id,name')->get(['id', 'name', 'email', 'staff_role', 'rural_health_unit_id'])]);
     }
 
     public function store(Request $request, AuditLogger $audit)

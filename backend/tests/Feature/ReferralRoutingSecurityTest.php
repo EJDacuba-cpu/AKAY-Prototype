@@ -63,13 +63,13 @@ class ReferralRoutingSecurityTest extends TestCase
         $this->bhwA = $this->createUser(
             'Routing BHW A',
             'routing-bhw-a@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id
         );
         $this->rhuStaffA = $this->createUser(
             'Routing RHU Staff A',
             'routing-rhu-a@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuA->id
         );
@@ -184,7 +184,7 @@ class ReferralRoutingSecurityTest extends TestCase
         $bhw = $this->createUser(
             'Unmapped BHW',
             'unmapped-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->unmappedBhc->id
         );
         $patient = $this->createPatient('Unmapped', 'Patient', $this->unmappedBhc);

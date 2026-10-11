@@ -93,8 +93,8 @@ class UserSessionRevocationService
                 || ! $user->isActive()
                 || ! in_array($user->role, [
                     User::ROLE_ADMIN,
-                    User::ROLE_BHW,
-                    User::ROLE_RHU_STAFF,
+                    User::ROLE_BHC,
+                    User::ROLE_RHU,
                 ], true)
                 || (! $user->isAdmin() && app(WorkingFacilityService::class)->available($user) === [])) {
                 if ($user instanceof User) {

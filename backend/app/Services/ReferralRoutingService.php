@@ -18,7 +18,7 @@ class ReferralRoutingService
 
     public function resolveAssignedBhc(User $user): BarangayHealthCenter
     {
-        abort_unless($user->isBhw(), 403, 'Only BHW accounts can use BHC referral routing.');
+        abort_unless($user->isBhc(), 403, 'Only BHW accounts can use BHC referral routing.');
         $this->facilityAccess->ensureValidFacilityAssignment($user);
 
         $bhc = BarangayHealthCenter::query()
@@ -33,15 +33,15 @@ class ReferralRoutingService
         return $bhc;
     }
 
-    public function resolveReceivingRhuForBhw(User $user): RuralHealthUnit
+    public function resolveReceivingRhuForBhc(User $user): RuralHealthUnit
     {
-        return $this->resolveForBhw($user)['rhu'];
+        return $this->resolveForBhc($user)['rhu'];
     }
 
     /**
      * @return array{bhc: BarangayHealthCenter, rhu: RuralHealthUnit}
      */
-    public function resolveForBhw(User $user, ?int $destinationId = null): array
+    public function resolveForBhc(User $user, ?int $destinationId = null): array
     {
         $bhc = $this->resolveAssignedBhc($user);
 

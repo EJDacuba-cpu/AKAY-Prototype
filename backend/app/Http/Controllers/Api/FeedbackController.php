@@ -26,7 +26,7 @@ class FeedbackController extends Controller
             function ($referrals) use ($user): void {
                 $this->facilityAccess->scopeReferrals($referrals, $user);
 
-                if ($user->isBhw()) {
+                if ($user->isBhc()) {
                     $referrals->whereHas('patient', fn ($patients) => $patients
                         ->where('barangay_health_center_id', $user->barangay_health_center_id));
                 }
