@@ -1,4 +1,5 @@
-import { accessProfile, accessSummary } from "../../utils/accountSetup";
+import { accessSummary } from "../../utils/accountSetup";
+import { getStaffRoles } from "../../services/staffRolesService";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
@@ -49,6 +50,8 @@ export default function UserManagement() {
     queryFn: loadAdminAccounts,
     retry: false,
   });
+  // Role labels and defaults; until they load (or if they fail) the badge shows the raw role.
+  const { data: rolesData = null } = useQuery({ queryKey: queryKeys.staffRoles(), queryFn: getStaffRoles, retry: false, staleTime: Infinity });
 
   async function updateStatus(id, newStatus) {
     const updated = await updateAdminAccountStatus(id, newStatus);
@@ -246,6 +249,7 @@ export default function UserManagement() {
 
         <AccountsTable
           users={visibleUsers}
+          rolesData={rolesData}
           onUpdateStatus={updateStatus}
         />
       </div>
@@ -259,11 +263,11 @@ function assignmentSummary(user) {
   const active = (user.facility_assignments || []).filter(a => !a.revoked_at && a.starts_on && a.starts_on.slice(0,10) <= today && (!a.ends_on || a.ends_on.slice(0,10) >= today));
   return active.length ? active.map(a => a.barangay_health_center?.name || "BHC").join(", ") + " · " + active.length + " active" : "No active assignments";
 }
-function AccountsTable({ users, onUpdateStatus }) {
+function AccountsTable({ users, rolesData, onUpdateStatus }) {
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
-    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Designation","Access Profile","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={7} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4 text-sm">{user.professional_designation || "Not recorded"}</td><td className="px-4 py-4"><AccessProfileBadge user={user}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
-    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Designation",user.professional_designation||"Not recorded"],["Access Profile",accessProfile(user)],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
+    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={6} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p>{user.contact_number&&<p className="text-xs text-slate-500">{user.contact_number}</p>}</td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
+    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",accessSummary(user,rolesData).label],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
     <TablePagination currentPage={1} totalPages={1}/>
   </div>;
 }
@@ -432,23 +436,19 @@ function AccountActions({ user, onUpdateStatus }) {
   );
 }
 
-// Accounts holding duties outside their designation's scope stand out: amber, or red for licensed clinical acts.
-function AccessProfileBadge({ user }) {
-  const { label, overrides, critical } = accessSummary(user);
-  if (!overrides) return <RoleBadge role={label} />;
-  return (
-    <RoleBadge
-      role={label}
-      tone={critical ? "border-red-300 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800"}
-      title={critical ? "Includes licensed clinical acts outside a clinical designation." : "Includes duties outside this designation's usual scope."}
-    />
-  );
+// Access that differs from the role defaults stands out: amber, or red when a non-licensed role holds licensed duties.
+function AccessProfileBadge({ user, rolesData }) {
+  const { label, custom, licensed } = accessSummary(user, rolesData);
+  if (licensed) return <RoleBadge role={label} tone="border-red-300 bg-red-50 text-red-800" title="Includes licensed duties for a non-licensed role."/>;
+  if (custom) return <RoleBadge role={label} tone="border-amber-200 bg-amber-50 text-amber-800" title="Access differs from the role defaults."/>;
+  return <RoleBadge role={label} />;
 }
 
 function RoleBadge({ role, tone, title }) {
   const displayRole = formatDisplayValue(role, "Unassigned");
   const map = {
     Admin: "bg-purple-50 text-purple-700 border-purple-200",
+    "Municipal Health Officer": "bg-purple-50 text-purple-700 border-purple-200",
     BHC: "bg-red-50 text-red-700 border-red-200",
     RHU: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };

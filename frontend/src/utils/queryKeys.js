@@ -64,6 +64,7 @@ export const queryKeys = {
     patientId,
   ],
   adminAccounts: () => ["admin-accounts"],
+  staffRoles: () => ["staff-roles"],
   providers: () => ["rhu-providers"],
   providerAvailability: () => ["rhu-provider-availability"],
   referralHolds: () => ["referral-holds"],
