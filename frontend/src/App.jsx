@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import Facilities from "./pages/admin/Facilities";
 import StaffAssignments from "./pages/admin/StaffAssignments";
 import ResetPassword from "./pages/ResetPassword";
+import AcceptInvite from "./pages/AcceptInvite";
 import {
   clearStoredAuthSession,
   getCurrentUser,
@@ -92,6 +93,7 @@ const PUBLIC_BOOT_ROUTES = new Set([
   "/",
   "/login",
   "/reset-password",
+  "/accept-invite",
   "/unauthorized",
   "/design-tokens",
 ]);
@@ -445,6 +447,7 @@ export default function App() {
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
 
       {/* Admin Routes */}
       <Route

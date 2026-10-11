@@ -22,7 +22,7 @@ export default function Login() {
       ? "Your session has expired. Please sign in again."
       : location.state?.sessionEnded
         ? "Your session is no longer valid. Please sign in again."
-        : "",
+        : location.state?.notice || "",
   );
   const [fieldErrors, setFieldErrors] = useState({});
   const [mode, setMode] = useState("signin");
