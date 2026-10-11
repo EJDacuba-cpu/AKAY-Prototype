@@ -157,10 +157,14 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
         Route::post('/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/resend', [PasswordResetRequestController::class, 'resend']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/link', [PasswordResetRequestController::class, 'link']);
         Route::get('/admin/password-reset-requests', [PasswordResetRequestController::class, 'index']);
         Route::get('/admin/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/resend', [PasswordResetRequestController::class, 'resend']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/link', [PasswordResetRequestController::class, 'link']);
         Route::get('/account-invites', [AccountInviteController::class, 'index']);
         Route::post('/account-invites/{invite}/resend', [AccountInviteController::class, 'resend']);
         Route::patch('/account-invites/{invite}/email', [AccountInviteController::class, 'updateEmail']);
