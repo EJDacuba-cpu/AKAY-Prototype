@@ -56,7 +56,11 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
 
   async function copy(row) {
     const url = await list.runAction(row, () => copyInviteLink(row.id));
-    if (!url) return;
+    if (url === undefined) return;
+    if (!url) {
+      list.reportActionError("Could not create a link. Try again.");
+      return;
+    }
     if (await copyText(url)) notify.success("Link copied. The emailed link no longer works.");
     else setManualCopy({ name: accountName(row), url });
   }
@@ -68,12 +72,15 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
     if (result?.password) setTempPassword({ name: accountName(row), password: result.password });
   }
 
-  /** Saves the new email; the server validates it again and resends the invite. Throws on failure for the form. */
+  /**
+   * Saves the new email through the shared action path (busy guard, then the tab and counts reload, even
+   * after a failure). The server validates it again and resends the invite; a failure is thrown to the form.
+   */
   async function saveEmail(row, email) {
-    const updated = await updateInviteEmail(row.id, email);
+    const updated = await list.runAction(row, () => updateInviteEmail(row.id, email), { rethrow: true });
+    if (!updated) return;
     setEditing(null);
     announceDelivery(updated);
-    list.refresh();
   }
 
   return (

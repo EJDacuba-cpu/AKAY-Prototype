@@ -14,6 +14,7 @@ export default function TemporaryPasswordDialog({ name, password, onClose }) {
       size="sm"
       onClose={onClose}
       dismissOnBackdrop={false}
+      dismissOnEscape={false}
       footer={
         <ModalButton variant="primary" primary onClick={onClose}>
           Done

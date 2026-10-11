@@ -13,7 +13,9 @@ export default function useAccessRows(fetchRows, onChanged) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  // Kept apart so a successful reload after a failed action never erases the action's message.
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const busyRef = useRef(false);
   const requestRef = useRef(0);
@@ -29,9 +31,9 @@ export default function useAccessRows(fetchRows, onChanged) {
       const next = await fetchRows({ search, status: filters.status, perPage: 50 });
       if (request !== requestRef.current) return;
       setRows(next);
-      setError("");
-    } catch (loadError) {
-      if (request === requestRef.current) setError(loadError.message || "Unable to load this list.");
+      setLoadError("");
+    } catch (failure) {
+      if (request === requestRef.current) setLoadError(failure.message || "Unable to load this list.");
     } finally {
       if (request === requestRef.current) setLoading(false);
     }
@@ -45,16 +47,20 @@ export default function useAccessRows(fetchRows, onChanged) {
     setFilters((current) => ({ ...current, ...next }));
   }
 
-  /** Returns fn's result, or undefined when another action is running or fn failed (the error is shown). */
-  async function runAction(row, fn) {
+  /**
+   * Returns fn's result, or undefined when another action is running or fn failed (the error is shown
+   * until the next action). With `rethrow`, a failure is thrown to the caller instead (a form shows it).
+   */
+  async function runAction(row, fn, { rethrow = false } = {}) {
     if (busyRef.current) return undefined;
     busyRef.current = true;
     setBusyId(row.id);
-    setError("");
+    setActionError("");
     try {
       return await fn();
-    } catch (actionError) {
-      setError(actionError.message || "This action could not be completed.");
+    } catch (failure) {
+      if (rethrow) throw failure;
+      setActionError(failure.message || "This action could not be completed.");
       return undefined;
     } finally {
       busyRef.current = false;
@@ -63,11 +69,18 @@ export default function useAccessRows(fetchRows, onChanged) {
     }
   }
 
-  /** Reloads the rows and the tab counts after a change made outside `runAction`. */
+  /** Shows an action failure that did not throw (e.g. an empty response). */
+  function reportActionError(message) {
+    setActionError(message);
+  }
+
   function refresh() {
     void reload();
     onChanged?.();
   }
 
-  return { rows, filters, updateFilters, loading, error, busyId, runAction, refresh };
+  return {
+    rows, filters, updateFilters, loading, busyId, runAction, reportActionError,
+    error: actionError || loadError,
+  };
 }

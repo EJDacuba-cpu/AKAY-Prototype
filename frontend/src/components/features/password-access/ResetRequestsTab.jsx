@@ -67,7 +67,11 @@ export default function ResetRequestsTab({ rolesData, pendingCount, onChanged })
 
   async function copy(row) {
     const url = await list.runAction(row, () => copyResetLink(row.id));
-    if (!url) return;
+    if (url === undefined) return;
+    if (!url) {
+      list.reportActionError("Could not create a link. Try again.");
+      return;
+    }
     if (await copyText(url)) notify.success("Link copied. The emailed link no longer works.");
     else setManualCopy({ name: accountName(row), url });
   }
