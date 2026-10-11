@@ -7,6 +7,7 @@ import ButtonSpinner from "../components/common/loading/ButtonSpinner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
+const TEMP_PASSWORD_EXPIRED_MESSAGE = "This temporary password has expired. Ask the MHO for a new one.";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
@@ -51,6 +52,10 @@ export default function Login() {
     setSessionNotice("");
     try {
       const user = await loginUser(email.trim(), password);
+      if (user.must_change_password) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
       const requestedPath = location.state?.from;
       const requestedUrl = requestedPath?.pathname
         ? `${requestedPath.pathname}${requestedPath.search || ""}`
@@ -64,7 +69,11 @@ export default function Login() {
       if (user.role === "bhc") navigate("/bhc/dashboard", { replace: true });
       if (user.role === "rhu") navigate("/rhu/dashboard", { replace: true });
     } catch (error) {
-      setError(error.message || "Unable to sign in. Check your email and password.");
+      setError(
+        error.code === "TEMP_PASSWORD_EXPIRED"
+          ? TEMP_PASSWORD_EXPIRED_MESSAGE
+          : error.message || "Unable to sign in. Check your email and password.",
+      );
     } finally {
       setIsLoading(false);
     }

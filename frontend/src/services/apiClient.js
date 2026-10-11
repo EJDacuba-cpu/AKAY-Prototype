@@ -5,6 +5,7 @@ import {
   clearSensitiveSessionState,
   isForcedSessionInvalidation,
 } from "../utils/sessionPrivacy";
+import { CHANGE_PASSWORD_PATH } from "../utils/passwordChange";
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
@@ -272,12 +273,40 @@ export async function apiRequest(endpoint, options = {}) {
       }
     }
 
+    // The account still has a temporary password: every protected call is refused until it is changed.
+    if (
+      error?.status === 403 &&
+      error?.code === "PASSWORD_CHANGE_REQUIRED" &&
+      typeof window !== "undefined" &&
+      window.location.pathname !== CHANGE_PASSWORD_PATH
+    ) {
+      window.location.assign(CHANGE_PASSWORD_PATH);
+    }
+
     if (isForcedSessionInvalidation(error?.status, error?.payload)) {
       await invalidateFrontendSession(error);
     }
 
     throw error;
   }
+}
+
+// Changing the password revokes every token, so the response carries a fresh session (like login) and its refresh cookie.
+export async function changePassword({ currentPassword, password, passwordConfirmation }) {
+  const response = await apiRequest(
+    "/auth/change-password",
+    sessionRequestOptions({
+      method: "POST",
+      body: {
+        current_password: currentPassword,
+        password,
+        password_confirmation: passwordConfirmation,
+      },
+    }),
+  );
+
+  storeAuthSession({ token: response.token, user: response.user });
+  return getStoredAuthUser();
 }
 
 export function sessionRequestOptions(options = {}) {

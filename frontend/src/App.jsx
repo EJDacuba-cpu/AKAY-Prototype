@@ -20,6 +20,8 @@ import Facilities from "./pages/admin/Facilities";
 import StaffAssignments from "./pages/admin/StaffAssignments";
 import ResetPassword from "./pages/ResetPassword";
 import AcceptInvite from "./pages/AcceptInvite";
+import ChangePassword from "./pages/ChangePassword";
+import { CHANGE_PASSWORD_PATH, needsPasswordChange } from "./utils/passwordChange";
 import {
   clearStoredAuthSession,
   getCurrentUser,
@@ -127,6 +129,7 @@ function ProtectedPage({ allowedRole, module, children }) {
       />
     );
   }
+  if (needsPasswordChange(user, location.pathname)) return <Navigate to={CHANGE_PASSWORD_PATH} replace />;
   if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
   // A locked module keeps the page frame but never mounts the page, so none of its data is requested.
   if (module && !access.canModule(module)) return <LockedModulePage role={allowedRole} module={module} />;
@@ -176,11 +179,20 @@ function NotificationRouteWrapper() {
       />
     );
   }
+  if (needsPasswordChange(user, location.pathname)) return <Navigate to={CHANGE_PASSWORD_PATH} replace />;
   return (
     <DashboardLayout role={user.role} title="Notifications">
       <NotificationsPage />
     </DashboardLayout>
   );
+}
+
+function ChangePasswordRoute() {
+  const { status, user } = useContext(AuthStateContext);
+
+  if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
+  if (status === "unauthenticated" || !user) return <Navigate to="/login" replace />;
+  return <ChangePassword />;
 }
 
 function useAuthBootLoaderReady(shouldRestoreStoredSession, retryKey) {
@@ -448,6 +460,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
+      <Route path="/change-password" element={<ChangePasswordRoute />} />
 
       {/* Admin Routes */}
       <Route
