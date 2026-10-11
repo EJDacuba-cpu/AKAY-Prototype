@@ -173,14 +173,16 @@ export default function AddUser() {
 
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
     <form onSubmit={next} noValidate className="flex min-h-full w-full flex-col">
-      <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px] md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-6">
-        <button type="button" className="self-start text-left text-sm font-medium text-red-700 md:leading-7" onClick={() => navigate("/admin/users")}>← Account Directory</button>
-        <header className="mt-3 md:mt-0">
+      <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px]">
+        <button type="button" className="text-left text-sm font-medium text-red-700" onClick={() => navigate("/admin/users")}>← Account Directory</button>
+        <div className="mt-4 md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-6">
+        <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
+        <div className="mt-4 min-w-0 md:mt-0">
+        <header>
           <h1 className="text-xl font-bold text-slate-900">{title}</h1>
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
         </header>
-        <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
-        <div className={`mb-4 mt-4 min-w-0 md:mt-5 ${current === STEPS.facility && !editLoading ? "space-y-1" : "space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
+        <div className={`mb-4 mt-5 ${current === STEPS.facility && !editLoading ? "space-y-1" : "space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
           {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
 
           {!editLoading && current === STEPS.facility && <>
@@ -196,14 +198,13 @@ export default function AddUser() {
             <FieldMessage>{errors.role || errors.facility}</FieldMessage>
           </>}
 
-          {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2 xl:grid-cols-[1.1fr_1.5fr_1.2fr_1.1fr_1.1fr]">
+          {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-y-1">
         <Field label="Full name" error={errors.name}><Input value={form.name} onChange={e => change("name", e.target.value)} /></Field>
         <Field label="Email" error={errors.email}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} /></Field>
-        <Field label="Contact number" error={errors.contact_number}><Input type="tel" inputMode="numeric" placeholder="09XXXXXXXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} /></Field>
+        <Field label="Contact number" error={errors.contact_number}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} /></Field>
         <Field label={id ? "New password (optional)" : "Password"} error={errors.password}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} /></Field>
         <Field label="Confirm password" error={errors.password_confirmation}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} /></Field>
-        {/* Sixth grid cell: fills the gap beside Confirm password on two columns, spans the row below the fields on one line. */}
-        <div className="flex flex-wrap items-center justify-between gap-2 sm:pt-7 xl:col-span-5 xl:pt-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span />}
           <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
             {showPassword ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}{showPassword ? "Hide passwords" : "Show passwords"}
@@ -225,6 +226,8 @@ export default function AddUser() {
           </>}
 
           {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
+        </div>
+        </div>
         </div>
       </div></div>
 

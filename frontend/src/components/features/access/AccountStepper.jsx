@@ -6,7 +6,7 @@ import { Check, Lock } from "lucide-react";
  */
 export default function AccountStepper({ steps, current, reached, onSelect }) {
   return (
-    <nav aria-label="Account setup progress" className="mt-4 md:sticky md:top-4 md:mt-6 md:self-start">
+    <nav aria-label="Account setup progress" className="md:sticky md:top-4 md:self-start">
       <div className="md:hidden">
         <p className="text-xs font-semibold text-slate-500">Step {current + 1} of {steps.length} · <span className="text-slate-800">{steps[current]}</span></p>
         <div className="mt-2 flex gap-1" aria-hidden="true">
