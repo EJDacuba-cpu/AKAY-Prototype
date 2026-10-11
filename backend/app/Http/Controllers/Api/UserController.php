@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
+use App\Models\AccountInvite;
 use App\Models\User;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
@@ -87,7 +88,8 @@ class UserController extends Controller
         User $user,
         AuditLogger $auditLogger,
         UserNotificationService $notifications,
-        UserSessionRevocationService $sessions
+        UserSessionRevocationService $sessions,
+        AccountInviteService $invites
     ) {
         $data = $request->validated();
 
@@ -125,6 +127,8 @@ class UserController extends Controller
             $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions));
         });
 
+        $this->followEmailChange($user, $invites);
+
         return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'facilityAssignments.barangayHealthCenter'])]);
     }
 
@@ -141,6 +145,35 @@ class UserController extends Controller
         });
 
         return response()->json(['data' => $user->fresh()]);
+    }
+
+    /**
+     * A new email on an account whose invite is still open: the old link stops working and a fresh one goes to the
+     * new address (the same as Edit email on Password & Invites). An inactive account gets no email; its old link is
+     * only retired, and the MHO can resend after reactivating.
+     */
+    private function followEmailChange(User $user, AccountInviteService $invites): void
+    {
+        if (! $user->wasChanged('email')) {
+            return;
+        }
+
+        $invite = $user->accountInvite()->first();
+        if (! $invite || $invite->status === AccountInvite::STATUS_COMPLETED) {
+            return;
+        }
+
+        if ($user->isActive()) {
+            $invites->resend($invite);
+
+            return;
+        }
+
+        $invite->forceFill([
+            'email' => $user->email,
+            'token_hash' => null,
+            'status' => $invite->status === AccountInvite::STATUS_TEMPORARY ? $invite->status : AccountInvite::STATUS_EXPIRED,
+        ])->save();
     }
 
     /** Audit wording for duties added or removed, and for licensed duties held by a non-licensed role. */

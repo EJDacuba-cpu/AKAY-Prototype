@@ -156,6 +156,9 @@ class AccountInviteAdminTest extends TestCase
             $logged[] = $event->message.json_encode($event->context);
         });
 
+        $invite->user->createToken('before-temporary-password');
+        $this->assertSame(1, $invite->user->tokens()->count());
+
         $response = $this->postJson("/api/account-invites/{$invite->id}/temporary-password")->assertOk();
         $password = $response->json('data.password');
 
@@ -167,6 +170,7 @@ class AccountInviteAdminTest extends TestCase
         $user = $invite->user->fresh();
         $this->assertTrue(Hash::check($password, $user->password));
         $this->assertTrue((bool) $user->must_change_password);
+        $this->assertSame(0, $user->tokens()->count());
         $this->assertEqualsWithDelta(72 * 3600, now()->diffInSeconds($user->temp_password_expires_at, false), 5);
         $this->assertSame($user->temp_password_expires_at->toJSON(), \Illuminate\Support\Carbon::parse($response->json('data.expires_at'))->toJSON());
 
@@ -344,5 +348,68 @@ class AccountInviteAdminTest extends TestCase
         $this->patchJson("/api/account-invites/{$invite->id}/email", ['email' => 'y@example.test'])->assertForbidden();
         $this->postJson("/api/account-invites/{$invite->id}/link")->assertForbidden();
         $this->postJson("/api/account-invites/{$invite->id}/temporary-password")->assertForbidden();
+    }
+
+    public function test_changing_the_email_in_edit_account_resends_the_open_invite(): void
+    {
+        $invite = $this->realInvite('before@example.test');
+        $invite->forceFill(['token_hash' => hash('sha256', 'old-token')])->save();
+        $this->getJson('/api/auth/invites/verify?token=old-token')->assertOk();
+        Mail::fake();
+
+        $this->patchJson("/api/users/{$invite->user_id}", ['email' => 'after@example.test'])->assertOk();
+
+        $this->getJson('/api/auth/invites/verify?token=old-token')->assertUnprocessable();
+
+        $fresh = $invite->fresh();
+        $this->assertSame('after@example.test', $fresh->email);
+        $this->assertSame(AccountInvite::STATUS_PENDING, $fresh->status);
+        $this->assertNotNull($fresh->token_hash);
+        $this->assertNotSame(hash('sha256', 'old-token'), $fresh->token_hash);
+        Mail::assertSent(\App\Mail\AccountInviteMail::class, fn ($mail) => $mail->hasTo('after@example.test'));
+        Mail::assertNotSent(\App\Mail\AccountInviteMail::class, fn ($mail) => $mail->hasTo('before@example.test'));
+    }
+
+    public function test_changing_the_email_of_an_inactive_account_retires_the_link_without_sending(): void
+    {
+        $invite = $this->makeInvite('asleep@example.test', ['token_hash' => hash('sha256', 'asleep-token')], 'inactive');
+
+        $this->patchJson("/api/users/{$invite->user_id}", ['email' => 'awake@example.test'])->assertOk();
+
+        Mail::assertNothingSent();
+        $fresh = $invite->fresh();
+        $this->assertSame('awake@example.test', $fresh->email);
+        $this->assertNull($fresh->token_hash);
+        $this->assertSame(AccountInvite::STATUS_EXPIRED, $fresh->status);
+    }
+
+    public function test_edit_account_leaves_completed_invites_and_unchanged_emails_alone(): void
+    {
+        $completed = $this->makeInvite('done@example.test', ['status' => AccountInvite::STATUS_COMPLETED, 'completed_via' => 'link', 'completed_at' => now()]);
+        $open = $this->realInvite('same@example.test');
+        $openHash = $open->fresh()->token_hash;
+        Mail::fake();
+
+        $this->patchJson("/api/users/{$completed->user_id}", ['email' => 'done2@example.test'])->assertOk();
+        $this->patchJson("/api/users/{$open->user_id}", ['email' => 'same@example.test', 'name' => 'Renamed'])->assertOk();
+
+        Mail::assertNothingSent();
+        $this->assertSame(AccountInvite::STATUS_COMPLETED, $completed->fresh()->status);
+        $this->assertSame($openHash, $open->fresh()->token_hash);
+    }
+
+    public function test_a_temporary_invite_without_an_expiry_counts_as_expired(): void
+    {
+        $invite = $this->makeInvite('noexpiry@example.test', ['status' => AccountInvite::STATUS_TEMPORARY], 'active', [
+            'must_change_password' => true,
+            'temp_password_expires_at' => null,
+        ]);
+
+        $this->assertSame(AccessRequestStatus::PENDING, AccessRequestStatus::forInvite($invite->fresh('user')));
+
+        $pending = collect($this->getJson('/api/account-invites?status=pending')->json('data.data'));
+        $this->assertSame([$invite->id], $pending->pluck('id')->all());
+        $this->assertSame('pending', $pending->first()['display_status']);
+        $this->assertSame([], $this->getJson('/api/account-invites?status=in_progress')->json('data.data'));
     }
 }

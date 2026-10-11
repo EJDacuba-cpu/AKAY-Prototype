@@ -62,9 +62,12 @@ class AccessRequestStatus
                     ->orWhere(fn (Builder $q) => $q
                         ->where('status', AccountInvite::STATUS_PENDING)
                         ->where('delivery', AccountInvite::DELIVERY_FAILED))
+                    // A temporary password with no expiry cannot sign in (login treats it as expired), so it is too.
                     ->orWhere(fn (Builder $q) => $q
                         ->where('status', AccountInvite::STATUS_TEMPORARY)
-                        ->whereHas('user', fn (Builder $user) => $user->where('temp_password_expires_at', '<=', now())));
+                        ->whereHas('user', fn (Builder $user) => $user->where(
+                            fn (Builder $w) => $w->whereNull('temp_password_expires_at')->orWhere('temp_password_expires_at', '<=', now())
+                        )));
             }),
             self::IN_PROGRESS => $query->whereHas('user', $active)->where(function (Builder $q): void {
                 $q->where(fn (Builder $q) => $q
@@ -72,9 +75,7 @@ class AccessRequestStatus
                     ->where(fn (Builder $d) => self::deliveryNotFailed($d, AccountInvite::DELIVERY_FAILED)))
                     ->orWhere(fn (Builder $q) => $q
                         ->where('status', AccountInvite::STATUS_TEMPORARY)
-                        ->whereHas('user', fn (Builder $user) => $user->where(
-                            fn (Builder $w) => $w->whereNull('temp_password_expires_at')->orWhere('temp_password_expires_at', '>', now())
-                        )));
+                        ->whereHas('user', fn (Builder $user) => $user->where('temp_password_expires_at', '>', now())));
             }),
             self::COMPLETE => $query->where('status', AccountInvite::STATUS_COMPLETED),
             self::CANCELLED => $query
@@ -126,9 +127,10 @@ class AccessRequestStatus
 
         return match ($invite->status) {
             AccountInvite::STATUS_EXPIRED => self::PENDING,
-            AccountInvite::STATUS_TEMPORARY => $invite->user->temp_password_expires_at?->isPast()
-                ? self::PENDING
-                : self::IN_PROGRESS,
+            // No expiry counts as expired, as at sign-in.
+            AccountInvite::STATUS_TEMPORARY => $invite->user->temp_password_expires_at?->isFuture()
+                ? self::IN_PROGRESS
+                : self::PENDING,
             default => $invite->delivery === AccountInvite::DELIVERY_FAILED ? self::PENDING : self::IN_PROGRESS,
         };
     }

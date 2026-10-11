@@ -9,8 +9,8 @@ use App\Models\User;
 use App\Services\AccessRequestStatus;
 use App\Services\AuditLogger;
 use App\Services\PasswordSetRecorder;
+use App\Services\PasswordSetService;
 use App\Services\UserNotificationService;
-use App\Services\UserSessionRevocationService;
 use App\Support\FrontendUrl;
 use App\Support\MaskedEmail;
 use Illuminate\Http\Request;
@@ -38,7 +38,7 @@ class PasswordResetRequestController extends Controller
             ->first();
 
         if (! $user || ! $user->isActive()) {
-            $auditLogger->log($request, 'password reset requested', 'auth', "Password reset requested for {$email}.");
+            $auditLogger->log($request, 'password reset requested', 'auth', 'Password reset requested for '.MaskedEmail::mask($email).'.');
 
             return response()->json(['message' => self::PUBLIC_MESSAGE]);
         }
@@ -74,7 +74,7 @@ class PasswordResetRequestController extends Controller
             $resetRequest->id,
         );
 
-        $auditLogger->log($request, 'password reset requested', 'auth', "Password reset requested for {$email}.");
+        $auditLogger->log($request, 'password reset requested', 'auth', 'Password reset requested for '.MaskedEmail::mask($email).'.');
 
         return response()->json(['message' => self::PUBLIC_MESSAGE]);
     }
@@ -100,8 +100,7 @@ class PasswordResetRequestController extends Controller
     public function complete(
         Request $request,
         AuditLogger $auditLogger,
-        UserSessionRevocationService $sessions,
-        PasswordSetRecorder $recorder
+        PasswordSetService $passwords
     ) {
         $validated = $request->validate([
             'token' => ['required', 'string'],
@@ -114,23 +113,12 @@ class PasswordResetRequestController extends Controller
             return response()->json(['message' => 'This password reset link is invalid or expired.'], 422);
         }
 
-        DB::transaction(function () use (
-            $request,
-            $resetRequest,
-            $validated,
-            $auditLogger,
-            $sessions,
-            $recorder
-        ): void {
-            $resetRequest->user->forceFill([
-                'password' => $validated['password'],
-            ])->save();
-            $sessions->revokeAllTokens($resetRequest->user, 'password-reset');
+        DB::transaction(function () use ($request, $resetRequest, $validated, $auditLogger, $passwords): void {
+            // Clears any temporary-password flags, completes this request and any other open invite or reset
+            // request for the user, and ends every session.
+            $passwords->set($resetRequest->user, $validated['password'], PasswordSetRecorder::ROUTE_RESET, 'password-reset');
 
-            // Completes this request and any other open invite or reset request for the user.
-            $recorder->record($resetRequest->user, PasswordSetRecorder::ROUTE_RESET);
-
-            $auditLogger->log($request, 'password reset completed', 'auth', "Password reset completed for {$resetRequest->email}.");
+            $auditLogger->log($request, 'password reset completed', 'auth', 'Password reset completed for '.MaskedEmail::mask($resetRequest->email).'.');
         });
 
         return response()->json(['message' => 'Password changed successfully. You may now sign in.']);
@@ -195,7 +183,7 @@ class PasswordResetRequestController extends Controller
         ]);
         $this->deliver($passwordResetRequest, $this->issueResetLink($passwordResetRequest));
 
-        $auditLogger->log($request, 'password reset approved', 'auth', "Password reset approved for {$passwordResetRequest->email}.");
+        $auditLogger->log($request, 'password reset approved', 'auth', 'Password reset approved for '.MaskedEmail::mask($passwordResetRequest->email).'.');
 
         return response()->json([
             'message' => $passwordResetRequest->delivery === PasswordResetRequest::DELIVERY_SENT
@@ -255,7 +243,7 @@ class PasswordResetRequestController extends Controller
             'admin_note' => $validated['admin_note'] ?? null,
         ]);
 
-        $auditLogger->log($request, 'password reset rejected', 'auth', "Password reset rejected for {$passwordResetRequest->email}.");
+        $auditLogger->log($request, 'password reset rejected', 'auth', 'Password reset rejected for '.MaskedEmail::mask($passwordResetRequest->email).'.');
 
         return response()->json([
             'message' => 'Password reset request rejected.',
@@ -316,9 +304,10 @@ class PasswordResetRequestController extends Controller
         }
     }
 
-    private function findUsableRequestByToken(?string $token): ?PasswordResetRequest
+    /** Anything but a non-empty string (for example `?token[]=x`) is treated as an unknown link. */
+    private function findUsableRequestByToken(mixed $token): ?PasswordResetRequest
     {
-        if (! $token) {
+        if (! is_string($token) || $token === '') {
             return null;
         }
 

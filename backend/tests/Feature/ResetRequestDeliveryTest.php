@@ -101,6 +101,9 @@ class ResetRequestDeliveryTest extends TestCase
             ->assertJsonPath('data.display_status', 'in_progress');
 
         Mail::assertSent(PasswordResetApprovedMail::class, 1);
+
+        $audit = AuditLog::where('action', 'password reset approved')->firstOrFail();
+        $this->assertStringNotContainsString('ok@example.test', $audit->description);
     }
 
     public function test_resend_and_link_restart_the_60_minute_window(): void
@@ -197,6 +200,13 @@ class ResetRequestDeliveryTest extends TestCase
         $invite = $invite->fresh();
         $this->assertSame(AccountInvite::STATUS_COMPLETED, $invite->status);
         $this->assertSame(AccountInvite::VIA_RESET, $invite->completed_via);
+
+        $this->getJson('/api/auth/password-reset/verify?token[]=x')
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This password reset link is invalid or expired.');
+
+        $audit = AuditLog::where('action', 'password reset completed')->firstOrFail();
+        $this->assertStringNotContainsString('both@example.test', $audit->description);
     }
 
     public function test_status_filter_and_staff_role(): void

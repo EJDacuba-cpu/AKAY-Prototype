@@ -10,7 +10,7 @@ use App\Services\AccessRequestStatus;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
 use App\Services\PasswordSetRecorder;
-use App\Services\UserSessionRevocationService;
+use App\Services\PasswordSetService;
 use App\Support\MaskedEmail;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -46,8 +46,7 @@ class AccountInviteController extends Controller
     /** Public: the one-time link sets the first password. A second use of the same link fails. */
     public function accept(
         Request $request,
-        PasswordSetRecorder $recorder,
-        UserSessionRevocationService $sessions,
+        PasswordSetService $passwords,
         AuditLogger $auditLogger
     ) {
         $validated = $request->validate([
@@ -61,7 +60,7 @@ class AccountInviteController extends Controller
             return response()->json(['message' => self::INVALID_MESSAGE], 422);
         }
 
-        $accepted = DB::transaction(function () use ($found, $validated, $recorder, $sessions, $request, $auditLogger): bool {
+        $accepted = DB::transaction(function () use ($found, $validated, $passwords, $request, $auditLogger): bool {
             // Re-check under a row lock so two simultaneous submissions cannot both succeed.
             $invite = AccountInvite::query()->whereKey($found->id)->lockForUpdate()->first();
 
@@ -77,16 +76,9 @@ class AccountInviteController extends Controller
                 return false;
             }
 
-            $user->forceFill([
-                'password' => $validated['password'],
-                'must_change_password' => false,
-                'temp_password_expires_at' => null,
-            ])->save();
+            $passwords->set($user, $validated['password'], PasswordSetRecorder::ROUTE_INVITE, 'invite-accepted');
 
-            $recorder->record($user, PasswordSetRecorder::ROUTE_INVITE);
-            $sessions->revokeAllTokens($user, 'invite-accepted');
-
-            $auditLogger->log($request, 'account invite completed', 'auth', "Account invite completed for {$user->email}.");
+            $auditLogger->log($request, 'account invite completed', 'auth', 'Account invite completed for '.MaskedEmail::mask($user->email).'.');
 
             return true;
         });
@@ -279,9 +271,10 @@ class AccountInviteController extends Controller
         ];
     }
 
-    private function findUsableInvite(?string $token): ?AccountInvite
+    /** Anything but a non-empty string (for example `?token[]=x`) is treated as an unknown link. */
+    private function findUsableInvite(mixed $token): ?AccountInvite
     {
-        if (! $token) {
+        if (! is_string($token) || $token === '') {
             return null;
         }
 

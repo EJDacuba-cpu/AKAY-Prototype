@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AccountInvite;
 use App\Models\AuditLog;
 use App\Models\BarangayHealthCenter;
+use App\Models\PasswordResetRequest;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\AccountInviteService;
@@ -198,5 +199,70 @@ class TemporaryPasswordSignInTest extends TestCase
         ])
             ->assertUnprocessable()
             ->assertJsonPath('code', 'TEMP_PASSWORD_EXPIRED');
+    }
+
+    public function test_a_voluntary_change_without_a_temporary_password_completes_nothing(): void
+    {
+        $this->user->forceFill([
+            'password' => 'Ownpass123',
+            'must_change_password' => false,
+            'temp_password_expires_at' => null,
+        ])->save();
+        $reset = PasswordResetRequest::create([
+            'user_id' => $this->user->id,
+            'email' => $this->user->email,
+            'status' => PasswordResetRequest::STATUS_PENDING,
+            'requested_at' => now(),
+        ]);
+
+        $token = $this->postJson('/api/auth/login', ['email' => $this->user->email, 'password' => 'Ownpass123'])
+            ->assertOk()
+            ->json('token');
+        $this->app['auth']->forgetGuards();
+
+        $this->withToken($token)->postJson('/api/auth/change-password', [
+            'current_password' => 'Ownpass123',
+            'password' => 'Brandnew123',
+            'password_confirmation' => 'Brandnew123',
+        ])->assertOk()->assertJsonPath('user.must_change_password', false);
+
+        $this->assertTrue(Hash::check('Brandnew123', $this->user->fresh()->password));
+        $this->assertSame(PasswordResetRequest::STATUS_PENDING, $reset->fresh()->status);
+        $this->assertSame(AccountInvite::STATUS_TEMPORARY, $this->invite->fresh()->status);
+    }
+
+    public function test_a_password_reset_clears_the_temporary_password_flags(): void
+    {
+        PasswordResetRequest::create([
+            'user_id' => $this->user->id,
+            'email' => $this->user->email,
+            'status' => PasswordResetRequest::STATUS_APPROVED,
+            'requested_at' => now(),
+            'approved_at' => now(),
+            'expires_at' => now()->addMinutes(60),
+            'reset_token_hash' => hash('sha256', 'reset-token'),
+            'delivery' => PasswordResetRequest::DELIVERY_SENT,
+        ]);
+
+        $this->postJson('/api/auth/password-reset/complete', [
+            'token' => 'reset-token',
+            'password' => 'Resetpass123',
+            'password_confirmation' => 'Resetpass123',
+        ])->assertOk();
+
+        $this->user->refresh();
+        $this->assertFalse((bool) $this->user->must_change_password);
+        $this->assertNull($this->user->temp_password_expires_at);
+
+        $invite = $this->invite->fresh();
+        $this->assertSame(AccountInvite::STATUS_COMPLETED, $invite->status);
+        $this->assertSame(AccountInvite::VIA_RESET, $invite->completed_via);
+
+        $this->travel(73)->hours();
+
+        $this->postJson('/api/auth/login', [
+            'email' => $this->user->email,
+            'password' => 'Resetpass123',
+        ])->assertOk()->assertJsonPath('user.must_change_password', false);
     }
 }

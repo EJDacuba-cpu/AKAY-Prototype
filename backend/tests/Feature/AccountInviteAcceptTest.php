@@ -62,6 +62,9 @@ class AccountInviteAcceptTest extends TestCase
 
     public function test_accepting_sets_the_password_and_completes_the_invite(): void
     {
+        $this->user->createToken('before-accept');
+        $this->assertSame(1, $this->user->tokens()->count());
+
         $this->accept()
             ->assertOk()
             ->assertJsonPath('message', 'Your password is set. Sign in to continue.');
@@ -77,7 +80,10 @@ class AccountInviteAcceptTest extends TestCase
         $this->assertNotNull($invite->completed_at);
         $this->assertNull($invite->token_hash);
 
-        $this->assertTrue(AuditLog::where('action', 'account invite completed')->exists());
+        $this->assertSame(0, $this->user->tokens()->count());
+
+        $audit = AuditLog::where('action', 'account invite completed')->firstOrFail();
+        $this->assertStringNotContainsString('joshua@example.test', $audit->description);
 
         $this->postJson('/api/auth/login', ['email' => 'joshua@example.test', 'password' => 'Newpass123'])
             ->assertOk();
@@ -112,6 +118,9 @@ class AccountInviteAcceptTest extends TestCase
     {
         $this->getJson('/api/auth/invites/verify?token=nope')->assertUnprocessable();
         $this->getJson('/api/auth/invites/verify')->assertUnprocessable();
+        $this->getJson('/api/auth/invites/verify?token[]=x')
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This invite link is invalid or expired.');
     }
 
     public function test_an_inactive_account_cannot_accept(): void

@@ -9,10 +9,10 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\PasswordSetRecorder;
+use App\Services\PasswordSetService;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rules\Password as PasswordRule;
@@ -117,7 +117,7 @@ class AuthController extends Controller
 
     public function changePassword(
         Request $request,
-        PasswordSetRecorder $recorder,
+        PasswordSetService $passwords,
         AuditLogger $auditLogger,
         UserSessionRevocationService $sessions
     ) {
@@ -136,20 +136,14 @@ class AuthController extends Controller
 
         $wasTemporary = (bool) $user->must_change_password;
 
-        DB::transaction(function () use ($user, $validated, $wasTemporary, $recorder, $sessions): void {
-            $user->forceFill([
-                'password' => $validated['password'],
-                'must_change_password' => false,
-                'temp_password_expires_at' => null,
-            ])->save();
-
-            if ($wasTemporary) {
-                $recorder->record($user, PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD);
-            }
-
-            // Every session opened before the change (including any opened with the temporary password) ends.
-            $sessions->revokeAllTokens($user, 'password-changed');
-        });
+        // Every session opened before the change (including any opened with the temporary password) ends.
+        // A voluntary change by a user who had no temporary password completes nothing.
+        $passwords->set(
+            $user,
+            $validated['password'],
+            $wasTemporary ? PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD : null,
+            'password-changed'
+        );
 
         $session = $sessions->issuePersistentSession($user);
 
