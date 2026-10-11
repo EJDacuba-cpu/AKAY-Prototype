@@ -296,7 +296,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($token)->getJson('/api/auth/profile')->assertOk();
     }
 
-    public function test_admin_password_change_revokes_existing_sessions(): void
+    public function test_admin_cannot_change_a_password_and_sessions_stay_open(): void
     {
         $token = $this->token($this->bhw);
         $adminToken = $this->token($this->admin);
@@ -305,13 +305,13 @@ class AuthenticationSessionSecurityTest extends TestCase
             ->patchJson("/api/users/{$this->bhw->id}", [
                 'password' => 'AdminChangedPassword9',
                 'password_confirmation' => 'AdminChangedPassword9',
-            ])->assertOk();
+            ])->assertUnprocessable()->assertJsonValidationErrors('password');
 
-        $this->assertNull(PersonalAccessToken::findToken($token));
+        $this->usingToken($token)->getJson('/api/auth/profile')->assertOk();
         $this->postJson('/api/auth/login', [
             'email' => $this->bhw->email,
             'password' => 'AdminChangedPassword9',
-        ])->assertOk();
+        ])->assertUnprocessable();
     }
 
     public function test_role_and_facility_change_revokes_tokens_and_new_login_uses_new_context(): void

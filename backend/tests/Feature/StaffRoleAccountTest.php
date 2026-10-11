@@ -33,7 +33,6 @@ class StaffRoleAccountTest extends TestCase
     {
         return [
             'name' => 'Joshua', 'email' => 'joshua@example.test', 'contact_number' => '09171234567',
-            'password' => 'password123', 'password_confirmation' => 'password123',
             'role' => 'bhc', 'staff_role' => 'encoder', 'barangay_health_center_id' => $this->bhc->id,
             'permissions' => StaffRoles::defaults('encoder'), 'permissions_confirmed' => true,
             ...$overrides,
@@ -48,7 +47,7 @@ class StaffRoleAccountTest extends TestCase
 
     private function latestAudit(): string
     {
-        return (string) AuditLog::latest('id')->value('description');
+        return (string) AuditLog::where('action', 'created')->latest('id')->value('description');
     }
 
     public function test_creates_encoder_with_defaults(): void
@@ -83,9 +82,9 @@ class StaffRoleAccountTest extends TestCase
         $this->postJson('/api/users', $this->payload(['contact_number' => null]))->assertUnprocessable()->assertJsonValidationErrors('contact_number');
     }
 
-    public function test_password_confirmation_must_match(): void
+    public function test_a_password_cannot_be_sent_with_the_account(): void
     {
-        $this->postJson('/api/users', $this->payload(['password_confirmation' => 'different123']))->assertUnprocessable()->assertJsonValidationErrors('password');
+        $this->postJson('/api/users', $this->payload(['password' => 'password123', 'password_confirmation' => 'password123']))->assertUnprocessable()->assertJsonValidationErrors('password');
     }
 
     public function test_duty_unavailable_at_tier_rejected(): void
@@ -127,17 +126,16 @@ class StaffRoleAccountTest extends TestCase
         $this->assertSame('inactive', $legacy->fresh()->status);
     }
 
-    public function test_edit_without_password_keeps_password(): void
+    public function test_edit_keeps_the_password(): void
     {
         $this->postJson('/api/users', $this->payload())->assertCreated();
         $user = User::where('email', 'joshua@example.test')->firstOrFail();
-        $edit = $this->payload(['name' => 'Joshua R.', 'password' => '']);
-        unset($edit['password_confirmation']);
+        $before = $user->password;
 
-        $this->patchJson("/api/users/{$user->id}", $edit)->assertOk();
+        $this->patchJson("/api/users/{$user->id}", $this->payload(['name' => 'Joshua R.']))->assertOk();
 
         $this->assertSame('Joshua R.', $user->fresh()->name);
-        $this->assertTrue(Hash::check('password123', $user->fresh()->password));
+        $this->assertSame($before, $user->fresh()->password);
     }
 
     public function test_legacy_account_must_pick_role_when_access_changes(): void

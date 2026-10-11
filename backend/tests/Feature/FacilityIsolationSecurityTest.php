@@ -718,8 +718,6 @@ class FacilityIsolationSecurityTest extends TestCase
         return [
             'name' => 'Security User',
             'email' => $email,
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
             'contact_number' => '09171234567',
             'role' => $role,
             'staff_role' => $staffRole = $role === User::ROLE_RHU ? 'nurse' : 'encoder',

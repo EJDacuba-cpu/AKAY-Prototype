@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\User;
+use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
 use App\Services\StaffRoles;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
+use App\Support\MaskedEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
@@ -51,19 +54,27 @@ class UserController extends Controller
         return response()->json(['available' => ! $taken]);
     }
 
-    public function store(UserRequest $request, AuditLogger $auditLogger, UserNotificationService $notifications)
+    public function store(UserRequest $request, AuditLogger $auditLogger, UserNotificationService $notifications, AccountInviteService $invites)
     {
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
         $data['status'] ??= User::STATUS_ACTIVE;
 
         unset($data['facility_assignments'], $data['permissions_confirmed'], $data['password_confirmation']);
+        // Nobody knows this password; the person sets their own through the invite link.
+        $data['password'] = Str::random(64);
         $user = User::create($data);
 
         $notifications->notifyUser($user, 'Account created', 'Your AKAY account has been created.', 'account_created');
         $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.".$this->accessAudit($user, []));
 
-        return response()->json(['data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit'])], 201);
+        $invite = $invites->issue($user, $request->user());
+        $auditLogger->log($request, 'account invite sent', 'users', 'Account invite for '.MaskedEmail::mask($invite->email)." (delivery: {$invite->delivery}).");
+
+        return response()->json([
+            'data' => $user->load(['barangayHealthCenter', 'ruralHealthUnit']),
+            'invite' => ['delivery' => $invite->delivery],
+        ], 201);
     }
 
     public function show(User $user)
@@ -79,14 +90,10 @@ class UserController extends Controller
         UserSessionRevocationService $sessions
     ) {
         $data = $request->validated();
-        if (($data['password'] ?? null) === null) {
-            unset($data['password']);
-        }
 
         $previousPermissions = $user->permissions ?? [];
-        unset($data['permissions_confirmed'], $data['password_confirmation']);
-        unset($data['facility_assignments']);
-        $securityContextChanged = array_key_exists('password', $data) || array_key_exists('permissions', $data) || array_key_exists('staff_role', $data);
+        unset($data['permissions_confirmed'], $data['facility_assignments'], $data['password'], $data['password_confirmation']);
+        $securityContextChanged = array_key_exists('permissions', $data) || array_key_exists('staff_role', $data);
         foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
             if (array_key_exists($field, $data)
                 && (string) $user->{$field} !== (string) $data[$field]) {

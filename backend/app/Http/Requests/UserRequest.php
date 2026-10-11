@@ -25,7 +25,9 @@ class UserRequest extends FormRequest
         return [
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
             'email' => [$isUpdate ? 'sometimes' : 'required', 'email', Rule::unique('users', 'email')->ignore($userId)],
-            'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'min:8', 'confirmed'],
+            // The MHO never sets a password: people set their own through the invite link.
+            'password' => ['prohibited'],
+            'password_confirmation' => ['prohibited'],
             'contact_number' => [$isUpdate ? 'sometimes' : 'required', 'required', 'regex:/^09\d{9}$/'],
             'role' => [$isUpdate ? 'sometimes' : 'required', Rule::in([User::ROLE_ADMIN, User::ROLE_BHC, User::ROLE_RHU])],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],

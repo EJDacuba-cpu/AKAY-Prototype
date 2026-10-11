@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
+use App\Support\FrontendUrl;
+use App\Support\MaskedEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -200,7 +202,7 @@ class PasswordResetRequestController extends Controller
         Log::info('Password reset approval email send attempted.', [
             'password_reset_request_id' => $passwordResetRequest->id,
             'recipient' => $this->maskEmail($passwordResetRequest->email),
-            'frontend_url' => $this->frontendUrl(),
+            'frontend_url' => FrontendUrl::to(''),
         ]);
 
         Mail::to($passwordResetRequest->email)->send(
@@ -278,24 +280,12 @@ class PasswordResetRequestController extends Controller
 
     private function buildResetUrl(string $token): string
     {
-        $frontendUrl = $this->frontendUrl();
-
-        return "{$frontendUrl}/reset-password?token={$token}";
-    }
-
-    private function frontendUrl(): string
-    {
-        return rtrim((string) env('FRONTEND_URL', env('APP_FRONTEND_URL', 'http://localhost:5173')), '/');
+        return FrontendUrl::to("/reset-password?token={$token}");
     }
 
     private function maskEmail(string $email): string
     {
-        [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
-        $maskedLocal = $local === ''
-            ? '***'
-            : Str::substr($local, 0, 1).str_repeat('*', max(2, Str::length($local) - 1));
-
-        return $domain ? "{$maskedLocal}@{$domain}" : $maskedLocal;
+        return MaskedEmail::mask($email);
     }
 
     private function expireStaleApprovedRequests(): void

@@ -98,7 +98,7 @@ class AccountFacilityRevisionTest extends TestCase
     {
         Sanctum::actingAs($this->user(), ['*']);
         $rhu = RuralHealthUnit::create(['name' => 'Home']);
-        $data = ['name' => 'Nurse', 'email' => 'nurse@example.test', 'password' => 'password123', 'password_confirmation' => 'password123', 'contact_number' => '09171234567', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')];
+        $data = ['name' => 'Nurse', 'email' => 'nurse@example.test', 'contact_number' => '09171234567', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => StaffRoles::defaults('nurse')];
         $this->postJson('/api/users', $data)->assertUnprocessable()->assertJsonValidationErrors('permissions_confirmed');
         $this->postJson('/api/users', [...$data, 'permissions_confirmed' => true, 'facility_assignments' => [['barangay_health_center_id' => 1]]])->assertUnprocessable()->assertJsonValidationErrors('facility_assignments');
         $this->postJson('/api/users', [...$data, 'permissions_confirmed' => true])->assertCreated();

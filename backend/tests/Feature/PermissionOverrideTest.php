@@ -30,7 +30,7 @@ class PermissionOverrideTest extends TestCase
     private function encoderPayload(array $extra): array
     {
         return ['name' => 'Encoder', 'email' => 'encoder@example.test', 'contact_number' => '09171234567',
-            'password' => 'password123', 'password_confirmation' => 'password123', 'role' => 'bhc', 'staff_role' => 'encoder',
+            'role' => 'bhc', 'staff_role' => 'encoder',
             'barangay_health_center_id' => $this->bhc->id, 'permissions' => [...StaffRoles::defaults('encoder'), ...$extra],
             'permissions_confirmed' => true];
     }
