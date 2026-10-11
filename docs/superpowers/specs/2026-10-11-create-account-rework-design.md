@@ -140,7 +140,7 @@ The page loads `GET /staff-roles` together with the facility lists. If that requ
 
 ### D4. Review & Create / Review & Save
 - A summary of the details: facility, name, email, contact number, role, and credentials (password hidden).
-- Staff accounts: duties grouped by module, with **Added**, **Removed** (edit mode, compared with the saved access) and **Licensed** chips.
+- Staff accounts: duties grouped by module, with **Added**, **Removed** and **Licensed** chips. Added and Removed are compared with the **role defaults**, the same comparison the checklist and the directory use.
 - One checkbox (D6). The submit button stays disabled until it is ticked.
 - Admin accounts: details only. The checkbox still applies.
 
