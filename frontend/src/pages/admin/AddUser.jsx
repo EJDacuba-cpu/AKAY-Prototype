@@ -174,8 +174,7 @@ export default function AddUser() {
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
     <form onSubmit={next} noValidate className="flex min-h-full w-full flex-col">
       <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px]">
-        <button type="button" className="text-left text-sm font-medium text-red-700" onClick={() => navigate("/admin/users")}>← Account Directory</button>
-        <div className="mt-4 md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-6">
+        <div className="md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-6">
         <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
         <div className="mt-4 min-w-0 md:mt-0">
         <header>
