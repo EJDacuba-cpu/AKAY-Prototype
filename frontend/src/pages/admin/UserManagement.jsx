@@ -2,11 +2,12 @@ import { roleLabel } from "../../utils/accountSetup";
 import { getStaffRoles } from "../../services/staffRolesService";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import NoticeModal from "../../components/common/modals/NoticeModal";
 import {
   ListToolbar,
   PageStateWrapper,
@@ -32,6 +33,10 @@ const FILTER_OPTIONS = {
 
 export default function UserManagement() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // A notice handed over by the page that sent the admin here (e.g. after creating an account) shows once.
+  const [notice, setNotice] = useState(() => location.state?.notice ?? null);
   const [filters, setFilters] = useState({
     search: "",
     role: "All Roles",
@@ -52,6 +57,10 @@ export default function UserManagement() {
   });
   // Role labels and defaults; until they load (or if they fail) the badge shows the raw role.
   const { data: rolesData = null } = useQuery({ queryKey: queryKeys.staffRoles(), queryFn: getStaffRoles, retry: false, staleTime: Infinity });
+
+  useEffect(() => {
+    if (location.state?.notice) navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   async function updateStatus(id, newStatus) {
     const updated = await updateAdminAccountStatus(id, newStatus);
@@ -254,6 +263,7 @@ export default function UserManagement() {
         />
       </div>
       </PageStateWrapper>
+      <NoticeModal open={Boolean(notice)} title={notice?.title} message={notice?.message} onClose={() => setNotice(null)} />
     </DashboardLayout>
   );
 }

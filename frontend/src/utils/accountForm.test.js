@@ -4,9 +4,9 @@ import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "./a
 
 const form = {
   role: "bhc", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
-  password: "password123", password_confirmation: "password123", staff_role: "encoder", permissions: ["patients.register"],
+  staff_role: "encoder", permissions: ["patients.register"],
 };
-const create = { editing: false, hasFacility: true, confirmed: true };
+const create = { hasFacility: true, confirmed: true };
 
 test("facility step reports the missing piece for each tier", () => {
   assert.deepEqual(validateAccountStep(STEPS.facility, { ...form, role: "" }, create), { role: "Choose where this account will work." });
@@ -16,9 +16,9 @@ test("facility step reports the missing piece for each tier", () => {
 });
 
 test("personal details reports every problem at once", () => {
-  const blank = { ...form, name: " ", email: "nope", contact_number: "", password: "", password_confirmation: "" };
+  const blank = { ...form, name: " ", email: "nope", contact_number: "" };
 
-  assert.deepEqual(Object.keys(validateAccountStep(STEPS.personal, blank, create)), ["name", "email", "contact_number", "password"]);
+  assert.deepEqual(Object.keys(validateAccountStep(STEPS.personal, blank, create)), ["name", "email", "contact_number"]);
   assert.deepEqual(validateAccountStep(STEPS.personal, form, create), {});
 });
 
@@ -38,16 +38,8 @@ test("email addresses need a name, an @ and a domain", () => {
   for (const bad of ["", "nope", "a@b", "a b@c.d", " joshua@example.test"]) assert.equal(isValidEmail(bad), false);
 });
 
-test("passwords must match and be long enough", () => {
-  assert.equal(validateAccountStep(STEPS.personal, { ...form, password: "short", password_confirmation: "short" }, create).password, "Password must contain at least 8 characters.");
-  assert.equal(validateAccountStep(STEPS.personal, { ...form, password_confirmation: "different1" }, create).password_confirmation, "Passwords do not match.");
-});
-
-test("editing may leave the password blank, but a lone confirmation is flagged", () => {
-  const edit = { ...create, editing: true };
-
-  assert.deepEqual(validateAccountStep(STEPS.personal, { ...form, password: "", password_confirmation: "" }, edit), {});
-  assert.equal(validateAccountStep(STEPS.personal, { ...form, password: "", password_confirmation: "abc" }, edit).password, "Enter the new password, or clear the confirmation.");
+test("passwords are not part of personal details", () => {
+  assert.deepEqual(validateAccountStep(STEPS.personal, { ...form, password: "", password_confirmation: "x" }, create), {});
 });
 
 test("role and access needs a role and at least one duty", () => {

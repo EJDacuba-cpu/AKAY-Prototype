@@ -8,9 +8,9 @@ export const isValidEmail = value => EMAIL.test(String(value || ""));
 
 /**
  * Every problem on one step, keyed by field, so the form can mark them all at once.
- * `editing` lets the password stay blank; `hasFacility` says a facility of the chosen tier is picked.
+ * `hasFacility` says a facility of the chosen tier is picked.
  */
-export function validateAccountStep(step, form, { editing, hasFacility, confirmed }) {
+export function validateAccountStep(step, form, { hasFacility, confirmed }) {
   const errors = {};
   if (step === STEPS.facility) {
     if (!form.role) errors.role = "Choose where this account will work.";
@@ -21,11 +21,6 @@ export function validateAccountStep(step, form, { editing, hasFacility, confirme
     if (!form.name.trim()) errors.name = "Enter the full name.";
     if (!isValidEmail(form.email)) errors.email = "Enter a valid email address.";
     if (!isValidContactNumber(form.contact_number)) errors.contact_number = "Enter mobile number.";
-    if (!editing || form.password || form.password_confirmation) {
-      if (!form.password && form.password_confirmation) errors.password = "Enter the new password, or clear the confirmation.";
-      else if (form.password.length < 8) errors.password = "Password must contain at least 8 characters.";
-      else if (form.password !== form.password_confirmation) errors.password_confirmation = "Passwords do not match.";
-    }
   }
   if (step === STEPS.access) {
     if (!form.staff_role) errors.staff_role = "Choose a role.";
@@ -40,7 +35,6 @@ const SERVER_FIELDS = {
   name: ["name", STEPS.personal],
   email: ["email", STEPS.personal],
   contact_number: ["contact_number", STEPS.personal],
-  password: ["password", STEPS.personal],
   role: ["role", STEPS.facility],
   barangay_health_center_id: ["facility", STEPS.facility],
   rural_health_unit_id: ["facility", STEPS.facility],

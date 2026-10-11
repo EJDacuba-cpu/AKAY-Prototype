@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Eye, EyeOff, HandHeart, Hospital, House, Keyboard, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
+import { HandHeart, Hospital, House, Keyboard, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
@@ -18,7 +18,7 @@ import { fieldState } from "../../utils/fieldState";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
-const empty = { name: "", email: "", contact_number: "", password: "", password_confirmation: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
+const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
   { tier: TIERS.bhc, label: "Barangay Health Center", icon: House, description: "Barangay-level staff who register patients, record consultations and refer to the RHU." },
   { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital, description: "Municipal clinic staff who receive referrals, confirm conditions and manage doctor availability." },
@@ -49,7 +49,6 @@ export default function AddUser() {
   const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState(null);
   const [picker, setPicker] = useState(null);
-  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -128,7 +127,7 @@ export default function AddUser() {
 
   const liveErrors = {};
   if (current === STEPS.personal) {
-    const found = validateAccountStep(STEPS.personal, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
+    const found = validateAccountStep(STEPS.personal, form, { hasFacility: Boolean(home), confirmed });
     for (const key of Object.keys(touched)) if (found[key]) liveErrors[key] = found[key];
     if (touched.email && !found.email && takenEmails[form.email.toLowerCase()]) liveErrors.email = EMAIL_TAKEN;
   }
@@ -180,7 +179,7 @@ export default function AddUser() {
   // The stepper lets the admin revisit earlier steps, so saving re-checks every step, not just the last.
   function firstInvalid() {
     for (const [index, key] of keys.entries()) {
-      const found = validateAccountStep(key, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
+      const found = validateAccountStep(key, form, { hasFacility: Boolean(home), confirmed });
       if (Object.keys(found).length) return { index, found };
     }
     return null;
@@ -188,7 +187,7 @@ export default function AddUser() {
 
   async function next(e) {
     e.preventDefault();
-    const found = validateAccountStep(current, form, { editing: Boolean(id), hasFacility: Boolean(home), confirmed });
+    const found = validateAccountStep(current, form, { hasFacility: Boolean(home), confirmed });
     if (current === STEPS.personal && !found.email) {
       setBusy(true);
       setCheckingEmail(true);
@@ -212,8 +211,14 @@ export default function AddUser() {
       staff_role: admin ? null : form.staff_role, permissions: admin ? [] : form.permissions, permissions_confirmed: true,
       barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
     };
-    if (form.password) Object.assign(body, { password: form.password, password_confirmation: form.password_confirmation });
-    try { await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body }); navigate("/admin/users"); }
+    try {
+      const result = await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
+      const created = id ? null : {
+        title: "Account created",
+        message: result?.invite?.delivery === "failed" ? "The invite email could not be sent. Resend it from Password & Invites." : `An invite was sent to ${form.email}.`,
+      };
+      navigate("/admin/users", created ? { state: { notice: created } } : undefined);
+    }
     catch (e) {
       const routed = routeServerErrors(e.errors);
       const target = keys.indexOf(routed.step);
@@ -228,9 +233,8 @@ export default function AddUser() {
     ["Facility", admin ? "Municipal Health Officer (not tied to a facility)" : homeName],
     ["Name", form.name], ["Email", form.email], ["Contact number", normalizeContactNumber(form.contact_number)],
     ["Role", admin ? "Municipal Health Officer" : role?.label],
-    ["Credentials", form.password ? "Password set (hidden)" : "Existing password retained"],
+    ...(id ? [] : [["Sign-in", "Invite link by email"]]),
   ];
-  const passwordType = showPassword ? "text" : "password";
   const [title, subtitle] = HEADINGS[current];
   const centered = current === STEPS.facility && !editLoading;
 
@@ -265,14 +269,6 @@ export default function AddUser() {
         <Field label="Full name" error={fieldError("name")} state={stateOf("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
         <Field label="Email" error={fieldError("email")} state={stateOf("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
         <Field label="Contact number" error={fieldError("contact_number")} state={stateOf("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
-        <Field label={id ? "New password (optional)" : "Password"} error={fieldError("password")}><Input type={passwordType} autoComplete="new-password" value={form.password} onChange={e => change("password", e.target.value)} onBlur={() => blur("password")} /></Field>
-        <Field label="Confirm password" error={fieldError("password_confirmation")}><Input type={passwordType} autoComplete="new-password" value={form.password_confirmation} onChange={e => change("password_confirmation", e.target.value)} onBlur={() => blur("password_confirmation")} /></Field>
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          {id ? <p className="text-xs text-slate-500">Leave blank to keep the current password.</p> : <span />}
-          <button type="button" onClick={() => setShowPassword(s => !s)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-            {showPassword ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}{showPassword ? "Hide passwords" : "Show passwords"}
-          </button>
-        </div>
       </div>}
 
           {!editLoading && current === STEPS.access && <>
