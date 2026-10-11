@@ -54,9 +54,9 @@ export default function AuditLogs() {
           unwrapList(response)
             .map((log) => {
               const role =
-                log.user?.role === "bhw"
+                log.user?.role === "bhc"
                   ? "BHC"
-                  : log.user?.role === "rhu_staff"
+                  : log.user?.role === "rhu"
                     ? "RHU"
                     : "Admin";
 

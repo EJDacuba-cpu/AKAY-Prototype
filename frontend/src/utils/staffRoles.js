@@ -1,7 +1,7 @@
 import { ALL_PERMISSIONS, LICENSED_PERMISSIONS } from "./actionPermissions.js";
 
-// `users.role` holds the facility tier, not the staff role (renaming its values is a separate cleanup).
-export const TIERS = { bhc: "bhw", rhu: "rhu_staff", admin: "admin" };
+// `users.role` holds the account type; its BHC and RHU values match the facility types.
+export const TIERS = { bhc: "bhc", rhu: "rhu", admin: "admin" };
 
 // Every helper takes `rolesData`, the GET /staff-roles payload, so the frontend keeps no copy of role rules.
 

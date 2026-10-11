@@ -16,8 +16,8 @@ import { rolesData } from "./staffRoles.fixture.js";
 const [, , { defaults: encoder }] = rolesData.roles;
 
 test("roles are grouped by facility tier", () => {
-  assert.deepEqual(rolesForTier(rolesData, "bhw").map(r => r.key), ["midwife", "bhw", "encoder"]);
-  assert.deepEqual(rolesForTier(rolesData, "rhu_staff").map(r => r.key), ["nurse", "doctor"]);
+  assert.deepEqual(rolesForTier(rolesData, "bhc").map(r => r.key), ["midwife", "bhw", "encoder"]);
+  assert.deepEqual(rolesForTier(rolesData, "rhu").map(r => r.key), ["nurse", "doctor"]);
   assert.deepEqual(rolesForTier(rolesData, "admin"), []);
   assert.equal(roleFor(rolesData, "encoder").label, "Encoder");
   assert.equal(roleFor(rolesData, ""), undefined);
@@ -26,8 +26,8 @@ test("roles are grouped by facility tier", () => {
 test("defaults and available duties come from the API data", () => {
   assert.deepEqual(roleDefaults(rolesData, "encoder"), encoder);
   assert.deepEqual(roleDefaults(rolesData, ""), []);
-  assert.equal(availableDuties(rolesData, "bhw").length, 11);
-  assert.ok(!availableDuties(rolesData, "bhw").includes("rhu.manage"));
+  assert.equal(availableDuties(rolesData, "bhc").length, 11);
+  assert.ok(!availableDuties(rolesData, "bhc").includes("rhu.manage"));
   assert.deepEqual(availableDuties(rolesData, "admin"), []);
 });
 
@@ -53,9 +53,9 @@ test("contact numbers accept spaces and dashes but only PH mobile format", () =>
 });
 
 test("same-tier facility change keeps role and access; tier change clears them", () => {
-  const form = { role: "bhw", staff_role: "midwife", permissions: ["patients.register"], barangay_health_center_id: 1, rural_health_unit_id: null };
+  const form = { role: "bhc", staff_role: "midwife", permissions: ["patients.register"], barangay_health_center_id: 1, rural_health_unit_id: null };
 
-  assert.deepEqual(applyFacilityChange(form, "bhw", 2), { ...form, barangay_health_center_id: 2 });
-  assert.deepEqual(applyFacilityChange(form, "rhu_staff", 5), { ...form, role: "rhu_staff", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: 5 });
+  assert.deepEqual(applyFacilityChange(form, "bhc", 2), { ...form, barangay_health_center_id: 2 });
+  assert.deepEqual(applyFacilityChange(form, "rhu", 5), { ...form, role: "rhu", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: 5 });
   assert.deepEqual(applyFacilityChange(form, "admin", null), { ...form, role: "admin", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null });
 });

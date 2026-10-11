@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Check, Search } from "lucide-react";
 import ModalShell from "../../common/modals/ModalShell";
 
-const TITLES = { bhw: "Choose Barangay Health Center", rhu_staff: "Choose Rural Health Unit" };
+const TITLES = { bhc: "Choose Barangay Health Center", rhu: "Choose Rural Health Unit" };
 
 /**
  * Search-and-pick list of facilities. Mount it only while open so the search starts empty.

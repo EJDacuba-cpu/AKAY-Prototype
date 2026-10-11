@@ -500,8 +500,8 @@ function formatDateTime(value) {
 
 function formatRole(role = "") {
   const value = String(role || "").toLowerCase();
-  if (value === "bhw") return "BHC Worker";
-  if (value === "rhu_staff") return "RHU Staff";
-  if (value === "admin") return "Admin / MHO";
+  if (value === "bhc") return "Barangay Health Center";
+  if (value === "rhu") return "Rural Health Unit";
+  if (value === "admin") return "Municipal Health Officer";
   return formatDisplayValue(role, "Not recorded");
 }

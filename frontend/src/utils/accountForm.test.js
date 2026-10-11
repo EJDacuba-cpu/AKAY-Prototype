@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { STEPS, routeServerErrors, validateAccountStep } from "./accountForm.js";
 
 const form = {
-  role: "bhw", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
+  role: "bhc", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
   password: "password123", password_confirmation: "password123", staff_role: "encoder", permissions: ["patients.register"],
 };
 const create = { editing: false, hasFacility: true, confirmed: true };
@@ -11,7 +11,7 @@ const create = { editing: false, hasFacility: true, confirmed: true };
 test("facility step reports the missing piece for each tier", () => {
   assert.deepEqual(validateAccountStep(STEPS.facility, { ...form, role: "" }, create), { role: "Choose where this account will work." });
   assert.deepEqual(validateAccountStep(STEPS.facility, form, { ...create, hasFacility: false }), { facility: "Choose the Barangay Health Center." });
-  assert.deepEqual(validateAccountStep(STEPS.facility, { ...form, role: "rhu_staff" }, { ...create, hasFacility: false }), { facility: "Choose the Rural Health Unit." });
+  assert.deepEqual(validateAccountStep(STEPS.facility, { ...form, role: "rhu" }, { ...create, hasFacility: false }), { facility: "Choose the Rural Health Unit." });
   assert.deepEqual(validateAccountStep(STEPS.facility, { ...form, role: "admin" }, { ...create, hasFacility: false }), {});
 });
 

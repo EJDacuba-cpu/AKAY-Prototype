@@ -23,20 +23,7 @@ export function getStoredAuthUser() {
   return authenticatedUser;
 }
 
-export function mapRoleForFrontend(role) {
-  if (role === "bhw") return "bhc";
-  if (role === "rhu_staff") return "rhu";
-  return role || "";
-}
-
-export function mapRoleForBackend(role) {
-  if (role === "bhc" || role === "BHC" || role === "bhc_worker") return "bhw";
-  if (role === "rhu" || role === "RHU" || role === "rhu_staff") return "rhu_staff";
-  return String(role || "admin").toLowerCase();
-}
-
 export function normalizeUser(user = {}) {
-  const frontendRole = mapRoleForFrontend(user.role);
   const assignedFacility =
     user.facility && typeof user.facility === "object" ? user.facility : null;
   const bhc =
@@ -51,7 +38,8 @@ export function normalizeUser(user = {}) {
   return {
     ...user,
     id: user.id ? String(user.id) : "",
-    role: frontendRole,
+    // The API's account types (admin, bhc, rhu) are the app's route roles; no mapping is needed.
+    role: user.role || "",
     backendRole: user.role,
     name: user.name || user.fullName || "",
     fullName: user.fullName || user.name || "",
