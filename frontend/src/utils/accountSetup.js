@@ -1,44 +1,20 @@
-import { PERMISSION_PRESETS } from "./actionPermissions.js";
-import { designationScope, overrideTier } from "./accessPolicy.js";
+import { licensedGrants, roleFor } from "./staffRoles.js";
 
-/** The duties a designation normally holds. Not a limit: anything else can be granted as an acknowledged override. */
-export function compatiblePermissions(designation, role) {
-  return designationScope(designation, role);
-}
+/**
+ * Directory label for an account: its role, plus how far its duties moved from the role defaults.
+ * `rolesData` is the GET /staff-roles payload; without it the raw role key is shown.
+ */
+export function accessSummary(user = {}, rolesData) {
+  const plain = label => ({ label, custom: false, licensed: false });
+  if ((user.backendRole || user.role) === "admin" || user.role === "Admin") return plain("Municipal Health Officer");
+  if (!user.staff_role) return plain("Role not set");
+  const role = roleFor(rolesData, user.staff_role);
+  if (!role) return plain(user.staff_role);
 
-export function suggestedPreset(designation, role) {
-  if (String(designation).toLowerCase() === "logistics") return "inventory";
-  if (["nurse", "midwife", "doctor"].includes(String(designation).toLowerCase())) return role === "rhu_staff" ? "rhu" : "clinical";
-  return "encoder";
-}
-
-export function accessProfile(user) {
-  return accessSummary(user).label;
-}
-
-// Directory accounts carry the frontend role ("bhc"/"rhu"); the access policy speaks the backend's.
-const BACKEND_ROLES = { bhc: "bhw", rhu: "rhu_staff" };
-
-/** Directory label: the base profile plus how many duties sit outside the designation's scope. */
-export function accessSummary(user = {}) {
-  const plain = label => ({ label, overrides: 0, critical: false });
-  if (["admin", "Admin"].includes(user.role)) return plain("Admin / MHO");
-  const p = user.permissions;
-  if (!Array.isArray(p)) return plain("Legacy · review access");
-  if (!p.length) return plain("No access assigned");
-  const role = user.backendRole || BACKEND_ROLES[user.role] || user.role;
-  const tiers = p.map(key => overrideTier(key, user.professional_designation, role)).filter(Boolean);
-  const base = baseProfile({ ...user, role }, p);
-  if (!tiers.length) return plain(base);
-  return { label: `${base} · +${tiers.length} override${tiers.length === 1 ? "" : "s"}`, overrides: tiers.length, critical: tiers.includes("critical") };
-}
-
-function baseProfile(user, p) {
-  const suggested = PERMISSION_PRESETS[suggestedPreset(user.professional_designation, user.role)];
-  if (suggested.permissions.every(key => p.includes(key))) return suggested.label;
-  if (p.includes("consultations.finalize")) return "Clinical Staff";
-  if (p.includes("rhu.manage")) return "RHU Staff";
-  if (p.includes("inventory.manage")) return "Inventory Staff";
-  if (p.includes("consultations.encode")) return "Encoder";
-  return "Custom";
+  const permissions = Array.isArray(user.permissions) ? user.permissions : role.defaults;
+  const added = permissions.filter(p => !role.defaults.includes(p)).length;
+  const removed = role.defaults.filter(p => !permissions.includes(p)).length;
+  const licensed = licensedGrants(rolesData, role.key, permissions).length > 0;
+  if (!added && !removed) return { label: role.label, custom: false, licensed };
+  return { label: `${role.label} · Custom (+${added}, −${removed})`, custom: true, licensed };
 }

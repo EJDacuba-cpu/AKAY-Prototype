@@ -1,11 +1,5 @@
-export const PERMISSION_PRESETS = {
-  clinical: { label: "Clinical Staff", description: "Register, assess, review and finalize consultations.", permissions: ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "items.dispense", "inventory.view", "reports.view"] },
-  encoder: { label: "Encoder", description: "Register patients and prepare current consultations for review.", permissions: ["patients.register", "consultations.encode", "inventory.view"] },
-  inventory: { label: "Inventory Staff", description: "Manage medicines and health supplies at assigned facilities.", permissions: ["inventory.view", "inventory.manage"] },
-  rhu: { label: "RHU Staff", description: "Receive referrals, manage doctor availability and feedback.", permissions: ["patients.register", "clinical.history", "rhu.manage", "conditions.confirm", "inventory.view", "reports.view"] },
-};
-
-export const ALL_PERMISSIONS = [...new Set([...Object.values(PERMISSION_PRESETS).flatMap(p => p.permissions), "items.dispense"])];
+// Same order as backend ActionPermissions::ALL. Role rules (defaults, availability) come from GET /staff-roles.
+export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view"];
 
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
@@ -35,10 +29,9 @@ export const PERMISSION_CATALOG = {
   "conditions.confirm": { group: "rhu", label: "Confirm conditions", note: "Can confirm patient conditions on RHU feedback." },
 };
 
-export const CLINICAL_DESIGNATIONS = ["midwife", "nurse", "doctor"];
 export const LICENSED_PERMISSIONS = ["consultations.finalize", "records.correct", "referrals.submit", "conditions.confirm"];
-export const SENSITIVE_PERMISSIONS = ["clinical.history", "inventory.manage", "items.dispense", "followups.manage", "reports.view", "rhu.manage"];
-export const RHU_ONLY_PERMISSIONS = ["rhu.manage", "conditions.confirm"];
+// Mirrors backend NurseAssignmentPolicy::DUTIES: what an RHU nurse may be given at an assigned BHC.
+export const NURSE_ASSIGNMENT_DUTIES = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view"];
 
 export function can(user, permission) {
   return (user?.permissions || []).includes(permission);
