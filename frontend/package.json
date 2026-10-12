@@ -8,6 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:env": "node --test config/environment.test.js",
+    "test:errors": "node --test src/services/apiErrorMessages.test.js",
+    "test:skeleton": "node --test src/components/common/loading/skeletonVariant.test.js",
     "test:accounts": "node --test src/utils/accountAccess.test.js src/utils/accountForm.test.js",
     "test:patient-tabs": "node --test src/utils/healthRecordPrograms.test.js",
     "preview": "vite preview",

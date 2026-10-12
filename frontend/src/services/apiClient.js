@@ -1,3 +1,4 @@
+import { API_ERROR_MESSAGES, serverErrorMessage } from "./apiErrorMessages";
 import { queryClient } from "../lib/queryClient";
 import { API_BASE_URL } from "../config/environment";
 import { fetchWithTimeout } from "./requestTimeout";
@@ -127,16 +128,14 @@ function removeLegacyPersistedAuth() {
 }
 
 function createOfflineError() {
-  const error = new Error("You are offline. Please reconnect and try again.");
+  const error = new Error(API_ERROR_MESSAGES.offline);
   error.code = "OFFLINE";
   error.isOffline = true;
   return error;
 }
 
 function createTimeoutError() {
-  const error = new Error(
-    "The server took too long to respond. Please check the API connection and try again.",
-  );
+  const error = new Error(API_ERROR_MESSAGES.timeout);
   error.code = "TIMEOUT";
   error.isTimeout = true;
   return error;
@@ -185,6 +184,8 @@ async function sendRequest(endpoint, options = {}) {
       throw createOfflineError();
     }
 
+    // The browser's own text ("Failed to fetch") means nothing to a person.
+    error.message = API_ERROR_MESSAGES.unreachable;
     error.code ||= "NETWORK_ERROR";
     error.isNetworkError = true;
     throw error;
@@ -194,12 +195,7 @@ async function sendRequest(endpoint, options = {}) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const firstValidationError = payload.errors
-      ? Object.values(payload.errors).flat()[0]
-      : null;
-    const error = new Error(
-      payload.message || firstValidationError || "API request failed.",
-    );
+    const error = new Error(serverErrorMessage(payload));
     error.status = response.status;
     error.code = payload.code || "";
     error.errors = payload.errors || {};
