@@ -1,15 +1,16 @@
 # Account Details and Invite Controls — Design
 
 Date: 2026-10-12
-Status: Revised after review (separation of Users and Password & Invites). Supersedes the first version of this spec.
+Status: Revised (third revision): Users edits the account; Password & Invites is a menu of controls with a modal per action.
 Builds on: `2026-10-12-account-invites-design.md` (invite and reset statuses are unchanged).
 
 ## Goal
 
 Two modules, two jobs:
-- **Users** shows who an account is and lets the MHO correct it: view details, edit name and contact number.
-- **Password & Invites** is where the MHO controls how an account signs in: generate, resend, copy, edit email, approve,
-  decline.
+- **Users** shows who an account is and lets the MHO correct it: view details, edit full name, email and contact number.
+- **Password & Invites** is where the MHO controls how an account signs in. Each row has one ⋯ menu listing the controls
+  (resend, copy link, generate temporary password, approve, decline); choosing one opens a modal. There is no separate
+  details view, because the row already shows the account, status and date.
 
 Password & Invites is laid out like Facilities.
 
@@ -19,14 +20,12 @@ Said by the product owner:
 - "Additional Assignments" is not needed as a column; the table should show which facility the account is active in.
 - Replace Password & Invites in the Users row menu with View details: role, facility, status (Active or Inactive), date
   created with time.
-- A pencil icon in Account details edits full name, contact number and email together. Included in this work.
+- A pencil icon in Account details edits full name, contact number and email together.
 - Account details stays a modal, not a full screen.
-- The View details on Password & Invites repeats the account's details, and Edit email and Generate temporary password are
-  confusing.
+- Separation: generate, resend and copy belong to Password & Invites; viewing and editing account details, including the
+  email, belong to Users. Edit email leaves Password & Invites.
+- Password & Invites has no View details: the action menu lists the controls and a modal pops up for the chosen one.
 - The Reset requests and Invites tabs use the same alignment as Facilities.
-- Separation: generate, resend and copy belong to Password & Invites; viewing and editing account details, **including
-  the email**, belong to Users. Invite controls do **not** go inside Account details, and Edit email leaves Password &
-  Invites.
 
 Assumptions (correct me if wrong):
 - Editing in Account details is limited to name, contact number and email. Role, facility and status change access or
@@ -34,23 +33,22 @@ Assumptions (correct me if wrong):
 - Changing the email in Users already does the right thing on the server (`UserController::followEmailChange`): an open
   invite on an active account gets a fresh link at the new address and the old link stops working; an inactive account
   gets no email and its old link is retired; a completed invite is left alone. No backend change.
-- The Password & Invites sidebar page stays.
-- "Inactive" stays the label for a deactivated account.
-- No change to invite or reset rules, statuses, expiry times or emails.
+- A row with no allowed control (Complete, Declined, Cancelled) has no ⋯ menu; its status badge and tooltip already say
+  why.
+- "Inactive" stays the label for a deactivated account. No change to invite or reset rules, statuses, expiry or emails.
 
 ## Decisions
 
 | # | Decision |
 |---|---|
-| D1 | Account details is a modal opened only from Users (⋯ > View details). It shows the account and has the pencil edit (name, contact number, email). It has no invite or reset controls. |
+| D1 | Account details is a modal opened only from Users (⋯ > View details). It shows the account and has the pencil edit. |
 | D2 | It stays a modal; promote it to `/admin/users/:id` only if it gains audit history, more edit fields or a need for shareable links. |
 | D3 | Account block: Name, Email, Contact number, Role, Facility, Status, Date created (date and time). Footer link to Staff Assignments for nurse accounts. |
-| D4 | The ⋯ menu on a Password & Invites row has **View details**, plus **Approve** and **Decline** on a Pending reset request. Nothing else. |
-| D5 | Password & Invites **View details** is one dialog for both tabs, about the invite or reset request: who it is for (name and email only, no role or facility, which are table columns), the status, the dates, and the controls. |
-| D6 | The controls are grouped by intent and use inline panels, never a dialog on top of the dialog. |
-| D7 | Reset requests and Invites tabs become pill buttons in the toolbar row, as on Facilities. A plain description line sits above, and an empty list shows a centered message with no card. |
-| D8 | A pencil icon in the Account block turns Name, Email and Contact number into inputs (Save / Cancel), saved with the existing `PATCH /users/{id}`. Email is removed from the Password & Invites controls. |
-| D9 | No new endpoint. |
+| D4 | The pencil turns Name, Email and Contact number into inputs (Save / Cancel), saved with the existing `PATCH /users/{id}`. |
+| D5 | Password & Invites rows have a ⋯ menu of the controls the row's status allows, grouped; no View details. |
+| D6 | Every control opens a modal that says what will happen before it happens. |
+| D7 | Reset requests and Invites tabs become pill buttons in the toolbar row, as on Facilities, with a description line above and a centered empty state with no card. |
+| D8 | No new endpoint. |
 
 ## Users: Account details
 
@@ -84,7 +82,8 @@ Assumptions (correct me if wrong):
 - Save is disabled until a value changed and while saving. Only changed fields are sent; the number is sent after
   `normalizeContactNumber`, the email trimmed (a change of letter case alone counts as unchanged).
 - On success the inputs return to text and the Users table updates without a reload. A server 422 shows its message under
-  the field it names (name, email or contact number); any other failure shows a message above the buttons and keeps the inputs.
+  the field it names (name, email or contact number); any other failure shows a message above the buttons and keeps the
+  inputs.
 - Cancel and closing the modal discard the edit. Every change is audit-logged by the existing update. It does not sign the
   account out.
 
@@ -101,93 +100,73 @@ Assumptions (correct me if wrong):
 - With no rows, the table card is not rendered. A centered block shows an icon in a circle and "No password reset requests
   found." (or "No account invites found."), with "Try adjusting your search or filters." when a filter or search is
   active.
-- Tables, columns, statuses, mobile cards and `?tab=invites` are otherwise unchanged.
+- Tables, columns, statuses, mobile cards and `?tab=invites` are otherwise unchanged. The old View details dialog is removed.
 
-### Row menu (D4)
+### The ⋯ menu (D5)
 
-View details; and for a Pending reset request, Approve and Decline (they open the existing confirmation). A row whose
-account is gone still has View details. Resend, Copy link and Generate temporary password are no longer in the menu.
+The menu shows the row's name and email as its header (existing `ActionMenu`), then the controls the status allows
+(`inviteStatus` / `resetRequestStatus` in `accessRequestStatus.js`; Edit email is never listed). Controls are grouped; a
+group label appears only when the menu has more than one group.
 
-### View details dialog (D5, D6)
-
-```
-┌ Account invite ────────────────────────────────┐
-│ Eric Jhosh C. Dacuba · email                   │
-├────────────────────────────────────────────────┤
-│ [In progress]  Link sent · expires in 41 h     │
-│ Invited          Oct 12, 2026, 1:12 PM         │
-│ Link expires     Oct 14, 2026, 1:12 PM         │
-│ ────────────────────────────────────────────── │
-│ [ Resend invite ]   Copy link                  │
-│                                                │
-│ Other ways to sign in                          │
-│ Generate temporary password                    │
-│ Use only if the email can't be delivered.      │
-│ This also stops the invite link.               │
-└────────────────────────────────────────────────┘
-```
-
-The detail rows are the dates the tab already lists (invite: Invited, Link expires, Temporary password expires, Completed;
-reset request: Requested, Approved, Declined, Completed, Link expires, Admin note), omitting empty ones.
-
-Controls come from the existing `inviteStatus` / `resetRequestStatus` (`accessRequestStatus.js`); nothing is shown that the
-status does not allow.
-
-| Row state | Controls |
+| Row state | Menu |
 |---|---|
-| Invite open (Pending or In progress) | Primary Resend invite; link Copy link; "Other ways to sign in": Generate temporary password. |
-| Invite expired | Primary Resend invite; Generate temporary password. |
-| Temporary password active | Generate temporary password only (to issue a new one). |
-| Invite Complete or Cancelled (account Inactive) | Status and reason only. |
-| Reset request Pending | Primary Approve; link Decline. |
-| Reset request Approved or expired | Primary Resend link; link Copy link. |
-| Reset request Complete, Declined or Cancelled | Status and reason only. |
+| Invite open (Pending or In progress) | Resend invite · Copy link · *Other ways to sign in:* Generate temporary password |
+| Invite expired | Resend invite · *Other ways to sign in:* Generate temporary password |
+| Temporary password active | *Other ways to sign in:* Generate temporary password |
+| Reset request Pending | Approve · Decline |
+| Reset request Approved or expired | Resend link · Copy link |
+| Complete, Declined, Cancelled | no menu |
 
-Action behavior:
-- One primary button per dialog. Copy link is a text link beside it. There is no Edit email here; the email is changed in
-  Users, and a short note under the account line says so: "To change the email, edit the account in Users."
-- **Generate temporary password** first expands an inline warning ("Any invite link stops working.") with Confirm and
-  Cancel; after Confirm the same area shows the password, a Copy button and "This is the only time it is shown. It expires
-  in 72 hours." Closing the dialog discards it.
-- **Approve / Decline** from the dialog use the same inline confirmation text as the menu.
-- **Copy link** copies and says the emailed link no longer works; if the clipboard is blocked, the link appears in a
-  read-only field inside the dialog.
-- While any action runs, every control is disabled and a second click is ignored.
-- After an action the list reloads, and the dialog shows the row's new status.
+### The modal for each control (D6)
+
+Every control opens a confirmation modal with the consequence, then runs on Confirm. While it runs, the buttons are
+disabled and a second click is ignored.
+
+| Control | Modal title and text | Confirm button | Result |
+|---|---|---|---|
+| Resend invite / Resend link | "Resend invite?" / "Resend reset link?" — "A new link is emailed to {email}. The previous link stops working." | Resend invite / Resend link | Toast "Invite sent to {email}." / "Reset link sent to {email}." or the failed-delivery message. |
+| Copy link | "Copy a new link?" — "This creates a new one-time link and copies it. The emailed link stops working." | Copy link | Toast "Link copied. The emailed link no longer works."; if the clipboard is blocked, a modal shows the link to copy by hand. |
+| Generate temporary password | "Generate a temporary password?" — "Any invite link stops working." | Generate temporary password | A modal shows the password once with a Copy button: "This is the only time it is shown. It expires in 72 hours. {name} must change it the first time they sign in." |
+| Approve | "Approve password reset?" — "This will send a secure one-time reset link to the user's email." | Approve and send link | Toast as for Resend link. |
+| Decline | "Decline this reset request?" — "The request will be closed and no link will be sent." | Decline | Toast "Reset request declined." |
+
+After any action the list reloads. A failure shows an error toast with the server's message.
 
 ## Frontend structure
 
 - `components/features/accounts/AccountDetailsModal.jsx` (exists): the Users modal. Remove its Access section; add the
   Email row and field to the pencil edit.
-- `components/features/password-access/AccessDetailsDialog.jsx`: the View details dialog above; holds the controls and
-  their inline panels and runs the actions.
-- `components/features/password-access/CopyValue.jsx`: moved from `features/accounts/`.
-- `hooks/useEmailAvailability.js`: the on-blur availability check (cached per address, retried after a failed check) taken from
-  the old Edit email form, used by the Users edit form.
-- `utils/accountAccess.js`: keep `RESET_CONFIRM` and `actionLabel`; replace `accountAccessBlocks` with
-  `accessControls(kind, row, now) -> { status, primary, links, fallback }` for one row, and add `queueMenuItems`.
-- `AccessRequestTable.jsx`, `InvitesTab.jsx`, `ResetRequestsTab.jsx`, `useAccessRows.js`,
-  `pages/admin/PasswordResetRequests.jsx`: layout, slim menu, dialog.
+- `hooks/useEmailAvailability.js`: the on-blur availability check (cached per address, retried after a failed check), taken
+  from the old Edit email form and used by the Users edit form.
+- `utils/accountAccess.js`: `menuSections(kind, statusActions) -> [{ label: string|null, actions: Action[] }]`,
+  `ACTION_CONFIRM[kind][action] -> { title, description, confirmText }` (reset kind keeps today's approve/decline text),
+  and `actionLabel(kind, action)`. `accountAccessBlocks` is removed.
+- `components/common/tables/ActionMenu.jsx`: an `actions` entry may be `{ section: "Label" }`, drawn as a divider with a
+  small label (additive; other pages are unaffected).
+- `features/password-access/AccessRequestTable.jsx`, `InvitesTab.jsx`, `ResetRequestsTab.jsx`, `useAccessRows.js`,
+  `pages/admin/PasswordResetRequests.jsx`: layout, grouped menu, one confirmation modal per tab driven by `ACTION_CONFIRM`.
+  `TemporaryPasswordDialog` and `ManualCopyDialog` stay.
 - Remove: `AccountAccessSection.jsx`, `InlineEmailEdit.jsx`, `services/accountAccessService.js`,
-  `queryKeys.accountAccess`, the `GET /users/{user}/access` endpoint and its test, and `TemporaryPasswordDialog.jsx`
-  (after nothing uses it). `PATCH /account-invites/{id}/email` and `updateInviteEmail` are left in place, unused by the UI
-  (a later cleanup).
+  `queryKeys.accountAccess`, the `GET /users/{user}/access` endpoint and its test, the Password & Invites `DetailsModal`
+  and `EditEmailDialog`. `PATCH /account-invites/{id}/email` and `updateInviteEmail` stay in place, unused by the UI (a
+  later cleanup).
 
 ## Errors
 
-- A failed action shows its message inside the dialog; the dialog stays open and controls re-enable.
-- If an action finds the row already closed, the list reloads and the dialog shows the new status.
-- If the row disappears after a reload, the dialog closes.
+- A failed action shows an error toast with the server's message; the modal closes and the list reloads so the row shows its
+  true status.
+- If the row was already closed elsewhere, the server refuses and the list reload removes its actions.
 
 ## Testing
 
-- `utils/accountAccess.test.js`: `accessControls` for each table row above, `queueMenuItems` (View details, approve and
-  decline only, no View details without an account), labels and reset confirmation copy.
+- `utils/accountAccess.test.js`: `menuSections` for each table row above (including no menu for Complete/Declined/Cancelled
+  and a single group without a label), `ACTION_CONFIRM` texts, `actionLabel`.
 - `utils/accountForm.test.js`: profile validation and changes, now including the email (bad format; a case-only change is
   unchanged).
-- Backend: `AccountProfileEditTest` (exists). No endpoint test is needed; no endpoint is added.
-- Browser walk-through at desktop and narrow width: Users > View details and pencil edit; Password & Invites tabs, menu,
-  View details, each control that does not send email, the empty state, tab pills in the toolbar row.
+- Backend: `AccountProfileEditTest` (exists); email-follow behavior is covered by `AccountInviteAdminTest`. No endpoint is
+  added.
+- Browser walk-through at desktop and narrow width: Users > View details and the pencil edit (name, email, contact number);
+  Password & Invites tabs, menus, each modal that does not send email, the empty state, tab pills in the toolbar row.
 
 ## Out of scope
 
@@ -196,3 +175,4 @@ Action behavior:
 - Any change to invite or reset rules, statuses, expiry or email content.
 - Pending counts on the tabs.
 - Filters other than Status on Password & Invites.
+- Removing the unused `PATCH /account-invites/{id}/email` route.
