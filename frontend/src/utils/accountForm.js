@@ -30,20 +30,23 @@ export function validateAccountStep(step, form, { hasFacility, confirmed }) {
   return errors;
 }
 
-/** Name and contact number as edited from Account details (the Personal Details rules). */
-export function validateAccountProfile({ name, contact_number }) {
+/** Name, email and contact number as edited from Account details (the Personal Details rules). */
+export function validateAccountProfile({ name, contact_number, email }) {
   const errors = {};
   if (!String(name || "").trim()) errors.name = "Enter the full name.";
+  if (!isValidEmail(String(email || "").trim())) errors.email = "Enter a valid email address.";
   if (!isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
   return errors;
 }
 
-/** Only the profile fields that differ from the account: the name trimmed, the number as the server stores it. */
+/** Only the profile fields that differ from the account: name and email trimmed (email compared without case), the number as the server stores it. */
 export function profileChanges(account, form) {
   const changes = {};
   const name = String(form.name || "").trim();
+  const email = String(form.email || "").trim();
   const contact = normalizeContactNumber(form.contact_number);
   if (name !== String(account.name || "").trim()) changes.name = name;
+  if (email.toLowerCase() !== String(account.email || "").trim().toLowerCase()) changes.email = email;
   if (contact !== normalizeContactNumber(account.contact_number)) changes.contact_number = contact;
   return changes;
 }

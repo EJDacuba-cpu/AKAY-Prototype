@@ -1,59 +1,59 @@
-import { inviteStatus, resetRequestStatus } from "./accessRequestStatus.js";
+const OTHER_WAYS = "Other ways to sign in";
 
-/** Confirmation copy for the two reset request decisions (shown inline in Account details and in the list menu). */
-export const RESET_CONFIRM = {
-  approve: {
-    title: "Approve password reset?",
-    description: "This will send a secure one-time reset link to the user's email.",
-    confirmText: "Approve and send link",
-  },
-  decline: {
-    title: "Decline this reset request?",
-    description: "The request will be closed and no link will be sent.",
-    confirmText: "Decline",
-  },
-};
-
-const PRIMARY_ACTIONS = ["approve", "resend"];
-const LINK_ACTIONS = ["decline", "copy", "editEmail"];
-
-function toBlock(kind, row, status) {
-  const { actions } = status;
-  return {
-    kind,
-    row,
-    status: { status: status.status, label: status.label, reason: status.reason },
-    primary: PRIMARY_ACTIONS.find((action) => actions.includes(action)) ?? null,
-    links: LINK_ACTIONS.filter((action) => actions.includes(action)),
-    fallback: actions.includes("temporaryPassword") ? "temporaryPassword" : null,
-  };
-}
+// The first group is the everyday decisions and link actions, in menu order; temporary password is its own group.
+const MAIN_ACTIONS = ["approve", "decline", "resend", "copy"];
+const OTHER_ACTIONS = ["temporaryPassword"];
 
 /**
- * What the Access section of Account details shows: one block per open invite or reset request (invite first),
- * each with its status, one primary action, quiet link actions and the temporary password fallback. Which actions
- * exist comes from `inviteStatus` / `resetRequestStatus`; nothing here adds one. `message` replaces the blocks
- * when the account is deactivated or has neither an invite nor a reset request.
+ * The ⋯ menu of a Password & Invites row: which controls the row's status allows, in groups. `statusActions` is
+ * the `actions` list from `inviteStatus` / `resetRequestStatus`; Edit email is not offered here (it lives in Users).
+ * No groups means the row has no menu.
  */
-export function accountAccessBlocks({ account, invite, resetRequest }, now = new Date()) {
-  if (account?.status === "Inactive") {
-    return { message: "Account deactivated. No access actions.", blocks: [] };
-  }
+export function menuSections(statusActions) {
+  const allowed = statusActions || [];
+  const main = MAIN_ACTIONS.filter((action) => allowed.includes(action));
+  const other = OTHER_ACTIONS.filter((action) => allowed.includes(action));
 
-  const blocks = [];
-  if (invite) blocks.push(toBlock("invite", invite, inviteStatus(invite, now)));
-  if (resetRequest) blocks.push(toBlock("reset", resetRequest, resetRequestStatus(resetRequest, now)));
-
-  return blocks.length
-    ? { message: null, blocks }
-    : { message: "Password set by the user.", blocks: [] };
+  const sections = [];
+  if (main.length) sections.push({ label: null, actions: main });
+  if (other.length) sections.push({ label: OTHER_WAYS, actions: other });
+  return sections;
 }
+
+const NEW_LINK = "A new link is emailed to {email}. The previous link stops working.";
+const COPY_LINK = "This creates a new one-time link and copies it. The emailed link stops working.";
+
+/** What each control's modal says before it runs. `{email}` is replaced by the caller. */
+export const ACTION_CONFIRM = {
+  invite: {
+    resend: { title: "Resend invite?", description: NEW_LINK, confirmText: "Resend invite" },
+    copy: { title: "Copy a new link?", description: COPY_LINK, confirmText: "Copy link" },
+    temporaryPassword: {
+      title: "Generate a temporary password?",
+      description: "Any invite link stops working.",
+      confirmText: "Generate temporary password",
+    },
+  },
+  reset: {
+    approve: {
+      title: "Approve password reset?",
+      description: "This will send a secure one-time reset link to the user's email.",
+      confirmText: "Approve and send link",
+    },
+    decline: {
+      title: "Decline this reset request?",
+      description: "The request will be closed and no link will be sent.",
+      confirmText: "Decline",
+    },
+    resend: { title: "Resend reset link?", description: NEW_LINK, confirmText: "Resend link" },
+    copy: { title: "Copy a new link?", description: COPY_LINK, confirmText: "Copy link" },
+  },
+};
 
 const LABELS = {
   approve: "Approve",
   decline: "Decline",
   copy: "Copy link",
-  editEmail: "Edit email",
   temporaryPassword: "Generate temporary password",
 };
 

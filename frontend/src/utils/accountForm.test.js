@@ -77,14 +77,18 @@ test("server errors that belong to no field are returned for a modal", () => {
 });
 
 test("profile validation", () => {
-  assert.deepEqual(validateAccountProfile({ name: " ", contact_number: "09171234567" }), { name: "Enter the full name." });
-  assert.deepEqual(validateAccountProfile({ name: "Ana", contact_number: "12345" }), { contact_number: "Enter mobile number." });
-  assert.deepEqual(validateAccountProfile({ name: "Ana", contact_number: "0917 123-4567" }), {});
+  const ok = { name: "Ana", contact_number: "09171234567", email: "ana@example.test" };
+  assert.deepEqual(validateAccountProfile({ ...ok, name: " " }), { name: "Enter the full name." });
+  assert.deepEqual(validateAccountProfile({ ...ok, contact_number: "12345" }), { contact_number: "Enter mobile number." });
+  assert.deepEqual(validateAccountProfile({ ...ok, email: "ana" }), { email: "Enter a valid email address." });
+  assert.deepEqual(validateAccountProfile({ ...ok, contact_number: "0917 123-4567" }), {});
 });
 
 test("profile changes send only what changed", () => {
-  const account = { name: "Ana Cruz", contact_number: "09171234567" };
-  assert.deepEqual(profileChanges(account, { name: " Ana Cruz ", contact_number: "0917 123-4567" }), {});
-  assert.deepEqual(profileChanges(account, { name: "Ana M. Cruz", contact_number: "09171234567" }), { name: "Ana M. Cruz" });
-  assert.deepEqual(profileChanges(account, { name: "Ana Cruz", contact_number: "0918 000 0000" }), { contact_number: "09180000000" });
+  const account = { name: "Ana Cruz", contact_number: "09171234567", email: "Ana@Example.test" };
+  const same = { name: " Ana Cruz ", contact_number: "0917 123-4567", email: " ana@example.test " };
+  assert.deepEqual(profileChanges(account, same), {});
+  assert.deepEqual(profileChanges(account, { ...same, name: "Ana M. Cruz" }), { name: "Ana M. Cruz" });
+  assert.deepEqual(profileChanges(account, { ...same, contact_number: "0918 000 0000" }), { contact_number: "09180000000" });
+  assert.deepEqual(profileChanges(account, { ...same, email: " New@Example.test " }), { email: "New@Example.test" });
 });
