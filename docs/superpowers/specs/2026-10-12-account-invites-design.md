@@ -149,7 +149,7 @@ Password & Invites is one module, so both tabs use the same four statuses and th
 ### F1. The four statuses
 | Status | Badge | Meaning |
 |---|---|---|
-| **Pending** | amber | The MHO has to act. These rows are counted on the tab and in "Needs action". |
+| **Pending** | amber | The MHO has to act. |
 | **In progress** | blue | Waiting for the user. |
 | **Complete** | green | The user has a password. |
 | **Cancelled** | grey | Stopped without a password being set. |
@@ -189,7 +189,7 @@ Every row also has **View details**.
 | Sidebar, page title, Users page link | Password Resets / Password Reset Requests | Password & Invites |
 | Tabs | (none) | Reset requests (n) · Invites (n), n = Pending rows |
 | Status filter | All Status, Pending, Approved, Rejected, Completed, Expired | All statuses, Pending, In progress, Complete, Cancelled |
-| Summary cards | Pending Review / Visible Requests / Security: Admin approval required | Needs action / Showing / Links expire in: 60 minutes (resets) or 48 hours (invites) |
+| Summary cards | Pending Review / Visible Requests / Security: Admin approval required | None. The link lifetime (60 minutes for resets, 48 hours for invites) is in the table description; the tabs show no counts |
 | Table columns | User, Email, Role, Facility, Requested, Status | Account, Email, Role (staff role, e.g. "Midwife"), Facility, Date (requested or invited), Status |
 | Decline action and dialog | Reject / Reject password reset? | Decline / Decline this reset request? |
 | Approve dialog | Approve password reset? / Approve and send link | unchanged |

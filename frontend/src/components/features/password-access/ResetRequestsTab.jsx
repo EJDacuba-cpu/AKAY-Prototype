@@ -28,9 +28,9 @@ const CONFIRM = {
 };
 
 /** Reset requests tab: rows from the reset request API, statuses from `resetRequestStatus` (spec F2). */
-export default function ResetRequestsTab({ rolesData, pendingCount, onChanged }) {
+export default function ResetRequestsTab({ rolesData }) {
   const notify = useNotification();
-  const list = useAccessRows(getPasswordResetRequests, onChanged, notify.error);
+  const list = useAccessRows(getPasswordResetRequests, notify.error);
   const [confirm, setConfirm] = useState(null);
   const [manualCopy, setManualCopy] = useState(null);
   const columns = useMemo(
@@ -90,10 +90,8 @@ export default function ResetRequestsTab({ rolesData, pendingCount, onChanged })
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email..."
-        needsAction={pendingCount}
-        linkExpiry="60 minutes"
         heading="Reset requests"
-        description="Review requests and send secure one-time reset links."
+        description="Review requests and send secure one-time reset links. Links expire after 60 minutes."
         detailTitle="Password reset request"
         detailsOf={(row) => [
           ["Account", accountName(row)],

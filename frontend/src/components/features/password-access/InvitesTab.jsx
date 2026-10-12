@@ -23,9 +23,9 @@ import useAccessRows from "./useAccessRows";
 const EMAIL_TAKEN = "Email is already taken.";
 
 /** Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). */
-export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
+export default function InvitesTab({ rolesData }) {
   const notify = useNotification();
-  const list = useAccessRows(getAccountInvites, onChanged, notify.error);
+  const list = useAccessRows(getAccountInvites, notify.error);
   const [confirmTemp, setConfirmTemp] = useState(null);
   const [tempPassword, setTempPassword] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -96,10 +96,8 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email..."
-        needsAction={pendingCount}
-        linkExpiry="48 hours"
         heading="Invites"
-        description="New accounts set their own password from a one-time invite link."
+        description="New accounts set their own password from a one-time invite link. Links expire after 48 hours."
         detailTitle="Account invite"
         detailsOf={(row) => [
           ["Account", accountName(row)],

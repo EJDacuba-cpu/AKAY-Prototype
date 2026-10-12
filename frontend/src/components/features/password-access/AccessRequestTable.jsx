@@ -27,7 +27,7 @@ const ACTION_LABELS = {
 };
 
 /**
- * The shared list for both Password & Invites tabs: toolbar, summary cards, desktop table,
+ * The shared list for both Password & Invites tabs: toolbar, desktop table,
  * mobile cards and the View details modal. Statuses and row actions come from `statusOf`
  * (accessRequestStatus.js); every row has a single ⋯ menu holding View details and the row's actions.
  */
@@ -43,8 +43,6 @@ export default function AccessRequestTable({
   filters,
   onFiltersChange,
   searchPlaceholder,
-  needsAction,
-  linkExpiry,
   heading,
   description,
   detailTitle,
@@ -76,12 +74,6 @@ export default function AccessRequestTable({
             onClearFilters={() => onFiltersChange(DEFAULT_FILTERS)}
             onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
           />
-
-          <div className="mb-4 grid gap-3 sm:grid-cols-3">
-            <SummaryCard label="Needs action" value={needsAction ?? rows.filter((row) => statusOf(row).status === "pending").length} />
-            <SummaryCard label="Showing" value={rows.length} />
-            <SummaryCard label="Links expire in" value={linkExpiry} text />
-          </div>
 
           <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
@@ -211,15 +203,6 @@ function titleCase(key) {
     .filter(Boolean)
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-function SummaryCard({ label, value, text = false }) {
-  return (
-    <div className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">{label}</p>
-      <p className={`mt-1 font-bold text-[#0F172A] ${text ? "text-sm" : "text-xl"}`}>{value}</p>
-    </div>
-  );
 }
 
 function EmptyState({ message, tall = false }) {
