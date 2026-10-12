@@ -5,6 +5,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import NoticeModal from "../../components/common/modals/NoticeModal";
+import SuccessModal from "../../components/common/modals/SuccessModal";
 import AccountStepper, { STEPPER_HEIGHT } from "../../components/features/access/AccountStepper";
 import Field, { FieldMessage } from "../../components/features/access/FieldError";
 import FacilityPickerModal from "../../components/features/access/FacilityPickerModal";
@@ -51,6 +52,8 @@ export default function AddUser() {
   const [picker, setPicker] = useState(null);
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
+  // The account that was just created (name, email, role, facility, whether the invite email went out); shows the success modal.
+  const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [touched, setTouched] = useState({});
@@ -213,11 +216,14 @@ export default function AddUser() {
     };
     try {
       const result = await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
-      const created = id ? null : {
-        title: "Account created",
-        message: result?.invite?.delivery === "failed" ? "The invite email could not be sent. Resend it from Password & Invites." : `An invite was sent to ${form.email}.`,
-      };
-      navigate("/admin/users", created ? { state: { notice: created } } : undefined);
+      if (id) navigate("/admin/users");
+      else setCreated({
+        name: form.name.trim(),
+        email: form.email,
+        role: admin ? "Municipal Health Officer" : role?.label,
+        facility: admin ? "Not tied to a facility" : homeName,
+        inviteSent: result?.invite?.delivery !== "failed",
+      });
     }
     catch (e) {
       const routed = routeServerErrors(e.errors);
@@ -227,6 +233,20 @@ export default function AddUser() {
       if (messages.length) setNotice({ title: "Could not save the account", messages });
     }
     finally { setBusy(false); }
+  }
+
+  // Starts a fresh Create Account form after the success modal.
+  function addAnother() {
+    emailChecks.current.clear();
+    setCreated(null);
+    setForm(empty);
+    setStep(0);
+    setReached(0);
+    setConfirmed(false);
+    setPending(null);
+    setErrors({});
+    setTouched({});
+    setTakenEmails({});
   }
 
   const details = [
@@ -302,5 +322,23 @@ export default function AddUser() {
     {picker && <FacilityPickerModal tier={picker} facilities={activeIn(picker === TIERS.bhc ? facilities.bhc : facilities.rhu)} loading={!loaded} selectedId={form.role === picker ? facilityId : null} onSelect={facility => commitFacility(picker, facility)} onClose={() => setPicker(null)} />}
     <ConfirmationModal open={Boolean(pending)} title={pending?.title} description={pending?.description} confirmText={pending?.confirmText} onCancel={() => setPending(null)} onConfirm={() => { pending.apply(); setPending(null); }} />
     <NoticeModal open={Boolean(notice)} title={notice?.title} message={notice?.messages?.join(" ")} onClose={() => setNotice(null)} />
+    {created && <SuccessModal
+      open
+      tone={created.inviteSent ? "success" : "warning"}
+      title={created.inviteSent ? "Account created" : "Account created, invite not sent"}
+      description={created.inviteSent ? "The invite is on its way. They set their own password from it." : "The account exists but the invite email could not be delivered."}
+      onClose={() => navigate("/admin/users")}
+      actions={created.inviteSent
+        ? [{ label: "Add another account", onClick: addAnother }, { label: "Done", variant: "primary", onClick: () => navigate("/admin/users") }]
+        : [{ label: "Done", onClick: () => navigate("/admin/users") }, { label: "Resend from Password & Invites", variant: "primary", onClick: () => navigate("/admin/password-reset-requests?tab=invites") }]}
+    >
+      <dl className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50 text-[13px]">
+        {[["Name", created.name], ["Email", created.email], ...(created.inviteSent ? [["Role", created.role], ["Facility", created.facility]] : []), ["Invite", created.inviteSent ? "Sent · expires in 48 hours" : "Not sent"]].map(([label, value]) =>
+          <div key={label} className="flex justify-between gap-4 px-3 py-2">
+            <dt className="text-slate-500">{label}</dt>
+            <dd className={`min-w-0 break-words text-right font-semibold ${label === "Invite" && !created.inviteSent ? "text-red-700" : "text-slate-800"}`}>{value || "—"}</dd>
+          </div>)}
+      </dl>
+    </SuccessModal>}
   </DashboardLayout>;
 }
