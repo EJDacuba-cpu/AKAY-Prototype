@@ -2,6 +2,7 @@ import { useState } from "react";
 import { KeyRound, Search, ShieldCheck } from "lucide-react";
 import {
   ActionMenu,
+  FixedTable,
   ListToolbar,
   ModalButton,
   ModalShell,
@@ -12,6 +13,7 @@ import { STATUS_OPTIONS } from "../../../utils/accessRequestStatus";
 import { roleFor } from "../../../utils/staffRoles";
 import { formatDisplayValue } from "../../../utils/formatters";
 import AccessStatusBadge from "./AccessStatusBadge";
+import usePagedRows from "../../../hooks/usePagedRows";
 
 export const DEFAULT_FILTERS = { search: "", status: "all" };
 
@@ -49,6 +51,7 @@ export default function AccessRequestTable({
   detailsOf = () => [],
 }) {
   const [selected, setSelected] = useState(null);
+  const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
 
   const activeFilters = [
     filters.status !== "all" && {
@@ -75,7 +78,7 @@ export default function AccessRequestTable({
             onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
           />
 
-          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold text-[#0F172A]">{heading}</h2>
@@ -90,8 +93,8 @@ export default function AccessRequestTable({
               </div>
             )}
 
-            <div className="hidden flex-1 overflow-x-auto md:block">
-              <table className="w-full min-w-[980px] text-left text-[13px]">
+            <div className="hidden md:block">
+              <FixedTable minWidth="min-w-[980px]">
                 <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                   <tr>
                     {columns.map((column) => (
@@ -109,7 +112,7 @@ export default function AccessRequestTable({
                       </td>
                     </tr>
                   ) : (
-                    rows.map((row) => (
+                    pageRows.map((row) => (
                       <tr key={row.id} className="hover:bg-[#FAFBFD]">
                         {columns.map((column) => (
                           <td key={column.key} className={`px-4 py-3.5 ${column.className || "text-[#64748B]"}`}>
@@ -126,21 +129,21 @@ export default function AccessRequestTable({
                     ))
                   )}
                 </tbody>
-              </table>
+              </FixedTable>
             </div>
 
             <div className="divide-y divide-[#F3F4F6] md:hidden">
               {rows.length === 0 ? (
                 <EmptyState message={emptyMessage} />
               ) : (
-                rows.map((row) => (
+                pageRows.map((row) => (
                   <RowCard key={row.id} row={row} columns={columns} {...actionProps} />
                 ))
               )}
             </div>
 
             <div className="mt-auto">
-              <TablePagination currentPage={1} totalPages={1} />
+              <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </div>
         </>
@@ -207,7 +210,7 @@ function titleCase(key) {
 
 function EmptyState({ message, tall = false }) {
   return (
-    <div className={`flex flex-col items-center justify-center px-4 ${tall ? "min-h-[260px]" : "py-12"}`}>
+    <div className={`flex flex-col items-center justify-center px-4 ${tall ? "min-h-[var(--akay-empty-h,260px)]" : "py-12"}`}>
       <Search size={22} className="mb-2 text-[#CBD5E1]" />
       <p className="text-sm font-semibold text-[#64748B]">{message}</p>
     </div>
