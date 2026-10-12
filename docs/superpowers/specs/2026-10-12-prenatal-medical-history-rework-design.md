@@ -25,8 +25,8 @@ again elsewhere or cannot be answered by a BHC worker:
    The TB monitoring section is unrelated and unchanged (still RHU-activated).
 2. Age risk and Height risk become computed flags with no checkbox.
 3. The midwife is told about them with a **modal**, not a banner.
-4. The remaining pregnancy-only items stay as manual checkboxes, prefilled from the previous
-   prenatal visit.
+4. The remaining pregnancy-only items stay as plain manual checkboxes. Prefilling them from the
+   previous prenatal visit was proposed and deferred by the user.
 5. The Patient Overview already shows height (vitals tiles / summary panel); nothing is added there.
 
 ## Design
@@ -75,9 +75,8 @@ details, Review and older records keep working. The Review step's Prenatal secti
 
 - "Medical History" section is renamed **Obstetric Risk Factors** with four checkboxes:
   `grandMultipara`, `recurrentMiscarriageOrStillbirth`, `postpartumHemorrhage`, `previousCs`.
-- Prefill: on a visit that is not the patient's first prenatal record, the four values start from
-  the patient's most recent prenatal record, each labelled "From last visit". The worker can change
-  them. Nothing is written back to earlier records.
+- The four stay plain manual checkboxes, blank on every visit, exactly as today. Carrying them
+  forward from the previous prenatal visit is deferred (see Out of scope).
 - The `previousPregnancyComplications` parent flag keeps its current behaviour
   (`applyRiskFactorChange`). The `medicalConditions` parent is no longer set by new records.
 - `MATERNAL_RISK_GROUPS` in `prenatalForm.js` is reduced accordingly.
@@ -97,6 +96,8 @@ Records that already carry the removed keys keep them. Record details still rend
 
 ## Out of scope
 
+- Prefilling the four obstetric checkboxes from the patient's previous prenatal record ("From last
+  visit"). Deferred; the user will decide later.
 - Any change to Patient Background, condition status, or TB monitoring.
 - Gravida/Para-derived GRANDMULTI.
 - A persisted "maternal enrollment" record. The maternal state stays derived in Care Tracking.
@@ -109,8 +110,7 @@ Records that already carry the removed keys keep them. Record details still rend
 - Unit: the acknowledged-flag logic (opens once, not for false/missing, not after acknowledge).
 - Unit: `MATERNAL_RISK_GROUPS` contains only the four obstetric items; `applyRiskFactorChange`
   parent behaviour unchanged for `previousCs`.
-- Unit: prefill takes the latest prenatal record and ignores non-prenatal ones.
 - Backend feature test: a draft with a removed key does not persist it; with `ageRisk`/`heightRisk`
   and obstetric keys it does (extend `PrenatalFormFieldsTest`).
 - Existing record-details rendering of an old record containing `diabetes: true` is unchanged.
-- Manual browser check of the first-visit and second-visit flows.
+- Manual browser check of the first-visit flow.
