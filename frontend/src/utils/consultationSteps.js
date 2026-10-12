@@ -5,16 +5,16 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *
  *   Patient Interview
  *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
+ *       -> Service Details: one screen per selected service (Prenatal / Family
+ *          Planning / EPI), only when a service is selected
  *       -> Medication, Treatment & Next Steps (existing monitoring, Actions Taken
  *          and medicines, Schedule BHC Follow-up / Refer to RHU, and Reporting)
  *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Finalize
  *
- * The service forms (Prenatal / Family Planning / EPI) are NOT part of that
- * chain. Patient Interview is the hub: the worker ticks the services in the
- * Barangay Health Services panel, opens each service's form from there, and a
- * finished form returns to where it was opened (the hub, or Review when edited
- * from there). The panel shows each service as Completed / Incomplete.
+ * The services are ticked in the Barangay Health Services panel on Patient
+ * Interview; their forms follow Physical Examination, so the visit's vital
+ * signs (height included) are known when a service form opens.
  *
  * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI and the
  * Patient Background. The interview step's key is INTERVIEW_STEP.
@@ -112,14 +112,17 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 }
 
 /**
- * The global steps, one heading each. The service forms are never listed: they
- * are a detour from Patient Interview (see the header), so the steps are
- * the same whichever services are selected.
+ * The global steps, one heading each. However many services are selected they
+ * share the one Service Details step, which is listed only when there is at
+ * least one.
  */
-export function buildConsultationSteps({ monitoringDetailKeys = [] } = {}) {
+export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys = [] } = {}) {
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
     { key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" },
+    ...(programSteps.length > 0
+      ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
+      : []),
     { key: NEXT_STEP, phase: "next", label: "Medication, Treatment & Next Steps" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(monitoringDetailKeys.length > 0
@@ -166,34 +169,19 @@ export function resolveStepHeading({
 }
 
 /**
- * The screens Next / Previous walk through in the form phase. The service forms
- * are deliberately absent: they are opened from the first step and return to
- * where they were opened (see getServiceFormReturnTarget).
+ * The screens Next / Previous walk through in the form phase: Interview,
+ * Physical Examination, then each selected service's form in program order.
  */
-export function getFormSequence() {
-  return [INTERVIEW_STEP, ASSESSMENT_STEP];
+export function getFormSequence(programSteps = []) {
+  return [INTERVIEW_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key)];
 }
 
-/**
- * Where a finished (or abandoned) service form goes back to: Review when it
- * was opened from Review's Edit, otherwise the first step - the hub the
- * services are chosen on. Any other origin (a draft resumed inside a service
- * form, a stray key) also lands on the hub.
- */
-export function getServiceFormReturnTarget(origin) {
-  return origin === REVIEW_STEP ? REVIEW_STEP : INTERVIEW_STEP;
-}
-
-/**
- * Every screen in order, used to rank validation errors. The service forms rank
- * right after the first step, where they are opened from, so a Save that finds
- * a service form incomplete sends the worker there before later screens.
- */
+/** Every screen in order, used to rank validation errors. */
 export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
   return [
     INTERVIEW_STEP,
-    ...programSteps.map((step) => step.key),
     ASSESSMENT_STEP,
+    ...programSteps.map((step) => step.key),
     NEXT_STEP,
     ...(monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,

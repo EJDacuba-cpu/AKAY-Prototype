@@ -15,7 +15,6 @@ import {
   remapServerErrorKeys,
   getErrorOwnerStepKey,
   getFormSequence,
-  getServiceFormReturnTarget,
   getGlobalStepKey,
   getNextStepKey,
   getPreviousStepKey,
@@ -34,9 +33,8 @@ const FP = programStepKey("Family Planning");
 const EPI = programStepKey("Immunization");
 
 /** Every screen from Interview to Review, following Next the way the page does. */
-function walkForward() {
-  // The service forms are a detour from the first step, not part of Next.
-  const sequence = getFormSequence();
+function walkForward(programs = [], primary = "") {
+  const sequence = getFormSequence(getProgramFormSteps(programs, primary));
   const screens = [sequence[0]];
   let current = sequence[0];
   while (current !== NEXT_STEP) {
@@ -57,38 +55,46 @@ test("GENERAL CONSULTATION: Interview → Physical Examination → Medication, T
   ]);
 });
 
-test("SERVICES are a detour: ticking Maternal and EPI does not add a Next/Previous step", () => {
-  const expected = [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, REVIEW_STEP];
-  assert.deepEqual(walkForward(["Maternal"], "Maternal"), expected);
-  assert.deepEqual(walkForward(["Maternal", "EPI"], "Maternal"), expected);
+test("SERVICES come after Physical Examination, primary first", () => {
+  assert.deepEqual(walkForward(["Maternal"], "Maternal"), [
+    INTERVIEW_STEP, ASSESSMENT_STEP, MATERNAL, NEXT_STEP, REVIEW_STEP,
+  ]);
+  assert.deepEqual(walkForward(["EPI", "Maternal"], "Maternal"), [
+    INTERVIEW_STEP, ASSESSMENT_STEP, MATERNAL, EPI, NEXT_STEP, REVIEW_STEP,
+  ]);
+  assert.deepEqual(walkForward(["EPI", "Maternal"], "EPI"), [
+    INTERVIEW_STEP, ASSESSMENT_STEP, EPI, MATERNAL, NEXT_STEP, REVIEW_STEP,
+  ]);
 });
 
-test("Service Details is never a global step, with or without services", () => {
-  for (const programs of [[], ["EPI"], ["Maternal", "EPI"]]) {
-    const steps = buildConsultationSteps({ selectedPrograms: programs, primaryProgram: programs[0] || "" });
-    assert.equal(keysOf(steps).includes(PROGRAMS_STEP), false);
+test("Service Details is a global step only when a service is selected", () => {
+  const none = buildConsultationSteps({ programSteps: [] });
+  assert.equal(keysOf(none).includes(PROGRAMS_STEP), false);
+  for (const programs of [["EPI"], ["Maternal", "EPI"]]) {
+    const steps = buildConsultationSteps({ programSteps: getProgramFormSteps(programs, programs[0]) });
+    const keys = keysOf(steps);
+    const index = keys.indexOf(PROGRAMS_STEP);
+    assert.ok(index > 0, programs.join());
+    assert.equal(keys[index - 1], ASSESSMENT_STEP);
+    assert.equal(keys[index + 1], NEXT_STEP);
+    const step = steps[index];
+    assert.equal(step.label, "Service Details");
+    assert.equal(step.phase, "form");
   }
-  assert.equal(getNextStepKey(getFormSequence([]), ASSESSMENT_STEP), NEXT_STEP);
 });
 
 test("BACKWARD: Previous reverses the exact forward order, out to patient context", () => {
-  const sequence = getFormSequence();
+  const sequence = getFormSequence(getProgramFormSteps(["Maternal", "EPI"], "Maternal"));
   const back = [];
-  let current = ASSESSMENT_STEP;
+  let current = EPI;
   while (current !== EXIT_STEP) {
     back.push(current);
     current = getPreviousStepKey(sequence, current);
   }
-  assert.deepEqual(back, [ASSESSMENT_STEP, INTERVIEW_STEP]);
-  assert.equal(getPreviousStepKey(sequence, INTERVIEW_STEP), EXIT_STEP);
-});
-
-test("a finished service form returns to where it was opened: step one, or Review when edited from there", () => {
-  assert.equal(getServiceFormReturnTarget(INTERVIEW_STEP), INTERVIEW_STEP);
-  assert.equal(getServiceFormReturnTarget(REVIEW_STEP), REVIEW_STEP);
-  // Anything else (a draft resumed inside a service form, a stray key) lands on step one.
-  assert.equal(getServiceFormReturnTarget(ASSESSMENT_STEP), INTERVIEW_STEP);
-  assert.equal(getServiceFormReturnTarget(undefined), INTERVIEW_STEP);
+  assert.deepEqual(back, [EPI, MATERNAL, ASSESSMENT_STEP, INTERVIEW_STEP]);
+  // Previous from Medication, Treatment & Next Steps lands on the last form screen.
+  assert.equal(sequence[sequence.length - 1], EPI);
+  assert.equal(getPreviousStepKey(getFormSequence([]), ASSESSMENT_STEP), INTERVIEW_STEP);
 });
 
 test("Previous from Interview exits to patient context", () => {
@@ -99,33 +105,36 @@ test("Next from Physical Examination (no programs) goes to Medication, Treatment
   assert.equal(getNextStepKey(getFormSequence([]), ASSESSMENT_STEP), NEXT_STEP);
 });
 
+test("with services, Next from Physical Examination opens the first form and the last form leads on", () => {
+  const sequence = getFormSequence(getProgramFormSteps(["Maternal", "EPI"], "Maternal"));
+  assert.equal(getNextStepKey(sequence, ASSESSMENT_STEP), MATERNAL);
+  assert.equal(getNextStepKey(sequence, EPI), NEXT_STEP);
+});
+
 /* ── Global steps ────────────────────────────────────────────────────── */
 
 test("the global steps read in the new order with the new names", () => {
   const steps = buildConsultationSteps({
-    selectedPrograms: ["Maternal", "EPI", "Family Planning"],
-    primaryProgram: "Maternal",
+    programSteps: getProgramFormSteps(["Maternal", "EPI", "Family Planning"], "Maternal"),
   });
   assert.deepEqual(
     steps.map((step) => step.label),
     [
       "Patient Interview",
       "Physical Examination",
+      "Service Details",
       "Medication, Treatment & Next Steps",
       "Review & Finalize",
     ],
   );
 });
 
-test("selecting services never changes the global steps", () => {
-  const three = buildConsultationSteps({
-    selectedPrograms: ["Maternal", "EPI", "Family Planning"],
-    primaryProgram: "Maternal",
-  });
-  const one = buildConsultationSteps({ selectedPrograms: ["EPI"], primaryProgram: "EPI" });
-  const none = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" });
+test("one service or three give the same global steps; none lacks only Service Details", () => {
+  const three = buildConsultationSteps({ programSteps: getProgramFormSteps(["Maternal", "EPI", "Family Planning"], "Maternal") });
+  const one = buildConsultationSteps({ programSteps: getProgramFormSteps(["EPI"], "EPI") });
+  const none = buildConsultationSteps({ programSteps: [] });
   assert.deepEqual(keysOf(three), keysOf(one));
-  assert.deepEqual(keysOf(one), keysOf(none));
+  assert.deepEqual(keysOf(none), keysOf(one).filter((key) => key !== PROGRAMS_STEP));
 });
 
 test("every form screen belongs to the form phase", () => {
@@ -143,12 +152,12 @@ test("every program screen maps back to the one Program / Service Details step",
   assert.equal(getGlobalStepKey(INTERVIEW_STEP), INTERVIEW_STEP);
 });
 
-test("step order spans Interview through Review, the service forms right after Interview", () => {
+test("step order spans Interview through Review, the service forms right after Physical Examination", () => {
   assert.deepEqual(getStepOrder(getProgramFormSteps(["Maternal", "EPI"], "Maternal")), [
     INTERVIEW_STEP,
+    ASSESSMENT_STEP,
     MATERNAL,
     EPI,
-    ASSESSMENT_STEP,
     NEXT_STEP,
     REVIEW_STEP,
   ]);
@@ -185,10 +194,10 @@ test("unknown program keys never produce a form", () => {
 });
 
 test("a stored screen that no longer exists falls back to Interview", () => {
-  const sequence = getFormSequence();
   const programs = getProgramFormSteps(["Maternal", "EPI"], "Maternal");
+  const sequence = getFormSequence(programs);
   assert.equal(resolveFormStep(EPI, sequence, programs), EPI); // a selected service form is a valid screen
-  assert.equal(resolveFormStep(EPI, sequence), INTERVIEW_STEP); // ...but only when it is passed in
+  assert.equal(resolveFormStep(EPI, getFormSequence([])), INTERVIEW_STEP); // ...but only when it is selected
   assert.equal(resolveFormStep(FP, sequence, programs), INTERVIEW_STEP); // deselected program
   assert.equal(resolveFormStep("", sequence, programs), INTERVIEW_STEP);
   assert.equal(resolveFormStep("visit", sequence, programs), INTERVIEW_STEP); // old Current Visit key
