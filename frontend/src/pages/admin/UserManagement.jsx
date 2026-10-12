@@ -319,7 +319,7 @@ function AccountActions({ user, onUpdateStatus, onViewDetails, onEdit }) {
 
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 220;
-    const menuHeight = 176;
+    const menuHeight = 132;
     const padding = 12;
 
     let top = rect.bottom + 8;
@@ -382,13 +382,6 @@ function AccountActions({ user, onUpdateStatus, onViewDetails, onEdit }) {
         }}
       >
         <div className="py-1">
-          <div className="border-b border-[#F3F4F6] px-4 py-2">
-            <p className="truncate text-xs font-semibold text-[#111827]">
-              {fullName}
-            </p>
-            <p className="font-mono text-[10px] text-[#9CA3AF]">{user.id}</p>
-          </div>
-
           <button
             type="button"
             onClick={() => {
