@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
+import { Eye, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import AccountDetailsModal from "../../components/features/accounts/AccountDetailsModal";
+import AccountStatusBadge from "../../components/features/accounts/AccountStatusBadge";
 import {
   FixedTable,
   ListToolbar,
@@ -261,18 +263,15 @@ export default function UserManagement() {
   );
 }
 
-function assignmentSummary(user) {
-  const today = new Date().toLocaleDateString("en-CA");
-  const active = (user.facility_assignments || []).filter(a => !a.revoked_at && a.starts_on && a.starts_on.slice(0,10) <= today && (!a.ends_on || a.ends_on.slice(0,10) >= today));
-  return active.length ? active.map(a => a.barangay_health_center?.name || "BHC").join(", ") + " · " + active.length + " active" : "No active assignments";
-}
 function AccountsTable({ users, resetKey, rolesData, onUpdateStatus }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(users, resetKey);
+  const [detailsUser, setDetailsUser] = useState(null);
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-    <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
-    <div className="hidden md:block"><FixedTable minWidth="min-w-[1050px]"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={6} message="No accounts match the current filters."/> : pageRows.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></FixedTable></div>
-    <div className="divide-y divide-slate-100 md:hidden">{pageRows.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
+    <TableHeader title="Account Directory" description="Manage personal accounts and their home facility access." count={users.length}/>
+    <div className="hidden md:block"><FixedTable minWidth="min-w-[900px]"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={5} message="No accounts match the current filters."/> : pageRows.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4"><AccountStatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser}/></td></tr>)}</tbody></FixedTable></div>
+    <div className="divide-y divide-slate-100 md:hidden">{pageRows.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></article>)}</div>
     <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage}/>
+    {detailsUser && <AccountDetailsModal accountId={detailsUser.id} account={detailsUser} rolesData={rolesData} onClose={() => setDetailsUser(null)}/>}
   </div>;
 }
 
@@ -306,7 +305,7 @@ function EmptyRow({ colSpan, message }) {
   );
 }
 
-function AccountActions({ user, onUpdateStatus }) {
+function AccountActions({ user, onUpdateStatus, onViewDetails }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
@@ -387,14 +386,17 @@ function AccountActions({ user, onUpdateStatus }) {
             <p className="font-mono text-[10px] text-[#9CA3AF]">{user.id}</p>
           </div>
 
-          <Link
-            to="/admin/password-reset-requests"
-            onClick={() => setOpen(false)}
+          <button
+            type="button"
+            onClick={() => {
+              onViewDetails(user);
+              setOpen(false);
+            }}
             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
           >
-            <KeyRound size={14} className="text-[#9CA3AF]" />
-            Password & Invites
-          </Link>
+            <Eye size={14} className="text-[#9CA3AF]" />
+            View details
+          </button>
 
           <button
             type="button"
@@ -448,24 +450,6 @@ function RoleBadge({ role }) {
   return (
     <span className="inline-block whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
       {formatDisplayValue(role, "Unassigned")}
-    </span>
-  );
-}
-
-function StatusBadge({ status }) {
-  const displayStatus = formatDisplayValue(status, "Active");
-  const map = {
-    Active: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    Inactive: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
-    >
-      {displayStatus}
     </span>
   );
 }
