@@ -46,22 +46,24 @@ export default function AccessRequestTable({
   const narrowed = Boolean(filters.search) || filters.status !== "all";
 
   return (
-    <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
-      {!loading && (
-        <div className="space-y-5">
-          <ListToolbar
-            heading={toolbarHeading}
-            searchValue={filters.search}
-            onSearchChange={(value) => onFiltersChange({ search: value })}
-            searchPlaceholder={searchPlaceholder}
-            filters={[{ key: "status", label: "Status", value: filters.status, options: FILTER_OPTIONS }]}
-            activeFilterCount={activeFilters.length}
-            activeFilters={activeFilters}
-            onApplyFilters={onFiltersChange}
-            onClearFilters={() => onFiltersChange(DEFAULT_FILTERS)}
-            onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
-          />
+    <div className="space-y-5">
+      {/* Outside the loading area, so the tabs stay on screen (and focusable) while a tab loads. */}
+      <ListToolbar
+        heading={toolbarHeading}
+        searchValue={filters.search}
+        onSearchChange={(value) => onFiltersChange({ search: value })}
+        searchPlaceholder={searchPlaceholder}
+        filters={[{ key: "status", label: "Status", value: filters.status, options: FILTER_OPTIONS }]}
+        activeFilterCount={activeFilters.length}
+        activeFilters={activeFilters}
+        onApplyFilters={onFiltersChange}
+        onClearFilters={() => onFiltersChange(DEFAULT_FILTERS)}
+        onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
+      />
 
+      <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
+        {!loading && (
+        <div className="space-y-5">
           {error && (
             <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-[#B91C1C]">
               {error}
@@ -115,8 +117,9 @@ export default function AccessRequestTable({
             </div>
           )}
         </div>
-      )}
-    </SoftLoadingArea>
+        )}
+      </SoftLoadingArea>
+    </div>
   );
 }
 

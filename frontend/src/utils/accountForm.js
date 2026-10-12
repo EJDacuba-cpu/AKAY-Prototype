@@ -30,12 +30,18 @@ export function validateAccountStep(step, form, { hasFacility, confirmed }) {
   return errors;
 }
 
-/** Name, email and contact number as edited from Account details (the Personal Details rules). */
-export function validateAccountProfile({ name, contact_number, email }) {
+/**
+ * Name, email and contact number as edited from Account details (the Personal Details rules). An account that has
+ * no contact number on file (the admin account, older accounts) may leave it empty; once there is a number it cannot
+ * be cleared, and a typed number must be valid.
+ */
+export function validateAccountProfile({ name, contact_number, email }, account = {}) {
   const errors = {};
   if (!String(name || "").trim()) errors.name = "Enter the full name.";
   if (!isValidEmail(String(email || "").trim())) errors.email = "Enter a valid email address.";
-  if (!isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
+  const hadNumber = Boolean(normalizeContactNumber(account.contact_number));
+  const typedNumber = Boolean(normalizeContactNumber(contact_number));
+  if ((hadNumber || typedNumber) && !isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
   return errors;
 }
 

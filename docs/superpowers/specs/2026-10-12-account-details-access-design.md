@@ -32,7 +32,11 @@ Assumptions (correct me if wrong):
   routing, so they are not edited there; status already has Activate/Deactivate.
 - Changing the email in Users already does the right thing on the server (`UserController::followEmailChange`): an open
   invite on an active account gets a fresh link at the new address and the old link stops working; an inactive account
-  gets no email and its old link is retired; a completed invite is left alone. No backend change.
+  gets no email and its old link is retired; a completed invite is left alone.
+- The same change also moves the account's open password reset requests (Pending, Approved, expired) to the new address; an
+  approved or expired one loses its link, because that link went to the old mailbox, and the MHO can resend it to the new
+  address. Completed and declined requests keep the address they were made with. (Added after the final review found that
+  reset links kept going to the old address; it is the one backend change in this work, in `UserController`.)
 - A row with no allowed control (Complete, Declined, Cancelled) has no ⋯ menu; its status badge and tooltip already say
   why.
 - "Inactive" stays the label for a deactivated account. No change to invite or reset rules, statuses, expiry or emails.
@@ -74,6 +78,8 @@ Assumptions (correct me if wrong):
   for every account, Inactive ones included.
 - Pressing it turns the Name, Email and Contact number rows into inputs with Save and Cancel under them. Other rows stay
   text.
+- An account with no contact number on file (the admin account, older accounts) may leave it empty; once a number is on
+  file it cannot be cleared.
 - Validation matches the account form: Name required ("Enter the full name."); Email a valid address ("Enter a valid email
   address.") not used by another account (checked on blur with `GET /users/email-available?email=&ignore=<id>`, "Email is
   already taken.", and checked again on Save); Contact number a valid mobile number (`09XXXXXXXXX`).
@@ -93,7 +99,7 @@ Assumptions (correct me if wrong):
 
 - Tabs are pill buttons in the `heading` slot of `ListToolbar`, in the same row as Search and Filters, styled like
   Facilities (`bg-[#B91C1C] text-white` active, white inactive, `h-10 rounded-xl px-5 text-sm font-medium`). The page
-  renders the tabs and passes them to the active tab.
+  renders the tabs and passes them to the active tab. The toolbar stays on screen while a tab loads.
 - The tab description is a plain line above the toolbar ("Review requests and send secure one-time reset links. Links
   expire after 60 minutes." / "New accounts set their own password from a one-time invite link. Links expire after 48
   hours."). The card header and shield icon are removed.
@@ -114,7 +120,8 @@ group label appears only when the menu has more than one group.
 | Invite expired | Resend invite · *Other ways to sign in:* Generate temporary password |
 | Temporary password active | *Other ways to sign in:* Generate temporary password |
 | Reset request Pending | Approve · Decline |
-| Reset request Approved or expired | Resend link · Copy link |
+| Reset request Approved | Resend link · Copy link |
+| Reset request expired | Resend link |
 | Complete, Declined, Cancelled | no menu |
 
 ### The modal for each control (D6)
@@ -163,8 +170,8 @@ After any action the list reloads. A failure shows an error toast with the serve
   and a single group without a label), `ACTION_CONFIRM` texts, `actionLabel`.
 - `utils/accountForm.test.js`: profile validation and changes, now including the email (bad format; a case-only change is
   unchanged).
-- Backend: `AccountProfileEditTest` (exists); email-follow behavior is covered by `AccountInviteAdminTest`. No endpoint is
-  added.
+- Backend: `AccountProfileEditTest`; invite follow on an email change is covered by `AccountInviteAdminTest`, and reset
+  request follow by `AccountEmailChangeResetRequestTest`. No endpoint is added.
 - Browser walk-through at desktop and narrow width: Users > View details and the pencil edit (name, email, contact number);
   Password & Invites tabs, menus, each modal that does not send email, the empty state, tab pills in the toolbar row.
 

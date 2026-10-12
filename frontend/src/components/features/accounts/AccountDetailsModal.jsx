@@ -37,7 +37,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
   const emailCheck = useEmailAvailability({ ignoreId: accountId });
 
   const editing = form !== null;
-  const validation = form ? validateAccountProfile(form) : {};
+  const validation = form ? validateAccountProfile(form, current) : {};
   // A server message wins until the field is edited again; an edited field's cleared entry must not hide a local error.
   const emailTaken = form ? emailCheck.isTaken(form.email) : false;
   const errors = {
@@ -63,7 +63,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
   async function save(event) {
     event.preventDefault();
     setTouched({ name: true, email: true, contact_number: true });
-    if (Object.keys(validateAccountProfile(form)).length || !canSave) return;
+    if (Object.keys(validateAccountProfile(form, current)).length || !canSave) return;
 
     setSaving(true);
     setFormError("");

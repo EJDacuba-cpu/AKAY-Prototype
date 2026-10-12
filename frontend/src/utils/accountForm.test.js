@@ -92,3 +92,17 @@ test("profile changes send only what changed", () => {
   assert.deepEqual(profileChanges(account, { ...same, contact_number: "0918 000 0000" }), { contact_number: "09180000000" });
   assert.deepEqual(profileChanges(account, { ...same, email: " New@Example.test " }), { email: "New@Example.test" });
 });
+
+test("an account without a contact number can be edited without inventing one", () => {
+  const noNumber = { name: "MHO", contact_number: null, email: "mho@example.test" };
+  const form = { name: "MHO Updated", contact_number: "", email: "mho@example.test" };
+  assert.deepEqual(validateAccountProfile(form, noNumber), {});
+  assert.deepEqual(profileChanges(noNumber, form), { name: "MHO Updated" });
+});
+
+test("a number that was set cannot be cleared, and a typed number must still be valid", () => {
+  const withNumber = { name: "Ana", contact_number: "09171234567", email: "ana@example.test" };
+  assert.deepEqual(validateAccountProfile({ ...withNumber, contact_number: "" }, withNumber), { contact_number: "Enter mobile number." });
+  const noNumber = { ...withNumber, contact_number: null };
+  assert.deepEqual(validateAccountProfile({ ...withNumber, contact_number: "123" }, noNumber), { contact_number: "Enter mobile number." });
+});
