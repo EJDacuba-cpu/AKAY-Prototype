@@ -74,6 +74,7 @@ data: {
 ### Definitions
 
 "In period" means the timestamp is between `period.from` and `period.to`. "Now" values ignore the period.
+A referral's date is `referral_datetime`, or `created_at` when `referral_datetime` is empty (the column is nullable).
 
 | Field | Rule | Scope |
 |---|---|---|
@@ -139,8 +140,9 @@ cards and the "Inventory Alerts" list (which only saw the first 25 medicines) ar
 - The period lives in the URL: `/admin/dashboard?period=week`. Invalid or missing → `month`. Changing it uses
   `replace` so the back button is not flooded.
 - Loading and failure follow the Phase 1 rules: the summary uses `PageStateWrapper skeleton="dashboard"` (full-page
-  skeleton / full-page `ConnectionErrorState`); recent activity and doctors use `SectionSkeleton` and
-  `ConnectionErrorState size="compact"` inside their own section.
+  skeleton / full-page `ConnectionErrorState`); recent activity and doctors use `InlineSpinner` (the shared
+  `SectionSkeleton` is Loading Phase 2 and does not exist yet) and `ConnectionErrorState size="compact"` inside their
+  own section.
 
 ### Needs attention strip
 
