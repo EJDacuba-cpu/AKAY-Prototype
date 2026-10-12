@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  FixedTable,
   ListToolbar,
   SoftLoadingArea,
   TablePagination,
@@ -216,7 +217,7 @@ export default function AuditLogs() {
           )}
 
           {!isLoading && (
-          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -229,8 +230,7 @@ export default function AuditLogs() {
               </div>
             </div>
 
-            <div className="w-full flex-1 overflow-x-auto">
-              <table className="w-full min-w-[1050px] text-left">
+            <FixedTable minWidth="min-w-[1050px]">
                 <thead>
                   <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                     <th className="px-6 py-3">Log ID</th>
@@ -251,7 +251,7 @@ export default function AuditLogs() {
                         colSpan={8}
                         className="px-6 py-0 text-center text-sm text-[#B91C1C]"
                       >
-                        <div className="flex min-h-[260px] items-center justify-center">
+                        <div className="flex min-h-[var(--akay-empty-h,260px)] items-center justify-center">
                           {loadError}
                         </div>
                       </td>
@@ -262,7 +262,7 @@ export default function AuditLogs() {
                         colSpan={8}
                         className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
                       >
-                        <div className="flex min-h-[260px] items-center justify-center">
+                        <div className="flex min-h-[var(--akay-empty-h,260px)] items-center justify-center">
                           No audit logs found.
                         </div>
                       </td>
@@ -310,8 +310,7 @@ export default function AuditLogs() {
                     ))
                   )}
                 </tbody>
-              </table>
-            </div>
+            </FixedTable>
 
             {!isLoading && !loadError && (
               <TablePagination

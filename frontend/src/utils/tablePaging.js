@@ -2,8 +2,6 @@
 export const TABLE_PAGE_SIZE = 10;
 export const TABLE_ROW_HEIGHT = 56;
 export const TABLE_HEAD_HEIGHT = 44;
-// Room for the horizontal scrollbar under a fixed-height table body.
-export const TABLE_SCROLLBAR_ALLOWANCE = 8;
 
 // Card lists load more instead of paging: Patients is 2 columns x 5 rows, Facilities fills 1, 2 or 3 columns.
 export const PATIENTS_LOAD_BATCH = 10;
@@ -27,7 +25,7 @@ export function sliceRows(rows, page, pageSize = TABLE_PAGE_SIZE) {
 }
 
 export function tableBodyHeight(pageSize = TABLE_PAGE_SIZE) {
-  return TABLE_HEAD_HEIGHT + pageSize * TABLE_ROW_HEIGHT + TABLE_SCROLLBAR_ALLOWANCE;
+  return TABLE_HEAD_HEIGHT + pageSize * TABLE_ROW_HEIGHT;
 }
 
 export function tableEmptyHeight(pageSize = TABLE_PAGE_SIZE) {

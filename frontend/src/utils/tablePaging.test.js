@@ -39,9 +39,9 @@ test("sliceRows returns ten rows per page and falls back to the last page", () =
 });
 
 test("table heights follow the 44px header and 56px rows", () => {
-  assert.equal(tableBodyHeight(), 612);
+  assert.equal(tableBodyHeight(), 604);
   assert.equal(tableEmptyHeight(), 560);
-  assert.equal(tableBodyHeight(2), 164);
+  assert.equal(tableBodyHeight(2), 156);
 });
 
 test("nextVisibleCount and hasMoreItems drive the Load more button", () => {
