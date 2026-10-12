@@ -19,7 +19,7 @@ const FILTER_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_OPTIO
 /**
  * The shared list for both Password & Invites tabs: toolbar (the page's tabs go in `toolbarHeading`),
  * desktop table and mobile cards. Statuses come from `statusOf` (accessRequestStatus.js); each row's single ⋯ menu
- * is `menuFor(row)`, a list of `ActionMenu` entries (empty means the row has no menu). A list with no rows shows a
+ * is `menuFor(row)`, a list of `ActionMenu` entries (every row has the menu; unavailable controls are greyed). A list with no rows shows a
  * centered message instead of the card, as Facilities does.
  */
 export default function AccessRequestTable({
@@ -123,15 +123,21 @@ export default function AccessRequestTable({
   );
 }
 
+const NOT_AVAILABLE = "Not available for this status.";
+
 /**
- * The menu entries for a row: its allowed controls in groups. A group label ("Other ways to sign in") is drawn
- * only when the menu has more than one group. `onPick(action)` runs when a control is chosen.
+ * The menu entries for a row: every control of the tab in groups, greyed (and not clickable) when the row's status
+ * does not allow it. `onPick(action)` runs when an active control is chosen.
  */
 export function menuEntries(kind, statusActions, onPick) {
-  const sections = menuSections(statusActions);
-  return sections.flatMap((section) => [
-    ...(section.label && sections.length > 1 ? [{ section: section.label }] : []),
-    ...section.actions.map((action) => ({ label: actionLabel(kind, action), onClick: () => onPick(action) })),
+  return menuSections(kind, statusActions).flatMap((section) => [
+    ...(section.label ? [{ section: section.label }] : []),
+    ...section.items.map(({ action, enabled }) => ({
+      label: actionLabel(kind, action),
+      onClick: () => onPick(action),
+      disabled: !enabled,
+      title: NOT_AVAILABLE,
+    })),
   ]);
 }
 
@@ -217,12 +223,9 @@ function RowCard({ row, columns, statusOf, menuFor }) {
 }
 
 function RowActions({ row, menuFor }) {
-  const actions = menuFor(row);
-  if (!actions.length) return null;
-
   return (
     <div className="flex items-center justify-end">
-      <ActionMenu title={accountName(row)} subtitle={row.email || row.user?.email} actions={actions} />
+      <ActionMenu title={accountName(row)} subtitle={row.email || row.user?.email} actions={menuFor(row)} />
     </div>
   );
 }

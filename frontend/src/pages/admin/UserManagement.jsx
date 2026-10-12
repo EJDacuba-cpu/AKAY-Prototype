@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
+import { Eye, MoreHorizontal, Pencil, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import AccountDetailsModal from "../../components/features/accounts/AccountDetailsModal";
+import EditAccountModal from "../../components/features/accounts/EditAccountModal";
 import AccountStatusBadge from "../../components/features/accounts/AccountStatusBadge";
 import {
   FixedTable,
@@ -266,12 +267,14 @@ export default function UserManagement() {
 function AccountsTable({ users, resetKey, rolesData, onUpdateStatus }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(users, resetKey);
   const [detailsUser, setDetailsUser] = useState(null);
+  const [editUser, setEditUser] = useState(null);
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <TableHeader title="Account Directory" description="Manage personal accounts and their home facility access." count={users.length}/>
-    <div className="hidden md:block"><FixedTable minWidth="min-w-[900px]"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={5} message="No accounts match the current filters."/> : pageRows.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4"><AccountStatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser}/></td></tr>)}</tbody></FixedTable></div>
-    <div className="divide-y divide-slate-100 md:hidden">{pageRows.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></article>)}</div>
+    <div className="hidden md:block"><FixedTable minWidth="min-w-[900px]"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={5} message="No accounts match the current filters."/> : pageRows.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4"><AccountStatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser} onEdit={setEditUser}/></td></tr>)}</tbody></FixedTable></div>
+    <div className="divide-y divide-slate-100 md:hidden">{pageRows.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus} onViewDetails={setDetailsUser} onEdit={setEditUser}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></article>)}</div>
     <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage}/>
     {detailsUser && <AccountDetailsModal accountId={detailsUser.id} account={detailsUser} rolesData={rolesData} onClose={() => setDetailsUser(null)}/>}
+    {editUser && <EditAccountModal accountId={editUser.id} account={editUser} onClose={() => setEditUser(null)}/>}
   </div>;
 }
 
@@ -305,7 +308,7 @@ function EmptyRow({ colSpan, message }) {
   );
 }
 
-function AccountActions({ user, onUpdateStatus, onViewDetails }) {
+function AccountActions({ user, onUpdateStatus, onViewDetails, onEdit }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
@@ -316,7 +319,7 @@ function AccountActions({ user, onUpdateStatus, onViewDetails }) {
 
     const rect = btnRef.current.getBoundingClientRect();
     const menuWidth = 220;
-    const menuHeight = 130;
+    const menuHeight = 176;
     const padding = 12;
 
     let top = rect.bottom + 8;
@@ -396,6 +399,18 @@ function AccountActions({ user, onUpdateStatus, onViewDetails }) {
           >
             <Eye size={14} className="text-[#9CA3AF]" />
             View details
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onEdit(user);
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB] hover:text-[#111827]"
+          >
+            <Pencil size={14} className="text-[#9CA3AF]" />
+            Edit
           </button>
 
           <button

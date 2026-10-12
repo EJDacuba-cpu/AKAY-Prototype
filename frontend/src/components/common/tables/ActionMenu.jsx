@@ -203,11 +203,18 @@ export default function ActionMenu({
             <button
               key={action.label}
               type="button"
+              disabled={action.disabled}
+              title={action.disabled ? action.title : undefined}
               onClick={() => {
+                if (action.disabled) return;
                 closeMenu();
                 action.onClick?.();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold transition-all duration-150 ${
+                action.disabled
+                  ? "cursor-not-allowed bg-[#F8FAFC] text-[#B6BDC8]"
+                  : "text-[#334155] hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+              }`}
             >
               {action.label}
             </button>

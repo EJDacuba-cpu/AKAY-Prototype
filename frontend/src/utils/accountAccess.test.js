@@ -11,47 +11,65 @@ const openInvite = { status: "pending", delivery: "sent", expires_at: hoursFromN
 const resetRow = (extra) => ({ status: "pending", delivery: null, expires_at: null, user: owner, ...extra });
 
 const OTHER = "Other ways to sign in";
-const inviteMenu = (row) => menuSections(inviteStatus(row, now).actions);
-const resetMenu = (row) => menuSections(resetRequestStatus(row, now).actions);
+const inviteMenu = (row) => menuSections("invite", inviteStatus(row, now).actions);
+const resetMenu = (row) => menuSections("reset", resetRequestStatus(row, now).actions);
 
-test("an open invite: Resend, Copy link, then Other ways to sign in with Generate temporary password", () => {
-  assert.deepEqual(inviteMenu(openInvite), [
-    { label: null, actions: ["resend", "copy"] },
-    { label: OTHER, actions: ["temporaryPassword"] },
+/** [[label, [[action, enabled], ...]], ...] so a test reads as the menu does. */
+const view = (sections) => sections.map((section) => [section.label, section.items.map((item) => [item.action, item.enabled])]);
+
+test("an open invite: every invite control is active", () => {
+  assert.deepEqual(view(inviteMenu(openInvite)), [
+    [null, [["resend", true], ["copy", true]]],
+    [OTHER, [["temporaryPassword", true]]],
   ]);
 });
 
-test("an expired invite: Resend, then Generate temporary password", () => {
-  assert.deepEqual(inviteMenu({ ...openInvite, status: "expired" }), [
-    { label: null, actions: ["resend"] },
-    { label: OTHER, actions: ["temporaryPassword"] },
+test("an expired invite: Copy link is greyed, the rest active", () => {
+  assert.deepEqual(view(inviteMenu({ ...openInvite, status: "expired" })), [
+    [null, [["resend", true], ["copy", false]]],
+    [OTHER, [["temporaryPassword", true]]],
   ]);
 });
 
-test("an active temporary password: only Generate temporary password", () => {
+test("an active temporary password: only Generate temporary password is active", () => {
   const invite = { ...openInvite, status: "temporary", temp_password_expires_at: hoursFromNow(30) };
-  assert.deepEqual(inviteMenu(invite), [{ label: OTHER, actions: ["temporaryPassword"] }]);
+  assert.deepEqual(view(inviteMenu(invite)), [
+    [null, [["resend", false], ["copy", false]]],
+    [OTHER, [["temporaryPassword", true]]],
+  ]);
+});
+
+test("a pending reset request: Approve and Decline are active", () => {
+  assert.deepEqual(view(resetMenu(resetRow())), [
+    [null, [["approve", true], ["decline", true], ["resend", false], ["copy", false]]],
+  ]);
+});
+
+test("an approved reset request: Resend link and Copy link are active", () => {
+  const row = resetRow({ status: "approved", delivery: "sent", expires_at: hoursFromNow(1) });
+  assert.deepEqual(view(resetMenu(row)), [
+    [null, [["approve", false], ["decline", false], ["resend", true], ["copy", true]]],
+  ]);
+});
+
+test("an expired reset request: only Resend link is active", () => {
+  const sections = resetMenu(resetRow({ status: "expired" }));
+  assert.deepEqual(sections[0].items.filter((item) => item.enabled).map((item) => item.action), ["resend"]);
+});
+
+test("complete, declined and cancelled rows keep the menu with every control greyed", () => {
+  const allDisabled = (sections) => sections.every((section) => section.items.every((item) => !item.enabled));
+  assert.ok(allDisabled(inviteMenu({ ...openInvite, status: "completed" })));
+  assert.ok(allDisabled(inviteMenu({ ...openInvite, user: { status: "inactive" } })));
+  assert.ok(allDisabled(resetMenu(resetRow({ status: "rejected" }))));
+  assert.ok(allDisabled(resetMenu(resetRow({ user: null }))));
+  assert.equal(inviteMenu({ ...openInvite, status: "completed" }).flatMap((section) => section.items).length, 3);
 });
 
 test("Edit email is never listed", () => {
-  const sections = menuSections(["resend", "copy", "editEmail", "temporaryPassword"]);
-  assert.ok(sections.every((section) => !section.actions.includes("editEmail")));
-});
-
-test("a pending reset request: Approve, Decline", () => {
-  assert.deepEqual(resetMenu(resetRow()), [{ label: null, actions: ["approve", "decline"] }]);
-});
-
-test("an approved reset request: Resend link, Copy link", () => {
-  const row = resetRow({ status: "approved", delivery: "sent", expires_at: hoursFromNow(1) });
-  assert.deepEqual(resetMenu(row), [{ label: null, actions: ["resend", "copy"] }]);
-});
-
-test("complete, declined and cancelled rows have no menu", () => {
-  assert.deepEqual(inviteMenu({ ...openInvite, status: "completed" }), []);
-  assert.deepEqual(inviteMenu({ ...openInvite, user: { status: "inactive" } }), []);
-  assert.deepEqual(resetMenu(resetRow({ status: "rejected" })), []);
-  assert.deepEqual(resetMenu(resetRow({ user: null })), []);
+  const listed = [...menuSections("invite", ["editEmail"]), ...menuSections("reset", ["editEmail"])]
+    .flatMap((section) => section.items.map((item) => item.action));
+  assert.ok(!listed.includes("editEmail"));
 });
 
 test("confirmation copy", () => {

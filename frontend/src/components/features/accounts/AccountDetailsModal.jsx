@@ -1,26 +1,17 @@
-import { useState } from "react";
 import { Link } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { ModalButton, ModalShell } from "../../common";
-import Input from "../../common/atoms/Input";
-import Field from "../access/FieldError";
 import AccountStatusBadge from "./AccountStatusBadge";
-import useEmailAvailability from "../../../hooks/useEmailAvailability";
-import { getAdminAccount, updateAdminAccountProfile } from "../../../services/adminAccountsService";
-import { profileChanges, validateAccountProfile } from "../../../utils/accountForm";
+import { getAdminAccount } from "../../../services/adminAccountsService";
 import { roleLabel } from "../../../utils/accountSetup";
 import { formatUserName } from "../../../utils/formatters";
-import { fieldState } from "../../../utils/fieldState";
 import { queryKeys } from "../../../utils/queryKeys";
 
 /**
- * One account's details, opened from Users. Name, email and contact number can be corrected with the pencil;
- * role, facility and status change access or routing, so they are read-only here.
- * `account` (optional) is shown while the full record loads; `onChanged` runs after any successful save.
+ * One account's details, opened from Users ⋯ > View details. Read-only: corrections are made with Users ⋯ > Edit.
+ * `account` (optional) is shown while the full record loads.
  */
-export default function AccountDetailsModal({ accountId, account, rolesData, onClose, onChanged }) {
-  const queryClient = useQueryClient();
+export default function AccountDetailsModal({ accountId, account, rolesData, onClose }) {
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: queryKeys.adminAccount(accountId),
     queryFn: () => getAdminAccount(accountId),
@@ -28,73 +19,6 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
     retry: false,
   });
   const current = data || account;
-
-  const [form, setForm] = useState(null);
-  const [touched, setTouched] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [serverErrors, setServerErrors] = useState({});
-  const [formError, setFormError] = useState("");
-  const emailCheck = useEmailAvailability({ ignoreId: accountId });
-
-  const editing = form !== null;
-  const validation = form ? validateAccountProfile(form, current) : {};
-  // A server message wins until the field is edited again; an edited field's cleared entry must not hide a local error.
-  const emailTaken = form ? emailCheck.isTaken(form.email) : false;
-  const errors = {
-    name: serverErrors.name || validation.name,
-    email: serverErrors.email || validation.email || (emailTaken ? EMAIL_TAKEN : undefined),
-    contact_number: serverErrors.contact_number || validation.contact_number,
-  };
-  const changes = form && current ? profileChanges(current, form) : {};
-  const canSave = Object.keys(changes).length > 0 && !saving && !(changes.email && emailTaken);
-
-  function startEdit() {
-    setForm({ name: current.name || "", email: current.email || "", contact_number: current.contact_number || "" });
-    setTouched({});
-    setServerErrors({});
-    setFormError("");
-  }
-
-  function setField(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setServerErrors((prev) => ({ ...prev, [field]: undefined }));
-  }
-
-  async function save(event) {
-    event.preventDefault();
-    setTouched({ name: true, email: true, contact_number: true });
-    if (Object.keys(validateAccountProfile(form, current)).length || !canSave) return;
-
-    setSaving(true);
-    setFormError("");
-    try {
-      if (changes.email && (await emailCheck.check(changes.email))) {
-        setServerErrors({ email: EMAIL_TAKEN });
-        return;
-      }
-      const updated = await updateAdminAccountProfile(accountId, changes);
-      queryClient.setQueryData(queryKeys.adminAccount(accountId), updated);
-      queryClient.setQueryData(queryKeys.adminAccounts(), (list) =>
-        Array.isArray(list) ? list.map((item) => (item.id === updated.id ? updated : item)) : list,
-      );
-      onChanged?.();
-      setForm(null);
-    } catch (failure) {
-      const fieldErrors = {
-        name: failure.errors?.name?.[0],
-        email: failure.errors?.email?.[0],
-        contact_number: failure.errors?.contact_number?.[0],
-      };
-      setServerErrors(fieldErrors);
-      setTouched({ name: true, email: true, contact_number: true });
-      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number) {
-        setFormError(failure.message || "The changes could not be saved.");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const isAdmin = current?.backendRole === "admin";
 
   return (
@@ -103,8 +27,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
       subtitle={current?.email || "No email"}
       size="md"
       onClose={onClose}
-      closeDisabled={saving}
-      footer={<ModalButton variant="secondary" onClick={onClose} disabled={saving}>Close</ModalButton>}
+      footer={<ModalButton variant="secondary" onClick={onClose}>Close</ModalButton>}
     >
       {!current && isLoading && <p className="py-6 text-center text-sm text-slate-500">Loading account...</p>}
 
@@ -119,71 +42,12 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 
       {current && (
         <>
-          <div className="flex items-center justify-between">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account</h3>
-            {!editing && (
-              <button
-                type="button"
-                onClick={startEdit}
-                aria-label="Edit name, email and contact number"
-                title="Edit name, email and contact number"
-                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-              >
-                <Pencil size={14} />
-              </button>
-            )}
-          </div>
-
-          {editing && (
-            <form onSubmit={save} noValidate className="mt-2">
-              <Field label="Name" error={touched.name ? errors.name : ""}>
-                <Input
-                  value={form.name}
-                  onChange={(event) => setField("name", event.target.value)}
-                  onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
-                />
-              </Field>
-              <Field
-                label="Email"
-                error={touched.email ? errors.email : ""}
-                state={touched.email ? fieldState({ touched: true, error: errors.email, checking: emailCheck.checking, confirmed: emailCheck.isFree(form.email) }) : undefined}
-              >
-                <Input
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => setField("email", event.target.value)}
-                  onBlur={() => {
-                    setTouched((prev) => ({ ...prev, email: true }));
-                    emailCheck.onBlur(form.email);
-                  }}
-                />
-              </Field>
-              <p className="mb-3 text-xs leading-5 text-slate-500">
-                If this account&apos;s invite is still open, a new invite is sent to the new address and the old link stops working.
-              </p>
-              <Field label="Contact number" error={touched.contact_number ? errors.contact_number : ""}>
-                <Input
-                  type="tel"
-                  inputMode="tel"
-                  value={form.contact_number}
-                  onChange={(event) => setField("contact_number", event.target.value)}
-                  onBlur={() => setTouched((prev) => ({ ...prev, contact_number: true }))}
-                />
-              </Field>
-              {formError && <p role="alert" className="mb-2 text-xs text-red-600">{formError}</p>}
-              <div className="flex justify-end gap-2">
-                <ModalButton onClick={() => setForm(null)} disabled={saving}>Cancel</ModalButton>
-                <ModalButton type="submit" variant="primary" disabled={!canSave}>
-                  {saving ? "Saving..." : "Save"}
-                </ModalButton>
-              </div>
-            </form>
-          )}
+          <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account</h3>
 
           <dl className="divide-y divide-slate-100">
-            {!editing && <Row label="Name">{formatUserName(current, "User Account")}</Row>}
-            {!editing && <Row label="Email">{current.email || "Not recorded"}</Row>}
-            {!editing && <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>}
+            <Row label="Name">{formatUserName(current, "User Account")}</Row>
+            <Row label="Email">{current.email || "Not recorded"}</Row>
+            <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>
             <Row label="Role">{roleLabel(current, rolesData)}</Row>
             <Row label="Facility">{current.facility || "-"}</Row>
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>
@@ -203,8 +67,6 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
     </ModalShell>
   );
 }
-
-const EMAIL_TAKEN = "Email is already taken.";
 
 function Row({ label, children }) {
   return (

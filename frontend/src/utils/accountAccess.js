@@ -1,23 +1,25 @@
 const OTHER_WAYS = "Other ways to sign in";
 
-// The first group is the everyday decisions and link actions, in menu order; temporary password is its own group.
-const MAIN_ACTIONS = ["approve", "decline", "resend", "copy"];
-const OTHER_ACTIONS = ["temporaryPassword"];
+// Every control of each tab, in menu order. The menu always lists all of them; the row's status decides which are active.
+const MENU = {
+  invite: [
+    { label: null, actions: ["resend", "copy"] },
+    { label: OTHER_WAYS, actions: ["temporaryPassword"] },
+  ],
+  reset: [{ label: null, actions: ["approve", "decline", "resend", "copy"] }],
+};
 
 /**
- * The ⋯ menu of a Password & Invites row: which controls the row's status allows, in groups. `statusActions` is
- * the `actions` list from `inviteStatus` / `resetRequestStatus`; Edit email is not offered here (it lives in Users).
- * No groups means the row has no menu.
+ * The ⋯ menu of a Password & Invites row: all controls for the tab, grouped, each `enabled` only when the row's status
+ * allows it. `statusActions` is the `actions` list from `inviteStatus` / `resetRequestStatus`; Edit email is never listed
+ * (it lives in Users). A row with nothing allowed (Complete, Declined, Cancelled) still gets the menu, all greyed.
  */
-export function menuSections(statusActions) {
+export function menuSections(kind, statusActions) {
   const allowed = statusActions || [];
-  const main = MAIN_ACTIONS.filter((action) => allowed.includes(action));
-  const other = OTHER_ACTIONS.filter((action) => allowed.includes(action));
-
-  const sections = [];
-  if (main.length) sections.push({ label: null, actions: main });
-  if (other.length) sections.push({ label: OTHER_WAYS, actions: other });
-  return sections;
+  return (MENU[kind] || []).map((group) => ({
+    label: group.label,
+    items: group.actions.map((action) => ({ action, enabled: allowed.includes(action) })),
+  }));
 }
 
 const NEW_LINK = "A new link is emailed to {email}. The previous link stops working.";
