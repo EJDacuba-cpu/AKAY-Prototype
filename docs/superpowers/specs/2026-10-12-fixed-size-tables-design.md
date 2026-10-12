@@ -38,15 +38,17 @@ once.
 | `pageCount`, `clampPage`, `sliceRows`, `fillerRowCount` | `utils/tablePaging.js` | Pure functions, unit tested with `node --test` |
 | `usePagedRows(rows, resetKey)` | `hooks/usePagedRows.js` | Returns `{ page, setPage, totalPages, pageRows }`. Goes back to page 1 when `resetKey` (search/filter state) changes; clamps the page when the row count shrinks |
 | `useLoadMore(items, batchSize, resetKey)` | `hooks/useLoadMore.js` | Returns `{ visibleItems, hasMore, loadMore }`; resets to the first batch when `resetKey` changes |
-| `LoadMoreButton` | `components/common/pagination/LoadMoreButton.jsx` | Button under a card grid, hidden when nothing is left, shows a busy state while loading |
-| `ModuleTableCard` (changed) | `components/common/tables` | Table body is a fixed height = header + 10 rows. The empty state is centred inside that same height. Pagination footer always sits at the bottom |
+| `LoadMoreButton` | `components/common/pagination/LoadMoreButton.jsx` | Button under a card grid; the caller renders it only while more items remain |
+| `FixedTable` | `components/common/tables/FixedTable.jsx` | The scroll wrapper + `<table>` with a fixed height = header + 10 rows, uniform 56px rows and `…` truncation. The one place the height rule lives |
+| `ModuleTableCard` (changed) | `components/common/tables` | New opt-in `fixedRows` prop renders its body with `FixedTable`. Cards that are not paged (for example the Family Planning summary tables) keep today's behaviour |
 
 Fixed height is done with a fixed-height body, not filler rows, so empty space is plain white (agreed: no guide lines).
 Rows use `h-14` (56px) with `truncate` on each cell and at most two lines in a cell.
 
 Hand-rolled cards (`min-h-[420px]` wrappers on Account Directory, Audit Logs, Medicine Availability, Medicine
-Management, Password & Invites, Follow-ups, Health Records) move onto `ModuleTableCard` so the height rule lives in one
-place.
+Management, Password & Invites, Follow-ups, Health Records) keep their own header and mobile card view but swap their
+table body for `FixedTable`, so the height rule lives in one place without forcing their different layouts onto
+`ModuleTableCard`.
 
 ### 2. Screens
 
