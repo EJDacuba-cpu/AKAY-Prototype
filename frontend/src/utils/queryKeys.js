@@ -39,6 +39,7 @@ export const queryKeys = {
   ],
   incomingReferrals: (role = "rhu") => ["incoming-referrals", role],
   dashboardSummary: (role = "bhc") => ["dashboard-summary", role],
+  adminDashboard: (period) => ["admin-dashboard", period],
   medicineAvailability: (role = "bhc") => ["medicine-availability", role],
   medicineTransactions: (user = {}, medicineId = "", page) => [
     "medicine-transactions",
