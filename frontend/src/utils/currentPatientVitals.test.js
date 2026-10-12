@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getCurrentVitalRecord,
+  getLatestRecordedHeight,
   getLatestVitalRecord,
   getVitalRecordDate,
   isVitalRecordToday,
@@ -66,4 +67,17 @@ test("latest vitals ignore the day and skip records with no measurements", () =>
   assert.equal(isVitalRecordToday(newer, now), false);
   assert.equal(isVitalRecordToday({ dateRecorded: "2026-09-24T09:00:00+08:00", pulse: 70 }, now), true);
   assert.equal(isVitalRecordToday(null, now), false);
+});
+
+test("last recorded height ignores the day and skips records without a usable height", () => {
+  const older = { dateRecorded: "2026-08-12T08:00:00+08:00", height: "150" };
+  const newer = { dateRecorded: "2026-09-18T08:00:00+08:00", height: 152.5 };
+  const noHeight = { dateRecorded: "2026-09-22T08:00:00+08:00", weight: 60 };
+  const zero = { dateRecorded: "2026-09-23T08:00:00+08:00", height: "0" };
+  const junk = { dateRecorded: "2026-09-24T08:00:00+08:00", height: "abc" };
+  assert.deepEqual(getLatestRecordedHeight([older, noHeight, newer, zero, junk]), { value: 152.5, date: "2026-09-18" });
+  assert.deepEqual(getLatestRecordedHeight([older]), { value: 150, date: "2026-08-12" });
+  assert.equal(getLatestRecordedHeight([noHeight, zero, junk]), null);
+  assert.equal(getLatestRecordedHeight([]), null);
+  assert.equal(getLatestRecordedHeight(undefined), null);
 });

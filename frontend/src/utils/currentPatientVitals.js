@@ -75,6 +75,30 @@ export function getLatestVitalRecord(records = []) {
   return latest;
 }
 
+/**
+ * The patient's most recent usable height (finite, above 0), whatever day it
+ * was taken, with its clinic-local date. Prenatal risk uses it before this
+ * visit's own height has been measured.
+ */
+export function getLatestRecordedHeight(records = []) {
+  let latest = null;
+  let latestTime = -Infinity;
+
+  for (const record of records || []) {
+    if (!record || !hasVitalValue(record.height)) continue;
+    const value = Number(record.height);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    const date = getVitalRecordDate(record);
+    if (!date) continue;
+    if (date.getTime() > latestTime) {
+      latest = { value, date: dayFormatter.format(date) };
+      latestTime = date.getTime();
+    }
+  }
+
+  return latest;
+}
+
 /** True when the record's measurement was taken on the clinic's current day. */
 export function isVitalRecordToday(record, now = new Date()) {
   const date = record ? getVitalRecordDate(record) : null;
