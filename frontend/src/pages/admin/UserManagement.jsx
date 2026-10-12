@@ -227,7 +227,7 @@ export default function UserManagement() {
         onRetry={() => refetch()}
         loadingMessage="Loading accounts..."
       >
-      <div className="space-y-6">
+      <div className="mx-auto w-full max-w-[1500px] space-y-6">
         {isFetching && users.length > 0 && (
           <div className="flex justify-end">
             <RefreshingIndicator label="Updating accounts..." />

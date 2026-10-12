@@ -126,6 +126,7 @@ export function TopLoadingBar({
 export function inferLoadingSkeletonVariant(message = "") {
   const text = String(message).toLowerCase();
 
+  if (text.includes("facilit")) return "facilities";
   if (text.includes("follow")) return "follow-ups";
   if (text.includes("medicine")) return "medicine";
   if (text.includes("report")) return "reports";
@@ -403,6 +404,40 @@ export function MedicineInventorySkeleton({
   );
 }
 
+export function FacilitiesSkeleton({ message = "Loading facilities..." }) {
+  return (
+    <SkeletonRoot message={message}>
+      <div className="flex flex-wrap items-center gap-2">
+        <SkeletonBlock className="h-10 w-36 rounded-lg" />
+        <SkeletonBlock className="h-10 w-36 rounded-lg" />
+        <SkeletonBlock className="ml-auto h-10 w-32 rounded-lg" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className={`${cardClass} p-5`}>
+            <div className="flex items-start justify-between gap-3">
+              <SkeletonBlock className="h-4 w-40" />
+              <SkeletonBlock className="h-5 w-14 rounded-full" />
+            </div>
+            <SkeletonBlock className="mt-3 h-3 w-full" />
+            <div className="mt-5 space-y-3">
+              <div>
+                <SkeletonBlock className="h-2.5 w-28" />
+                <SkeletonBlock className="mt-2 h-3.5 w-36" />
+              </div>
+              <div>
+                <SkeletonBlock className="h-2.5 w-28" />
+                <SkeletonBlock className="mt-2 h-3.5 w-44" />
+              </div>
+            </div>
+            <SkeletonBlock className="mt-5 h-4 w-24" />
+          </div>
+        ))}
+      </div>
+    </SkeletonRoot>
+  );
+}
+
 export function ReportsSkeleton({ message = "Loading reports..." }) {
   return (
     <SkeletonRoot message={message}>
@@ -653,6 +688,7 @@ export function PageSkeletonLoader({
     "reports",
     "patient-details",
     "health-records",
+    "facilities",
   ];
   const requestedVariant = variant || inferLoadingSkeletonVariant(message);
   const skeletonVariant = supportedVariants.includes(requestedVariant)
@@ -676,6 +712,9 @@ export function PageSkeletonLoader({
       )}
       {skeletonVariant === "health-records" && (
         <HealthRecordsSkeleton message={message} />
+      )}
+      {skeletonVariant === "facilities" && (
+        <FacilitiesSkeleton message={message} />
       )}
     </div>
   );

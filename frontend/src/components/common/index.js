@@ -50,6 +50,7 @@ export { default as RefreshingIndicator } from "./loading/RefreshingIndicator";
 export {
   DashboardSkeleton,
   DetailsSkeleton,
+  FacilitiesSkeleton,
   FormSkeleton,
   FollowUpsSkeleton,
   HealthRecordFormSkeleton,

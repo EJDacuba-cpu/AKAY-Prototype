@@ -33,38 +33,40 @@ export default function PasswordResetRequests() {
 
   return (
     <DashboardLayout role="admin" title="Password & Invites">
-      <div className="mb-4 border-b border-slate-200">
-        <nav className="-mb-px flex overflow-x-auto" role="tablist" aria-label="Password & Invites">
-          {TABS.map((tab) => {
-            const active = tab.id === activeTab;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                id={`access-tab-${tab.id}`}
-                aria-selected={active}
-                aria-controls="access-tabpanel"
-                onClick={() => selectTab(tab.id)}
-                className={`whitespace-nowrap border-b-2 px-4 py-3 text-xs font-semibold transition-colors ${
-                  active
-                    ? "border-[#B91C1C] text-[#B91C1C]"
-                    : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+      <div className="mx-auto w-full max-w-[1500px]">
+        <div className="mb-4 border-b border-slate-200">
+          <nav className="-mb-px flex overflow-x-auto" role="tablist" aria-label="Password & Invites">
+            {TABS.map((tab) => {
+              const active = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`access-tab-${tab.id}`}
+                  aria-selected={active}
+                  aria-controls="access-tabpanel"
+                  onClick={() => selectTab(tab.id)}
+                  className={`whitespace-nowrap border-b-2 px-4 py-3 text-xs font-semibold transition-colors ${
+                    active
+                      ? "border-[#B91C1C] text-[#B91C1C]"
+                      : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
 
-      <div role="tabpanel" id="access-tabpanel" aria-labelledby={`access-tab-${activeTab}`}>
-        {activeTab === "invites" ? (
-          <InvitesTab key="invites" rolesData={rolesData} />
-        ) : (
-          <ResetRequestsTab key="resets" rolesData={rolesData} />
-        )}
+        <div role="tabpanel" id="access-tabpanel" aria-labelledby={`access-tab-${activeTab}`}>
+          {activeTab === "invites" ? (
+            <InvitesTab key="invites" rolesData={rolesData} />
+          ) : (
+            <ResetRequestsTab key="resets" rolesData={rolesData} />
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

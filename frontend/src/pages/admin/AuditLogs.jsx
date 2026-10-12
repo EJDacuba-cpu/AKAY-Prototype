@@ -192,136 +192,138 @@ export default function AuditLogs() {
 
   return (
     <DashboardLayout role="admin" title="Audit Logs">
-      <SoftLoadingArea
-        isLoading={isLoading}
-        message="Loading audit logs..."
-        scope="page"
-      >
-        {!isLoading && (
-          <ListToolbar
-            searchValue={filters.search}
-            onSearchChange={(value) => {
-              updateFilters((prev) => ({ ...prev, search: value }));
-            }}
-            searchPlaceholder="Search action, user, module, role, or details..."
-            filters={dropdownFilters}
-            activeFilterCount={activeFilterCount}
-            activeFilters={activeFilters}
-            onApplyFilters={applyDropdownFilters}
-            onClearFilters={clearFilters}
-            onRemoveFilter={removeFilter}
-            disabled={isLoading}
-          />
-        )}
-
-        {!isLoading && (
-        <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-          <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-[#0F172A]">
-                Activity Logs
-              </h2>
-              <p className="mt-1 text-xs text-[#9CA3AF]">
-                Records of significant account, referral, and RHU feedback
-                actions.
-              </p>
-            </div>
-          </div>
-
-          <div className="w-full flex-1 overflow-x-auto">
-            <table className="w-full min-w-[1050px] text-left">
-              <thead>
-                <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  <th className="px-6 py-3">Log ID</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Module</th>
-                  <th className="px-4 py-3">Performed By</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Details</th>
-                  <th className="px-4 py-3">Date / Time</th>
-                  <th className="px-4 py-3">Type</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-[#F3F4F6]">
-                {isLoading ? null : loadError ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-0 text-center text-sm text-[#B91C1C]"
-                    >
-                      <div className="flex min-h-[260px] items-center justify-center">
-                        {loadError}
-                      </div>
-                    </td>
-                  </tr>
-                ) : paginatedLogs.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
-                    >
-                      <div className="flex min-h-[260px] items-center justify-center">
-                        No audit logs found.
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedLogs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className="transition-colors hover:bg-[#F9FAFB]"
-                    >
-                      <td className="whitespace-nowrap px-6 py-3.5">
-                        <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
-                          {log.id}
-                        </span>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-[#1A1A1A]">
-                        {log.action}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                        {log.module}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                        {log.performedBy}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5">
-                        <RoleBadge role={log.role} />
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm text-[#6B7280]">
-                        {log.details || "-"}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
-                        {log.dateTime || "-"}
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3.5">
-                        <TypeBadge type={log.level} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {!isLoading && !loadError && (
-            <TablePagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
+      <div className="mx-auto w-full max-w-[1500px]">
+        <SoftLoadingArea
+          isLoading={isLoading}
+          message="Loading audit logs..."
+          scope="page"
+        >
+          {!isLoading && (
+            <ListToolbar
+              searchValue={filters.search}
+              onSearchChange={(value) => {
+                updateFilters((prev) => ({ ...prev, search: value }));
+              }}
+              searchPlaceholder="Search action, user, module, role, or details..."
+              filters={dropdownFilters}
+              activeFilterCount={activeFilterCount}
+              activeFilters={activeFilters}
+              onApplyFilters={applyDropdownFilters}
+              onClearFilters={clearFilters}
+              onRemoveFilter={removeFilter}
+              disabled={isLoading}
             />
           )}
-        </div>
-        )}
-      </SoftLoadingArea>
+
+          {!isLoading && (
+          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+            <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
+              <div>
+                <h2 className="text-sm font-semibold text-[#0F172A]">
+                  Activity Logs
+                </h2>
+                <p className="mt-1 text-xs text-[#9CA3AF]">
+                  Records of significant account, referral, and RHU feedback
+                  actions.
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full flex-1 overflow-x-auto">
+              <table className="w-full min-w-[1050px] text-left">
+                <thead>
+                  <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                    <th className="px-6 py-3">Log ID</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Module</th>
+                    <th className="px-4 py-3">Performed By</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Details</th>
+                    <th className="px-4 py-3">Date / Time</th>
+                    <th className="px-4 py-3">Type</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-[#F3F4F6]">
+                  {isLoading ? null : loadError ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-6 py-0 text-center text-sm text-[#B91C1C]"
+                      >
+                        <div className="flex min-h-[260px] items-center justify-center">
+                          {loadError}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : paginatedLogs.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
+                      >
+                        <div className="flex min-h-[260px] items-center justify-center">
+                          No audit logs found.
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedLogs.map((log) => (
+                      <tr
+                        key={log.id}
+                        className="transition-colors hover:bg-[#F9FAFB]"
+                      >
+                        <td className="whitespace-nowrap px-6 py-3.5">
+                          <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
+                            {log.id}
+                          </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-[#1A1A1A]">
+                          {log.action}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                          {log.module}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                          {log.performedBy}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5">
+                          <RoleBadge role={log.role} />
+                        </td>
+
+                        <td className="px-4 py-3.5 text-sm text-[#6B7280]">
+                          {log.details || "-"}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
+                          {log.dateTime || "-"}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3.5">
+                          <TypeBadge type={log.level} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {!isLoading && !loadError && (
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            )}
+          </div>
+          )}
+        </SoftLoadingArea>
+      </div>
     </DashboardLayout>
   );
 }

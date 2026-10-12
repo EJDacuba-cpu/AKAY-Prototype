@@ -373,7 +373,7 @@ export default function AdminReports() {
     <DashboardLayout role="admin" title="MHO Reports">
       <style>{printStyles}</style>
 
-      <div className="no-print space-y-4">
+      <div className="no-print mx-auto w-full max-w-[1500px] space-y-4">
         <MhoReportHeader />
 
         <ListToolbar
