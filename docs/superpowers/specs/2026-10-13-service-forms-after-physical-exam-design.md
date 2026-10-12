@@ -52,8 +52,8 @@ Patient Interview → Physical Examination → [Service Details: one screen per 
 - Draft resume: a draft saved on a service form reopens on that form (`resolveFormStep` already
   accepts program step keys). A stored service form that is no longer selected falls back to the
   first screen (unchanged). No draft payload or server allowlist change.
-- Unselecting a service while its form is the current screen moves the worker to Physical
-  Examination.
+- The services panel only shows on Patient Interview, so a service cannot be unselected while its
+  form is open; `resolveFormStep` keeps its existing fallback (first screen).
 
 ### 2. Barangay Health Services panel
 

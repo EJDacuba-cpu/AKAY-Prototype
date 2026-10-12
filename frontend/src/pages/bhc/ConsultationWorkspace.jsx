@@ -178,7 +178,6 @@ import {
   getGlobalStepKey,
   getNextStepKey,
   getPreviousStepKey,
-  getServiceFormReturnTarget,
   getProgramFormSteps,
   getStepOrder,
   pickErrorsForStep,
@@ -1186,9 +1185,9 @@ export default function ConsultationWorkspace() {
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
 
-  // Prenatal age and height risk are computed, not ticked. The patient's
-  // records load up front so the last recorded height is known the moment
-  // Maternal is selected; this visit's own height wins once it is entered.
+  // Prenatal age and height risk are computed, not ticked, and announced when
+  // the Prenatal form opens. The last recorded height covers a visit whose own
+  // height was not measured; this visit's height wins once it is entered.
   const { data: patientRecordsForHeight } = useQuery({
     queryKey: ["patient-records-height", selectedPatientId],
     queryFn: () => getHealthRecordsByPatient(selectedPatientId),
@@ -1281,31 +1280,28 @@ export default function ConsultationWorkspace() {
 
   // ---- Step-based consultation -------------------------------------------
   // Every consultation (new, continued or resumed) walks Patient Interview ->
-  // Physical Examination -> Medication, Treatment & Next Steps (-> Monitoring
-  // Details) -> Review & Finalize; the service forms are a detour from the
-  // Interview - see utils/consultationSteps.
+  // Physical Examination -> each selected service's form -> Medication,
+  // Treatment & Next Steps (-> Monitoring Details) -> Review & Finalize - see
+  // utils/consultationSteps.
   // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
   // whose Monitoring Details include the TB card.
   const isTb = monitoringDetailKeys.includes("tb_dots");
   // What this visit reports: a mirror of the Reporting entries. The server
   // re-derives the same value from the diagnoses on save.
   const effectiveReportingStatus = deriveReportingStatus(reportingEntries);
-  const consultationSteps = useMemo(
-    () => buildConsultationSteps({ monitoringDetailKeys }),
-    [monitoringDetailKeys],
-  );
-  // The service forms. They are a detour opened from Patient Interview (or
-  // Review's Edit), not part of Next / Previous.
+  // The service forms, primary first: screens of their own after Physical
+  // Examination, chosen in the Barangay Health Services panel.
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
   );
-  const formSequence = getFormSequence();
+  const consultationSteps = useMemo(
+    () => buildConsultationSteps({ programSteps: programFormSteps, monitoringDetailKeys }),
+    [programFormSteps, monitoringDetailKeys],
+  );
+  const formSequence = useMemo(() => getFormSequence(programFormSteps), [programFormSteps]);
   const stepOrder = getStepOrder(programFormSteps, monitoringDetailKeys);
   const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
-  // Where the open service form was launched from, so finishing it goes back
-  // there: the first step (the hub) or Review.
-  const [serviceFormOrigin, setServiceFormOrigin] = useState(INTERVIEW_STEP);
   // Interview, Vital Signs, Clinical Assessment, each program form, and
   // Treatment are all screens of the one form phase; formStep says which.
   const currentStepKey =
@@ -3611,19 +3607,15 @@ export default function ConsultationWorkspace() {
    */
   function goToStepKey(key, { scroll = true } = {}) {
     const target = key === PROGRAMS_STEP ? programFormSteps[0]?.key : key;
-    const isServiceForm = programFormSteps.some((step) => step.key === target);
-    const phase = formSequence.includes(target) || isServiceForm
+    const phase = formSequence.includes(target)
       ? "form"
       : consultationSteps.find((item) => item.key === target)?.phase;
     if (!phase) return;
 
     closeDateTimePopovers();
-    // Leaving Physical Examination is when this visit's height is known.
-    if (isMaternal && activeFormStep === ASSESSMENT_STEP && !activeProgramStep && target !== ASSESSMENT_STEP) {
-      announceRiskFlags();
-    }
-    // Opening a service form from any other screen remembers that screen.
-    if (isServiceForm && !activeProgramStep) setServiceFormOrigin(getServiceFormReturnTarget(currentStepKey));
+    // The Prenatal form follows Physical Examination, so the visit's height is
+    // usually known by the time it opens.
+    if (target === programStepKey("Maternal")) announceRiskFlags();
     if (phase === "form") setFormStep(target);
     // Step 3 and Monitoring Details are the two screens of the Next phase.
     if (phase === "next") setNextScreen(target === MONITORING_STEP ? MONITORING_STEP : NEXT_STEP);
@@ -3659,13 +3651,8 @@ export default function ConsultationWorkspace() {
   function handleFormStepNext(event) {
     event?.preventDefault();
     closeDateTimePopovers();
-    // A service form is a detour: Done goes back to where it was opened. It
-    // never blocks - an unfinished form shows as Incomplete in the panel and
-    // is caught again when the visit is reviewed and saved.
-    if (activeProgramStep) {
-      goToStepKey(getServiceFormReturnTarget(serviceFormOrigin));
-      return;
-    }
+    // A service form never blocks Next: an unfinished form is caught when the
+    // visit is reviewed and saved.
     if (!checkStepGate(activeFormStep)) return;
     goToStepKey(getNextStepKey(formSequence, activeFormStep));
   }
@@ -3674,10 +3661,6 @@ export default function ConsultationWorkspace() {
   // fixed patient's profile; the leave guard flushes the current draft.
   function handleFormStepPrevious() {
     closeDateTimePopovers();
-    if (activeProgramStep) {
-      goToStepKey(getServiceFormReturnTarget(serviceFormOrigin));
-      return;
-    }
     const target = getPreviousStepKey(formSequence, activeFormStep);
     if (target === EXIT_STEP) {
       navigate(`${basePath}/patients/${selectedPatientId}`);
@@ -3751,7 +3734,6 @@ export default function ConsultationWorkspace() {
     // draft payload and the saved record read it exactly as before.
     setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
-    if (option === "Maternal" && next.selectedPrograms.includes("Maternal")) announceRiskFlags();
   }
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
@@ -4039,11 +4021,6 @@ export default function ConsultationWorkspace() {
     wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
-  // Service forms: Back / Done both return to where the form was opened from.
-  const serviceFormReturnLabel =
-    getServiceFormReturnTarget(serviceFormOrigin) === REVIEW_STEP
-      ? "Back to Review"
-      : "Back to Patient Interview";
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel;
   // Program panel: one status per form step, attached to each selected program
@@ -4891,17 +4868,13 @@ export default function ConsultationWorkspace() {
         <ConsultationActionBar
           onPrevious={handleWorkspacePrevious}
           previousLabel={
-            currentStepKey === INTERVIEW_STEP
-              ? "Back to Patient"
-              : activeProgramStep
-                ? serviceFormReturnLabel
-                : "Previous"
+            currentStepKey === INTERVIEW_STEP ? "Back to Patient" : "Previous"
           }
           // Autosave status stays visible throughout the consultation.
           // Review, where Save Consultation is the one action that commits.
           secondaryAction={autosaveStatus}
           onContinue={handleWorkspaceContinue}
-          continueLabel={isReviewStep ? (canFinalize ? (needsReferral ? "Finalize Consultation & Submit Referral" : "Finalize Consultation") : "Submit for Review") : activeProgramStep ? "Done" : "Next"}
+          continueLabel={isReviewStep ? (canFinalize ? (needsReferral ? "Finalize Consultation & Submit Referral" : "Finalize Consultation") : "Submit for Review") : "Next"}
           continueDisabled={activeDraft?.reviewState === "review" && !canFinalize}
           continueBusy={isReviewStep ? saving : false}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
