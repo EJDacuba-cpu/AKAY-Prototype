@@ -6,8 +6,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
+  FixedTable,
   ModuleToolbar,
   SoftLoadingArea,
+  TablePagination,
 } from "../../components/common";
 import { isConnectionError } from "../../services/apiClient";
 import {
@@ -20,6 +22,8 @@ import { formatDisplayValue } from "../../utils/formatters";
 import { matchesServiceTypeFilter } from "../../utils/healthRecordPrograms";
 import { createActiveFilterChips } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import usePagedRows from "../../hooks/usePagedRows";
+import { tableBodyHeight } from "../../utils/tablePaging";
 import ActionMenu from "../../components/common/tables/ActionMenu";
 import {
   StateBadge,
@@ -536,7 +540,11 @@ export default function FollowUps() {
 
             <div className="pt-4">
               {viewMode === "list" && (
-                <FollowUpList tasks={filteredTasks} handlers={taskHandlers} />
+                <FollowUpList
+                  tasks={filteredTasks}
+                  resetKey={filters}
+                  handlers={taskHandlers}
+                />
               )}
               {viewMode === "week" && (
                 <FollowUpWeekCalendar
@@ -570,18 +578,23 @@ export default function FollowUps() {
   );
 }
 
-function FollowUpList({ tasks, handlers }) {
+function FollowUpList({ tasks, resetKey, handlers }) {
+  const { page, setPage, totalPages, pageRows } = usePagedRows(tasks, resetKey);
+
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 px-6 py-12 text-center text-sm text-slate-500">
+      <div
+        className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 px-6 text-center text-sm text-slate-500"
+        style={{ minHeight: tableBodyHeight() }}
+      >
         No follow-ups match the current filters.
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] text-left text-sm">
+    <div>
+      <FixedTable minWidth="min-w-[820px]">
         <thead>
           <tr className="border-b border-[#F1F5F9] text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
             <th className="px-3 pb-3 font-bold">Follow-up ID</th>
@@ -594,7 +607,7 @@ function FollowUpList({ tasks, handlers }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-[#F1F5F9]">
-          {tasks.map((task) => {
+          {pageRows.map((task) => {
             const patientName = formatDisplayValue(task.patientName, "Unnamed Patient");
             const timeLabel = formatTimeLabel(task.dueTime);
             const actions = buildTaskActions(task, {
@@ -650,7 +663,12 @@ function FollowUpList({ tasks, handlers }) {
             );
           })}
         </tbody>
-      </table>
+      </FixedTable>
+      <TablePagination
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+      />
     </div>
   );
 }
