@@ -55,6 +55,13 @@ import {
   getFpMethodRestriction,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
+import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
+import {
+  applyRiskFlags,
+  calculateAgeInYears,
+  getMaternalRiskFlags,
+  pendingRiskAnnouncements,
+} from "../../utils/maternalRisk";
 import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
 import {
   locationToPath,
@@ -648,25 +655,6 @@ function normalizePatientStatus(status) {
   return value || "Routine Monitoring";
 }
 
-function calculateAgeInYears(birthdate, referenceDate = new Date()) {
-  if (!birthdate) return null;
-  const birth = new Date(birthdate);
-  const reference = new Date(referenceDate);
-  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime())) {
-    return null;
-  }
-
-  let age = reference.getFullYear() - birth.getFullYear();
-  const monthDelta = reference.getMonth() - birth.getMonth();
-  if (
-    monthDelta < 0 ||
-    (monthDelta === 0 && reference.getDate() < birth.getDate())
-  ) {
-    age -= 1;
-  }
-  return age;
-}
-
 function getPatientAgeInYears(patient, referenceDate) {
   if (!patient) return null;
   const birthdate = getEffectivePatientBirthdate(patient);
@@ -1197,6 +1185,40 @@ export default function ConsultationWorkspace() {
   const recordTypeKey = normalizedHealthRecordType.toLowerCase();
   const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
   const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
+
+  // Prenatal age and height risk are computed, not ticked. The patient's
+  // records load up front so the last recorded height is known the moment
+  // Maternal is selected; this visit's own height wins once it is entered.
+  const { data: patientRecordsForHeight } = useQuery({
+    queryKey: ["patient-records-height", selectedPatientId],
+    queryFn: () => getHealthRecordsByPatient(selectedPatientId),
+    enabled: Boolean(selectedPatientId),
+  });
+  const recordedHeight = useMemo(
+    () => getLatestRecordedHeight(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
+    [patientRecordsForHeight],
+  );
+  const riskFlags = useMemo(
+    () => getMaternalRiskFlags({
+      birthdate: getEffectivePatientBirthdate(selectedPatient),
+      visitHeight: height,
+      recordedHeight,
+      referenceDate: dateOfVisit,
+    }),
+    [selectedPatient, height, recordedHeight, dateOfVisit],
+  );
+  // Flags already announced this consultation, and the announcement on show.
+  const [acknowledgedRiskFlags, setAcknowledgedRiskFlags] = useState([]);
+  const [riskModal, setRiskModal] = useState(null);
+  function announceRiskFlags() {
+    const items = pendingRiskAnnouncements(riskFlags, acknowledgedRiskFlags);
+    if (items.length) setRiskModal({ items });
+  }
+  function closeRiskModal() {
+    const shown = riskModal?.items.map((item) => item.key) || [];
+    setAcknowledgedRiskFlags((previous) => [...new Set([...previous, ...shown])]);
+    setRiskModal(null);
+  }
   const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
   // Followed conditions the worker refers back to the RHU (not stopped). Their
   // names are the referral's initial diagnosis; the visit sends none of its own.
@@ -3081,10 +3103,13 @@ export default function ConsultationWorkspace() {
       )
         ? maternalData.previousPregnancyHistory
         : [],
-      riskAssessment: {
-        ...EMPTY_MATERNAL_DATA.riskAssessment,
-        ...(maternalData.riskAssessment || {}),
-      },
+      riskAssessment: applyRiskFlags(
+        {
+          ...EMPTY_MATERNAL_DATA.riskAssessment,
+          ...sanitizeRiskAssessment(maternalData.riskAssessment),
+        },
+        riskFlags,
+      ),
       laboratoryResults: {
         ...EMPTY_MATERNAL_DATA.laboratoryResults,
         ...(maternalData.laboratoryResults || {}),
@@ -3593,6 +3618,10 @@ export default function ConsultationWorkspace() {
     if (!phase) return;
 
     closeDateTimePopovers();
+    // Leaving Physical Examination is when this visit's height is known.
+    if (isMaternal && activeFormStep === ASSESSMENT_STEP && !activeProgramStep && target !== ASSESSMENT_STEP) {
+      announceRiskFlags();
+    }
     // Opening a service form from any other screen remembers that screen.
     if (isServiceForm && !activeProgramStep) setServiceFormOrigin(getServiceFormReturnTarget(currentStepKey));
     if (phase === "form") setFormStep(target);
@@ -3722,6 +3751,7 @@ export default function ConsultationWorkspace() {
     // draft payload and the saved record read it exactly as before.
     setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
+    if (option === "Maternal" && next.selectedPrograms.includes("Maternal")) announceRiskFlags();
   }
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
@@ -4111,7 +4141,7 @@ export default function ConsultationWorkspace() {
     ...programFormSteps.map(step => ({
       key: step.key, title: step.label, stepKey: step.key,
       rows: programReviewRows({
-        Maternal: maternalData,
+        Maternal: { ...maternalData, riskAssessment: applyRiskFlags(maternalData.riskAssessment, riskFlags) },
         Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
         "Family Planning": familyPlanningData,
         "TB DOTS / TB Monitoring": tbData,
@@ -4957,6 +4987,18 @@ export default function ConsultationWorkspace() {
         }
         onClose={() => setNoticeModal(null)}
       />
+      {/* Prenatal age / height risk: states the fact only, no advice. */}
+      <NoticeModal
+        open={Boolean(riskModal)}
+        title="Pregnancy risk"
+        onClose={closeRiskModal}
+      >
+        <div className="space-y-2 text-[13px] leading-5 text-slate-600">
+          {riskModal?.items.map((item) => (
+            <p key={item.key}>{item.message}</p>
+          ))}
+        </div>
+      </NoticeModal>
       {/* Connection lost mid-consultation. Reuses the existing modal rather
           than adding another: the work is already protected on this device,
           so the choice is simply keep going or try the server again now. */}
