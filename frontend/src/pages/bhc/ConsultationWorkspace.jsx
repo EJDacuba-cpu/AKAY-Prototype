@@ -173,7 +173,6 @@ import {
   buildConsultationSteps,
   findFirstErrorStepKey,
   remapServerErrorKeys,
-  getErrorOwnerStepKey,
   getFormSequence,
   getGlobalStepKey,
   getNextStepKey,
@@ -4023,24 +4022,6 @@ export default function ConsultationWorkspace() {
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel;
-  // Program panel: one status per form step, attached to each selected program
-  // that step covers.
-  const programStatusByKey = {};
-  if (showProgramPanel && programFormSteps.length > 0) {
-    const invalidKeys = Object.keys(getClinicalValidationErrors({ finalizing: true }));
-    programFormSteps.forEach((step) => {
-      const incomplete = invalidKeys.some((key) => getErrorOwnerStepKey(key) === step.key);
-      const started =
-        step.classification === "Family Planning" ? Boolean(familyPlanningData.methodUsed || familyPlanningData.remarks || familyPlanningData.concern)
-        : step.classification === "TB DOTS / TB Monitoring" ? Boolean(tbData.diagnosis.tbCaseNumber || tbData.phases.intensiveStart)
-        : step.classification === "Immunization" ? Boolean(immunizationVaccineEntries.length || consultationNotes.trim())
-        : true;
-      const status = incomplete ? (started ? "Incomplete" : "Not Started") : "Completed";
-      step.programs.forEach((programKey) => {
-        programStatusByKey[programKey] = { status, stepKey: step.key };
-      });
-    });
-  }
   // Same lock the whole form used to sit under: a review awaiting a finalizer
   // who cannot correct records is read-only.
   const workspaceLocked = activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"));
@@ -4049,13 +4030,11 @@ export default function ConsultationWorkspace() {
       programs={wizardPrograms}
       selected={selectedPrograms}
       primary={primaryProgram}
-      statusByProgram={programStatusByKey}
       onSelect={handleProgramSelect}
       onPrimaryChange={(key) => {
         setPrimaryProgram(key);
         setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]);
       }}
-      onOpenForm={goToStepKey}
     />
   );
 

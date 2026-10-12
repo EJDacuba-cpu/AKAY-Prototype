@@ -1,49 +1,28 @@
-import { programFormActionLabel } from "../../../../utils/consultationPrograms";
-
 /**
  * Barangay Health Services selection for a consultation, shown as a fixed
  * column to the right of the form. Optional: selecting nothing is a general
  * consultation.
  *
  * The services (Maternal Care, Family Planning, EPI) render as one flat list.
+ * Ticking a service makes it Active for this visit; its form is a screen of
+ * its own after Physical Examination, so the panel has no form button.
  * Conditions such as TB are not services here - they are monitored through the
  * Care Plan. Unchecking a service removes it - there is no separate Remove
  * action. "Primary" only means something when two or more services are
  * selected, so the badge and the "Make primary" control appear only then.
  */
 
-const STATUS_STYLES = {
-  Completed: "bg-[#DCFCE7] text-[#166534]",
-  Incomplete: "bg-[#FEF3C7] text-[#92400E]",
-  "Not Started": "bg-[#F3F4F6] text-[#374151]",
-};
-
-function StatusBadge({ status }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold ${
-        STATUS_STYLES[status] || STATUS_STYLES["Not Started"]
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
 /**
- * @param programs        [{ key, title, description, disabled, disabledReason, disabledNote }]
- * @param selected        selected program keys
- * @param primary         the primary program key
- * @param statusByProgram { [programKey]: { status, stepKey } } for selected programs
+ * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote }]
+ * @param selected  selected program keys
+ * @param primary   the primary program key
  */
 export default function ConsultationProgramPanel({
   programs,
   selected = [],
   primary,
-  statusByProgram = {},
   onSelect,
   onPrimaryChange,
-  onOpenForm,
   error,
 }) {
   const multiple = selected.length >= 2;
@@ -71,7 +50,6 @@ export default function ConsultationProgramPanel({
       <div>
         {programs.map((program) => {
           const active = selected.includes(program.key);
-          const info = statusByProgram[program.key];
           const inputId = `program-panel-${program.key}`;
           return (
             <div
@@ -117,7 +95,9 @@ export default function ConsultationProgramPanel({
               {active && (
                 <div className="pb-2 pl-[38px] pr-3">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {info && <StatusBadge status={info.status} />}
+                    <span className="inline-flex items-center rounded-sm bg-[#DCFCE7] px-1.5 py-0.5 text-[11px] font-semibold text-[#166534]">
+                      Active
+                    </span>
                     {multiple && (primary === program.key ? (
                       <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
                         Primary
@@ -133,15 +113,9 @@ export default function ConsultationProgramPanel({
                       </button>
                     ))}
                   </div>
-                  {info?.stepKey && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenForm(info.stepKey)}
-                      className="mt-2 w-full rounded-none border border-[#DC2626] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#DC2626] hover:bg-red-50"
-                    >
-                      {programFormActionLabel(program.key, info.status)}
-                    </button>
-                  )}
+                  <p className="mt-1 text-[11px] text-[#6B7280]">
+                    Form opens after Physical Examination.
+                  </p>
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, programFormActionLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -58,18 +58,4 @@ test("every service is disabled while the patient is still loading", () => {
 test("once the patient has loaded, eligibility is left exactly as computed", () => {
   const programs = [{ key: "Maternal", disabled: true, disabledReason: "Male patient" }];
   assert.equal(lockProgramsWhilePatientLoads(programs, false), programs);
-});
-
-test("the service form button says what the worker does next", () => {
-  assert.equal(programFormActionLabel("Maternal", "Not Started"), "Fill up Prenatal form");
-  assert.equal(programFormActionLabel("Maternal", "Incomplete"), "Continue Prenatal form");
-  assert.equal(programFormActionLabel("Maternal", "Completed"), "Edit Prenatal form");
-  assert.equal(programFormActionLabel("Family Planning", "Not Started"), "Fill up Family Planning form");
-  assert.equal(programFormActionLabel("Family Planning", "Completed"), "Edit Family Planning form");
-  assert.equal(programFormActionLabel("EPI", "Incomplete"), "Continue Child Health / EPI form");
-});
-
-test("an unknown status or service still gets a usable label", () => {
-  assert.equal(programFormActionLabel("Maternal", undefined), "Fill up Prenatal form");
-  assert.equal(programFormActionLabel("Something Else", "Not Started"), "Fill up form");
 });
