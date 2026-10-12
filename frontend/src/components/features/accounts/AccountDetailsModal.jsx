@@ -6,15 +6,17 @@ import { ModalButton, ModalShell } from "../../common";
 import Input from "../../common/atoms/Input";
 import Field from "../access/FieldError";
 import AccountStatusBadge from "./AccountStatusBadge";
+import useEmailAvailability from "../../../hooks/useEmailAvailability";
 import { getAdminAccount, updateAdminAccountProfile } from "../../../services/adminAccountsService";
 import { profileChanges, validateAccountProfile } from "../../../utils/accountForm";
 import { roleLabel } from "../../../utils/accountSetup";
 import { formatUserName } from "../../../utils/formatters";
+import { fieldState } from "../../../utils/fieldState";
 import { queryKeys } from "../../../utils/queryKeys";
 
 /**
- * One account's details, opened from Users and from Password & Invites. Name and contact number can be corrected
- * with the pencil; role, facility and status change access or routing, so they are read-only here.
+ * One account's details, opened from Users. Name, email and contact number can be corrected with the pencil;
+ * role, facility and status change access or routing, so they are read-only here.
  * `account` (optional) is shown while the full record loads; `onChanged` runs after any successful save.
  */
 export default function AccountDetailsModal({ accountId, account, rolesData, onClose, onChanged }) {
@@ -32,16 +34,22 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState({});
   const [formError, setFormError] = useState("");
+  const emailCheck = useEmailAvailability({ ignoreId: accountId });
 
   const editing = form !== null;
   const validation = form ? validateAccountProfile(form) : {};
   // A server message wins until the field is edited again; an edited field's cleared entry must not hide a local error.
-  const errors = { name: serverErrors.name || validation.name, contact_number: serverErrors.contact_number || validation.contact_number };
+  const emailTaken = form ? emailCheck.isTaken(form.email) : false;
+  const errors = {
+    name: serverErrors.name || validation.name,
+    email: serverErrors.email || validation.email || (emailTaken ? EMAIL_TAKEN : undefined),
+    contact_number: serverErrors.contact_number || validation.contact_number,
+  };
   const changes = form && current ? profileChanges(current, form) : {};
-  const canSave = Object.keys(changes).length > 0 && !saving;
+  const canSave = Object.keys(changes).length > 0 && !saving && !(changes.email && emailTaken);
 
   function startEdit() {
-    setForm({ name: current.name || "", contact_number: current.contact_number || "" });
+    setForm({ name: current.name || "", email: current.email || "", contact_number: current.contact_number || "" });
     setTouched({});
     setServerErrors({});
     setFormError("");
@@ -54,12 +62,16 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 
   async function save(event) {
     event.preventDefault();
-    setTouched({ name: true, contact_number: true });
+    setTouched({ name: true, email: true, contact_number: true });
     if (Object.keys(validateAccountProfile(form)).length || !canSave) return;
 
     setSaving(true);
     setFormError("");
     try {
+      if (changes.email && (await emailCheck.check(changes.email))) {
+        setServerErrors({ email: EMAIL_TAKEN });
+        return;
+      }
       const updated = await updateAdminAccountProfile(accountId, changes);
       queryClient.setQueryData(queryKeys.adminAccount(accountId), updated);
       queryClient.setQueryData(queryKeys.adminAccounts(), (list) =>
@@ -70,11 +82,12 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
     } catch (failure) {
       const fieldErrors = {
         name: failure.errors?.name?.[0],
+        email: failure.errors?.email?.[0],
         contact_number: failure.errors?.contact_number?.[0],
       };
       setServerErrors(fieldErrors);
-      setTouched({ name: true, contact_number: true });
-      if (!fieldErrors.name && !fieldErrors.contact_number) {
+      setTouched({ name: true, email: true, contact_number: true });
+      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number) {
         setFormError(failure.message || "The changes could not be saved.");
       }
     } finally {
@@ -112,8 +125,8 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
               <button
                 type="button"
                 onClick={startEdit}
-                aria-label="Edit name and contact number"
-                title="Edit name and contact number"
+                aria-label="Edit name, email and contact number"
+                title="Edit name, email and contact number"
                 className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
               >
                 <Pencil size={14} />
@@ -130,6 +143,24 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
                   onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
                 />
               </Field>
+              <Field
+                label="Email"
+                error={touched.email ? errors.email : ""}
+                state={touched.email ? fieldState({ touched: true, error: errors.email, checking: emailCheck.checking, confirmed: emailCheck.isFree(form.email) }) : undefined}
+              >
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => setField("email", event.target.value)}
+                  onBlur={() => {
+                    setTouched((prev) => ({ ...prev, email: true }));
+                    emailCheck.onBlur(form.email);
+                  }}
+                />
+              </Field>
+              <p className="mb-3 text-xs leading-5 text-slate-500">
+                If this account&apos;s invite is still open, a new invite is sent to the new address and the old link stops working.
+              </p>
               <Field label="Contact number" error={touched.contact_number ? errors.contact_number : ""}>
                 <Input
                   type="tel"
@@ -151,6 +182,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 
           <dl className="divide-y divide-slate-100">
             {!editing && <Row label="Name">{formatUserName(current, "User Account")}</Row>}
+            {!editing && <Row label="Email">{current.email || "Not recorded"}</Row>}
             {!editing && <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>}
             <Row label="Role">{roleLabel(current, rolesData)}</Row>
             <Row label="Facility">{current.facility || "-"}</Row>
@@ -171,6 +203,8 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
     </ModalShell>
   );
 }
+
+const EMAIL_TAKEN = "Email is already taken.";
 
 function Row({ label, children }) {
   return (
