@@ -5,36 +5,47 @@ import {
   MATERNAL_LAB_TEST_KEYS,
   MATERNAL_LAB_TESTS,
   MATERNAL_RISK_GROUPS,
+  MATERNAL_RISK_KEYS,
   MATERNAL_RISK_PARENTS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyRiskFactorChange,
+  sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "./prenatalForm.js";
 
 /* ── Layout matches the prenatal record ──────────────────────────────── */
 
-test("Medical History has the three columns, in order", () => {
+test("Obstetric Risk Factors is one group of four manual items", () => {
+  assert.equal(MATERNAL_RISK_GROUPS.length, 1);
   assert.deepEqual(
-    MATERNAL_RISK_GROUPS.map((group) => group.eyebrow),
-    ["Pregnancy / Obstetric Risk Factors", "Medical Conditions", "Other Important Information"],
-  );
-  assert.deepEqual(
-    MATERNAL_RISK_GROUPS.map((group) => group.options.length),
-    [6, 5, 3],
+    MATERNAL_RISK_GROUPS[0].options.map((option) => option.key),
+    ["grandMultipara", "previousCs", "recurrentMiscarriageOrStillbirth", "postpartumHemorrhage"],
   );
 });
 
 test("every risk factor maps to a field the record already stores", () => {
   // The draft allowlist and the saved record both use exactly these keys.
-  const stored = new Set([
-    "ageRisk", "heightRisk", "grandMultipara", "previousCs",
-    "recurrentMiscarriageOrStillbirth", "postpartumHemorrhage",
-    "tuberculosis", "heartDisease", "diabetes", "bronchialAsthma", "goiter",
-    "hypertensive", "alcoholUser", "smoker",
+  assert.deepEqual(MATERNAL_RISK_KEYS, [
+    "ageRisk", "heightRisk", "grandMultipara", "previousPregnancyComplications",
+    "previousCs", "recurrentMiscarriageOrStillbirth", "postpartumHemorrhage",
   ]);
+  const stored = new Set(MATERNAL_RISK_KEYS);
   for (const option of MATERNAL_RISK_GROUPS.flatMap((group) => group.options)) {
     assert.ok(stored.has(option.key), option.key);
   }
+});
+
+test("sanitizeRiskAssessment drops the keys the form no longer records", () => {
+  assert.deepEqual(
+    sanitizeRiskAssessment({
+      diabetes: true, smoker: true, tuberculosis: true, medicalConditions: true,
+      hypertensive: true, alcoholUser: true, heartDisease: true, goiter: true, bronchialAsthma: true,
+      previousCs: true, ageRisk: false,
+    }),
+    { previousCs: true, ageRisk: false },
+  );
+  assert.deepEqual(sanitizeRiskAssessment(undefined), {});
+  assert.deepEqual(sanitizeRiskAssessment(null), {});
 });
 
 test("Laboratory Results lists the seven tests in the record's order", () => {
@@ -49,44 +60,38 @@ test("Laboratory Results lists the seven tests in the record's order", () => {
 
 /* ── Risk Code flags stay correct ────────────────────────────────────── */
 
-test("Risk Code D and E are each kept by their own items", () => {
-  assert.deepEqual(MATERNAL_RISK_PARENTS.previousPregnancyComplications, [
-    "previousCs", "recurrentMiscarriageOrStillbirth", "postpartumHemorrhage",
-  ]);
-  assert.deepEqual(MATERNAL_RISK_PARENTS.medicalConditions, [
-    "tuberculosis", "heartDisease", "diabetes", "bronchialAsthma", "goiter",
-  ]);
+test("Risk Code D is kept by its own items", () => {
+  assert.deepEqual(MATERNAL_RISK_PARENTS, {
+    previousPregnancyComplications: ["previousCs", "recurrentMiscarriageOrStillbirth", "postpartumHemorrhage"],
+  });
 });
 
 test("checking an item sets its Risk Code flag", () => {
   const next = applyRiskFactorChange({}, "previousCs", true);
   assert.equal(next.previousCs, true);
   assert.equal(next.previousPregnancyComplications, true);
-  assert.equal(next.medicalConditions, undefined, "the other code is untouched");
 });
 
 test("the flag stays set while ANY of its items is still checked", () => {
-  let risk = applyRiskFactorChange({}, "tuberculosis", true);
-  risk = applyRiskFactorChange(risk, "goiter", true);
-  risk = applyRiskFactorChange(risk, "tuberculosis", false);
-  assert.equal(risk.medicalConditions, true);
-  risk = applyRiskFactorChange(risk, "goiter", false);
-  assert.equal(risk.medicalConditions, false, "cleared once the last item is");
+  let risk = applyRiskFactorChange({}, "previousCs", true);
+  risk = applyRiskFactorChange(risk, "postpartumHemorrhage", true);
+  risk = applyRiskFactorChange(risk, "previousCs", false);
+  assert.equal(risk.previousPregnancyComplications, true);
+  risk = applyRiskFactorChange(risk, "postpartumHemorrhage", false);
+  assert.equal(risk.previousPregnancyComplications, false, "cleared once the last item is");
 });
 
 test("an item without a Risk Code never touches a flag", () => {
-  const next = applyRiskFactorChange({ medicalConditions: true }, "smoker", true);
-  assert.equal(next.smoker, true);
-  assert.equal(next.medicalConditions, true);
-  assert.equal(next.previousPregnancyComplications, undefined);
+  const next = applyRiskFactorChange({ previousPregnancyComplications: true }, "grandMultipara", true);
+  assert.equal(next.grandMultipara, true);
+  assert.equal(next.previousPregnancyComplications, true);
 });
 
 test("a code an older record carried WITHOUT an item survives unrelated edits", () => {
   // The old form let Risk Code D be ticked on its own. Editing anything else
   // must not silently clear it.
   const legacy = { previousPregnancyComplications: true };
-  let next = applyRiskFactorChange(legacy, "ageRisk", true);
-  next = applyRiskFactorChange(next, "diabetes", true);
+  const next = applyRiskFactorChange(legacy, "grandMultipara", true);
   assert.equal(next.previousPregnancyComplications, true);
 });
 
@@ -94,7 +99,7 @@ test("changing a risk factor never mutates the previous state", () => {
   const before = { previousCs: false };
   applyRiskFactorChange(before, "previousCs", true);
   assert.deepEqual(before, { previousCs: false });
-  assert.doesNotThrow(() => applyRiskFactorChange(undefined, "smoker", true));
+  assert.doesNotThrow(() => applyRiskFactorChange(undefined, "grandMultipara", true));
 });
 
 /* ── This visit's dose is filed under its schedule ───────────────────── */

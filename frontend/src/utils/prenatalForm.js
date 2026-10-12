@@ -6,19 +6,18 @@
  */
 
 /**
- * Prenatal risk factors, one flat checklist per column.
+ * The obstetric risk factors the midwife ticks by hand.
  *
- * Risk Code D (previous pregnancy complications) and Risk Code E (medical
- * conditions) are still recorded: an item's `parent` names the Risk Code flag
- * it belongs to. See applyRiskFactorChange.
+ * Age and height risk are computed (utils/maternalRisk), and diseases, smoking
+ * and alcohol are not asked here: a BHC worker does not confirm a disease, and
+ * the Patient Profile already shows them. An item's `parent` names the Risk
+ * Code D flag it belongs to. See applyRiskFactorChange.
  */
 export const MATERNAL_RISK_GROUPS = [
   {
-    key: "pregnancy",
+    key: "obstetric",
     eyebrow: "Pregnancy / Obstetric Risk Factors",
     options: [
-      { key: "ageRisk", label: "Age less than 18 or greater than 35" },
-      { key: "heightRisk", label: "Being less than 145 (4'9\") tall" },
       { key: "grandMultipara", label: "Has a fourth (or more) baby (GRANDMULTI)" },
       { key: "previousCs", label: "Previous C/S", parent: "previousPregnancyComplications" },
       {
@@ -33,29 +32,32 @@ export const MATERNAL_RISK_GROUPS = [
       },
     ],
   },
-  {
-    key: "medical",
-    eyebrow: "Medical Conditions",
-    options: [
-      { key: "tuberculosis", label: "Tuberculosis", parent: "medicalConditions" },
-      { key: "heartDisease", label: "Heart Disease", parent: "medicalConditions" },
-      { key: "diabetes", label: "Diabetes", parent: "medicalConditions" },
-      { key: "bronchialAsthma", label: "Bronchial Asthma", parent: "medicalConditions" },
-      { key: "goiter", label: "Goiter", parent: "medicalConditions" },
-    ],
-  },
-  {
-    key: "other",
-    eyebrow: "Other Important Information",
-    options: [
-      { key: "hypertensive", label: "Hypertensive" },
-      { key: "alcoholUser", label: "Alcohol user" },
-      { key: "smoker", label: "Smoker" },
-    ],
-  },
 ];
 
-/** Each Risk Code parent flag and the items that keep it set. */
+/** Every key a new prenatal risk assessment may carry (ticked or computed). */
+export const MATERNAL_RISK_KEYS = [
+  "ageRisk",
+  "heightRisk",
+  "grandMultipara",
+  "previousPregnancyComplications",
+  "previousCs",
+  "recurrentMiscarriageOrStillbirth",
+  "postpartumHemorrhage",
+];
+
+/**
+ * The risk assessment without keys the form no longer records. An older draft
+ * or record can still carry them (diabetes, smoker, ...); they must not be
+ * copied into a new record.
+ */
+export function sanitizeRiskAssessment(riskAssessment) {
+  const source = riskAssessment || {};
+  return Object.fromEntries(
+    MATERNAL_RISK_KEYS.filter((key) => key in source).map((key) => [key, source[key]]),
+  );
+}
+
+/** The Risk Code parent flag and the items that keep it set. */
 export const MATERNAL_RISK_PARENTS = MATERNAL_RISK_GROUPS.flatMap((group) => group.options)
   .filter((option) => option.parent)
   .reduce((parents, option) => {
@@ -66,7 +68,7 @@ export const MATERNAL_RISK_PARENTS = MATERNAL_RISK_GROUPS.flatMap((group) => gro
 /**
  * Tick or untick one risk factor.
  *
- * An item that belongs to Risk Code D or E keeps that code's flag in step -
+ * An item that belongs to Risk Code D keeps that code's flag in step -
  * set while any of its items is checked - so records still carry the Risk
  * Code exactly as before. A parent is only recomputed when one of ITS OWN
  * items changes, so a code an older record carried without any item is never
