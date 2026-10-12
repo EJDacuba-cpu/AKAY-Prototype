@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { LoadMoreButton, PageStateWrapper, RefreshingIndicator } from "../../components/common";
+import { ListToolbar, LoadMoreButton, PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import FacilityFormModal from "../../components/features/facilities/FacilityFormModal";
 import { apiRequest, unwrapList } from "../../services/apiClient";
 import useLoadMore from "../../hooks/useLoadMore";
+import {
+  ALL_ALTERNATIVES,
+  ALL_RHUS,
+  ALL_STATUS,
+  DEFAULT_FACILITY_FILTERS,
+  NO_ALTERNATIVES,
+  WITH_ALTERNATIVES,
+  facilityFilterChips,
+  filterFacilities,
+} from "../../utils/facilityFilters";
 import { queryKeys } from "../../utils/queryKeys";
-import { FACILITIES_LOAD_BATCH } from "../../utils/tablePaging";
+import { FACILITIES_LOAD_BATCH, resetKeyOf } from "../../utils/tablePaging";
 
 const FACILITY_TYPES = ["bhc", "rhu"];
 
@@ -22,6 +33,7 @@ async function loadFacilities() {
 export default function Facilities() {
   const queryClient = useQueryClient();
   const [type, setType] = useState("bhc");
+  const [filters, setFilters] = useState(DEFAULT_FACILITY_FILTERS);
   // `null` = closed, `{ facility: null }` = adding, `{ facility }` = editing.
   const [editing, setEditing] = useState(null);
   const {
@@ -38,11 +50,30 @@ export default function Facilities() {
   const { bhcs, rhus } = facilities;
   const items = type === "bhc" ? bhcs : rhus;
   const typeLabel = type.toUpperCase();
+  const filteredItems = useMemo(() => filterFacilities(items, filters, type), [items, filters, type]);
   const {
     visibleItems: visibleFacilities,
     hasMore: hasMoreFacilities,
     loadMore: loadMoreFacilities,
-  } = useLoadMore(items, FACILITIES_LOAD_BATCH, type);
+  } = useLoadMore(filteredItems, FACILITIES_LOAD_BATCH, resetKeyOf(type, filters));
+
+  const activeFilters = facilityFilterChips(filters, type);
+  const activeFilterCount = activeFilters.filter((chip) => chip.key !== "search").length;
+  const toolbarFilters = [
+    { key: "status", type: "select", label: "Status", value: filters.status, options: [ALL_STATUS, "Active", "Inactive"] },
+    ...(type === "bhc"
+      ? [
+          { key: "rhu", type: "select", label: "Default RHU", value: filters.rhu, options: [ALL_RHUS, ...rhus.map((rhu) => rhu.name)] },
+          { key: "alternatives", type: "select", label: "Alternatives", value: filters.alternatives, options: [ALL_ALTERNATIVES, WITH_ALTERNATIVES, NO_ALTERNATIVES] },
+        ]
+      : []),
+  ];
+
+  // Each tab has its own filters, so switching starts from a clean list.
+  function changeType(tab) {
+    setType(tab);
+    setFilters(DEFAULT_FACILITY_FILTERS);
+  }
 
   return (
     <DashboardLayout role="admin" title="Facilities">
@@ -72,7 +103,7 @@ export default function Facilities() {
               <button
                 key={tab}
                 type="button"
-                onClick={() => setType(tab)}
+                onClick={() => changeType(tab)}
                 className={`rounded-lg px-5 py-2 text-sm ${
                   type === tab ? "bg-[#B91C1C] text-white" : "bg-white text-slate-600"
                 }`}
@@ -80,18 +111,37 @@ export default function Facilities() {
                 {tab.toUpperCase()} Facilities
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => setEditing({ facility: null })}
-              className="ml-auto rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-700"
-            >
-              + Add {typeLabel}
-            </button>
           </div>
 
-          {items.length === 0 ? (
+          <ListToolbar
+            key={type}
+            searchValue={filters.search}
+            onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+            searchPlaceholder="Search name, barangay, or address..."
+            filters={toolbarFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={(next) => setFilters((prev) => ({ ...prev, ...next }))}
+            onClearFilters={() => setFilters(DEFAULT_FACILITY_FILTERS)}
+            onRemoveFilter={(key) => setFilters((prev) => ({ ...prev, [key]: DEFAULT_FACILITY_FILTERS[key] }))}
+            filterDescription="Narrow the facilities list."
+            actions={
+              <button
+                type="button"
+                onClick={() => setEditing({ facility: null })}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                Add {typeLabel}
+              </button>
+            }
+          />
+
+          {filteredItems.length === 0 ? (
             <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">
-              No {typeLabel} facilities yet.
+              {items.length === 0
+                ? `No ${typeLabel} facilities yet.`
+                : `No ${typeLabel} facilities match the current filters.`}
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
