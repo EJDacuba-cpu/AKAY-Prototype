@@ -174,11 +174,12 @@ function CountCell({ value, warn }) {
   );
 }
 
-function StaffMark({ hasStaff }) {
+// The table column header gives "None" its context; a phone card has no header, so it says "No staff".
+function StaffMark({ hasStaff, card = false }) {
   if (!hasStaff) {
     return (
       <span className="inline-block rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-[#B91C1C]">
-        None
+        {card ? "No staff" : "None"}
       </span>
     );
   }
@@ -193,14 +194,14 @@ function StaffMark({ hasStaff }) {
 
 function CardRow({ row }) {
   const signals = barangaySignals(row);
-  const active = CARD_SIGNALS.filter((column) => num(row[column.key]) > 0);
+  const active = CARD_SIGNALS.filter((column) => signals[column.signal]);
   const noIssues = active.length === 0 && !signals.noStaff;
 
   return (
     <li className="rounded-lg border border-[#E8ECF0] p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 text-sm font-semibold text-[#0F172A]">{row.name}</p>
-        <StaffMark hasStaff={!signals.noStaff} />
+        <StaffMark hasStaff={!signals.noStaff} card />
       </div>
       <p className="mt-0.5 text-[11px] text-[#64748B]">Referrals in period: {num(row.referrals)}</p>
 

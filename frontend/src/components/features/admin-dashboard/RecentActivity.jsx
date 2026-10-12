@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { ConnectionErrorState, InlineSpinner } from "../../common";
 import { apiRequest, unwrapList } from "../../../services/apiClient";
+import { activityLabel } from "../../../utils/adminDashboard";
 import { errorStateVariant } from "../../../utils/errorStateVariant";
 import { formatDisplayValue, formatUserName } from "../../../utils/formatters";
 
@@ -29,10 +30,8 @@ export default function RecentActivity() {
       log.audit_log_id ??
       log.auditLogId ??
       `${log.created_at || log.createdAt || "activity"}-${index}`,
-    action: formatDisplayValue(
-      log.description || log.action,
-      "System activity",
-    ),
+    // Patient-module descriptions carry the patient's name, so they get a generic label.
+    action: formatDisplayValue(activityLabel(log), "System activity"),
     user: formatUserName(
       log.user || log.createdBy || log.created_by || log.user_name,
       "System",

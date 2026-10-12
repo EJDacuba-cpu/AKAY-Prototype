@@ -3,6 +3,7 @@ import {
   useState,
 } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { useSearchParams } from "react-router";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -26,7 +27,7 @@ export default function AdminDashboard() {
   const period = parsePeriod(searchParams.get("period"));
   const {
     data,
-    isLoading,
+    isPending,
     isFetching,
     error: loadError,
     refetch,
@@ -34,9 +35,12 @@ export default function AdminDashboard() {
     queryKey: queryKeys.adminDashboard(period),
     queryFn: () => loadAdminDashboard(period),
     placeholderData: keepPreviousData,
+    // Counts change as the MHO works, so returning to the page shows the cache and refetches.
+    staleTime: 0,
     retry: false,
   });
   const hasData = Boolean(data);
+  const asOf = formatAsOf(data?.generated_at);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
@@ -49,7 +53,8 @@ export default function AdminDashboard() {
   return (
     <DashboardLayout role="admin" title="Dashboard">
       <PageStateWrapper skeleton="dashboard"
-        isLoading={isLoading}
+        // isPending (not isLoading) so a first load that is paused offline still shows the skeleton.
+        isLoading={isPending}
         isError={Boolean(loadError)}
         isFetching={isFetching}
         hasData={hasData}
@@ -96,35 +101,58 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          <AttentionStrip attention={data?.attention} />
+          {hasData && <AttentionStrip attention={data.attention} />}
 
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#64748B]">
-              Municipal health overview
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#64748B]">
+                Municipal health overview
+              </h2>
+              {asOf && <p className="mt-0.5 text-[11px] text-[#64748B]">As of {asOf}</p>}
+            </div>
             <PeriodSelect
               value={period}
               onChange={(next) => setSearchParams({ period: next }, { replace: true })}
             />
           </div>
 
-          <OverviewCards
-            referrals={data?.referrals}
-            followUps={data?.follow_ups}
-            patients={data?.patients}
-            medicines={data?.medicines}
-          />
+          {loadError && hasData && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-amber-700"
+            >
+              <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
+              <span>Couldn't refresh the dashboard.</span>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="text-[#B91C1C] hover:text-[#7F1D1D] hover:underline disabled:opacity-60"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {hasData && (
+            <OverviewCards
+              referrals={data.referrals}
+              followUps={data.follow_ups}
+              patients={data.patients}
+              medicines={data.medicines}
+            />
+          )}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="min-w-0 space-y-6">
-              <BarangayTable rows={data?.barangays} />
+              {hasData && <BarangayTable rows={data.barangays} />}
               <RecentActivity />
             </div>
 
             <aside className="min-w-0 space-y-6">
               <QuickActions />
               <DoctorAvailability />
-              <AccountCounts accounts={data?.accounts} />
+              {hasData && <AccountCounts accounts={data.accounts} />}
             </aside>
           </div>
         </div>
@@ -162,6 +190,12 @@ function formatDashboardDate(date) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatAsOf(value) {
+  const date = value ? new Date(value) : null;
+
+  return date && !Number.isNaN(date.getTime()) ? formatDashboardTime(date) : "";
 }
 
 function formatDashboardTime(date) {

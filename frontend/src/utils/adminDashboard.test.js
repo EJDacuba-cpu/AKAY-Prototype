@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PERIOD_OPTIONS,
   barangaySignals,
+  activityLabel,
   buildAttentionItems,
   parsePeriod,
   referralTrend,
@@ -137,4 +138,26 @@ test("referralTrend labels", () => {
   assert.deepEqual(referralTrend(48, 36), { direction: "up", difference: 12, label: "▲ 12 vs last period" });
   assert.deepEqual(referralTrend(5, 9), { direction: "down", difference: 4, label: "▼ 4 vs last period" });
   assert.deepEqual(referralTrend(3, 3), { direction: "same", difference: 0, label: "Same as last period" });
+});
+
+test("activityLabel never shows a patient name for the patients module", () => {
+  const created = activityLabel({ module: "patients", action: "created", description: "Created patient Maria Santos." });
+  const updated = activityLabel({ module: "Patients", action: "updated", description: "Updated patient Maria Santos." });
+  const deactivated = activityLabel({ module: "patients", action: "deactivated", description: "Deactivated patient Maria Santos." });
+  const unknown = activityLabel({ module: "patients", action: "restored", description: "Restored patient Maria Santos." });
+  const noAction = activityLabel({ module: "patients", description: "Something about Maria Santos." });
+
+  assert.equal(created, "Patient record created");
+  assert.equal(updated, "Patient record updated");
+  assert.equal(deactivated, "Patient record deactivated");
+  assert.equal(unknown, "Patient record activity");
+  assert.equal(noAction, "Patient record activity");
+  for (const label of [created, updated, deactivated, unknown, noAction]) assert.doesNotMatch(label, /Maria|Santos/);
+});
+
+test("activityLabel keeps the description for other modules", () => {
+  assert.equal(activityLabel({ module: "auth", action: "login", description: "User logged in." }), "User logged in.");
+  assert.equal(activityLabel({ module: "auth", action: "login" }), "login");
+  assert.equal(activityLabel({ module: "auth" }), "");
+  assert.equal(activityLabel(null), "");
 });

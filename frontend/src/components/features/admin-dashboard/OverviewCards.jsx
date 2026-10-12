@@ -31,11 +31,12 @@ export default function OverviewCards({ referrals, followUps, patients, medicine
       >
         <p className="text-[11px] font-semibold text-slate-600">in period · {trend.label}</p>
         <p className="mt-1 text-[11px] text-[#64748B]">
+          Of these: {num(referral.completed)} completed · {num(referral.no_show)} no-show
+        </p>
+        <p className="text-[11px] text-[#64748B]">
           Pending now: {num(referral.pending)}
           {priorityPending > 0 && ` (${priorityPending} priority)`}
         </p>
-        <p className="text-[11px] text-[#64748B]">Completed: {num(referral.completed)}</p>
-        <p className="text-[11px] text-[#64748B]">No-show: {num(referral.no_show)}</p>
       </Card>
 
       <Card
@@ -54,14 +55,22 @@ export default function OverviewCards({ referrals, followUps, patients, medicine
       <Card
         title="Low stock medicines"
         icon={<Boxes size={17} />}
-        value={rhuLow + bhcLow}
         warn={rhuLow > 0 || bhcLow > 0}
       >
-        <p className="text-[11px] text-[#64748B]">RHU: {rhuLow} low stock</p>
-        <p className="text-[11px] text-[#64748B]">
-          BHCs: {bhcLow} low stock · {barangaysAffected}{" "}
-          {barangaysAffected === 1 ? "barangay" : "barangays"}
-        </p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">RHU</p>
+            <p className="text-2xl font-bold tracking-tight text-[#0F172A]">{rhuLow}</p>
+            <p className="text-[11px] text-[#64748B]">low stock</p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">BHCs</p>
+            <p className="text-2xl font-bold tracking-tight text-[#0F172A]">{bhcLow}</p>
+            <p className="text-[11px] text-[#64748B]">
+              low stock · {barangaysAffected} {barangaysAffected === 1 ? "barangay" : "barangays"}
+            </p>
+          </div>
+        </div>
       </Card>
     </div>
   );
@@ -84,7 +93,9 @@ function Card({ to, title, icon, value, warn = false, children }) {
         </div>
       </div>
 
-      <p className="mt-3 text-2xl font-bold tracking-tight text-[#0F172A]">{value}</p>
+      {value !== undefined && (
+        <p className="mt-3 text-2xl font-bold tracking-tight text-[#0F172A]">{value}</p>
+      )}
 
       <div className="mt-1">{children}</div>
     </>

@@ -108,3 +108,23 @@ export function referralTrend(total, previousTotal) {
   }
   return { direction: "same", difference: 0, label: "Same as last period" };
 }
+
+const PATIENT_ACTIVITY_LABELS = {
+  created: "Patient record created",
+  updated: "Patient record updated",
+  deactivated: "Patient record deactivated",
+};
+
+// Audit descriptions for the patients module contain the patient's full name, and the
+// dashboard never shows patient names. Those entries get a generic label built from the
+// action; every other module keeps its description (falling back to the action).
+export function activityLabel(log) {
+  const source = log || {};
+
+  if (String(source.module || "").trim().toLowerCase() === "patients") {
+    const action = String(source.action || "").trim().toLowerCase();
+    return PATIENT_ACTIVITY_LABELS[action] || "Patient record activity";
+  }
+
+  return source.description || source.action || "";
+}
