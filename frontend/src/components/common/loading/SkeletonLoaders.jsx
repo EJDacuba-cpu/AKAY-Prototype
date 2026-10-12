@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { resolveSkeletonVariant } from "./skeletonVariant";
 
 const cardClass = "rounded-xl border border-slate-200 bg-white shadow-sm";
+
+// When the page's own header and toolbar stay on screen while it loads, the skeleton leaves its copies out.
+const SkeletonBodyOnlyContext = createContext(false);
 const skeletonBase = "akay-skeleton-block rounded-md bg-[#EEF2F7]";
 
 function SkeletonStyles() {
@@ -123,44 +127,8 @@ export function TopLoadingBar({
   );
 }
 
-export function inferLoadingSkeletonVariant(message = "") {
-  const text = String(message).toLowerCase();
-
-  if (text.includes("facilit")) return "facilities";
-  if (text.includes("follow")) return "follow-ups";
-  if (text.includes("medicine")) return "medicine";
-  if (text.includes("report")) return "reports";
-  if (text.includes("patient details") || text.includes("patient profile")) {
-    return "patient-details";
-  }
-  if (text.includes("health records")) return "health-records";
-  if (text.includes("dashboard")) return "dashboard";
-  if (
-    text.includes("details") ||
-    text.includes("detail") ||
-    text.includes("feedback") ||
-    text.includes("return slip")
-  ) {
-    return "details";
-  }
-  if (text.includes("form") || text.includes("referral details")) {
-    return "form";
-  }
-  if (
-    text.includes("patients") ||
-    text.includes("records") ||
-    text.includes("referrals") ||
-    text.includes("accounts") ||
-    text.includes("requests") ||
-    text.includes("logs")
-  ) {
-    return "table";
-  }
-
-  return "module";
-}
-
 function SkeletonHeader({ compact = false }) {
+  if (useContext(SkeletonBodyOnlyContext)) return null;
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -176,6 +144,7 @@ function SkeletonHeader({ compact = false }) {
 }
 
 function ToolbarSkeleton({ action = true, filters = 2 }) {
+  if (useContext(SkeletonBodyOnlyContext)) return null;
   return (
     <div className={`${cardClass} p-3.5`}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -672,30 +641,20 @@ export function ModuleSkeleton({ message = "Loading..." }) {
   );
 }
 
+/**
+ * The loading shape for a page. `skeleton` names it (see skeletonVariant.js; unknown names show `module`);
+ * `bodyOnly` leaves out the skeleton's header and toolbar when the page's own are already on screen.
+ */
 export function PageSkeletonLoader({
   message = "Loading...",
-  variant,
+  skeleton,
+  bodyOnly = false,
   className = "",
 }) {
-  const supportedVariants = [
-    "dashboard",
-    "table",
-    "details",
-    "form",
-    "module",
-    "follow-ups",
-    "medicine",
-    "reports",
-    "patient-details",
-    "health-records",
-    "facilities",
-  ];
-  const requestedVariant = variant || inferLoadingSkeletonVariant(message);
-  const skeletonVariant = supportedVariants.includes(requestedVariant)
-    ? requestedVariant
-    : "module";
+  const skeletonVariant = resolveSkeletonVariant(skeleton);
 
   return (
+    <SkeletonBodyOnlyContext.Provider value={bodyOnly}>
     <div className={`min-w-0 ${className}`}>
       {skeletonVariant === "dashboard" && <DashboardSkeleton message={message} />}
       {skeletonVariant === "table" && <TableSkeleton message={message} />}
@@ -717,5 +676,6 @@ export function PageSkeletonLoader({
         <FacilitiesSkeleton message={message} />
       )}
     </div>
+    </SkeletonBodyOnlyContext.Provider>
   );
 }

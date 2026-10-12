@@ -10,12 +10,14 @@ export default function PageStateWrapper({
   error,
   onRetry,
   loadingMessage = "Loading...",
+  skeleton,
+  bodyOnly = false,
   errorTitle,
   errorMessage,
   children,
 }) {
   if (isLoading && !hasData) {
-    return <PageLoadingFallback message={loadingMessage} />;
+    return <PageLoadingFallback message={loadingMessage} skeleton={skeleton} bodyOnly={bodyOnly} />;
   }
 
   if (isError && !hasData) {

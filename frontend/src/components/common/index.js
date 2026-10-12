@@ -64,7 +64,6 @@ export {
   ReportsSkeleton,
   TableSkeleton,
   TopLoadingBar,
-  inferLoadingSkeletonVariant,
 } from "./loading/SkeletonLoaders";
 export { default as SoftLoadingOverlay } from "./loading/SoftLoadingOverlay";
 export { DottedSpinner, SoftLoadingArea } from "./loading/SoftLoadingOverlay";

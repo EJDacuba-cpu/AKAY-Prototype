@@ -13,7 +13,7 @@ export default function LockedModulePage({ role, module }) {
         locked
         label={label}
         className="min-h-[calc(100dvh-11rem)] rounded-xl"
-        placeholder={<PageSkeletonLoader variant={skeleton} message={label} />}
+        placeholder={<PageSkeletonLoader skeleton={skeleton} message={label} />}
       />
     </DashboardLayout>
   );

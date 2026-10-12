@@ -10,7 +10,8 @@ import {
 export default function PageLoadingFallback({
   message = "Loading...",
   minHeight = "min-h-[calc(100dvh-9rem)]",
-  variant,
+  skeleton,
+  bodyOnly = false,
 }) {
   useEffect(() => {
     dispatchContentLoadingStart();
@@ -19,12 +20,12 @@ export default function PageLoadingFallback({
 
   return (
     <div
-      className={`relative ${minHeight} overflow-hidden rounded-xl bg-[#F8FAFC]`}
+      className={`relative ${minHeight} overflow-hidden`}
       aria-busy="true"
       aria-live="polite"
     >
       <div className="px-1 py-4 sm:px-0">
-        <PageSkeletonLoader message={message} variant={variant} />
+        <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} />
       </div>
     </div>
   );

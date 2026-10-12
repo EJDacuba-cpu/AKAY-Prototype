@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  PageSkeletonLoader,
-  inferLoadingSkeletonVariant,
-} from "./SkeletonLoaders";
+import { PageSkeletonLoader } from "./SkeletonLoaders";
 import {
   dispatchContentLoadingEnd,
   dispatchContentLoadingStart,
@@ -37,7 +34,8 @@ export default function SoftLoadingOverlay({
   blur = "sm",
   scope = "area",
   className = "",
-  variant,
+  skeleton,
+  bodyOnly = false,
   children,
 }) {
   const shouldShow = isVisible ?? isLoading ?? visible;
@@ -78,8 +76,11 @@ export default function SoftLoadingOverlay({
       className={`${
         isViewportScope
           ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
-          : "absolute inset-0 z-20 min-h-full rounded-xl"
-      } overflow-hidden transition-opacity duration-200 ease-out ${overlayToneClasses[blur] || overlayToneClasses.sm} ${
+          : "absolute inset-0 z-20 min-h-full"
+      } overflow-hidden transition-opacity duration-200 ease-out ${
+        // An area overlay takes the page's own colour, so the skeleton reads as the page, not a panel on it.
+        isViewportScope ? overlayToneClasses[blur] || overlayToneClasses.sm : "bg-gray-50"
+      } ${
         isActive ? "opacity-100" : "opacity-0"
       } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}
       aria-live="polite"
@@ -91,10 +92,7 @@ export default function SoftLoadingOverlay({
         } ${isActive ? "translate-y-0" : "translate-y-1"}`}
       >
         {children || (
-          <PageSkeletonLoader
-            message={message}
-            variant={variant || inferLoadingSkeletonVariant(message)}
-          />
+          <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} />
         )}
       </div>
     </div>
@@ -109,7 +107,8 @@ export function SoftLoadingArea({
   scope = "area",
   minHeight = "min-h-[calc(100dvh-11rem)]",
   className = "",
-  variant,
+  skeleton,
+  bodyOnly = false,
   children,
 }) {
   return (
@@ -121,7 +120,8 @@ export function SoftLoadingArea({
         blocking={blocking}
         blur={blur}
         scope={scope}
-        variant={variant || inferLoadingSkeletonVariant(message)}
+        skeleton={skeleton}
+        bodyOnly={bodyOnly}
       />
     </div>
   );
