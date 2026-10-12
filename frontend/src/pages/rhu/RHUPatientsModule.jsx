@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  LoadMoreButton,
   ModuleToolbar,
   PageStateWrapper,
   RefreshingIndicator,
 } from "../../components/common";
-import { DottedSpinner } from "../../components/common/loading/SoftLoadingOverlay";
+import useLoadMore from "../../hooks/useLoadMore";
+import { PATIENTS_LOAD_BATCH } from "../../utils/tablePaging";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import { getRhuPatients } from "../../services/patientService";
 import {
@@ -18,7 +20,6 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
-const PATIENTS_BATCH_SIZE = 12;
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -97,9 +98,6 @@ function getRegisteredDate(patient) {
 
 export default function Patients() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [visibleCount, setVisibleCount] = useState(PATIENTS_BATCH_SIZE);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const loadMoreRef = useRef(null);
 
   const {
     data: patientsData = [],
@@ -217,44 +215,11 @@ export default function Patients() {
   ).length;
 
   const hasAnyFilter = activeFilters.length > 0 || Boolean(filters.search);
-  const visiblePatients = filteredPatients.slice(0, visibleCount);
-  const hasMorePatients = visibleCount < filteredPatients.length;
-
-  useEffect(() => {
-    setVisibleCount(PATIENTS_BATCH_SIZE);
-    setLoadingMore(false);
-  }, [filters]);
-
-  useEffect(() => {
-    if (!loadMoreRef.current || !hasMorePatients || loadingMore) {
-      return undefined;
-    }
-
-    let loadTimer;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-
-        setLoadingMore(true);
-
-        loadTimer = window.setTimeout(() => {
-          setVisibleCount((current) =>
-            Math.min(current + PATIENTS_BATCH_SIZE, filteredPatients.length),
-          );
-          setLoadingMore(false);
-        }, 220);
-      },
-      { rootMargin: "240px 0px" },
-    );
-
-    observer.observe(loadMoreRef.current);
-
-    return () => {
-      observer.disconnect();
-      if (loadTimer) window.clearTimeout(loadTimer);
-    };
-  }, [filteredPatients.length, hasMorePatients, loadingMore]);
+  const {
+    visibleItems: visiblePatients,
+    hasMore: hasMorePatients,
+    loadMore: loadMorePatients,
+  } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
@@ -348,8 +313,7 @@ export default function Patients() {
               patients={visiblePatients}
               hasAnyFilter={hasAnyFilter}
               hasMorePatients={hasMorePatients}
-              loadingMore={loadingMore}
-              loadMoreRef={loadMoreRef}
+              onLoadMore={loadMorePatients}
               refreshing={refreshing}
             />
           )}
@@ -364,8 +328,7 @@ function RHUPatientsDirectory({
   patients,
   hasAnyFilter,
   hasMorePatients,
-  loadingMore,
-  loadMoreRef,
+  onLoadMore,
   refreshing,
 }) {
   return (
@@ -411,22 +374,9 @@ function RHUPatientsDirectory({
               ))}
             </div>
 
-            {(loadingMore || hasMorePatients) && (
-              <div ref={loadMoreRef} className="mt-3">
-                {loadingMore ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-5">
-                    <DottedSpinner label="Loading more patients" />
-                    <span className="text-[11px] font-medium text-[#94A3B8]">
-                      Loading more patients...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex justify-center py-3">
-                    <span className="text-[11px] font-medium text-[#94A3B8]">
-                      Scroll to load more patients
-                    </span>
-                  </div>
-                )}
+            {hasMorePatients && (
+              <div className="flex justify-center py-3">
+                <LoadMoreButton label="Load more patients" onClick={onLoadMore} />
               </div>
             )}
           </>

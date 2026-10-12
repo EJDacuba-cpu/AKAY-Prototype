@@ -3,16 +3,19 @@ import { Link } from "react-router";
 import { PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ConnectionErrorState, RefreshingIndicator } from "../../components/common";
+import {
+  ConnectionErrorState,
+  LoadMoreButton,
+  RefreshingIndicator,
+} from "../../components/common";
 import Drawer from "../../components/common/drawer/Drawer";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
-import {
-  DottedSpinner,
-  SoftLoadingArea,
-} from "../../components/common/loading/SoftLoadingOverlay";
+import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
+import useLoadMore from "../../hooks/useLoadMore";
+import { PATIENTS_LOAD_BATCH } from "../../utils/tablePaging";
 import useMediaQuery from "../../hooks/useMediaQuery";
 import { isConnectionError } from "../../services/apiClient";
 import {
@@ -36,11 +39,6 @@ const DEFAULT_FILTERS = {
 // replaces the toolbar one and the summary opens in a Drawer. Keep in sync with
 // clinical-directory.css.
 const DESKTOP_QUERY = "(min-width: 1024px)";
-// From here up the header stays pinned and only the card list scrolls; below it
-// (phones) the whole page scrolls as usual. Keep in sync with clinical-directory.css.
-const PINNED_QUERY = "(min-width: 768px)";
-const PATIENTS_BATCH_SIZE = 12;
-
 function uniqueOptions(items, selectors, fallback) {
   const values = items
     .flatMap((item) => selectors.map((selector) => selector(item)))
@@ -62,15 +60,11 @@ export default function PatientsModule() {
     refetchPatients,
     isRefreshing,
   } = usePatients();
-  const [visibleCount, setVisibleCount] = useState(PATIENTS_BATCH_SIZE);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const loadMoreRef = useRef(null);
   const resultsRef = useRef(null);
   // The details panel starts collapsed; a card click selects a patient and opens it.
   const [panel, setPanel] = useState({ selectedId: null, open: false });
   const { selectedId: selectedPatientId, open: panelOpen } = panel;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
-  const pinnedHeader = useMediaQuery(PINNED_QUERY);
 
   const barangayOptions = uniqueOptions(
     patients,
@@ -145,14 +139,15 @@ export default function PatientsModule() {
   const patientCountLabel = isNarrowed
     ? `${filteredPatients.length} of ${patients.length} patients`
     : `${patients.length} registered patient${patients.length === 1 ? "" : "s"}`;
-  const visiblePatients = filteredPatients.slice(0, visibleCount);
-  const hasMorePatients = visibleCount < filteredPatients.length;
+  const {
+    visibleItems: visiblePatients,
+    hasMore: hasMorePatients,
+    loadMore: loadMorePatients,
+  } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
   const showInitialLoading = loading && patients.length === 0;
   const showRefreshOverlay = isRefreshing && patients.length > 0;
 
   useEffect(() => {
-    setVisibleCount(PATIENTS_BATCH_SIZE);
-    setLoadingMore(false);
     // The card list scrolls on its own: a new search/filter starts at the top.
     if (resultsRef.current) resultsRef.current.scrollTop = 0;
   }, [filters]);
@@ -185,37 +180,6 @@ export default function PatientsModule() {
   function closeSummary() {
     setPanel({ selectedId: null, open: false });
   }
-
-  useEffect(() => {
-    if (!loadMoreRef.current || !hasMorePatients || loadingMore) {
-      return undefined;
-    }
-
-    let loadTimer;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-
-        setLoadingMore(true);
-        loadTimer = window.setTimeout(() => {
-          setVisibleCount((current) =>
-            Math.min(current + PATIENTS_BATCH_SIZE, filteredPatients.length),
-          );
-          setLoadingMore(false);
-        }, 220);
-      },
-      // With a pinned header the card list is its own scroll area, so it is the
-      // observer root (rootMargin only widens a root, not the page scroller).
-      { root: pinnedHeader ? resultsRef.current : null, rootMargin: "240px 0px" },
-    );
-
-    observer.observe(loadMoreRef.current);
-
-    return () => {
-      observer.disconnect();
-      if (loadTimer) window.clearTimeout(loadTimer);
-    };
-  }, [filteredPatients.length, hasMorePatients, loadingMore, pinnedHeader]);
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
@@ -331,8 +295,7 @@ export default function PatientsModule() {
                   patients={visiblePatients}
                   hasAnyFilter={hasAnyFilter}
                   hasMorePatients={hasMorePatients}
-                  loadingMore={loadingMore}
-                  loadMoreRef={loadMoreRef}
+                  onLoadMore={loadMorePatients}
                   selectedPatientId={selectedPatientId}
                   onSelectPatient={selectPatient}
                 />
@@ -397,8 +360,7 @@ function PatientDirectory({
   patients,
   hasAnyFilter,
   hasMorePatients,
-  loadingMore,
-  loadMoreRef,
+  onLoadMore,
   selectedPatientId,
   onSelectPatient,
 }) {
@@ -441,22 +403,9 @@ function PatientDirectory({
               ))}
             </div>
 
-            {(loadingMore || hasMorePatients) && (
-              <div ref={loadMoreRef} className="mt-3">
-                {loadingMore ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-5">
-                    <DottedSpinner label="Loading more patients" />
-                    <span className="text-[11px] font-medium text-gray-400">
-                      Loading more patients...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex justify-center py-3">
-                    <span className="text-[11px] font-medium text-gray-400">
-                      Scroll to load more patients
-                    </span>
-                  </div>
-                )}
+            {hasMorePatients && (
+              <div className="flex justify-center py-3">
+                <LoadMoreButton label="Load more patients" onClick={onLoadMore} />
               </div>
             )}
           </>
