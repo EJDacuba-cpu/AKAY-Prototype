@@ -7,6 +7,12 @@ export const TABLE_HEAD_HEIGHT = 44;
 export const PATIENTS_LOAD_BATCH = 10;
 export const FACILITIES_LOAD_BATCH = 12;
 
+// A reset key built from values, for screens whose filter object can be shared between tabs (equal objects must
+// not hide a tab switch).
+export function resetKeyOf(...parts) {
+  return JSON.stringify(parts);
+}
+
 export function pageCount(rowCount, pageSize = TABLE_PAGE_SIZE) {
   return Math.max(Math.ceil((Number(rowCount) || 0) / pageSize), 1);
 }

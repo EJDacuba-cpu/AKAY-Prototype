@@ -23,6 +23,7 @@ import {
   TablePagination,
 } from "../../components/common";
 import usePagedRows from "../../hooks/usePagedRows";
+import { resetKeyOf } from "../../utils/tablePaging";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
 import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
@@ -94,7 +95,7 @@ export default function MedicineAvailability() {
   );
   const { page, setPage, totalPages, pageRows } = usePagedRows(
     filteredItems,
-    filters,
+    resetKeyOf(activeTab, filters),
   );
 
   const lowStockCount = bhcItems.filter(

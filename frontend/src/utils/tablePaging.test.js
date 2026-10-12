@@ -5,6 +5,7 @@ import {
   hasMoreItems,
   nextVisibleCount,
   pageCount,
+  resetKeyOf,
   sliceRows,
   tableBodyHeight,
   tableEmptyHeight,
@@ -51,4 +52,12 @@ test("nextVisibleCount and hasMoreItems drive the Load more button", () => {
   assert.equal(hasMoreItems(10, 25), true);
   assert.equal(hasMoreItems(25, 25), false);
   assert.equal(hasMoreItems(30, 25), false);
+});
+
+test("resetKeyOf tells two tabs apart even when their filter objects are equal", () => {
+  const defaults = { search: "", status: "All" };
+
+  assert.notEqual(resetKeyOf("bhc", defaults), resetKeyOf("rhu", defaults));
+  assert.equal(resetKeyOf("bhc", defaults), resetKeyOf("bhc", { ...defaults }));
+  assert.notEqual(resetKeyOf("bhc", defaults), resetKeyOf("bhc", { ...defaults, search: "para" }));
 });
