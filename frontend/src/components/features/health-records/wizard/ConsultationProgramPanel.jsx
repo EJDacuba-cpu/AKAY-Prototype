@@ -1,3 +1,5 @@
+import { programFormActionLabel } from "../../../../utils/consultationPrograms";
+
 /**
  * Barangay Health Services selection for a consultation, shown as a fixed
  * column to the right of the form. Optional: selecting nothing is a general
@@ -113,29 +115,31 @@ export default function ConsultationProgramPanel({
               </label>
 
               {active && (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-2 pl-[38px] pr-3">
-                  {info && <StatusBadge status={info.status} />}
-                  {multiple && (primary === program.key ? (
-                    <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
-                      Primary
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onPrimaryChange(program.key)}
-                      aria-label={`Make ${program.title} primary`}
-                      className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
-                    >
-                      Make primary
-                    </button>
-                  ))}
+                <div className="pb-2 pl-[38px] pr-3">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {info && <StatusBadge status={info.status} />}
+                    {multiple && (primary === program.key ? (
+                      <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
+                        Primary
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onPrimaryChange(program.key)}
+                        aria-label={`Make ${program.title} primary`}
+                        className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
+                      >
+                        Make primary
+                      </button>
+                    ))}
+                  </div>
                   {info?.stepKey && (
                     <button
                       type="button"
                       onClick={() => onOpenForm(info.stepKey)}
-                      className="ml-auto text-[12px] font-semibold text-[#DC2626] hover:text-red-700"
+                      className="mt-2 w-full rounded-none border border-[#DC2626] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#DC2626] hover:bg-red-50"
                     >
-                      Open form
+                      {programFormActionLabel(program.key, info.status)}
                     </button>
                   )}
                 </div>

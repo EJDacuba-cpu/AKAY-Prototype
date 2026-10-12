@@ -48,3 +48,21 @@ export function lockProgramsWhilePatientLoads(programs, patientLoading) {
     disabledNote: PATIENT_LOADING_REASON,
   }));
 }
+
+const PROGRAM_FORM_NAMES = Object.freeze({
+  Maternal: "Prenatal",
+  "Family Planning": "Family Planning",
+  EPI: "Child Health / EPI",
+});
+
+/**
+ * The label of the button that opens a selected service's form: what the
+ * worker does next ("Fill up", "Continue" or "Edit"), by the form's status.
+ */
+export function programFormActionLabel(programKey, status) {
+  const name = PROGRAM_FORM_NAMES[programKey];
+  const form = name ? `${name} form` : "form";
+  if (status === "Completed") return `Edit ${form}`;
+  if (status === "Incomplete") return `Continue ${form}`;
+  return `Fill up ${form}`;
+}
