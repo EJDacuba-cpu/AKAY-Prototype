@@ -603,3 +603,24 @@ textarea,
     animation: none;
   }
 }
+
+/* Fixed-size list tables (FixedTable). Every data row is the same height and text that does not fit is cut with an
+   ellipsis, so a table card never changes size with the number of rows. Empty/error rows (td[colspan]) are exempt. */
+.akay-fixed-table tbody tr:not(:has(td[colspan])) {
+  height: var(--akay-row-h);
+}
+
+.akay-fixed-table tbody td:not([colspan]) {
+  padding-block: 0;
+  vertical-align: middle;
+  max-width: 22rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.akay-fixed-table tbody td:not([colspan]) > p,
+.akay-fixed-table tbody td:not([colspan]) > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

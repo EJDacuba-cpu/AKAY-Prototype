@@ -3,6 +3,7 @@ export { default as AccordionSection } from "./accordion/AccordionSection";
 export { default as ActionMenu } from "./tables/ActionMenu";
 export { default as DataTableEmptyState } from "./tables/DataTableEmptyState";
 export { default as ModuleTableCard } from "./tables/ModuleTableCard";
+export { default as FixedTable } from "./tables/FixedTable";
 export { default as RecordTabs } from "./tabs/RecordTabs";
 export { default as ConfirmationModal } from "./modals/ConfirmationModal";
 export {
