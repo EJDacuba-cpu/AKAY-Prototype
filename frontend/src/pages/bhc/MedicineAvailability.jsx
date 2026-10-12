@@ -16,11 +16,13 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import {
+  FixedTable,
   ListToolbar,
   PageStateWrapper,
   RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
+import usePagedRows from "../../hooks/usePagedRows";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
 import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
@@ -89,6 +91,10 @@ export default function MedicineAvailability() {
   const filteredItems = useMemo(
     () => filterMedicineItems(activeItems, filters),
     [activeItems, filters],
+  );
+  const { page, setPage, totalPages, pageRows } = usePagedRows(
+    filteredItems,
+    filters,
   );
 
   const lowStockCount = bhcItems.filter(
@@ -305,7 +311,7 @@ export default function MedicineAvailability() {
         </div>
       </div>
 
-      <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+      <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -331,7 +337,7 @@ export default function MedicineAvailability() {
         </div>
 
         <MedicineTable
-          items={filteredItems}
+          items={pageRows}
           editable={activeTab === "bhc" && canManageBhcInventory}
           openMenuId={openMenuId}
           setOpenMenuId={setOpenMenuId}
@@ -343,7 +349,11 @@ export default function MedicineAvailability() {
         />
 
         <div className="mt-auto">
-          <TablePagination currentPage={1} totalPages={1} />
+          <TablePagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </div>
       </div>
 
@@ -386,8 +396,7 @@ function MedicineTable({
   onDelete,
 }) {
   return (
-    <div className="w-full flex-1 overflow-x-auto">
-      <table className="w-full min-w-[1120px] text-left">
+    <FixedTable minWidth="min-w-[1120px]">
         <thead>
           <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
             <th className="px-6 py-3">Item ID</th>
@@ -406,7 +415,7 @@ function MedicineTable({
           {items.length === 0 ? (
             <tr>
               <td colSpan={editable ? 9 : 8} className="px-6 py-0 text-center">
-                <div className="flex min-h-[260px] flex-col items-center justify-center">
+                <div className="flex min-h-[var(--akay-empty-h,260px)] flex-col items-center justify-center">
                   <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
                     <Boxes size={20} className="text-[#9CA3AF]" />
                   </div>
@@ -488,8 +497,7 @@ function MedicineTable({
             ))
           )}
         </tbody>
-      </table>
-    </div>
+    </FixedTable>
   );
 }
 

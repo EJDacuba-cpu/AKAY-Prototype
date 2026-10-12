@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  FixedTable,
   ListToolbar,
   PageStateWrapper,
   RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
+import usePagedRows from "../../hooks/usePagedRows";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
 import MedicineInventoryActionModal from "../../components/features/medicine/MedicineInventoryActionModal";
 import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
@@ -82,6 +84,10 @@ export default function MedicineManagement() {
   const filteredItems = useMemo(
     () => filterMedicineItems(items, filters),
     [items, filters],
+  );
+  const { page, setPage, totalPages, pageRows } = usePagedRows(
+    filteredItems,
+    filters,
   );
 
   const tabCounts = useMemo(() => {
@@ -299,7 +305,7 @@ export default function MedicineManagement() {
         })}
       </div>
 
-      <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+      <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
           <div>
             <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -316,8 +322,7 @@ export default function MedicineManagement() {
           </span>
         </div>
 
-        <div className="w-full flex-1 overflow-x-auto">
-          <table className="w-full min-w-[1160px] text-left">
+        <FixedTable minWidth="min-w-[1160px]">
             <thead>
               <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <th className="px-6 py-3">Item ID</th>
@@ -336,7 +341,7 @@ export default function MedicineManagement() {
               {filteredItems.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-0 text-center">
-                    <div className="flex min-h-[260px] flex-col items-center justify-center">
+                    <div className="flex min-h-[var(--akay-empty-h,260px)] flex-col items-center justify-center">
                       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
                         <Boxes size={20} className="text-[#9CA3AF]" />
                       </div>
@@ -350,7 +355,7 @@ export default function MedicineManagement() {
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
+                pageRows.map((item) => (
                   <tr
                     key={item.id}
                     className="transition-colors hover:bg-[#F9FAFB]"
@@ -416,11 +421,14 @@ export default function MedicineManagement() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </FixedTable>
 
         <div className="mt-auto">
-          <TablePagination currentPage={1} totalPages={1} />
+          <TablePagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </div>
       </div>
 
