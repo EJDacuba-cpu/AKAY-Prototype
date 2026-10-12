@@ -20,7 +20,6 @@ import AccessRequestTable, { accessColumns, accountName, formatDateTime, roleLab
 import TemporaryPasswordDialog, { ManualCopyDialog } from "./TemporaryPasswordDialog";
 import useAccessRows from "./useAccessRows";
 
-const MENU_ACTIONS = ["copy", "editEmail", "temporaryPassword"];
 const EMAIL_TAKEN = "Email is already taken.";
 
 /** Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). */
@@ -90,7 +89,6 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
         columns={columns}
         statusOf={(row) => inviteStatus(row)}
         onAction={handleAction}
-        menuActions={MENU_ACTIONS}
         emptyMessage="No account invites found."
         loading={list.loading}
         error={list.error}

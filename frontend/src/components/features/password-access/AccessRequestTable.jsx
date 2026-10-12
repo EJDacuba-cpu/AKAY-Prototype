@@ -1,15 +1,5 @@
 import { useState } from "react";
-import {
-  CheckCircle2,
-  Copy,
-  Eye,
-  KeyRound,
-  Mail,
-  Search,
-  Send,
-  ShieldCheck,
-  XCircle,
-} from "lucide-react";
+import { KeyRound, Search, ShieldCheck } from "lucide-react";
 import {
   ActionMenu,
   ListToolbar,
@@ -27,19 +17,19 @@ export const DEFAULT_FILTERS = { search: "", status: "all" };
 
 const FILTER_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_OPTIONS];
 
-const ACTIONS = {
-  approve: { label: "Approve", icon: CheckCircle2, tone: "border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/70" },
-  decline: { label: "Decline", icon: XCircle, tone: "border-red-100 bg-red-50 text-[#B91C1C] hover:bg-red-100/70" },
-  resend: { label: "Resend link", icon: Send, tone: "border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100/70" },
-  copy: { label: "Copy link", icon: Copy, tone: "border-[#E5E7EB] bg-white text-[#334155] hover:bg-[#F8FAFC]" },
-  editEmail: { label: "Edit email", icon: Mail, tone: "border-[#E5E7EB] bg-white text-[#334155] hover:bg-[#F8FAFC]" },
-  temporaryPassword: { label: "Issue temporary password", icon: KeyRound, tone: "border-[#E5E7EB] bg-white text-[#334155] hover:bg-[#F8FAFC]" },
+const ACTION_LABELS = {
+  approve: "Approve",
+  decline: "Decline",
+  resend: "Resend link",
+  copy: "Copy link",
+  editEmail: "Edit email",
+  temporaryPassword: "Issue temporary password",
 };
 
 /**
  * The shared list for both Password & Invites tabs: toolbar, summary cards, desktop table,
  * mobile cards and the View details modal. Statuses and row actions come from `statusOf`
- * (accessRequestStatus.js); actions listed in `menuActions` go in the ⋯ menu, the rest are buttons.
+ * (accessRequestStatus.js); every row has a single ⋯ menu holding View details and the row's actions.
  */
 export default function AccessRequestTable({
   rows,
@@ -47,7 +37,6 @@ export default function AccessRequestTable({
   statusOf,
   onAction,
   emptyMessage,
-  menuActions = [],
   loading = false,
   error = "",
   busyId = null,
@@ -70,7 +59,7 @@ export default function AccessRequestTable({
     },
   ].filter(Boolean);
 
-  const actionProps = { statusOf, onAction, menuActions, busyId, onView: setSelected };
+  const actionProps = { statusOf, onAction, busyId, onView: setSelected };
 
   return (
     <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
@@ -258,52 +247,30 @@ function RowCard({ row, columns, ...actionProps }) {
           <span key={column.key} className="truncate">{column.render(row)}</span>
         ))}
       </div>
-      <RowActions row={row} mobile {...actionProps} />
+      <RowActions row={row} {...actionProps} />
     </div>
   );
 }
 
-function RowActions({ row, statusOf, onAction, menuActions, busyId, onView, mobile = false }) {
+function RowActions({ row, statusOf, onAction, busyId, onView }) {
   const { actions } = statusOf(row);
-  const buttons = actions.filter((action) => !menuActions.includes(action));
-  const menu = actions.filter((action) => menuActions.includes(action));
   const busy = busyId === row.id;
-  const buttonClass = mobile
-    ? "flex h-9 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-55"
-    : "inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-55";
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${mobile ? "" : "justify-end"}`}>
-      <button
-        type="button"
-        onClick={() => onView(row)}
-        className={`${buttonClass} border-[#E5E7EB] bg-white text-[#64748B] hover:bg-[#F8FAFC]`}
-      >
-        <Eye size={13} />
-        View details
-      </button>
-      {buttons.map((action) => {
-        const { label, icon: Icon, tone } = ACTIONS[action];
-        return (
-          <button
-            key={action}
-            type="button"
-            disabled={busy}
-            onClick={() => onAction(action, row)}
-            className={`${buttonClass} ${tone}`}
-          >
-            <Icon size={13} />
-            {label}
-          </button>
-        );
-      })}
-      {menu.length > 0 && (
-        <ActionMenu
-          title={accountName(row)}
-          subtitle={row.email || row.user?.email}
-          actions={menu.map((action) => ({ label: ACTIONS[action].label, onClick: () => onAction(action, row) }))}
-        />
-      )}
+    <div className="flex items-center justify-end">
+      <ActionMenu
+        title={accountName(row)}
+        subtitle={row.email || row.user?.email}
+        actions={[
+          { label: "View details", onClick: () => onView(row) },
+          ...actions.map((action) => ({
+            label: ACTION_LABELS[action],
+            onClick: () => {
+              if (!busy) onAction(action, row);
+            },
+          })),
+        ]}
+      />
     </div>
   );
 }
