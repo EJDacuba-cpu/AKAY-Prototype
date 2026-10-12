@@ -25,7 +25,6 @@ import {
   ReferralsSection,
 } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
-import { isConnectionError } from "../../services/apiClient";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
 import { updatePatient } from "../../services/patientService";
 import { getProfileReturnPath } from "../../utils/profileNavigation";
@@ -44,6 +43,7 @@ import {
   sortByDateDesc,
   validatePatientForm,
 } from "../../utils/patientProfile";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 // The profile fills the whole content area, leaving only a 10px margin.
 const PROFILE_CONTENT_CLASS = "p-[10px] pb-[max(10px,env(safe-area-inset-bottom))]";
@@ -390,15 +390,7 @@ export default function PatientDetails() {
           fullPage
           onRetry={retryPatientDetails}
           retrying={retrying}
-          variant={
-            loadError?.status === 403
-              ? "forbidden"
-              : loadError?.isTimeout
-                ? "timeout"
-                : isConnectionError(loadError)
-                  ? "offline"
-                  : "error"
-          }
+          variant={errorStateVariant(loadError)}
         />
       </ProfileShell>
     );

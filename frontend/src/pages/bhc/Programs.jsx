@@ -7,8 +7,8 @@ import { ConnectionErrorState, SoftLoadingArea } from "../../components/common";
 import ProgramCard from "../../components/features/programs/ProgramCard";
 import { PROGRAM_STATUS_TABS } from "../../components/features/programs/programStatusStyles";
 import { getPublishedPrograms } from "../../services/communityProgramService";
-import { isConnectionError } from "../../services/apiClient";
 import { queryKeys } from "../../utils/queryKeys";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 /** Underlined tab strip, same visual language as the patient profile's ProfileTabs. */
 function StatusTabs({ tabs, activeTab, onSelect }) {
@@ -94,7 +94,7 @@ export default function Programs() {
             fullPage
             onRetry={refetch}
             retrying={isFetching}
-            variant={isConnectionError(error) ? "offline" : "error"}
+            variant={errorStateVariant(error)}
           />
         ) : (
           <>

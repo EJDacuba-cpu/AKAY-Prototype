@@ -19,8 +19,8 @@ import {
   removeBhcStaffAssignment,
   withdrawEnrollment,
 } from "../../services/communityProgramService";
-import { isConnectionError } from "../../services/apiClient";
 import { queryKeys } from "../../utils/queryKeys";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -143,7 +143,7 @@ export default function ProgramDetails() {
         <ConnectionErrorState
           fullPage
           onRetry={refetchProgram}
-          variant={isConnectionError(programError) ? "offline" : "error"}
+          variant={errorStateVariant(programError)}
         />
       </DashboardLayout>
     );

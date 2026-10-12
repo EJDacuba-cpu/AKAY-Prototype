@@ -33,7 +33,6 @@ import {
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { getHealthRecordById } from "../../services/healthRecordService";
-import { isConnectionError } from "../../services/apiClient";
 import {
   formatDisplayValue,
   formatLongDate,
@@ -54,6 +53,7 @@ import {
   getVitalSignItems,
   normalizeHealthRecordStatus,
 } from "../../components/features/health-records/recordDetailsHelpers";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const ACTIVE_STATES = ["due_today", "no_show", "upcoming", "rescheduled"];
 
@@ -212,13 +212,7 @@ export default function FollowUpDetails() {
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={
-            error?.isTimeout
-              ? "timeout"
-              : isConnectionError(error)
-                ? "offline"
-                : "error"
-          }
+          variant={errorStateVariant(error)}
         />
       </DashboardLayout>
     );

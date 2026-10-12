@@ -30,9 +30,9 @@ import { Bar, Chart, Doughnut } from "react-chartjs-2";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar, PageStateWrapper } from "../../components/common";
 import useNotification from "../../hooks/useNotification";
-import { refreshAdminAccounts } from "../../services/adminAccountsService";
+import { loadAdminAccounts } from "../../services/adminAccountsService";
 import { getHealthRecords } from "../../services/healthRecordService";
-import { refreshRhuMedicines } from "../../services/medicineService";
+import { loadMedicineAvailability } from "../../services/medicineService";
 import { getPatients } from "../../services/patientService";
 import { getReferrals } from "../../services/referrals";
 
@@ -180,7 +180,7 @@ export default function AdminReports() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const loadedRef = useRef(false);
-  // refreshAdminAccounts / refreshRhuMedicines announce their own update events while this page loads;
+  // loadAdminAccounts / loadMedicineAvailability announce their own update events while this page loads;
   // reacting to those would start the load again, forever. A count, not a flag: loads can overlap (a reload
   // starting before the last one settles, or React's double effect run in development).
   const selfLoadingRef = useRef(0);
@@ -235,8 +235,9 @@ export default function AdminReports() {
             getReferrals(),
             getPatients(),
             getHealthRecords("admin"),
-            refreshRhuMedicines(),
-            refreshAdminAccounts(),
+            // The throwing loaders: a failed /medicines or /users must fail the page, not show zero figures.
+            loadMedicineAvailability(),
+            loadAdminAccounts(),
           ]);
 
         if (!active) return;

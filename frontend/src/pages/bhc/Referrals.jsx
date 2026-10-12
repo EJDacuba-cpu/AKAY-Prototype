@@ -12,7 +12,6 @@ import {
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
-import { isConnectionError } from "../../services/apiClient";
 import { getReferrals } from "../../services/referrals";
 import {
   discardReferralHold,
@@ -37,6 +36,7 @@ import {
   getReferralAttention,
   normalizeAttention,
 } from "../../utils/referralAttention";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -299,7 +299,7 @@ export default function Referrals() {
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+          variant={errorStateVariant(loadError)}
         />
       </DashboardLayout>
     );

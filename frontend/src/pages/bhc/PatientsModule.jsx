@@ -17,7 +17,6 @@ import usePatients from "../../hooks/usePatients";
 import useLoadMore from "../../hooks/useLoadMore";
 import { PATIENTS_LOAD_BATCH } from "../../utils/tablePaging";
 import useMediaQuery from "../../hooks/useMediaQuery";
-import { isConnectionError } from "../../services/apiClient";
 import {
   getPatientKey,
   reconcileSelection,
@@ -25,6 +24,7 @@ import {
 } from "../../utils/directorySelection";
 import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -209,13 +209,7 @@ export default function PatientsModule() {
           fullPage
           onRetry={() => refetchPatients()}
           retrying={isRefreshing}
-          variant={
-            queryError?.isTimeout
-              ? "timeout"
-              : isConnectionError(queryError)
-                ? "offline"
-                : "error"
-          }
+          variant={errorStateVariant(queryError)}
         />
       </DashboardLayout>
     );

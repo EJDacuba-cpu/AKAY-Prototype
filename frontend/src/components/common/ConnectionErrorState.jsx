@@ -1,4 +1,5 @@
 import { RefreshCcw, ServerCrash, WifiOff } from "lucide-react";
+import { API_ERROR_MESSAGES } from "../../services/apiErrorMessages";
 
 const VARIANT_DEFAULTS = {
   forbidden: {
@@ -11,6 +12,11 @@ const VARIANT_DEFAULTS = {
     message:
       "We couldn't load this page because your device appears to be offline. Please check your internet connection and try again.",
     icon: WifiOff,
+  },
+  unreachable: {
+    title: "Can't Reach the Server",
+    message: API_ERROR_MESSAGES.unreachable,
+    icon: ServerCrash,
   },
   timeout: {
     title: "Server Is Taking Too Long",

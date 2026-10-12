@@ -43,6 +43,7 @@ import {
   getHealthRecordDetailsTitle,
   getRecordPractitioner,
 } from "../../components/features/health-records/recordDetailsHelpers";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 export default function HealthRecordDetails() {
   const { recordId } = useParams();
@@ -147,7 +148,7 @@ export default function HealthRecordDetails() {
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={error?.isTimeout ? "timeout" : "error"}
+          variant={errorStateVariant(error)}
         />
       </DashboardLayout>
     );

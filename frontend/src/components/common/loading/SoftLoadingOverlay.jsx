@@ -78,8 +78,9 @@ export default function SoftLoadingOverlay({
           ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
           : "absolute inset-0 z-20 min-h-full"
       } overflow-hidden transition-opacity duration-200 ease-out ${
-        // An area overlay takes the page's own colour, so the skeleton reads as the page, not a panel on it.
-        isViewportScope ? overlayToneClasses[blur] || overlayToneClasses.sm : "bg-gray-50"
+        // An area overlay has no colour of its own: the skeleton sits on whatever is behind it (the grey page or a
+        // white card), never as a panel. Callers render nothing under it while loading.
+        isViewportScope ? overlayToneClasses[blur] || overlayToneClasses.sm : "bg-transparent"
       } ${
         isActive ? "opacity-100" : "opacity-0"
       } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}

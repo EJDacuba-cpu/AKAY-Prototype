@@ -56,9 +56,12 @@ The network-error case keeps `error.isNetworkError` and `error.code = "NETWORK_E
   Compact: smaller icon and type, `min-h-[160px]`, same Retry button, no "Your saved records are safe." line. No card in
   either size (already true).
 - **`PageLoadingFallback`** — drop the wrapper's `rounded-xl bg-[#F8FAFC]`; the skeleton sits on the page background.
-- **`SoftLoadingOverlay`** (used by `SoftLoadingArea`) — the area overlay uses the page background (`bg-gray-50`, the
-  `DashboardLayout` colour) with no rounded corners, instead of a white `bg-white/88` panel, so it reads as the page itself.
-  The viewport overlay is unchanged.
+- **`SoftLoadingOverlay`** (used by `SoftLoadingArea`) — the area overlay is transparent with no rounded corners, instead
+  of a white `bg-white/88` panel, so the skeleton sits on whatever is behind it (the grey page or a white card). Callers
+  render nothing under it while loading. The viewport overlay is unchanged.
+- **Error variants** — `utils/errorStateVariant.js` picks the variant for every page: `offline` only when the device is
+  offline; a server that cannot be reached (network error, 502/503/504) gets a new `unreachable` variant, "Can't Reach the
+  Server" with the plain unreachable message, instead of telling the person their device is offline.
 - **`PageSkeletonLoader` / `SoftLoadingArea` / `PageStateWrapper`** — take an explicit `skeleton` prop (one of the existing
   variants: `dashboard`, `table`, `details`, `form`, `module`, `follow-ups`, `medicine`, `reports`, `patient-details`,
   `health-records`, `facilities`) and a `bodyOnly` flag that leaves out the skeleton's own header and toolbar. Choosing a

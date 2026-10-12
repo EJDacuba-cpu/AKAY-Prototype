@@ -11,7 +11,6 @@ import {
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
-import { isConnectionError } from "../../services/apiClient";
 import {
   cancelFollowUp,
   getFollowUpTasks,
@@ -56,6 +55,7 @@ import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWe
 import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
 import FollowUpMonthCalendar from "../../components/features/followups/FollowUpMonthCalendar";
 import FollowUpActionModal from "../../components/features/followups/FollowUpActionModal";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -407,7 +407,7 @@ export default function FollowUps() {
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+          variant={errorStateVariant(loadError)}
         />
       </DashboardLayout>
     );

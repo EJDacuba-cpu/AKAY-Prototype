@@ -9,7 +9,6 @@ import {
   SoftLoadingArea,
 } from "../../components/common";
 import HealthRecordsTable from "../../components/features/records/HealthRecordsTable";
-import { isConnectionError } from "../../services/apiClient";
 import { getHealthRecords } from "../../services/healthRecordService";
 import { getReferrals } from "../../services/referrals";
 import { formatPatientName } from "../../utils/formatters";
@@ -25,6 +24,7 @@ import {
   matchesClassificationFilter,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -280,7 +280,7 @@ export default function HealthRecords() {
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={loadError?.isTimeout ? "timeout" : isConnectionError(loadError) ? "offline" : "error"}
+          variant={errorStateVariant(loadError)}
         />
       </DashboardLayout>
     );
