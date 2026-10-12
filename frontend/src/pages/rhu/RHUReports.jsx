@@ -26,6 +26,7 @@ import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar } from "../../components/common";
+import useNotification from "../../hooks/useNotification";
 import { FamilyPlanningReportSection } from "../shared/FamilyPlanningList";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
 import { getRhuPatients } from "../../services/patientService";
@@ -76,8 +77,8 @@ const chartPalette = {
 export default function RHUReports() {
   const [dataVersion, setDataVersion] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const notify = useNotification();
   const [reportSource, setReportSource] = useState(EMPTY_REPORT_SOURCE);
-  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     function refreshReports() {
@@ -109,8 +110,6 @@ export default function RHUReports() {
 
     async function loadReportSource() {
       try {
-        setLoadError("");
-
         const [referrals, patients, healthRecords] = await Promise.all([
           getReferrals(),
           getRhuPatients(),
@@ -126,7 +125,7 @@ export default function RHUReports() {
         });
       } catch (error) {
         if (!active) return;
-        setLoadError(error?.message || "Unable to load report data.");
+        notify.error(error?.message || "Unable to load report data.");
         setReportSource(EMPTY_REPORT_SOURCE);
       }
     }
@@ -136,7 +135,7 @@ export default function RHUReports() {
     return () => {
       active = false;
     };
-  }, [dataVersion]);
+  }, [dataVersion, notify]);
 
   const dropdownOptions = useMemo(
     () => buildFilterOptions(reportSource),
@@ -260,11 +259,6 @@ export default function RHUReports() {
           }
         />
 
-        {loadError && (
-          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
-            {loadError}
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard

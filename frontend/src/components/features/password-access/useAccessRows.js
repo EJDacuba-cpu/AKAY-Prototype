@@ -7,7 +7,7 @@ const SEARCH_DELAY_MS = 300;
  * Rows, filters and per-row action state for one Password & Invites tab. The first load shows the
  * loading overlay; later loads (filters, after an action) refresh in place so the toolbar keeps focus.
  * `runAction(row, fn)` runs one row action, then reloads the tab.
- * A failed action is reported through `onActionError(message)` (the tabs show it as a toast).
+ * A failed action or a failed load is reported through `onActionError(message)` (the tabs show it as a toast).
  */
 export default function useAccessRows(fetchRows, onActionError) {
   const [rows, setRows] = useState([]);
@@ -32,11 +32,15 @@ export default function useAccessRows(fetchRows, onActionError) {
       setRows(next);
       setLoadError("");
     } catch (failure) {
-      if (request === requestRef.current) setLoadError(failure.message || "Unable to load this list.");
+      if (request === requestRef.current) {
+        const message = failure.message || "Unable to load this list.";
+        setLoadError(message);
+        onActionError?.(message);
+      }
     } finally {
       if (request === requestRef.current) setLoading(false);
     }
-  }, [fetchRows, search, filters.status]);
+  }, [fetchRows, search, filters.status, onActionError]);
 
   useEffect(() => {
     void reload();
@@ -72,7 +76,7 @@ export default function useAccessRows(fetchRows, onActionError) {
   }
 
   return {
-    rows, filters, updateFilters, loading, busyId, runAction,
+    rows, filters, updateFilters, loading, busyId, runAction, refresh,
     error: loadError,
   };
 }

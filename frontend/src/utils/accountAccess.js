@@ -1,12 +1,9 @@
-const OTHER_WAYS = "Other ways to sign in";
-
-// Every control of each tab, in menu order. The menu always lists all of them; the row's status decides which are active.
+// Every control of each tab, in menu order; a divider is drawn between groups. The menu always lists all of them;
+// the row's status decides which are active. (Generate temporary password is its own group: it is the fallback when
+// the email cannot be delivered.)
 const MENU = {
-  invite: [
-    { label: null, actions: ["resend", "copy"] },
-    { label: OTHER_WAYS, actions: ["temporaryPassword"] },
-  ],
-  reset: [{ label: null, actions: ["approve", "decline", "resend", "copy"] }],
+  invite: [{ actions: ["resend", "copy"] }, { actions: ["temporaryPassword"] }],
+  reset: [{ actions: ["approve", "decline", "resend", "copy"] }],
 };
 
 /**
@@ -17,7 +14,6 @@ const MENU = {
 export function menuSections(kind, statusActions) {
   const allowed = statusActions || [];
   return (MENU[kind] || []).map((group) => ({
-    label: group.label,
     items: group.actions.map((action) => ({ action, enabled: allowed.includes(action) })),
   }));
 }

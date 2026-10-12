@@ -10,45 +10,44 @@ const owner = { status: "active" };
 const openInvite = { status: "pending", delivery: "sent", expires_at: hoursFromNow(40), user: owner };
 const resetRow = (extra) => ({ status: "pending", delivery: null, expires_at: null, user: owner, ...extra });
 
-const OTHER = "Other ways to sign in";
 const inviteMenu = (row) => menuSections("invite", inviteStatus(row, now).actions);
 const resetMenu = (row) => menuSections("reset", resetRequestStatus(row, now).actions);
 
-/** [[label, [[action, enabled], ...]], ...] so a test reads as the menu does. */
-const view = (sections) => sections.map((section) => [section.label, section.items.map((item) => [item.action, item.enabled])]);
+/** [[[action, enabled], ...], ...] (one list per group) so a test reads as the menu does. */
+const view = (sections) => sections.map((section) => section.items.map((item) => [item.action, item.enabled]));
 
 test("an open invite: every invite control is active", () => {
   assert.deepEqual(view(inviteMenu(openInvite)), [
-    [null, [["resend", true], ["copy", true]]],
-    [OTHER, [["temporaryPassword", true]]],
+    [["resend", true], ["copy", true]],
+    [["temporaryPassword", true]],
   ]);
 });
 
 test("an expired invite: Copy link is greyed, the rest active", () => {
   assert.deepEqual(view(inviteMenu({ ...openInvite, status: "expired" })), [
-    [null, [["resend", true], ["copy", false]]],
-    [OTHER, [["temporaryPassword", true]]],
+    [["resend", true], ["copy", false]],
+    [["temporaryPassword", true]],
   ]);
 });
 
 test("an active temporary password: only Generate temporary password is active", () => {
   const invite = { ...openInvite, status: "temporary", temp_password_expires_at: hoursFromNow(30) };
   assert.deepEqual(view(inviteMenu(invite)), [
-    [null, [["resend", false], ["copy", false]]],
-    [OTHER, [["temporaryPassword", true]]],
+    [["resend", false], ["copy", false]],
+    [["temporaryPassword", true]],
   ]);
 });
 
 test("a pending reset request: Approve and Decline are active", () => {
   assert.deepEqual(view(resetMenu(resetRow())), [
-    [null, [["approve", true], ["decline", true], ["resend", false], ["copy", false]]],
+    [["approve", true], ["decline", true], ["resend", false], ["copy", false]],
   ]);
 });
 
 test("an approved reset request: Resend link and Copy link are active", () => {
   const row = resetRow({ status: "approved", delivery: "sent", expires_at: hoursFromNow(1) });
   assert.deepEqual(view(resetMenu(row)), [
-    [null, [["approve", false], ["decline", false], ["resend", true], ["copy", true]]],
+    [["approve", false], ["decline", false], ["resend", true], ["copy", true]],
   ]);
 });
 

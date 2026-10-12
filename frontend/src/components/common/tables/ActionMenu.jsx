@@ -20,6 +20,7 @@ export default function ActionMenu({
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
   actions = [],
+  showHeader = true,
   triggerVariant = "default",
 }) {
   const [open, setOpen] = useState(false);
@@ -125,16 +126,18 @@ export default function ActionMenu({
         }}
       >
         {/* Header */}
-        <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
-          <p className="text-[11px] font-bold text-[#0F172A]">
-            {displayTitle}
-          </p>
-          {displaySubtitle && (
-            <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
-              {displaySubtitle}
+        {showHeader && (
+          <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
+            <p className="text-[11px] font-bold text-[#0F172A]">
+              {displayTitle}
             </p>
-          )}
-        </div>
+            {displaySubtitle && (
+              <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
+                {displaySubtitle}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* View Details */}
         {viewLink && (
@@ -182,14 +185,9 @@ export default function ActionMenu({
           </Link>
         )}
 
-        {actions.map((action) =>
-          action.section ? (
-            <div
-              key={`section-${action.section}`}
-              className="mt-1 border-t border-[#F1F5F9] px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]"
-            >
-              {action.section}
-            </div>
+        {actions.map((action, index) =>
+          action.divider ? (
+            <div key={`divider-${index}`} className="my-1 border-t border-[#F1F5F9]" />
           ) : action.to ? (
             <Link
               key={action.label}

@@ -86,6 +86,7 @@ export default function ResetRequestsTab({ rolesData, toolbarHeading }) {
         emptyMessage="No password reset requests found."
         loading={list.loading}
         error={list.error}
+        onRetry={list.refresh}
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email..."

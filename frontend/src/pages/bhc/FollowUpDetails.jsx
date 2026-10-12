@@ -38,6 +38,7 @@ import {
   formatDisplayValue,
   formatLongDate,
 } from "../../utils/formatters";
+import useNotification from "../../hooks/useNotification";
 import { queryKeys } from "../../utils/queryKeys";
 import {
   getDispensedMedicines,
@@ -62,7 +63,7 @@ export default function FollowUpDetails() {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const notify = useNotification();
 
   const {
     data,
@@ -136,7 +137,6 @@ export default function FollowUpDetails() {
 
   async function handleReschedule(selectedTask, payload) {
     setSavingAction(true);
-    setActionError("");
     try {
       // A reschedule now supersedes this task with a new row rather than
       // moving this one's date, so the page must follow the caller onto the
@@ -149,7 +149,7 @@ export default function FollowUpDetails() {
         navigate(`/bhc/follow-ups/${replacement.id}`, { replace: true });
       }
     } catch (requestError) {
-      setActionError(
+      notify.error(
         requestError?.status === 409
           ? "This follow-up has already changed. The latest details have been loaded."
           : requestError?.message || "Unable to reschedule this follow-up.",
@@ -385,12 +385,6 @@ export default function FollowUpDetails() {
             />
           </div>
         </header>
-
-        {actionError && (
-          <div className="mb-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {actionError}
-          </div>
-        )}
 
         <RecordTabs
           key={`${task.id}-${completedRecordId || "pending"}`}

@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import {
   ActionMenu,
+  ConnectionErrorState,
   FixedTable,
   ListToolbar,
   SoftLoadingArea,
@@ -30,6 +31,7 @@ export default function AccessRequestTable({
   emptyMessage,
   loading = false,
   error = "",
+  onRetry,
   filters,
   onFiltersChange,
   searchPlaceholder,
@@ -64,13 +66,10 @@ export default function AccessRequestTable({
       <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
         {!loading && (
         <div className="space-y-5">
-          {error && (
-            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-[#B91C1C]">
-              {error}
-            </div>
-          )}
-
-          {rows.length === 0 ? (
+          {rows.length === 0 && error ? (
+            // The server's message is shown as a toast; this keeps a way to try again on the page.
+            <ConnectionErrorState variant="error" onRetry={onRetry} />
+          ) : rows.length === 0 ? (
             <EmptyState message={emptyMessage} narrowed={narrowed} />
           ) : (
             <div className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
@@ -126,12 +125,12 @@ export default function AccessRequestTable({
 const NOT_AVAILABLE = "Not available for this status.";
 
 /**
- * The menu entries for a row: every control of the tab in groups, greyed (and not clickable) when the row's status
- * does not allow it. `onPick(action)` runs when an active control is chosen.
+ * The menu entries for a row: every control of the tab in groups (a thin divider between groups), greyed (and not
+ * clickable) when the row's status does not allow it. `onPick(action)` runs when an active control is chosen.
  */
 export function menuEntries(kind, statusActions, onPick) {
-  return menuSections(kind, statusActions).flatMap((section) => [
-    ...(section.label ? [{ section: section.label }] : []),
+  return menuSections(kind, statusActions).flatMap((section, index) => [
+    ...(index > 0 ? [{ divider: true }] : []),
     ...section.items.map(({ action, enabled }) => ({
       label: actionLabel(kind, action),
       onClick: () => onPick(action),
@@ -225,7 +224,7 @@ function RowCard({ row, columns, statusOf, menuFor }) {
 function RowActions({ row, menuFor }) {
   return (
     <div className="flex items-center justify-end">
-      <ActionMenu title={accountName(row)} subtitle={row.email || row.user?.email} actions={menuFor(row)} />
+      <ActionMenu showHeader={false} title={accountName(row)} actions={menuFor(row)} />
     </div>
   );
 }

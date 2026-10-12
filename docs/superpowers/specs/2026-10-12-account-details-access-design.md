@@ -126,13 +126,13 @@ No pencil and no inputs; Close is the only action.
 
 ### The ⋯ menu (D5)
 
-Every row has the ⋯ menu. It shows the row's name and email as its header (existing `ActionMenu`), then every control for the
-tab, grouped. A control the row's status does not allow (`inviteStatus` / `resetRequestStatus` in `accessRequestStatus.js`)
+Every row has the ⋯ menu. It has no name-and-email header (the row beside it already says who it is); it lists every control
+for the tab, with a thin divider between groups and no group label. A control the row's status does not allow (`inviteStatus` / `resetRequestStatus` in `accessRequestStatus.js`)
 is greyed out and cannot be clicked; its hover note reads "Not available for this status." Edit email is never listed.
 
 | Tab | Menu (always) |
 |---|---|
-| Invites | Resend invite · Copy link · *Other ways to sign in:* Generate temporary password |
+| Invites | Resend invite · Copy link · (divider) · Generate temporary password |
 | Reset requests | Approve · Decline · Resend link · Copy link |
 
 Which controls are active, by row state:
@@ -184,8 +184,13 @@ After any action the list reloads. A failure shows an error toast with the serve
 
 ## Errors
 
-- A failed action shows an error toast with the server's message; the modal closes and the list reloads so the row shows its
-  true status.
+- Server errors appear as the red toast at the top-right, like every other message in the system, not as a banner above the
+  content. A failed action toasts the server's message; the modal closes and the list reloads so the row shows its true status.
+- A failed list load toasts the message and shows the system's standard "Unable to Load Data" state with a Retry button in the
+  list's place (the tabs and the toolbar stay on screen).
+- Other pages that showed a server error as an inline red banner were changed to the same toast: Admin Reports and RHU Reports
+  (a failed load), Add Medicine Item (a failed save) and Follow-up Details (a failed reschedule). Validation messages next to a
+  field, errors inside a modal, and the sign-in and password pages are not server banners and keep their inline form.
 - If the row was already closed elsewhere, the server refuses and the list reload removes its actions.
 
 ## Testing

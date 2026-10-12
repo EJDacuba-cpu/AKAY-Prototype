@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import useNotification from "../../hooks/useNotification";
 import { addRhuMedicine } from "../../services/medicineService";
 
 export default function AddMedicineItem() {
@@ -19,7 +20,7 @@ export default function AddMedicineItem() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState("");
+  const notify = useNotification();
 
   const computedStatus = useMemo(() => {
     const quantity = Number(form.quantity);
@@ -45,7 +46,6 @@ export default function AddMedicineItem() {
 
     try {
       setSaving(true);
-      setSubmitError("");
       await addRhuMedicine({
         name: form.itemName,
         category: form.category,
@@ -58,7 +58,7 @@ export default function AddMedicineItem() {
       });
       navigate("/rhu/medicine-management");
     } catch (error) {
-      setSubmitError(error?.message || "Unable to save medicine item.");
+      notify.error(error?.message || "Unable to save medicine item.");
     } finally {
       setSaving(false);
     }
@@ -218,12 +218,6 @@ export default function AddMedicineItem() {
             handle pharmacy dispensing, billing, or prescription transactions.
           </p>
         </section>
-
-        {submitError && (
-          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
-            {submitError}
-          </div>
-        )}
 
         <div className="flex items-center justify-end gap-3">
           <button

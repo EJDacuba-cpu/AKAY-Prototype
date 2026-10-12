@@ -80,6 +80,7 @@ export default function InvitesTab({ rolesData, toolbarHeading }) {
         emptyMessage="No account invites found."
         loading={list.loading}
         error={list.error}
+        onRetry={list.refresh}
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email..."
