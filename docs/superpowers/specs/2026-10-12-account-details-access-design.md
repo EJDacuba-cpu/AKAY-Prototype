@@ -19,8 +19,13 @@ Said by the product owner:
   are confusing.
 - The Reset requests and Invites tabs should use the same alignment as Facilities.
 - Account details stays a modal, not a full screen.
+- A pencil icon in Account details edits the account's name and contact number, because they can be entered wrongly.
+  Included in this work.
 
 Assumptions (correct me if wrong):
+- Editing is limited to name and contact number. Role, facility and status change access or routing, so they are not
+  edited here; status already has Activate/Deactivate. Email stays under Access (Edit email), because it is the login and
+  changing it sends a new invite.
 - The Password & Invites sidebar page stays, because reset requests come from users and need an approval queue.
 - "Inactive" stays the label for a deactivated account, as the table and filters already use it.
 - No change to invite or reset rules, statuses, expiry times or emails.
@@ -30,12 +35,13 @@ Assumptions (correct me if wrong):
 | # | Decision |
 |---|---|
 | D1 | One shared `AccountDetailsModal` replaces the modal now inside `UserManagement.jsx` and the details dialog inside `AccessRequestTable`. |
-| D2 | It opens from Users (⋯ > View details) and from Password & Invites (⋯ > View account). It stays a modal; promote it to `/admin/users/:id` only if it gains audit history, edit forms or a need for shareable links. |
-| D3 | Account block: Role, Facility, Status, Date created (date and time). Footer link to Staff Assignments for nurse accounts. |
+| D2 | It opens from Users (⋯ > View details) and from Password & Invites (⋯ > View account). It stays a modal; promote it to `/admin/users/:id` only if it gains audit history, more edit fields or a need for shareable links. |
+| D3 | Account block: Name, Contact number, Role, Facility, Status, Date created (date and time), with a pencil icon to edit Name and Contact number (D8). Footer link to Staff Assignments for nurse accounts. |
 | D4 | An Access section holds the invite and reset status and all their actions. Edit email and Temporary password are inline panels, never a dialog on top of the modal. |
 | D5 | The Password & Invites ⋯ menu keeps only queue actions: Approve and Decline on a Pending reset request, plus View account. Everything else moves into the Access section. |
 | D6 | Reset requests and Invites tabs become pill buttons in the toolbar row, as on Facilities. A plain description line sits above, and an empty list shows a centered message with no card. |
 | D7 | One new read endpoint supplies the Access data. Actions use the existing endpoints. |
+| D8 | A pencil icon in the Account block turns Name and Contact number into inputs (Save / Cancel). Only those two fields; saved with the existing `PATCH /users/{id}`. |
 
 ## Users page
 
@@ -46,8 +52,11 @@ and the row menu has View details and Activate/Deactivate. This spec moves that 
 
 ```
 ┌ Account details ───────────────────────────────┐
-│ Eric Jhosh C. Dacuba · email                   │
+│ email                                          │
 ├────────────────────────────────────────────────┤
+│ ACCOUNT                                    ✎   │
+│ Name            Eric Jhosh C. Dacuba           │
+│ Contact number  09XXXXXXXXX                    │
 │ Role            Midwife                        │
 │ Facility        Pitpitan Health Center         │
 │ Status          ● Active                       │
@@ -65,6 +74,25 @@ and the row menu has View details and Activate/Deactivate. This spec moves that 
 │ Additional assignments → Staff Assignments     │
 └────────────────────────────────────────────────┘
 ```
+
+### Editing name and contact number
+
+- The pencil sits in the Account block header, with the label "Edit name and contact number" (tooltip and
+  `aria-label`). It shows for every account, Inactive ones included, because a wrong name should be fixable on a
+  deactivated account too.
+- Pressing it turns the Name and Contact number rows into inputs, with Save and Cancel under them. Role, Facility,
+  Status and Date created stay as text. Only one panel is in edit mode at a time; the Access section's own inline panels
+  (Edit email, Temporary password) stay usable.
+- Validation matches the account form: Name required ("Enter the full name."); Contact number must be a valid mobile
+  number (`isValidContactNumber`, the `09XXXXXXXXX` format the server enforces), shown on blur and on Save.
+- Save is disabled until a value changed and while saving. Only changed fields are sent; the contact number is sent
+  after `normalizeContactNumber`, as the account form does.
+- On success the inputs return to text, the Users table updates without a reload, and the modal shows the new values. A
+  server 422 shows its message under the field it names; any other failure shows a message above the buttons and keeps
+  the inputs.
+- Cancel and Esc discard the edit. Closing the modal while editing discards it too (two short fields; no draft kept).
+- Every change is recorded by the existing audit log entry on update. Changing name or contact number does not sign the
+  account out (only access, role, facility or status changes do, on the server).
 
 ### Access section rules
 
@@ -122,12 +150,19 @@ status line.
   implementation detail for the plan.
 - Stale invites and reset requests are expired before the read, as the list endpoints do.
 - `created_at` already comes back from `GET /users`; no change there.
+- Name and contact number edits use the existing `PATCH /users/{id}` with only `name` and/or `contact_number`.
+  `UserRequest` already validates them on update (`name` string max 255; `contact_number` `^09\d{9}$`), and `update`
+  already writes the audit entry. No backend change for editing.
 - No new action endpoints. Resend, Copy link, Edit email and Temporary password call the existing
   `/account-invites/...` routes; Approve, Decline, Resend and Copy link for resets call `/password-reset-requests/...`.
 
 ### Frontend structure
 
-- `components/features/accounts/AccountDetailsModal.jsx`: the shell, account block and footer link.
+- `components/features/accounts/AccountDetailsModal.jsx`: the shell, account block (with the pencil edit) and footer
+  link.
+- `services/adminAccountsService.js`: add `updateAdminAccountProfile(id, { name, contact_number })`, which patches,
+  normalizes and updates the account cache like `updateAdminAccountStatus`.
+- `utils/accountForm.js`: add `validateAccountProfile({ name, contact_number })`, reusing the Personal Details rules.
 - `components/features/accounts/AccountAccessSection.jsx`: loads `/users/{id}/access`, renders the blocks and inline
   panels, runs the actions.
 - `utils/accountAccess.js`: a pure function that turns `{ invite, reset_request, user }` into the blocks and controls to
@@ -151,14 +186,19 @@ status line.
 
 - `utils/accountAccess.test.js` (node test runner, like `facilityFilters.test.js`): the table above, one case per row,
   including both blocks open, Inactive account and no invite.
+- `utils/accountForm.test.js`: `validateAccountProfile` for an empty name, a bad contact number and valid values.
+- Backend feature test for editing: an admin `PATCH` with only `name` and `contact_number` changes those fields and
+  nothing else, writes an audit entry and does not revoke the account's sessions; a bad contact number returns 422.
 - Backend feature test for `GET /users/{user}/access`: admin gets invite and reset request; non-admin is refused; an
   account with neither returns nulls; stale rows are expired first.
 - Browser walk-through at desktop and narrow width: Users > View details; Password & Invites > View account from each
-  tab; resend, copy, edit email, temporary password, approve and decline; empty state; tab pills in the toolbar row.
+  tab; pencil edit of name and contact number (save, cancel, invalid number); resend, copy, edit email, temporary
+  password, approve and decline; empty state; tab pills in the toolbar row.
 
 ## Out of scope
 
 - A full-screen account page.
+- Editing role, facility, permissions or position from Account details.
 - Changing an email after the invite is complete.
 - Any change to invite or reset rules, statuses, expiry or email content.
 - Pending counts on the tabs (the summary endpoint stays unused by the UI, as now).
