@@ -131,7 +131,7 @@ export default function Facilities() {
           />
 
           {filteredItems.length === 0 ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-6 text-center">
+            <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
                 {items.length === 0 ? (
                   type === "bhc" ? <House size={20} className="text-[#94A3B8]" /> : <Hospital size={20} className="text-[#94A3B8]" />
