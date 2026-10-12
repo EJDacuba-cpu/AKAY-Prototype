@@ -28,6 +28,7 @@
     "test:request-timeout": "node --test src/services/requestTimeout.test.js",
     "test:prefetch-profile": "node --test src/utils/prefetchPatientProfile.test.js",
     "test:household-parents": "node --test src/utils/householdParents.test.js",
+    "test:table-paging": "node --test src/utils/tablePaging.test.js",
     "test:access": "node --test src/utils/staffRoles.test.js src/utils/accountForm.test.js src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js src/utils/fieldState.test.js src/utils/passwordRules.test.js src/utils/accessRequestStatus.test.js src/utils/passwordChange.test.js"
   },
   "dependencies": {
