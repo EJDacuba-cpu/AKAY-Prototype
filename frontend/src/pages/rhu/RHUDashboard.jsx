@@ -164,7 +164,7 @@ export default function RHUDashboard() {
     <DashboardLayout role="rhu" title="Dashboard">
       <style>{keyframes}</style>
 
-      <PageStateWrapper
+      <PageStateWrapper skeleton="dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

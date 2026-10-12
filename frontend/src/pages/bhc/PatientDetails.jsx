@@ -376,8 +376,8 @@ export default function PatientDetails() {
   if (patientLoading && !patient) {
     return (
       <ProfileShell>
-        <SoftLoadingArea isLoading message="Loading patient details..." minHeight="min-h-[520px]">
-          <div className="min-h-[520px] bg-white" />
+        <SoftLoadingArea skeleton="patient-details" isLoading message="Loading patient details..." minHeight="min-h-[520px]">
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </ProfileShell>
     );

@@ -191,7 +191,7 @@ export default function RHUReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Referral Details">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading referral details..."
           minHeight="min-h-[520px]"

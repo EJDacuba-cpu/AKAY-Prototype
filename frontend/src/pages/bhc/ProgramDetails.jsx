@@ -130,7 +130,7 @@ export default function ProgramDetails() {
   if (programLoading) {
     return (
       <DashboardLayout role="bhc" title="Program Details">
-        <SoftLoadingArea isLoading message="Loading program..." minHeight="min-h-[400px]">
+        <SoftLoadingArea skeleton="details" isLoading message="Loading program..." minHeight="min-h-[400px]">
           <div className="min-h-[400px]" />
         </SoftLoadingArea>
       </DashboardLayout>

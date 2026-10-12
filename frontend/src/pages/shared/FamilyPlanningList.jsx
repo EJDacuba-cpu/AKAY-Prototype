@@ -328,7 +328,7 @@ export function FamilyPlanningReportSection({
         </p>
       </div>
 
-      <SoftLoadingArea
+      <SoftLoadingArea skeleton="reports"
         isLoading={loading}
         message="Loading family planning report..."
         scope="area"

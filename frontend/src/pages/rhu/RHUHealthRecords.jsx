@@ -217,7 +217,7 @@ export default function RHUHealthRecords() {
 
   return (
     <DashboardLayout role="rhu" title="Health Records">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="health-records"
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

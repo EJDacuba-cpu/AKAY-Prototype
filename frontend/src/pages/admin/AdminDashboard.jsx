@@ -108,7 +108,7 @@ const recentActivities = auditLogs.slice(0, 4).map((log, index) => ({
 
   return (
     <DashboardLayout role="admin" title="Dashboard">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

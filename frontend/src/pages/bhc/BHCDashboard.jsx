@@ -151,7 +151,7 @@ export default function BHCDashboard() {
 
   return (
     <DashboardLayout role="bhc" title="Dashboard">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

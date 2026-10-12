@@ -77,7 +77,7 @@ export default function Facilities() {
 
   return (
     <DashboardLayout role="admin" title="Facilities">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="facilities"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

@@ -232,7 +232,7 @@ export default function MedicineManagement() {
 
   return (
     <DashboardLayout role="rhu" title="Medicine Management">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="medicine"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

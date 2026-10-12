@@ -449,7 +449,7 @@ export default function FollowUps() {
         </div>
       )}
 
-      <SoftLoadingArea
+      <SoftLoadingArea skeleton="follow-ups"
         isLoading={loading}
         message="Loading follow-ups..."
         scope="area"

@@ -277,7 +277,7 @@ export default function Patients() {
 
   return (
     <DashboardLayout role="rhu" title="Patients">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="table"
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

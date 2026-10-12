@@ -63,7 +63,7 @@ export default function AccessRequestTable({
         onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
       />
 
-      <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
+      <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading..." scope="area">
         {!loading && (
         <div className="space-y-5">
           {rows.length === 0 && error ? (

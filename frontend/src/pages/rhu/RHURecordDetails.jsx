@@ -105,7 +105,7 @@ export default function RHURecordDetails() {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <style>{keyframes}</style>
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading health record details..."
           minHeight="min-h-[520px]"

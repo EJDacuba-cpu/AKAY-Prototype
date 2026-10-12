@@ -307,7 +307,7 @@ export default function Referrals() {
 
   return (
     <DashboardLayout role="bhc" title="Referrals">
-      <SoftLoadingArea
+      <SoftLoadingArea skeleton="table"
         isLoading={loading}
         message="Loading referrals..."
         scope="area"

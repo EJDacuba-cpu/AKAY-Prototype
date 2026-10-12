@@ -101,7 +101,7 @@ export default function Programs() {
             <StatusTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
 
             {isLoading ? (
-              <SoftLoadingArea isLoading message="Loading programs..." minHeight="min-h-[240px]">
+              <SoftLoadingArea skeleton="module" bodyOnly isLoading message="Loading programs..." minHeight="min-h-[240px]">
                 <div className="min-h-[240px]" />
               </SoftLoadingArea>
             ) : visiblePrograms.length === 0 ? (

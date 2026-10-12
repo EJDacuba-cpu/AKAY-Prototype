@@ -230,7 +230,7 @@ export default function MedicineAvailability() {
 
   return (
     <DashboardLayout role="bhc" title="Medicine Availability">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="medicine"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

@@ -288,7 +288,7 @@ export default function HealthRecords() {
 
   return (
     <DashboardLayout role="bhc" title="Health Records">
-      <SoftLoadingArea
+      <SoftLoadingArea skeleton="health-records"
         isLoading={loading}
         message="Loading health records..."
         scope="area"

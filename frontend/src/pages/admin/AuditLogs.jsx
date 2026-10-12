@@ -194,7 +194,7 @@ export default function AuditLogs() {
   return (
     <DashboardLayout role="admin" title="Audit Logs">
       <div className="mx-auto w-full max-w-[1500px]">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="table"
           isLoading={isLoading}
           message="Loading audit logs..."
           scope="page"

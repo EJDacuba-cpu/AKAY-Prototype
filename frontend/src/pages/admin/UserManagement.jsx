@@ -214,7 +214,7 @@ export default function UserManagement() {
 
   return (
     <DashboardLayout role="admin" title="Account Directory">
-      <PageStateWrapper
+      <PageStateWrapper skeleton="table"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

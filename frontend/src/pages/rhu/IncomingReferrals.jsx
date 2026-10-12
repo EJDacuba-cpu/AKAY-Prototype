@@ -724,7 +724,7 @@ export default function IncomingReferrals() {
     <DashboardLayout role="rhu" title="Incoming Referrals">
       <style>{keyframes}</style>
 
-      <PageStateWrapper
+      <PageStateWrapper skeleton="table"
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

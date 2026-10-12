@@ -166,7 +166,7 @@ export default function FollowUpDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Follow-up Details">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading follow-up details..."
           minHeight="min-h-[520px]"

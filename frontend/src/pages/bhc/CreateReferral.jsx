@@ -712,7 +712,7 @@ export default function CreateReferral() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="form"
           isLoading
           message="Loading referral details..."
           minHeight="min-h-[520px]"
@@ -809,7 +809,7 @@ export default function CreateReferral() {
   if (draftRecordData && !record) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="form"
           isLoading
           message="Preparing referral draft..."
           minHeight="min-h-[520px]"

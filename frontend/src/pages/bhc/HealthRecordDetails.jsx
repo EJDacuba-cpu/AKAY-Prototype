@@ -129,7 +129,7 @@ export default function HealthRecordDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading health record details..."
           minHeight="min-h-[520px]"

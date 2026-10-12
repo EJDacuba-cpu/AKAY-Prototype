@@ -353,7 +353,7 @@ export default function BHCReports() {
         }
       `}</style>
 
-      <PageStateWrapper
+      <PageStateWrapper skeleton="reports"
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={refreshing}

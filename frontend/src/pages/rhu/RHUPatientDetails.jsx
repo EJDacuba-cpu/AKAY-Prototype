@@ -151,7 +151,7 @@ export default function RHUPatientDetails() {
     return (
       <DashboardLayout role="rhu" title="Patient Details">
         <style>{keyframes}</style>
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="patient-details"
           isLoading
           message="Loading patient details..."
           minHeight="min-h-[520px]"
@@ -484,7 +484,7 @@ function RhuRecordsTab({
       </div>
 
       {isLoading && records.length === 0 ? (
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="health-records"
           isLoading
           message="Loading health records..."
           minHeight="min-h-[240px]"
@@ -583,7 +583,7 @@ function ReferralHistoryTab({
       </div>
 
       {isLoading && referrals.length === 0 ? (
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="table"
           isLoading
           message="Loading referrals..."
           minHeight="min-h-[240px]"

@@ -223,7 +223,7 @@ export default function PatientsModule() {
 
   return (
     <DashboardLayout role="bhc" title="Patients">
-      <SoftLoadingArea
+      <SoftLoadingArea skeleton="table"
         isLoading={showInitialLoading}
         message="Loading patients..."
         scope="area"
