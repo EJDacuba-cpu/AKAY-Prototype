@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
+import { LoadMoreButton, PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import FacilityFormModal from "../../components/features/facilities/FacilityFormModal";
 import { apiRequest, unwrapList } from "../../services/apiClient";
+import useLoadMore from "../../hooks/useLoadMore";
 import { queryKeys } from "../../utils/queryKeys";
+import { FACILITIES_LOAD_BATCH } from "../../utils/tablePaging";
 
 const FACILITY_TYPES = ["bhc", "rhu"];
 
@@ -36,6 +38,11 @@ export default function Facilities() {
   const { bhcs, rhus } = facilities;
   const items = type === "bhc" ? bhcs : rhus;
   const typeLabel = type.toUpperCase();
+  const {
+    visibleItems: visibleFacilities,
+    hasMore: hasMoreFacilities,
+    loadMore: loadMoreFacilities,
+  } = useLoadMore(items, FACILITIES_LOAD_BATCH, type);
 
   return (
     <DashboardLayout role="admin" title="Facilities">
@@ -88,7 +95,7 @@ export default function Facilities() {
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {items.map((facility) => (
+              {visibleFacilities.map((facility) => (
                 <article
                   key={facility.id}
                   className="rounded-xl border border-slate-200 bg-white p-5"
@@ -124,6 +131,12 @@ export default function Facilities() {
                   </button>
                 </article>
               ))}
+            </div>
+          )}
+
+          {hasMoreFacilities && (
+            <div className="flex justify-center">
+              <LoadMoreButton label="Load more facilities" onClick={loadMoreFacilities} />
             </div>
           )}
         </div>

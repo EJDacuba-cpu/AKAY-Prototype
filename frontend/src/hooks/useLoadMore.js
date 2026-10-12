@@ -7,8 +7,15 @@ import { hasMoreItems, nextVisibleCount } from "../utils/tablePaging";
  */
 export default function useLoadMore(items, batchSize, resetKey) {
   const [stored, setStored] = useState({ key: resetKey, count: batchSize });
-  const requested = Object.is(stored.key, resetKey) ? stored.count : batchSize;
-  const visibleCount = Math.min(Math.max(requested, batchSize), items.length);
+  let current = stored;
+
+  // Reset while rendering (not in an effect) and store it, so going A -> B -> A starts A from its first batch again.
+  if (!Object.is(stored.key, resetKey)) {
+    current = { key: resetKey, count: batchSize };
+    setStored(current);
+  }
+
+  const visibleCount = Math.min(Math.max(current.count, batchSize), items.length);
 
   function loadMore() {
     setStored({ key: resetKey, count: nextVisibleCount(visibleCount, batchSize, items.length) });
