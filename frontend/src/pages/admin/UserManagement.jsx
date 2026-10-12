@@ -69,6 +69,9 @@ export default function UserManagement() {
 
   useEffect(() => {
     function refreshUsers() {
+      // loadAdminAccounts (this query's own fetch) announces the update too; refetching then would cancel the
+      // fetch in flight and start another, forever.
+      if (queryClient.isFetching({ queryKey: queryKeys.adminAccounts() })) return;
       refetch();
     }
 
@@ -76,7 +79,7 @@ export default function UserManagement() {
 
     return () =>
       window.removeEventListener(ADMIN_ACCOUNTS_UPDATED_EVENT, refreshUsers);
-  }, [refetch]);
+  }, [queryClient, refetch]);
 
   function removeFilter(key) {
     const defaults = {

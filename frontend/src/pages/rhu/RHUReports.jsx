@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   ClipboardList,
@@ -25,7 +25,7 @@ import {
 import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
+import { ListToolbar, PageStateWrapper } from "../../components/common";
 import useNotification from "../../hooks/useNotification";
 import { FamilyPlanningReportSection } from "../shared/FamilyPlanningList";
 import { getRhuHealthRecords } from "../../services/healthRecordService";
@@ -79,6 +79,10 @@ export default function RHUReports() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const notify = useNotification();
   const [reportSource, setReportSource] = useState(EMPTY_REPORT_SOURCE);
+  // The first load shows the page's loading or failure state; a later failed reload keeps the figures and toasts.
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
     function refreshReports() {
@@ -123,10 +127,17 @@ export default function RHUReports() {
           patients: Array.isArray(patients) ? patients : [],
           healthRecords: Array.isArray(healthRecords) ? healthRecords : [],
         });
+        loadedRef.current = true;
+        setLoadError(null);
+        setLoading(false);
       } catch (error) {
         if (!active) return;
-        notify.error(error?.message || "Unable to load report data.");
-        setReportSource(EMPTY_REPORT_SOURCE);
+        if (loadedRef.current) {
+          notify.error(error?.message || "Unable to load report data.");
+        } else {
+          setLoadError(error);
+          setLoading(false);
+        }
       }
     }
 
@@ -237,7 +248,20 @@ export default function RHUReports() {
 
   return (
     <DashboardLayout role="rhu" title="Reports">
-      <div className="space-y-4">
+
+      <PageStateWrapper
+        skeleton="reports"
+        isLoading={loading}
+        isError={Boolean(loadError)}
+        hasData={!loading && !loadError}
+        error={loadError}
+        onRetry={() => {
+          setLoadError(null);
+          setLoading(true);
+          setDataVersion((current) => current + 1);
+        }}
+        loadingMessage="Loading reports..."
+      >      <div className="space-y-4">
         <ListToolbar
           searchValue={filters.search}
           onSearchChange={(value) =>
@@ -378,6 +402,7 @@ export default function RHUReports() {
           reportFilters={filters}
         />
       </div>
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }
