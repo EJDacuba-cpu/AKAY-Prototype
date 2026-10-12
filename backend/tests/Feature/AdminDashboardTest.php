@@ -286,6 +286,24 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('data.medicines', ['rhu_low_stock' => 2, 'bhc_low_stock' => 3, 'bhc_barangays_affected' => 2]);
     }
 
+    public function test_low_stock_at_inactive_bhcs_is_excluded_so_totals_match_the_table(): void
+    {
+        $rhu = $this->makeRhu('RHU One');
+        $active = $this->makeBhc('BHC Active', $rhu);
+        $inactive = $this->makeBhc('BHC Inactive', $rhu, 'inactive');
+
+        $this->makeMedicine(['barangay_health_center_id' => $active->id, 'availability_status' => 'Low Stock']);
+        $this->makeMedicine(['barangay_health_center_id' => $inactive->id, 'availability_status' => 'Low Stock']);
+        $this->makeMedicine(['barangay_health_center_id' => $inactive->id, 'availability_status' => 'Unavailable']);
+
+        $this->dashboard()
+            ->assertOk()
+            ->assertJsonPath('data.medicines.bhc_low_stock', 1)
+            ->assertJsonPath('data.medicines.bhc_barangays_affected', 1)
+            ->assertJsonCount(1, 'data.barangays')
+            ->assertJsonPath('data.barangays.0.low_stock', 1);
+    }
+
     public function test_reset_requests_and_invites_match_password_and_invites_counts(): void
     {
         $rhu = $this->makeRhu('RHU One');

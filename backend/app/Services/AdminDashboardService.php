@@ -33,9 +33,10 @@ class AdminDashboardService
         $window = $this->window($periodKey, $now);
 
         // Each per-BHC map is built once and shared by the totals and the barangay rows.
+        $activeBhcs = $this->activeBhcs();
         $referralsByBhc = $this->referralCountsByBhc($window);
-        $lowStockByBhc = $this->lowStockByBhc();
-        $withoutStaff = $this->facilitiesWithoutStaff($window);
+        $lowStockByBhc = $this->lowStockByBhc($activeBhcs);
+        $withoutStaff = $this->facilitiesWithoutStaff($window, $activeBhcs);
 
         return [
             'period' => $this->periodPayload($window),
@@ -45,7 +46,7 @@ class AdminDashboardService
             'patients' => $this->patients($window),
             'medicines' => $this->medicines($lowStockByBhc),
             'attention' => $this->attention($window, $withoutStaff),
-            'barangays' => $this->barangays($window, $referralsByBhc, $lowStockByBhc, $withoutStaff),
+            'barangays' => $this->barangays($window, $activeBhcs, $referralsByBhc, $lowStockByBhc, $withoutStaff),
             'generated_at' => $now->toIso8601String(),
         ];
     }
@@ -236,14 +237,16 @@ class AdminDashboardService
     }
 
     /**
-     * Low-stock medicine counts per BHC, keyed by barangay_health_center_id.
+     * Low-stock medicine counts per ACTIVE BHC, keyed by barangay_health_center_id,
+     * so the totals reconcile with the barangay rows (which list active BHCs only).
      *
+     * @param  Collection<int, BarangayHealthCenter>  $activeBhcs
      * @return array<int, int>
      */
-    private function lowStockByBhc(): array
+    private function lowStockByBhc(Collection $activeBhcs): array
     {
         return $this->lowStockQuery()
-            ->whereNotNull('barangay_health_center_id')
+            ->whereIn('barangay_health_center_id', $activeBhcs->pluck('id')->all())
             ->selectRaw('barangay_health_center_id, count(*) as total')
             ->groupBy('barangay_health_center_id')
             ->toBase()
@@ -301,9 +304,10 @@ class AdminDashboardService
     /**
      * Active facilities nobody currently staffs: BHCs first, then RHUs, each by name.
      *
+     * @param  Collection<int, BarangayHealthCenter>  $activeBhcs
      * @return list<array{type: string, id: int, name: string}>
      */
-    private function facilitiesWithoutStaff(array $window): array
+    private function facilitiesWithoutStaff(array $window, Collection $activeBhcs): array
     {
         // Every window ends at "now", so its end date is today.
         $staffedBhcs = array_flip($this->staffedBhcIds($window['to']->toDateString()));
@@ -317,7 +321,7 @@ class AdminDashboardService
                 ->all()
         );
 
-        $bhcs = $this->activeBhcs()
+        $bhcs = $activeBhcs
             ->reject(fn (BarangayHealthCenter $bhc) => isset($staffedBhcs[$bhc->id]))
             ->map(fn (BarangayHealthCenter $bhc) => ['type' => 'bhc', 'id' => $bhc->id, 'name' => $bhc->name]);
 
@@ -333,7 +337,10 @@ class AdminDashboardService
 
     /**
      * BHC ids with an active home user or a current assignment held by an active user.
-     * The assignment predicate matches WorkingFacilityService::available().
+     * The assignment predicate uses the same date and revocation rules as
+     * WorkingFacilityService::available() (revoked_at null, starts_on <= today,
+     * ends_on null or >= today). It intentionally does not apply that service's
+     * nurse-eligibility checks.
      *
      * @return list<int>
      */
@@ -372,16 +379,17 @@ class AdminDashboardService
     /**
      * One row per active BHC. referrals and no_show follow the period; the rest are "now" values.
      *
+     * @param  Collection<int, BarangayHealthCenter>  $activeBhcs
      * @param  array<int, array{referrals: int, completed: int, no_show: int, pending: int, priority_pending: int}>  $referralsByBhc
      * @param  array<int, int>  $lowStockByBhc
      * @param  list<array{type: string, id: int, name: string}>  $withoutStaff
      */
-    private function barangays(array $window, array $referralsByBhc, array $lowStockByBhc, array $withoutStaff): array
+    private function barangays(array $window, Collection $activeBhcs, array $referralsByBhc, array $lowStockByBhc, array $withoutStaff): array
     {
         $overdueByBhc = $this->overdueFollowUpsByBhc($window);
         $unstaffed = array_flip(array_column(array_filter($withoutStaff, fn (array $f) => $f['type'] === 'bhc'), 'id'));
 
-        return $this->activeBhcs()
+        return $activeBhcs
             ->map(fn (BarangayHealthCenter $bhc) => [
                 'id' => $bhc->id,
                 'name' => $bhc->name,
