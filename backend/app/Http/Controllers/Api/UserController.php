@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\AccountInvite;
+use App\Models\PasswordResetRequest;
 use App\Models\User;
+use App\Services\AccessRequestStatus;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
 use App\Services\StaffRoles;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
+use App\Support\AccessRows;
 use App\Support\MaskedEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +40,29 @@ class UserController extends Controller
         }
 
         return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
+    }
+
+    /**
+     * Admin: one account's latest invite and its open (not completed, not declined) reset request, in the same row
+     * shape the Password & Invites lists use. Account details reads this to show and run the access actions.
+     */
+    public function access(User $user)
+    {
+        AccessRequestStatus::expireStaleInvites();
+        AccessRequestStatus::expireStaleResetRequests();
+
+        $invite = $user->accountInvite()->with(AccessRows::INVITE_WITH)->first();
+        $resetRequest = $user->passwordResetRequests()
+            ->whereNotIn('status', [PasswordResetRequest::STATUS_COMPLETED, PasswordResetRequest::STATUS_REJECTED])
+            ->with(AccessRows::RESET_WITH)
+            ->latest('requested_at')
+            ->latest('id')
+            ->first();
+
+        return response()->json(['data' => [
+            'invite' => $invite ? AccessRows::invite($invite) : null,
+            'reset_request' => $resetRequest ? AccessRows::resetRequest($resetRequest) : null,
+        ]]);
     }
 
     /** Lets the account form say "already taken" before saving. Emails are compared without case, as login does. */

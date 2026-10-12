@@ -11,6 +11,7 @@ use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
 use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
+use App\Support\AccessRows;
 use App\Support\MaskedEmail;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +22,7 @@ use Illuminate\Validation\Rules\Password as PasswordRule;
 
 class AccountInviteController extends Controller
 {
-    private const WITH_FACILITY = ['user.barangayHealthCenter', 'user.ruralHealthUnit'];
+    private const WITH_FACILITY = AccessRows::INVITE_WITH;
 
     private const INVALID_MESSAGE = 'This invite link is invalid or expired.';
 
@@ -243,32 +244,7 @@ class AccountInviteController extends Controller
 
     private function toResponse(AccountInvite $invite): array
     {
-        $user = $invite->user;
-        $facility = $user?->barangayHealthCenter?->name
-            ?: $user?->ruralHealthUnit?->name
-            ?: 'No facility assigned';
-
-        return [
-            'id' => $invite->id,
-            'email' => $user?->email ?? $invite->email,
-            'status' => $invite->status,
-            'display_status' => AccessRequestStatus::forInvite($invite),
-            'delivery' => $invite->delivery,
-            'completed_via' => $invite->completed_via,
-            'sent_at' => $invite->sent_at,
-            'expires_at' => $invite->expires_at,
-            'completed_at' => $invite->completed_at,
-            'temp_password_expires_at' => $user?->temp_password_expires_at,
-            'user' => $user ? [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role,
-                'staff_role' => $user->staff_role,
-                'status' => $user->status,
-                'facility' => $facility,
-            ] : null,
-        ];
+        return AccessRows::invite($invite);
     }
 
     /** Anything but a non-empty string (for example `?token[]=x`) is treated as an unknown link. */
