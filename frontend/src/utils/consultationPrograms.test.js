@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -58,4 +58,11 @@ test("every service is disabled while the patient is still loading", () => {
 test("once the patient has loaded, eligibility is left exactly as computed", () => {
   const programs = [{ key: "Maternal", disabled: true, disabledReason: "Male patient" }];
   assert.equal(lockProgramsWhilePatientLoads(programs, false), programs);
+});
+
+test("each service has its own enroll button label", () => {
+  assert.equal(programEnrollLabel("Maternal"), "Enroll to Prenatal Care");
+  assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
+  assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");
+  assert.equal(programEnrollLabel("Something Else"), "Enroll");
 });

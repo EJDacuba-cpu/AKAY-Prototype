@@ -48,3 +48,14 @@ export function lockProgramsWhilePatientLoads(programs, patientLoading) {
     disabledNote: PATIENT_LOADING_REASON,
   }));
 }
+
+const PROGRAM_ENROLL_LABELS = Object.freeze({
+  Maternal: "Enroll to Prenatal Care",
+  "Family Planning": "Enroll to Family Planning",
+  EPI: "Enroll to Child Health / EPI",
+});
+
+/** The label of the button that enrolls the patient in a service for this visit. */
+export function programEnrollLabel(programKey) {
+  return PROGRAM_ENROLL_LABELS[programKey] || "Enroll";
+}

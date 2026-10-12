@@ -1,21 +1,23 @@
+import { programEnrollLabel } from "../../../../utils/consultationPrograms";
+
 /**
- * Barangay Health Services selection for a consultation, shown as a fixed
- * column to the right of the form. Optional: selecting nothing is a general
- * consultation.
+ * Barangay Health Services for a consultation, shown as a fixed column to the
+ * right of the form. Optional: enrolling in nothing is a general consultation.
  *
  * The services (Maternal Care, Family Planning, EPI) render as one flat list.
- * Ticking a service makes it Active for this visit; its form is a screen of
+ * Each starts "Not Started" with an Enroll button; enrolling turns it Active
+ * for this visit, and Remove puts it back. The service's form is a screen of
  * its own after Physical Examination, so the panel has no form button.
  * Conditions such as TB are not services here - they are monitored through the
- * Care Plan. Unchecking a service removes it - there is no separate Remove
- * action. "Primary" only means something when two or more services are
- * selected, so the badge and the "Make primary" control appear only then.
+ * Care Plan. "Primary" only means something when two or more services are
+ * Active, so the badge and the "Make primary" control appear only then.
  */
 
 /**
  * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote }]
- * @param selected  selected program keys
+ * @param selected  Active program keys
  * @param primary   the primary program key
+ * @param onSelect  enrolls the service, or removes it when it is Active
  */
 export default function ConsultationProgramPanel({
   programs,
@@ -39,7 +41,7 @@ export default function ConsultationProgramPanel({
             Barangay Health Services
           </h2>
           <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            Select any service provided during this consultation. Leave unselected for a general consultation.
+            Enroll the patient in any service provided during this consultation. Leave all as Not Started for a general consultation.
           </p>
         </div>
         <span className="mt-0.5 inline-flex min-w-[20px] flex-none items-center justify-center rounded-sm bg-[#F3F4F6] px-1.5 py-0.5 text-[11px] font-semibold text-[#374151]">
@@ -50,73 +52,71 @@ export default function ConsultationProgramPanel({
       <div>
         {programs.map((program) => {
           const active = selected.includes(program.key);
-          const inputId = `program-panel-${program.key}`;
           return (
             <div
               key={program.key}
-              className={`border-b border-[#E5E7EB] last:border-b-0 ${
+              className={`border-b border-[#E5E7EB] px-3 py-2 transition-colors duration-300 motion-reduce:transition-none last:border-b-0 ${
                 active ? "border-l-4 border-l-[#DC2626] bg-red-50" : "border-l-4 border-l-transparent"
               }`}
             >
-              <label
-                htmlFor={inputId}
-                title={program.disabledReason}
-                className={`flex items-start gap-2.5 px-3 py-2 ${
-                  program.disabled
-                    ? "cursor-not-allowed opacity-50"
-                    : "cursor-pointer hover:bg-[#F9FAFB]"
-                }`}
-              >
-                <input
-                  id={inputId}
-                  type="checkbox"
-                  checked={active}
-                  disabled={program.disabled}
-                  onChange={() => onSelect(program.key)}
-                  className="mt-0.5 h-4 w-4 flex-none accent-[#DC2626]"
-                />
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold leading-snug text-[#111827]">
-                    {program.title}
-                  </span>
-                  {program.description && (
-                    <span className="mt-0.5 block text-xs leading-snug text-[#6B7280]">
-                      {program.description}
-                    </span>
-                  )}
-                  {program.disabled && (
-                    <span className="mt-1 block text-[11px] italic text-[#6B7280]">
-                      {program.disabledNote || "Not applicable to this patient"}
-                    </span>
-                  )}
-                </span>
-              </label>
+              <p className="text-[13px] font-semibold leading-snug text-[#111827]">
+                {program.title}
+              </p>
+              {program.description && (
+                <p className="mt-0.5 text-xs leading-snug text-[#6B7280]">
+                  {program.description}
+                </p>
+              )}
+              {program.disabled && (
+                <p className="mt-1 text-[11px] italic text-[#6B7280]">
+                  {program.disabledNote || "Not applicable to this patient"}
+                </p>
+              )}
 
-              {active && (
-                <div className="pb-2 pl-[38px] pr-3">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="inline-flex items-center rounded-sm bg-[#DCFCE7] px-1.5 py-0.5 text-[11px] font-semibold text-[#166534]">
-                      Active
-                    </span>
-                    {multiple && (primary === program.key ? (
-                      <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
-                        Primary
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onPrimaryChange(program.key)}
-                        aria-label={`Make ${program.title} primary`}
-                        className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
-                      >
-                        Make primary
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1 text-[11px] text-[#6B7280]">
-                    Form opens after Physical Examination.
-                  </p>
-                </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span
+                  className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold transition-colors duration-300 motion-reduce:transition-none ${
+                    active ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#F3F4F6] text-[#374151]"
+                  }`}
+                >
+                  {active ? "Active" : "Not Started"}
+                </span>
+                {active && (
+                  <button
+                    type="button"
+                    onClick={() => onSelect(program.key)}
+                    aria-label={`Remove ${program.title}`}
+                    className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
+                  >
+                    Remove
+                  </button>
+                )}
+                {active && multiple && (primary === program.key ? (
+                  <span className="rounded-sm border border-red-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#DC2626]">
+                    Primary
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onPrimaryChange(program.key)}
+                    aria-label={`Make ${program.title} primary`}
+                    className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
+                  >
+                    Make primary
+                  </button>
+                ))}
+              </div>
+
+              {!active && (
+                <button
+                  type="button"
+                  disabled={program.disabled}
+                  title={program.disabledReason}
+                  onClick={() => onSelect(program.key)}
+                  className="mt-2 w-full rounded-none border border-[#DC2626] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#DC2626] hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
+                >
+                  {programEnrollLabel(program.key)}
+                </button>
               )}
             </div>
           );
