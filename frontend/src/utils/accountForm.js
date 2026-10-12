@@ -1,4 +1,4 @@
-import { TIERS, isValidContactNumber } from "./staffRoles.js";
+import { TIERS, isValidContactNumber, normalizeContactNumber } from "./staffRoles.js";
 
 export const STEPS = { facility: "Facility", personal: "Personal Details", access: "Role & Access", review: "Review" };
 
@@ -28,6 +28,24 @@ export function validateAccountStep(step, form, { hasFacility, confirmed }) {
   }
   if (step === STEPS.review && !confirmed) errors.confirmed = "Tick the confirmation before saving.";
   return errors;
+}
+
+/** Name and contact number as edited from Account details (the Personal Details rules). */
+export function validateAccountProfile({ name, contact_number }) {
+  const errors = {};
+  if (!String(name || "").trim()) errors.name = "Enter the full name.";
+  if (!isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
+  return errors;
+}
+
+/** Only the profile fields that differ from the account: the name trimmed, the number as the server stores it. */
+export function profileChanges(account, form) {
+  const changes = {};
+  const name = String(form.name || "").trim();
+  const contact = normalizeContactNumber(form.contact_number);
+  if (name !== String(account.name || "").trim()) changes.name = name;
+  if (contact !== normalizeContactNumber(account.contact_number)) changes.contact_number = contact;
+  return changes;
 }
 
 // Backend field -> [form field, step it is edited on]. Anything else has no home on the page.

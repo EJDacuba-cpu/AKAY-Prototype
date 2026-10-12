@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "./accountForm.js";
+import { STEPS, isValidEmail, profileChanges, routeServerErrors, validateAccountProfile, validateAccountStep } from "./accountForm.js";
 
 const form = {
   role: "bhc", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
@@ -74,4 +74,17 @@ test("server errors that belong to no field are returned for a modal", () => {
   assert.equal(routed.step, null);
   assert.deepEqual(routed.fields, {});
   assert.deepEqual(routed.unrouted, ["The permissions confirmed must be accepted."]);
+});
+
+test("profile validation", () => {
+  assert.deepEqual(validateAccountProfile({ name: " ", contact_number: "09171234567" }), { name: "Enter the full name." });
+  assert.deepEqual(validateAccountProfile({ name: "Ana", contact_number: "12345" }), { contact_number: "Enter mobile number." });
+  assert.deepEqual(validateAccountProfile({ name: "Ana", contact_number: "0917 123-4567" }), {});
+});
+
+test("profile changes send only what changed", () => {
+  const account = { name: "Ana Cruz", contact_number: "09171234567" };
+  assert.deepEqual(profileChanges(account, { name: " Ana Cruz ", contact_number: "0917 123-4567" }), {});
+  assert.deepEqual(profileChanges(account, { name: "Ana M. Cruz", contact_number: "09171234567" }), { name: "Ana M. Cruz" });
+  assert.deepEqual(profileChanges(account, { name: "Ana Cruz", contact_number: "0918 000 0000" }), { contact_number: "09180000000" });
 });
