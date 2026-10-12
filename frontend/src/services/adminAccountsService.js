@@ -103,6 +103,19 @@ export async function updateAdminAccountStatus(id, status) {
   return updated;
 }
 
+export async function getAdminAccount(id) {
+  return normalizeAccount(unwrapData(await apiRequest(`/users/${id}`)));
+}
+
+/** Saves the edited name and/or contact number (only the fields passed), and refreshes the cached copy. */
+export async function updateAdminAccountProfile(id, changes) {
+  const response = await apiRequest(`/users/${id}`, { method: "PATCH", body: changes });
+  const updated = normalizeAccount(unwrapData(response));
+  accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
+  dispatchUpdate();
+  return updated;
+}
+
 export async function sendAdminAccountResetLink(id) {
   const account = accountCache.find((item) => item.id === String(id));
   if (!account?.email) return null;
