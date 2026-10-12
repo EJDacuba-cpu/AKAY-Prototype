@@ -3,6 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
+use App\Models\FollowUpTask;
+use App\Models\HealthRecord;
+use App\Models\Medicine;
+use App\Models\Patient;
+use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -48,6 +53,79 @@ class AdminDashboardTest extends TestCase
             'password' => bin2hex(random_bytes(16)),
             'role' => $role, 'staff_role' => $role === 'admin' ? null : 'midwife', 'status' => 'active',
             'permissions' => [],
+            ...$attrs,
+        ]);
+    }
+
+    private function makePatient(BarangayHealthCenter $bhc, array $attrs = []): Patient
+    {
+        $this->sequence++;
+        $createdAt = $attrs['created_at'] ?? null;
+        unset($attrs['created_at']);
+
+        $patient = Patient::create([
+            'first_name' => 'Patient'.$this->sequence, 'last_name' => 'Test', 'sex' => 'Female',
+            'barangay_health_center_id' => $bhc->id,
+            ...$attrs,
+        ]);
+
+        if ($createdAt !== null) {
+            $patient->forceFill(['created_at' => $createdAt])->save();
+        }
+
+        return $patient;
+    }
+
+    private function makeReferral(Patient $patient, string $status, array $attrs = []): Referral
+    {
+        $this->sequence++;
+        $createdAt = $attrs['created_at'] ?? null;
+        unset($attrs['created_at']);
+        $bhc = BarangayHealthCenter::findOrFail($patient->barangay_health_center_id);
+
+        $referral = Referral::create([
+            'tracking_id' => 'AKAY-DASH-'.$this->sequence,
+            'qr_code_value' => 'AKAY:REFERRAL:AKAY-DASH-'.$this->sequence,
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $bhc->id,
+            'rural_health_unit_id' => $bhc->rural_health_unit_id,
+            'status' => $status,
+            'urgency_level' => Referral::ATTENTION_ROUTINE,
+            'reason_for_referral' => 'Dashboard test.',
+            'referral_datetime' => now(),
+            ...$attrs,
+        ]);
+
+        if ($createdAt !== null) {
+            $referral->forceFill(['created_at' => $createdAt])->save();
+        }
+
+        return $referral;
+    }
+
+    private function makeFollowUp(Patient $patient, array $attrs): FollowUpTask
+    {
+        $record = HealthRecord::create([
+            'patient_id' => $patient->id, 'category' => 'General Consultation',
+            'barangay_health_center_id' => $patient->barangay_health_center_id,
+            'date_recorded' => now()->subWeeks(3),
+        ]);
+
+        return FollowUpTask::create([
+            'health_record_id' => $record->id, 'patient_id' => $patient->id,
+            'barangay_health_center_id' => $patient->barangay_health_center_id,
+            'state' => 'pending', 'due_date' => now()->toDateString(),
+            ...$attrs,
+        ]);
+    }
+
+    private function makeMedicine(array $attrs): Medicine
+    {
+        $this->sequence++;
+
+        return Medicine::create([
+            'name' => 'Medicine '.$this->sequence, 'category' => 'Basic Medicines', 'quantity' => 10, 'unit' => 'pcs',
+            'availability_status' => 'Available', 'is_active' => true,
             ...$attrs,
         ]);
     }
@@ -123,5 +201,97 @@ class AdminDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.accounts', ['total' => 5, 'active' => 4, 'inactive' => 1, 'bhc' => 3, 'rhu' => 1])
             ->assertJsonStructure(['data' => ['generated_at']]);
+    }
+
+    public function test_referral_counts_use_period_and_normalized_status(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 10:00'));
+        $bhc = $this->makeBhc('BHC One', $this->makeRhu('RHU One'));
+        $patient = $this->makePatient($bhc);
+
+        $this->makeReferral($patient, 'Pending', ['urgency_level' => 'Priority', 'referral_datetime' => '2026-10-05 09:00']);
+        $this->makeReferral($patient, 'pending ', ['urgency_level' => 'Routine', 'referral_datetime' => '2026-10-06 09:00']);
+        $this->makeReferral($patient, 'Completed', ['referral_datetime' => '2026-10-07 09:00']);
+        $this->makeReferral($patient, 'complete', ['referral_datetime' => '2026-10-08 09:00']);
+        $this->makeReferral($patient, 'No-Show', ['referral_datetime' => '2026-10-09 09:00']);
+        $this->makeReferral($patient, 'For Monitoring', ['referral_datetime' => '2026-10-10 09:00']);
+        $this->makeReferral($patient, 'Received', ['referral_datetime' => null, 'created_at' => '2026-10-03 09:00:00']);
+        $this->makeReferral($patient, 'Completed', ['referral_datetime' => '2026-09-05 09:00']);
+        $this->makeReferral($patient, 'Completed', ['referral_datetime' => '2026-09-05 11:00']);
+        $this->makeReferral($patient, 'Pending', ['urgency_level' => 'Routine', 'referral_datetime' => '2026-08-01 09:00']);
+
+        $this->dashboard('?period=month')
+            ->assertOk()
+            ->assertJsonPath('data.referrals', [
+                'total' => 7, 'previous_total' => 2, 'completed' => 2,
+                'no_show' => 1, 'pending' => 3, 'priority_pending' => 1,
+            ]);
+    }
+
+    public function test_follow_up_counts(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 10:00'));
+        $bhc = $this->makeBhc('BHC One', $this->makeRhu('RHU One'));
+        $patient = $this->makePatient($bhc);
+
+        $this->makeFollowUp($patient, ['state' => 'pending', 'due_date' => '2026-10-11']);
+        $this->makeFollowUp($patient, ['state' => 'pending', 'due_date' => '2026-10-12']);
+        $this->makeFollowUp($patient, ['state' => 'fulfilled', 'due_date' => '2026-10-05', 'fulfilled_at' => '2026-10-05 09:00']);
+        $this->makeFollowUp($patient, ['state' => 'no_show', 'due_date' => '2026-10-08', 'no_show_at' => '2026-10-09 09:00']);
+        $this->makeFollowUp($patient, ['state' => 'no_show', 'due_date' => '2026-09-08', 'no_show_at' => '2026-09-09 09:00']);
+
+        $this->dashboard('?period=month')
+            ->assertOk()
+            ->assertJsonPath('data.follow_ups', ['overdue' => 1, 'no_show' => 1]);
+    }
+
+    public function test_patient_counts(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 10:00'));
+        $bhc = $this->makeBhc('BHC One', $this->makeRhu('RHU One'));
+
+        foreach (['2026-08-01', '2026-09-15', '2026-09-30'] as $date) {
+            $this->makePatient($bhc, ['created_at' => $date.' 09:00:00']);
+        }
+        foreach (['2026-10-02', '2026-10-11'] as $date) {
+            $this->makePatient($bhc, ['created_at' => $date.' 09:00:00']);
+        }
+
+        $this->dashboard('?period=month')
+            ->assertOk()
+            ->assertJsonPath('data.patients', ['total' => 5, 'new' => 2]);
+    }
+
+    public function test_medicine_low_stock_split_by_rhu_and_bhc(): void
+    {
+        $rhu = $this->makeRhu('RHU One');
+        $bhcA = $this->makeBhc('BHC A', $rhu);
+        $bhcB = $this->makeBhc('BHC B', $rhu);
+        $bhcC = $this->makeBhc('BHC C', $rhu);
+
+        $this->makeMedicine(['rural_health_unit_id' => $rhu->id, 'availability_status' => 'Low Stock']);
+        $this->makeMedicine(['rural_health_unit_id' => $rhu->id, 'availability_status' => 'Unavailable']);
+        $this->makeMedicine(['rural_health_unit_id' => $rhu->id, 'availability_status' => 'Available']);
+        $this->makeMedicine(['barangay_health_center_id' => $bhcA->id, 'availability_status' => 'Low Stock']);
+        $this->makeMedicine(['barangay_health_center_id' => $bhcA->id, 'availability_status' => 'Low Stock']);
+        $this->makeMedicine(['barangay_health_center_id' => $bhcB->id, 'availability_status' => 'Unavailable']);
+        $this->makeMedicine(['barangay_health_center_id' => $bhcC->id, 'availability_status' => 'Available']);
+        $this->makeMedicine(['barangay_health_center_id' => $bhcC->id, 'availability_status' => 'Low Stock', 'is_active' => false]);
+
+        $this->dashboard()
+            ->assertOk()
+            ->assertJsonPath('data.medicines', ['rhu_low_stock' => 2, 'bhc_low_stock' => 3, 'bhc_barangays_affected' => 2]);
+    }
+
+    public function test_response_contains_no_patient_identifiers(): void
+    {
+        $bhc = $this->makeBhc('BHC One', $this->makeRhu('RHU One'));
+        $patient = $this->makePatient($bhc, ['first_name' => 'Zyxwq', 'last_name' => 'Unique']);
+        $this->makeReferral($patient, 'Pending');
+
+        $response = $this->dashboard()->assertOk();
+
+        $this->assertStringNotContainsString('Zyxwq', $response->getContent());
+        $this->assertStringNotContainsString('Unique', $response->getContent());
     }
 }
