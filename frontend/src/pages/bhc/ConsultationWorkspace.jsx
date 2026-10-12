@@ -64,8 +64,10 @@ import {
   MATERNAL_LAB_TEST_KEYS,
   MATERNAL_LAB_TESTS,
   MATERNAL_RISK_GROUPS,
+  MATERNAL_RISK_KEYS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyRiskFactorChange,
+  sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
 import {
@@ -349,26 +351,16 @@ const EMPTY_MATERNAL_DATA = {
   previousFpMethodUsed: "",
   previousFpMethodOther: "",
   previousPregnancyHistory: [],
+  // Risk Code D is the parent of the three previous-pregnancy items. Age and
+  // height risk are computed when the record is saved, never ticked.
   riskAssessment: {
     ageRisk: false,
     heightRisk: false,
     grandMultipara: false,
-    // Risk Code D / Risk Code E parents. The condition keys that follow are
-    // their children and predate this grouping, so existing records keep
-    // rendering unchanged.
     previousPregnancyComplications: false,
-    medicalConditions: false,
     previousCs: false,
     recurrentMiscarriageOrStillbirth: false,
     postpartumHemorrhage: false,
-    tuberculosis: false,
-    heartDisease: false,
-    diabetes: false,
-    bronchialAsthma: false,
-    goiter: false,
-    hypertensive: false,
-    alcoholUser: false,
-    smoker: false,
   },
   laboratoryResults: {
     hemoglobin: "",
@@ -496,9 +488,11 @@ function mergeMaternalData(data = {}, fallback = {}) {
       fallback.previousFpMethodOther ||
       "",
     previousPregnancyHistory,
+    // Keys the form no longer records (diabetes, smoker, ...) are dropped so a
+    // resumed draft or an earlier record never carries them into a new record.
     riskAssessment: {
       ...EMPTY_MATERNAL_DATA.riskAssessment,
-      ...legacyRiskAssessment,
+      ...sanitizeRiskAssessment(legacyRiskAssessment),
     },
     laboratoryResults: {
       ...EMPTY_MATERNAL_DATA.laboratoryResults,
@@ -1470,26 +1464,7 @@ export default function ConsultationWorkspace() {
               ]),
             )
           : [],
-        riskAssessment: pickDraftFields(maternalData.riskAssessment, [
-          "ageRisk",
-          "heightRisk",
-          "grandMultipara",
-          // The Risk Code D / E flags themselves, so a resumed draft keeps
-          // them too (they were previously dropped from drafts).
-          "previousPregnancyComplications",
-          "medicalConditions",
-          "previousCs",
-          "recurrentMiscarriageOrStillbirth",
-          "postpartumHemorrhage",
-          "tuberculosis",
-          "heartDisease",
-          "diabetes",
-          "bronchialAsthma",
-          "goiter",
-          "hypertensive",
-          "alcoholUser",
-          "smoker",
-        ]),
+        riskAssessment: pickDraftFields(maternalData.riskAssessment, MATERNAL_RISK_KEYS),
         laboratoryResults: pickDraftFields(
           maternalData.laboratoryResults,
           MATERNAL_LAB_TEST_KEYS,
@@ -4493,12 +4468,12 @@ export default function ConsultationWorkspace() {
             </FormSection>
 
             <FormSection
-              title="Medical History"
-              subtitle="Mark any risk factors and medical conditions relevant to this pregnancy."
+              title="Obstetric Risk Factors"
+              subtitle="Mark any obstetric risk factors relevant to this pregnancy."
               delay={4}
             >
               <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-6 @xl:grid-cols-2 @3xl:grid-cols-3">
+                <div className="grid gap-6">
                   {MATERNAL_RISK_GROUPS.map((group) => (
                     <RiskCodeChecklist
                       key={group.key}
