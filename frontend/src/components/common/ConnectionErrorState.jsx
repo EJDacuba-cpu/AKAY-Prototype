@@ -38,9 +38,10 @@ export default function ConnectionErrorState({
   const Icon = defaults.icon;
   const resolvedTitle = title || defaults.title;
   const resolvedMessage = message || defaults.message;
+  // No card: the message sits directly on the page, like the empty states.
   const wrapperClass = fullPage
-    ? "flex min-h-[calc(100dvh-9rem)] items-center justify-center rounded-xl bg-white px-4 py-12"
-    : "flex min-h-[420px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-12 shadow-sm";
+    ? "flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12"
+    : "flex min-h-[420px] items-center justify-center px-4 py-12";
 
   return (
     <div className={wrapperClass}>
