@@ -12,7 +12,6 @@ use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
 use App\Services\UserNotificationService;
 use App\Support\FrontendUrl;
-use App\Support\AccessRows;
 use App\Support\MaskedEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -128,7 +127,7 @@ class PasswordResetRequestController extends Controller
     public function index(Request $request)
     {
         $query = PasswordResetRequest::query()
-            ->with(AccessRows::RESET_WITH)
+            ->with(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'approver', 'rejecter'])
             ->latest('requested_at');
 
         // Expire first so the filter and the display status see the same rows.
@@ -353,6 +352,35 @@ class PasswordResetRequestController extends Controller
 
     private function toResponse(PasswordResetRequest $resetRequest): array
     {
-        return AccessRows::resetRequest($resetRequest);
+        $user = $resetRequest->user;
+        $facility = $user?->barangayHealthCenter?->name
+            ?: $user?->ruralHealthUnit?->name
+            ?: 'No facility assigned';
+
+        return [
+            'id' => $resetRequest->id,
+            'email' => $resetRequest->email,
+            'status' => $resetRequest->status,
+            'display_status' => AccessRequestStatus::forResetRequest($resetRequest),
+            'delivery' => $resetRequest->delivery,
+            'completed_via' => $resetRequest->completed_via,
+            'requested_at' => $resetRequest->requested_at,
+            'approved_at' => $resetRequest->approved_at,
+            'rejected_at' => $resetRequest->rejected_at,
+            'completed_at' => $resetRequest->completed_at,
+            'expires_at' => $resetRequest->expires_at,
+            'admin_note' => $resetRequest->admin_note,
+            'user' => $user ? [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'staff_role' => $user->staff_role,
+                'status' => $user->status,
+                'facility' => $facility,
+            ] : null,
+            'approved_by' => $resetRequest->approver?->name,
+            'rejected_by' => $resetRequest->rejecter?->name,
+        ];
     }
 }

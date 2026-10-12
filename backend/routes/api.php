@@ -150,7 +150,6 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/staff-roles', [\App\Http\Controllers\Api\StaffRoleController::class, 'index']);
         // Registered before the resource so "email-available" is not read as a user id.
         Route::get('/users/email-available', [UserController::class, 'emailAvailable']);
-        Route::get('/users/{user}/access', [UserController::class, 'access']);
         Route::apiResource('users', UserController::class);
         Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
         Route::apiResource('rural-health-units', RuralHealthUnitController::class);
