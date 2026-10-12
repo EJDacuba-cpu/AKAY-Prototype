@@ -40,6 +40,7 @@ export { default as ConnectionErrorState } from "./ConnectionErrorState";
 export { default as PageLoadingFallback } from "./PageLoadingFallback";
 export { default as PageStateWrapper } from "./PageStateWrapper";
 export { default as TablePagination } from "./pagination/TablePagination";
+export { default as LoadMoreButton } from "./pagination/LoadMoreButton";
 export { default as AkayLogoLoader } from "./loading/AkayLogoLoader";
 export { default as AkayLoader } from "./loading/AkayLoader";
 export { default as AkayLoadingCard } from "./loading/AkayLoadingCard";
