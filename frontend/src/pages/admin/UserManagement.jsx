@@ -9,6 +9,7 @@ import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import NoticeModal from "../../components/common/modals/NoticeModal";
 import {
+  FixedTable,
   ListToolbar,
   PageStateWrapper,
   RefreshingIndicator,
@@ -25,6 +26,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import usePagedRows from "../../hooks/usePagedRows";
 
 const FILTER_OPTIONS = {
   role: ["All Roles", "Admin", "BHC", "RHU"],
@@ -258,6 +260,7 @@ export default function UserManagement() {
 
         <AccountsTable
           users={visibleUsers}
+          resetKey={filters}
           rolesData={rolesData}
           onUpdateStatus={updateStatus}
         />
@@ -273,12 +276,13 @@ function assignmentSummary(user) {
   const active = (user.facility_assignments || []).filter(a => !a.revoked_at && a.starts_on && a.starts_on.slice(0,10) <= today && (!a.ends_on || a.ends_on.slice(0,10) >= today));
   return active.length ? active.map(a => a.barangay_health_center?.name || "BHC").join(", ") + " · " + active.length + " active" : "No active assignments";
 }
-function AccountsTable({ users, rolesData, onUpdateStatus }) {
+function AccountsTable({ users, resetKey, rolesData, onUpdateStatus }) {
+  const { page, setPage, totalPages, pageRows } = usePagedRows(users, resetKey);
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
     <TableHeader title="Account Directory" description="Manage personal accounts, home access, and additional nurse assignments." count={users.length}/>
-    <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[1050px] text-left"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={6} message="No accounts match the current filters."/> : users.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p>{user.contact_number&&<p className="text-xs text-slate-500">{user.contact_number}</p>}</td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></table></div>
-    <div className="divide-y divide-slate-100 md:hidden">{users.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
-    <TablePagination currentPage={1} totalPages={1}/>
+    <div className="hidden md:block"><FixedTable minWidth="min-w-[1050px]"><thead><tr className="bg-slate-50 text-xs text-slate-500">{["Account","Role & Access","Home Facility","Additional Assignments","Status","Actions"].map(label=><th key={label} className="px-4 py-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{users.length===0 ? <EmptyRow colSpan={6} message="No accounts match the current filters."/> : pageRows.map(user=><tr key={user.id}><td className="px-4 py-4"><p className="text-sm font-semibold">{getDisplayName(user)}</p><p className="text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4"><AccessProfileBadge user={user} rolesData={rolesData}/></td><td className="px-4 py-4 text-sm">{getFacilityName(user)}</td><td className="px-4 py-4 text-xs"><Link className="text-red-700" to={"/admin/staff-assignments?userId="+user.id}>{assignmentSummary(user)}</Link></td><td className="px-4 py-4"><StatusBadge status={user.status}/></td><td className="px-4 py-4"><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></td></tr>)}</tbody></FixedTable></div>
+    <div className="divide-y divide-slate-100 md:hidden">{pageRows.map(user=><article key={user.id} className="space-y-3 p-4"><div className="flex justify-between"><div><h3 className="font-semibold">{getDisplayName(user)}</h3><p className="text-xs text-slate-500">{user.email}</p></div><AccountActions user={user} onUpdateStatus={onUpdateStatus}/></div><dl className="grid grid-cols-2 gap-3 text-sm">{[["Role & Access",roleLabel(user,rolesData)],["Contact",user.contact_number||"Not recorded"],["Home Facility",getFacilityName(user)],["Status",user.status]].map(([label,value])=><div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl><Link className="block text-xs text-red-700" to={"/admin/staff-assignments?userId="+user.id}>Additional Assignments: {assignmentSummary(user)}</Link></article>)}</div>
+    <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage}/>
   </div>;
 }
 
@@ -304,7 +308,7 @@ function EmptyRow({ colSpan, message }) {
         colSpan={colSpan}
         className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
       >
-        <div className="flex min-h-[260px] items-center justify-center">
+        <div className="flex min-h-[var(--akay-empty-h,260px)] items-center justify-center">
           {message}
         </div>
       </td>
