@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserRequest;
 use App\Models\AccountInvite;
+use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
@@ -158,6 +159,8 @@ class UserController extends Controller
             return;
         }
 
+        $this->retargetOpenResetRequests($user);
+
         $invite = $user->accountInvite()->first();
         if (! $invite || $invite->status === AccountInvite::STATUS_COMPLETED) {
             return;
@@ -174,6 +177,29 @@ class UserController extends Controller
             'token_hash' => null,
             'status' => $invite->status === AccountInvite::STATUS_TEMPORARY ? $invite->status : AccountInvite::STATUS_EXPIRED,
         ])->save();
+    }
+
+    /**
+     * Open reset requests move to the new address. An approved or expired one also loses its link, because that link
+     * went to the old mailbox; the MHO can resend it, and it will go to the new address.
+     */
+    private function retargetOpenResetRequests(User $user): void
+    {
+        $open = $user->passwordResetRequests()
+            ->whereIn('status', [
+                PasswordResetRequest::STATUS_PENDING,
+                PasswordResetRequest::STATUS_APPROVED,
+                PasswordResetRequest::STATUS_EXPIRED,
+            ])
+            ->get();
+
+        foreach ($open as $resetRequest) {
+            $attributes = ['email' => $user->email];
+            if ($resetRequest->status !== PasswordResetRequest::STATUS_PENDING) {
+                $attributes += ['status' => PasswordResetRequest::STATUS_EXPIRED, 'reset_token_hash' => null];
+            }
+            $resetRequest->forceFill($attributes)->save();
+        }
     }
 
     /** Audit wording for duties added or removed, and for licensed duties held by a non-licensed role. */
