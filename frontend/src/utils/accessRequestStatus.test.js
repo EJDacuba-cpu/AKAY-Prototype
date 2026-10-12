@@ -135,7 +135,7 @@ const INVITE_ROWS = [
     "temporary, still valid",
     inviteRow({ status: "temporary", delivery: null, temp_password_expires_at: inHours(10) }),
     "in_progress",
-    "Temporary password issued",
+    "Temporary password generated",
     ["temporaryPassword"],
   ],
   ["completed via link", inviteRow({ status: "completed", completed_via: "link" }), "complete", "Password set", []],

@@ -5,7 +5,7 @@
 **Branch:** `Rework-Patch-AKAY-1.0`
 **Scope:** How a new account gets its first password, how the MHO follows that up, and the live field checks on the account forms.
 
-Goal: the MHO creates accounts but never knows a user's password. A new user receives an email link, opens it, and chooses their own password; opening the link also proves the email address works, which the password reset flow depends on. When email cannot reach someone, the MHO can issue a one-time temporary password that must be changed at first sign-in.
+Goal: the MHO creates accounts but never knows a user's password. A new user receives an email link, opens it, and chooses their own password; opening the link also proves the email address works, which the password reset flow depends on. When email cannot reach someone, the MHO can generate a one-time temporary password that must be changed at first sign-in.
 
 Out of band, the MHO phones the person before creating the account to confirm who they are and read back their email address. That call is a procedure, not software, and is not built here.
 
@@ -19,7 +19,7 @@ Out of band, the MHO phones the person before creating the account to confirm wh
 | D2 | The invite link is valid for **48 hours** and works once. Accepting it sets the password the user chooses and returns them to the **login page**. |
 | D3 | Edit Account loses its "New password" field. The MHO never sets a password directly; the only ways in are the invite, the temporary password (D5) and the existing reset flow. |
 | D4 | The MHO handles invites on the existing Password Resets page, renamed **Password & Invites**, with two tabs: **Reset requests** (existing) and **Invites** (new). The Invites tab reuses the same table layout as the reset requests. |
-| D5 | Fallback: **Issue temporary password**. The system generates a random, unique password, shows it to the MHO **once**, and it is valid for **72 hours**. Until the user changes it, the backend refuses every request except changing the password and signing out. |
+| D5 | Fallback: **Generate temporary password**. The system generates a random, unique password, shows it to the MHO **once**, and it is valid for **72 hours**. Until the user changes it, the backend refuses every request except changing the password and signing out. |
 | D6 | Password rules for accepting an invite and for the forced change are the same as the existing reset: at least 8 characters, upper and lower case, and a number. |
 | D7 | Invites live in a new table, `account_invites`, separate from `password_reset_requests`: invites have no approval step and a different lifecycle. |
 | D8 | Existing accounts, including the test accounts, keep their passwords and get no invite. The Invites tab lists only accounts created after this change. |
@@ -123,7 +123,7 @@ When the session says `must_change_password`, every route redirects here. Fields
 - Sidebar label and page title become **Password & Invites**. The URL stays `/admin/password-reset-requests`; `?tab=invites` opens the second tab.
 - Two tabs, each counting its **Pending** rows: **Reset requests (n)** and **Invites (n)**.
 - The Invites tab uses the same table component, toolbar (search, status filter) and detail drawer as reset requests. Columns: Account, Email, Role, Facility, Date, Status, Actions.
-- Invite actions: **Resend**, **Edit email**, **Copy link**, **Issue temporary password**. Copy link puts the URL on the clipboard and says "Link copied. The emailed link no longer works." Issue temporary password confirms first, then shows the password once in a dialog with a copy button and "This is the only time it is shown. It expires in 72 hours."
+- Invite actions: **Resend**, **Edit email**, **Copy link**, **Generate temporary password**. Copy link puts the URL on the clipboard and says "Link copied. The emailed link no longer works." Generate temporary password confirms first, then shows the password once in a dialog with a copy button and "This is the only time it is shown. It expires in 72 hours."
 
 ---
 
@@ -171,12 +171,12 @@ Reset requests:
 Invites:
 | Stored | Status | Reason (tooltip) | Row actions |
 |---|---|---|---|
-| `pending` + `delivery = failed` | Pending | Email not sent | Resend link; menu: Copy link, Edit email, Issue temporary password |
-| `expired` | Pending | Link expired | Resend link; menu: Edit email, Issue temporary password |
-| `temporary`, past `temp_password_expires_at` | Pending | Temporary password expired | Resend link; menu: Issue temporary password |
-| `pending` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link; menu: Copy link, Edit email, Issue temporary password |
-| `pending` + `delivery = copied` | In progress | Link shared by the MHO · expires in {time} | Resend link; menu: Copy link, Edit email, Issue temporary password |
-| `temporary` | In progress | Temporary password issued | menu: Issue temporary password |
+| `pending` + `delivery = failed` | Pending | Email not sent | Resend link; menu: Copy link, Edit email, Generate temporary password |
+| `expired` | Pending | Link expired | Resend link; menu: Edit email, Generate temporary password |
+| `temporary`, past `temp_password_expires_at` | Pending | Temporary password expired | Resend link; menu: Generate temporary password |
+| `pending` + `delivery = sent` | In progress | Link sent · expires in {time} | Resend link; menu: Copy link, Edit email, Generate temporary password |
+| `pending` + `delivery = copied` | In progress | Link shared by the MHO · expires in {time} | Resend link; menu: Copy link, Edit email, Generate temporary password |
+| `temporary` | In progress | Temporary password generated | menu: Generate temporary password |
 | `completed` via `link` | Complete | Password set | none |
 | `completed` via `temporary_password` / `reset` | Complete | Temporary password changed / Completed through a password reset | none |
 | not completed, account inactive | Cancelled | Account deactivated | none |
@@ -225,7 +225,7 @@ Backend (PHPUnit):
 
 Frontend (`node --test`): the status mapping (every row of the F2 tables gives the right status, reason and actions), the Field state rules (when a field becomes valid), and the forced-change redirect rule.
 
-Browser: create an account and see the notice, open the invite link from the mail log, set a password and sign in; issue a temporary password and get forced to change it; check the icons and the new wording.
+Browser: create an account and see the notice, open the invite link from the mail log, set a password and sign in; generate a temporary password and get forced to change it; check the icons and the new wording.
 
 ---
 

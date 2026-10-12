@@ -115,9 +115,9 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
 
       <ConfirmationModal
         open={Boolean(confirmTemp)}
-        title="Issue temporary password"
-        description={`Issue a temporary password for ${accountName(confirmTemp || {})}? Any invite link stops working.`}
-        confirmText="Issue temporary password"
+        title="Generate temporary password"
+        description={`Generate a temporary password for ${accountName(confirmTemp || {})}? Any invite link stops working.`}
+        confirmText="Generate temporary password"
         cancelText="Cancel"
         loading={Boolean(list.busyId)}
         loadingText="Issuing..."

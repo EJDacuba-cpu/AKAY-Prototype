@@ -23,7 +23,7 @@ const ACTION_LABELS = {
   resend: "Resend link",
   copy: "Copy link",
   editEmail: "Edit email",
-  temporaryPassword: "Issue temporary password",
+  temporaryPassword: "Generate temporary password",
 };
 
 /**

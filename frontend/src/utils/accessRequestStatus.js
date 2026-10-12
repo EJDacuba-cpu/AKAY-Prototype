@@ -85,7 +85,7 @@ export function inviteStatus(row, now = new Date()) {
       if (!expiresAt || new Date(expiresAt).getTime() <= now.getTime()) {
         return result("pending", "Temporary password expired", ["resend", "temporaryPassword"]);
       }
-      return result("in_progress", "Temporary password issued", ["temporaryPassword"]);
+      return result("in_progress", "Temporary password generated", ["temporaryPassword"]);
     }
     default: {
       const actions = ["resend", "copy", "editEmail", "temporaryPassword"];
