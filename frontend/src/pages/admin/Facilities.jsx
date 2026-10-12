@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Hospital, House, Plus, Search } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { ListToolbar, LoadMoreButton, PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import FacilityFormModal from "../../components/features/facilities/FacilityFormModal";
@@ -69,10 +69,10 @@ export default function Facilities() {
       : []),
   ];
 
-  // Each tab has its own filters, so switching starts from a clean list.
+  // The filters differ per tab, so switching clears them. The search text stays, so the same term works on both tabs.
   function changeType(tab) {
     setType(tab);
-    setFilters(DEFAULT_FACILITY_FILTERS);
+    setFilters({ ...DEFAULT_FACILITY_FILTERS, search: filters.search });
   }
 
   return (
@@ -98,23 +98,23 @@ export default function Facilities() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
-            {FACILITY_TYPES.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => changeType(tab)}
-                className={`rounded-lg px-5 py-2 text-sm ${
-                  type === tab ? "bg-[#B91C1C] text-white" : "bg-white text-slate-600"
-                }`}
-              >
-                {tab.toUpperCase()} Facilities
-              </button>
-            ))}
-          </div>
-
           <ListToolbar
-            key={type}
+            heading={
+              <div className="flex gap-2">
+                {FACILITY_TYPES.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => changeType(tab)}
+                    className={`h-10 rounded-xl px-5 text-sm font-medium transition-colors ${
+                      type === tab ? "bg-[#B91C1C] text-white" : "bg-white text-slate-600 hover:bg-red-50"
+                    }`}
+                  >
+                    {tab.toUpperCase()} Facilities
+                  </button>
+                ))}
+              </div>
+            }
             searchValue={filters.search}
             onSearchChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
             searchPlaceholder="Search name, barangay, or address..."
@@ -125,24 +125,29 @@ export default function Facilities() {
             onClearFilters={() => setFilters(DEFAULT_FACILITY_FILTERS)}
             onRemoveFilter={(key) => setFilters((prev) => ({ ...prev, [key]: DEFAULT_FACILITY_FILTERS[key] }))}
             filterDescription="Narrow the facilities list."
-            actions={
-              <button
-                type="button"
-                onClick={() => setEditing({ facility: null })}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-              >
-                <Plus size={14} strokeWidth={2.5} />
-                Add {typeLabel}
-              </button>
-            }
+            primaryActionLabel={`Add ${typeLabel}`}
+            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+            onPrimaryAction={() => setEditing({ facility: null })}
           />
 
           {filteredItems.length === 0 ? (
-            <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">
-              {items.length === 0
-                ? `No ${typeLabel} facilities yet.`
-                : `No ${typeLabel} facilities match the current filters.`}
-            </p>
+            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-6 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+                {items.length === 0 ? (
+                  type === "bhc" ? <House size={20} className="text-[#94A3B8]" /> : <Hospital size={20} className="text-[#94A3B8]" />
+                ) : (
+                  <Search size={20} className="text-[#94A3B8]" />
+                )}
+              </div>
+              <p className="text-[13px] font-semibold text-[#334155]">
+                {items.length === 0
+                  ? `No ${typeLabel} facilities yet.`
+                  : `No ${typeLabel} facilities match the current filters.`}
+              </p>
+              <p className="mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">
+                {items.length === 0 ? `Tap Add ${typeLabel} to start.` : "Try adjusting your search or filters."}
+              </p>
+            </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {visibleFacilities.map((facility) => (
