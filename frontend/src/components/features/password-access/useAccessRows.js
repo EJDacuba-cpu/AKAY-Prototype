@@ -7,15 +7,14 @@ const SEARCH_DELAY_MS = 300;
  * Rows, filters and per-row action state for one Password & Invites tab. The first load shows the
  * loading overlay; later loads (filters, after an action) refresh in place so the toolbar keeps focus.
  * `runAction(row, fn)` runs one row action, then reloads the tab and calls `onChanged` (the tab counts).
+ * A failed action is reported through `onActionError(message)` (the tabs show it as a toast).
  */
-export default function useAccessRows(fetchRows, onChanged) {
+export default function useAccessRows(fetchRows, onChanged, onActionError) {
   const [rows, setRows] = useState([]);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  // Kept apart so a successful reload after a failed action never erases the action's message.
   const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const busyRef = useRef(false);
   const requestRef = useRef(0);
@@ -48,19 +47,18 @@ export default function useAccessRows(fetchRows, onChanged) {
   }
 
   /**
-   * Returns fn's result, or undefined when another action is running or fn failed (the error is shown
-   * until the next action). With `rethrow`, a failure is thrown to the caller instead (a form shows it).
+   * Returns fn's result, or undefined when another action is running or fn failed (the error goes to
+   * `onActionError`). With `rethrow`, a failure is thrown to the caller instead (a form shows it).
    */
   async function runAction(row, fn, { rethrow = false } = {}) {
     if (busyRef.current) return undefined;
     busyRef.current = true;
     setBusyId(row.id);
-    setActionError("");
     try {
       return await fn();
     } catch (failure) {
       if (rethrow) throw failure;
-      setActionError(failure.message || "This action could not be completed.");
+      onActionError?.(failure.message || "This action could not be completed.");
       return undefined;
     } finally {
       busyRef.current = false;
@@ -69,18 +67,13 @@ export default function useAccessRows(fetchRows, onChanged) {
     }
   }
 
-  /** Shows an action failure that did not throw (e.g. an empty response). */
-  function reportActionError(message) {
-    setActionError(message);
-  }
-
   function refresh() {
     void reload();
     onChanged?.();
   }
 
   return {
-    rows, filters, updateFilters, loading, busyId, runAction, reportActionError,
-    error: actionError || loadError,
+    rows, filters, updateFilters, loading, busyId, runAction,
+    error: loadError,
   };
 }

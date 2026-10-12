@@ -30,7 +30,7 @@ const CONFIRM = {
 /** Reset requests tab: rows from the reset request API, statuses from `resetRequestStatus` (spec F2). */
 export default function ResetRequestsTab({ rolesData, pendingCount, onChanged }) {
   const notify = useNotification();
-  const list = useAccessRows(getPasswordResetRequests, onChanged);
+  const list = useAccessRows(getPasswordResetRequests, onChanged, notify.error);
   const [confirm, setConfirm] = useState(null);
   const [manualCopy, setManualCopy] = useState(null);
   const columns = useMemo(
@@ -69,7 +69,7 @@ export default function ResetRequestsTab({ rolesData, pendingCount, onChanged })
     const url = await list.runAction(row, () => copyResetLink(row.id));
     if (url === undefined) return;
     if (!url) {
-      list.reportActionError("Could not create a link. Try again.");
+      notify.error("Could not create a link. Try again.");
       return;
     }
     if (await copyText(url)) notify.success("Link copied. The emailed link no longer works.");

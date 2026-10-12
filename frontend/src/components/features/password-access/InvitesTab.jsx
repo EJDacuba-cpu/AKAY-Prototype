@@ -25,7 +25,7 @@ const EMAIL_TAKEN = "Email is already taken.";
 /** Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). */
 export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
   const notify = useNotification();
-  const list = useAccessRows(getAccountInvites, onChanged);
+  const list = useAccessRows(getAccountInvites, onChanged, notify.error);
   const [confirmTemp, setConfirmTemp] = useState(null);
   const [tempPassword, setTempPassword] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -57,7 +57,7 @@ export default function InvitesTab({ rolesData, pendingCount, onChanged }) {
     const url = await list.runAction(row, () => copyInviteLink(row.id));
     if (url === undefined) return;
     if (!url) {
-      list.reportActionError("Could not create a link. Try again.");
+      notify.error("Could not create a link. Try again.");
       return;
     }
     if (await copyText(url)) notify.success("Link copied. The emailed link no longer works.");
