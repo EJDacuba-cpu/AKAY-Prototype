@@ -110,13 +110,17 @@ class HealthRecordDraftPayloadService
                 'ageRisk' => self::SCALAR,
                 'heightRisk' => self::SCALAR,
                 'grandMultipara' => self::SCALAR,
-                // Risk Code D and Risk Code E parents. The keys below each of
-                // them are their sub-conditions and predate this grouping.
+                // Risk Code D parent and its items. ageRisk / heightRisk are
+                // computed by the form; the rest are ticked.
                 'previousPregnancyComplications' => self::SCALAR,
-                'medicalConditions' => self::SCALAR,
                 'previousCs' => self::SCALAR,
                 'recurrentMiscarriageOrStillbirth' => self::SCALAR,
                 'postpartumHemorrhage' => self::SCALAR,
+                // Legacy keys below are no longer sent by the prenatal form (a
+                // BHC worker does not confirm diseases; smoking and alcohol live
+                // in Patient Background). They stay here only so drafts started
+                // before that change still validate when they are read back.
+                'medicalConditions' => self::SCALAR,
                 'tuberculosis' => self::SCALAR,
                 'heartDisease' => self::SCALAR,
                 'diabetes' => self::SCALAR,

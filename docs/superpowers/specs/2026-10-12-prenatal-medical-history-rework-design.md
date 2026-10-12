@@ -83,10 +83,14 @@ details, Review and older records keep working. The Review step's Prenatal secti
 
 ### 5. Backend
 
-- `HealthRecordDraftPayloadService`: drop `tuberculosis`, `heartDisease`, `diabetes`,
-  `bronchialAsthma`, `goiter`, `hypertensive`, `alcoholUser`, `smoker` and `medicalConditions` from
-  the maternal `riskAssessment` whitelist for new drafts. `ageRisk`, `heightRisk`, the four
-  obstetric items and `previousPregnancyComplications` stay.
+- `HealthRecordDraftPayloadService` keeps accepting `tuberculosis`, `heartDisease`, `diabetes`,
+  `bronchialAsthma`, `goiter`, `hypertensive`, `alcoholUser`, `smoker` and `medicalConditions` in the
+  maternal `riskAssessment`, marked as legacy. Its sanitizer rejects unknown keys (422) and also runs
+  when a draft is read back, so trimming the whitelist would break resuming drafts started before
+  this change.
+- The form stops sending those keys: `EMPTY_MATERNAL_DATA`, the draft field list and
+  `mergeMaternalData` (via `sanitizeRiskAssessment`) only carry the seven current keys, so a resumed
+  draft or an earlier record never copies a removed key into a new record.
 - No migration. Saved records are never rewritten.
 
 ### 6. Existing records
@@ -110,7 +114,7 @@ Records that already carry the removed keys keep them. Record details still rend
 - Unit: the acknowledged-flag logic (opens once, not for false/missing, not after acknowledge).
 - Unit: `MATERNAL_RISK_GROUPS` contains only the four obstetric items; `applyRiskFactorChange`
   parent behaviour unchanged for `previousCs`.
-- Backend feature test: a draft with a removed key does not persist it; with `ageRisk`/`heightRisk`
-  and obstetric keys it does (extend `PrenatalFormFieldsTest`).
+- Backend feature tests (`PrenatalFormFieldsTest`): a draft with `ageRisk`/`heightRisk` and the
+  obstetric keys saves and reads back; a draft carrying the legacy keys still saves and reads back.
 - Existing record-details rendering of an old record containing `diabetes: true` is unchanged.
 - Manual browser check of the first-visit flow.

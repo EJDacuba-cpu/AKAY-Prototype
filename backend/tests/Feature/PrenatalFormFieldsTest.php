@@ -72,6 +72,46 @@ class PrenatalFormFieldsTest extends TestCase
             ->assertJsonPath('data.payload.maternalData.riskAssessment.previousPregnancyComplications', true);
     }
 
+    public function test_draft_keeps_the_computed_and_obstetric_risk_keys(): void
+    {
+        $data = $this->maternalData();
+        $data['riskAssessment'] = [
+            'ageRisk' => true,
+            'heightRisk' => false,
+            'grandMultipara' => true,
+            'previousCs' => true,
+            'previousPregnancyComplications' => true,
+        ];
+
+        $publicId = $this->saveDraft($data)->assertCreated()->json('data.id');
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.maternalData.riskAssessment.ageRisk', true)
+            ->assertJsonPath('data.payload.maternalData.riskAssessment.heightRisk', false)
+            ->assertJsonPath('data.payload.maternalData.riskAssessment.grandMultipara', true);
+    }
+
+    public function test_a_draft_saved_before_the_rework_still_saves_and_reads_back(): void
+    {
+        // The form no longer sends these, but a draft started earlier carries them
+        // and the whitelist also runs when a draft is read back.
+        $data = $this->maternalData();
+        $data['riskAssessment'] = [
+            'diabetes' => true,
+            'smoker' => true,
+            'medicalConditions' => true,
+        ];
+
+        $publicId = $this->saveDraft($data)->assertCreated()->json('data.id');
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.maternalData.riskAssessment.diabetes', true);
+    }
+
     public function test_draft_rejects_an_unknown_dose(): void
     {
         $data = $this->maternalData();
