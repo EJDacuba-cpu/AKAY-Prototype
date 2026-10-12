@@ -130,7 +130,7 @@ export default function ReferralDetails() {
           message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  ConnectionErrorState,
   FixedTable,
   ListToolbar,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
 import { apiRequest, unwrapList } from "../../services/apiClient";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -21,7 +23,8 @@ const LOGS_PER_PAGE = 10;
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -45,7 +48,7 @@ export default function AuditLogs() {
     if (filters.type !== "All Types") params.set("type", filters.type);
 
     setIsLoading(true);
-    setLoadError("");
+    setLoadError(null);
 
     apiRequest(`/audit-logs?${params.toString()}`)
       .then((response) => {
@@ -82,7 +85,7 @@ export default function AuditLogs() {
           lastPage: response.last_page || 1,
         });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
 
         setLogs([]);
@@ -92,7 +95,7 @@ export default function AuditLogs() {
           total: 0,
           lastPage: 1,
         });
-        setLoadError("Unable to load audit logs.");
+        setLoadError(error);
       })
       .finally(() => {
         if (!active) return;
@@ -103,7 +106,7 @@ export default function AuditLogs() {
     return () => {
       active = false;
     };
-  }, [currentPage, filters]);
+  }, [currentPage, filters, reloadKey]);
 
   const dropdownFilters = useMemo(
     () => [
@@ -216,7 +219,11 @@ export default function AuditLogs() {
             />
           )}
 
-          {!isLoading && (
+          {!isLoading && loadError && (
+            <ConnectionErrorState variant={errorStateVariant(loadError)} onRetry={() => setReloadKey((key) => key + 1)} />
+          )}
+
+          {!isLoading && !loadError && (
           <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
@@ -245,18 +252,7 @@ export default function AuditLogs() {
                 </thead>
 
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {isLoading ? null : loadError ? (
-                    <tr>
-                      <td
-                        colSpan={8}
-                        className="px-6 py-0 text-center text-sm text-[#B91C1C]"
-                      >
-                        <div className="flex min-h-[var(--akay-empty-h,260px)] items-center justify-center">
-                          {loadError}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : paginatedLogs.length === 0 ? (
+                  {isLoading ? null : paginatedLogs.length === 0 ? (
                     <tr>
                       <td
                         colSpan={8}

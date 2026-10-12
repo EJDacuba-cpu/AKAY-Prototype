@@ -492,7 +492,7 @@ export default function FeedbackReturnSlip() {
           message="Loading referral feedback..."
           minHeight="min-h-[420px]"
         >
-          <div className="min-h-[420px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[420px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );

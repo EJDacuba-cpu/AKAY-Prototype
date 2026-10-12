@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { ConnectionErrorState } from "../../components/common";
 import { useNavigate } from "react-router";
 import {
-  AlertCircle,
   Bell,
   Check,
   CheckCheck,
@@ -598,7 +598,7 @@ export default function NotificationsPage() {
           {showInitialLoading ? (
             <NotificationInboxSkeleton />
           ) : notificationsError ? (
-            <NotificationErrorState onRetry={handleRefresh} loading={viewLoading} />
+            <ConnectionErrorState variant="error" onRetry={handleRefresh} retrying={viewLoading} />
           ) : filteredNotifications.length === 0 ? (
             <NotificationEmptyState
               title={currentFilter?.empty || "No notifications."}
@@ -726,34 +726,6 @@ function NotificationEmptyState({ title, searchTerm }) {
   );
 }
 
-function NotificationErrorState({ onRetry, loading }) {
-  return (
-    <div className="flex flex-col items-center justify-center px-4 py-20 text-center">
-      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-[#B91C1C]">
-        <AlertCircle size={21} />
-      </div>
-      <h3 className="text-sm font-bold text-[#0F172A]">
-        Unable to load notifications.
-      </h3>
-      <p className="mt-1 max-w-xs text-sm leading-relaxed text-slate-500">
-        Please check your connection and try again.
-      </p>
-      <button
-        type="button"
-        onClick={onRetry}
-        disabled={loading}
-        className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {loading ? (
-          <LoaderCircle size={14} className="animate-spin" />
-        ) : (
-          <RefreshCw size={14} />
-        )}
-        Retry
-      </button>
-    </div>
-  );
-}
 
 function NotificationInboxSkeleton() {
   return (

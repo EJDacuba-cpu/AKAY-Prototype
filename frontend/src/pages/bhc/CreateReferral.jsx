@@ -717,7 +717,7 @@ export default function CreateReferral() {
           message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -814,7 +814,7 @@ export default function CreateReferral() {
           message="Preparing referral draft..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );

@@ -14,6 +14,7 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  ConnectionErrorState,
   RefreshingIndicator,
   SideCard,
   SoftLoadingArea,
@@ -72,6 +73,7 @@ export default function RHUPatientDetails() {
     isLoading: recordsLoading,
     isFetching: recordsFetching,
     isError: recordsError,
+    refetch: refetchRecords,
   } = useQuery(profileQueries.records);
 
   const {
@@ -79,6 +81,7 @@ export default function RHUPatientDetails() {
     isLoading: referralsLoading,
     isFetching: referralsFetching,
     isError: referralsError,
+    refetch: refetchReferrals,
   } = useQuery(profileQueries.referrals);
 
   const rawRecords = useMemo(
@@ -156,7 +159,7 @@ export default function RHUPatientDetails() {
           message="Loading patient details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -271,6 +274,7 @@ export default function RHUPatientDetails() {
           isLoading={recordsLoading}
           isFetching={recordsFetching}
           isError={recordsError}
+          onRetry={() => refetchRecords()}
           showAll={showAllRecords}
           onToggleShowAll={() => setShowAllRecords((value) => !value)}
         />
@@ -291,6 +295,7 @@ export default function RHUPatientDetails() {
           isLoading={referralsLoading}
           isFetching={referralsFetching}
           isError={referralsError}
+          onRetry={() => refetchReferrals()}
           showAll={showAllReferrals}
           onToggleShowAll={() => setShowAllReferrals((value) => !value)}
         />
@@ -464,6 +469,7 @@ function RhuRecordsTab({
   isLoading,
   isFetching,
   isError,
+  onRetry,
   showAll,
   onToggleShowAll,
 }) {
@@ -492,7 +498,7 @@ function RhuRecordsTab({
           <div className="min-h-[240px]" />
         </SoftLoadingArea>
       ) : isError && records.length === 0 ? (
-        <TabErrorState message="Unable to load health records right now." />
+        <ConnectionErrorState size="compact" variant="error" onRetry={onRetry} />
       ) : records.length === 0 ? (
         <div className="p-12 text-center text-sm text-slate-400">
           <FileText className="mx-auto mb-3 text-slate-300" size={32} />
@@ -563,6 +569,7 @@ function ReferralHistoryTab({
   isLoading,
   isFetching,
   isError,
+  onRetry,
   showAll,
   onToggleShowAll,
 }) {
@@ -591,7 +598,7 @@ function ReferralHistoryTab({
           <div className="min-h-[240px]" />
         </SoftLoadingArea>
       ) : isError && referrals.length === 0 ? (
-        <TabErrorState message="Unable to load referral history right now." />
+        <ConnectionErrorState size="compact" variant="error" onRetry={onRetry} />
       ) : referrals.length === 0 ? (
         <div className="p-12 text-center text-sm text-slate-400">
           <ClipboardList className="mx-auto mb-3 text-slate-300" size={32} />
@@ -673,14 +680,6 @@ function InfoChip({ icon, label }) {
   );
 }
 
-function TabErrorState({ message }) {
-  return (
-    <div className="p-12 text-center text-sm text-slate-400">
-      <FileText className="mx-auto mb-3 text-slate-300" size={32} />
-      {message}
-    </div>
-  );
-}
 
 function ReturnSlipIndicator({ referral }) {
   const hasReturnSlip = !!(referral.feedback || referral.returnSlip);

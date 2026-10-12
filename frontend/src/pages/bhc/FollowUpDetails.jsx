@@ -171,7 +171,7 @@ export default function FollowUpDetails() {
           message="Loading follow-up details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -255,18 +255,7 @@ export default function FollowUpDetails() {
           Loading visit chain...
         </div>
       ) : relatedRecordError ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 p-5 text-center">
-          <p className="text-sm font-semibold text-red-700">
-            Unable to load this follow-up&apos;s visit chain.
-          </p>
-          <button
-            type="button"
-            onClick={() => refetchRelatedRecord()}
-            className="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-          >
-            Try Again
-          </button>
-        </div>
+        <ConnectionErrorState size="compact" variant="error" onRetry={() => refetchRelatedRecord()} />
       ) : (
         <FollowUpEpisodeContent
           episode={relatedRecord?.followUpEpisode}
@@ -427,18 +416,7 @@ function FollowUpClinicalDetails({ task, record, loading, error, onRetry }) {
 
   if (error || !record) {
     return (
-      <div className="rounded-xl border border-red-100 bg-red-50 p-5 text-center">
-        <p className="text-sm font-semibold text-red-700">
-          Unable to load the recorded follow-up visit.
-        </p>
-        <button
-          type="button"
-          onClick={() => onRetry?.()}
-          className="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-        >
-          Try Again
-        </button>
-      </div>
+      <ConnectionErrorState size="compact" variant="error" onRetry={onRetry ? () => onRetry() : undefined} />
     );
   }
 

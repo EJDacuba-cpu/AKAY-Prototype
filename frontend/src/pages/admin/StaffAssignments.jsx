@@ -18,6 +18,8 @@ export default function StaffAssignments() {
   const [form,setForm]=useState({user_id:params.get("userId")||"",barangay_health_center_id:"",assignment_type:"temporary",starts_on:"",ends_on:"",permissions:[]});
   async function load(){const [a,b,c]=await Promise.all([apiRequest("/staff-assignments"),apiRequest("/staff-assignments/eligible-nurses"),apiRequest("/barangay-health-centers")]);setRows(unwrapList(a));setNurses(unwrapList(b));setBhcs(unwrapList(c));}
   function firstLoad(){setLoading(true);setLoadError(null);return load().catch(e=>setLoadError(e)).finally(()=>setLoading(false));}
+  // Runs once on mount; firstLoad is recreated each render and is also the Retry handler.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{firstLoad();},[]);
   const nurse=nurses.find(n=>String(n.id)===String(form.user_id)),bhc=bhcs.find(b=>String(b.id)===String(form.barangay_health_center_id));
   // Nurses are licensed, so assigned duties are compared only against the suggested set.

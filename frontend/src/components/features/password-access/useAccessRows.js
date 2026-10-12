@@ -18,6 +18,8 @@ export default function useAccessRows(fetchRows, onActionError) {
   const [busyId, setBusyId] = useState(null);
   const busyRef = useRef(false);
   const requestRef = useRef(0);
+  // How many rows are on screen, so a failed reload toasts only when there is data to keep.
+  const shownRowsRef = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(filters.search), SEARCH_DELAY_MS);
@@ -30,12 +32,13 @@ export default function useAccessRows(fetchRows, onActionError) {
       const next = await fetchRows({ search, status: filters.status, perPage: 50 });
       if (request !== requestRef.current) return;
       setRows(next);
+      shownRowsRef.current = next.length;
       setLoadError("");
     } catch (failure) {
       if (request === requestRef.current) {
         const message = failure.message || "Unable to load this list.";
         setLoadError(message);
-        onActionError?.(message);
+        if (shownRowsRef.current > 0) onActionError?.(message);
       }
     } finally {
       if (request === requestRef.current) setLoading(false);

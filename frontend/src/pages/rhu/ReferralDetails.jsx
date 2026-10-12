@@ -18,6 +18,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  ConnectionErrorState,
   ModalButton,
   ModalShell,
   RefreshingIndicator,
@@ -45,6 +46,7 @@ import {
   getRecordDiagnosis,
   getRecordInitialActions,
 } from "../../components/features/health-records/recordDetailsHelpers";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { queryKeys } from "../../utils/queryKeys";
 
 const keyframes = `
@@ -77,6 +79,7 @@ export default function RHUReferralDetails() {
     isLoading,
     isFetching,
     error,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.referralDetails("rhu", trackingId),
     queryFn: async () => {
@@ -196,8 +199,16 @@ export default function RHUReferralDetails() {
           message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <DashboardLayout role="rhu" title="Referral Details">
+        <ConnectionErrorState fullPage variant={errorStateVariant(error)} onRetry={() => refetch()} retrying={isFetching} />
       </DashboardLayout>
     );
   }

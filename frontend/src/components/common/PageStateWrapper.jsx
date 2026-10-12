@@ -1,6 +1,6 @@
 import ConnectionErrorState from "./ConnectionErrorState";
 import PageLoadingFallback from "./PageLoadingFallback";
-import { isConnectionError } from "../../services/apiClient";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 export default function PageStateWrapper({
   isLoading,
@@ -28,15 +28,7 @@ export default function PageStateWrapper({
         message={errorMessage}
         onRetry={onRetry}
         retrying={isFetching}
-        variant={
-          error?.status === 403
-            ? "forbidden"
-            : error?.isTimeout
-            ? "timeout"
-            : isConnectionError(error)
-              ? "offline"
-              : "error"
-        }
+        variant={errorStateVariant(error)}
       />
     );
   }
