@@ -89,7 +89,7 @@ checks each page).
 | Programs | `module` | — |
 | Family Planning report | `reports` | — |
 | Staff Assignments | `table` | Gains the page loading and failure states |
-| Notifications | `table` | Its own error block becomes `ConnectionErrorState` |
+| Notifications | its own inbox skeleton (already explicit and shaped like the inbox; kept) | Its own error block becomes `ConnectionErrorState` |
 | Password & Invites | `table`, `bodyOnly` | No toast when the first load fails (only `ConnectionErrorState`); a failed reload while rows are on screen toasts |
 
 ## Phase 2: sections inside pages
