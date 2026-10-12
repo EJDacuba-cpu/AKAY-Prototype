@@ -19,7 +19,7 @@ const TEXT_FIELDS = [
   { key: "name", label: "Name", required: true },
   { key: "barangay", label: "Barangay" },
   { key: "address", label: "Address", wide: true },
-  { key: "contact_information", label: "Contact information", wide: true },
+  { key: "contact_information", label: "Contact information" },
 ];
 
 function initialForm(facility) {
