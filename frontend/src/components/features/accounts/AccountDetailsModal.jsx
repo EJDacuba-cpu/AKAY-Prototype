@@ -5,7 +5,6 @@ import { Pencil } from "lucide-react";
 import { ModalButton, ModalShell } from "../../common";
 import Input from "../../common/atoms/Input";
 import Field from "../access/FieldError";
-import AccountAccessSection from "./AccountAccessSection";
 import AccountStatusBadge from "./AccountStatusBadge";
 import { getAdminAccount, updateAdminAccountProfile } from "../../../services/adminAccountsService";
 import { profileChanges, validateAccountProfile } from "../../../utils/accountForm";
@@ -158,8 +157,6 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>
             <Row label="Date created">{formatDateTime(current.created_at)}</Row>
           </dl>
-
-          <AccountAccessSection account={current} onChanged={onChanged} />
 
           {!isAdmin && (
             <Link

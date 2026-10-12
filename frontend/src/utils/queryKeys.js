@@ -65,7 +65,6 @@ export const queryKeys = {
   ],
   adminAccounts: () => ["admin-accounts"],
   adminAccount: (id) => ["admin-accounts", String(id)],
-  accountAccess: (id) => ["account-access", String(id)],
   adminFacilities: () => ["admin-facilities"],
   staffRoles: () => ["staff-roles"],
   providers: () => ["rhu-providers"],
