@@ -30,6 +30,7 @@ import {
   formatReferralStatus,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import usePagedRows from "../../hooks/usePagedRows";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_FILTER_OPTIONS,
@@ -78,7 +79,6 @@ const REFERRAL_STATUS_OPTIONS = [
 ];
 
 const DATE_OPTIONS = ["All Dates", "Today", "Yesterday", "Last 7 Days"];
-const ITEMS_PER_PAGE = 5;
 
 function ActionMenu({ referral }) {
   const [open, setOpen] = useState(false);
@@ -546,7 +546,6 @@ export default function IncomingReferrals() {
     date: "All Dates",
     referringBhc: "All Referring BHCs",
   });
-  const [currentPage, setCurrentPage] = useState(1);
 
   const {
     data: referralsData = [],
@@ -680,21 +679,13 @@ export default function IncomingReferrals() {
     return statusFiltered.slice().sort(compareReferralQueueOrder);
   }, [baseFiltered, filters.status]);
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginatedReferrals = filtered.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+  const {
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages,
+    pageRows: paginatedReferrals,
+    startIndex,
+  } = usePagedRows(filtered, filters);
 
   const toolbarFilters = [
     {
@@ -774,6 +765,7 @@ export default function IncomingReferrals() {
           count={filtered.length}
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1360px]"
+          fixedRows
           refreshing={isBackgroundRefreshing}
           refreshingLabel="Updating referrals..."
           footer={
@@ -833,7 +825,7 @@ export default function IncomingReferrals() {
                       >
                         <td className="whitespace-nowrap px-4 py-3.5">
                           <span className="text-[12px] font-bold text-slate-500">
-                            #{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                            #{startIndex + index + 1}
                           </span>
                         </td>
 

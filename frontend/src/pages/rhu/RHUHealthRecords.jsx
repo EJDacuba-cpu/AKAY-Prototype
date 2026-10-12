@@ -33,8 +33,7 @@ import {
   isFollowUpVisitRecord,
 } from "../../utils/healthRecordPrograms";
 import { queryKeys } from "../../utils/queryKeys";
-
-const PER_PAGE = 8;
+import usePagedRows from "../../hooks/usePagedRows";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -50,7 +49,6 @@ function normalizeVisitType(record = {}) {
 
 export default function RHUHealthRecords() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [currentPage, setCurrentPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState(null);
 
   const {
@@ -203,17 +201,14 @@ export default function RHUHealthRecords() {
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
   }
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
-    setCurrentPage(1);
   }
 
   function clearFilters() {
     setFilters(DEFAULT_FILTERS);
-    setCurrentPage(1);
   }
 
   function removeFilter(key) {
@@ -258,8 +253,7 @@ export default function RHUHealthRecords() {
         {!loading && (
           <RHUHealthRecordsTable
             records={filteredRecords}
-            currentPage={currentPage}
-            setCurrentPage={setCurrentPage}
+            resetKey={filters}
             openMenuId={openMenuId}
             setOpenMenuId={setOpenMenuId}
             refreshing={refreshing}
@@ -273,27 +267,24 @@ export default function RHUHealthRecords() {
 
 function RHUHealthRecordsTable({
   records,
-  currentPage,
-  setCurrentPage,
+  resetKey,
   openMenuId,
   setOpenMenuId,
   refreshing,
 }) {
-  const totalPages = Math.ceil(records.length / PER_PAGE);
-  const paginatedRecords = records.slice(
-    (currentPage - 1) * PER_PAGE,
-    currentPage * PER_PAGE,
-  );
-
-  useEffect(() => {
-    if (totalPages > 0 && currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, setCurrentPage, totalPages]);
+  const {
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages,
+    pageRows: paginatedRecords,
+  } = usePagedRows(records, resetKey);
 
   return (
     <ModuleTableCard
       title="Recent Health Records"
       subtitle="Saved patient visits grouped by health service."
       minWidth="min-w-[760px]"
+      fixedRows
       refreshing={refreshing}
       footer={
         <TablePagination

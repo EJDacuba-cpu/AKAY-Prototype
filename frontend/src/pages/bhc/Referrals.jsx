@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, ClipboardList, X } from "lucide-react";
@@ -29,6 +29,7 @@ import {
   isDateInPreset,
 } from "../../utils/filterUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import usePagedRows from "../../hooks/usePagedRows";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_FILTER_OPTIONS,
@@ -47,7 +48,6 @@ const DEFAULT_FILTERS = {
   receivingFacility: "",
 };
 
-const ITEMS_PER_PAGE = 5;
 
 function getReferralClassification(referral) {
   return formatDisplayValue(
@@ -114,7 +114,6 @@ function getSubmittedDate(referral) {
 
 export default function Referrals() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [currentPage, setCurrentPage] = useState(1);
   const queryClient = useQueryClient();
 
   const {
@@ -203,21 +202,12 @@ export default function Referrals() {
     });
   }, [referrals, filters]);
 
-  const totalPages = Math.ceil(filteredReferrals.length / ITEMS_PER_PAGE);
-  const paginatedReferrals = filteredReferrals.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+  const {
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages,
+    pageRows: paginatedReferrals,
+  } = usePagedRows(filteredReferrals, filters);
 
   const dropdownFilters = [
     {
@@ -353,6 +343,7 @@ export default function Referrals() {
           count={filteredReferrals.length}
           subtitle="Track sent referrals and RHU updates."
           minWidth="min-w-[1100px]"
+          fixedRows
           refreshing={isFetching && referrals.length > 0}
           footer={
             <TablePagination

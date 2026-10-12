@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, FileText } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   TablePagination,
 } from "../../components/common";
 import { getFamilyPlanningHealthRecords } from "../../services/healthRecordService";
+import usePagedRows from "../../hooks/usePagedRows";
 import {
   formatDate,
   formatDisplayValue,
@@ -17,7 +18,6 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 
-const ITEMS_PER_PAGE = 8;
 
 function getFamilyPlanningData(record = {}) {
   return record.familyPlanningData || record.family_planning_data || {};
@@ -234,8 +234,6 @@ export function FamilyPlanningReportSection({
   basePath = role === "rhu" ? "/rhu" : "/bhc",
   reportFilters = {},
 }) {
-  const [currentPage, setCurrentPage] = useState(1);
-
   const {
     data: recordsData = [],
     isLoading,
@@ -301,11 +299,14 @@ export function FamilyPlanningReportSection({
     });
   }, [records, reportFilters]);
 
-  const totalPages = Math.ceil(filteredRecords.length / ITEMS_PER_PAGE);
-  const paginatedRecords = filteredRecords.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  // reportFilters defaults to a new {} each render, so key the page reset on its contents.
+  const {
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages,
+    pageRows: paginatedRecords,
+    startIndex,
+  } = usePagedRows(filteredRecords, JSON.stringify(reportFilters));
   const methodSummary = useMemo(
     () => buildMethodSummary(filteredRecords),
     [filteredRecords],
@@ -314,14 +315,6 @@ export function FamilyPlanningReportSection({
     () => buildPurokSummary(filteredRecords),
     [filteredRecords],
   );
-
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [reportFilters]);
 
   return (
     <section className="space-y-4">
@@ -349,6 +342,7 @@ export function FamilyPlanningReportSection({
               showCount
               subtitle="Target Client List generated from Family Planning health records."
               minWidth="min-w-[1500px]"
+              fixedRows
               refreshing={refreshing}
               footer={
                 <TablePagination
@@ -390,7 +384,7 @@ export function FamilyPlanningReportSection({
                   paginatedRecords.map((record, index) => (
                     <tr key={record.id} className="hover:bg-[#FAFBFD]">
                       <td className="px-4 py-3.5 text-[13px] text-[#64748B]">
-                        {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                        {startIndex + index + 1}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
                         {formatDate(record.dateRegistered, "Not recorded")}
