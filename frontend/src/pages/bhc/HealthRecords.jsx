@@ -71,7 +71,6 @@ function getLinkedReferral(record, recordId, referrals) {
 
 export default function HealthRecords() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [currentPage, setCurrentPage] = useState(1);
 
   const {
     data: recordsData = [],
@@ -250,17 +249,14 @@ export default function HealthRecords() {
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
   }
 
   function applyDropdownFilters(nextFilters) {
     setFilters((prev) => ({ ...prev, ...nextFilters }));
-    setCurrentPage(1);
   }
 
   function clearFilters() {
     setFilters(DEFAULT_FILTERS);
-    setCurrentPage(1);
   }
 
   function removeFilter(key) {
@@ -271,7 +267,6 @@ export default function HealthRecords() {
         dateFrom: "",
         dateTo: "",
       }));
-      setCurrentPage(1);
       return;
     }
 
@@ -317,8 +312,7 @@ export default function HealthRecords() {
         {!loading && (
           <HealthRecordsTable
             records={filteredRecords}
-            currentPage={currentPage}
-            setCurrentPage={setCurrentPage}
+            resetKey={filters}
             refreshing={isFetching && records.length > 0}
           />
         )}

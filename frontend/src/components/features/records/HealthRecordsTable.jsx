@@ -3,6 +3,8 @@ import { getConsultationPrograms } from "../../../utils/consultationPrograms";
 import { FileText, ChevronRight } from "lucide-react";
 
 import TablePagination from "../../common/pagination/TablePagination";
+import FixedTable from "../../common/tables/FixedTable";
+import usePagedRows from "../../../hooks/usePagedRows";
 import ActionMenu from "../../common/tables/ActionMenu";
 import DataTableEmptyState from "../../common/tables/DataTableEmptyState";
 import RefreshingIndicator from "../../common/loading/RefreshingIndicator";
@@ -22,8 +24,6 @@ import {
   isFollowUpVisitRecord,
 } from "../../../utils/healthRecordPrograms";
 
-const ITEMS_PER_PAGE = 5;
-
 function FollowUpVisitBadge() {
   return (
     <span className="inline-flex shrink-0 rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1D4ED8]">
@@ -35,20 +35,18 @@ function FollowUpVisitBadge() {
 export default function HealthRecordsTable({
   records = [],
   loading,
-  currentPage = 1,
-  totalPages,
-  setCurrentPage = () => {},
+  resetKey,
   delay = 0,
   refreshing = false,
 }) {
-  if (loading) return null;
+  const {
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages: computedTotalPages,
+    pageRows: currentRecords,
+  } = usePagedRows(records, resetKey);
 
-  const computedTotalPages =
-    totalPages || Math.ceil(records.length / ITEMS_PER_PAGE);
-  const currentRecords = records.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  if (loading) return null;
 
   return (
     <div
@@ -175,8 +173,8 @@ export default function HealthRecordsTable({
         )}
       </div>
 
-      <div className="hidden min-h-[280px] w-full flex-1 overflow-x-auto overflow-y-visible px-1 pb-2 md:block">
-        <table className="w-full min-w-[850px] border-separate border-spacing-0 text-left">
+      <div className="hidden md:block">
+        <FixedTable minWidth="min-w-[850px]">
           <thead>
             <tr className="bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
               <th className="whitespace-nowrap px-4 py-3">Record ID</th>
@@ -254,7 +252,7 @@ export default function HealthRecordsTable({
               })
             )}
           </tbody>
-        </table>
+        </FixedTable>
       </div>
 
       <TablePagination
