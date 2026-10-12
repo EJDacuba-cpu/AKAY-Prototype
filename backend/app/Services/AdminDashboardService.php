@@ -2,10 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\AccountInvite;
+use App\Models\BarangayHealthCenter;
+use App\Models\FacilityAssignment;
 use App\Models\FollowUpTask;
 use App\Models\Medicine;
+use App\Models\PasswordResetRequest;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\RuralHealthUnit;
 use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -27,13 +32,20 @@ class AdminDashboardService
         $now ??= CarbonImmutable::now();
         $window = $this->window($periodKey, $now);
 
+        // Each per-BHC map is built once and shared by the totals and the barangay rows.
+        $referralsByBhc = $this->referralCountsByBhc($window);
+        $lowStockByBhc = $this->lowStockByBhc();
+        $withoutStaff = $this->facilitiesWithoutStaff($window);
+
         return [
             'period' => $this->periodPayload($window),
             'accounts' => $this->accounts(),
-            'referrals' => $this->referrals($window),
+            'referrals' => $this->referrals($window, $referralsByBhc),
             'follow_ups' => $this->followUps($window),
             'patients' => $this->patients($window),
-            'medicines' => $this->medicines(),
+            'medicines' => $this->medicines($lowStockByBhc),
+            'attention' => $this->attention($window, $withoutStaff),
+            'barangays' => $this->barangays($window, $referralsByBhc, $lowStockByBhc, $withoutStaff),
             'generated_at' => $now->toIso8601String(),
         ];
     }
@@ -86,9 +98,11 @@ class AdminDashboardService
         ];
     }
 
-    private function referrals(array $window): array
+    /**
+     * @param  array<int, array{referrals: int, completed: int, no_show: int, pending: int, priority_pending: int}>  $byBhc
+     */
+    private function referrals(array $window, array $byBhc): array
     {
-        $byBhc = $this->referralCountsByBhc($window);
         $sum = fn (string $key): int => array_sum(array_column($byBhc, $key));
 
         return [
@@ -197,6 +211,7 @@ class AdminDashboardService
     {
         return FollowUpTask::query()
             ->where('state', FollowUpTask::STATE_PENDING)
+            // Every window ends at "now", so its end date is today.
             ->where('due_date', '<', $window['to']->toDateString());
     }
 
@@ -208,10 +223,11 @@ class AdminDashboardService
         ];
     }
 
-    private function medicines(): array
+    /**
+     * @param  array<int, int>  $bhcLowStock
+     */
+    private function medicines(array $bhcLowStock): array
     {
-        $bhcLowStock = $this->lowStockByBhc();
-
         return [
             'rhu_low_stock' => $this->lowStockQuery()->whereNotNull('rural_health_unit_id')->count(),
             'bhc_low_stock' => array_sum($bhcLowStock),
@@ -241,5 +257,143 @@ class AdminDashboardService
         return Medicine::query()
             ->where('is_active', true)
             ->whereIn('availability_status', ['Low Stock', 'Unavailable']);
+    }
+
+    /**
+     * @param  list<array{type: string, id: int, name: string}>  $withoutStaff
+     */
+    private function attention(array $window, array $withoutStaff): array
+    {
+        // Same sequence as the Password & Invites summary, so both screens show the same numbers.
+        AccessRequestStatus::expireStaleInvites();
+        AccessRequestStatus::expireStaleResetRequests();
+
+        $invites = AccountInvite::query();
+        AccessRequestStatus::applyToInvites($invites, AccessRequestStatus::PENDING);
+
+        $resets = PasswordResetRequest::query();
+        AccessRequestStatus::applyToResetRequests($resets, AccessRequestStatus::PENDING);
+
+        return [
+            'reset_requests' => $resets->count(),
+            'invites' => $invites->count(),
+            'stale_priority_referrals' => $this->stalePriorityReferrals($window),
+            'facilities_without_staff' => $withoutStaff,
+        ];
+    }
+
+    /**
+     * Pending Priority referrals whose referral date is more than two days old.
+     * Exactly two days old is not stale yet.
+     */
+    private function stalePriorityReferrals(array $window): int
+    {
+        $query = Referral::query()
+            ->where('urgency_level', Referral::ATTENTION_PRIORITY)
+            // Every window ends at "now", so its end is the reference time.
+            ->whereRaw('COALESCE(referral_datetime, created_at) < ?', [$window['to']->subDays(2)]);
+
+        return $this->referralGroups($query)
+            ->filter(fn (object $row) => Referral::normalizeWorkflowStatus($row->status) === Referral::STATUS_PENDING)
+            ->sum('total');
+    }
+
+    /**
+     * Active facilities nobody currently staffs: BHCs first, then RHUs, each by name.
+     *
+     * @return list<array{type: string, id: int, name: string}>
+     */
+    private function facilitiesWithoutStaff(array $window): array
+    {
+        // Every window ends at "now", so its end date is today.
+        $staffedBhcs = array_flip($this->staffedBhcIds($window['to']->toDateString()));
+        $staffedRhus = array_flip(
+            User::query()
+                ->where('status', User::STATUS_ACTIVE)
+                ->where('role', User::ROLE_RHU)
+                ->whereNotNull('rural_health_unit_id')
+                ->distinct()
+                ->pluck('rural_health_unit_id')
+                ->all()
+        );
+
+        $bhcs = $this->activeBhcs()
+            ->reject(fn (BarangayHealthCenter $bhc) => isset($staffedBhcs[$bhc->id]))
+            ->map(fn (BarangayHealthCenter $bhc) => ['type' => 'bhc', 'id' => $bhc->id, 'name' => $bhc->name]);
+
+        $rhus = RuralHealthUnit::query()
+            ->where('status', 'active')
+            ->orderBy('name')->orderBy('id')
+            ->get(['id', 'name'])
+            ->reject(fn (RuralHealthUnit $rhu) => isset($staffedRhus[$rhu->id]))
+            ->map(fn (RuralHealthUnit $rhu) => ['type' => 'rhu', 'id' => $rhu->id, 'name' => $rhu->name]);
+
+        return $bhcs->concat($rhus)->values()->all();
+    }
+
+    /**
+     * BHC ids with an active home user or a current assignment held by an active user.
+     * The assignment predicate matches WorkingFacilityService::available().
+     *
+     * @return list<int>
+     */
+    private function staffedBhcIds(string $today): array
+    {
+        $home = User::query()
+            ->where('status', User::STATUS_ACTIVE)
+            ->whereNotNull('barangay_health_center_id')
+            ->distinct()
+            ->pluck('barangay_health_center_id');
+
+        $assigned = FacilityAssignment::query()
+            ->whereNull('revoked_at')
+            ->whereNotNull('barangay_health_center_id')
+            ->whereNotNull('starts_on')
+            ->whereDate('starts_on', '<=', $today)
+            ->where(fn (Builder $q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
+            ->whereHas('user', fn (Builder $user) => $user->where('status', User::STATUS_ACTIVE))
+            ->distinct()
+            ->pluck('barangay_health_center_id');
+
+        return $home->merge($assigned)->unique()->values()->all();
+    }
+
+    /**
+     * @return Collection<int, BarangayHealthCenter>
+     */
+    private function activeBhcs(): Collection
+    {
+        return BarangayHealthCenter::query()
+            ->where('status', 'active')
+            ->orderBy('name')->orderBy('id')
+            ->get(['id', 'name', 'barangay']);
+    }
+
+    /**
+     * One row per active BHC. referrals and no_show follow the period; the rest are "now" values.
+     *
+     * @param  array<int, array{referrals: int, completed: int, no_show: int, pending: int, priority_pending: int}>  $referralsByBhc
+     * @param  array<int, int>  $lowStockByBhc
+     * @param  list<array{type: string, id: int, name: string}>  $withoutStaff
+     */
+    private function barangays(array $window, array $referralsByBhc, array $lowStockByBhc, array $withoutStaff): array
+    {
+        $overdueByBhc = $this->overdueFollowUpsByBhc($window);
+        $unstaffed = array_flip(array_column(array_filter($withoutStaff, fn (array $f) => $f['type'] === 'bhc'), 'id'));
+
+        return $this->activeBhcs()
+            ->map(fn (BarangayHealthCenter $bhc) => [
+                'id' => $bhc->id,
+                'name' => $bhc->name,
+                'barangay' => $bhc->barangay,
+                'referrals' => $referralsByBhc[$bhc->id]['referrals'] ?? 0,
+                'no_show' => $referralsByBhc[$bhc->id]['no_show'] ?? 0,
+                'pending' => $referralsByBhc[$bhc->id]['pending'] ?? 0,
+                'overdue_follow_ups' => $overdueByBhc[$bhc->id] ?? 0,
+                'low_stock' => $lowStockByBhc[$bhc->id] ?? 0,
+                'has_staff' => ! isset($unstaffed[$bhc->id]),
+            ])
+            ->values()
+            ->all();
     }
 }
