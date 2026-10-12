@@ -299,6 +299,7 @@ class PasswordResetRequestController extends Controller
             Log::warning('Password reset email failed.', [
                 'password_reset_request_id' => $resetRequest->id,
                 'recipient' => $this->maskEmail($resetRequest->email),
+                'error' => get_class($e),
             ]);
             $resetRequest->forceFill(['delivery' => PasswordResetRequest::DELIVERY_FAILED])->save();
         }
