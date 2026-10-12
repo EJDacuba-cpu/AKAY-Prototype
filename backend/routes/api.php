@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
@@ -143,6 +144,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     });
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/dashboard', [AdminDashboardController::class, 'show']);
         Route::get('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'index']);
         Route::get('/staff-assignments/eligible-nurses', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'eligible']);
         Route::post('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'store']);
