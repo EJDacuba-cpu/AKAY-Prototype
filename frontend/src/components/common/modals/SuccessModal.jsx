@@ -18,7 +18,6 @@ export default function SuccessModal({
   description,
   actions,
   buttonText = "Continue",
-  children,
   tone = "success",
   onClose,
   secondaryButtonText,
@@ -142,7 +141,6 @@ export default function SuccessModal({
             {description}
           </p>
         )}
-        {children && <div className="w-full text-left">{children}</div>}
       </div>
     </ModalShell>
   );
