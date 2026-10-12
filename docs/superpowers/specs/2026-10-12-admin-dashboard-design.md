@@ -92,7 +92,7 @@ A referral's date is `referral_datetime`, or `created_at` when `referral_datetim
 | `patients.total` | All patients | now |
 | `patients.new` | Patients with `created_at` in period | period |
 | `medicines.rhu_low_stock` | Active medicines with an RHU id and `availability_status` Low Stock or Unavailable | now |
-| `medicines.bhc_low_stock` | Same, with a BHC id | now |
+| `medicines.bhc_low_stock` | Same, with a BHC id, counting only ACTIVE BHCs so it reconciles with `barangays[]` | now |
 | `medicines.bhc_barangays_affected` | Number of distinct BHCs counted in `bhc_low_stock` | now |
 | `barangays[]` | One row per active BHC; the same rules as above, limited to that BHC's `barangay_health_center_id` | mixed, as above |
 | `barangays[].has_staff` | False exactly when that BHC is in `facilities_without_staff` | now |
