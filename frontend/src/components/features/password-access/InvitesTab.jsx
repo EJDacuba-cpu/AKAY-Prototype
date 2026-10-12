@@ -1,60 +1,58 @@
-import { useMemo, useRef, useState } from "react";
-import { Mail } from "lucide-react";
-import { ButtonSpinner, ConfirmationModal, ModalButton, ModalShell } from "../../common";
-import Input from "../../common/atoms/Input";
-import Field from "../access/FieldError";
+import { useMemo, useState } from "react";
+import { ConfirmationModal } from "../../common";
 import useNotification from "../../../hooks/useNotification";
 import {
   copyInviteLink,
   getAccountInvites,
   issueTemporaryPassword,
   resendInvite,
-  updateInviteEmail,
 } from "../../../services/accountInviteService";
-import { apiRequest } from "../../../services/apiClient";
 import { inviteStatus } from "../../../utils/accessRequestStatus";
-import { isValidEmail } from "../../../utils/accountForm";
+import { ACTION_CONFIRM } from "../../../utils/accountAccess";
 import { copyText } from "../../../utils/clipboard";
-import { fieldState } from "../../../utils/fieldState";
-import AccessRequestTable, { accessColumns, accountName, formatDateTime, roleLabel } from "./AccessRequestTable";
+import AccessRequestTable, { accessColumns, accountName, menuEntries } from "./AccessRequestTable";
 import TemporaryPasswordDialog, { ManualCopyDialog } from "./TemporaryPasswordDialog";
 import useAccessRows from "./useAccessRows";
 
-const EMAIL_TAKEN = "Email is already taken.";
-
-/** Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). */
-export default function InvitesTab({ rolesData }) {
+/**
+ * Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). Each row's ⋯ menu lists
+ * the controls its status allows; choosing one opens a confirmation modal. The email is changed in Users.
+ */
+export default function InvitesTab({ rolesData, toolbarHeading }) {
   const notify = useNotification();
   const list = useAccessRows(getAccountInvites, notify.error);
-  const [confirmTemp, setConfirmTemp] = useState(null);
+  const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
   const [tempPassword, setTempPassword] = useState(null);
-  const [editing, setEditing] = useState(null);
   const [manualCopy, setManualCopy] = useState(null);
   const columns = useMemo(
     () => accessColumns({ rolesData, dateOf: (row) => row.sent_at }),
     [rolesData],
   );
 
-  function handleAction(action, row) {
-    if (list.busyId) return;
-    if (action === "resend") void resend(row);
-    if (action === "copy") void copy(row);
-    if (action === "editEmail") setEditing(row);
-    if (action === "temporaryPassword") setConfirmTemp(row);
+  function menuFor(row) {
+    return menuEntries("invite", inviteStatus(row).actions, (action) => {
+      if (!list.busyId) setPending({ action, row });
+    });
+  }
+
+  async function confirmAction() {
+    const { action, row } = pending;
+    if (action === "resend") await resend(row);
+    if (action === "copy") await copy(row);
+    if (action === "temporaryPassword") await issueTemp(row);
   }
 
   async function resend(row) {
     const updated = await list.runAction(row, () => resendInvite(row.id));
-    if (updated) announceDelivery(updated);
-  }
-
-  function announceDelivery(updated) {
+    setPending(null);
+    if (!updated) return;
     if (updated.delivery === "failed") notify.error("The email could not be sent. Use Copy link to share it another way.");
     else notify.success(`Invite sent to ${updated.email}.`);
   }
 
   async function copy(row) {
     const url = await list.runAction(row, () => copyInviteLink(row.id));
+    setPending(null);
     if (url === undefined) return;
     if (!url) {
       notify.error("Could not create a link. Try again.");
@@ -64,23 +62,13 @@ export default function InvitesTab({ rolesData }) {
     else setManualCopy({ name: accountName(row), url });
   }
 
-  async function issueTemp() {
-    const row = confirmTemp;
+  async function issueTemp(row) {
     const result = await list.runAction(row, () => issueTemporaryPassword(row.id));
-    setConfirmTemp(null);
+    setPending(null);
     if (result?.password) setTempPassword({ name: accountName(row), password: result.password });
   }
 
-  /**
-   * Saves the new email through the shared action path (busy guard, then the tab and counts reload, even
-   * after a failure). The server validates it again and resends the invite; a failure is thrown to the form.
-   */
-  async function saveEmail(row, email) {
-    const updated = await list.runAction(row, () => updateInviteEmail(row.id, email), { rethrow: true });
-    if (!updated) return;
-    setEditing(null);
-    announceDelivery(updated);
-  }
+  const confirm = pending ? ACTION_CONFIRM.invite[pending.action] : null;
 
   return (
     <>
@@ -88,39 +76,26 @@ export default function InvitesTab({ rolesData }) {
         rows={list.rows}
         columns={columns}
         statusOf={(row) => inviteStatus(row)}
-        onAction={handleAction}
+        menuFor={menuFor}
         emptyMessage="No account invites found."
         loading={list.loading}
         error={list.error}
-        busyId={list.busyId}
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email..."
-        heading="Invites"
-        description="New accounts set their own password from a one-time invite link. Links expire after 48 hours."
-        detailTitle="Account invite"
-        detailsOf={(row) => [
-          ["Account", accountName(row)],
-          ["Email", row.email],
-          ["Role", roleLabel(rolesData, row.user)],
-          ["Facility", row.user?.facility],
-          ["Invited", formatDateTime(row.sent_at)],
-          ["Link expires", formatDateTime(row.expires_at)],
-          ["Temporary password expires", formatDateTime(row.temp_password_expires_at)],
-          ["Completed", formatDateTime(row.completed_at)],
-        ]}
+        toolbarHeading={toolbarHeading}
       />
 
       <ConfirmationModal
-        open={Boolean(confirmTemp)}
-        title="Generate temporary password"
-        description={`Generate a temporary password for ${accountName(confirmTemp || {})}? Any invite link stops working.`}
-        confirmText="Generate temporary password"
+        open={Boolean(pending)}
+        title={confirm?.title}
+        description={confirm?.description.replace("{email}", pending?.row.email || pending?.row.user?.email || "the account")}
+        confirmText={confirm?.confirmText}
         cancelText="Cancel"
         loading={Boolean(list.busyId)}
-        loadingText="Issuing..."
-        onCancel={() => !list.busyId && setConfirmTemp(null)}
-        onConfirm={issueTemp}
+        loadingText="Working..."
+        onCancel={() => !list.busyId && setPending(null)}
+        onConfirm={confirmAction}
       />
 
       <TemporaryPasswordDialog
@@ -134,119 +109,6 @@ export default function InvitesTab({ rolesData }) {
         url={manualCopy?.url}
         onClose={() => setManualCopy(null)}
       />
-
-      {editing && (
-        <EditEmailDialog
-          row={editing}
-          onCancel={() => setEditing(null)}
-          onSave={(email) => saveEmail(editing, email)}
-        />
-      )}
     </>
-  );
-}
-
-/** Edit email of an open invite: live format check, then the Task 1 availability check on blur. */
-function EditEmailDialog({ row, onCancel, onSave }) {
-  const current = row.email || row.user?.email || "";
-  const [email, setEmail] = useState(current);
-  const [touched, setTouched] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [taken, setTaken] = useState({});
-  const [serverError, setServerError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const checks = useRef(new Map());
-
-  const key = email.trim().toLowerCase();
-  const unchanged = key === current.toLowerCase();
-  const formatError = isValidEmail(email.trim()) ? "" : "Enter a valid email address.";
-  const error = serverError || (touched ? formatError || (taken[key] ? EMAIL_TAKEN : "") : "");
-  const state = fieldState({ touched, error, checking, confirmed: taken[key] === false });
-
-  // Asks the server once per address; a failed check is forgotten and retried, and saving validates again.
-  function checkEmail(value) {
-    const lookup = value.toLowerCase();
-    if (!isValidEmail(value)) return Promise.resolve(null);
-    if (!checks.current.has(lookup)) {
-      const query = new URLSearchParams({ email: value, ...(row.user?.id ? { ignore: row.user.id } : {}) });
-      checks.current.set(lookup, apiRequest(`/users/email-available?${query}`)
-        .then((result) => !result.available)
-        .catch(() => null)
-        .then((isTaken) => {
-          if (isTaken === null) checks.current.delete(lookup);
-          else setTaken((map) => ({ ...map, [lookup]: isTaken }));
-          return isTaken;
-        }));
-    }
-    return checks.current.get(lookup);
-  }
-
-  function handleBlur() {
-    setTouched(true);
-    setChecking(true);
-    checkEmail(email.trim()).finally(() => setChecking(false));
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setTouched(true);
-    if (formatError || unchanged || saving) return;
-    setSaving(true);
-    try {
-      if (await checkEmail(email.trim())) return;
-      await onSave(email.trim());
-    } catch (saveError) {
-      setServerError(saveError.errors?.email?.[0] || saveError.message || "The email could not be saved.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <ModalShell
-      open
-      title="Edit email"
-      subtitle={accountName(row)}
-      icon={<Mail size={14} />}
-      size="sm"
-      onClose={onCancel}
-      closeDisabled={saving}
-      dismissOnBackdrop={!saving}
-      dismissOnEscape={!saving}
-      footer={
-        <>
-          <ModalButton onClick={onCancel} disabled={saving}>
-            Cancel
-          </ModalButton>
-          <ModalButton
-            type="submit"
-            form="edit-invite-email"
-            variant="primary"
-            primary
-            disabled={saving || unchanged}
-          >
-            {saving && <ButtonSpinner />}
-            {saving ? "Saving..." : "Save and resend"}
-          </ModalButton>
-        </>
-      }
-    >
-      <form id="edit-invite-email" onSubmit={handleSubmit} noValidate>
-        <Field label="Email" error={error} state={state}>
-          <Input
-            type="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setServerError("");
-            }}
-            onBlur={handleBlur}
-          />
-        </Field>
-        <p className="text-[13px] leading-5 text-slate-600">
-          A new invite is sent to this address. The old link stops working.
-        </p>
-      </form>
-    </ModalShell>
   );
 }

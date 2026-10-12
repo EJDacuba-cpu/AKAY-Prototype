@@ -183,7 +183,14 @@ export default function ActionMenu({
         )}
 
         {actions.map((action) =>
-          action.to ? (
+          action.section ? (
+            <div
+              key={`section-${action.section}`}
+              className="mt-1 border-t border-[#F1F5F9] px-2.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]"
+            >
+              {action.section}
+            </div>
+          ) : action.to ? (
             <Link
               key={action.label}
               to={action.to}

@@ -1,17 +1,14 @@
-import { useState } from "react";
-import { KeyRound, Search, ShieldCheck } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   ActionMenu,
   FixedTable,
   ListToolbar,
-  ModalButton,
-  ModalShell,
   SoftLoadingArea,
   TablePagination,
 } from "../../common";
 import { STATUS_OPTIONS } from "../../../utils/accessRequestStatus";
+import { actionLabel, menuSections } from "../../../utils/accountAccess";
 import { roleFor } from "../../../utils/staffRoles";
-import { formatDisplayValue } from "../../../utils/formatters";
 import AccessStatusBadge from "./AccessStatusBadge";
 import usePagedRows from "../../../hooks/usePagedRows";
 
@@ -19,38 +16,25 @@ export const DEFAULT_FILTERS = { search: "", status: "all" };
 
 const FILTER_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_OPTIONS];
 
-const ACTION_LABELS = {
-  approve: "Approve",
-  decline: "Decline",
-  resend: "Resend link",
-  copy: "Copy link",
-  editEmail: "Edit email",
-  temporaryPassword: "Generate temporary password",
-};
-
 /**
- * The shared list for both Password & Invites tabs: toolbar, desktop table,
- * mobile cards and the View details modal. Statuses and row actions come from `statusOf`
- * (accessRequestStatus.js); every row has a single ⋯ menu holding View details and the row's actions.
+ * The shared list for both Password & Invites tabs: toolbar (the page's tabs go in `toolbarHeading`),
+ * desktop table and mobile cards. Statuses come from `statusOf` (accessRequestStatus.js); each row's single ⋯ menu
+ * is `menuFor(row)`, a list of `ActionMenu` entries (empty means the row has no menu). A list with no rows shows a
+ * centered message instead of the card, as Facilities does.
  */
 export default function AccessRequestTable({
   rows,
   columns,
   statusOf,
-  onAction,
+  menuFor,
   emptyMessage,
   loading = false,
   error = "",
-  busyId = null,
   filters,
   onFiltersChange,
   searchPlaceholder,
-  heading,
-  description,
-  detailTitle,
-  detailsOf = () => [],
+  toolbarHeading,
 }) {
-  const [selected, setSelected] = useState(null);
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
 
   const activeFilters = [
@@ -59,14 +43,14 @@ export default function AccessRequestTable({
       label: FILTER_OPTIONS.find((option) => option.value === filters.status)?.label || filters.status,
     },
   ].filter(Boolean);
-
-  const actionProps = { statusOf, onAction, busyId, onView: setSelected };
+  const narrowed = Boolean(filters.search) || filters.status !== "all";
 
   return (
     <SoftLoadingArea isLoading={loading} message="Loading..." scope="area">
       {!loading && (
-        <>
+        <div className="space-y-5">
           <ListToolbar
+            heading={toolbarHeading}
             searchValue={filters.search}
             onSearchChange={(value) => onFiltersChange({ search: value })}
             searchPlaceholder={searchPlaceholder}
@@ -78,41 +62,29 @@ export default function AccessRequestTable({
             onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
           />
 
-          <div className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-[#F1F5F9] px-4 py-3">
-              <div>
-                <h2 className="text-sm font-semibold text-[#0F172A]">{heading}</h2>
-                <p className="mt-1 text-xs text-[#9CA3AF]">{description}</p>
-              </div>
-              <ShieldCheck size={18} className="text-[#B91C1C]" />
+          {error && (
+            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-[#B91C1C]">
+              {error}
             </div>
+          )}
 
-            {error && (
-              <div className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-[#B91C1C]">
-                {error}
-              </div>
-            )}
-
-            <div className="hidden md:block">
-              <FixedTable minWidth="min-w-[980px]">
-                <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  <tr>
-                    {columns.map((column) => (
-                      <th key={column.key} className="px-4 py-3">{column.label}</th>
-                    ))}
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F3F4F6]">
-                  {rows.length === 0 ? (
+          {rows.length === 0 ? (
+            <EmptyState message={emptyMessage} narrowed={narrowed} />
+          ) : (
+            <div className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+              <div className="hidden md:block">
+                <FixedTable minWidth="min-w-[980px]">
+                  <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                     <tr>
-                      <td colSpan={columns.length + 2} className="px-6 py-0 text-center">
-                        <EmptyState message={emptyMessage} tall />
-                      </td>
+                      {columns.map((column) => (
+                        <th key={column.key} className="px-4 py-3">{column.label}</th>
+                      ))}
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
-                  ) : (
-                    pageRows.map((row) => (
+                  </thead>
+                  <tbody className="divide-y divide-[#F3F4F6]">
+                    {pageRows.map((row) => (
                       <tr key={row.id} className="hover:bg-[#FAFBFD]">
                         {columns.map((column) => (
                           <td key={column.key} className={`px-4 py-3.5 ${column.className || "text-[#64748B]"}`}>
@@ -123,43 +95,41 @@ export default function AccessRequestTable({
                           <AccessStatusBadge {...statusOf(row)} />
                         </td>
                         <td className="px-4 py-3.5 text-right">
-                          <RowActions row={row} {...actionProps} />
+                          <RowActions row={row} menuFor={menuFor} />
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </FixedTable>
-            </div>
+                    ))}
+                  </tbody>
+                </FixedTable>
+              </div>
 
-            <div className="divide-y divide-[#F3F4F6] md:hidden">
-              {rows.length === 0 ? (
-                <EmptyState message={emptyMessage} />
-              ) : (
-                pageRows.map((row) => (
-                  <RowCard key={row.id} row={row} columns={columns} {...actionProps} />
-                ))
-              )}
-            </div>
+              <div className="divide-y divide-[#F3F4F6] md:hidden">
+                {pageRows.map((row) => (
+                  <RowCard key={row.id} row={row} columns={columns} statusOf={statusOf} menuFor={menuFor} />
+                ))}
+              </div>
 
-            <div className="mt-auto">
-              <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+              <div className="mt-auto">
+                <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+              </div>
             </div>
-          </div>
-        </>
-      )}
-
-      {selected && (
-        <DetailsModal
-          row={selected}
-          title={detailTitle}
-          status={statusOf(selected)}
-          details={detailsOf(selected)}
-          onClose={() => setSelected(null)}
-        />
+          )}
+        </div>
       )}
     </SoftLoadingArea>
   );
+}
+
+/**
+ * The menu entries for a row: its allowed controls in groups. A group label ("Other ways to sign in") is drawn
+ * only when the menu has more than one group. `onPick(action)` runs when a control is chosen.
+ */
+export function menuEntries(kind, statusActions, onPick) {
+  const sections = menuSections(statusActions);
+  return sections.flatMap((section) => [
+    ...(section.label && sections.length > 1 ? [{ section: section.label }] : []),
+    ...section.actions.map((action) => ({ label: actionLabel(kind, action), onClick: () => onPick(action) })),
+  ]);
 }
 
 /** Account, Email, Role, Facility and Date: the columns both tabs share (spec F3). */
@@ -208,16 +178,21 @@ function titleCase(key) {
     .join(" ");
 }
 
-function EmptyState({ message, tall = false }) {
+function EmptyState({ message, narrowed }) {
   return (
-    <div className={`flex flex-col items-center justify-center px-4 ${tall ? "min-h-[var(--akay-empty-h,260px)]" : "py-12"}`}>
-      <Search size={22} className="mb-2 text-[#CBD5E1]" />
-      <p className="text-sm font-semibold text-[#64748B]">{message}</p>
+    <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
+        <Search size={20} className="text-[#94A3B8]" />
+      </div>
+      <p className="text-[13px] font-semibold text-[#334155]">{message}</p>
+      {narrowed && (
+        <p className="mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">Try adjusting your search or filters.</p>
+      )}
     </div>
   );
 }
 
-function RowCard({ row, columns, ...actionProps }) {
+function RowCard({ row, columns, statusOf, menuFor }) {
   const [account, email, ...rest] = columns;
   return (
     <div className="space-y-3 px-4 py-4">
@@ -226,70 +201,25 @@ function RowCard({ row, columns, ...actionProps }) {
           <p className="truncate text-sm font-bold text-[#0F172A]">{account.render(row)}</p>
           <p className="mt-0.5 truncate text-xs text-[#64748B]">{email.render(row)}</p>
         </div>
-        <AccessStatusBadge {...actionProps.statusOf(row)} />
+        <AccessStatusBadge {...statusOf(row)} />
       </div>
       <div className="grid gap-2 text-xs text-[#64748B]">
         {rest.map((column) => (
           <span key={column.key} className="truncate">{column.render(row)}</span>
         ))}
       </div>
-      <RowActions row={row} {...actionProps} />
+      <RowActions row={row} menuFor={menuFor} />
     </div>
   );
 }
 
-function RowActions({ row, statusOf, onAction, busyId, onView }) {
-  const { actions } = statusOf(row);
-  const busy = busyId === row.id;
+function RowActions({ row, menuFor }) {
+  const actions = menuFor(row);
+  if (!actions.length) return null;
 
   return (
     <div className="flex items-center justify-end">
-      <ActionMenu
-        title={accountName(row)}
-        subtitle={row.email || row.user?.email}
-        actions={[
-          { label: "View details", onClick: () => onView(row) },
-          ...actions.map((action) => ({
-            label: ACTION_LABELS[action],
-            onClick: () => {
-              if (!busy) onAction(action, row);
-            },
-          })),
-        ]}
-      />
+      <ActionMenu title={accountName(row)} subtitle={row.email || row.user?.email} actions={actions} />
     </div>
-  );
-}
-
-function DetailsModal({ row, title, status, details, onClose }) {
-  return (
-    <ModalShell
-      open
-      title={title}
-      subtitle={accountName(row)}
-      icon={<KeyRound size={14} />}
-      size="md"
-      onClose={onClose}
-      footer={
-        <ModalButton variant="primary" onClick={onClose}>
-          Close
-        </ModalButton>
-      }
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-3 py-2.5">
-        <AccessStatusBadge {...status} />
-        <span className="text-sm font-semibold text-[#0F172A]">{status.reason}</span>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {details.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-[#F1F5F9] bg-[#FAFBFC] px-3 py-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">{label}</p>
-            <p className="mt-1 break-words text-sm font-semibold text-[#0F172A]">
-              {formatDisplayValue(value, "Not recorded")}
-            </p>
-          </div>
-        ))}
-      </div>
-    </ModalShell>
   );
 }
