@@ -89,7 +89,7 @@ export default function HealthRecordClinicalDetails(props) {
     return (
       <div className="space-y-4">
         {v2Details}
-        {reportingLines.length > 0 && <ReportingSummary lines={reportingLines} />}
+        {reportingLines.length > 0 && <ReportingSummary lines={reportingLines} hasConditions={props.record?.diagnoses?.some((entry) => entry.clinicalOutcome)} />}
         {(draftNotes || continuedNotes) && (
           <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
             {draftNotes && <TabbedNarrativeBlock label="Earlier draft notes" value={draftNotes} />}
@@ -113,10 +113,10 @@ export default function HealthRecordClinicalDetails(props) {
   );
 }
 
-function ReportingSummary({ lines }) {
+function ReportingSummary({ lines, hasConditions = false }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <TabbedSubsection title="Reporting">
+      <TabbedSubsection title={hasConditions ? "Clinical Conditions & Reporting" : "Reporting"}>
         <ul className="divide-y divide-slate-100">
           {lines.map((line) => (
             <li key={line.key} className="py-2 text-sm font-medium text-[#0F172A]">

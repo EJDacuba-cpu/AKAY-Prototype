@@ -261,7 +261,8 @@ export default function CreateReferral() {
 
     if (foundRecord) {
       setRecord(foundRecord);
-      const pending = foundRecord.monitoringData?.pendingReferral || foundRecord.monitoring_data?.pendingReferral;
+      const monitoring = foundRecord.monitoringData || foundRecord.monitoring_data || {};
+      const pending = monitoring.conditionReferralOutcomes?.find((outcome) => String(outcome.holdId) === String(resumeHold?.id))?.pendingReferral || monitoring.pendingReferral;
       if (pending) setForm(current => ({ ...current, reasonForReferral: pending.reason_for_referral || "", urgencyLevel: pending.urgency_level || "Routine", initialDiagnosis: pending.initial_diagnosis || foundRecord.diagnosis || "", initialActionsTaken: pending.initial_action_taken || "" }));
 
       const foundPatient = patients.find((p) => p.id === foundRecord.patientId);
@@ -274,6 +275,7 @@ export default function CreateReferral() {
     targetRecordId,
     patients,
     healthRecords,
+    resumeHold?.id,
   ]);
 
   useEffect(() => {

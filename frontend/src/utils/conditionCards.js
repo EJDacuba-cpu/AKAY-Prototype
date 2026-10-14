@@ -1,0 +1,80 @@
+import { reportingEntryErrors, formatEntryDestinations } from "./reportingEntries.js";
+import { ATTENTION_LEVELS } from "./referralAttention.js";
+
+export const CONDITION_OUTCOMES = Object.freeze({
+  managed_at_bhc: "Managed at BHC",
+  refer_to_rhu: "Refer to RHU",
+});
+
+/** Shared submissions keep per-card outcomes but send referral details once. */
+export function sharedConditionEntries(entries = []) {
+  return entries.map((entry) => {
+    const next = { ...entry };
+    delete next.referral;
+    return next;
+  });
+}
+
+/** Preserve earlier per-condition reasons without choosing between conflicting destinations. */
+export function restoreSharedReferralDraft(payload = {}) {
+  const form = { ...(payload.referralForm || {}) };
+  const current = { receivingRhuId: payload.receivingRhuId || "", referralForm: form };
+  if (payload.sharedConditionReferral === true) return current;
+  const earlier = (payload.diagnoses || []).filter((entry) => entry.clinicalOutcome === "refer_to_rhu" && (entry.referral?.receivingRhuId || entry.referral?.reasonForReferral?.trim()));
+  if (earlier.length === 0) return current;
+  const hadVisitReferral = payload.carePlan?.referToRhu === true || payload.carePlan?.monitoringReferrals?.length > 0;
+  const destinations = [...new Set([...(hadVisitReferral && current.receivingRhuId ? [String(current.receivingRhuId)] : []), ...earlier.map((entry) => String(entry.referral?.receivingRhuId || "")).filter(Boolean)])];
+  const priorities = [...new Set([...(hadVisitReferral && form.urgencyLevel ? [form.urgencyLevel] : []), ...earlier.map((entry) => entry.referral?.urgencyLevel).filter(Boolean)])];
+  const reasons = [
+    ...(form.reasonForReferral?.trim() ? [form.reasonForReferral.trim()] : []),
+    ...earlier.filter((entry) => entry.referral?.reasonForReferral?.trim()).map((entry) => `${entry.name}: ${entry.referral.reasonForReferral.trim()}`),
+  ];
+  return {
+    receivingRhuId: destinations.length === 1 ? destinations[0] : "",
+    referralForm: { ...form, urgencyLevel: priorities.length === 1 ? priorities[0] : "", reasonForReferral: [...new Set(reasons)].join("\n") },
+  };
+}
+
+export function conditionCardErrors(entries = [], { referralDetails = false } = {}) {
+  const errors = reportingEntryErrors(entries);
+  if (entries.length === 0) {
+    errors.diagnoses = "Add at least one condition before continuing.";
+  }
+  for (const entry of entries) {
+    const key = `reportingEntry.${entry.id}`;
+    if (!Object.hasOwn(CONDITION_OUTCOMES, entry.clinicalOutcome || "")) {
+      errors[`${key}.clinicalOutcome`] = "Choose a clinical outcome.";
+    }
+    if (referralDetails && entry.clinicalOutcome === "refer_to_rhu") {
+      if (!ATTENTION_LEVELS.includes(entry.referral?.urgencyLevel)) errors[`${key}.referral.urgencyLevel`] = "Choose a referral priority.";
+      if (!entry.referral?.receivingRhuId) errors[`${key}.referral.receivingRhuId`] = "Select an authorized RHU.";
+      if (!entry.referral?.reasonForReferral?.trim()) errors[`${key}.referral.reasonForReferral`] = "Enter the reason for referral.";
+    }
+  }
+  return errors;
+}
+
+export function conditionCardReviewRows(entries = []) {
+  return entries.flatMap((entry) => [
+    { label: entry.name, value: [CONDITION_OUTCOMES[entry.clinicalOutcome] || "Outcome not selected", formatEntryDestinations(entry)].filter(Boolean).join(" · ") },
+    ...(entry.clinicalOutcome === "refer_to_rhu" && entry.referral ? [{
+      label: `${entry.name} · Referral`,
+      value: [entry.referral?.urgencyLevel, entry.referral?.reasonForReferral].filter(Boolean).join(" · "),
+    }] : []),
+  ]);
+}
+
+/** Covers successful, held, and partially submitted referral sets. */
+export function savedReferralSummary(record = {}) {
+  const monitoring = record.monitoringData || record.monitoring_data || {};
+  const held = (monitoring.conditionReferralOutcomes || []).filter((item) => item.holdId).length +
+    (monitoring.referralHoldId && monitoring.submissionStatus === "Not Yet Submitted" ? 1 : 0);
+  const submitted = record.referrals?.length || (record.officialResult?.referral_id ? 1 : 0);
+  return {
+    submittedReferralCount: submitted,
+    heldReferralCount: held,
+    referralSubmitted: submitted > 0,
+    awaitingDoctor: held > 0,
+    referralTrackingId: record.referrals?.[0]?.tracking_id || record.referrals?.[0]?.trackingId || "",
+  };
+}

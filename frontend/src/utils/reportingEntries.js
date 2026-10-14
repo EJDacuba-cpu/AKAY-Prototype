@@ -1,5 +1,6 @@
 /**
- * Reporting-only entries of a bhc_general_v2 consultation: {id, name, reportIn[]}.
+ * Reporting entries of a bhc_general_v2 consultation: {id, name, reportIn[]}.
+ * Condition cards additionally carry a consultation-local outcome and referral.
  * `reportIn` (a subset of morbidity / notifiable / surveillance) is the source of
  * truth; `reportAs` and `includeInSurveillance` are compatibility mirrors the
  * server writes. Older entries carry only those two, so entryDestinations reads
@@ -53,12 +54,13 @@ export function toggleDestination(entry, destination, checked) {
  * reportIn is always an array (the draft sanitizer rejects null). An entry
  * with a blank name and no destination is an untouched row and is dropped.
  */
-export function reportingEntryPayload(entries) {
+export function reportingEntryPayload(entries, { includeHiddenReferral = false } = {}) {
   return (Array.isArray(entries) ? entries : [])
     .map((entry) => ({
       id: entry?.id,
       name: String(entry?.name ?? "").trim(),
       reportIn: entryDestinations(entry),
+      ...conditionEntryFields(entry, includeHiddenReferral),
     }))
     .filter((entry) => entry.name !== "" || entry.reportIn.length > 0);
 }
@@ -68,7 +70,22 @@ export function reportingEntryPayload(entries) {
  * requires one). reportIn stays an array, never null, even when empty.
  */
 export function reportingEntryDraft(entries) {
-  return reportingEntryPayload(entries).filter((entry) => entry.name !== "");
+  return reportingEntryPayload(entries, { includeHiddenReferral: true }).filter((entry) => entry.name !== "");
+}
+
+/** Card fields stay on this consultation; they never create a patient registry condition. */
+export function conditionEntryFields(entry, includeHiddenReferral = false) {
+  if (!Object.hasOwn(entry || {}, "clinicalOutcome")) return {};
+  return {
+    clinicalOutcome: entry.clinicalOutcome || "",
+    ...((includeHiddenReferral || entry.clinicalOutcome === "refer_to_rhu") && entry.referral ? {
+      referral: {
+        urgencyLevel: entry.referral.urgencyLevel || "Routine",
+        receivingRhuId: String(entry.referral.receivingRhuId || ""),
+        reasonForReferral: String(entry.referral.reasonForReferral || "").trim(),
+      },
+    } : {}),
+  };
 }
 
 /**
@@ -83,6 +100,7 @@ export function restoreReportingEntries(list) {
       id: entry.id ? String(entry.id) : newReportingEntry().id,
       name: String(entry.name ?? ""),
       reportIn: entryDestinations(entry),
+      ...conditionEntryFields(entry, true),
     }));
 }
 
@@ -123,9 +141,11 @@ export function recordReportingLines(record) {
     .map((entry, index) => {
       const name = String(entry.name).trim();
       const destinations = formatEntryDestinations(entry);
+      const outcome = entry.clinicalOutcome === "managed_at_bhc" ? "Managed at BHC" : entry.clinicalOutcome === "refer_to_rhu" ? "Refer to RHU" : "";
+      const details = [destinations, outcome, ...(entry.clinicalOutcome === "refer_to_rhu" ? [entry.referral?.urgencyLevel, entry.referral?.reasonForReferral] : [])].filter(Boolean).join(" · ");
       return {
         key: String(entry.id || `reporting-${index}`),
-        text: destinations ? `${name} \u2014 ${destinations}` : name,
+        text: details ? `${name} \u2014 ${details}` : name,
       };
     });
 }

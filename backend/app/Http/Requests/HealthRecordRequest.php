@@ -26,7 +26,7 @@ class HealthRecordRequest extends FormRequest
             // Server-controlled v2 markers: never taken from the client on any
             // path. The v2 save writes both itself (HealthRecordController::store
             // and applyV2NextActions); a legacy or RHU save never gains them.
-            unset($monitoringData['bhcFollowUp'], $monitoringData['consultationWorkflow']);
+            unset($monitoringData['bhcFollowUp'], $monitoringData['consultationWorkflow'], $monitoringData['conditionReferralOutcomes']);
             $this->merge(['monitoring_data' => $monitoringData]);
         }
 
@@ -86,8 +86,30 @@ class HealthRecordRequest extends FormRequest
             $rules['care_plan.bhc_follow_up'] = ['nullable', 'boolean'];
             $rules['care_plan.refer_to_rhu'] = ['nullable', 'boolean'];
             $rules['care_plan.referral_multiple_issues'] = ['nullable', 'boolean'];
+            $rules['care_plan.condition_cards'] = ['nullable', 'boolean'];
+            $rules['care_plan.shared_condition_referral'] = ['nullable', 'boolean', Rule::prohibitedIf(! $this->boolean('care_plan.condition_cards'))];
+            if ($this->boolean('care_plan.condition_cards')) {
+                $rules['diagnoses'] = ['required', 'array', 'min:1', 'max:20'];
+            }
+            $rules['diagnoses.*.id'] = [$this->boolean('care_plan.condition_cards') ? 'required' : 'nullable', 'string', 'max:64', 'distinct'];
+            $rules['diagnoses.*.clinicalOutcome'] = [$this->boolean('care_plan.condition_cards') ? 'required' : 'nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])];
+            $rules['diagnoses.*.referral'] = ['nullable', 'array:urgencyLevel,receivingRhuId,reasonForReferral'];
+            $rules['diagnoses.*.referral.urgencyLevel'] = ['nullable', Rule::in(Referral::ATTENTION_LEVELS)];
+            $rules['diagnoses.*.referral.receivingRhuId'] = ['nullable', 'integer', 'exists:rural_health_units,id'];
+            $rules['diagnoses.*.referral.reasonForReferral'] = ['nullable', 'string', 'max:5000'];
+            if ($this->boolean('care_plan.shared_condition_referral')) {
+                $rules['diagnoses.*.referral'] = ['prohibited'];
+                $hasReferredCards = collect($this->diagnosesInput())->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'refer_to_rhu');
+                $rules['referral'] = [$hasReferredCards ? 'required' : 'nullable', 'array'];
+                $rules['referral.rural_health_unit_id'] = [$hasReferredCards ? 'required' : 'nullable', 'integer', 'exists:rural_health_units,id'];
+                $rules['referral.reason_for_referral'] = ['required_with:referral', 'string', 'max:5000'];
+            }
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
+            $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
+            $rules['diagnoses.*.referral'] = ['prohibited'];
+            $rules['care_plan.condition_cards'] = ['prohibited'];
+            $rules['care_plan.shared_condition_referral'] = ['prohibited'];
             $rules['care_plan.bhc_follow_up'] = ['prohibited'];
             $rules['care_plan.refer_to_rhu'] = ['prohibited'];
             $rules['care_plan.referral_multiple_issues'] = ['prohibited'];
@@ -444,6 +466,8 @@ class HealthRecordRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'diagnoses.required' => 'Add at least one condition before continuing.',
+            'diagnoses.min' => 'Add at least one condition before continuing.',
             'idempotency_key.required' => 'An Idempotency-Key header is required for official health-record creation.',
             'idempotency_key.uuid' => 'The Idempotency-Key header must be a valid UUID.',
             'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
@@ -562,7 +586,8 @@ class HealthRecordRequest extends FormRequest
                     'Confirm that all listed concerns can go to this facility with this priority, or change the care plan.'
                 );
             }
-            if ($needsReferral && blank($this->input('referral.reason_for_referral'))) {
+            $hasCardReferrals = $v2 && collect($this->diagnosesInput())->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'refer_to_rhu');
+            if ($needsReferral && (! $hasCardReferrals || $this->boolean('care_plan.refer_to_rhu') || $referredIds !== []) && blank($this->input('referral.reason_for_referral'))) {
                 $validator->errors()->add('referral.reason_for_referral', 'Reason for referral is required.');
             }
             if ($v2) {
@@ -682,26 +707,49 @@ class HealthRecordRequest extends FormRequest
     private function validateV2NextActions($validator, bool $needsReferral, bool $keepsMonitoring, array $referredIds, mixed $date, mixed $monitoringData): void
     {
         $refers = $this->boolean('care_plan.refer_to_rhu');
+        $shared = $this->boolean('care_plan.shared_condition_referral');
+        $cardReferralCount = 0;
+        $hasCardReferrals = false;
+        $hasManagedCards = false;
+        foreach ($this->diagnosesInput() as $index => $entry) {
+            $hasManagedCards = $hasManagedCards || ($entry['clinicalOutcome'] ?? null) === 'managed_at_bhc';
+            if (($entry['clinicalOutcome'] ?? null) !== 'refer_to_rhu') {
+                continue;
+            }
+            $hasCardReferrals = true;
+            $cardReferralCount++;
+            if ($shared) {
+                continue;
+            }
+            foreach (['urgencyLevel', 'receivingRhuId', 'reasonForReferral'] as $field) {
+                if (blank($entry['referral'][$field] ?? null)) {
+                    $validator->errors()->add("diagnoses.$index.referral.$field", 'Complete this condition\'s referral details.');
+                }
+            }
+        }
 
-        if ($refers && ! $needsReferral) {
+        if (($refers || $hasCardReferrals) && ! $needsReferral) {
             $validator->errors()->add('needs_referral', 'Refer to RHU is selected, so this visit needs a referral.');
         }
-        if ($needsReferral && ! $refers && $referredIds === []) {
+        if ($needsReferral && ! $refers && ! $hasCardReferrals && $referredIds === []) {
             $validator->errors()->add('care_plan.refer_to_rhu', 'Select Refer to RHU or refer a monitored condition.');
         }
 
-        if ($this->boolean('care_plan.bhc_follow_up')) {
+        if ($this->boolean('care_plan.bhc_follow_up') || $hasManagedCards) {
             if (! $date) {
                 $validator->errors()->add('monitoring_data.followUpDate', 'Set the follow-up date.');
             }
             // A service visit (a program is selected) or one that keeps
             // monitoring a condition is exempt from stating a reason.
-            $exempt = ! empty($this->input('monitoring_data.selectedPrograms')) || $keepsMonitoring;
+            $exempt = $hasManagedCards || ! empty($this->input('monitoring_data.selectedPrograms')) || $keepsMonitoring;
             $reason = is_array($monitoringData)
                 ? trim((string) ($monitoringData['followUpReason'] ?? $monitoringData['follow_up_reason'] ?? ''))
                 : '';
             if ($reason === '' && ! $exempt) {
                 $validator->errors()->add('monitoring_data.followUpReason', 'Follow-up reason is required.');
+            }
+            if ($hasManagedCards && blank($this->input('monitoring_data.followUpTime'))) {
+                $validator->errors()->add('monitoring_data.followUpTime', 'Set the shared BHC return time.');
             }
         }
 
@@ -709,7 +757,7 @@ class HealthRecordRequest extends FormRequest
         // confirmation. It is audited, never a clinical compatibility check.
         // "Covers more than one health issue" belongs to Refer to RHU: it
         // counts only when that box is ticked (as in the controller's audit).
-        $count = ($refers ? 1 : 0) + count(array_unique($referredIds));
+        $count = ($shared && $hasCardReferrals ? $cardReferralCount : ($refers ? 1 : 0)) + count(array_unique($referredIds));
         $multipleIssues = $refers && $this->boolean('care_plan.referral_multiple_issues');
         if (
             $needsReferral

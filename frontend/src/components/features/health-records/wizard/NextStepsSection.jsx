@@ -4,6 +4,7 @@ import { FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalF
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import { formatDate } from "../../../../utils/formatters";
 import { conditionStatusLabel } from "../../../../utils/medicalConditions";
+import { Card } from "../../../ui/card";
 
 const MONITORING_DECISIONS = [
   { value: "continue", label: "Continue Monitoring" },
@@ -105,12 +106,12 @@ function ActionCheckbox({ name, label, checked, disabled, onChange }) {
 function ReferralFields({ referral, referralFacilityField, errors, disabled, onReferralChange }) {
   const priority = (
     <RadioChoiceGroup
-      label="Referral Priority"
+      label="Referral Urgency"
       name="urgencyLevel"
       required
       inline
       options={ATTENTION_LEVELS}
-      value={referral.urgencyLevel || DEFAULT_ATTENTION}
+      value={referral.urgencyLevel ?? DEFAULT_ATTENTION}
       error={errors.urgencyLevel}
       onChange={(value) => onReferralChange("urgencyLevel", value)}
       helperText="Workflow handling only. The RHU decides queue order."
@@ -131,6 +132,7 @@ function ReferralFields({ referral, referralFacilityField, errors, disabled, onR
       <FieldTextarea
         label="Reason for Referral"
         required
+        maxLength={5000}
         name="reasonForReferral"
         value={referral.reason || ""}
         error={errors.reasonForReferral}
@@ -146,7 +148,7 @@ function ReferralFields({ referral, referralFacilityField, errors, disabled, onR
  * BHC Follow-up is ticked; the reason is required unless the return covers
  * only a selected service or continued monitoring (H6, `reasonRequired`).
  */
-function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFollowUpChange }) {
+function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFollowUpChange, shared = false }) {
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
@@ -161,6 +163,7 @@ function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFo
         />
         <TimePickerField
           label="Follow-up Time"
+          required={shared}
           name="followUpTime"
           value={followUp.time || ""}
           error={errors.followUpTime}
@@ -170,7 +173,8 @@ function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFo
       </div>
       <div>
         <FieldTextarea
-          label="Follow-up Reason"
+          label={shared ? "Follow-up Notes" : "Follow-up Reason"}
+          maxLength={1000}
           required={reasonRequired}
           name="followUpReason"
           value={followUp.reason || ""}
@@ -216,26 +220,28 @@ function DateSuggestions({ suggestions = [], disabled, onUse }) {
 function DateWarnings({ warnings = [] }) {
   if (warnings.length === 0) return null;
   return (
-    <div role="status" className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+    <Card role="status" className="rounded-none px-3 py-2 text-xs leading-relaxed text-black">
       {warnings.map((warning) => (
         <p key={warning}>{warning}</p>
       ))}
-    </div>
+    </Card>
   );
 }
 
 /**
- * Medication, Treatment & Next Steps (step 3), flat sections divided by thin
+ * Care and Outcome, flat sections divided by thin
  * rules, top to bottom:
+ * - One shared BHC return schedule for locally managed conditions.
+ * - One shared RHU referral card covering the referred conditions.
  * - Condition Monitoring, only when the visit continues or starts monitoring:
  *   Continue / Refer back to RHU / Stop per monitored condition (only the RHU
  *   sets a condition's status), with Additional Clinical Notes.
- * - Actions Taken / Treatment: `treatmentSlot`, drawn by the workspace
- *   (Actions Taken, FP supplies, Medicines / Supplies Dispensed).
  * - Next Actions: two independent checkboxes, Schedule BHC Follow-up and Refer
  *   to RHU, each revealing its form. Unticking hides the form but keeps what
  *   was typed. Nothing ticks either box except the worker or a restored draft.
  *   The referral form also shows for a monitoring referral alone.
+ * - Actions Taken / Treatment: `treatmentSlot`, drawn by the workspace
+ *   (Actions Taken, FP supplies, Medicines / Supplies Dispensed).
  * - Reporting: `reportingSlot` (ReportingEntriesField).
  * - Earlier draft notes and, when that text did not fit one field, Earlier
  *   draft notes (continued): read-only text of a converted legacy draft.
@@ -253,6 +259,7 @@ export default function NextStepsSection({
   referral = {}, onReferralChange, coverage = [],
   acknowledgmentRequired = false, referralAcknowledged = false, onAcknowledgeChange,
   treatmentSlot = null, reportingSlot = null, earlierDraftNotes = "", earlierDraftContinued = "",
+  sharedReturnRequired = false, sharedReferralRequired = false, hasConditionEntries = false,
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const referredIds = new Set(referrals.map(Number));
@@ -262,9 +269,33 @@ export default function NextStepsSection({
   const followUpOn = nextActions.bhcFollowUp === true;
   const referOn = nextActions.referToRhu === true;
   const showsReferral = referOn || monitoringReferred;
+  const showLegacyActions = !hasConditionEntries || (!sharedReferralRequired && (referOn || monitoringReferred)) || (!sharedReturnRequired && (followUpOn || hasMonitoring));
 
   return (
     <div className="divide-y divide-[#E5E7EB] [&>section]:py-5 [&>section:first-child]:pt-0 [&>section:last-child]:pb-0">
+      {sharedReturnRequired && (
+        <section aria-labelledby="shared-bhc-return-title">
+          <Card className="rounded-none border-slate-200 p-5 shadow-sm">
+            <h2 id="shared-bhc-return-title" className={SECTION_HEADING_CLASS}>BHC Return Schedule</h2>
+            <p className="mb-4 mt-1 text-xs text-[#6B7280]">One return schedule for all conditions managed at the BHC in this consultation.</p>
+            <FollowUpFields followUp={followUp} errors={errors} disabled={disabled} shared reasonRequired={false} onFollowUpChange={onFollowUpChange} />
+            <div className="mt-3 space-y-2"><DateSuggestions suggestions={suggestions} disabled={disabled} onUse={onUseSuggestedDate} /><DateWarnings warnings={warnings} /></div>
+          </Card>
+        </section>
+      )}
+      {sharedReferralRequired && (
+        <section aria-labelledby="shared-rhu-referral-title">
+          <Card className="rounded-none border-slate-200 p-5 text-black shadow-sm">
+            <h2 id="shared-rhu-referral-title" className={SECTION_HEADING_CLASS}>Refer to RHU</h2>
+            <p className="mb-4 mt-1 text-xs text-[#6B7280]">One referral for all conditions referred to the RHU in this consultation.</p>
+            <div className="space-y-4">
+              <Covers items={coverage} />
+              <ReferralFields referral={referral} referralFacilityField={referralFacilityField} errors={errors} disabled={disabled} onReferralChange={onReferralChange} />
+              {acknowledgmentRequired && <Acknowledgment name="referralAcknowledged" label="All listed concerns can go to this facility with this priority." checked={referralAcknowledged} error={errors.referralAcknowledged} disabled={disabled} onChange={(checked) => onAcknowledgeChange?.(checked)} />}
+            </div>
+          </Card>
+        </section>
+      )}
       {hasMonitoring && (
         <section aria-labelledby="next-steps-monitoring">
           <h2 id="next-steps-monitoring" className={SECTION_HEADING_CLASS}>Condition Monitoring</h2>
@@ -337,17 +368,10 @@ export default function NextStepsSection({
         </section>
       )}
 
-      {treatmentSlot && (
-        <section aria-labelledby="next-steps-treatment">
-          <h2 id="next-steps-treatment" className={SECTION_HEADING_CLASS}>Actions Taken / Treatment</h2>
-          <div className="mt-2 space-y-4">{treatmentSlot}</div>
-        </section>
-      )}
-
-      <section aria-labelledby="next-steps-actions">
+      {showLegacyActions && <section aria-labelledby="next-steps-actions">
         <h2 id="next-steps-actions" className={SECTION_HEADING_CLASS}>Next Actions</h2>
         <div className="mt-2 space-y-3">
-          <div>
+          {!sharedReturnRequired && <div>
             <ActionCheckbox
               name="bhcFollowUp"
               label="Schedule BHC Follow-up"
@@ -373,9 +397,9 @@ export default function NextStepsSection({
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
-          <div>
+          {!sharedReferralRequired && <div>
             <ActionCheckbox
               name="referToRhu"
               label="Refer to RHU"
@@ -417,9 +441,16 @@ export default function NextStepsSection({
                 )}
               </div>
             )}
-          </div>
+          </div>}
         </div>
-      </section>
+      </section>}
+
+      {treatmentSlot && (
+        <section aria-labelledby="next-steps-treatment">
+          <h2 id="next-steps-treatment" className={SECTION_HEADING_CLASS}>Actions Taken / Treatment</h2>
+          <div className="mt-2 space-y-4">{treatmentSlot}</div>
+        </section>
+      )}
 
       {reportingSlot && <section>{reportingSlot}</section>}
 

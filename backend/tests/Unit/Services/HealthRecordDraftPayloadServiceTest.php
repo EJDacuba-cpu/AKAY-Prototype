@@ -20,6 +20,22 @@ use Tests\TestCase;
  */
 class HealthRecordDraftPayloadServiceTest extends TestCase
 {
+    public function test_shared_referral_draft_keeps_its_mode_and_common_fields_on_repeated_sanitize(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = $this->fullFrontendPayload();
+        $payload['sharedConditionReferral'] = true;
+        $payload['receivingRhuId'] = '7';
+        $payload['referralForm']['urgencyLevel'] = 'Priority';
+        $payload['referralForm']['reasonForReferral'] = 'One referral for two concerns';
+        $payload['diagnoses'] = [['id' => 'c1', 'name' => 'Concern one', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'refer_to_rhu']];
+        $sanitized = $service->sanitize($payload);
+        $this->assertTrue($sanitized['sharedConditionReferral']);
+        $this->assertSame('7', $sanitized['receivingRhuId']);
+        $this->assertSame('One referral for two concerns', $sanitized['referralForm']['reasonForReferral']);
+        $this->assertSame($sanitized, $service->sanitize($sanitized));
+    }
+
     public function test_fully_populated_frontend_payload_survives_sanitization(): void
     {
         $service = new HealthRecordDraftPayloadService();
@@ -80,6 +96,20 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertTrue($sanitized['carePlan']['bhcFollowUp']);
         $this->assertFalse($sanitized['carePlan']['referToRhu']);
         $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
+    }
+
+    public function test_condition_cards_and_outcome_screen_survive_draft_sanitization(): void
+    {
+        $payload = $this->fullFrontendPayload();
+        $payload['consultationWorkflow'] = 'bhc_general_v2';
+        $payload['nextScreen'] = 'outcome';
+        $payload['diagnoses'] = [[
+            'id' => 'card-1', 'name' => 'Suspected hypertension', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'refer_to_rhu',
+            'referral' => ['urgencyLevel' => 'Priority', 'receivingRhuId' => '7', 'reasonForReferral' => 'Physician assessment'],
+        ]];
+        $sanitized = (new HealthRecordDraftPayloadService())->sanitize($payload);
+        $this->assertSame('outcome', $sanitized['nextScreen']);
+        $this->assertSame($payload['diagnoses'], $sanitized['diagnoses']);
     }
 
     public function test_legacy_draft_with_care_plan_concerns_still_validates(): void

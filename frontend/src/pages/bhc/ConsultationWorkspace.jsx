@@ -83,7 +83,8 @@ import {
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import NextStepsSection from "../../components/features/health-records/wizard/NextStepsSection";
-import ReportingEntriesField from "../../components/features/health-records/wizard/ReportingEntriesField";
+import ConditionCardsSection, { ConditionSummaryPanel } from "../../components/features/health-records/wizard/ConditionCardsSection";
+import { conditionCardErrors, conditionCardReviewRows, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import ConsultationBackgroundCard from "../../components/features/health-records/wizard/ConsultationBackgroundCard";
@@ -133,7 +134,6 @@ import {
 } from "../../utils/nextActions";
 import {
   reportingEntryDraft,
-  reportingEntryErrors,
   reportingEntryPayload,
   restoreReportingEntries,
 } from "../../utils/reportingEntries";
@@ -167,6 +167,7 @@ import {
   INTERVIEW_STEP,
   MONITORING_STEP,
   NEXT_STEP,
+  OUTCOME_STEP,
   PROGRAMS_STEP,
   REVIEW_STEP,
   EXIT_STEP,
@@ -832,7 +833,7 @@ export default function ConsultationWorkspace() {
   );
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
-  // Reporting (optional) on step 3: [{ id, name, reportIn[] }], sent as the
+  // Consultation condition cards: name, report destinations, outcome and referral,
   // v2 diagnoses[]. The visit sends no plain-text diagnosis.
   const [reportingEntries, setReportingEntries] = useState([]);
   // Read-only: the text a converted earlier draft carries (sent as
@@ -1224,7 +1225,6 @@ export default function ConsultationWorkspace() {
     continuedMonitorings, monitoringStops, monitoringReferrals,
   );
   const monitoringReferralIds = referredMonitoringRows.map((monitoring) => Number(monitoring.id));
-  const referredFollowedNames = referredMonitoringRows.map((monitoring) => monitoring.conditionName).join("; ");
   const monitoringDetailKeys = useMemo(
     () => getMonitoringDetailKeys(
       monitoredConditionKeys(continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry),
@@ -1240,11 +1240,14 @@ export default function ConsultationWorkspace() {
   // consultationMode guard) - the server's monitoring_data.selectedPrograms.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
   // ---- Next Actions (step 3). Visit level; rules in utils/nextActions.js ----
-  // The visit needs a referral when Refer to RHU is ticked or a followed
-  // condition is referred back. The follow-up status follows the checkbox
-  // only (the server derives the stored one); nothing else ticks it.
-  const needsReferral = nextActions.referToRhu || monitoringReferralIds.length > 0;
-  const followUpStatus = nextActions.bhcFollowUp ? "Follow-up Required" : "Completed";
+  // Local conditions share one return schedule; referred conditions and
+  // referred monitorings share the visit's single referral.
+  const sharedReturnRequired = reportingEntries.some((entry) => entry.clinicalOutcome === "managed_at_bhc");
+  const conditionReferrals = reportingEntries.filter((entry) => entry.clinicalOutcome === "refer_to_rhu");
+  const referredConcernNames = [...conditionReferrals.map((entry) => entry.name), ...referredMonitoringRows.map((monitoring) => monitoring.conditionName)].join("; ");
+  const effectiveNextActions = { ...nextActions, bhcFollowUp: sharedReturnRequired || nextActions.bhcFollowUp, referToRhu: conditionReferrals.length > 0 || nextActions.referToRhu, referralMultipleIssues: conditionReferrals.length > 1 || nextActions.referralMultipleIssues };
+  const needsReferral = effectiveNextActions.referToRhu || monitoringReferralIds.length > 0;
+  const followUpStatus = effectiveNextActions.bhcFollowUp ? "Follow-up Required" : "Completed";
   const followUpReasonIsExempt = followUpReasonExempt({
     selectedPrograms: carePlanHasService ? selectedPrograms : [],
     monitorsAny,
@@ -1257,17 +1260,17 @@ export default function ConsultationWorkspace() {
       : "",
     familyPlanningNextDate: isFamilyPlanning ? familyPlanningData.nextAppointmentDate || "" : "",
   });
-  const followUpWarnings = nextActions.bhcFollowUp
+  const followUpWarnings = effectiveNextActions.bhcFollowUp
     ? followUpDateWarnings(followUpDate, followUpSuggestions)
     : [];
   // What the one referral covers: this visit's own referral, then each
   // followed condition referred back.
   const referralCoverage = [
-    ...(nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
+    ...(conditionReferrals.length > 0 ? conditionReferrals.map((entry) => entry.name) : nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
     ...referredMonitoringRows.map((monitoring) => monitoring.conditionName),
   ];
-  const referralCount = referralItemCount({ referToRhu: nextActions.referToRhu, monitoringReferralIds });
-  const referralMultipleIssues = nextActions.referToRhu && nextActions.referralMultipleIssues === true;
+  const referralCount = conditionReferrals.length > 0 ? conditionReferrals.length + monitoringReferralIds.length : referralItemCount({ referToRhu: nextActions.referToRhu, monitoringReferralIds });
+  const referralMultipleIssues = effectiveNextActions.referToRhu && effectiveNextActions.referralMultipleIssues === true;
   const referralAcknowledgmentRequired = referralNeedsAcknowledgment({
     count: referralCount,
     multipleIssues: referralMultipleIssues,
@@ -1276,11 +1279,13 @@ export default function ConsultationWorkspace() {
   const referralAcknowledged =
     referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
   const patientGateLocked = !selectedPatientId;
+  const workspaceLocked = activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"));
+  const conditionFieldsLocked = patientGateLocked || workspaceLocked;
 
   // ---- Step-based consultation -------------------------------------------
   // Every consultation (new, continued or resumed) walks Patient Interview ->
-  // Physical Examination -> each selected service's form -> Medication,
-  // Treatment & Next Steps (-> Monitoring Details) -> Review & Finalize - see
+  // Physical Examination -> each selected service's form -> Conditions ->
+  // Care and Outcome (-> Monitoring Details) -> Review & Finalize - see
   // utils/consultationSteps.
   // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
   // whose Monitoring Details include the TB card.
@@ -1316,7 +1321,7 @@ export default function ConsultationWorkspace() {
   // Monitoring Details disappears when nothing monitored needs it any more.
   useEffect(() => {
     if (monitoringDetailKeys.length === 0 && nextScreen === MONITORING_STEP) {
-      setNextScreen(NEXT_STEP);
+      setNextScreen(OUTCOME_STEP);
     }
   }, [monitoringDetailKeys.length, nextScreen]);
 
@@ -1420,6 +1425,7 @@ export default function ConsultationWorkspace() {
       // opens there. Never a new wizardPhase value: the draft allowlist
       // accepts only program / form / next.
       formStep: activeFormStep,
+      nextScreen,
       // Every draft written here is a v2 General Consultation draft.
       consultationWorkflow: BHC_GENERAL_V2,
       dateOfVisit,
@@ -1579,6 +1585,7 @@ export default function ConsultationWorkspace() {
         }),
         ...nextActionsDraft(nextActions),
       },
+      sharedConditionReferral: true,
       referralForm: pickDraftFields(referralForm, [
         "urgencyLevel",
         "dateOfReferral",
@@ -1689,7 +1696,8 @@ export default function ConsultationWorkspace() {
     // content (every autosave stamps consultationWorkflow, so an unconverted
     // legacy draft would lose its concerns for good).
     const payload = convertLegacyDraft(draft.payload || {});
-    setReceivingRhuId(payload.receivingRhuId || "");
+    const restoredReferral = restoreSharedReferralDraft(payload);
+    setReceivingRhuId(restoredReferral.receivingRhuId);
     setSelectedPatientId(draft.patient.id);
     // Adopt the consultation's existing identity - never mint a fresh one for
     // a consultation that already has it. A legacy draft saved before
@@ -1755,7 +1763,7 @@ export default function ConsultationWorkspace() {
     setBackgroundConflicts(null);
     setReferralForm((current) => ({
       ...current,
-      ...(payload.referralForm || {}),
+      ...restoredReferral.referralForm,
     }));
     {
       // Names (and each follow-up's source record) are filled in from
@@ -1809,6 +1817,7 @@ export default function ConsultationWorkspace() {
     setPendingLocalSync(false);
     // Back to the exact screen the user left on - see resolveRestoredPosition.
     const restored = resolveRestoredPosition(payload);
+    setNextScreen([NEXT_STEP, OUTCOME_STEP, MONITORING_STEP].includes(payload.nextScreen) ? payload.nextScreen : NEXT_STEP);
     setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
     setValidationErrors({});
@@ -2284,15 +2293,19 @@ export default function ConsultationWorkspace() {
     return {
       ...validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
       ...nextActionErrors({
-        state: nextActions,
+        state: effectiveNextActions,
         followUp: { date: followUpDate, reason: followUpReason },
         referral: { reason: referralForm.reasonForReferral },
-        reasonExempt: followUpReasonIsExempt,
+        reasonExempt: sharedReturnRequired || followUpReasonIsExempt,
         acknowledged: referralAcknowledged,
         count: referralCount,
-        multipleIssues: nextActions.referralMultipleIssues === true,
+        multipleIssues: referralMultipleIssues,
       }),
-      ...reportingEntryErrors(reportingEntries),
+      ...conditionCardErrors(reportingEntries),
+      ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
+      ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
+      ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
+      ...(sharedReturnRequired && !followUpTime ? { followUpTime: "Set the shared follow-up time." } : {}),
     };
   }
 
@@ -2301,7 +2314,7 @@ export default function ConsultationWorkspace() {
     // Entry errors are re-checked on Continue / Save.
     setValidationErrors((current) => {
       const kept = Object.fromEntries(
-        Object.entries(current).filter(([key]) => !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.")),
+        Object.entries(current).filter(([key]) => key !== "diagnoses" && !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.")),
       );
       return Object.keys(kept).length === Object.keys(current).length ? current : kept;
     });
@@ -2314,6 +2327,17 @@ export default function ConsultationWorkspace() {
       delete next[field];
       return next;
     });
+  }
+
+  function showServerValidationErrors(error) {
+    if (error?.status !== 422 || !error?.errors) return false;
+    const errors = remapServerErrorKeys(Object.fromEntries(
+      Object.entries(error.errors).map(([field, messages]) => [field, Array.isArray(messages) ? messages[0] : String(messages)]),
+    ), reportingEntries);
+    if (!Object.keys(errors).length) return false;
+    clearOfficialSubmission();
+    if (!revealErrorStep(errors)) setValidationErrorsAndFocus(errors);
+    return true;
   }
 
   function setValidationErrorsAndFocus(errors) {
@@ -2350,11 +2374,8 @@ export default function ConsultationWorkspace() {
     if (fbsError) errors.fbs = fbsError;
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
-    // The Chief Complaint and the two reasons carry the visit's purpose; no
-    // health concern or diagnosis is required for a follow-up or referral.
-    if (needsReferral && !receivingRhuId) errors.receivingRhuId = "Receiving facility is required.";
-    if (needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel)) errors.urgencyLevel = "Referral priority is required.";
-    if (needsReferral && !referralForm.reasonForReferral?.trim()) errors.reasonForReferral = "Reason for referral is required.";
+    // Condition cards are required for this workspace; the shared validation
+    // below also checks their outcomes and any referral details.
     // The same step 3 rules Continue checks. validateCarePlan (inside) must run
     // before buildCarePlanPayload, which drops blank-reason stops. The
     // acknowledgment is never stored in a draft, so a draft resumed onto
@@ -2754,6 +2775,12 @@ export default function ConsultationWorkspace() {
     try { await completeDraftRecovery(); }
     catch { toast.error("The record was saved, but device recovery cleanup failed. Sign out when finished to clear protected session data."); }
     queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
+    if (formData.needsReferral || formData.needs_referral) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("rhu") });
+    }
     if (activeDraft?.id) {
       setHealthRecordDrafts((current) =>
         current.filter((item) => item.id !== activeDraft.id),
@@ -2881,6 +2908,7 @@ export default function ConsultationWorkspace() {
           savedRecord?.referrals?.[0]?.tracking_id ||
           savedRecord?.referrals?.[0]?.trackingId ||
           "",
+        ...savedReferralSummary(savedRecord),
       });
     } catch (error) {
       if (showBackgroundConflict(error)) {
@@ -2891,6 +2919,8 @@ export default function ConsultationWorkspace() {
         showMedicineStockConflict(error);
       } else if (isIdempotencyPayloadMismatch(error)) {
         showSubmissionConflict();
+      } else if (showServerValidationErrors(error)) {
+        setConnectionIssue(null);
       } else if (isConnectionError(error)) {
         setConnectionIssue({
           title: "Connection Lost",
@@ -2914,6 +2944,11 @@ export default function ConsultationWorkspace() {
   async function handleSave(event) {
     event?.preventDefault();
     if (saving) return;
+    if (reportingEntries.length === 0) {
+      const errors = conditionCardErrors(reportingEntries);
+      if (!revealErrorStep(errors)) setValidationErrorsAndFocus(errors);
+      return;
+    }
     if (backgroundConflicts?.length) {
       toast.error("Choose which Patient Background version to keep before saving.");
       goToStepKey(REVIEW_STEP);
@@ -2937,7 +2972,7 @@ export default function ConsultationWorkspace() {
     if (needsReferral && !(currentUser?.permissions || []).includes("referrals.submit")) { toast.error("Finalize Consultation and Submit Referral permissions are both required."); return; }
     closeDateTimePopovers();
 
-    const isReferralContinuation =
+    const shouldSubmitSharedReferral =
       needsReferral &&
       userRole === "bhc";
 
@@ -3031,7 +3066,7 @@ export default function ConsultationWorkspace() {
     // The visit's Next Actions (v2): only what is ticked is sent. The EPI next
     // dose and the FP next appointment stay in their service data; they never
     // become the follow-up date or a follow-up task by themselves.
-    const nextActionsFragments = nextActionsPayload(nextActions, {
+    const nextActionsFragments = nextActionsPayload(effectiveNextActions, {
       followUp: {
         // Passed through only while ticked; the server derives the stored status.
         status: "Follow-up Required",
@@ -3041,7 +3076,7 @@ export default function ConsultationWorkspace() {
       },
       monitoringReferralIds,
     });
-    const finalNeedsReferral = nextActionsFragments.needs_referral;
+    const finalNeedsReferral = nextActionsFragments.needs_referral || conditionReferrals.length > 0;
     // Continued follow-ups (Start Consultation modal): the visit is a
     // follow-up visit of the first one's source record. Every continued task
     // is fulfilled through care_plan either way.
@@ -3187,7 +3222,7 @@ export default function ConsultationWorkspace() {
       physicalExam,
       bodyFindings,
       // Reporting entries only; v2 sends no plain-text `diagnosis`.
-      diagnoses: reportingEntryPayload(reportingEntries),
+      diagnoses: reportingEntryPayload(sharedConditionEntries(reportingEntries)),
       // A converted earlier draft's read-only text, if any.
       assessmentNotes,
       vitalSigns: consultationVitalSigns,
@@ -3257,6 +3292,8 @@ export default function ConsultationWorkspace() {
           sharedReferralAcknowledged: referralAcknowledged,
         }),
         ...nextActionsFragments.care_plan,
+        condition_cards: true,
+        shared_condition_referral: true,
       },
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
       monitoringData: {
@@ -3267,7 +3304,7 @@ export default function ConsultationWorkspace() {
       dispensedMedicines,
     };
 
-    if (isReferralContinuation) {
+    if (shouldSubmitSharedReferral) {
       setReferralForm((prev) => ({
         ...prev,
         urgencyLevel: normalizeAttention(prev.urgencyLevel),
@@ -3288,7 +3325,7 @@ export default function ConsultationWorkspace() {
         philHealthCategory:
           prev.philHealthCategory || getPatientPhilHealthCategory(selectedPatient),
         chiefComplaint: prev.chiefComplaint || finalChiefComplaint,
-        initialDiagnosis: prev.initialDiagnosis || referredFollowedNames,
+        initialDiagnosis: referredConcernNames || prev.initialDiagnosis,
         initialActionsTaken: prev.initialActionsTaken || medication,
         // Required before saving (never pre-filled from the Chief Complaint).
         reasonForReferral: prev.reasonForReferral,
@@ -3309,7 +3346,7 @@ export default function ConsultationWorkspace() {
         formData,
         referralOverrides: {
           chiefComplaint: referralForm.chiefComplaint || finalChiefComplaint,
-          initialDiagnosis: referralForm.initialDiagnosis || referredFollowedNames,
+          initialDiagnosis: referredConcernNames || referralForm.initialDiagnosis,
           initialActionsTaken:
             referralForm.initialActionsTaken || medication,
           reasonForReferral: referralForm.reasonForReferral,
@@ -3354,6 +3391,7 @@ export default function ConsultationWorkspace() {
         patientId: selectedPatientId,
         status: savedStatus,
         needsReferral: formData.needs_referral === true,
+        ...savedReferralSummary(savedRecord),
       });
     } catch (error) {
       if (showBackgroundConflict(error)) return;
@@ -3369,16 +3407,7 @@ export default function ConsultationWorkspace() {
         showSubmissionConflict();
         return;
       }
-      if (error?.status === 422 && error?.errors) {
-        clearOfficialSubmission();
-        const backendErrors = remapServerErrorKeys(Object.fromEntries(
-          Object.entries(error.errors).map(([field, messages]) => [
-            field,
-            Array.isArray(messages) ? messages[0] : String(messages),
-          ]),
-        ));
-        if (setValidationErrorsAndFocus(backendErrors)) return;
-      }
+      if (showServerValidationErrors(error)) return;
       if (isConnectionError(error)) {
         const submission = officialSubmissionRef.current;
         setLastFailedSubmit({
@@ -3515,6 +3544,7 @@ export default function ConsultationWorkspace() {
         referralSubmitted: Boolean(referral),
         awaitingDoctor: !referral,
         referralTrackingId,
+        ...savedReferralSummary(savedRecord),
       });
     } catch (error) {
       // DOC-14 - unconditional. No override affordance is offered.
@@ -3527,6 +3557,7 @@ export default function ConsultationWorkspace() {
         return;
       }
       if (showBackgroundConflict(error)) return;
+      if (showServerValidationErrors(error)) return;
       if (isFollowUpAlreadyProcessed(error)) {
         showFollowUpAlreadyProcessed(error);
         return;
@@ -3617,7 +3648,7 @@ export default function ConsultationWorkspace() {
     if (target === programStepKey("Maternal")) announceRiskFlags();
     if (phase === "form") setFormStep(target);
     // Step 3 and Monitoring Details are the two screens of the Next phase.
-    if (phase === "next") setNextScreen(target === MONITORING_STEP ? MONITORING_STEP : NEXT_STEP);
+    if (phase === "next") setNextScreen(target);
     goToWizardPhase(WIZARD_PHASE_FOR_STEP[phase]);
     if (scroll) scrollWorkflowToTop();
   }
@@ -3671,7 +3702,10 @@ export default function ConsultationWorkspace() {
   function handleNextActionContinue() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
-    if (nextScreen === NEXT_STEP) {
+    const conditionErrors = conditionCardErrors(reportingEntries);
+    if (revealErrorStep(conditionErrors)) return;
+    if (setValidationErrorsAndFocus(conditionErrors)) return;
+    if (nextScreen === OUTCOME_STEP) {
       // This screen's own rules, asked for before moving on (getNextStepErrors).
       // Only the errors are set and the first one focused; nothing entered is
       // cleared or chosen.
@@ -3847,7 +3881,7 @@ export default function ConsultationWorkspace() {
     </LockedFormContent>
   );
 
-  const carePlanScreen = nextScreen === MONITORING_STEP ? (
+  const renderCarePlanScreen = () => nextScreen === MONITORING_STEP ? (
     <LockedFormContent locked={patientGateLocked}>
       {monitoringDetailErrors.length > 0 && (
         <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
@@ -3868,17 +3902,22 @@ export default function ConsultationWorkspace() {
         recordId={null}
       />
     </LockedFormContent>
+  ) : nextScreen === NEXT_STEP ? (
+    <ConditionCardsSection heading={<ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} />
   ) : (
     <>
     <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
     <NextStepsSection
+      sharedReturnRequired={sharedReturnRequired}
+      hasConditionEntries={reportingEntries.length > 0}
+      sharedReferralRequired={needsReferral}
       continuedMonitorings={continuedMonitorings}
       startingConditions={startingConditions}
       stops={monitoringStops}
       referrals={monitoringReferrals}
       errors={validationErrors}
       // A locked review is already disabled by the workspace fieldset.
-      disabled={patientGateLocked}
+      disabled={conditionFieldsLocked}
       onStopChange={(monitoringId, reason) => {
         clearValidationError(`carePlanStop.${monitoringId}`);
         setMonitoringStops((current) => setMonitoringStop(current, monitoringId, reason));
@@ -3895,7 +3934,7 @@ export default function ConsultationWorkspace() {
       notesPlaceholder={monitoringNotesPlaceholder}
       onMonitoringNotesChange={setMonitoringNotes}
       treatmentSlot={treatmentSlot}
-      nextActions={nextActions}
+      nextActions={effectiveNextActions}
       onFollowUpCheckedChange={(checked) => {
         ["followUpDate", "followUpTime", "followUpReason"].forEach(clearValidationError);
         setNextActions((current) => setFollowUpChecked(current, checked));
@@ -3930,9 +3969,10 @@ export default function ConsultationWorkspace() {
       referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
       referralFacilityField={
         <ReferralFacilityField
+          label="Refer to RHU"
           value={receivingRhuId}
           error={validationErrors.receivingRhuId}
-          disabled={patientGateLocked}
+          disabled={conditionFieldsLocked}
           onChange={(id) => {
             clearValidationError("receivingRhuId");
             setReceivingRhuId(id);
@@ -3949,14 +3989,6 @@ export default function ConsultationWorkspace() {
         clearValidationError("referralAcknowledged");
         setReferralAcknowledgment({ covers: referralCoversKey, checked });
       }}
-      reportingSlot={
-        <ReportingEntriesField
-          entries={reportingEntries}
-          errors={validationErrors}
-          disabled={patientGateLocked}
-          onChange={handleReportingEntriesChange}
-        />
-      }
       earlierDraftNotes={assessmentNotes}
       earlierDraftContinued={earlierDraftContinued}
     />
@@ -3999,7 +4031,9 @@ export default function ConsultationWorkspace() {
     [ASSESSMENT_STEP]:
       "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
-      "Record the treatment and medicines given, then any follow-up, referral and reporting for this visit.",
+      "Enter reported health problems or suspected cases, reporting classifications, and clinical outcomes.",
+    [OUTCOME_STEP]:
+      "Complete referral details, the shared BHC return schedule, and treatment for this consultation.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
@@ -4014,17 +4048,17 @@ export default function ConsultationWorkspace() {
   });
   // The fixed right-hand column changes with the step: Barangay Health Services
   // (the visit's service context) is chosen on Patient Interview only;
-  // Physical Exam & Assessment shows the 2D body preview instead. Every other
-  // step runs full width. The review summary lists the chosen programs.
+  // Physical Examination shows the body preview; Care and Outcome shows a
+  // read-only list of this consultation's conditions grouped by outcome.
   const sidePanelAllowed =
     wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
-  const showSidePanel = showProgramPanel || showBodyPanel;
+  const showConditionPanel = wizardPhase === WIZARD_NEXT && nextScreen === OUTCOME_STEP;
+  const showSidePanel = showProgramPanel || showBodyPanel || showConditionPanel;
   // Same lock the whole form used to sit under: a review awaiting a finalizer
   // who cannot correct records is read-only.
-  const workspaceLocked = activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"));
   const programPanel = (
     <ConsultationProgramPanel
       programs={wizardPrograms}
@@ -4115,8 +4149,14 @@ export default function ConsultationWorkspace() {
     },
     {
       key: NEXT_STEP,
-      title: "Medication, Treatment & Next Steps",
+      title: "Clinical Conditions & Reporting",
       stepKey: NEXT_STEP,
+      rows: conditionCardReviewRows(sharedConditionEntries(reportingEntries)),
+    },
+    {
+      key: OUTCOME_STEP,
+      title: "Care and Outcome",
+      stepKey: OUTCOME_STEP,
       rows: [
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
@@ -4137,7 +4177,7 @@ export default function ConsultationWorkspace() {
         // Covers, Reporting and, for a converted draft, Earlier draft notes.
         // The continued follow-ups are listed above.
         ...nextStepsReviewRows({
-          state: { ...nextActions, referToRhu: needsReferral },
+          state: { ...effectiveNextActions, referToRhu: needsReferral },
           followUp: {
             date: followUpDate && formatLongDate(followUpDate, ""),
             time: followUpTime && formatDisplayTime(followUpTime),
@@ -4148,7 +4188,7 @@ export default function ConsultationWorkspace() {
             reason: referralForm.reasonForReferral,
           },
           coverage: referralCoverage,
-          entries: reportingEntryPayload(reportingEntries),
+          entries: [],
           continuedLink: null,
           earlierDraftNotes: assessmentNotes,
           earlierDraftContinued,
@@ -4222,7 +4262,7 @@ export default function ConsultationWorkspace() {
           outside the fieldset so a locked review does not disable them. */}
       <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
-      {inConsultationWorkspace && stepIndicator}
+      {inConsultationWorkspace && currentStepKey !== NEXT_STEP && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       {draftMedicineWarnings.length > 0 && (
@@ -4251,6 +4291,8 @@ export default function ConsultationWorkspace() {
         <NextActionStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
+          showVisitOverview={nextScreen === MONITORING_STEP}
+          unboxed={nextScreen === NEXT_STEP || nextScreen === OUTCOME_STEP}
           saving={false}
           saveLabel="Save Record"
           savingLabel="Saving health record..."
@@ -4258,7 +4300,7 @@ export default function ConsultationWorkspace() {
           subtitle=""
           indicator={stepHeadingSlot}
         >
-          {carePlanScreen}
+          {renderCarePlanScreen()}
         </NextActionStep>
       ) : wizardPhase === WIZARD_REVIEW ? (
         <ConsultationReviewStep
@@ -4821,7 +4863,11 @@ export default function ConsultationWorkspace() {
       )}
       </fieldset>
       </div>
-      {showSidePanel && (showProgramPanel ? (
+      {showSidePanel && (showConditionPanel ? (
+        <fieldset className="contents">
+          <ConditionSummaryPanel entries={reportingEntries} />
+        </fieldset>
+      ) : showProgramPanel ? (
         <fieldset disabled={workspaceLocked} className="contents">
           {programPanel}
         </fieldset>
@@ -4864,15 +4910,15 @@ export default function ConsultationWorkspace() {
       <SuccessModal
         open={Boolean(saveSuccess)}
         title={
-          saveSuccess?.referralSubmitted
-              ? "Health Record and Referral Submitted"
+          saveSuccess?.referralSubmitted && !saveSuccess?.awaitingDoctor
+              ? `Health Record and Referral${saveSuccess.submittedReferralCount === 1 ? "" : "s"} Submitted`
             : "Health Record Saved"
         }
         description={
           saveSuccess?.awaitingDoctor
-              ? "Consultation finalized. Referral: Awaiting Doctor Availability. Submission Status: Not Yet Submitted. Authorized BHC staff will be notified to review and manually submit when a doctor is available."
+              ? `Consultation finalized. Referrals: ${saveSuccess.submittedReferralCount || 0} submitted; ${saveSuccess.heldReferralCount || 0} awaiting doctor availability. Authorized BHC staff will be notified to review and manually submit pending referrals when a doctor is available.`
             : saveSuccess?.referralSubmitted
-              ? "The health record was saved and the referral was linked for RHU review."
+              ? `The health record was saved with ${saveSuccess.submittedReferralCount || 1} referral${saveSuccess.submittedReferralCount === 1 ? "" : "s"} linked for RHU review.`
               : "The record is available in this patient's history and Health Records. You can view it, print it, or open the patient profile."
         }
         onClose={() => navigate(healthRecordsPath)}

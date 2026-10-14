@@ -21,6 +21,7 @@ class HealthRecordDraftPayloadService
         // Marks a draft as the BHC general v2 flow. Optional: legacy drafts never carry it.
         'consultationWorkflow' => self::SCALAR,
         'receivingRhuId' => self::SCALAR,
+        'sharedConditionReferral' => self::SCALAR,
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
         'consultationMode' => self::SCALAR,
@@ -29,6 +30,7 @@ class HealthRecordDraftPayloadService
         // form, Clinical Assessment or Treatment). UI position only; optional, so
         // drafts saved before the steps existed keep loading.
         'formStep' => self::SCALAR,
+        'nextScreen' => self::SCALAR,
         'dateOfVisit' => self::SCALAR,
         'timeOfVisit' => self::SCALAR,
         'chiefComplaint' => self::SCALAR,
@@ -53,6 +55,12 @@ class HealthRecordDraftPayloadService
             'includeInSurveillance' => self::SCALAR,
             // v2: destinations this diagnosis is reported in (ReportingEntries::DESTINATIONS).
             'reportIn' => ['*' => self::SCALAR],
+            'clinicalOutcome' => self::SCALAR,
+            'referral' => [
+                'urgencyLevel' => self::SCALAR,
+                'receivingRhuId' => self::SCALAR,
+                'reasonForReferral' => self::SCALAR,
+            ],
         ]],
         'assessmentNotes' => self::SCALAR,
         'medication' => self::SCALAR,
@@ -560,6 +568,7 @@ class HealthRecordDraftPayloadService
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
+            'payload.nextScreen' => ['nullable', 'in:next,outcome,monitoring'],
             'payload.physicalExam' => ['nullable', 'string'],
             'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
             'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
@@ -574,7 +583,12 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.reportAs' => ['nullable', 'string', Rule::in(HealthRecord::DIAGNOSIS_REPORT_TYPES)],
             'payload.diagnoses.*.reportIn' => ['nullable', 'array'],
             'payload.diagnoses.*.reportIn.*' => ['string', Rule::in(ReportingEntries::DESTINATIONS)],
+            'payload.diagnoses.*.clinicalOutcome' => ['nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])],
+            'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(\App\Models\Referral::ATTENTION_LEVELS)],
+            'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
+            'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],
             'payload.carePlan.bhcFollowUp' => ['nullable', 'boolean'],
+            'payload.sharedConditionReferral' => ['nullable', 'boolean'],
             'payload.carePlan.referToRhu' => ['nullable', 'boolean'],
             'payload.carePlan.referralMultipleIssues' => ['nullable', 'boolean'],
             'payload.assessmentNotes' => ['nullable', 'string', 'max:5000'],

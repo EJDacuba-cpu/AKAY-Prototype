@@ -72,6 +72,228 @@ class BhcGeneralConsultationV2Test extends TestCase
         return now()->addWeek()->toDateString();
     }
 
+    private function card(string $id, string $outcome, string $name = 'Reported condition'): array
+    {
+        return ['id' => $id, 'name' => $name, 'reportIn' => ['morbidity'], 'clinicalOutcome' => $outcome,
+            ...($outcome === 'refer_to_rhu' ? ['referral' => ['urgencyLevel' => 'Routine', 'receivingRhuId' => $this->rhu->id, 'reasonForReferral' => 'Assessment for '.$name]] : []),
+        ];
+    }
+
+    private function sharedReferral(): array
+    {
+        $cards = [$this->card('c1', 'refer_to_rhu', 'Concern one'), $this->card('c2', 'refer_to_rhu', 'Concern two')];
+        foreach ($cards as &$card) {
+            unset($card['referral']);
+        }
+
+        return [
+            'needs_referral' => true,
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true, 'refer_to_rhu' => true, 'shared_referral_acknowledged' => true],
+            'diagnoses' => $cards,
+            'referral' => ['rural_health_unit_id' => $this->rhu->id, 'urgency_level' => 'Priority', 'reason_for_referral' => 'Shared RHU assessment', 'initial_diagnosis' => 'Untrusted supplied diagnosis', 'chief_complaint' => 'Untrusted override'],
+        ];
+    }
+
+    public function test_shared_condition_referral_creates_one_tracking_record_and_replays_once(): void
+    {
+        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Shared Doctor', 'availability_status' => 'Available', 'is_active' => true]);
+        $payload = [...$this->sharedReferral(), 'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Original visit complaint', 'physical_exam' => 'Original findings', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2];
+        $key = (string) Str::uuid();
+        $id = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertCreated()->json('data.id');
+        $this->assertDatabaseCount('referrals', 1);
+        $this->assertSame('Original findings', HealthRecord::findOrFail($id)->physical_exam);
+        $this->assertDatabaseHas('referrals', ['health_record_id' => $id, 'initial_diagnosis' => 'Concern one; Concern two', 'chief_complaint' => 'Original visit complaint', 'urgency_level' => 'Priority', 'reason_for_referral' => 'Shared RHU assessment']);
+        $this->assertArrayNotHasKey('conditionReferralOutcomes', HealthRecord::findOrFail($id)->monitoring_data);
+        $this->assertArrayNotHasKey('referral', HealthRecord::findOrFail($id)->diagnoses[0]);
+        $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertOk()->assertJsonPath('idempotent_replay', true);
+        $this->assertDatabaseCount('referrals', 1);
+        $this->assertDatabaseCount('referral_holds', 0);
+        $this->assertDatabaseCount('patient_conditions', 0);
+    }
+
+    public function test_shared_referral_keeps_bhc_return_and_excludes_locally_managed_condition(): void
+    {
+        $payload = $this->sharedReferral();
+        $payload['diagnoses'][] = $this->card('local', 'managed_at_bhc', 'Local follow-up concern');
+        $payload['monitoring_data'] = ['followUpDate' => $this->nextWeek(), 'followUpTime' => '10:30'];
+        $id = $this->v2($payload)->assertCreated()->json('data.id');
+        $record = HealthRecord::findOrFail($id);
+        $this->assertTrue($record->monitoring_data['bhcFollowUp']);
+        $this->assertSame('Concern one; Concern two', $record->monitoring_data['pendingReferral']['initial_diagnosis']);
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertDatabaseCount('referral_holds', 1);
+    }
+
+    public function test_shared_unavailable_referral_creates_one_hold_and_resumes_as_one_referral(): void
+    {
+        $id = $this->v2($this->sharedReferral())->assertCreated()->json('data.id');
+        $data = HealthRecord::findOrFail($id)->monitoring_data;
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertSame('Concern one; Concern two', $data['pendingReferral']['initial_diagnosis']);
+        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Returned Doctor', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->postJson('/api/referrals', ['patient_id' => $this->patient->id, 'health_record_id' => $id, 'resume_hold_id' => $data['referralHoldId'], ...$data['pendingReferral']])->assertCreated();
+        $this->assertDatabaseCount('referrals', 1);
+        $this->assertDatabaseHas('referrals', ['initial_diagnosis' => 'Concern one; Concern two']);
+    }
+
+    public function test_shared_referral_includes_referred_monitoring_without_creating_another_referral(): void
+    {
+        $monitoring = $this->followedHypertension();
+        $payload = $this->sharedReferral();
+        $payload['care_plan']['continued_monitoring_ids'] = [$monitoring->id];
+        $payload['care_plan']['monitoring_referrals'] = [$monitoring->id];
+        $id = $this->v2($payload)->assertCreated()->json('data.id');
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertSame('Concern one; Concern two; Hypertension', HealthRecord::findOrFail($id)->monitoring_data['pendingReferral']['initial_diagnosis']);
+    }
+
+    public function test_shared_referral_requires_the_common_fields_and_explicit_multi_concern_acknowledgment(): void
+    {
+        foreach (['rural_health_unit_id', 'urgency_level', 'reason_for_referral'] as $field) {
+            $payload = $this->sharedReferral();
+            unset($payload['referral'][$field]);
+            $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(["referral.$field"]);
+        }
+        $payload = $this->sharedReferral();
+        unset($payload['referral']);
+        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['referral']);
+        $payload = $this->sharedReferral();
+        $payload['care_plan']['shared_referral_acknowledged'] = false;
+        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['care_plan.shared_referral_acknowledged']);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_shared_referral_rejects_individual_referral_details_and_unauthorized_destinations(): void
+    {
+        $payload = $this->sharedReferral();
+        $payload['diagnoses'][0]['referral'] = $this->card('c1', 'refer_to_rhu')['referral'];
+        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.referral']);
+        $payload = $this->sharedReferral();
+        $payload['referral']['rural_health_unit_id'] = RuralHealthUnit::create(['name' => 'Unmapped shared RHU', 'status' => 'active'])->id;
+        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['referral.rural_health_unit_id']);
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('referral_holds', 0);
+    }
+
+    public function test_condition_card_workflow_rejects_missing_null_or_empty_conditions(): void
+    {
+        foreach ([[], ['diagnoses' => null], ['diagnoses' => []]] as $extra) {
+            $this->v2(['care_plan' => ['condition_cards' => true], ...$extra])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['diagnoses'])
+                ->assertJsonPath('errors.diagnoses.0', 'Add at least one condition before continuing.');
+        }
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('follow_up_tasks', 0);
+    }
+
+    public function test_condition_cards_require_an_explicit_outcome(): void
+    {
+        $entry = $this->card('c1', 'managed_at_bhc');
+        unset($entry['clinicalOutcome']);
+        $this->v2(['care_plan' => ['condition_cards' => true], 'diagnoses' => [$entry]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.clinicalOutcome']);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_client_cannot_forge_condition_referral_result_links(): void
+    {
+        $id = $this->v2(['monitoring_data' => ['conditionReferralOutcomes' => [['entryId' => 'fake', 'referralId' => 123, 'holdId' => 456]]]])->assertCreated()->json('data.id');
+        $this->assertArrayNotHasKey('conditionReferralOutcomes', HealthRecord::findOrFail($id)->monitoring_data);
+    }
+
+    public function test_managed_cards_share_one_return_schedule_with_optional_notes(): void
+    {
+        $payload = ['care_plan' => ['condition_cards' => true],
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Headache'), $this->card('c2', 'managed_at_bhc', 'Wound')],
+            'monitoring_data' => ['followUpDate' => $this->nextWeek()],
+        ];
+        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpTime']);
+        $payload['monitoring_data']['followUpTime'] = '09:30';
+        $id = $this->v2($payload)->assertCreated()->json('data.id');
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertTrue(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
+        $this->assertDatabaseCount('patient_conditions', 0);
+    }
+
+    public function test_condition_referrals_are_created_separately_and_retries_do_not_duplicate(): void
+    {
+        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Card Doctor', 'specialization' => 'General Practitioner', 'availability_status' => 'Available', 'is_active' => true]);
+        $cards = [$this->card('c1', 'refer_to_rhu', 'Suspected hypertension'), $this->card('c2', 'refer_to_rhu', 'Persistent cough')];
+        $cards[1]['referral']['urgencyLevel'] = 'Priority';
+        $key = (string) Str::uuid();
+        $payload = ['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Multiple concerns', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2, 'care_plan' => ['condition_cards' => true], 'needs_referral' => true, 'diagnoses' => $cards];
+        $response = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertCreated();
+        $id = $response->json('data.id');
+        $this->assertSame(2, Referral::where('health_record_id', $id)->count());
+        $this->assertDatabaseHas('referrals', ['health_record_id' => $id, 'initial_diagnosis' => 'Persistent cough', 'urgency_level' => 'Priority', 'reason_for_referral' => 'Assessment for Persistent cough']);
+        $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertOk()->assertJsonPath('idempotent_replay', true);
+        $this->assertDatabaseCount('referrals', 2);
+        $this->assertDatabaseCount('follow_up_tasks', 0);
+    }
+
+    public function test_unavailable_condition_referrals_keep_distinct_hold_details(): void
+    {
+        $id = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true,
+            'diagnoses' => [$this->card('c1', 'refer_to_rhu', 'Concern one'), $this->card('c2', 'refer_to_rhu', 'Concern two')],
+        ])->assertCreated()->json('data.id');
+        $outcomes = HealthRecord::findOrFail($id)->monitoring_data['conditionReferralOutcomes'];
+        $this->assertCount(2, $outcomes);
+        $this->assertNotSame($outcomes[0]['holdId'], $outcomes[1]['holdId']);
+        $this->assertSame('Concern two', $outcomes[1]['pendingReferral']['initial_diagnosis']);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('referral_holds', 2);
+    }
+
+    public function test_each_condition_referral_requires_its_own_details(): void
+    {
+        $card = $this->card('c1', 'refer_to_rhu');
+        $card['referral'] = [];
+        $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true, 'diagnoses' => [$card]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.referral.urgencyLevel', 'diagnoses.0.referral.receivingRhuId', 'diagnoses.0.referral.reasonForReferral']);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_mixed_condition_outcomes_keep_the_shared_return_schedule_after_referral(): void
+    {
+        $id = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true,
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound'), $this->card('c2', 'refer_to_rhu', 'Suspected hypertension')],
+            'monitoring_data' => ['followUpDate' => $this->nextWeek(), 'followUpTime' => '10:00'],
+        ])->assertCreated()->json('data.id');
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame($this->nextWeek(), HealthRecord::findOrFail($id)->monitoring_data['followUpDate']);
+        $this->assertDatabaseCount('referral_holds', 1);
+    }
+
+    public function test_resuming_one_condition_hold_preserves_the_other_pending_condition(): void
+    {
+        $id = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true,
+            'diagnoses' => [$this->card('c1', 'refer_to_rhu', 'Concern one'), $this->card('c2', 'refer_to_rhu', 'Concern two')],
+        ])->assertCreated()->json('data.id');
+        $outcomes = HealthRecord::findOrFail($id)->monitoring_data['conditionReferralOutcomes'];
+        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Available Card Doctor', 'specialization' => 'General Practitioner', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->postJson('/api/referrals', ['patient_id' => $this->patient->id, 'health_record_id' => $id, 'resume_hold_id' => $outcomes[1]['holdId'], 'rural_health_unit_id' => $this->rhu->id, 'urgency_level' => 'Routine', 'reason_for_referral' => 'Assessment for Concern two'])->assertCreated();
+        $updated = HealthRecord::findOrFail($id)->monitoring_data['conditionReferralOutcomes'];
+        $this->assertSame($outcomes[0]['holdId'], $updated[0]['holdId']);
+        $this->assertArrayNotHasKey('holdId', $updated[1]);
+        $this->assertArrayHasKey('referralId', $updated[1]);
+    }
+
+    public function test_condition_referral_routing_failure_rolls_back_the_whole_consultation(): void
+    {
+        $otherRhu = RuralHealthUnit::create(['name' => 'Unmapped card RHU', 'status' => 'active']);
+        $cards = [$this->card('c1', 'refer_to_rhu', 'First concern'), $this->card('c2', 'refer_to_rhu', 'Second concern')];
+        $cards[1]['referral']['receivingRhuId'] = $otherRhu->id;
+        $response = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true, 'diagnoses' => $cards]);
+        $this->assertContains($response->status(), [403, 422]);
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('referral_holds', 0);
+    }
+
     private function followedHypertension(): ConditionMonitoring
     {
         $record = HealthRecord::create(['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'barangay_health_center_id' => $this->bhc->id]);

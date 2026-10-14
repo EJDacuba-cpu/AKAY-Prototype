@@ -8,7 +8,7 @@ import {
   stopsRequired,
   NO_CONCERN_MESSAGE,
 } from "./carePlan.js";
-import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
+import { MONITORING_STEP, NEXT_STEP, OUTCOME_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
 /**
  * The New Consultation workspace's Care Plan & Next Steps bookkeeping: what it
@@ -226,17 +226,18 @@ export function continuedVisitLink(continuedFollowUpTaskIds = [], continuedFollo
 
 /** Continue from a screen of the Next phase. */
 export function nextPhaseForwardTarget(screen, monitoringDetailKeys = []) {
-  return screen === NEXT_STEP && monitoringDetailKeys.length > 0 ? MONITORING_STEP : REVIEW_STEP;
+  if (screen === NEXT_STEP) return OUTCOME_STEP;
+  return screen === OUTCOME_STEP && monitoringDetailKeys.length > 0 ? MONITORING_STEP : REVIEW_STEP;
 }
 
 /** Previous from a screen of the Next phase; null means leave the phase. */
 export function nextPhaseBackTarget(screen) {
-  return screen === MONITORING_STEP ? NEXT_STEP : null;
+  return screen === MONITORING_STEP ? OUTCOME_STEP : screen === OUTCOME_STEP ? NEXT_STEP : null;
 }
 
 /** Previous from Review. */
 export function reviewBackTarget(monitoringDetailKeys = []) {
-  return monitoringDetailKeys.length > 0 ? MONITORING_STEP : NEXT_STEP;
+  return monitoringDetailKeys.length > 0 ? MONITORING_STEP : OUTCOME_STEP;
 }
 
 const NO_NEXT_ACTION = "No next action";

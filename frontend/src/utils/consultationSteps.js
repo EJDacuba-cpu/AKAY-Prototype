@@ -7,8 +7,8 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
  *       -> Service Details: one screen per selected service (Prenatal / Family
  *          Planning / EPI), only when a service is selected
- *       -> Medication, Treatment & Next Steps (existing monitoring, Actions Taken
- *          and medicines, Schedule BHC Follow-up / Refer to RHU, and Reporting)
+ *       -> Clinical Conditions & Reporting (condition modal and three-column grid)
+ *       -> Care and Outcome (condition referrals, shared BHC return, treatment)
  *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Finalize
  *
@@ -38,6 +38,7 @@ export const INTERVIEW_STEP = "interview";
 export const PROGRAMS_STEP = "programs";
 export const ASSESSMENT_STEP = "assessment";
 export const NEXT_STEP = "next";
+export const OUTCOME_STEP = "outcome";
 export const REVIEW_STEP = "review";
 export const MONITORING_STEP = "monitoring";
 
@@ -123,7 +124,8 @@ export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
-    { key: NEXT_STEP, phase: "next", label: "Medication, Treatment & Next Steps" },
+    { key: NEXT_STEP, phase: "next", label: "Clinical Conditions & Reporting" },
+    { key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(monitoringDetailKeys.length > 0
       ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
@@ -183,6 +185,7 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
     NEXT_STEP,
+    OUTCOME_STEP,
     ...(monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
   ];
@@ -309,30 +312,41 @@ export function getErrorOwnerStepKey(errorKey) {
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
   // The Reporting entries (and any server error on diagnoses) live on step 3.
-  if (key === "diagnosis" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
+  if (key.startsWith("reportingEntry.") && key.includes(".referral.")) return OUTCOME_STEP;
+  if (key.startsWith("diagnoses.") && key.includes(".referral.")) return OUTCOME_STEP;
+  if (key === "diagnosis" || key === "diagnoses" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
   // Actions Taken (and the medicines dispensed) sit on step 3 too.
-  if (key === "dispensedMedicines") return NEXT_STEP;
-  if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return NEXT_STEP;
-  if (key === "followUpAcknowledged" || key === "referralAcknowledged") return NEXT_STEP;
+  if (key === "dispensedMedicines") return OUTCOME_STEP;
+  if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return OUTCOME_STEP;
+  if (key === "followUpAcknowledged" || key === "referralAcknowledged") return OUTCOME_STEP;
   // Server-only v2 next-action keys.
-  if (key === "care_plan.refer_to_rhu" || key === "needs_referral") return NEXT_STEP;
+  if (key === "care_plan.refer_to_rhu" || key === "needs_referral") return OUTCOME_STEP;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
-    return NEXT_STEP;
+    return OUTCOME_STEP;
   }
   return null;
 }
 
 // Server-only 422 keys, renamed to the field keys step 3 reads.
 const SERVER_ERROR_KEYS = {
+  referral: "reasonForReferral",
   "monitoring_data.followUpReason": "followUpReason",
   "monitoring_data.followUpDate": "followUpDate",
+  "monitoring_data.followUpTime": "followUpTime",
+  "referral.reason_for_referral": "reasonForReferral",
+  "referral.rural_health_unit_id": "receivingRhuId",
+  "referral.urgency_level": "urgencyLevel",
   "care_plan.shared_referral_acknowledged": "referralAcknowledged",
 };
 
 /** Renames server validation keys to the form's field keys; other keys pass through. */
-export function remapServerErrorKeys(errors) {
+export function remapServerErrorKeys(errors, entries = []) {
   return Object.fromEntries(
-    Object.entries(errors || {}).map(([key, message]) => [SERVER_ERROR_KEYS[key] || key, message]),
+    Object.entries(errors || {}).map(([key, message]) => {
+      const match = /^diagnoses\.(\d+)\.(.+)$/.exec(key);
+      const entryId = match && entries[Number(match[1])]?.id;
+      return [entryId ? `reportingEntry.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];
+    }),
   );
 }
 

@@ -15,6 +15,7 @@ use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\ClinicalRegistry;
 use App\Services\ConditionMonitoringService;
+use App\Services\ConditionCardReferrals;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
@@ -91,6 +92,7 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks,
         HealthRecordIdempotencyService $idempotency,
         ReferralCreationService $referralCreation,
+        ConditionCardReferrals $conditionCardReferrals,
         HealthRecordDraftService $drafts,
         ClinicalRegistry $clinicalRegistry,
         ConditionMonitoringService $monitoring,
@@ -233,6 +235,7 @@ class HealthRecordController extends Controller
                 $request,
                 $followUpTasks,
                 $referralCreation,
+                $conditionCardReferrals,
                 $auditLogger,
                 $idempotencyKey,
                 $drafts,
@@ -340,6 +343,19 @@ class HealthRecordController extends Controller
                 $followUpTasks->fulfillTasks($additionalTasks, $record, $request->user());
                 $monitoring->linkFollowUpTask($record, $monitoredNow);
 
+                if ($v2 && filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN) && is_array($referralData)) {
+                    // One referral covers only referred cards and referred monitorings;
+                    // the visit's full complaint and treatment remain context.
+                    $names = collect($data['diagnoses'] ?? [])
+                        ->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')
+                        ->merge($continuedMonitorings->only($carePlan['monitoring_referrals'] ?? [])->pluck('condition_name'))
+                        ->filter()->unique()->values();
+                    if ($names->isNotEmpty()) {
+                        $referralData['initial_diagnosis'] = $names->implode('; ');
+                    }
+                    $referralData['chief_complaint'] = $record->chief_complaint;
+                    $referralData['initial_action_taken'] = $record->treatment_notes;
+                }
                 if (is_array($referralData)) {
                     try {
                         $referral = $referralCreation->create($request, $patient, [
@@ -360,10 +376,18 @@ class HealthRecordController extends Controller
                         $route = app(ReferralRoutingService::class)->resolveForBhc($request->user(), $referralData['rural_health_unit_id'] ?? null);
                         $hold = app(ReferralHoldService::class)->recordBlockedAttempt($request->user(), $patient, $route['bhc']->id, $route['rhu'], [...$referralData, 'health_record_id' => $record->id]);
                         $record->update(['monitoring_data' => [...($record->monitoring_data ?? []), 'pendingReferral' => $referralData, 'referralHoldId' => $hold->id, 'referralStatus' => 'Awaiting Doctor Availability', 'submissionStatus' => 'Not Yet Submitted']]);
+                    } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                        if ($v2 && filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN) && $exception->getStatusCode() === 422) {
+                            throw \Illuminate\Validation\ValidationException::withMessages(['referral.rural_health_unit_id' => $exception->getMessage()]);
+                        }
+                        throw $exception;
                     }
                 }
 
                 // After the referral or the hold exists, so a blocked referral is audited too.
+                if ($v2 && ! filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    $conditionCardReferrals->create($request, $patient, $record, $idempotencyKey);
+                }
                 if (is_array($referralData)) {
                     $this->auditSharedReferral($request, $auditLogger, $record, $data['diagnoses'] ?? [], $carePlan, $continuedMonitorings, $v2);
                 }
@@ -445,11 +469,8 @@ class HealthRecordController extends Controller
         if ($record->dispensedMedicines()->exists()) {
             $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
         }
-        if (is_array($referralData)) {
-            $referral = $record->referrals()->first();
-            if ($referral !== null) {
-                $this->cache->invalidateReferralReports($referral);
-            }
+        foreach ($record->referrals()->get() as $referral) {
+            $this->cache->invalidateReferralReports($referral);
         }
 
         return $this->storeResponse($record, false, 201);
@@ -859,7 +880,8 @@ class HealthRecordController extends Controller
     private function applyV2NextActions(array &$data, array $carePlan): void
     {
         $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
-        $followUp = filter_var($carePlan['bhc_follow_up'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $followUp = filter_var($carePlan['bhc_follow_up'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || collect($data['diagnoses'] ?? [])->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'managed_at_bhc');
 
         $data['monitoring_data'] = $followUp
             ? [
@@ -1043,11 +1065,16 @@ class HealthRecordController extends Controller
             // only with Refer to RHU ticked, as in HealthRecordRequest.
             $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $multipleIssues = $refers && filter_var($carePlan['referral_multiple_issues'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $count = ($refers ? 1 : 0) + count(array_unique(array_map('intval', $monitoringIds)));
+            $cardNames = filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                ? collect($diagnoses)->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')->all()
+                : [];
+            $count = ($cardNames !== [] ? count($cardNames) : ($refers ? 1 : 0)) + count(array_unique(array_map('intval', $monitoringIds)));
             if ($count < 2 && ! $multipleIssues) {
                 return;
             }
-            if ($refers) {
+            if ($cardNames !== []) {
+                $names = $cardNames;
+            } elseif ($refers) {
                 $names[] = 'General consultation';
             }
             if ($multipleIssues) {

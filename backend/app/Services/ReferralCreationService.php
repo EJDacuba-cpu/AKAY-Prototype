@@ -128,7 +128,16 @@ class ReferralCreationService
 
             if ($hold) {
                 app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
-                if ($healthRecord) $healthRecord->update(['monitoring_data' => [...($healthRecord->monitoring_data ?? []), 'referralStatus' => 'Submitted', 'submissionStatus' => 'Submitted', 'linkedTrackingId' => $referral->tracking_id]]);
+                if ($healthRecord) {
+                    $monitoring = $healthRecord->monitoring_data ?? [];
+                    $outcomes = array_map(function ($outcome) use ($hold, $referral) {
+                        if ((int) ($outcome['holdId'] ?? 0) !== (int) $hold->id) {
+                            return $outcome;
+                        }
+                        return ['entryId' => $outcome['entryId'], 'referralId' => $referral->id, 'trackingId' => $referral->tracking_id];
+                    }, $monitoring['conditionReferralOutcomes'] ?? []);
+                    $healthRecord->update(['monitoring_data' => [...$monitoring, ...($outcomes !== [] ? ['conditionReferralOutcomes' => $outcomes] : []), 'referralStatus' => 'Submitted', 'submissionStatus' => 'Submitted', 'linkedTrackingId' => $referral->tracking_id]]);
+                }
             }
         }
 

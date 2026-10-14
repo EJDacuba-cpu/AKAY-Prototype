@@ -162,6 +162,8 @@ export function WizardFooter({
 export function NextActionStep({
   visitDate,
   visitTime,
+  showVisitOverview = true,
+  unboxed = false,
   // Blank in the step-based consultation, where the page header above the card
   // already carries the title.
   title = "New Health Record",
@@ -181,6 +183,8 @@ export function NextActionStep({
       subtitle={subtitle}
       visitDate={visitDate}
       visitTime={visitTime}
+      showVisitOverview={showVisitOverview}
+      unboxed={unboxed}
     >
       {indicator}
       {!indicator && (

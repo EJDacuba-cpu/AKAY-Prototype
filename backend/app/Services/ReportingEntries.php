@@ -3,10 +3,12 @@
 namespace App\Services;
 
 /**
- * Reporting-only diagnosis entries (health_records.diagnoses[] in a
+ * Consultation concern/reporting entries (health_records.diagnoses[] in a
  * bhc_general_v2 consultation): {id, name, reportIn[]}. reportIn is the source
  * of truth; reportAs and includeInSurveillance are written as compatibility
- * mirrors so existing readers keep working. Historical entries carry only
+ * mirrors so existing readers keep working. Condition cards additionally store
+ * clinicalOutcome and referral details without touching the patient registry.
+ * Historical entries carry only
  * reportAs and includeInSurveillance, so this normalizer reads both shapes.
  * See docs/superpowers/specs/2026-10-10-bhc-general-consultation-simplification-design.md (B2).
  */
@@ -62,6 +64,16 @@ final class ReportingEntries
                 : (in_array('morbidity', $reportIn, true) ? 'morbidity' : null),
             'includeInSurveillance' => in_array('surveillance', $reportIn, true),
             'conditionKey' => null,
+            ...(array_key_exists('clinicalOutcome', $entry) ? [
+                'clinicalOutcome' => $entry['clinicalOutcome'],
+                ...(($entry['clinicalOutcome'] ?? null) === 'refer_to_rhu' && is_array($entry['referral'] ?? null) ? [
+                    'referral' => [
+                        'urgencyLevel' => $entry['referral']['urgencyLevel'] ?? null,
+                        'receivingRhuId' => $entry['referral']['receivingRhuId'] ?? null,
+                        'reasonForReferral' => trim((string) ($entry['referral']['reasonForReferral'] ?? '')),
+                    ],
+                ] : []),
+            ] : []),
         ];
     }
 

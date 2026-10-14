@@ -16,7 +16,7 @@ import {
   sharedAcknowledgmentErrors,
   shouldRegenerateReferralReason,
 } from "./carePlanWorkspace.js";
-import { MONITORING_STEP, NEXT_STEP, REVIEW_STEP } from "./consultationSteps.js";
+import { MONITORING_STEP, NEXT_STEP, OUTCOME_STEP, REVIEW_STEP } from "./consultationSteps.js";
 
 const registry = {
   monitored_conditions: {
@@ -217,13 +217,16 @@ test("the first continued follow-up links the visit to its source record", () =>
 });
 
 test("Care Plan continues to Monitoring Details only when a form is needed", () => {
-  assert.equal(nextPhaseForwardTarget(NEXT_STEP, ["tb_dots"]), MONITORING_STEP);
-  assert.equal(nextPhaseForwardTarget(NEXT_STEP, []), REVIEW_STEP);
+  assert.equal(nextPhaseForwardTarget(NEXT_STEP, ["tb_dots"]), OUTCOME_STEP);
+  assert.equal(nextPhaseForwardTarget(NEXT_STEP, []), OUTCOME_STEP);
+  assert.equal(nextPhaseForwardTarget(OUTCOME_STEP, ["tb_dots"]), MONITORING_STEP);
+  assert.equal(nextPhaseForwardTarget(OUTCOME_STEP, []), REVIEW_STEP);
   assert.equal(nextPhaseForwardTarget(MONITORING_STEP, ["tb_dots"]), REVIEW_STEP);
-  assert.equal(nextPhaseBackTarget(MONITORING_STEP), NEXT_STEP);
+  assert.equal(nextPhaseBackTarget(MONITORING_STEP), OUTCOME_STEP);
+  assert.equal(nextPhaseBackTarget(OUTCOME_STEP), NEXT_STEP);
   assert.equal(nextPhaseBackTarget(NEXT_STEP), null);
   assert.equal(reviewBackTarget(["tb_dots"]), MONITORING_STEP);
-  assert.equal(reviewBackTarget([]), NEXT_STEP);
+  assert.equal(reviewBackTarget([]), OUTCOME_STEP);
 });
 
 test("review rows list each concern's next action, followed conditions, referral and follow-up", () => {
