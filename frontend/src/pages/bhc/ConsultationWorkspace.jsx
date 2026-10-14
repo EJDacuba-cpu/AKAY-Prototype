@@ -4298,7 +4298,7 @@ export default function ConsultationWorkspace() {
                 <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
                 <p className="mt-1 text-xs text-[#6B7280]">Reason for the visit — symptoms or a service, e.g. Initial prenatal checkup.</p>
               </div>
-              <FieldTextarea label="History of Present Illness (optional)" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
+              <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
             </div>
             </FormSection>
 

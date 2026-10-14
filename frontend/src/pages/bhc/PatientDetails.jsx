@@ -539,8 +539,12 @@ export default function PatientDetails() {
                     patient={patient}
                     patientId={patientId}
                     records={records}
+                    isLoading={recordsLoading}
+                    isError={Boolean(recordsError)}
+                    onRetryRecords={refetchRecords}
                     basePath="/bhc"
                     onViewProgramRecords={handleViewProgramRecords}
+                    onViewRecord={viewRecord}
                   />
                 )}
 

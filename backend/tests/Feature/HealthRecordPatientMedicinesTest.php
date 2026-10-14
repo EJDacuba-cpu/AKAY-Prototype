@@ -62,6 +62,7 @@ class HealthRecordPatientMedicinesTest extends TestCase
             'medicine_name_snapshot' => 'Paracetamol',
             'quantity' => 10,
             'unit' => 'tablets',
+            'dispensed_by' => $this->bhw->id,
             'barangay_health_center_id' => $this->bhc->id,
         ]);
 
@@ -74,6 +75,7 @@ class HealthRecordPatientMedicinesTest extends TestCase
         $this->assertSame('Paracetamol', $medicines[0]['medicine_name_snapshot']);
         $this->assertSame(10, $medicines[0]['quantity']);
         $this->assertSame('tablets', $medicines[0]['unit']);
+        $this->assertSame('Medicines BHW', $medicines[0]['dispenser']['name']);
     }
 
     public function test_patient_filtered_records_list_gives_an_empty_list_when_nothing_was_dispensed(): void

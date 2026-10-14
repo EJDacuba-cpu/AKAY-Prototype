@@ -131,6 +131,7 @@ function normalizeDispensedMedicines(record = {}) {
     unit: item.unit || "",
     remarks: item.remarks || "",
     dateDispensed: item.created_at || item.createdAt || "",
+    dispensedByName: item.dispenser?.name || item.dispensedByName || "",
   }));
 }
 
@@ -1085,7 +1086,16 @@ export async function getHealthRecordById(recordId) {
 
 export async function getHealthRecordsByPatient(patient) {
   const patientId = patient?.id || patient?.patientId || patient;
-  return listRecords({ patient_id: patientId });
+  const records = [];
+  for (let page = 1; ; page += 1) {
+    const query = new URLSearchParams({ patient_id: String(patientId), per_page: "100", page: String(page) });
+    const response = await apiRequest(`/health-records?${query}`);
+    records.push(...unwrapList(response).map(normalizeRecord));
+    const lastPage = Number(response?.data?.last_page) || 1;
+    if (page >= lastPage) break;
+  }
+
+  return records;
 }
 
 export async function createHealthRecord(recordData, role = "bhc", options = {}) {

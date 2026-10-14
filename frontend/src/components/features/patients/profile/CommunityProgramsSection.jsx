@@ -34,6 +34,8 @@ function StatusPill({ status }) {
 export default function CommunityProgramsSection({
   enrollments = [],
   isLoading = false,
+  isError = false,
+  onRetry,
   onEnroll,
   onComplete,
   onWithdraw,
@@ -84,7 +86,11 @@ export default function CommunityProgramsSection({
         </button>
       }
     >
-      {isLoading ? (
+      {isError ? (
+        <div role="alert" className="py-3 text-sm text-red-700">
+          Could not load community programs. <button type="button" onClick={() => onRetry?.()} className="font-semibold underline">Retry</button>
+        </div>
+      ) : isLoading ? (
         <EmptyNote>Loading community programs...</EmptyNote>
       ) : enrollments.length === 0 ? (
         <EmptyNote>Not enrolled in any community programs.</EmptyNote>

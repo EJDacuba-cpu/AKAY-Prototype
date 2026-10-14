@@ -1,5 +1,7 @@
 import { ChevronRight } from "lucide-react";
 
+import { Button } from "../../../ui/button";
+import { Card } from "../../../ui/card";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 const STATUS_TONE_STYLES = {
@@ -17,7 +19,7 @@ const FLAG_TONE_STYLES = {
 function StatusBadge({ status, tone = "neutral" }) {
   return (
     <span
-      className={`inline-flex items-center rounded-none border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex items-center rounded-[3px] border px-2 py-0.5 text-[11px] font-semibold ${
         STATUS_TONE_STYLES[tone] || STATUS_TONE_STYLES.neutral
       }`}
     >
@@ -48,14 +50,20 @@ function formatFactValue(fact) {
  * TB), built from `getCareTracking` entries in utils/careTracking.js. Purely
  * presentational - all status logic already happened upstream.
  */
-export default function CareTrackingCard({ entry, onViewRecords, onAction }) {
+export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpen, selected = false }) {
   const hasRecords = entry.records.length > 0;
 
   return (
-    <div className="flex h-full flex-col rounded-card border border-[#E5E7EB] bg-white p-4 shadow-card">
+    <Card className={`flex h-full min-w-0 flex-col rounded-none p-4 shadow-none ${selected ? "border-red-300" : "border-[#E5E7EB]"}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-900 font-sans!">{entry.label}</h3>
-        <StatusBadge status={entry.status} tone={entry.statusTone} />
+        <div>
+          <span className="text-xs font-medium text-[#6B7280]">{entry.key === "tb" ? "Disease" : "Program"}</span>
+          <h3 className="mt-2 text-sm font-semibold text-gray-900 font-sans!">{entry.label}</h3>
+        </div>
+        <StatusBadge
+          status={entry.key === "maternal" && entry.status === "Prenatal" ? "Active" : entry.status}
+          tone={entry.key === "maternal" && entry.status === "Prenatal" ? "success" : entry.statusTone}
+        />
       </div>
 
       {entry.facts.length > 0 && (
@@ -98,28 +106,29 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction }) {
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-2">
         {entry.action ? (
-          <button
+          <Button
             type="button"
             onClick={() => onAction?.(entry.action, entry)}
-            className="inline-flex h-7 items-center rounded-none bg-red-600 px-2.5 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
+            size="sm"
+            className="h-7 rounded-none px-2.5 text-xs"
           >
             {entry.action.label}
-          </button>
+          </Button>
         ) : (
           <span />
         )}
 
         {hasRecords && (
-          <button
-            type="button"
-            onClick={() => onViewRecords?.(entry.key)}
-            className="inline-flex items-center gap-0.5 rounded-sm text-xs font-medium text-red-600 transition hover:text-red-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
-          >
-            View records
-            <ChevronRight size={12} aria-hidden="true" />
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="link" size="sm" onClick={() => onOpen?.(entry.key)} aria-pressed={selected} className="h-auto rounded-none p-0 text-xs no-underline hover:underline">
+              Open Tracking <ChevronRight size={12} aria-hidden="true" />
+            </Button>
+            <Button type="button" variant="link" size="sm" onClick={() => onViewRecords?.(entry.key)} className="h-auto rounded-none p-0 text-xs text-slate-500 no-underline hover:underline">
+              View records
+            </Button>
+          </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

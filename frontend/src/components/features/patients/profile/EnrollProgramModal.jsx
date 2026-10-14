@@ -17,6 +17,8 @@ export default function EnrollProgramModal({
   open,
   programs = [],
   programsLoading = false,
+  programsError = false,
+  onRetryPrograms,
   enrolledProgramIds = [],
   onEnroll,
   onClose,
@@ -84,7 +86,7 @@ export default function EnrollProgramModal({
             variant="primary"
             primary
             onClick={handleSubmit}
-            disabled={submitting || programsLoading || !availablePrograms.length}
+            disabled={submitting || programsLoading || programsError || !availablePrograms.length}
           >
             {submitting && <ButtonSpinner />}
             {submitting ? "Enrolling..." : "Enroll"}
@@ -92,7 +94,11 @@ export default function EnrollProgramModal({
         </>
       }
     >
-      {programsLoading ? (
+      {programsError ? (
+        <p role="alert" className="text-[13px] text-red-700">
+          Could not load published programs. <button type="button" onClick={() => onRetryPrograms?.()} className="font-semibold underline">Retry</button>
+        </p>
+      ) : programsLoading ? (
         <p className="text-[13px] text-slate-500">Loading published programs...</p>
       ) : availablePrograms.length === 0 ? (
         <p className="text-[13px] text-slate-500">
