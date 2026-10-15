@@ -21,7 +21,7 @@ export function FamilySelect({ label, error, options, required = true, ...props 
   </FamilyField>;
 }
 
-export function PatientPicker({ patients, selectedId, onSelect, error, label = "Find registered patient" }) {
+export function PatientPicker({ patients, selectedId, onSelect, error, label = "Find registered patient", describe, emptyText = "No matching unlinked patients." }) {
   const id = useId();
   const [query, setQuery] = useState("");
   const results = patients.filter(patient => `${patientName(patient)} ${patient.id} ${addressText(patient)}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -34,11 +34,14 @@ export function PatientPicker({ patients, selectedId, onSelect, error, label = "
     </div>
     {selected && <p className="flex items-center gap-2 text-sm"><Check size={16} aria-hidden="true" />Selected: {patientName(selected)}</p>}
     <div className="max-h-64 overflow-y-auto divide-y divide-neutral-200 border-y border-neutral-200" role="group" aria-label={label}>
-      {results.map(patient => <label key={patient.id} className="flex cursor-pointer items-start gap-3 px-2 py-3 hover:bg-neutral-50">
-        <input type="radio" name={id} value={patient.id} checked={selectedId === patient.id} onChange={() => onSelect(patient.id)} className="mt-1 accent-red-700" />
-        <span className="min-w-0 text-sm"><span className="block font-medium">{patientName(patient)}</span><span className="mt-1 block text-xs text-neutral-500">{patient.birthDate || "Date of birth not recorded"} · {addressText(patient)}</span></span>
-      </label>)}
-      {!results.length && <p className="py-6 text-sm text-neutral-500" role="status">No matching unlinked patients.</p>}
+      {results.map(patient => {
+        const { disabled = false, note = "" } = describe?.(patient) || {};
+        return <label key={patient.id} className={`flex items-start gap-3 px-2 py-3 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-neutral-50"}`}>
+          <input type="radio" name={id} value={patient.id} checked={selectedId === patient.id} disabled={disabled} onChange={() => onSelect(patient.id)} className="mt-1 accent-red-700" />
+          <span className="min-w-0 text-sm"><span className="block font-medium">{patientName(patient)}</span><span className="mt-1 block text-xs text-neutral-500">{patient.birthDate || "Date of birth not recorded"} · {addressText(patient)}</span>{note && <span className="mt-1 block text-xs text-neutral-500">{note}</span>}</span>
+        </label>;
+      })}
+      {!results.length && <p className="py-6 text-sm text-neutral-500" role="status">{emptyText}</p>}
     </div>
   </FamilyField>;
 }
