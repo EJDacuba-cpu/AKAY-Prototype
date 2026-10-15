@@ -38,6 +38,8 @@ class HealthRecord extends Model
         'treatment_notes',
         'medical_history',
         'background_changes',
+        'informant',
+        'similar_illness',
         'notes',
         'encoded_by', 'assessed_by', 'finalized_by', 'finalized_at', 'items_planned',
     ];
@@ -95,6 +97,8 @@ class HealthRecord extends Model
         'body_findings' => 'array',
         'diagnoses' => 'array',
         'background_changes' => 'array',
+        'informant' => 'array',
+        'similar_illness' => 'array',
         'needs_referral' => 'boolean',
         'items_planned' => 'array',
         'finalized_at' => 'datetime',
