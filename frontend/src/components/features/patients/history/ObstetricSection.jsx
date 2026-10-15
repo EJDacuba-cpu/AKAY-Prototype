@@ -1,0 +1,113 @@
+import {
+  DELIVERY_TYPES,
+  MENSTRUAL_SYMPTOMS,
+  PREGNANCY_OUTCOMES,
+  gravidaPara,
+  sectionVisibility,
+} from "../../../../utils/patientHistory";
+import {
+  Block,
+  CheckboxField,
+  CollapsibleBlock,
+  FieldGrid,
+  NumberField,
+  SelectField,
+  TextField,
+} from "./HistoryFields";
+import ListEditor from "./ListEditor";
+
+const STATUSES = [
+  { value: "menstruating", label: "Menstruating" },
+  { value: "menopause", label: "Menopause" },
+];
+const AMOUNTS = [
+  { value: "light", label: "Light" },
+  { value: "moderate", label: "Moderate" },
+  { value: "heavy", label: "Heavy" },
+];
+const REGULARITY = [
+  { value: "regular", label: "Regular" },
+  { value: "irregular", label: "Irregular" },
+];
+
+const PREGNANCY_COLUMNS = [
+  { key: "year", label: "Year", type: "number", min: 1900, max: 2100 },
+  { key: "outcome", label: "Outcome", type: "select", options: PREGNANCY_OUTCOMES, emptyLabel: "Outcome not recorded" },
+  { key: "delivery", label: "Delivery", type: "select", options: DELIVERY_TYPES, emptyLabel: "Delivery not recorded" },
+  { key: "place", label: "Place", type: "text" },
+  { key: "note", label: "Note", type: "text" },
+];
+const PREGNANCY_NEW = { year: null, outcome: "", delivery: "", place: "", note: "" };
+
+/**
+ * Section V. `value` is the obstetric slice { obstetric }. G/P is worked out
+ * from the pregnancy list and shown read-only. When `patient` is given, the
+ * section starts collapsed (with a Show button) below the age that
+ * sectionVisibility() opens it; the caller leaves it out for non-female patients.
+ */
+export default function ObstetricSection({ value, onChange, patient, today = new Date() }) {
+  const obstetric = value?.obstetric || {};
+  const symptoms = Array.isArray(obstetric.symptoms) ? obstetric.symptoms : [];
+  const pregnancies = Array.isArray(obstetric.pregnancies) ? obstetric.pregnancies : [];
+  const { gravida, para } = gravidaPara(pregnancies);
+  const collapsed = patient ? sectionVisibility(patient, today).obstetric === "collapsed" : false;
+
+  const set = (patch) => onChange({ ...value, obstetric: { ...obstetric, ...patch } });
+
+  function changeStatus(status) {
+    if (status === "menstruating") set({ menstrualStatus: status, menopauseAge: null });
+    else if (status === "menopause") {
+      set({ menstrualStatus: status, intervalDays: null, durationDays: null, amount: "", regularity: "" });
+    } else set({ menstrualStatus: status });
+  }
+
+  function toggleSymptom(symptom, checked) {
+    set({ symptoms: checked ? [...symptoms, symptom] : symptoms.filter((item) => item !== symptom) });
+  }
+
+  return (
+    <CollapsibleBlock title="Obstetric & Menstrual History" collapsed={collapsed}>
+      <div className="space-y-5">
+        <Block title="Menstrual Cycle">
+          <FieldGrid>
+            <NumberField label="Age at first period" min={6} max={25} value={obstetric.menarcheAge} onChange={(next) => set({ menarcheAge: next })} />
+            <SelectField label="Menstrual status" value={obstetric.menstrualStatus} options={STATUSES} emptyLabel="Not recorded" onChange={changeStatus} />
+            {obstetric.menstrualStatus === "menopause" ? (
+              <NumberField label="Age at menopause" min={30} max={70} value={obstetric.menopauseAge} onChange={(next) => set({ menopauseAge: next })} />
+            ) : (
+              <>
+                <NumberField label="Cycle interval (days)" min={10} max={90} value={obstetric.intervalDays} onChange={(next) => set({ intervalDays: next })} />
+                <NumberField label="Duration (days)" min={1} max={15} value={obstetric.durationDays} onChange={(next) => set({ durationDays: next })} />
+                <SelectField label="Amount" value={obstetric.amount} options={AMOUNTS} emptyLabel="Not recorded" onChange={(next) => set({ amount: next })} />
+                <SelectField label="Regularity" value={obstetric.regularity} options={REGULARITY} emptyLabel="Not recorded" onChange={(next) => set({ regularity: next })} />
+              </>
+            )}
+          </FieldGrid>
+        </Block>
+
+        <Block title="Menstrual Symptoms">
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {MENSTRUAL_SYMPTOMS.map((symptom) => (
+              <CheckboxField key={symptom.value} label={symptom.label} checked={symptoms.includes(symptom.value)} onChange={(next) => toggleSymptom(symptom.value, next)} />
+            ))}
+          </div>
+          <TextField label="Symptom notes" value={obstetric.symptomNotes} onChange={(next) => set({ symptomNotes: next })} />
+        </Block>
+
+        <Block title="Pregnancies">
+          <ListEditor
+            label="pregnancy"
+            addLabel="Add pregnancy"
+            items={pregnancies}
+            columns={PREGNANCY_COLUMNS}
+            newItem={PREGNANCY_NEW}
+            onChange={(next) => set({ pregnancies: next })}
+          />
+          <p className="text-[12.5px] text-gray-700">
+            G{gravida} P{para} <span className="text-gray-500">(worked out from the list above)</span>
+          </p>
+        </Block>
+      </div>
+    </CollapsibleBlock>
+  );
+}
