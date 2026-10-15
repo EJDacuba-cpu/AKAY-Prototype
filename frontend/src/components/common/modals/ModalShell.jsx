@@ -30,6 +30,7 @@ export default function ModalShell({
   ariaDescribedBy,
   hideClose = false,
   printHidden = false,
+  appearance = "default",
 }) {
   const generatedTitleId = useId();
   const generatedDescriptionId = useId();
@@ -147,7 +148,7 @@ export default function ModalShell({
         } ${panelClassName}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex shrink-0 items-start gap-3 bg-[#B91C1C] px-5 py-3.5 text-white">
+        <header className={`flex shrink-0 items-start gap-3 px-5 py-3.5 ${appearance === "plain" ? "border-b border-gray-200 bg-white text-gray-950" : "bg-[#B91C1C] text-white"}`}>
           {icon && (
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/15 text-white">
               {icon}
@@ -157,7 +158,7 @@ export default function ModalShell({
             {title && (
               <h2
                 id={titleId}
-                className="font-sans text-sm font-semibold leading-5 text-white"
+                className="font-sans text-sm font-semibold leading-5 text-inherit"
               >
                 {title}
               </h2>
@@ -177,7 +178,7 @@ export default function ModalShell({
               onClick={onClose}
               disabled={closeDisabled}
               aria-label="Close modal"
-              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 disabled:pointer-events-none disabled:opacity-40"
+              className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md transition focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-40 ${appearance === "plain" ? "text-gray-500 hover:bg-gray-100 hover:text-black focus:ring-red-700/30" : "text-white/80 hover:bg-white/15 hover:text-white focus:ring-white/40"}`}
             >
               <X size={15} strokeWidth={2.2} />
             </button>

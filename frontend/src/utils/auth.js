@@ -5,13 +5,14 @@ import {
   restoreSession,
 } from "../services/authService";
 import { clearAuthSession, getAuthToken } from "../services/apiClient";
+import { withFamilyAccess } from "../services/mockFamilyAccess";
 
 export function loginUser(email, password) {
   return loginWithApi(email, password);
 }
 
 export function getCurrentUser() {
-  return getUser();
+  return withFamilyAccess(getUser());
 }
 
 export function getStoredAuthToken() {

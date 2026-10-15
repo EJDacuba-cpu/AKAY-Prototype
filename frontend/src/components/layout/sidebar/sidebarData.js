@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileText,
   HeartHandshake,
+  House,
   KeyRound,
   LayoutGrid,
   QrCode,
@@ -44,7 +45,8 @@ export const menuByRole = {
       section: "Management",
       items: [{ label: "Users", path: "/admin/users", icon: Users },
         { label: "Facilities", path: "/admin/facilities", icon: Boxes },
-        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays }],
+        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays },
+        { label: "Families", path: "/admin/families", icon: House }],
     },
     {
       section: "Accountability",
@@ -68,6 +70,7 @@ export const menuByRole = {
       section: "Patient Care",
       items: [
         { label: "Patients", path: "/bhc/patients", icon: Users },
+        { label: "Families", path: "/bhc/families", icon: House },
         {
           label: "Follow-ups",
           path: "/bhc/follow-ups",
@@ -113,6 +116,7 @@ export const menuByRole = {
       section: "Clinical Records",
       items: [
         { label: "Patients", path: "/rhu/patients", icon: Users },
+        { label: "Families", path: "/rhu/families", icon: House },
         {
           label: "Health Records",
           path: "/rhu/health-records",

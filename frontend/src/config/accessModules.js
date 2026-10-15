@@ -1,6 +1,8 @@
 // One entry per permission-gated module. `permission` is what the backend's EnforceActionPermissions
 // asks for to read it; `skeleton` is the PageSkeletonLoader variant blurred behind a locked page.
 export const ACCESS_MODULES = {
+  families: { label: "Families", permission: "families.view", skeleton: "table" },
+  familiesManage: { label: "Manage Families", permission: "families.manage", skeleton: "form" },
   patients: { label: "Patients", permission: "patients.register", skeleton: "table" },
   patientDirectory: { label: "Patients", permission: "patients.register", skeleton: "table" },
   consultations: { label: "Consultations", permission: "consultations.encode", skeleton: "form" },

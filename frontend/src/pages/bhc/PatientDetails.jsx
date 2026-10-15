@@ -44,6 +44,7 @@ import {
   validatePatientForm,
 } from "../../utils/patientProfile";
 import { errorStateVariant } from "../../utils/errorStateVariant";
+import { PatientRegistrationPage } from "./AddPatient";
 
 // The profile fills the whole content area, leaving only a 10px margin.
 const PROFILE_CONTENT_CLASS = "p-[10px] pb-[max(10px,env(safe-area-inset-bottom))]";
@@ -108,6 +109,16 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
  * Patient Background tab; they are updated only inside a consultation.
  */
 export default function PatientDetails() {
+  const { patientId } = useParams();
+  // Mock records stay entirely in the Phase 1 registration editor. Never pass
+  // their IDs into live profile queries, clinical actions or updatePatient.
+  if (patientId?.startsWith("mock-patient-")) {
+    return <PatientRegistrationPage key={patientId} patientId={patientId} />;
+  }
+  return <LivePatientDetails />;
+}
+
+function LivePatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const canRegister = (getCurrentUser()?.permissions || []).includes("patients.register");
   const { patientId } = useParams();

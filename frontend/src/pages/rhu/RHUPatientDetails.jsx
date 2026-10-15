@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
+import { PatientRegistrationPage } from "../bhc/AddPatient";
 import {
   ArrowLeft,
   ClipboardList,
@@ -50,6 +51,14 @@ const keyframes = `
 `;
 
 export default function RHUPatientDetails() {
+  const { patientId } = useParams();
+  if (patientId?.startsWith("mock-patient-")) {
+    return <PatientRegistrationPage key={patientId} patientId={patientId} role="rhu" basePath="/rhu" />;
+  }
+  return <LiveRHUPatientDetails />;
+}
+
+function LiveRHUPatientDetails() {
   const { patientId } = useParams();
   const [activeTab, setActiveTab] = useState("patient");
   const [showAllRecords, setShowAllRecords] = useState(false);

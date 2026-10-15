@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   
@@ -9,7 +8,6 @@ import {
   ChevronDown,
   ClipboardList,
   House,
-  LoaderCircle,
   MapPinHouse,
   Users,
   UserPlus,
@@ -17,12 +15,9 @@ import {
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  ConfirmationModal,
   ButtonSpinner,
-  ConnectionIssueModal,
   DatePickerField,
   FormInput,
-  SuccessModal,
   TimePickerField,
 } from "../../components/common";
 
@@ -39,23 +34,34 @@ import {
   PhilippineContactInput,
 } from "../../components/features/patients/PatientFormComponents";
 
-import { createBhcPatient, getHousehold } from "../../services/patientService";
+import { Button } from "../../components/ui/button";
+import ModalShell from "../../components/common/modals/ModalShell";
+import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
+import useMockFamilyRegistry from "../../hooks/useMockFamilyRegistry";
+import { registrationDrafts, registrationPath } from "../../services/patientRegistrationDrafts";
+import {
+  ADDRESS_FIELDS, connectionForPatient, householdForConnection, patientName,
+  saveMockPatient, stageConnection, validateConnection, validateHeadReplacement,
+} from "../../services/mockFamilyRegistry";
+import toast from "react-hot-toast";
+import "../../components/features/patients/registration-form.css";
 import {
   PARENT_FIELDS,
-  changeFamilySerial,
   linkParent,
   memberAgeLabel,
   parentRoleFor,
   unlinkParent,
 } from "../../utils/householdParents";
-import { isConnectionError } from "../../services/apiClient";
-import { queryKeys } from "../../utils/queryKeys";
-import { buildPatientConsultationPath } from "../../utils/consultationRoute";
 
-// Animation Utility
-const stagger = (i) => ({
-  animationDelay: `${i * 80}ms`,
-});
+// Flat bordered panel used for each registration section.
+function FormPanel({ icon, title, description, children }) {
+  return (
+    <section className="min-w-0 border border-gray-200 bg-white p-4">
+      <SectionHeader icon={icon} title={title} description={description} />
+      {children}
+    </section>
+  );
+}
 
 const CIVIL_STATUS_OPTIONS = [
   { value: "Single", label: "Single" },
@@ -129,19 +135,34 @@ const INITIAL_FORM_STATE = {
   nhtsStatus: "",
 };
 
+function registrationForm(patient) {
+  return {
+    ...patient,
+    ...Object.fromEntries(Object.entries(INITIAL_FORM_STATE).map(([key, initial]) => [key, patient?.[key] ?? initial])),
+  };
+}
+
 export function PatientRegistrationPage({
   role = "bhc",
   basePath = "/bhc",
-  createPatient = createBhcPatient,
-  queryRole = "bhc",
+  patientId,
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const registry = useMockFamilyRegistry();
+  const draftPath = registrationPath(basePath, patientId);
+  const [restoredDraft] = useState(() => registrationDrafts.read(draftPath));
+  const [createdPatientId, setCreatedPatientId] = useState(restoredDraft?.createdPatientId || "");
+  const editingPatientId = patientId || createdPatientId || undefined;
+  const savedPatient = registry.patients.find((patient) => patient.id === editingPatientId);
+  const savedConnection = connectionForPatient(savedPatient);
+  const [householdConnection, setHouseholdConnection] = useState(() => restoredDraft ? restoredDraft.householdConnection : connectionForPatient(savedPatient));
+  const [headReplacement, setHeadReplacement] = useState(restoredDraft?.headReplacement || null);
+  const [householdReviewPending, setHouseholdReviewPending] = useState(false);
   const patientsPath = `${basePath}/patients`;
-  const pageTitle = "Add New Patient";
-  const dashboardTitle = "Add Patient";
-  const pageDescription = systemDescription;
+  const pageTitle = patientId ? "Edit Patient" : "Add New Patient";
+  const dashboardTitle = patientId ? "Edit Patient" : "Add Patient";
+  const pageDescription = patientId ? "Update patient registration details." : systemDescription;
   const backPath = patientsPath;
   const backLabel = "Back to Patients";
 
@@ -150,11 +171,18 @@ export function PatientRegistrationPage({
     confirm: false,
     success: false,
   });
-  const [connectionIssue, setConnectionIssue] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [createdPatientId, setCreatedPatientId] = useState("");
-  const [form, setForm] = useState(INITIAL_FORM_STATE);
-  const [fieldErrors, setFieldErrors] = useState({});
+  const [form, setForm] = useState(() => restoredDraft?.form || registrationForm(savedPatient));
+  const [fieldErrors, setFieldErrors] = useState(restoredDraft?.fieldErrors || {});
+  useEffect(() => {
+    // Keep a handoff current after browser Back, so Forward to creation uses
+    // any patient edits made since returning. Never publish a saved record.
+    if (!registrationDrafts.read(draftPath)) return;
+    registrationDrafts.write(draftPath, {
+      form, householdConnection, headReplacement, createdPatientId,
+      patientId: editingPatientId, fieldErrors,
+    });
+  }, [draftPath, form, householdConnection, headReplacement, createdPatientId, editingPatientId, fieldErrors]);
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
   const ageInMonths = calculateAgeInMonths(form.birthDate);
@@ -179,35 +207,19 @@ export function PatientRegistrationPage({
     String(currentDate.getMonth() + 1).padStart(2, "0"),
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
-  // The Family Serial Number is the household: once typed, its registered
-  // members are listed so the parents can be linked from them.
-  const typedSerial = form.familySerialNumber.trim();
-  const lookupSerial = useDebouncedValue(typedSerial, 400);
-  const {
-    data: householdMembers = [],
-    isFetching: householdFetching,
-    isError: householdFailed,
-  } = useQuery({
-    queryKey: queryKeys.household(queryRole, lookupSerial),
-    queryFn: () => getHousehold(lookupSerial),
-    enabled: isChildRegistration && lookupSerial !== "",
-    staleTime: 30_000,
-  });
-  const householdStatus = !typedSerial
-    ? "idle"
-    : typedSerial !== lookupSerial || householdFetching
-      ? "searching"
-      : householdFailed
-        ? "error"
-        : householdMembers.length > 0
-          ? "found"
-          : "new";
+  const selectedHousehold = householdForConnection(registry, householdConnection);
+  const householdMembers = registry.patients.filter((patient) =>
+    patient.id !== editingPatientId && (householdConnection?.kind === "new"
+      ? patient.id === householdConnection.headPatientId
+      : Boolean(selectedHousehold && patient.householdId === selectedHousehold.id)),
+  ).map((patient) => ({ ...patient, fullName: patientName(patient) }));
 
 
   // --- HANDLERS ---
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "familySerialNumber" || (householdConnection && ADDRESS_FIELDS.includes(name))) return;
     setFieldErrors((prev) => ({ ...prev, [name]: "" }));
 
     setForm((prev) => {
@@ -276,7 +288,6 @@ function handleBirthDateChange(valueOrEvent) {
     civilStatus: nextIsEpiTarget ? "Single" : prev.civilStatus,
     occupation: nextIsEpiTarget ? "" : prev.occupation,
     nhtsStatus: nextIsEpiTarget ? "" : prev.nhtsStatus,
-    familySerialNumber: nextIsChild ? prev.familySerialNumber : "",
     spouseName:
       !nextIsEpiTarget && prev.civilStatus === "Married"
         ? prev.spouseName
@@ -306,9 +317,24 @@ function handleBirthDateChange(valueOrEvent) {
       [name]: value,
     }));
   }
-  function handleFamilySerialChange(event) {
-    const { value } = event.target;
-    setForm((prev) => changeFamilySerial(prev, value));
+  function handleHouseholdChange(connection, replacement) {
+    setHouseholdConnection(connection);
+    setHeadReplacement(replacement || null);
+    setForm((current) => stageConnection(current, registry, connection));
+    setFieldErrors((current) => ({ ...current, familySerialNumber: "", relationshipToHouseholdHead: "", ...Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, ""])) }));
+  }
+
+  function handleCreateHousehold() {
+    registrationDrafts.write(draftPath, {
+      form, householdConnection, headReplacement, createdPatientId,
+      patientId: editingPatientId, fieldErrors,
+    });
+    navigate(`${draftPath}/household/new`);
+  }
+
+  function cancelRegistration() {
+    registrationDrafts.discard(draftPath);
+    navigate(backPath);
   }
 
   function handleUseAsParent(role, member) {
@@ -327,6 +353,11 @@ function handleBirthDateChange(valueOrEvent) {
 
     function validateForm() {
     const nextErrors = {};
+    if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
+    const householdErrors = { ...validateConnection(registry, householdConnection, editingPatientId), ...validateHeadReplacement(registry, editingPatientId, householdConnection, headReplacement) };
+    const { relationship, ...otherHouseholdErrors } = householdErrors;
+    if (relationship) nextErrors.relationshipToHouseholdHead = relationship;
+    if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
 
     if (!form.firstName.trim()) nextErrors.firstName = "First name is required.";
     if (!form.lastName.trim()) nextErrors.lastName = "Last name is required.";
@@ -423,41 +454,54 @@ function handleBirthDateChange(valueOrEvent) {
       spouseOccupation: showHusbandInformation
         ? form.spouseOccupation || null
         : null,
-      id: Date.now().toString(),
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
   }
 
-  const handleSubmit = async () => {
-    if (saving) return;
+  const handleSubmit = () => {
+    if (saving || !validateForm()) {
+      setModals((current) => ({ ...current, confirm: false }));
+      return;
+    }
 
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const saved = await createPatient(patientData);
-      const nextId =
-        saved?.id || saved?.details?.id || saved?.patient?.id || patientData.id;
-
-      queryClient.invalidateQueries({ queryKey: queryKeys.patients(queryRole) });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.dashboardSummary(queryRole),
-      });
-      setCreatedPatientId(nextId);
+      const saved = saveMockPatient(patientData, householdConnection, editingPatientId, headReplacement);
+      registrationDrafts.discard(draftPath);
+      setCreatedPatientId(saved.id);
+      setForm(registrationForm(saved));
+      setHouseholdConnection(connectionForPatient(saved));
+      setHeadReplacement(null);
       setModals({ ...modals, confirm: false, success: true });
+      toast.success("Patient saved in this mock session.");
     } catch (error) {
-      if (isConnectionError(error)) {
-        setConnectionIssue({
-          title: error.isTimeout ? "Request Timed Out" : "Connection Lost",
-          message:
-            error?.message ||
-            "The server did not confirm this registration. Your form remains available while this tab stays open.",
-        });
-      }
+      setFieldErrors((current) => ({ ...current, familySerialNumber: error.message }));
+      setModals((current) => ({ ...current, confirm: false }));
     } finally {
       setSaving(false);
     }
   };
+
+  function registerAnother() {
+    registrationDrafts.discard(draftPath);
+    registrationDrafts.discard(registrationPath(basePath));
+    setForm({ ...INITIAL_FORM_STATE });
+    setHouseholdConnection(null);
+    setHeadReplacement(null);
+    setCreatedPatientId("");
+    setFieldErrors({});
+    setModals({ confirm: false, success: false });
+    navigate(`${patientsPath}/add`);
+  }
+
+  if (patientId && !savedPatient) return (
+    <DashboardLayout role={role} title="Edit Patient">
+      <p className="text-sm text-gray-900">This patient is no longer available in the mock session.</p>
+      <Link to={`${patientsPath}/add`} className="mt-3 inline-block text-sm text-red-700">Register a patient</Link>
+    </DashboardLayout>
+  );
 
   // --- RENDER ---
 
@@ -465,23 +509,21 @@ function handleBirthDateChange(valueOrEvent) {
     <>
       <DashboardLayout role={role} title={dashboardTitle}>
         {/* Header */}
-        <div
-          className="anim-fade-up mb-6 ml-0 mr-auto w-full max-w-7xl min-w-0"
-          style={stagger(0)}
-        >
+        <div className="mb-4 ml-0 mr-auto w-full max-w-7xl min-w-0">
           <div className="flex flex-col gap-2">
             <Link
               to={backPath}
-              className="inline-flex w-fit items-center gap-2 text-[13px] font-semibold text-[#B91C1C] transition-all duration-200 hover:gap-2.5 hover:text-[#991B1B]"
+              onClick={() => registrationDrafts.discard(draftPath)}
+              className="inline-flex w-fit items-center gap-2 text-[13px] font-semibold text-red-600 hover:text-red-800"
             >
               <ArrowLeft size={16} />
               {backLabel}
             </Link>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-[#1A1A1A]">
+              <h1 className="text-lg font-bold tracking-tight text-gray-900">
                 {pageTitle}
               </h1>
-              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-[#6B7280]">
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-600">
                 {pageDescription}
               </p>
             </div>
@@ -491,412 +533,348 @@ function handleBirthDateChange(valueOrEvent) {
         <form
           noValidate
           onSubmit={handleFormSubmit}
-          className="ml-0 mr-auto w-full max-w-7xl min-w-0"
+          className="ehr-form ml-0 mr-auto w-full max-w-7xl min-w-0"
         >
-          <div className="rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
-          {/* SECTION 1: BASIC INFO */}
-          <section
-            className="anim-fade-up w-full min-w-0 space-y-4 pb-6"
-            style={stagger(1)}
-          >
-          <SectionHeader
-            icon={UserPlus}
-            title="Basic Information"
-            description="Personal identity and demographic details."
-          />
+          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            {/* LEFT COLUMN */}
+            <div className="min-w-0 space-y-4">
+              <FormPanel
+                icon={UserPlus}
+                title="Personal Information"
+                description="Personal identity and demographic details."
+              >
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <FormInput
+                    label="First Name"
+                    name="firstName"
+                    value={form.firstName}
+                    onChange={handleChange}
+                    error={fieldErrors.firstName}
+                    required
+                  />
+                  <FormInput
+                    label="Middle Name"
+                    name="middleName"
+                    value={form.middleName}
+                    onChange={handleChange}
+                  />
+                  <FormInput
+                    label="Last Name"
+                    name="lastName"
+                    value={form.lastName}
+                    onChange={handleChange}
+                    error={fieldErrors.lastName}
+                    required
+                  />
 
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FormInput
-                label="First Name"
-                name="firstName"
-                value={form.firstName}
-                onChange={handleChange}
-                error={fieldErrors.firstName}
-                required
-              />
-              <FormInput
-                label="Middle Name"
-                name="middleName"
-                value={form.middleName}
-                onChange={handleChange}
-              />
-              <FormInput
-                label="Last Name"
-                name="lastName"
-                value={form.lastName}
-                onChange={handleChange}
-                error={fieldErrors.lastName}
-                required
-              />
+                  <DatePickerField
+                    label="Date of Birth"
+                    name="birthDate"
+                    value={form.birthDate}
+                    mode="birthdate"
+                    maxDate={todayIso}
+                    disableFuture
+                    onChange={handleBirthDateChange}
+                    error={fieldErrors.birthDate}
+                    required
+                  />
+                  <FormInput
+                    label="Age"
+                    name="age"
+                    type="text"
+                    value={ageDisplay}
+                    readOnly
+                    helperText="Auto-calculated from date of birth."
+                  />
 
-              <DatePickerField
-                label="Date of Birth"
-                name="birthDate"
-                value={form.birthDate}
-                mode="birthdate"
-                maxDate={todayIso}
-                disableFuture
-                onChange={handleBirthDateChange}
-                error={fieldErrors.birthDate}
-                required
-              />
-              <FormInput
-                label="Age"
-                name="age"
-                type="text"
-                value={ageDisplay}
-                readOnly
-                className="bg-gray-50"
-              />
+                  <SexRadioGroup
+                    label="Sex"
+                    name="sex"
+                    value={form.sex}
+                    onChange={handleSelectChange}
+                    error={fieldErrors.sex}
+                    required
+                  />
+                </div>
+              </FormPanel>
 
-              <SexRadioGroup
-                label="Sex"
-                name="sex"
-                value={form.sex}
-                onChange={handleSelectChange}
-                error={fieldErrors.sex}
-                required
-              />
-            </div>
-          </section>
-
-          {showGeneralProfileFields && (
-            <section
-              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-              style={stagger(2)}
-            >
-              <SectionHeader
+              <FormPanel
                 icon={ClipboardList}
                 title="Socio-Demographic Information"
                 description="Profile and household background details used for reporting."
-              />
-
-              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <ModernSelect
-                  label="Civil Status"
-                  name="civilStatus"
-                  value={form.civilStatus}
-                  onChange={handleSelectChange}
-                  options={CIVIL_STATUS_OPTIONS}
-                  placeholder="Select civil status"
-                  error={fieldErrors.civilStatus}
-                  required={hasBirthDate}
-                />
-
-                <div>
-                  <FormInput
-                    label="Occupation"
-                    name="occupation"
-                    value={form.occupation}
-                    onChange={handleChange}
-                    placeholder="Select or type occupation"
-                    list="occupation-options"
-                    error={fieldErrors.occupation}
-                  />
-
-                  <datalist id="occupation-options">
-                    {OCCUPATION_OPTIONS.map((occupation) => (
-                      <option key={occupation.value} value={occupation.value} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <NhtsRadioGroup
-                  label="NHTS Status"
-                  name="nhtsStatus"
-                  value={form.nhtsStatus}
-                  onChange={handleSelectChange}
-                  error={fieldErrors.nhtsStatus}
-                />
-
-                {!isChildRegistration && (
-                  <FormInput
-                    label="Family Serial Number"
-                    name="familySerialNumber"
-                    value={form.familySerialNumber}
-                    onChange={handleChange}
-                    placeholder="Optional household serial"
-                  />
-                )}
-              </div>
-            </section>
-          )}
-
-          {showHusbandInformation && (
-            <section
-              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-              style={stagger(2)}
-            >
-              <SectionHeader
-                icon={Users}
-                title="Husband Information"
-                description="Additional husband details for married adult patients."
-              />
-
-              <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <FormInput
-                  label="Husband Name"
-                  name="spouseName"
-                  value={form.spouseName}
-                  onChange={handleChange}
-                />
-                <FormInput
-                  label="Husband Occupation"
-                  name="spouseOccupation"
-                  value={form.spouseOccupation}
-                  onChange={handleChange}
-                />
-              </div>
-            </section>
-          )}
-
-          {/* SECTION 2: CONTACT & IDENTIFICATION */}
-          <section
-            className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-            style={stagger(3)}
-          >
-            <SectionHeader
-              icon={ClipboardList}
-              title="Contact & Identification"
-              description="Contact details and PhilHealth membership information."
-            />
-
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <PhilippineContactInput
-                label="Contact Number"
-                name="contactNumber"
-                value={form.contactNumber}
-                onChange={handleChange}
-              />
-
-              <PhilHealthRadioGroup
-                label="PhilHealth Membership"
-                name="philHealthStatus"
-                value={form.philHealthStatus}
-                onChange={handleSelectChange}
-                error={fieldErrors.philHealthStatus}
-              />
-
-              {form.philHealthStatus === "With PhilHealth" && (
-                <FormInput
-                  label="PhilHealth Number"
-                  name="philHealthNumber"
-                  value={form.philHealthNumber}
-                  onChange={handleChange}
-                  error={fieldErrors.philHealthNumber}
-                  required
-                />
-              )}
-            </div>
-          </section>
-
-          {/* SECTION 3: ADDRESS */}
-          <section
-            className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-            style={stagger(4)}
-          >
-            <SectionHeader
-              icon={MapPinHouse}
-              title="Address Information"
-              description="Current residential address details."
-            />
-
-            <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <FormInput
-                label="Street Address"
-                name="streetAddress"
-                value={form.streetAddress}
-                onChange={handleChange}
-                placeholder="House No., Street, Sitio"
-                error={fieldErrors.streetAddress}
-                required
-              />
-
-              <FormInput
-                label="Purok / Area"
-                name="purokArea"
-                value={form.purokArea}
-                onChange={handleChange}
-                placeholder="e.g. Purok 3"
-              />
-
-              <div>
-                <FormInput
-                  label="Barangay"
-                  name="barangay"
-                  value={form.barangay}
-                  onChange={handleChange}
-                  placeholder="Select or type barangay"
-                  list="barangay-options"
-                  error={fieldErrors.barangay}
-                  required
-                />
-
-                <datalist id="barangay-options">
-                  {BARANGAY_OPTIONS.map((barangay) => (
-                    <option key={barangay.value} value={barangay.value} />
-                  ))}
-                </datalist>
-              </div>
-
-              <FormInput
-                label="Municipality / City"
-                name="municipality"
-                value={form.municipality}
-                onChange={handleChange}
-                placeholder="Enter municipality"
-                error={fieldErrors.municipality}
-                required
-              />
-            </div>
-          </section>
-
-        {isChildRegistration && (
-          <>
-            <section
-              className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-              style={stagger(4)}
-            >
-              <SectionHeader
-                icon={Users}
-                title="Parent / Household Information"
-                description="The Family Serial Number links this child to their household."
-              />
-
-              <div className="space-y-5">
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <FormInput
-                    label="Family Serial Number"
-                    name="familySerialNumber"
-                    value={form.familySerialNumber}
-                    onChange={handleFamilySerialChange}
-                    placeholder="Enter household serial"
-                    autoComplete="off"
-                  />
-                </div>
-
-                <HouseholdPanel
-                  status={householdStatus}
-                  serial={typedSerial}
-                  members={householdMembers}
-                  form={form}
-                  onUseAsParent={handleUseAsParent}
-                />
-
-                {Object.keys(PARENT_FIELDS).map((role) => (
-                  <ParentFields
-                    key={role}
-                    role={role}
-                    form={form}
-                    errors={fieldErrors}
-                    todayIso={todayIso}
-                    required={role === "mother"}
-                    onChange={handleChange}
-                    onBirthDateChange={handleParentBirthDateChange}
-                    onUnlink={handleUnlinkParent}
-                  />
-                ))}
-              </div>
-            </section>
-
-            {isEpiTargetAge && (
-              <section
-                className="anim-fade-up w-full min-w-0 space-y-4 py-6"
-                style={stagger(5)}
               >
-                <SectionHeader
+                {showGeneralProfileFields && (
+                  <div className="mb-4 grid min-w-0 gap-3 border-b border-gray-200 pb-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <ModernSelect
+                      label="Civil Status"
+                      name="civilStatus"
+                      value={form.civilStatus}
+                      onChange={handleSelectChange}
+                      options={CIVIL_STATUS_OPTIONS}
+                      placeholder="Select civil status"
+                      error={fieldErrors.civilStatus}
+                      required={hasBirthDate}
+                    />
+
+                    <div>
+                      <FormInput
+                        label="Occupation"
+                        name="occupation"
+                        value={form.occupation}
+                        onChange={handleChange}
+                        placeholder="Select or type occupation"
+                        list="occupation-options"
+                        error={fieldErrors.occupation}
+                        helperText="Select or type an occupation."
+                      />
+
+                      <datalist id="occupation-options">
+                        {OCCUPATION_OPTIONS.map((occupation) => (
+                          <option key={occupation.value} value={occupation.value} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <NhtsRadioGroup
+                      label="NHTS Status"
+                      name="nhtsStatus"
+                      value={form.nhtsStatus}
+                      onChange={handleSelectChange}
+                      error={fieldErrors.nhtsStatus}
+                    />
+                  </div>
+                )}
+                <FamilyRegistryField
+                  registry={registry}
+                  patient={{ ...form, id: editingPatientId }}
+                  connection={householdConnection}
+                  savedConnection={savedConnection}
+                  headReplacement={headReplacement}
+                  onChange={handleHouseholdChange}
+                  onCreateHousehold={handleCreateHousehold}
+                  onPendingChange={setHouseholdReviewPending}
+                  error={fieldErrors.familySerialNumber}
+                  relationshipError={fieldErrors.relationshipToHouseholdHead}
+                />
+              </FormPanel>
+
+              {showHusbandInformation && (
+                <FormPanel
+                  icon={Users}
+                  title="Husband Information"
+                  description="Additional husband details for married adult patients."
+                >
+                  <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <FormInput
+                      label="Husband Name"
+                      name="spouseName"
+                      value={form.spouseName}
+                      onChange={handleChange}
+                    />
+                    <FormInput
+                      label="Husband Occupation"
+                      name="spouseOccupation"
+                      value={form.spouseOccupation}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </FormPanel>
+              )}
+
+              {isChildRegistration && (
+                <FormPanel
+                  icon={Users}
+                  title="Parent / Household Information"
+                  description="The Family Serial Number links this child to their household."
+                >
+                  <div className="space-y-4">
+                    <HouseholdPanel
+                      members={householdMembers}
+                      form={form}
+                      onUseAsParent={handleUseAsParent}
+                    />
+
+                    {Object.keys(PARENT_FIELDS).map((role) => (
+                      <ParentFields
+                        key={role}
+                        role={role}
+                        form={form}
+                        errors={fieldErrors}
+                        todayIso={todayIso}
+                        required={role === "mother"}
+                        onChange={handleChange}
+                        onBirthDateChange={handleParentBirthDateChange}
+                        onUnlink={handleUnlinkParent}
+                      />
+                    ))}
+                  </div>
+                </FormPanel>
+              )}
+
+              {isChildRegistration && isEpiTargetAge && (
+                <FormPanel
                   icon={ClipboardList}
                   title="Birth / EPI Details"
                   description="Basic birth and household details for child registration."
-                />
+                >
+                  <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <FormInput
+                      label="Birth Place"
+                      name="birthPlace"
+                      value={form.birthPlace}
+                      onChange={handleChange}
+                    />
 
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <FormInput
-                    label="Birth Place"
-                    name="birthPlace"
-                    value={form.birthPlace}
+                    <TimePickerField
+                      label="Time of Birth"
+                      name="birthTime"
+                      value={form.birthTime}
+                      onChange={(value) => {
+                        setFieldErrors((prev) => ({ ...prev, birthTime: "" }));
+                        setForm((prev) => ({ ...prev, birthTime: value }));
+                      }}
+                    />
+                  </div>
+                </FormPanel>
+              )}
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div className="min-w-0 space-y-4">
+              <FormPanel
+                icon={ClipboardList}
+                title="Contact & Identification"
+                description="Contact details and PhilHealth membership information."
+              >
+                <div className="grid min-w-0 gap-3">
+                  <PhilippineContactInput
+                    label="Contact Number"
+                    name="contactNumber"
+                    value={form.contactNumber}
                     onChange={handleChange}
                   />
 
-                  <TimePickerField
-                    label="Time of Birth"
-                    name="birthTime"
-                    value={form.birthTime}
-                    onChange={(value) => {
-                      setFieldErrors((prev) => ({ ...prev, birthTime: "" }));
-                      setForm((prev) => ({ ...prev, birthTime: value }));
-                    }}
+                  <PhilHealthRadioGroup
+                    label="PhilHealth Membership"
+                    name="philHealthStatus"
+                    value={form.philHealthStatus}
+                    onChange={handleSelectChange}
+                    error={fieldErrors.philHealthStatus}
                   />
 
+                  {form.philHealthStatus === "With PhilHealth" && (
+                    <FormInput
+                      label="PhilHealth Number"
+                      name="philHealthNumber"
+                      value={form.philHealthNumber}
+                      onChange={handleChange}
+                      error={fieldErrors.philHealthNumber}
+                      required
+                    />
+                  )}
                 </div>
-              </section>
-            )}
-          </>
-        )}
+              </FormPanel>
+
+              <FormPanel
+                icon={MapPinHouse}
+                title="Address Information"
+                description="Current residential address details."
+              >
+                <div className="grid min-w-0 gap-3">
+                  <FormInput
+                    label="Street Address"
+                    name="streetAddress"
+                    readOnly={Boolean(householdConnection)}
+                    value={form.streetAddress}
+                    onChange={handleChange}
+                    placeholder="House No., Street, Sitio"
+                    error={fieldErrors.streetAddress}
+                    required
+                  />
+
+                  <FormInput
+                    label="Purok / Area"
+                    name="purokArea"
+                    readOnly={Boolean(householdConnection)}
+                    value={form.purokArea}
+                    onChange={handleChange}
+                    placeholder="e.g. Purok 3"
+                  />
+
+                  <div>
+                    <FormInput
+                      label="Barangay"
+                      name="barangay"
+                      readOnly={Boolean(householdConnection)}
+                      value={form.barangay}
+                      onChange={handleChange}
+                      placeholder="Select or type barangay"
+                      list="barangay-options"
+                      error={fieldErrors.barangay}
+                      helperText="Select or type a barangay."
+                      required
+                    />
+
+                    <datalist id="barangay-options">
+                      {BARANGAY_OPTIONS.map((barangay) => (
+                        <option key={barangay.value} value={barangay.value} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <FormInput
+                    label="Municipality / City"
+                    name="municipality"
+                    readOnly={Boolean(householdConnection)}
+                    value={form.municipality}
+                    onChange={handleChange}
+                    placeholder="Enter municipality"
+                    error={fieldErrors.municipality}
+                    required
+                  />
+                </div>
+              </FormPanel>
+            </div>
+          </div>
+
           {/* ACTIONS */}
-          <div
-            className="anim-fade-up flex min-w-0 flex-col-reverse gap-3 pt-6 sm:flex-row sm:items-center sm:justify-end"
-            style={stagger(4)}
-          >
+          <div className="mt-4 flex min-w-0 flex-col-reverse gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
-              onClick={() => navigate(backPath)}
-              className="w-full rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97] sm:w-auto"
+              onClick={cancelRegistration}
+              className="w-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 active:bg-gray-100 sm:w-auto"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98] sm:w-auto"
+              disabled={saving || householdReviewPending}
+              className="flex w-full items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:bg-gray-300 disabled:text-gray-500 sm:w-auto"
             >
-              {saving ? (
-                <ButtonSpinner />
-              ) : (
-                <UserPlus
-                  size={15}
-                  className="transition-transform duration-300 group-hover:scale-110"
-                />
-              )}
-              {saving ? "Registering patient..." : "Register Patient"}
+              {saving ? <ButtonSpinner /> : <UserPlus size={15} />}
+              {saving ? "Saving patient..." : "Save Patient"}
             </button>
-          </div>
           </div>
         </form>
       </DashboardLayout>
 
       {/* Modals */}
-      <SuccessModal
-        open={modals.success}
-        title="Patient Added"
-        description="The patient is now in your registry. Start a consultation or open their profile."
-        onClose={() => navigate(patientsPath)}
-        actions={[
-          { label: "Open Patient", disabled: !createdPatientId, onClick: () => navigate(`${patientsPath}/${createdPatientId}`) },
-          { label: "Start Consultation", variant: "primary", disabled: !createdPatientId, onClick: () => navigate(buildPatientConsultationPath(createdPatientId, basePath)) },
-        ]}
-      />
-      <ConfirmationModal
-        open={modals.confirm}
-        title="Confirm Patient Registration?"
-        description="Please review the patient information before registering this profile."
-        confirmText="Register Patient"
-        cancelText="Cancel"
-        onConfirm={handleSubmit}
-        onCancel={() => setModals({ ...modals, confirm: false })}
-        loading={saving}
-        loadingText="Registering patient..."
-      />
-      <ConnectionIssueModal
-        open={Boolean(connectionIssue)}
-        title={connectionIssue?.title}
-        message={connectionIssue?.message}
-        retryDisabled={
-          saving || (typeof navigator !== "undefined" && navigator.onLine === false)
-        }
-        onContinue={() => setConnectionIssue(null)}
-        onRetry={handleSubmit}
-      />
+      {modals.success && <ModalShell
+        title="Patient Saved" appearance="plain"
+        onClose={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}
+        footer={<>
+          <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
+          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}>Edit Patient</Button>
+        </>}
+      ><p>Patient registration saved for this mock session.</p></ModalShell>}
+      {modals.confirm && <ModalShell
+        title="Save Patient?" appearance="plain"
+        onClose={() => setModals((current) => ({ ...current, confirm: false }))}
+        footer={<>
+          <Button type="button" variant="ghost" onClick={() => setModals((current) => ({ ...current, confirm: false }))}>Cancel</Button>
+          <Button type="button" disabled={saving} onClick={handleSubmit}>Save Patient</Button>
+        </>}
+      ><p>Save this patient's details and household connection?</p></ModalShell>}
     </>
   );
 }
@@ -905,60 +883,15 @@ export default function AddPatient() {
   return <PatientRegistrationPage />;
 }
 
-/**
- * The household behind the typed Family Serial Number: its registered members,
- * each offered as Mother or Father, or a note that the serial is new.
- */
-function HouseholdPanel({ status, serial, members, form, onUseAsParent }) {
-  if (status === "idle") return null;
-
-  if (status === "searching") {
-    return (
-      <p className="flex items-center gap-2 text-xs text-[#6B7280]" aria-live="polite">
-        <LoaderCircle size={14} className="animate-spin text-[#B91C1C]" />
-        Checking household {serial}…
-      </p>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <p className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-xs text-[#6B7280]" aria-live="polite">
-        Could not check this serial right now. Parent details can still be
-        entered manually below.
-      </p>
-    );
-  }
-
-  if (status === "new") {
-    return (
-      <div
-        className="flex items-start gap-3 rounded-xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4 py-3"
-        aria-live="polite"
-      >
-        <House size={16} className="mt-0.5 shrink-0 text-[#9CA3AF]" />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[#374151]">
-            No existing household found
-          </p>
-          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            A new household will be created under{" "}
-            <span className="font-semibold text-[#374151]">{serial}</span> when
-            this patient is saved. Enter the parents below.
-          </p>
-        </div>
-      </div>
-    );
-  }
+// Preserve explicit parent linking for children using the selected mock household.
+function HouseholdPanel({ members, form, onUseAsParent }) {
+  if (!members.length) return null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#FECACA]" aria-live="polite">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5">
+    <div aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 py-2.5">
         <House size={15} className="shrink-0 text-[#B91C1C]" />
-        <p className="text-sm font-semibold text-[#991B1B]">Household Found</p>
-        <span className="text-xs text-[#B91C1C]/80">
-          {members.length} registered {members.length === 1 ? "member" : "members"}
-        </span>
+        <p className="text-sm font-semibold text-gray-950">Household members</p>
       </div>
 
       <ul className="divide-y divide-[#F1F5F9] bg-white">
@@ -982,7 +915,7 @@ function HouseholdPanel({ status, serial, members, form, onUseAsParent }) {
               </div>
 
               {linked ? (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-[#B91C1C] px-2.5 py-1 text-[11px] font-semibold text-white">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-950">
                   <Check size={12} />
                   {fields.label}
                 </span>
@@ -990,7 +923,7 @@ function HouseholdPanel({ status, serial, members, form, onUseAsParent }) {
                 <button
                   type="button"
                   onClick={() => onUseAsParent(role, member)}
-                  className="rounded-lg border border-[#FECACA] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#B91C1C] transition hover:border-[#B91C1C] hover:bg-[#FEF2F2]"
+                  className="border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-600 transition hover:border-red-600 hover:bg-red-50"
                 >
                   Use as {fields.label}
                 </button>
@@ -1068,17 +1001,6 @@ function ParentFields({
       />
     </div>
   );
-}
-
-function useDebouncedValue(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debounced;
 }
 
 function SexRadioGroup({
@@ -1378,7 +1300,7 @@ function ModernSelect({
         aria-controls={`${name}-options`}
         onClick={() => setOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
-        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border bg-white px-3.5 text-left text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-none border bg-white px-3.5 text-left text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
           error ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10" : "border-[#E5E7EB]"
         }`}
       >
@@ -1403,7 +1325,7 @@ function ModernSelect({
           id={`${name}-options`}
           role="listbox"
           aria-label={label}
-          className="overflow-y-auto rounded-lg border border-[#E5E7EB] bg-white py-1 shadow-lg shadow-slate-900/[0.08]"
+          className="overflow-y-auto border border-gray-300 bg-white py-1 shadow-sm"
           style={{
             position: "fixed",
             zIndex: 9999,

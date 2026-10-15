@@ -1,9 +1,10 @@
 // Same order as backend ActionPermissions::ALL. Role rules (defaults, availability) come from GET /staff-roles.
-export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view"];
+export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
 
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
   { key: "patients", label: "Patients" },
+  { key: "families", label: "Families · prototype" },
   { key: "consultations", label: "Consultations" },
   { key: "history", label: "Health Records & History" },
   { key: "followups", label: "Follow-ups" },
@@ -15,6 +16,8 @@ export const PERMISSION_GROUPS = [
 
 export const PERMISSION_CATALOG = {
   "patients.register": { group: "patients", label: "Register patients", note: "Can register patients and update their identification details." },
+  "families.view": { group: "families", label: "View Families", note: "Can view household details, members and family connections." },
+  "families.manage": { group: "families", label: "Manage Families", requires: ["families.view"], note: "Can create and edit households and manage member connections. Saved locally for this prototype." },
   "consultations.encode": { group: "consultations", label: "Encode consultations", note: "Can start current consultations and submit them for review." },
   "consultations.finalize": { group: "consultations", label: "Review & finalize consultations", requires: ["clinical.history"], note: "Can finalize consultations into permanent clinical records." },
   "clinical.history": { group: "history", label: "View health records & patient history", note: "Can open full patient histories, previous diagnoses and completed records." },

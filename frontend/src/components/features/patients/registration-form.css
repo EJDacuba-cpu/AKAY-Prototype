@@ -1,0 +1,18 @@
+/*
+ * Patient registration: flat, sharp-cornered clinical form surface.
+ * Scoped to `.ehr-form` so shared inputs, buttons and pickers keep their
+ * defaults everywhere else in the app.
+ */
+.ehr-form :is(input, select, textarea, button, fieldset):not([type="radio"], [type="checkbox"]) {
+  border-radius: 0;
+}
+
+.ehr-form :is(input, select, textarea, button) {
+  box-shadow: none;
+}
+
+.ehr-form :is(input, select, textarea):focus-visible,
+.ehr-form button[role="combobox"]:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 1px rgb(220 38 38 / 0.2);
+}

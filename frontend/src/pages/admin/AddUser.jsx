@@ -19,6 +19,8 @@ import { fieldState } from "../../utils/fieldState";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
+import { backendPermissions, readFamilyAccess, saveFamilyAccess, withFamilyRoleSuggestions } from "../../services/mockFamilyAccess";
+
 const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
   { tier: TIERS.bhc, label: "Barangay Health Center", icon: House, description: "Barangay-level staff who register patients, record consultations and refer to the RHU." },
@@ -60,6 +62,7 @@ export default function AddUser() {
   const [takenEmails, setTakenEmails] = useState({});
   const [checkingEmail, setCheckingEmail] = useState(false);
   const emailChecks = useRef(new Map());
+  const originalAccount = useRef(null);
 
   const admin = form.role === TIERS.admin;
   const keys = admin ? [STEPS.facility, STEPS.personal, STEPS.review] : [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];
@@ -81,11 +84,12 @@ export default function AddUser() {
     Promise.all([getBarangayHealthCenters(), getRuralHealthUnits(), getStaffRoles(), id ? apiRequest(`/users/${id}`) : null]).then(([bhc, rhu, roles, response]) => {
       if (!active) return;
       setFacilities({ bhc, rhu });
-      setRolesData(roles);
+      setRolesData(withFamilyRoleSuggestions(roles));
       if (response) {
         const u = unwrapData(response);
+        originalAccount.current = u;
         // Accounts saved before roles existed hold no role; Role & Access asks for one before saving.
-        const permissions = withRequirements(u.permissions ?? roleDefaults(roles, u.staff_role));
+        const permissions = withRequirements([...backendPermissions(u.permissions ?? roleDefaults(roles, u.staff_role)), ...readFamilyAccess(u)]);
         setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
         setOriginalTier(u.role);
       }
@@ -211,11 +215,23 @@ export default function AddUser() {
     setBusy(true);
     const body = {
       name: form.name.trim(), email: form.email, contact_number: normalizeContactNumber(form.contact_number), role: form.role,
-      staff_role: admin ? null : form.staff_role, permissions: admin ? [] : form.permissions, permissions_confirmed: true,
+      staff_role: admin ? null : form.staff_role, permissions: admin ? [] : backendPermissions(form.permissions), permissions_confirmed: true,
       barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
     };
     try {
-      const result = await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
+      // A Families-only permission change stays fully local. Existing account
+      // edits still use their original API flow, with mock keys stripped out.
+      const original = originalAccount.current;
+      const onlyLocalChanges = id && original && Object.entries(body).every(([key, value]) => {
+        if (key === "permissions_confirmed") return true;
+        if (key === "permissions") return JSON.stringify([...value].sort()) === JSON.stringify([...backendPermissions(original.permissions)].sort());
+        if (key === "contact_number") return value === normalizeContactNumber(original[key]);
+        return String(value ?? "") === String(original[key] ?? "");
+      });
+      const result = onlyLocalChanges ? { data: original } : await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
+      const savedAccount = unwrapData(result);
+      const savedId = id || savedAccount?.user?.id || savedAccount?.id;
+      if (savedId) saveFamilyAccess({ ...form, id: savedId }, admin ? [] : form.permissions);
       if (id) navigate("/admin/users");
       else setCreated({ inviteSent: result?.invite?.delivery !== "failed" });
     }
