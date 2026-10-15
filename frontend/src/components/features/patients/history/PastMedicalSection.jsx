@@ -27,45 +27,51 @@ const HOSPITAL_COLUMNS = [
 ];
 const HOSPITAL_NEW = { type: "", year: null, reason: "", place: "" };
 
-function confirmedRows(groups) {
-  const seen = new Set();
-  return [...(groups?.confirmed || []), ...(groups?.underEvaluation || []), ...(groups?.past || [])].filter(
-    (condition) => {
-      if (seen.has(condition.id)) return false;
-      seen.add(condition.id);
-      return true;
-    },
-  );
-}
-
-function ConfirmedByRhu({ groups }) {
-  const rows = confirmedRows(groups);
+function RhuGroup({ title, rows, showLock = false }) {
+  if (rows.length === 0) return null;
   return (
     <div>
       <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
-        <Lock size={12} aria-hidden="true" />
-        Confirmed by RHU
+        {showLock && <Lock size={12} aria-hidden="true" />}
+        {title}
       </p>
-      {rows.length === 0 ? (
-        <p className="mt-1 text-[12.5px] text-gray-500">None confirmed by RHU.</p>
-      ) : (
-        <ul className="mt-1 divide-y divide-gray-100 border border-gray-200 bg-gray-50">
-          {rows.map((condition) => (
-            <li key={condition.id} className="flex flex-wrap items-baseline justify-between gap-x-3 px-3 py-1.5">
-              <span className="text-[13px] font-medium text-gray-900">{condition.conditionName}</span>
-              <span className="text-[11px] text-gray-500">
-                {[
-                  conditionStatusLabel(condition.status),
-                  condition.confirmedAt && formatShortDate(condition.confirmedAt),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </li>
-          ))}
-        </ul>
+      <ul className="mt-1 divide-y divide-gray-100 border border-gray-200 bg-gray-50">
+        {rows.map((condition) => (
+          <li key={condition.id} className="flex flex-wrap items-baseline justify-between gap-x-3 px-3 py-1.5">
+            <span className="text-[13px] font-medium text-gray-900">{condition.conditionName}</span>
+            <span className="text-[11px] text-gray-500">
+              {[
+                conditionStatusLabel(condition.status),
+                condition.confirmedAt && formatShortDate(condition.confirmedAt),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Read-only RHU conditions in three groups, each shown only when it has rows. */
+function RhuConditions({ groups }) {
+  const confirmed = groups?.confirmed || [];
+  const underEvaluation = groups?.underEvaluation || [];
+  const past = groups?.past || [];
+  const none = confirmed.length + underEvaluation.length + past.length === 0;
+  return (
+    <div className="space-y-3">
+      <RhuGroup title="Confirmed by RHU" rows={confirmed} showLock />
+      <RhuGroup title="Under evaluation at RHU" rows={underEvaluation} showLock />
+      <RhuGroup title="Past (RHU)" rows={past} showLock />
+      {none && (
+        <p className="flex items-center gap-1.5 text-[12.5px] text-gray-500">
+          <Lock size={12} aria-hidden="true" />
+          No conditions confirmed by RHU.
+        </p>
       )}
-      <p className="mt-1 text-[11px] text-gray-500">Only RHU confirms or changes these.</p>
+      <p className="text-[11px] text-gray-500">Only RHU confirms or changes these.</p>
     </div>
   );
 }
@@ -85,7 +91,7 @@ export default function PastMedicalSection({ value, onChange, conditionGroups })
   return (
     <div className="space-y-5">
       <Block title="Current Conditions">
-        <ConfirmedByRhu groups={conditionGroups} />
+        <RhuConditions groups={conditionGroups} />
         <div>
           <p className="text-xs font-medium text-gray-500">Reported by patient (not confirmed)</p>
           <div className="mt-1">

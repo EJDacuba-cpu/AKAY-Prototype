@@ -58,7 +58,16 @@ export default function ObstetricSection({ value, onChange, patient, today = new
     if (status === "menstruating") set({ menstrualStatus: status, menopauseAge: null });
     else if (status === "menopause") {
       set({ menstrualStatus: status, intervalDays: null, durationDays: null, amount: "", regularity: "" });
-    } else set({ menstrualStatus: status });
+    } else {
+      set({
+        menstrualStatus: status,
+        menopauseAge: null,
+        intervalDays: null,
+        durationDays: null,
+        amount: "",
+        regularity: "",
+      });
+    }
   }
 
   function toggleSymptom(symptom, checked) {

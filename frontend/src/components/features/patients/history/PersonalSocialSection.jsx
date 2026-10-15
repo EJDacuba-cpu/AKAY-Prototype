@@ -44,13 +44,16 @@ const DIET = [
 
 const isBlank = (value) => (Array.isArray(value) ? value.length === 0 : !String(value ?? "").trim());
 
-/** `target` with the household's values copied into its EMPTY fields only. */
+/**
+ * `target` with the household's water source and toilet copied into its EMPTY
+ * fields. Only these two are household facts; exposures and notes are personal
+ * and are never copied from another patient.
+ */
 function fillEmptyEnvironment(target, source) {
   const result = { ...target };
-  ["waterSource", "toilet", "notes"].forEach((key) => {
+  ["waterSource", "toilet"].forEach((key) => {
     if (isBlank(target[key]) && !isBlank(source[key])) result[key] = source[key];
   });
-  if (isBlank(target.exposures) && !isBlank(source.exposures)) result.exposures = [...source.exposures];
   return result;
 }
 
@@ -68,21 +71,24 @@ export default function PersonalSocialSection({ value, onChange, patient, househ
   const sexual = social.sexual || {};
   const environment = social.environment || {};
   const exposures = Array.isArray(environment.exposures) ? environment.exposures : [];
-  const pack = packYears(smoking);
+  const smokes = smoking.status === "former" || smoking.status === "current";
+  const pack = smokes ? packYears(smoking) : null;
   const sexualCollapsed = sectionVisibility(patient, today).sexual === "collapsed";
 
   const set = (group, patch) =>
     onChange({ ...value, personalSocial: { ...social, [group]: { ...(social[group] || {}), ...patch } } });
 
   const prefill = householdEnvironment?.environment;
-  const prefillText = prefill ? formatEnvironment(prefill) : "";
+  const prefillText = prefill
+    ? formatEnvironment({ waterSource: prefill.waterSource, toilet: prefill.toilet })
+    : "";
   const prefillResult = prefill ? fillEmptyEnvironment(environment, prefill) : environment;
   const prefillUseful = JSON.stringify(prefillResult) !== JSON.stringify(environment);
   const prefillDate = householdEnvironment?.date ? ` · ${formatShortDate(householdEnvironment.date)}` : "";
 
   function changeSmoking(status) {
     const cleared =
-      status === "never"
+      status === "never" || status === ""
         ? { sticksPerDay: null, years: null, quitYear: null }
         : status === "current"
           ? { quitYear: null }
@@ -113,7 +119,7 @@ export default function PersonalSocialSection({ value, onChange, patient, househ
       <Block title="Smoking">
         <FieldGrid>
           <SelectField label="Smoking status" value={smoking.status} options={STATUSES} emptyLabel="Not recorded" onChange={changeSmoking} />
-          {(smoking.status === "former" || smoking.status === "current") && (
+          {smokes && (
             <>
               <NumberField label="Sticks per day" min={1} max={100} value={smoking.sticksPerDay} onChange={(next) => set("smoking", { sticksPerDay: next })} />
               <NumberField label="Years smoked" min={0} max={80} value={smoking.years} onChange={(next) => set("smoking", { years: next })} />
