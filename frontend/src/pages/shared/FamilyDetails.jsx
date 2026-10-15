@@ -1,30 +1,42 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, GitFork, List, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, GitFork, Link2, List, Pencil, Plus } from "lucide-react";
+import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import ModalShell from "../../components/common/modals/ModalShell";
 import { Button } from "../../components/ui/button";
 import FamilyTree from "../../components/features/families/FamilyTree";
 import useMockFamilyRegistry from "../../hooks/useMockFamilyRegistry";
 import useAccess from "../../hooks/useAccess";
 import { addressText, patientName } from "../../services/mockFamilyRegistry";
-import { familyMembers, familyName, familyConnections, connectionDescription, connectionKey } from "../../services/mockFamilyWorkflows";
+import { familyMembers, familyName, familyConnections, connectionDescription, connectionKey, relatedConnections, removeRelatedLink } from "../../services/mockFamilyWorkflows";
 
 export default function FamilyDetails({ role = "bhc" }) {
   const { householdId } = useParams();
   const registry = useMockFamilyRegistry();
   const access = useAccess();
   const [view, setView] = useState("tree");
+  const [unlinking, setUnlinking] = useState(null);
   const household = registry.households.find(item => item.id === householdId);
   const base = `/${role}/families`;
   const members = familyMembers(registry, householdId);
   const edges = familyConnections(registry, householdId);
   const head = registry.patients.find(item => item.id === household?.headPatientId);
   const canManage = access.can("families.manage");
+  const related = relatedConnections(registry, householdId);
+  const personName = id => patientName(registry.patients.find(item => item.id === id));
+  function confirmUnlink() {
+    try {
+      removeRelatedLink(unlinking.key);
+      toast.success("Related family link removed.");
+    } catch (error) { toast.error(error.message); }
+    setUnlinking(null);
+  }
   const name = household ? familyName(registry, household) : "Family not found";
   return <DashboardLayout role={role} title={name} contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10">
     <div className="mx-auto max-w-[1440px] space-y-7 text-neutral-900">
       <Link to={base} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Families</Link>
-      {!household ? <p role="status">This family is not available in the current mock session.</p> : <>
+      {household?.archivedAt ? <p role="status">This household is archived.</p> : !household ? <p role="status">This family is not available in the current mock session.</p> : <>
         <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-3xl font-normal tracking-tight">{name}</h1><p className="mt-2 text-sm text-neutral-500">Family Serial Number · {household.serialNumber}</p></div>
           {canManage && <div className="flex flex-wrap gap-3"><Button asChild variant="ghost" className="rounded-none border border-neutral-200 text-neutral-900"><Link to={`${base}/${householdId}/edit`}><Pencil size={17} />Edit Family</Link></Button><Button asChild className="rounded-none"><Link to={`${base}/${householdId}/members/new`}><Plus size={18} />Add Member</Link></Button></div>}
         </header>
@@ -41,7 +53,23 @@ export default function FamilyDetails({ role = "bhc" }) {
           {view === "tree" ? <FamilyTree registry={registry} members={members} edges={edges} headId={head?.id} canManage={canManage} memberPath={`${base}/${householdId}/members`} />
             : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead><tr className="border-b border-neutral-200 text-xs text-neutral-500"><th className="py-3 pr-5 font-medium">Patient</th><th className="py-3 pr-5 font-medium">Relationship to head</th><th className="py-3 pr-5 font-medium">Connections</th><th className="py-3 font-medium"><span className="sr-only">Actions</span></th></tr></thead><tbody>{members.map(member => <tr key={member.id} className="border-b border-neutral-200 align-top"><td className="py-4 pr-5"><p className="font-medium">{patientName(member)}</p><p className="mt-1 text-xs text-neutral-500">{member.birthDate}</p></td><td className="py-4 pr-5">{member.relationshipToHouseholdHead}</td><td className="space-y-2 py-4 pr-5 text-xs text-neutral-500">{edges.filter(edge => edge.from === member.id || edge.to === member.id).map(edge => <p key={connectionKey(edge)}>{connectionDescription(edge, registry)}</p>)}</td><td className="py-4 text-right">{canManage && <Link className="font-medium text-red-700" to={`${base}/${householdId}/members/${member.id}/edit`}>Edit connections<span className="sr-only"> for {patientName(member)}</span></Link>}{role !== "admin" && access.can("patients.register") && <Link className="mt-3 block text-xs text-neutral-600 underline" to={`/${role}/patients/${member.id}`}>Edit Patient</Link>}</td></tr>)}</tbody></table>{!members.length && <p className="py-8 text-sm text-neutral-500">No members connected. Assign a head in Edit Family.</p>}</div>}
         </section>
+        <section className="space-y-4 border-t border-neutral-200 pt-6" aria-labelledby="related-families-heading">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="related-families-heading" className="text-xl font-semibold">Related Families</h2>
+            {canManage && <Button asChild variant="ghost" className="rounded-none border border-neutral-200 text-neutral-900"><Link to={`${base}/${householdId}/related/new`}><Link2 size={17} />Link Related Family</Link></Button>}
+          </div>
+          {related.length ? <ul className="divide-y divide-neutral-200 border-y border-neutral-200">
+            {related.map(row => {
+              const other = registry.households.find(item => item.id === row.relativeHouseholdId);
+              return <li key={row.key} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                <p><span className="font-medium">{personName(row.memberId)}</span> — {row.label} — <span className="font-medium">{personName(row.relativeId)}</span> · <Link className="text-red-700 underline" to={`${base}/${row.relativeHouseholdId}`}>{other.serialNumber} · {familyName(registry, other)}</Link></p>
+                {canManage && <Button type="button" variant="link" className="px-0" onClick={() => setUnlinking(row)}>Remove link<span className="sr-only"> between {personName(row.memberId)} and {personName(row.relativeId)}</span></Button>}
+              </li>;
+            })}
+          </ul> : <p className="text-sm text-neutral-500" role="status">No related families linked.</p>}
+        </section>
       </>}
     </div>
+    {unlinking && <ModalShell title="Remove related family link?" appearance="plain" onClose={() => setUnlinking(null)} footer={<><Button type="button" variant="ghost" onClick={() => setUnlinking(null)}>Cancel</Button><Button type="button" onClick={confirmUnlink}>Remove link</Button></>}><p>Remove the link between {personName(unlinking.memberId)} and {personName(unlinking.relativeId)}? Both patients and their households are unchanged.</p></ModalShell>}
   </DashboardLayout>;
 }

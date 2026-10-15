@@ -54,6 +54,7 @@ import AddPatient from "./pages/bhc/AddPatient";
 import FamiliesDirectory from "./pages/shared/FamiliesDirectory";
 import FamilyDetails from "./pages/shared/FamilyDetails";
 import FamilyForm from "./pages/shared/FamilyForm";
+import RelatedFamilyForm from "./pages/shared/RelatedFamilyForm";
 import FamilyMemberForm from "./pages/shared/FamilyMemberForm";
 import FollowUps from "./pages/bhc/FollowUps";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
@@ -463,6 +464,7 @@ export default function App() {
         <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyForm role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families"><FamilyDetails role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family-edit`} path={`/${role}/families/:householdId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyForm role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-related-new`} path={`/${role}/families/:householdId/related/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><RelatedFamilyForm role={role} /></ProtectedPage>} />,
         <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyMemberForm role={role} /></ProtectedPage>} />,
         <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyMemberForm role={role} /></ProtectedPage>} />,
       ])}
