@@ -2,11 +2,13 @@ import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } 
 
 import BodyFigureSvg from "../BodyFigureSvg";
 import FindingLinkOverlay from "./FindingLinkOverlay";
-import { OverviewCard, OverviewNote } from "./OverviewCard";
-import PatientFactsSections from "./PatientFactsSections";
+import { OverviewNote } from "./OverviewCard";
+import LifestyleRow from "./LifestyleRow";
+import PatientClinicalControls from "./PatientClinicalControls";
+import { HeightRuler, WeightAndBmi } from "./BodyMeasures";
 import useMediaQuery from "../../../../hooks/useMediaQuery";
 import useRevealSequence from "../../../../hooks/useRevealSequence";
-import { summarizeLatestBmi } from "../../../../utils/bmi";
+import { buildBodyMeasures } from "../../../../utils/bodyMeasures";
 import { groupFindingsByArea, splitFindingsBySide, summarizeBodyFindings } from "../../../../utils/bodyFindingsSummary";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import { INITIAL_REVEAL, revealFocusReducer } from "../../../../utils/revealFocus";
@@ -57,18 +59,13 @@ function caption(summary, hasRecords) {
   return `Latest visit · ${date} · ${plural(count, "finding")}`;
 }
 
-/** "BMI 27.4 · Overweight · Oct 1, 2026"; no category under 18, no date when missing. */
-function bmiLabel(bmi) {
-  if (!bmi) return "BMI not recorded";
-  return [`BMI ${bmi.value}`, bmi.category, bmi.date ? formatShortDate(bmi.date, "") : ""].filter(Boolean).join(" · ");
-}
-
 /**
  * Centre column of the Overview board: the patient's realistic body figure
  * (front or back, switched only by its flip button) with small markers for
  * findings recorded on the latest visit (default) or on every loaded visit,
- * beside the Medical Conditions / Findings / Allergies / Medications
- * dropdowns, and the latest BMI under the figure.
+ * on an open canvas. Round clinical controls sit to its left and a height
+ * rule to its right; weight, BMI and click-to-open lifestyle details sit
+ * below. The recorded-areas disclosure keeps findings accessible as a list.
  *
  * Findings lists one row per affected area (side + region). Hovering or
  * focusing a row or a marker (desktop) stages a reveal on the figure: a soft
@@ -85,6 +82,7 @@ function bmiLabel(bmi) {
 export default function AnatomyFindingsPanel({
   records = [],
   recordsLoading = false,
+  recordsError = false,
   background,
   conditions,
   onViewRecord,
@@ -94,6 +92,7 @@ export default function AnatomyFindingsPanel({
 }) {
   const [mode, setMode] = useState("latest");
   const [side, setSide] = useState("front");
+  const [openFact, setOpenFact] = useState(null);
   const [reveal, dispatch] = useReducer(revealFocusReducer, INITIAL_REVEAL);
   const panelRef = useRef(null);
   const popoverId = `overview-figure-popover${useId()}`;
@@ -103,7 +102,7 @@ export default function AnatomyFindingsPanel({
   const summary = useMemo(() => summarizeBodyFindings(records, mode), [records, mode]);
   const findingsBySide = useMemo(() => splitFindingsBySide(summary.findings), [summary]);
   const areas = useMemo(() => groupFindingsByArea(summary.findings), [summary]);
-  const bmi = useMemo(() => summarizeLatestBmi(records, age), [records, age]);
+  const measures = useMemo(() => buildBodyMeasures(records, age), [records, age]);
   const findingsByRegion = findingsBySide[side];
 
   // A focus whose area is gone (records reloaded) counts as no focus.
@@ -132,6 +131,11 @@ export default function AnatomyFindingsPanel({
   function changeMode(next) {
     setMode(next);
     dispatch({ type: "reset" });
+  }
+
+  function changeFact(next) {
+    setOpenFact(next);
+    if (next) dispatch({ type: "reset" });
   }
 
   function toggleSide() {
@@ -165,13 +169,14 @@ export default function AnatomyFindingsPanel({
   // Unpin first (no focus restore), so the figure's Escape / outside-click
   // handlers are gone before the record view opens.
   function viewRecord(recordId) {
+    setOpenFact(null);
     dispatch({ type: "dismiss" });
     onViewRecord?.(recordId);
   }
 
   const markerArea = (region) => ({ key: `${side}:${region}`, region, side });
   function markerEnter(region) {
-    if (isDesktop) dispatch({ type: "hover", source: "marker", area: markerArea(region) });
+    if (isDesktop && !openFact) dispatch({ type: "hover", source: "marker", area: markerArea(region) });
   }
   // Leave and blur only ever clear an unpinned hover reveal (the reducer
   // ignores them while pinned).
@@ -179,18 +184,20 @@ export default function AnatomyFindingsPanel({
     dispatch({ type: "leave", source: "marker", key: markerArea(region).key });
   }
   function markerClick(region, el) {
+    setOpenFact(null);
     const area = markerArea(region);
     keepFocusOnUnpin(area, el);
     dispatch({ type: "click", source: "marker", area, el, currentSide: side });
   }
 
   function rowEnter(event, area) {
-    if (isDesktop) dispatch({ type: "hover", source: "row", area, el: event.currentTarget });
+    if (isDesktop && !openFact) dispatch({ type: "hover", source: "row", area, el: event.currentTarget });
   }
   function rowLeave(event, area) {
     dispatch({ type: "leave", source: "row", key: area.key, el: event.currentTarget });
   }
   function rowClick(event, area) {
+    setOpenFact(null);
     const el = event.currentTarget;
     keepFocusOnUnpin(area, el);
     dispatch({ type: "click", source: "row", area, el, currentSide: side });
@@ -241,56 +248,79 @@ export default function AnatomyFindingsPanel({
   };
 
   return (
-    <OverviewCard
-      id="overview-visual-summary"
-      title="Visual health summary"
-      spacious
-      minHeight={480}
-      action={<ModeToggle mode={mode} onChange={changeMode} />}
-    >
-      <div ref={panelRef} className="relative flex h-full min-h-0 flex-col gap-3 md:flex-row">
+    <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className="@container/anatomy min-w-0 px-1 py-1">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 id="overview-visual-summary-title" className="font-sans! text-[13px] font-semibold text-neutral-900">Visual health summary</h2>
+        <ModeToggle mode={mode} onChange={changeMode} />
+      </header>
+      <div ref={panelRef} className="relative">
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
-
-        <div className="flex h-80 shrink-0 flex-col border-b border-neutral-100 pb-2 flow:h-auto md:h-auto md:w-2/5 md:max-w-72 md:border-b-0 md:border-r md:pb-0 md:pr-4">
-          <PatientFactsSections background={background} conditions={conditions} records={records} recordsLoading={recordsLoading} findings={findings} />
-        </div>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin] flow:overflow-visible md:pr-0.5">
-          <p role="status" className="text-xs tabular-nums text-neutral-500">
-            {recordsLoading && records.length === 0 ? "Loading body findings..." : caption(summary, records.length > 0)}
-          </p>
-
-          {/* A size container, so the figure fits both its height and width;
-              the figure places its popover within it. */}
-          <div className="flex min-h-[340px] flex-1 items-center justify-center [container-type:size]">
-            <BodyFigureSvg
-              sex={sex}
-              birthDate={birthDate}
-              side={side}
-              onToggleSide={toggleSide}
-              flipHint={flipHint}
-              findingsByRegion={findingsByRegion}
-              isDesktop={isDesktop}
-              popoverId={popoverId}
-              activeRegion={activeRegion}
-              phase={phase}
-              pinned={pinned}
-              leader={leader}
-              onMarkerEnter={markerEnter}
-              onMarkerLeave={markerLeave}
-              onMarkerClick={markerClick}
-              onViewRecord={viewRecord}
-              onDismiss={dismiss}
-            />
+        <p role="status" className="mb-3 text-center text-xs tabular-nums text-neutral-500">
+          {recordsLoading && records.length === 0
+            ? "Loading body findings..."
+            : recordsError && records.length === 0
+              ? "Body findings could not be loaded. Please try refreshing the page."
+              : caption(summary, records.length > 0)}
+        </p>
+        <div className="grid min-w-0 grid-cols-1 items-start gap-4 @lg/anatomy:grid-cols-[5.5rem_minmax(0,1fr)]">
+          <PatientClinicalControls
+            background={background}
+            conditions={conditions}
+            records={records}
+            recordsLoading={recordsLoading}
+            recordsError={recordsError}
+            openFact={openFact}
+            onFactChange={changeFact}
+            onViewRecord={viewRecord}
+          />
+          <div className="min-w-0">
+            {/* The padding reserves the ruler's lane; model and findings share
+                one proportional frame, so markers stay attached as it scales. */}
+            <div className="relative flex h-[420px] min-w-0 items-center justify-center pr-[6.5rem] [container-type:size] @lg/anatomy:h-[520px]">
+              <BodyFigureSvg
+                sex={sex}
+                birthDate={birthDate}
+                side={side}
+                onToggleSide={toggleSide}
+                flipHint={flipHint}
+                flipCorner="left"
+                findingsByRegion={findingsByRegion}
+                isDesktop={isDesktop}
+                popoverId={popoverId}
+                activeRegion={activeRegion}
+                phase={phase}
+                pinned={pinned}
+                leader={leader}
+                onMarkerEnter={markerEnter}
+                onMarkerLeave={markerLeave}
+                onMarkerClick={markerClick}
+                onViewRecord={viewRecord}
+                onDismiss={dismiss}
+              />
+              <HeightRuler
+                height={measures.height}
+                isLoading={recordsLoading && records.length === 0}
+                className="absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
+              />
+            </div>
           </div>
 
-          {/* Blank (height kept) until the first records arrive, so it never
-              reads "BMI not recorded" while loading. */}
-          <p className="mt-2 text-center text-xs tabular-nums text-neutral-500">
-            {recordsLoading && records.length === 0 ? <>&nbsp;</> : bmiLabel(bmi)}
-          </p>
         </div>
+        <div className="mt-4 flex flex-col items-center gap-5">
+          {recordsLoading && records.length === 0 ? (
+            <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
+          ) : (
+            <WeightAndBmi weight={measures.weight} bmi={measures.bmi} />
+          )}
+          <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />
+        </div>
+        {areas.length > 0 && (
+          <details className="mx-auto mt-5 max-w-sm" onToggle={(event) => { if (!event.currentTarget.open) dispatch({ type: "reset" }); }}>
+            <summary className="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium text-neutral-600 focus-visible:outline-2 focus-visible:outline-ink-400">Recorded areas ({areas.length})</summary>
+            <div className="px-3 py-2">{findings.content}</div>
+          </details>
+        )}
       </div>
-    </OverviewCard>
+    </section>
   );
 }

@@ -5,7 +5,7 @@
  * rash") stays an allergy. Blank text is unrecorded, not negative.
  */
 export const NO_ALLERGY_PATTERN =
-  /^(none(\s+(reported|known))?|n\/a|na|nka|nkda|no known.*|no allerg(y|ies)|-+)\.?$/i;
+  /^(none(\s+(reported|known))?|n\/a|na|nka|nkda|no known(?:\s+(?:drug|food|medication))?\s+allerg(?:y|ies)|no allerg(y|ies)|-+)\.?$/i;
 
 export function isNoAllergyText(text) {
   const value = String(text ?? "").trim();

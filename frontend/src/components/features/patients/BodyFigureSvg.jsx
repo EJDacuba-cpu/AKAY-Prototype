@@ -92,6 +92,7 @@ export default function BodyFigureSvg({
   side = "front",
   onToggleSide,
   flipHint = false,
+  flipCorner = "right",
   findingsByRegion = NO_FINDINGS,
   isDesktop = false,
   popoverId,
@@ -233,6 +234,7 @@ export default function BodyFigureSvg({
       side={side}
       onToggleSide={onToggleSide}
       flipHint={flipHint}
+      flipCorner={flipCorner}
       label={side === "front" ? "Front-facing body figure with recorded findings" : "Back-facing body figure with recorded findings"}
       // The parent is a size container: take its full height unless that
       // would make the 2:3 figure wider than it, then its full width.

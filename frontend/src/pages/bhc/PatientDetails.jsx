@@ -497,12 +497,12 @@ function LivePatientDetails() {
                       birthDate={getPatientBirthDate(patient)}
                       records={records}
                       recordsLoading={recordsLoading}
+                      recordsError={Boolean(recordsError)}
                       onViewRecord={viewRecord}
                     />
                   }
                   right={
                     <ClinicalOverviewColumn
-                      patient={patient}
                       careTracking={careTracking}
                       programLabels={programLabels}
                       referrals={referrals}
@@ -511,7 +511,6 @@ function LivePatientDetails() {
                       activeFollowUps={activeFollowUps}
                       records={records}
                       recordsLoading={recordsLoading}
-                      onViewBackground={() => setActiveTab("background")}
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
@@ -645,10 +644,10 @@ function LivePatientDetails() {
 // Same column geometry as PatientOverviewBoard, with static blocks only: no patient history is ever rendered.
 function LockedOverviewPlaceholder() {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)]">
-      <LockedPlaceholder lines={4} className="min-h-72 xl:order-1" />
-      <LockedPlaceholder lines={5} className="min-h-72 xl:order-3" />
-      <LockedPlaceholder lines={6} className="min-h-72 md:col-span-2 xl:order-2 xl:col-span-1" />
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 @5xl:grid-cols-[12rem_minmax(0,1fr)_16rem]">
+      <LockedPlaceholder lines={4} className="order-2 min-h-72 @5xl:order-1" />
+      <LockedPlaceholder lines={6} className="order-1 col-span-full min-h-[620px] @5xl:order-2 @5xl:col-span-1" />
+      <LockedPlaceholder lines={5} className="order-3 min-h-72" />
     </div>
   );
 }

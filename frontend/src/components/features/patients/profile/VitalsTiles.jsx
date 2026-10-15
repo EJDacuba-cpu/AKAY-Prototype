@@ -1,4 +1,4 @@
-import { Activity, Droplet, Gauge, HeartPulse, Ruler, Scale, Thermometer, Wind } from "lucide-react";
+import { Droplet, Gauge, HeartPulse, Thermometer, Wind } from "lucide-react";
 
 import { buildVitalRows } from "../../../../utils/vitalTrends";
 import { isVitalRecordToday } from "../../../../utils/currentPatientVitals";
@@ -10,16 +10,13 @@ const EMPTY = "—";
 
 // The same cards are always drawn, so their sizes never depend on the patient;
 // a vital with no reading just shows a dash. FBS is only shown once recorded.
-const CHART_CARDS = ["bp", "pulse", "temperature", "spo2", "weight"];
-const SMALL_CARDS = ["height", "bmi"];
+// Height, weight and BMI live with the body figure (BodyMeasures).
+const CHART_CARDS = ["bp", "pulse", "temperature", "spo2"];
 const DEFAULTS = {
   bp: { label: "BP", unit: "mmHg", Icon: Gauge },
   pulse: { label: "Pulse", unit: "bpm", Icon: HeartPulse },
   temperature: { label: "Temp", unit: "°C", Icon: Thermometer },
   spo2: { label: "SpO₂", unit: "%", Icon: Wind },
-  weight: { label: "Weight", unit: "kg", Icon: Scale },
-  height: { label: "Height", unit: "cm", Icon: Ruler },
-  bmi: { label: "BMI", unit: "kg/m²", Icon: Activity },
   fbs: { label: "FBS", unit: "mg/dL", Icon: Droplet },
 };
 
@@ -47,48 +44,36 @@ function plot(series) {
 /**
  * Trend chart that stretches to its card. The lines are an SVG with a
  * non-scaling stroke; the latest reading is an HTML dot so it stays round
- * however the chart is stretched. Weight is drawn as bars.
+ * however the chart is stretched.
  */
-function TrendChart({ series, bars = false }) {
+function TrendChart({ series }) {
   if (!series.length) return <div className="min-h-0 flex-1" aria-hidden="true" />;
   const lines = plot(series);
 
   return (
     <div className="relative min-h-0 flex-1" aria-hidden="true">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full">
-        {bars
-          ? lines[0].map(([x, y], index) => (
-              <rect
-                key={index}
-                x={x - 4}
-                y={y}
-                width={8}
-                height={100 - y}
-                className={index === lines[0].length - 1 ? "fill-ink-600" : "fill-neutral-200"}
-              />
-            ))
-          : lines.map((points, lineIndex) => (
-              <polyline
-                key={lineIndex}
-                points={points.map(([x, y]) => `${x},${y}`).join(" ")}
-                vectorEffect="non-scaling-stroke"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className={`fill-none stroke-[1.75] ${lineIndex === 0 ? "stroke-ink-600" : "stroke-neutral-300"}`}
-              />
-            ))}
+        {lines.map((points, lineIndex) => (
+          <polyline
+            key={lineIndex}
+            points={points.map(([x, y]) => `${x},${y}`).join(" ")}
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            className={`fill-none stroke-[1.75] ${lineIndex === 0 ? "stroke-ink-600" : "stroke-neutral-300"}`}
+          />
+        ))}
       </svg>
-      {!bars &&
-        lines.map((points, lineIndex) => {
-          const [x, y] = points[points.length - 1];
-          return (
-            <span
-              key={lineIndex}
-              className={`absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${lineIndex === 0 ? "bg-ink-700" : "bg-neutral-400"}`}
-              style={{ left: `${x}%`, top: `${y}%` }}
-            />
-          );
-        })}
+      {lines.map((points, lineIndex) => {
+        const [x, y] = points[points.length - 1];
+        return (
+          <span
+            key={lineIndex}
+            className={`absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${lineIndex === 0 ? "bg-ink-700" : "bg-neutral-400"}`}
+            style={{ left: `${x}%`, top: `${y}%` }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -124,9 +109,9 @@ function formatRecordedAt(record, recordedAt) {
 
 /**
  * Left column of the Overview board: a plain heading, then one separate card
- * per vital with its latest value and a trend of the last few readings.
- * Height and BMI, which rarely trend, are small value-only cards in a row at
- * the bottom. Cards are a fixed size and stack from the top - the column is
+ * per vital (BP, pulse, temperature, SpO2) with its latest value and a trend
+ * of the last few readings; FBS adds a small value-only card once recorded.
+ * Height, weight and BMI sit with the body figure. Cards are a fixed size and stack from the top - the column is
  * not stretched - and scrolls on its own only in a window too short for them.
  */
 export default function VitalsTiles({ records = [], isLoading = false }) {
@@ -163,22 +148,17 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
                   <Label Icon={Icon}>{label}</Label>
                   <Value display={display} unit={unit} />
                 </div>
-                <TrendChart series={series} bars={key === "weight"} />
+                <TrendChart series={series} />
               </div>
             );
           })}
 
-          <div className="grid grid-cols-2 gap-2">
-            {[...SMALL_CARDS, ...(byKey.fbs ? ["fbs"] : [])].map((key) => {
-              const { label, unit, display, Icon } = card(key);
-              return (
-                <div key={key} className={`${CARD} flex h-16 min-w-0 flex-col justify-between`}>
-                  <Label Icon={Icon}>{label}</Label>
-                  <Value display={display} unit={unit} />
-                </div>
-              );
-            })}
-          </div>
+          {byKey.fbs && (
+            <div className={`${CARD} flex h-16 min-w-0 flex-col justify-between`}>
+              <Label Icon={DEFAULTS.fbs.Icon}>{DEFAULTS.fbs.label}</Label>
+              <Value display={card("fbs").display} unit={DEFAULTS.fbs.unit} />
+            </div>
+          )}
         </div>
       </div>
     </section>

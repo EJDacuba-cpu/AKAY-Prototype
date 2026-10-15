@@ -27,7 +27,7 @@ const LABEL_CLASS = "pointer-events-none absolute top-[18%] -translate-y-1/2 sel
  * aspect ratio, so the caller sizes it with `className` (width or height).
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
  */
-export default function AnatomyFigure({ sex, birthDate, side, onToggleSide, flipHint = false, className = "", label, children }) {
+export default function AnatomyFigure({ sex, birthDate, side, onToggleSide, flipHint = false, flipCorner = "right", className = "", label, children }) {
   const figure = getFigureKey(sex, birthDate);
   const [leftLabel, rightLabel] = side === "front" ? ["R", "L"] : ["L", "R"];
   const flipLabel = side === "front" ? "Show back" : "Show front";
@@ -58,7 +58,7 @@ export default function AnatomyFigure({ sex, birthDate, side, onToggleSide, flip
           onClick={onToggleSide}
           aria-label={flipLabel}
           title={flipLabel}
-          className={`absolute right-0 top-0 z-10 inline-flex h-8 w-8 items-center justify-center rounded-none border border-slate-300 bg-white text-slate-600 transition-colors hover:border-red-600 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600${flipHint ? " anatomy-flip-hint" : ""}`}
+          className={`absolute ${flipCorner === "left" ? "left-0" : "right-0"} top-0 z-10 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 shadow-xs transition-colors hover:border-neutral-300 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-400${flipHint ? " anatomy-flip-hint" : ""}`}
         >
           <RotateCcw size={15} aria-hidden="true" />
         </button>

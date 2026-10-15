@@ -34,3 +34,13 @@ test("blank text is not a negative answer (it is unrecorded)", () => {
   assert.equal(isNoAllergyText(""), false);
   assert.equal(isNoAllergyText(null), false);
 });
+
+test("a negative prefix never hides an additional recorded allergy", () => {
+  for (const text of [
+    "No known drug allergies; latex rash",
+    "No known allergies previously. Penicillin rash reported today.",
+    "No known food allergies, allergic to amoxicillin",
+  ]) {
+    assert.equal(isNoAllergyText(text), false, text);
+  }
+});

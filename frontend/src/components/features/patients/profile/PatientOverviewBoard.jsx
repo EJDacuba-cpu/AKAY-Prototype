@@ -1,17 +1,8 @@
 /**
- * Layout for the patient profile's Overview tab: a three-column grid of white
- * rounded cards on the canvas that fills the height its parent gives it.
- * Layout only - every column is rendered by the caller.
- *
- * At xl the grid is a single row the height of the board, so each column
- * divides that height among its cards by share (see OverviewCard) and the
- * geometry is the same for every patient. Below xl the columns stack at the
- * cards' minimum heights and the board scrolls. If a short window cannot fit
- * the minimums the board scrolls too.
- *
- * DOM order is left -> right -> centre, which is the stacking order on phones
- * and tablets (left and right side by side, the anatomy card below); at xl
- * `order` puts the anatomy card in the middle at 20 / 52 / 28.
+ * Vitals, an open anatomy canvas, and clinical cards. The outer columns have
+ * readable width floors; the anatomy gets all remaining space. When the
+ * available content width is narrower, the anatomy leads and the other
+ * columns follow below. The board scrolls instead of shrinking the model.
  */
 export default function PatientOverviewBoard({ left, right, center }) {
   return (
@@ -19,11 +10,11 @@ export default function PatientOverviewBoard({ left, right, center }) {
       role="tabpanel"
       id="profile-panel-overview"
       aria-labelledby="profile-tab-overview"
-      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto flow:flex-none flow:overflow-visible md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)] xl:grid-rows-1"
+      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 content-start gap-5 overflow-y-auto flow:flex-none flow:overflow-visible md:grid-cols-2 @5xl:grid-cols-[12rem_minmax(0,1fr)_16rem]"
     >
-      <div className="flex min-w-0 flex-col xl:order-1 xl:min-h-0">{left}</div>
-      <div className="flex min-w-0 flex-col xl:order-3 xl:min-h-0">{right}</div>
-      <div className="flex min-w-0 flex-col md:col-span-2 xl:order-2 xl:col-span-1 xl:min-h-0">{center}</div>
+      <div className="order-2 flex min-w-0 flex-col self-start @5xl:order-1">{left}</div>
+      <div className="order-1 col-span-full min-w-0 @5xl:order-2 @5xl:col-span-1">{center}</div>
+      <div className="order-3 flex min-w-0 flex-col self-start">{right}</div>
     </div>
   );
 }

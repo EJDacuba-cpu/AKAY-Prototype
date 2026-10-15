@@ -24,7 +24,7 @@ export default function WorkingFacility() {
     finally { setBusy(false); }
   }
   const select = <label className="block font-sans text-xs font-medium text-neutral-500"><span className="sr-only sm:not-sr-only">Working at</span>
-    <select aria-label="Working at facility" className="h-9 max-w-32 truncate rounded-lg [field-sizing:content] sm:ml-2 sm:max-w-80 border border-neutral-200 bg-white pl-2.5 pr-8 font-sans text-[13px] font-medium text-neutral-900 shadow-xs transition-colors hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 disabled:cursor-not-allowed disabled:opacity-50" value={user.working_facility_key || ""} disabled={busy || (editing && !required)} onChange={e => choose(e.target.value)}>
+    <select aria-label="Working at facility" className="h-9 max-w-24 truncate rounded-lg [field-sizing:content] sm:ml-2 sm:max-w-80 border border-neutral-200 bg-white pl-2.5 pr-8 font-sans text-[13px] font-medium text-neutral-900 shadow-xs transition-colors hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 disabled:cursor-not-allowed disabled:opacity-50" value={user.working_facility_key || ""} disabled={busy || (editing && !required)} onChange={e => choose(e.target.value)}>
       <option value="">Select duty location</option>
       {choices.map(f => <option key={f.key} value={f.key}>{f.name}{f.is_home ? " (Home)" : ""}</option>)}
     </select>

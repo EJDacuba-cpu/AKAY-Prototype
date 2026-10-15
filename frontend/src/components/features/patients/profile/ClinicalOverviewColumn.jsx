@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarClock, ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronRight } from "lucide-react";
 
 import { StatusBadge } from "../../../common";
 import { FollowUpStateBadge, getReferralDate, getReferralDestination } from "./FollowUpsAndReferrals";
@@ -6,7 +6,6 @@ import { OverviewCard, OverviewNote } from "./OverviewCard";
 import { TextAction } from "./ProfileSection";
 import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
 import { formatShortDate } from "../../../../utils/patientProfile";
-import { summarizeBackground } from "../../../../utils/backgroundSummary";
 import { getRecordId } from "../../../../utils/bodyFindingsSummary";
 import { getRecordDateValue, getRecordOutcome } from "../../../../utils/healthRecordPrograms";
 
@@ -28,34 +27,6 @@ const OUTCOME_TEXT = {
 const CHIP = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
 const ROW_BUTTON =
   "group -mx-1.5 grid w-[calc(100%+0.75rem)] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50";
-
-/** Read-only background summary; View opens the Patient Background tab. */
-function BackgroundSummaryCard({ background, onView }) {
-  return (
-    <OverviewCard
-      id="overview-background"
-      title="Patient background"
-      share={2.5}
-      action={
-        <TextAction onClick={onView} className="inline-flex items-center gap-1">
-          View
-          <ArrowRight size={13} aria-hidden="true" />
-        </TextAction>
-      }
-    >
-      <dl className="space-y-1 text-[13px]">
-        {summarizeBackground(background).map(({ key, label, text }) => (
-          <div key={key} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2">
-            <dt className="text-neutral-500">{label}</dt>
-            <dd className={`m-0 line-clamp-2 min-w-0 flow:line-clamp-none break-words ${text ? "text-neutral-900" : "text-neutral-500"}`} title={text || undefined}>
-              {text || "Not recorded"}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </OverviewCard>
-  );
-}
 
 function CareTrackingSection({ entries, programLabels, onViewAll }) {
   return (
@@ -237,14 +208,13 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
 }
 
 /**
- * Right column of the Overview board, top to bottom: the background summary,
- * latest referrals, the next follow-ups, care programs and the most recent
+ * Right column of the Overview board, top to bottom: latest referrals,
+ * the next follow-ups, care programs and the most recent
  * visits - each a compact card linking to its full tab, splitting the column
  * height by card share. Only rendered for roles that may view clinical
  * history.
  */
 export default function ClinicalOverviewColumn({
-  patient,
   careTracking = [],
   programLabels = [],
   referrals = [],
@@ -253,7 +223,6 @@ export default function ClinicalOverviewColumn({
   activeFollowUps = [],
   records = [],
   recordsLoading = false,
-  onViewBackground,
   onViewPrograms,
   onViewReferrals,
   onViewReferral,
@@ -264,7 +233,6 @@ export default function ClinicalOverviewColumn({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <BackgroundSummaryCard background={patient.medicalBackground} onView={onViewBackground} />
       <ReferralsPreview
         referrals={referrals}
         isLoading={referralsLoading}
