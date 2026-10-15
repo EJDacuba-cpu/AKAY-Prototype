@@ -24,7 +24,7 @@ class ApprovedFacilityPermissionsTest extends TestCase
     public function test_encoder_cannot_browse_clinical_history_or_finalize_via_direct_api(): void
     {
         $user = $this->account();
-        $patient = Patient::create(['first_name' => 'Ana', 'last_name' => 'Test', 'sex' => 'Female', 'barangay_health_center_id' => $user->barangay_health_center_id, 'medical_background' => ['allergies' => 'private history'], 'created_by' => $user->id]);
+        $patient = Patient::create(['first_name' => 'Ana', 'last_name' => 'Test', 'sex' => 'Female', 'barangay_health_center_id' => $user->barangay_health_center_id, 'medical_background' => ['allergies' => ['items' => [['allergen' => 'Private history']]]], 'created_by' => $user->id]);
         Sanctum::actingAs($user, ['access']);
         $this->getJson('/api/patients/'.$patient->id)->assertOk()->assertJsonPath('data.first_name', 'Ana')->assertJsonMissingPath('data.medical_background')->assertJsonMissingPath('data.health_records');
         $this->getJson('/api/health-records')->assertForbidden();

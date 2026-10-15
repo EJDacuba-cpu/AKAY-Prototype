@@ -38,8 +38,8 @@ class HealthConcernBoundaryTest extends TestCase
         $bhc = BarangayHealthCenter::create(['name' => 'Boundary BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
         $user = User::create(['name' => 'Boundary BHW', 'email' => 'boundary@example.test', 'password' => bcrypt('test-password'), 'role' => User::ROLE_BHC, 'status' => User::STATUS_ACTIVE, 'barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife')]);
         $this->background = [
-            'allergies' => 'Penicillin',
-            'currentDiseases' => [['name' => 'Asthma', 'status' => 'Active']],
+            'allergies' => ['items' => [['allergen' => 'Penicillin']]],
+            'currentDiseases' => [['name' => 'Asthma', 'source' => 'Patient-reported', 'firstRecorded' => '2026-01-01']],
             'revisions' => ['medical' => 3],
         ];
         $this->patient = Patient::create(['first_name' => 'Con', 'last_name' => 'Cern', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id, 'medical_background' => $this->background]);

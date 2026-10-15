@@ -346,8 +346,8 @@ class ConsultationProgramsTest extends TestCase
         // The Patient Profile's longitudinal background lives on the patient,
         // not on health_records. Saving a consultation must not disturb it.
         $this->patient->update(['medical_background' => [
-            'allergies' => 'Penicillin',
-            'currentDiseases' => [['name' => 'Hypertension', 'status' => 'Active']],
+            'allergies' => ['items' => [['allergen' => 'Penicillin']]],
+            'currentDiseases' => [['name' => 'Hypertension', 'source' => 'Patient-reported', 'firstRecorded' => '2026-01-01']],
         ]]);
 
         $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
@@ -357,7 +357,7 @@ class ConsultationProgramsTest extends TestCase
         ])->assertCreated();
 
         $this->patient->refresh();
-        $this->assertSame('Penicillin', $this->patient->medical_background['allergies']);
+        $this->assertSame('Penicillin', $this->patient->medical_background['allergies']['items'][0]['allergen']);
         $this->assertSame('Hypertension', $this->patient->medical_background['currentDiseases'][0]['name']);
     }
 

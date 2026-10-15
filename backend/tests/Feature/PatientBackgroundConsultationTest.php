@@ -7,20 +7,24 @@ use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
-use App\Services\ActionPermissions;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
-use App\Services\StaffRoles;
 use Tests\TestCase;
 
 /**
  * Patient Background is reviewed and updated only inside a consultation and
  * applied when it is finalized - see
- * docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
+ * docs/superpowers/specs/2026-10-03-patient-background-tab-design.md and, for
+ * the section shapes, docs/superpowers/specs/2026-10-16-itr-patient-history-design.md.
  */
 class PatientBackgroundConsultationTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const DUST = ['items' => [['allergen' => 'Dust']]];
+
+    private const MOTHER_ASTHMA = ['items' => [['condition' => 'Asthma', 'kind' => 'Chronic', 'relation' => 'Mother']]];
 
     private BarangayHealthCenter $bhc;
 
@@ -41,10 +45,10 @@ class PatientBackgroundConsultationTest extends TestCase
             'first_name' => 'Background', 'last_name' => 'Patient', 'sex' => 'Female',
             'barangay_health_center_id' => $this->bhc->id,
             'medical_background' => [
-                'allergies' => 'Dust',
+                'allergies' => self::DUST,
                 'currentDiseases' => [],
-                'familyHistory' => ['similarIllness' => 'Mother - Asthma'],
-                'personalSocial' => ['smoking' => 'Never'],
+                'familyHistory' => self::MOTHER_ASTHMA,
+                'personalSocial' => ['smoking' => ['status' => 'never']],
                 'revisions' => ['medical' => 2, 'family' => 1, 'social' => 0],
                 'updatedAt' => ['medical' => '2026-01-01', 'family' => '2026-01-01'],
             ],
@@ -81,18 +85,19 @@ class PatientBackgroundConsultationTest extends TestCase
 
     public function test_finalize_applies_only_the_edited_section_and_logs_it(): void
     {
+        $fatherDiabetes = ['condition' => 'Diabetes', 'kind' => 'Hereditary', 'relation' => 'Father'];
         $id = $this->finalize([
-            'sections' => ['family' => ['familyHistory' => ['similarIllness' => 'Mother - Asthma', 'chronicIllness' => 'Father - Diabetes']]],
+            'sections' => ['family' => ['familyHistory' => ['items' => [...self::MOTHER_ASTHMA['items'], $fatherDiabetes]]]],
             'base_revisions' => ['family' => 1],
         ])->assertCreated()->json('data.id');
 
         $background = $this->background();
-        $this->assertSame('Father - Diabetes', $background['familyHistory']['chronicIllness']);
+        $this->assertSame($fatherDiabetes, $background['familyHistory']['items'][1]);
         $this->assertSame(2, $background['revisions']['family']);
         $this->assertSame('2026-10-03', $background['updatedAt']['family']);
         // Untouched sections keep their content, revision and date.
-        $this->assertSame('Dust', $background['allergies']);
-        $this->assertSame(['smoking' => 'Never'], $background['personalSocial']);
+        $this->assertSame(self::DUST, $background['allergies']);
+        $this->assertSame(['smoking' => ['status' => 'never']], $background['personalSocial']);
         $this->assertSame(2, $background['revisions']['medical']);
         $this->assertSame('2026-01-01', $background['updatedAt']['medical']);
 
@@ -100,8 +105,8 @@ class PatientBackgroundConsultationTest extends TestCase
         $this->assertCount(1, $changes);
         $this->assertSame('family', $changes[0]['section']);
         $this->assertSame('consultation', $changes[0]['source']);
-        $this->assertSame(['familyHistory' => ['similarIllness' => 'Mother - Asthma']], $changes[0]['before']);
-        $this->assertSame('Father - Diabetes', $changes[0]['after']['familyHistory']['chronicIllness']);
+        $this->assertSame(['familyHistory' => self::MOTHER_ASTHMA], $changes[0]['before']);
+        $this->assertSame($fatherDiabetes, $changes[0]['after']['familyHistory']['items'][1]);
         $this->assertSame(2, $changes[0]['revision']);
         $this->assertSame($this->clinician->id, $changes[0]['changedBy']);
     }
@@ -109,33 +114,37 @@ class PatientBackgroundConsultationTest extends TestCase
     public function test_a_stale_edited_section_is_a_conflict_and_nothing_is_saved(): void
     {
         $this->finalize([
-            'sections' => ['medical' => ['allergies' => 'Penicillin']],
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Penicillin']]]]],
             'base_revisions' => ['medical' => 1],
         ])->assertStatus(409)
             ->assertJsonPath('code', 'PATIENT_BACKGROUND_CONFLICT')
             ->assertJsonPath('conflicts.0.section', 'medical')
             ->assertJsonPath('conflicts.0.revision', 2)
-            ->assertJsonPath('conflicts.0.current.allergies', 'Dust');
+            ->assertJsonPath('conflicts.0.current.allergies', self::DUST);
 
         $this->assertSame(0, HealthRecord::count());
-        $this->assertSame('Dust', $this->background()['allergies']);
+        $this->assertSame(self::DUST, $this->background()['allergies']);
     }
 
     public function test_an_untouched_section_never_blocks_finalization(): void
     {
         // Family moved to revision 1 elsewhere; this consultation only edited Social.
         $this->finalize([
-            'sections' => ['social' => ['personalSocial' => ['smoking' => 'Former smoker']]],
+            'sections' => ['social' => ['personalSocial' => ['smoking' => ['status' => 'former', 'quitYear' => 2024]]]],
             'base_revisions' => ['social' => 0],
         ])->assertCreated();
 
-        $this->assertSame('Former smoker', $this->background()['personalSocial']['smoking']);
+        $this->assertSame(['status' => 'former', 'quitYear' => 2024], $this->background()['personalSocial']['smoking']);
     }
 
     public function test_an_unchanged_section_is_not_logged_or_bumped(): void
     {
+        // "" and null mean "not recorded", so this equals what is stored.
         $id = $this->finalize([
-            'sections' => ['social' => ['personalSocial' => ['smoking' => 'Never', 'diet' => '']]],
+            'sections' => ['social' => ['personalSocial' => [
+                'smoking' => ['status' => 'never', 'sticksPerDay' => null], 'pastOccupations' => '  ',
+                'diet' => ['highSalt' => false, 'notes' => ''],
+            ]]],
             'base_revisions' => ['social' => 0],
         ])->assertCreated()->json('data.id');
 
@@ -162,7 +171,7 @@ class PatientBackgroundConsultationTest extends TestCase
     {
         return $this->finalize([
             'sections' => ['medical' => ['currentDiseases' => $diseases]],
-            'base_revisions' => ['medical' => 2],
+            'base_revisions' => ['medical' => $this->background()['revisions']['medical']],
         ]);
     }
 
@@ -175,76 +184,61 @@ class PatientBackgroundConsultationTest extends TestCase
 
         $this->assertSame([[
             'name' => 'Asthma', 'note' => 'Childhood, used an inhaler', 'source' => 'Patient-reported',
-            'firstRecorded' => '2026-10-03', 'status' => null, 'conditionKey' => null,
+            'firstRecorded' => '2026-10-03',
         ]], $this->background()['currentDiseases']);
     }
 
-    public function test_an_empty_note_is_stored_as_null(): void
+    public function test_an_empty_note_is_not_stored(): void
     {
         $this->updateDiseases([['name' => 'Asthma', 'note' => '   ']])->assertCreated();
 
-        $this->assertNull($this->background()['currentDiseases'][0]['note']);
+        $this->assertArrayNotHasKey('note', $this->background()['currentDiseases'][0]);
     }
 
-    public function test_legacy_entries_cannot_be_changed_or_removed_through_a_background_update(): void
+    public function test_every_submitted_condition_becomes_patient_reported(): void
     {
+        // Pre-ITR entries carry other sources; the list holds only what the
+        // client submits, each as patient-reported, keeping its first date.
         $legacy = $this->legacyHypertension();
-        $this->seedDiseases([$legacy]);
+        $this->seedDiseases([$legacy, ['name' => 'Goiter', 'source' => 'Consultation', 'firstRecorded' => '2026-01-01']]);
 
-        // The client echoes the legacy entry with edits and adds a new condition.
         $this->updateDiseases([
-            [...$legacy, 'name' => 'hypertension ', 'status' => 'Resolved', 'lastConfirmed' => '2026-10-03', 'conditionKey' => null],
+            [...$legacy, 'name' => 'hypertension ', 'status' => 'Resolved'],
             ['name' => 'Asthma'],
         ])->assertCreated();
 
-        $diseases = $this->background()['currentDiseases'];
-        $this->assertCount(2, $diseases);
-        $this->assertSame($legacy, $diseases[0]);
-        $this->assertSame('Asthma', $diseases[1]['name']);
-        $this->assertSame('Patient-reported', $diseases[1]['source']);
-
-        // Dropping the legacy entry from the list does not remove it either.
-        $this->patient->update(['medical_background' => [...$this->background(), 'currentDiseases' => [$legacy]]]);
-        $this->finalize([
-            'sections' => ['medical' => ['currentDiseases' => [['name' => 'Asthma']]]],
-            'base_revisions' => ['medical' => $this->background()['revisions']['medical']],
-        ])->assertCreated();
-
-        $diseases = $this->background()['currentDiseases'];
-        $this->assertSame($legacy, $diseases[0]);
-        $this->assertSame('Asthma', $diseases[1]['name']);
+        $this->assertSame([
+            ['name' => 'hypertension', 'source' => 'Patient-reported', 'firstRecorded' => '2026-02-01'],
+            ['name' => 'Asthma', 'source' => 'Patient-reported', 'firstRecorded' => '2026-10-03'],
+        ], $this->background()['currentDiseases']);
     }
 
     public function test_a_patient_reported_entry_can_be_removed_and_keeps_its_first_recorded_date(): void
     {
-        $legacy = $this->legacyHypertension();
-        $reported = ['name' => 'Asthma', 'note' => null, 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05', 'status' => null, 'conditionKey' => null];
-        $this->seedDiseases([$legacy, $reported]);
+        $asthma = ['name' => 'Asthma', 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05'];
+        $goiter = ['name' => 'Goiter', 'source' => 'Patient-reported', 'firstRecorded' => '2026-06-06'];
+        $this->seedDiseases([$asthma, $goiter]);
 
-        // Echoing a stored patient-reported entry keeps its original date.
+        // Echoing a stored entry keeps its original date.
         $this->updateDiseases([
-            [...$legacy], [...$reported, 'firstRecorded' => '2026-10-03', 'note' => 'Wheezes at night'],
+            [...$asthma, 'firstRecorded' => '2026-10-03', 'note' => 'Wheezes at night'], $goiter,
         ])->assertCreated();
         $diseases = $this->background()['currentDiseases'];
-        $this->assertSame('2026-05-05', $diseases[1]['firstRecorded']);
-        $this->assertSame('Wheezes at night', $diseases[1]['note']);
+        $this->assertSame('2026-05-05', $diseases[0]['firstRecorded']);
+        $this->assertSame('Wheezes at night', $diseases[0]['note']);
 
-        // Removing it from the list removes it; the legacy entry stays.
-        $revision = $this->background()['revisions']['medical'];
-        $this->finalize([
-            'sections' => ['medical' => ['currentDiseases' => [[...$legacy]]]],
-            'base_revisions' => ['medical' => $revision],
-        ])->assertCreated();
-        $this->assertSame([$legacy], $this->background()['currentDiseases']);
+        // Removing it from the list removes it.
+        $this->updateDiseases([$goiter])->assertCreated();
+        $this->assertSame([$goiter], $this->background()['currentDiseases']);
     }
 
     public function test_echoing_stored_conditions_is_not_logged_or_bumped(): void
     {
-        $legacy = $this->legacyHypertension();
-        $reported = ['name' => 'Asthma', 'note' => 'Mild', 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05', 'status' => null, 'conditionKey' => null];
-        $this->seedDiseases([$legacy, $reported]);
+        // Stored before this change with empty status/conditionKey/note fields.
+        $reported = ['name' => 'Asthma', 'note' => null, 'source' => 'Patient-reported', 'firstRecorded' => '2026-05-05', 'status' => null, 'conditionKey' => null];
+        $this->seedDiseases([$reported]);
 
-        $id = $this->updateDiseases([$legacy, $reported])->assertCreated()->json('data.id');
+        $id = $this->updateDiseases([$reported])->assertCreated()->json('data.id');
 
         $this->assertNull(HealthRecord::findOrFail($id)->background_changes);
         $this->assertSame(2, $this->background()['revisions']['medical']);
@@ -255,23 +249,23 @@ class PatientBackgroundConsultationTest extends TestCase
         $finalizer = $this->user('finalizer', ['consultations.encode', 'consultations.finalize']);
 
         $this->finalize([
-            'sections' => ['medical' => ['allergies' => 'Penicillin']],
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Penicillin']]]]],
             'base_revisions' => ['medical' => 2],
         ], [], $finalizer)->assertForbidden();
 
         $this->assertSame(0, HealthRecord::count());
-        $this->assertSame('Dust', $this->background()['allergies']);
+        $this->assertSame(self::DUST, $this->background()['allergies']);
     }
 
     public function test_background_history_lists_changes_newest_first(): void
     {
         $this->finalize([
-            'sections' => ['family' => ['familyHistory' => ['hereditaryIllness' => 'None']]],
+            'sections' => ['family' => ['familyHistory' => ['noneKnown' => true]]],
             'base_revisions' => ['family' => 1],
         ])->assertCreated();
         $this->travel(1)->minutes();
         $latestId = $this->finalize([
-            'sections' => ['social' => ['personalSocial' => ['alcohol' => 'Occasional']]],
+            'sections' => ['social' => ['personalSocial' => ['alcohol' => ['status' => 'current', 'frequency' => 'occasional']]]],
             'base_revisions' => ['social' => 0],
         ])->assertCreated()->json('data.id');
 
@@ -292,7 +286,7 @@ class PatientBackgroundConsultationTest extends TestCase
     public function test_record_responses_do_not_expose_background_changes(): void
     {
         $this->finalize([
-            'sections' => ['medical' => ['allergies' => 'Penicillin']],
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Penicillin']]]]],
             'base_revisions' => ['medical' => 2],
         ])->assertCreated()->assertJsonMissingPath('data.background_changes');
     }
@@ -308,11 +302,11 @@ class PatientBackgroundConsultationTest extends TestCase
 
     private function stagedUpdate(): array
     {
+        // The draft schema for the new section shapes is Task 3's; a
+        // condition entry has the same shape before and after.
         return [
-            'sections' => ['family' => ['familyHistory' => [
-                'similarIllness' => 'Mother - Asthma', 'chronicIllness' => 'Father - Diabetes', 'hereditaryIllness' => '',
-            ]]],
-            'baseRevisions' => ['family' => 1],
+            'sections' => ['medical' => ['currentDiseases' => [['name' => 'Asthma', 'note' => 'Since childhood']]]],
+            'baseRevisions' => ['medical' => 2],
         ];
     }
 
@@ -332,7 +326,7 @@ class PatientBackgroundConsultationTest extends TestCase
         $this->actingAs($this->clinician, 'sanctum')
             ->getJson("/api/health-record-drafts/{$draft['id']}")
             ->assertOk()
-            ->assertJsonPath('data.payload.backgroundUpdate.baseRevisions.family', 1);
+            ->assertJsonPath('data.payload.backgroundUpdate.baseRevisions.medical', 2);
 
         $this->actingAs($this->encoder, 'sanctum')
             ->getJson("/api/health-record-drafts/{$draft['id']}")
@@ -353,6 +347,6 @@ class PatientBackgroundConsultationTest extends TestCase
             ->getJson("/api/health-record-drafts/{$draft['id']}")
             ->assertOk()
             ->assertJsonPath('data.payload.chiefComplaint', 'Updated by encoder')
-            ->assertJsonPath('data.payload.backgroundUpdate.sections.family.familyHistory.chronicIllness', 'Father - Diabetes');
+            ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.currentDiseases.0.name', 'Asthma');
     }
 }
