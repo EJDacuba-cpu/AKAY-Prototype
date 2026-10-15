@@ -3,13 +3,16 @@ import { CircleX, Plus, Search } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import HouseholdConnectionReview, { RelationshipField } from "./HouseholdConnectionReview";
-import { addressText, householdForConnection, patientName, relationshipForConnection, searchHouseholds } from "../../../services/mockFamilyRegistry";
+import {
+  HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
+  patientName, relationshipForConnection, searchHouseholds,
+} from "../../../services/mockFamilyRegistry";
 
 const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]";
 
 export default function FamilyRegistryField({
   registry, patient, connection, savedConnection, headReplacement,
-  onChange, onCreateHousehold, onPendingChange, error, relationshipError,
+  onChange, onPendingChange, error, relationshipError,
 }) {
   const id = useId();
   const inputRef = useRef(null);
@@ -24,6 +27,8 @@ export default function FamilyRegistryField({
     ? patient
     : registry.patients.find((item) => item.id === (connection?.kind === "new" ? connection.headPatientId : household?.headPatientId));
   const hasQuery = Boolean(submitted.trim());
+  const creatingHousehold = connection?.kind === "new";
+  const eligibility = canHeadHousehold(patient);
 
   function resetSearch() {
     setQuery("");
@@ -47,29 +52,47 @@ export default function FamilyRegistryField({
     onPendingChange(false);
   }
 
-  function continueUnlinked() {
-    if (connection) requestConnection(null);
-    else {
-      resetSearch();
-      inputRef.current?.blur();
-      onPendingChange(false);
-    }
+  function createHousehold() {
+    onChange({
+      kind: "new", headPatientId: "self", relationship: HEAD_RELATIONSHIP,
+      household: { serialNumber: nextSerialNumber(registry), address: {} },
+    }, null);
+    resetSearch();
+    setSearching(false);
   }
 
-  const emptyActions = <div className="flex flex-wrap items-center justify-center gap-2">
-    <Button type="button" size="sm" onClick={onCreateHousehold}><Plus size={14} />Add</Button>
-    <Button type="button" variant="ghost" size="sm" onClick={continueUnlinked}>Continue without household</Button>
-  </div>;
+  function cancelCreation() {
+    onChange(null, null);
+    setSearching(true);
+  }
+
+  // The patient becomes the head, so a minor can't start a household of their own.
+  const emptyActions = connection
+    ? <p className="text-xs text-gray-700">To start a separate household for an existing patient, use Add Family in the Families module.</p>
+    : eligibility.code === "minor"
+    ? <p className="text-xs text-gray-700">{eligibility.reason}</p>
+    : <div className="flex flex-col items-center gap-1.5">
+        <Button type="button" size="sm" disabled={!eligibility.ok} onClick={createHousehold}><Plus size={14} />Create New Household</Button>
+        <p className="text-[10px] leading-relaxed text-[#64748B]">{eligibility.ok ? "This patient will be the household head. The address on this form will be used." : eligibility.reason}</p>
+      </div>;
 
   return (
     <div className="min-w-0 space-y-3">
       <div>
         <label htmlFor={searching || !connection ? id : `${id}-serial`} className={labelClass}>Family Serial Number</label>
-        {household && <div className="space-y-3">
+        {creatingHousehold && <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Input id={`${id}-serial`} aria-label="Family Serial Number" value={connection.household.serialNumber}
+              onChange={(event) => onChange({ ...connection, household: { ...connection.household, serialNumber: event.target.value } }, null)}
+              className="h-9 min-w-28 flex-1 shadow-none" />
+            <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>
+          </div>
+          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.</p>
+        </div>}
+        {household && !creatingHousehold && <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Input id={`${id}-serial`} aria-label="Family Serial Number" value={household.serialNumber} readOnly className="h-9 min-w-28 flex-1 bg-gray-50 shadow-none" />
             <Button type="button" variant="ghost" size="sm" onClick={() => { setSearching(true); resetSearch(); }}>Change Household</Button>
-            <Button type="button" variant="ghost" size="sm" className="text-red-700" onClick={() => requestConnection(null)}>Remove Connection</Button>
           </div>
           <div className="text-xs text-gray-600">
             <p className="font-medium text-gray-950">{patientName(head)}</p>

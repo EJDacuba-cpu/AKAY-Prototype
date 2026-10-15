@@ -38,10 +38,9 @@ import { Button } from "../../components/ui/button";
 import ModalShell from "../../components/common/modals/ModalShell";
 import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
 import useMockFamilyRegistry from "../../hooks/useMockFamilyRegistry";
-import { registrationDrafts, registrationPath } from "../../services/patientRegistrationDrafts";
 import {
   ADDRESS_FIELDS, connectionForPatient, householdForConnection, patientName,
-  saveMockPatient, stageConnection, validateConnection, validateHeadReplacement,
+  saveMockPatient, stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
 } from "../../services/mockFamilyRegistry";
 import toast from "react-hot-toast";
 import "../../components/features/patients/registration-form.css";
@@ -150,14 +149,12 @@ export function PatientRegistrationPage({
 }) {
   const navigate = useNavigate();
   const registry = useMockFamilyRegistry();
-  const draftPath = registrationPath(basePath, patientId);
-  const [restoredDraft] = useState(() => registrationDrafts.read(draftPath));
-  const [createdPatientId, setCreatedPatientId] = useState(restoredDraft?.createdPatientId || "");
+  const [createdPatientId, setCreatedPatientId] = useState("");
   const editingPatientId = patientId || createdPatientId || undefined;
   const savedPatient = registry.patients.find((patient) => patient.id === editingPatientId);
   const savedConnection = connectionForPatient(savedPatient);
-  const [householdConnection, setHouseholdConnection] = useState(() => restoredDraft ? restoredDraft.householdConnection : connectionForPatient(savedPatient));
-  const [headReplacement, setHeadReplacement] = useState(restoredDraft?.headReplacement || null);
+  const [householdConnection, setHouseholdConnection] = useState(() => connectionForPatient(savedPatient));
+  const [headReplacement, setHeadReplacement] = useState(null);
   const [householdReviewPending, setHouseholdReviewPending] = useState(false);
   const patientsPath = `${basePath}/patients`;
   const pageTitle = patientId ? "Edit Patient" : "Add New Patient";
@@ -172,17 +169,8 @@ export function PatientRegistrationPage({
     success: false,
   });
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(() => restoredDraft?.form || registrationForm(savedPatient));
-  const [fieldErrors, setFieldErrors] = useState(restoredDraft?.fieldErrors || {});
-  useEffect(() => {
-    // Keep a handoff current after browser Back, so Forward to creation uses
-    // any patient edits made since returning. Never publish a saved record.
-    if (!registrationDrafts.read(draftPath)) return;
-    registrationDrafts.write(draftPath, {
-      form, householdConnection, headReplacement, createdPatientId,
-      patientId: editingPatientId, fieldErrors,
-    });
-  }, [draftPath, form, householdConnection, headReplacement, createdPatientId, editingPatientId, fieldErrors]);
+  const [form, setForm] = useState(() => registrationForm(savedPatient));
+  const [fieldErrors, setFieldErrors] = useState({});
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
   const ageInMonths = calculateAgeInMonths(form.birthDate);
@@ -219,7 +207,7 @@ export function PatientRegistrationPage({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === "familySerialNumber" || (householdConnection && ADDRESS_FIELDS.includes(name))) return;
+    if (name === "familySerialNumber" || (householdConnection?.kind === "existing" && ADDRESS_FIELDS.includes(name))) return;
     setFieldErrors((prev) => ({ ...prev, [name]: "" }));
 
     setForm((prev) => {
@@ -324,16 +312,7 @@ function handleBirthDateChange(valueOrEvent) {
     setFieldErrors((current) => ({ ...current, familySerialNumber: "", relationshipToHouseholdHead: "", ...Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, ""])) }));
   }
 
-  function handleCreateHousehold() {
-    registrationDrafts.write(draftPath, {
-      form, householdConnection, headReplacement, createdPatientId,
-      patientId: editingPatientId, fieldErrors,
-    });
-    navigate(`${draftPath}/household/new`);
-  }
-
   function cancelRegistration() {
-    registrationDrafts.discard(draftPath);
     navigate(backPath);
   }
 
@@ -354,8 +333,11 @@ function handleBirthDateChange(valueOrEvent) {
     function validateForm() {
     const nextErrors = {};
     if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
-    const householdErrors = { ...validateConnection(registry, householdConnection, editingPatientId), ...validateHeadReplacement(registry, editingPatientId, householdConnection, headReplacement) };
-    const { relationship, ...otherHouseholdErrors } = householdErrors;
+    const connectionToSave = withFormAddress(householdConnection, form);
+    const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement) };
+    const { relationship, ...allOtherHouseholdErrors } = householdErrors;
+    // The Address Information panel reports its own address errors.
+    const otherHouseholdErrors = Object.fromEntries(Object.entries(allOtherHouseholdErrors).filter(([key]) => !ADDRESS_FIELDS.includes(key)));
     if (relationship) nextErrors.relationshipToHouseholdHead = relationship;
     if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
 
@@ -380,6 +362,9 @@ function handleBirthDateChange(valueOrEvent) {
     }
     if (!form.streetAddress.trim()) {
       nextErrors.streetAddress = "Street address is required.";
+    }
+    if (householdConnection?.kind === "new" && !form.purokArea.trim()) {
+      nextErrors.purokArea = "Purok / Area is required to create a household.";
     }
     if (!form.barangay) nextErrors.barangay = "Barangay is required.";
     if (!form.municipality.trim()) {
@@ -468,8 +453,7 @@ function handleBirthDateChange(valueOrEvent) {
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const saved = saveMockPatient(patientData, householdConnection, editingPatientId, headReplacement);
-      registrationDrafts.discard(draftPath);
+      const saved = saveMockPatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement);
       setCreatedPatientId(saved.id);
       setForm(registrationForm(saved));
       setHouseholdConnection(connectionForPatient(saved));
@@ -485,8 +469,6 @@ function handleBirthDateChange(valueOrEvent) {
   };
 
   function registerAnother() {
-    registrationDrafts.discard(draftPath);
-    registrationDrafts.discard(registrationPath(basePath));
     setForm({ ...INITIAL_FORM_STATE });
     setHouseholdConnection(null);
     setHeadReplacement(null);
@@ -513,7 +495,6 @@ function handleBirthDateChange(valueOrEvent) {
           <div className="flex flex-col gap-2">
             <Link
               to={backPath}
-              onClick={() => registrationDrafts.discard(draftPath)}
               className="inline-flex w-fit items-center gap-2 text-[13px] font-semibold text-red-600 hover:text-red-800"
             >
               <ArrowLeft size={16} />
@@ -651,7 +632,6 @@ function handleBirthDateChange(valueOrEvent) {
                   savedConnection={savedConnection}
                   headReplacement={headReplacement}
                   onChange={handleHouseholdChange}
-                  onCreateHousehold={handleCreateHousehold}
                   onPendingChange={setHouseholdReviewPending}
                   error={fieldErrors.familySerialNumber}
                   relationshipError={fieldErrors.relationshipToHouseholdHead}
@@ -784,7 +764,7 @@ function handleBirthDateChange(valueOrEvent) {
                   <FormInput
                     label="Street Address"
                     name="streetAddress"
-                    readOnly={Boolean(householdConnection)}
+                    readOnly={householdConnection?.kind === "existing"}
                     value={form.streetAddress}
                     onChange={handleChange}
                     placeholder="House No., Street, Sitio"
@@ -795,17 +775,19 @@ function handleBirthDateChange(valueOrEvent) {
                   <FormInput
                     label="Purok / Area"
                     name="purokArea"
-                    readOnly={Boolean(householdConnection)}
+                    readOnly={householdConnection?.kind === "existing"}
                     value={form.purokArea}
                     onChange={handleChange}
                     placeholder="e.g. Purok 3"
+                    error={fieldErrors.purokArea}
+                    required={householdConnection?.kind === "new"}
                   />
 
                   <div>
                     <FormInput
                       label="Barangay"
                       name="barangay"
-                      readOnly={Boolean(householdConnection)}
+                      readOnly={householdConnection?.kind === "existing"}
                       value={form.barangay}
                       onChange={handleChange}
                       placeholder="Select or type barangay"
@@ -825,7 +807,7 @@ function handleBirthDateChange(valueOrEvent) {
                   <FormInput
                     label="Municipality / City"
                     name="municipality"
-                    readOnly={Boolean(householdConnection)}
+                    readOnly={householdConnection?.kind === "existing"}
                     value={form.municipality}
                     onChange={handleChange}
                     placeholder="Enter municipality"

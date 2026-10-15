@@ -51,12 +51,10 @@ import BHCDashboard from "./pages/bhc/BHCDashboard";
 import PatientsModule from "./pages/bhc/PatientsModule";
 import ConsultationWorkspace from "./pages/bhc/ConsultationWorkspace";
 import AddPatient from "./pages/bhc/AddPatient";
-import CreateHouseholdPage from "./pages/shared/CreateHouseholdPage";
 import FamiliesDirectory from "./pages/shared/FamiliesDirectory";
 import FamilyDetails from "./pages/shared/FamilyDetails";
 import FamilyForm from "./pages/shared/FamilyForm";
 import FamilyMemberForm from "./pages/shared/FamilyMemberForm";
-import { registrationDrafts } from "./services/patientRegistrationDrafts";
 import FollowUps from "./pages/bhc/FollowUps";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
 import Referrals from "./pages/bhc/Referrals";
@@ -351,7 +349,6 @@ export default function App() {
 
   useEffect(() => {
     function handleSensitiveSessionCleared(event) {
-      registrationDrafts.clear();
       if (event.detail?.preserveAuthentication) {
         setSessionEpoch((epoch) => epoch + 1);
         return;
@@ -561,14 +558,7 @@ export default function App() {
           </ProtectedPage>
         }
       />
-      <Route
-        path="/bhc/patients/add/household/new"
-        element={<ProtectedPage allowedRole="bhc" module="patients"><CreateHouseholdPage /></ProtectedPage>}
-      />
-      <Route
-        path="/bhc/patients/:patientId/household/new"
-        element={<ProtectedPage allowedRole="bhc" module="patients"><CreateHouseholdPage /></ProtectedPage>}
-      />
+
       <Route
         path="/bhc/health-records"
         element={
@@ -727,14 +717,7 @@ export default function App() {
           </ProtectedPage>
         }
       />
-      <Route
-        path="/rhu/patients/add/household/new"
-        element={<ProtectedPage allowedRole="rhu" module="patients"><CreateHouseholdPage role="rhu" basePath="/rhu" /></ProtectedPage>}
-      />
-      <Route
-        path="/rhu/patients/:patientId/household/new"
-        element={<ProtectedPage allowedRole="rhu" module="patients"><CreateHouseholdPage role="rhu" basePath="/rhu" /></ProtectedPage>}
-      />
+
       <Route
         path="/rhu/patients/:patientId"
         element={
