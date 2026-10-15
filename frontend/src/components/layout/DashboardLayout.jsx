@@ -44,7 +44,7 @@ export default function DashboardLayout({
   hideSidebar = false,
   // Replaces the default content padding, for pages that manage their own
   // edge spacing (e.g. a full-bleed board that fills the viewport).
-  contentClassName = "px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5",
+  contentClassName = "px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 lg:p-6",
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -263,7 +263,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-gray-50 text-gray-900">
+    <div className="relative flex h-dvh overflow-hidden bg-[var(--color-shell)] text-neutral-900">
       <style>
         {`
           .akay-sidebar-scroll {
@@ -277,7 +277,7 @@ export default function DashboardLayout({
 
           .akay-content-scroll {
             scrollbar-width: thin;
-            scrollbar-color: #E5E7EB transparent;
+            scrollbar-color: var(--color-neutral-300) transparent;
           }
 
           .akay-content-scroll::-webkit-scrollbar {
@@ -289,8 +289,8 @@ export default function DashboardLayout({
           }
 
           .akay-content-scroll::-webkit-scrollbar-thumb {
-            background-color: #D1D5DB;
-            border-radius: 0;
+            background-color: var(--color-neutral-300);
+            border-radius: 999px;
           }
         `}
       </style>
@@ -325,18 +325,20 @@ export default function DashboardLayout({
       )}
 
       <main
-        className={`flex h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out ${
-          hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
+        className={`flex h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out md:p-2 ${
+          hideSidebar ? "" : sidebarExpanded ? "md:ml-60 md:pl-0" : "md:ml-[72px] md:pl-0"
         }`}
       >
-<header className="no-print relative z-30 shrink-0 border-b border-gray-200 bg-white font-sans antialiased">
-  <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
+        {/* The content canvas: a rounded sheet inset in the tinted shell. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)] md:rounded-xl md:border md:border-neutral-200/80 md:shadow-xs">
+<header className="no-print relative z-30 shrink-0 border-b border-neutral-200/80 bg-white font-sans antialiased">
+  <div className="flex h-14 items-center justify-between px-3.5 sm:px-5">
 <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (
     <button
       type="button"
       onClick={() => setMobileDrawerOpen(true)}
-      className="flex h-9 w-9 shrink-0 items-center justify-center border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 md:hidden"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 shadow-xs transition-colors hover:bg-neutral-50 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:hidden"
       aria-label="Open sidebar"
     >
       <Menu size={16} />
@@ -352,7 +354,7 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-9 w-9 items-center justify-center text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
                   aria-label={
                     unreadCount > 0
                       ? `Notifications, ${unreadCount} unread`
@@ -361,7 +363,7 @@ export default function DashboardLayout({
                 >
                   <Bell size={16} />
                   {unreadCount > 0 && (
-                    <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-sm bg-red-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+                    <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink-700 px-1 text-[10px] font-semibold leading-none text-white tabular-nums ring-2 ring-white">
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
@@ -388,6 +390,7 @@ export default function DashboardLayout({
         <section className={`akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${contentClassName}`}>
           {children}
         </section>
+        </div>
       </main>
 
       <NotificationModal

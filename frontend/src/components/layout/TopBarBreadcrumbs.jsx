@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { FOCUS_RING } from "./sidebar/sidebarStyles";
 
-const CRUMB_LINK = `text-gray-500 transition-colors hover:text-gray-900 hover:underline ${FOCUS_RING}`;
+const CRUMB_LINK = `rounded-md text-neutral-500 transition-colors hover:text-neutral-900 ${FOCUS_RING}`;
 
 export default function TopBarBreadcrumbs({ crumbs }) {
   const current = crumbs[crumbs.length - 1];
@@ -10,8 +10,7 @@ export default function TopBarBreadcrumbs({ crumbs }) {
   const backTarget = parents[parents.length - 1];
 
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-3">
-      <span className="h-6 w-1 shrink-0 bg-red-600" aria-hidden="true" />
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center">
 
       {/* Phone: current page, with a back link to the immediate parent */}
       <div className="min-w-0 sm:hidden">
@@ -25,7 +24,7 @@ export default function TopBarBreadcrumbs({ crumbs }) {
           </Link>
         )}
         <h2
-          className="truncate text-sm font-bold leading-tight text-gray-900"
+          className="truncate text-sm font-semibold leading-tight text-neutral-900"
           aria-current="page"
         >
           {current.label}
@@ -39,12 +38,12 @@ export default function TopBarBreadcrumbs({ crumbs }) {
             <Link to={crumb.path} className={`text-sm font-medium ${CRUMB_LINK}`}>
               {crumb.label}
             </Link>
-            <ChevronRight size={14} className="shrink-0 text-gray-400" aria-hidden="true" />
+            <ChevronRight size={14} className="shrink-0 text-neutral-300" aria-hidden="true" />
           </li>
         ))}
         <li className="min-w-0">
           <h2
-            className="truncate text-base font-bold tracking-tight text-gray-900"
+            className="truncate text-sm font-semibold text-neutral-900"
             aria-current="page"
           >
             {current.label}

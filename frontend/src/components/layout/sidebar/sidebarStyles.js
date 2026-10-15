@@ -1,30 +1,30 @@
 // Shared class recipes for the sidebar (desktop rail + mobile drawer).
-// Medical EHR minimalism: sharp corners, borders over shadows, red-600 accent.
+// Calm Clinical Workspace: the rail sits on the tinted shell; the active item is
+// a raised white pill whose icon carries the brand red - the one red on the rail.
 
 export const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-300";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
 
 export function navItemClass(active) {
-  return `group relative flex h-9 w-full items-center border-l-4 text-[13px] transition-colors duration-150 ${FOCUS_RING} ${
+  return `group relative flex h-9 w-full items-center rounded-lg text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 ${FOCUS_RING} ${
     active
-      ? "border-l-red-600 bg-red-50 font-semibold text-red-700"
-      : "border-l-transparent font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+      ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-900/[0.06] [&>svg:first-child]:text-brand-600"
+      : "text-neutral-600 hover:bg-neutral-900/[0.045] hover:text-neutral-900 [&>svg:first-child]:text-neutral-500 hover:[&>svg:first-child]:text-neutral-700"
   }`;
 }
 
 // A module the account holds no permission for: listed so navigation looks the same for everyone, never a link.
-export const LOCKED_NAV_ITEM_CLASS = `group relative flex h-9 w-full cursor-not-allowed items-center border-l-4 border-l-transparent text-[13px] font-medium text-gray-400 ${FOCUS_RING}`;
+export const LOCKED_NAV_ITEM_CLASS = `group relative flex h-9 w-full cursor-not-allowed items-center rounded-lg text-[13px] font-medium text-neutral-400 ${FOCUS_RING}`;
 
 export function childLinkClass(active) {
-  return `relative block py-1.5 pl-4 pr-2 text-[12px] transition-colors duration-150 ${FOCUS_RING} ${
+  return `relative block rounded-md py-1.5 pl-3 pr-2 text-[12.5px] transition-colors duration-150 ${FOCUS_RING} ${
     active
-      ? "font-semibold text-red-700"
-      : "font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+      ? "font-medium text-neutral-900"
+      : "font-medium text-neutral-500 hover:bg-neutral-900/[0.045] hover:text-neutral-900"
   }`;
 }
 
 export const SECTION_LABEL_CLASS =
-  "px-2 text-[10px] font-semibold uppercase leading-tight tracking-wider text-gray-500";
+  "px-2.5 text-[11px] font-medium leading-tight text-neutral-400";
 
-export const SIGN_OUT_CLASS =
-  "flex h-9 w-full items-center justify-center gap-2 border border-gray-200 bg-white text-[12px] font-semibold text-red-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300";
+export const SIGN_OUT_CLASS = `flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-neutral-600 transition-colors duration-150 hover:bg-neutral-900/[0.045] hover:text-alert-700 ${FOCUS_RING}`;

@@ -20,18 +20,18 @@ function toggle(list, id) {
 
 function CheckRow({ checked, disabled, onChange, title, lines }) {
   return (
-    <label className={`flex items-start gap-2.5 border-b border-[#E5E7EB] px-1 py-2.5 last:border-b-0 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+    <label className={`flex items-start gap-2.5 border-b border-neutral-200 px-1 py-2.5 last:border-b-0 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         onChange={onChange}
-        className="mt-0.5 h-4 w-4 flex-none accent-[#DC2626]"
+        className="mt-0.5 h-4 w-4 flex-none accent-ink-700"
       />
       <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-slate-900">{title}</span>
+        <span className="block text-[13px] font-semibold text-neutral-900">{title}</span>
         {lines.map((line) => (
-          <span key={line} className="block text-xs text-slate-500">{line}</span>
+          <span key={line} className="block text-xs text-neutral-500">{line}</span>
         ))}
       </span>
     </label>
@@ -70,7 +70,7 @@ function FollowUpRow({ option, ...props }) {
 
 function SectionHeading({ id, children }) {
   return (
-    <h3 id={id} className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+    <h3 id={id} className="text-[13px] font-semibold text-neutral-900">
       {children}
     </h3>
   );
@@ -197,30 +197,30 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         </>
       }
     >
-      <div className="space-y-4 text-[13px] text-slate-600">
+      <div className="space-y-4 text-[13px] text-neutral-600">
         <fieldset disabled={starting}>
-          <legend id={visitTypeId} className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+          <legend id={visitTypeId} className="text-[13px] font-semibold text-neutral-900">
             Visit type
           </legend>
           <div role="radiogroup" aria-labelledby={visitTypeId} className="mt-1.5 flex flex-wrap gap-x-6 gap-y-1.5">
-            <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-900">
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-neutral-900">
               <input
                 type="radio"
                 name={visitTypeId}
                 checked={!monitoringMode}
                 onChange={() => chooseVisitType(GENERAL)}
-                className="h-4 w-4 accent-[#DC2626]"
+                className="h-4 w-4 accent-ink-700"
               />
               New / General Consultation
             </label>
             {options.length > 0 && (
-              <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-slate-900">
+              <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-neutral-900">
                 <input
                   type="radio"
                   name={visitTypeId}
                   checked={monitoringMode}
                   onChange={() => chooseVisitType(MONITORING)}
-                  className="h-4 w-4 accent-[#DC2626]"
+                  className="h-4 w-4 accent-ink-700"
                 />
                 Follow-up Existing Monitoring
               </label>
@@ -230,7 +230,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         {monitoringMode && (
           <section>
             <SectionHeading id={monitoringHeadingId}>Existing monitoring addressed in this visit</SectionHeading>
-            <p className="mt-0.5 text-xs text-slate-500">Tick the monitored conditions this visit follows up.</p>
+            <p className="mt-0.5 text-xs text-neutral-500">Tick the monitored conditions this visit follows up.</p>
             <div role="group" aria-labelledby={monitoringHeadingId} className="mt-1">
               {options.map((option) => (
                 <ConditionRow
@@ -243,7 +243,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
               ))}
             </div>
             {hasPendingFollowUp && (
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-neutral-500">
                 Pending follow-ups for the selected conditions are recorded as attended when this consultation is saved.
               </p>
             )}
@@ -252,7 +252,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         {followUps.length > 0 && (
           <section>
             <SectionHeading id={followUpHeadingId}>Scheduled follow-ups (optional)</SectionHeading>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-neutral-500">
               Tick one to attend it in this visit. It is marked attended only when the consultation is saved.
             </p>
             <div role="group" aria-labelledby={followUpHeadingId} className="mt-1">
@@ -271,7 +271,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         {recommendations.length > 0 && (
           <section>
             <SectionHeading id={recommendedHeadingId}>Recommended by RHU — start BHC monitoring</SectionHeading>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-neutral-500">
               Optional. Ticked conditions are started in Care Plan &amp; Next Steps; unticked ones stay recommended.
             </p>
             <div role="group" aria-labelledby={recommendedHeadingId} className="mt-1">
@@ -290,14 +290,14 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
         {legacy.length > 0 && (
           <section>
             <SectionHeading id={legacyHeadingId}>Pending RHU verification</SectionHeading>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-neutral-500">
               Refer to RHU for verification if care is needed. It cannot be continued as monitoring until verified.
             </p>
             <ul aria-labelledby={legacyHeadingId} className="mt-1">
               {legacy.map((option) => (
-                <li key={option.monitoringId} className="border-b border-[#E5E7EB] px-1 py-2.5 last:border-b-0">
-                  <span className="block text-[13px] font-semibold text-slate-900">{option.conditionName}</span>
-                  <span className="block text-xs text-slate-500">
+                <li key={option.monitoringId} className="border-b border-neutral-200 px-1 py-2.5 last:border-b-0">
+                  <span className="block text-[13px] font-semibold text-neutral-900">{option.conditionName}</span>
+                  <span className="block text-xs text-neutral-500">
                     {[
                       "Legacy — Pending RHU Verification",
                       option.startedAt && `Monitoring since ${formatDate(option.startedAt, option.startedAt)}`,
@@ -311,7 +311,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
           </section>
         )}
         {problem && (
-          <p role="alert" className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 px-3 py-2 text-xs text-alert-700">
             {problem}
           </p>
         )}

@@ -3,16 +3,30 @@
 /* Viewport-height breakpoints for full-screen, no-scroll layouts (e.g. login). */
 @custom-variant short (@media (max-height: 760px));
 @custom-variant tiny (@media (max-height: 600px));
+/* Document-flow layouts: below the lg breakpoint OR in a short window, fixed-height
+   boards give up their inner scroll regions and the page scrolls as one. */
+@custom-variant flow {
+  @media (max-width: 63.99rem), (max-height: 760px) {
+    @slot;
+  }
+}
+/* The fixed-height board itself: wide AND tall enough that nothing above applies. */
+@custom-variant board-xl {
+  @media (min-width: 80rem) and (min-height: 760.02px) {
+    @slot;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   AKAY DESIGN TOKENS
-   Direction: medical-ehr-minimalism — cool gray neutrals, red primary
-   (#DC2626), flat surfaces (no shadow except floating layers), square corners
-   (2px on badges only), bold sans headings.
+   AKAY DESIGN TOKENS — "Calm Clinical Workspace"
+   Clinical SaaS x modern productivity: a tinted cool-gray shell holding a
+   rounded content canvas, white cards with a soft border and a faint offset
+   shadow, navy-ink primary actions, and brand red kept for the logo, the
+   active place, and real danger. Inter throughout with tabular numerals.
 
    @theme  → generating tokens. Tailwind v4 emits these as CSS vars AND builds
-             utilities from them (bg-brand-600, text-neutral-600, rounded-card,
-             font-sans, text-2xl, rounded-md, …).
+             utilities from them (bg-ink-700, text-neutral-600, rounded-card,
+             font-sans, text-2xl, shadow-sm, …).
    :root   → SEMANTIC role vars. Not meant to generate utilities; components
              consume THESE. Structured so a dark theme can later override the
              roles without touching the ramps.
@@ -21,19 +35,31 @@
 @theme {
   /* ── Color ramps ─────────────────────────────────────────────────────── */
 
-  /* Neutral — cool gray (medical-ehr-minimalism) */
-  --color-neutral-50: #f9fafb;
-  --color-neutral-100: #f3f4f6;
-  --color-neutral-200: #e5e7eb;
-  --color-neutral-300: #d1d5db;
-  --color-neutral-400: #9ca3af;
-  --color-neutral-500: #6b7280;
-  --color-neutral-600: #4b5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1f2937;
-  --color-neutral-900: #111827;
+  /* Neutral — cool gray with a faint blue cast */
+  --color-neutral-50: #f8f9fb;
+  --color-neutral-100: #f1f3f6;
+  --color-neutral-200: #e4e7ec;
+  --color-neutral-300: #d0d5dd;
+  --color-neutral-400: #98a2b3;
+  --color-neutral-500: #667085;
+  --color-neutral-600: #475467;
+  --color-neutral-700: #344054;
+  --color-neutral-800: #1d2939;
+  --color-neutral-900: #101828;
 
-  /* Brand — red (primary actions, active states) */
+  /* Ink — navy-ink for primary actions, selection and active text */
+  --color-ink-50: #f2f4f8;
+  --color-ink-100: #e4e8f0;
+  --color-ink-200: #c9d1de;
+  --color-ink-300: #9eabc0;
+  --color-ink-400: #6b7a93;
+  --color-ink-500: #45536b;
+  --color-ink-600: #2c3a52;
+  --color-ink-700: #1b2638;
+  --color-ink-800: #131b29;
+  --color-ink-900: #0c121c;
+
+  /* Brand — AKAY red. Logo, active-place marker, rare emphasis. */
   --color-brand-50: #fef2f2;
   --color-brand-100: #fee2e2;
   --color-brand-200: #fecaca;
@@ -45,87 +71,99 @@
   --color-brand-800: #991b1b;
   --color-brand-900: #7f1d1d;
 
-  /* Alert — critical only */
-  --color-alert-50: #fef2f2;
-  --color-alert-100: #fee2e2;
-  --color-alert-200: #fecaca;
-  --color-alert-300: #fca5a5;
-  --color-alert-400: #f87171;
-  --color-alert-500: #ef4444;
-  --color-alert-600: #dc2626;
-  --color-alert-700: #b91c1c;
+  /* Alert — danger, urgency, destructive, validation */
+  --color-alert-50: #fef3f2;
+  --color-alert-100: #fee4e2;
+  --color-alert-200: #fecdca;
+  --color-alert-300: #fda29b;
+  --color-alert-400: #f97066;
+  --color-alert-500: #f04438;
+  --color-alert-600: #d92d20;
+  --color-alert-700: #b42318;
 
   /* Status */
-  --color-success-50: #ecfdf5;
-  --color-success-500: #059669;
-  --color-success-700: #047857;
-  --color-warning-50: #fffbeb;
-  --color-warning-500: #f59e0b;
-  --color-warning-700: #b45309;
-  --color-info-50: #ecfeff;
-  --color-info-500: #0891b2;
-  --color-info-700: #0e7490;
+  --color-success-50: #ecfdf3;
+  --color-success-100: #d1fadf;
+  --color-success-500: #12b76a;
+  --color-success-700: #027a48;
+  --color-warning-50: #fffaeb;
+  --color-warning-100: #fef0c7;
+  --color-warning-500: #f79009;
+  --color-warning-700: #b54708;
+  --color-info-50: #eff8ff;
+  --color-info-100: #d1e9ff;
+  --color-info-500: #2e90fa;
+  --color-info-700: #175cd3;
 
   /* ── Typography ──────────────────────────────────────────────────────── */
-  --font-sans: "Geiza", "Public Sans Variable", system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* IDs and codes stay in Inter, set with tabular figures and a slashed zero
+     (see .font-mono below) — the data voice is the same family, not a costume. */
+  --font-mono: "Inter Variable", "Inter", system-ui, sans-serif;
   --font-serif: "Source Serif 4 Variable", Georgia, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* Type scale (unchanged; body text is now 14px, set on `body` below) */
   --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
   --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
   --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
   --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.625rem;
   --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
   --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
   --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.375rem;
 
-  /* ── Radius: sharp. Only badges get 2px. ─────────────────────────────── */
-  --radius-row: 0;
-  --radius-input: 0;
-  --radius-card: 0;
-  --radius-card-sm: 0;
-  --radius-modal: 0;
-  --radius-pill: 999px; /* dots, avatars, spinners only */
-  --radius-badge: 2px;
-  /* Tailwind's own scale, so hard-coded rounded-* classes go square too. */
-  --radius-xs: 0;
-  --radius-sm: 2px;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-xl: 0;
-  --radius-2xl: 0;
-  --radius-3xl: 0;
-  --radius-4xl: 0;
+  /* ── Radius: soft, consistent ────────────────────────────────────────── */
+  --radius-row: 8px;
+  --radius-input: 8px;
+  --radius-card: 12px;
+  --radius-card-sm: 10px;
+  --radius-modal: 16px;
+  --radius-pill: 999px;
+  --radius-badge: 6px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-4xl: 24px;
 
-  /* ── Shadow: flat. Only floating layers keep one subtle shadow. ──────── */
-  --shadow-2xs: 0 0 #0000;
-  --shadow-xs: 0 0 #0000;
-  --shadow-sm: 0 0 #0000;
-  --shadow-md: 0 0 #0000;
-  --shadow-lg: 0 4px 12px rgba(17, 24, 39, 0.08);
-  --shadow-xl: 0 4px 12px rgba(17, 24, 39, 0.08);
-  --shadow-2xl: 0 4px 12px rgba(17, 24, 39, 0.08);
-  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.03);
+  /* ── Shadow: soft, offset, low-alpha ink ─────────────────────────────── */
+  --shadow-2xs: 0 1px 0 rgba(16, 24, 40, 0.03);
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.07), 0 2px 4px -2px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-xl: 0 20px 24px -4px rgba(16, 24, 40, 0.08), 0 8px 8px -4px rgba(16, 24, 40, 0.03);
+  --shadow-2xl: 0 24px 48px -12px rgba(16, 24, 40, 0.18);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.03);
 }
 
 :root {
   /* ── Semantic roles (components consume THESE) ─────────────── */
+  --color-shell: var(--color-neutral-100);
   --color-bg: var(--color-neutral-50);
   --color-surface: #ffffff;
-  --color-surface-2: var(--color-neutral-100);
+  --color-surface-2: var(--color-neutral-50);
   --color-border: var(--color-neutral-200);
   --color-border-strong: var(--color-neutral-300);
   --color-text: var(--color-neutral-900);
   --color-text-secondary: var(--color-neutral-600);
   --color-text-muted: var(--color-neutral-500);
-  --color-primary: var(--color-brand-600);
-  --color-primary-hover: var(--color-brand-700);
-  --color-primary-soft: var(--color-brand-50);
-  --color-danger: var(--color-alert-500);
-  --color-danger-hover: var(--color-alert-600);
+  --color-primary: var(--color-ink-700);
+  --color-primary-hover: var(--color-ink-600);
+  --color-primary-soft: var(--color-ink-50);
+  --color-brand: var(--color-brand-600);
+  --color-danger: var(--color-alert-600);
+  --color-danger-hover: var(--color-alert-700);
   --color-danger-soft: var(--color-alert-50);
-  --color-ring: color-mix(in srgb, var(--color-brand-600) 30%, transparent);
+  --color-ring: color-mix(in srgb, var(--color-ink-500) 35%, transparent);
 
   /* ── Legacy aliases — keep the old --akay-* API working (re-pointed) ─── */
   --akay-primary: var(--color-primary);
@@ -148,36 +186,61 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  background: var(--color-shell);
   font-family: var(--font-sans);
   font-size: 14px;
+  line-height: 1.5;
   color: var(--color-text);
+  /* Inter's open 4/6/9 and single-storey a: calmer, more legible numerals in dense data. */
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Brand-red checkboxes and radios instead of the browser's blue. In the base layer so accent-* utilities still win. */
+/* Browser surfaces carry the palette too. In the base layer so utilities still win. */
 @layer base {
   input[type="checkbox"],
   input[type="radio"] {
-    accent-color: var(--color-brand-700);
+    accent-color: var(--color-ink-700);
+  }
+
+  ::selection {
+    background: var(--color-ink-100);
+    color: var(--color-ink-900);
+  }
+
+  input,
+  textarea {
+    caret-color: var(--color-ink-700);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-neutral-400);
+  }
+
+  a {
+    text-underline-offset: 3px;
   }
 }
 
-/* Bold sans headings (medical-ehr-minimalism). Utility classes still win. */
+/* Semibold, slightly tightened sans headings. Utility classes still win. */
 h1,
 h2,
 h3,
 h4 {
   font-family: var(--font-sans);
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.011em;
 }
 
-/* Cards: square corners (the radius tokens resolve to 0), with a soft,
-   barely-there elevation from --shadow-card (top-level panels, record
-   headers, accordion sections, stat tiles) - a clinical-SaaS lift without
-   rounding the "medical-ehr-minimalism" corners. --radius-card-sm is the
-   same square radius for nested cards (medicine rows, task cards). */
+/* Identifiers and figures: same family, tabular and with a slashed zero. */
+.font-mono,
+.tabular-nums {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum", "zero";
+}
+
+/* Cards: white sheet, soft 1px border, 12px corners, faint offset shadow. */
 .akay-card {
   border: 1px solid var(--akay-border);
   border-radius: var(--radius-card);
@@ -186,16 +249,25 @@ h4 {
 }
 
 .akay-card-hover {
-  transition: border-color 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .akay-card-hover:hover {
   border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Thin, quiet scrollbars on every scrolling region. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-300) transparent;
 }
 
 .akay-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
+  scrollbar-color: var(--color-neutral-300) transparent;
 }
 
 .akay-scrollbar::-webkit-scrollbar {
@@ -208,12 +280,12 @@ h4 {
 }
 
 .akay-scrollbar::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 0;
+  background: var(--color-neutral-300);
+  border-radius: 999px;
 }
 
 .akay-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: #b6c0cc;
+  background: var(--color-neutral-400);
 }
 
 /* --- Scrollbar Utilities --- */
@@ -355,7 +427,7 @@ textarea,
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background: linear-gradient(90deg, var(--color-neutral-100) 25%, var(--color-neutral-200) 50%, var(--color-neutral-100) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.8s ease-in-out infinite;
   border-radius: 6px;

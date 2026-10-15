@@ -14,11 +14,11 @@ export default function MobileSidebarDrawer({
 }) {
   return (
     <aside
-      className={`font-sans antialiased fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden border-r border-gray-200 bg-white transition-transform duration-300 ease-in-out md:hidden ${
+      className={`font-sans antialiased fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden bg-[var(--color-shell)] shadow-2xl transition-transform duration-300 ease-in-out md:hidden ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex h-[62px] shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4">
+      <div className="flex h-16 shrink-0 items-center justify-between pl-5 pr-3">
         <div className="flex min-w-0 items-center">
           <LogoWordmark />
         </div>
@@ -26,7 +26,7 @@ export default function MobileSidebarDrawer({
         <button
           type="button"
           onClick={onClose}
-          className={`flex h-9 w-9 items-center justify-center text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+          className={`flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900 ${FOCUS_RING}`}
           aria-label="Close sidebar"
         >
           <X size={16} />

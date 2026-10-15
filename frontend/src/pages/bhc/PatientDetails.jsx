@@ -13,6 +13,7 @@ import {
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
+import CarePath from "../../components/features/patients/profile/CarePath";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
 import VitalsTiles from "../../components/features/patients/profile/VitalsTiles";
 import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
@@ -46,8 +47,8 @@ import {
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import { PatientRegistrationPage } from "./AddPatient";
 
-// The profile fills the whole content area, leaving only a 10px margin.
-const PROFILE_CONTENT_CLASS = "p-[10px] pb-[max(10px,env(safe-area-inset-bottom))]";
+// The profile fills the whole content area inside an even 12-16px margin.
+const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
 
 function ProfileShell({ children }) {
   return (
@@ -59,20 +60,20 @@ function ProfileShell({ children }) {
 
 /**
  * Underlined tab strip for the profile's main content: no box or background,
- * so it sits directly on the page surface above a thin rule, with a red
- * underline on the active tab and slate text on the others.
+ * so it sits directly on the canvas above a thin rule, with an ink underline
+ * on the active tab and a quiet count pill beside each label.
  */
 function ProfileTabs({ tabs, activeTab, onSelect }) {
   return (
     <div
       role="tablist"
       aria-label="Patient profile"
-      className="mb-1.5 shrink-0 overflow-x-auto border-b border-[#E5E7EB]"
+      className="mb-3 mt-1 shrink-0 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-neutral-200)]"
     >
-      <nav className="flex">
+      <nav className="flex gap-1">
         {tabs.map((tab) => {
           const active = tab.key === activeTab;
-          const count = tab.count === undefined || tab.count === null ? "" : ` (${tab.count})`;
+          const hasCount = tab.count !== undefined && tab.count !== null;
           return (
             <button
               key={tab.key}
@@ -82,14 +83,22 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
               aria-selected={active}
               aria-controls={`profile-panel-${tab.key}`}
               onClick={() => onSelect(tab.key)}
-              className={`whitespace-nowrap border-b-2 px-4 py-1.5 text-xs font-semibold transition-colors duration-150 ${
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
                 active
-                  ? "border-[#B91C1C] text-[#B91C1C]"
-                  : "border-transparent text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                  ? "border-ink-700 text-neutral-900"
+                  : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
               }`}
             >
               {tab.label}
-              {count}
+              {hasCount && (
+                <span
+                  className={`rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums ${
+                    active ? "bg-ink-50 text-ink-700" : "bg-neutral-100 text-neutral-500"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -418,11 +427,11 @@ function LivePatientDetails() {
   if (!patient) {
     return (
       <ProfileShell>
-        <div className="mx-auto max-w-md bg-white p-10 text-center">
-          <h1 className="text-xl font-semibold text-gray-900 font-sans!">Patient not found</h1>
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-neutral-200/80 bg-white p-10 text-center shadow-card">
+          <h1 className="text-xl font-semibold text-neutral-900 font-sans!">Patient not found</h1>
           <Link
             to="/bhc/patients"
-            className="mt-4 inline-flex rounded-none bg-red-600 px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-red-700"
+            className="mt-4 inline-flex rounded-lg bg-ink-700 px-4 py-2.5 text-[13px] font-medium text-white shadow-xs transition hover:bg-ink-600"
           >
             Back to Patients
           </Link>
@@ -454,15 +463,24 @@ function LivePatientDetails() {
   return (
     <>
       <ProfileShell>
-        <div className="bhc-patient-profile flex h-full min-h-0 flex-col font-sans [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+        <div className="bhc-patient-profile flex h-full min-h-0 flex-col flow:h-auto font-sans [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
           <PatientProfileHeader
             patient={patient}
             patientId={patientId}
             backPath={backPath}
             updating={patientUpdating}
+            carePath={
+              canViewHistory ? (
+                <CarePath
+                  referrals={referrals}
+                  conditions={conditions}
+                  isLoading={(referralsLoading && referrals.length === 0) || conditions.isLoading}
+                />
+              ) : null
+            }
           />
 
-          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
             {tabStrip}
 
             {activeTab === "overview" &&
@@ -514,7 +532,7 @@ function LivePatientDetails() {
                   <RestrictedArea
                     locked
                     label="Health Records & History"
-                    className="min-h-0 flex-1 rounded-md"
+                    className="min-h-0 flex-1 rounded-xl"
                     placeholder={<LockedOverviewPlaceholder />}
                   />
                 </div>
@@ -525,7 +543,7 @@ function LivePatientDetails() {
                 role="tabpanel"
                 id={`profile-panel-${activeTab}`}
                 aria-labelledby={`profile-tab-${activeTab}`}
-                className="akay-content-scroll min-h-0 flex-1 overflow-y-auto"
+                className="akay-content-scroll min-h-0 flex-1 overflow-y-auto flow:flex-none flow:overflow-visible"
               >
                 {activeTab === "patient-info" && (
                   <RegistrationSections
@@ -627,7 +645,7 @@ function LivePatientDetails() {
 // Same column geometry as PatientOverviewBoard, with static blocks only: no patient history is ever rendered.
 function LockedOverviewPlaceholder() {
   return (
-    <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)]">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)]">
       <LockedPlaceholder lines={4} className="min-h-72 xl:order-1" />
       <LockedPlaceholder lines={5} className="min-h-72 xl:order-3" />
       <LockedPlaceholder lines={6} className="min-h-72 md:col-span-2 xl:order-2 xl:col-span-1" />

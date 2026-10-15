@@ -23,8 +23,8 @@ const DEFAULTS = {
   fbs: { label: "FBS", unit: "mg/dL", Icon: Droplet },
 };
 
-const CARD = "border border-gray-200 bg-white px-2.5 py-2";
-const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-slate-500";
+const CARD = "rounded-xl border border-neutral-200/80 bg-white px-3 py-2.5 shadow-card";
+const LABEL = "text-xs font-medium text-neutral-600";
 
 /**
  * Maps readings onto 0-100 chart space, oldest on the left. Every line in a
@@ -64,7 +64,7 @@ function TrendChart({ series, bars = false }) {
                 y={y}
                 width={8}
                 height={100 - y}
-                className={index === lines[0].length - 1 ? "fill-slate-500" : "fill-slate-200"}
+                className={index === lines[0].length - 1 ? "fill-ink-600" : "fill-neutral-200"}
               />
             ))
           : lines.map((points, lineIndex) => (
@@ -74,7 +74,7 @@ function TrendChart({ series, bars = false }) {
                 vectorEffect="non-scaling-stroke"
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                className={`fill-none stroke-[1.5] ${lineIndex === 0 ? "stroke-slate-500" : "stroke-slate-300"}`}
+                className={`fill-none stroke-[1.75] ${lineIndex === 0 ? "stroke-ink-600" : "stroke-neutral-300"}`}
               />
             ))}
       </svg>
@@ -84,7 +84,7 @@ function TrendChart({ series, bars = false }) {
           return (
             <span
               key={lineIndex}
-              className={`absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ${lineIndex === 0 ? "bg-slate-700" : "bg-slate-400"}`}
+              className={`absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${lineIndex === 0 ? "bg-ink-700" : "bg-neutral-400"}`}
               style={{ left: `${x}%`, top: `${y}%` }}
             />
           );
@@ -96,7 +96,7 @@ function TrendChart({ series, bars = false }) {
 function Label({ Icon, children }) {
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <Icon size={13} className="shrink-0 text-slate-400" aria-hidden="true" />
+      <Icon size={14} className="shrink-0 text-neutral-400" aria-hidden="true" />
       <span className={`${LABEL} truncate`}>{children}</span>
     </span>
   );
@@ -104,9 +104,9 @@ function Label({ Icon, children }) {
 
 function Value({ display, unit }) {
   return (
-    <span className="min-w-0 truncate text-base font-semibold tabular-nums text-slate-900">
+    <span className="min-w-0 truncate text-[17px] font-semibold tabular-nums tracking-tight text-neutral-900">
       {display}
-      <span className="ml-1 text-[10px] font-normal text-slate-500">{unit}</span>
+      <span className="ml-1 text-[11px] font-normal tracking-normal text-neutral-500">{unit}</span>
     </span>
   );
 }
@@ -136,22 +136,22 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
   const note = isLoading && records.length === 0 ? "Loading..." : !record ? "No vital signs recorded yet." : "";
 
   return (
-    <section aria-labelledby="overview-vitals-title" aria-busy={isLoading} className="flex min-h-0 flex-1 flex-col">
-      <header className="mb-1.5 flex min-h-4 shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
-        <h2 id="overview-vitals-title" className={`${LABEL} tracking-[0.08em] font-sans!`}>
-          Latest Vital Signs
+    <section aria-labelledby="overview-vitals-title" aria-busy={isLoading} className="flex min-h-0 flex-1 flex-col flow:flex-none">
+      <header className="mb-2 flex min-h-5 shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
+        <h2 id="overview-vitals-title" className="text-[13px] font-semibold text-neutral-900 font-sans!">
+          Latest vital signs
         </h2>
-        <span className="text-[11px] tabular-nums text-slate-400" role={note ? "status" : undefined}>
+        <span className="text-xs tabular-nums text-neutral-500" role={note ? "status" : undefined}>
           {note || formatRecordedAt(record, recordedAt)}
         </span>
       </header>
 
-      <div className="akay-content-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="flex flex-col gap-1.5">
+      <div className="akay-content-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain flow:overflow-visible">
+        <div className="flex flex-col gap-2">
           {CHART_CARDS.map((key) => {
             const { label, unit, display, series, Icon } = card(key);
             return (
-              <div key={key} className={`${CARD} flex h-[90px] shrink-0 flex-col gap-1`}>
+              <div key={key} className={`${CARD} flex h-[92px] shrink-0 flex-col gap-1.5`}>
                 <div className="flex shrink-0 items-center justify-between gap-2">
                   <Label Icon={Icon}>{label}</Label>
                   <Value display={display} unit={unit} />
@@ -161,11 +161,11 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
             );
           })}
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {[...SMALL_CARDS, ...(byKey.fbs ? ["fbs"] : [])].map((key) => {
               const { label, unit, display, Icon } = card(key);
               return (
-                <div key={key} className={`${CARD} flex h-14 min-w-0 flex-col justify-between`}>
+                <div key={key} className={`${CARD} flex h-16 min-w-0 flex-col justify-between`}>
                   <Label Icon={Icon}>{label}</Label>
                   <Value display={display} unit={unit} />
                 </div>

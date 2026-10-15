@@ -34,7 +34,7 @@ export default function Input({
   return (
     <div className="w-full">
       {label && (
-        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">
           {label}
         </label>
       )}
@@ -48,24 +48,25 @@ export default function Input({
           w-full
           rounded-lg
           border
-          border-[#E5E7EB]
-          bg-[#F8FAFC]
+          border-neutral-200
+          bg-white
           px-3
           py-2
-          text-sm text-[#0F172A]
+          text-sm text-neutral-900
+          shadow-xs
           transition-all
-          focus:border-[#FCA5A5]
+          focus:border-ink-300
           focus:outline-none
-          focus:ring-2
-          focus:ring-[#B91C1C]/10
-          disabled:bg-slate-100
-          disabled:text-slate-500
-          ${error ? "border-red-500" : ""}
+          focus:ring-4
+          focus:ring-ink-100
+          disabled:bg-neutral-50
+          disabled:text-neutral-500
+          ${error ? "border-alert-300 focus:border-alert-300 focus:ring-alert-100" : ""}
           ${className}
         `}
         {...props}
       />
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1.5 text-xs text-alert-700">{error}</p>}
     </div>
   );
 }

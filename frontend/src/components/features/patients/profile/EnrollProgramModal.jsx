@@ -95,13 +95,13 @@ export default function EnrollProgramModal({
       }
     >
       {programsError ? (
-        <p role="alert" className="text-[13px] text-red-700">
+        <p role="alert" className="text-[13px] text-alert-700">
           Could not load published programs. <button type="button" onClick={() => onRetryPrograms?.()} className="font-semibold underline">Retry</button>
         </p>
       ) : programsLoading ? (
-        <p className="text-[13px] text-slate-500">Loading published programs...</p>
+        <p className="text-[13px] text-neutral-500">Loading published programs...</p>
       ) : availablePrograms.length === 0 ? (
-        <p className="text-[13px] text-slate-500">
+        <p className="text-[13px] text-neutral-500">
           This patient is already enrolled in every program currently published to this BHC.
         </p>
       ) : (
@@ -135,7 +135,7 @@ export default function EnrollProgramModal({
             placeholder="Any context worth recording about this enrollment."
           />
 
-          {error && <p className="text-[12px] font-medium text-red-600">{error}</p>}
+          {error && <p className="text-[12px] font-medium text-alert-600">{error}</p>}
         </div>
       )}
     </ModalShell>

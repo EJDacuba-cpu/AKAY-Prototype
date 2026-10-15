@@ -6,24 +6,24 @@ export const LEGACY_PENDING_LABEL = "Legacy — Pending RHU Verification";
 export const UNVERIFIED_LABEL = "Unverified — recorded from BHC consultation";
 
 const STATUS_TONE = {
-  active: "border-red-200 bg-red-50 text-red-700",
-  controlled: "border-amber-200 bg-amber-50 text-amber-700",
-  under_evaluation: "border-slate-200 bg-slate-50 text-slate-600",
-  resolved: "border-green-200 bg-green-50 text-green-700",
-  ruled_out: "border-slate-200 bg-slate-50 text-slate-600",
+  active: "bg-alert-50 text-alert-700 ring-alert-100",
+  controlled: "bg-warning-50 text-warning-700 ring-warning-100",
+  under_evaluation: "bg-info-50 text-info-700 ring-info-100",
+  resolved: "bg-success-50 text-success-700 ring-success-100",
+  ruled_out: "bg-neutral-100 text-neutral-600 ring-neutral-200",
 };
 
-const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+const CHIP = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
 
 function Row({ name, chip, lines = [], badge, children }) {
   return (
-    <li className="py-1 first:pt-0">
+    <li className="py-1.5 first:pt-0">
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{name}</span>
+        <span className="min-w-0 break-words text-[13px] font-medium text-neutral-900">{name}</span>
         {chip}
       </div>
       {lines.filter(Boolean).map((line) => (
-        <p key={line} className="mt-0.5 text-[11px] text-slate-500">
+        <p key={line} className="mt-0.5 text-xs text-neutral-500">
           {line}
         </p>
       ))}
@@ -43,7 +43,7 @@ function Group({ title, children }) {
   return (
     <div>
       <GroupHeading>{title}</GroupHeading>
-      <ul className="mt-1 divide-y divide-gray-100">{children}</ul>
+      <ul className="mt-1 divide-y divide-neutral-100">{children}</ul>
     </div>
   );
 }
@@ -80,9 +80,9 @@ function EventLine({ event }) {
     : conditionStatusLabel(event.toStatus);
   const parts = [change, event.changedByName, formatShortDate(event.changedAt), conditionEventSourceLabel(event.sourceType)];
   return (
-    <li className="text-[11px] text-slate-500">
+    <li className="text-xs text-neutral-500">
       {parts.filter(Boolean).join(" · ")}
-      {event.note ? <span className="block break-words text-slate-600">{event.note}</span> : null}
+      {event.note ? <span className="block break-words text-neutral-600">{event.note}</span> : null}
     </li>
   );
 }
@@ -122,13 +122,13 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
 
   return (
     <div className="space-y-3">
-      {isLoading && <p role="status" className="text-xs text-slate-500">Loading RHU-confirmed conditions...</p>}
+      {isLoading && <p role="status" className="text-[13px] text-neutral-500">Loading RHU-confirmed conditions...</p>}
       {isError && (
-        <p role="alert" className="text-xs text-slate-500">
+        <p role="alert" className="text-[13px] text-neutral-500">
           RHU-confirmed conditions could not be loaded right now.
         </p>
       )}
-      {empty && !isLoading && !isError && <p className="text-xs text-slate-500">No documented conditions yet.</p>}
+      {empty && !isLoading && !isError && <p className="text-[13px] text-neutral-500">No documented conditions yet.</p>}
 
       {confirmed.length > 0 && (
         <Group title="Confirmed / Monitored">
@@ -180,10 +180,10 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
       )}
       {past.length > 0 && (
         <details>
-          <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+          <summary className="cursor-pointer rounded-md text-xs font-medium text-neutral-500 hover:text-neutral-900">
             Past ({past.length})
           </summary>
-          <ul className="mt-1 divide-y divide-gray-100">
+          <ul className="mt-1 divide-y divide-neutral-100">
             {past.map((condition) => (
               <PastCondition key={condition.id} condition={condition} />
             ))}

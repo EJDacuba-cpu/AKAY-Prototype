@@ -13,36 +13,36 @@ import { getRecordDateValue, getRecordOutcome } from "../../../../utils/healthRe
 const PREVIEW_COUNT = 3;
 
 const CARE_STATUS_TONE = {
-  info: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-  success: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-  warning: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-  neutral: "border-[#E5E7EB] bg-[#F8FAFC] text-[#475569]",
+  info: "bg-info-50 text-info-700 ring-info-100",
+  success: "bg-success-50 text-success-700 ring-success-100",
+  warning: "bg-warning-50 text-warning-700 ring-warning-100",
+  neutral: "bg-neutral-100 text-neutral-600 ring-neutral-200",
 };
 
 const OUTCOME_TEXT = {
-  Referred: "text-amber-700",
-  "Follow-up": "text-red-600",
-  Routine: "text-slate-500",
+  Referred: "text-warning-700",
+  "Follow-up": "text-info-700",
+  Routine: "text-neutral-500",
 };
 
-const CHIP = "shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+const CHIP = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
 const ROW_BUTTON =
-  "group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-1 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40";
+  "group -mx-1.5 grid w-[calc(100%+0.75rem)] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50";
 
 /** Read-only background summary; View opens the Patient Background tab. */
 function BackgroundSummaryCard({ background, onView }) {
   return (
     <OverviewCard
       id="overview-background"
-      title="Patient Background"
+      title="Patient background"
       share={2.5}
       action={<TextAction onClick={onView}>View →</TextAction>}
     >
-      <dl className="space-y-0.5 text-xs">
+      <dl className="space-y-1 text-[13px]">
         {summarizeBackground(background).map(({ key, label, text }) => (
-          <div key={key} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-2">
-            <dt className="text-slate-500">{label}</dt>
-            <dd className={`m-0 line-clamp-2 min-w-0 break-words ${text ? "text-slate-900" : "text-slate-400"}`} title={text || undefined}>
+          <div key={key} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2">
+            <dt className="text-neutral-500">{label}</dt>
+            <dd className={`m-0 line-clamp-2 min-w-0 flow:line-clamp-none break-words ${text ? "text-neutral-900" : "text-neutral-400"}`} title={text || undefined}>
               {text || "Not recorded"}
             </dd>
           </div>
@@ -57,13 +57,13 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
     <OverviewCard
       id="overview-care-tracking"
       share={2.5}
-      title="Care Programs"
+      title="Care programs"
       action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
       {programLabels.length > 0 && (
-        <div className="mb-1 flex flex-wrap gap-1">
+        <div className="mb-2 flex flex-wrap gap-1">
           {programLabels.map((label) => (
-            <span key={label} className="rounded-sm border border-slate-300 px-2 py-0.5 text-[11px] text-slate-700">
+            <span key={label} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-700">
               {label}
             </span>
           ))}
@@ -72,12 +72,12 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
       {entries.length === 0 ? (
         <OverviewNote>No applicable care programs for this patient yet.</OverviewNote>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-100">
           {entries.map((entry) => (
-            <li key={entry.key} className="flex items-center justify-between gap-3 py-1 first:pt-0">
+            <li key={entry.key} className="flex items-center justify-between gap-3 py-1.5 first:pt-0">
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-slate-900">{entry.label}</span>
-                <span className="block text-[11px] text-slate-500">
+                <span className="block truncate text-[13px] font-medium text-neutral-900">{entry.label}</span>
+                <span className="block text-xs text-neutral-500">
                   {entry.nextVisit
                     ? `Next visit ${formatShortDate(entry.nextVisit)}`
                     : entry.lastVisit
@@ -112,7 +112,7 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
       ) : visible.length === 0 ? (
         <OverviewNote>No referral history found for this patient.</OverviewNote>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-100">
           {visible.map((referral) => {
             const trackingId = referral.trackingId || referral.id;
             return (
@@ -124,16 +124,16 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
                   className={ROW_BUTTON}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-sm text-slate-900">
+                    <span className="block truncate text-[13px] font-medium text-neutral-900">
                       {formatDisplayValue(getReferralDestination(referral), "Destination not recorded")}
                     </span>
-                    <span className="block truncate text-[11px] tabular-nums text-slate-500">
+                    <span className="block truncate text-xs tabular-nums text-neutral-500">
                       {getReferralDate(referral)} · {trackingId}
                     </span>
                   </span>
                   <span className="flex items-center gap-2">
                     <StatusBadge status={referral.status} />
-                    <ChevronRight size={13} className="text-slate-300 group-hover:text-slate-600" aria-hidden="true" />
+                    <ChevronRight size={14} className="text-neutral-300 transition-colors group-hover:text-neutral-600" aria-hidden="true" />
                   </span>
                 </button>
               </li>
@@ -151,14 +151,14 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
     <OverviewCard
       id="overview-follow-ups"
       share={2}
-      title="Upcoming Follow-ups"
+      title="Upcoming follow-ups"
       meta={followUps.length ? `${followUps.length} active` : null}
       action={followUps.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
       {visible.length === 0 ? (
         <OverviewNote>No active or pending follow-ups.</OverviewNote>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-100">
           {visible.map((task) => (
             <li key={task.id}>
               <button
@@ -167,8 +167,8 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
                 aria-label={`View follow-up ${task.id}`}
                 className={ROW_BUTTON}
               >
-                <span className="flex min-w-0 items-center gap-2 text-sm text-slate-900">
-                  <CalendarClock size={13} className="shrink-0 text-slate-400" aria-hidden="true" />
+                <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-neutral-900">
+                  <CalendarClock size={14} className="shrink-0 text-neutral-400" aria-hidden="true" />
                   <span className="truncate tabular-nums">
                     {formatDate(task.dueDate, "Not recorded")}
                     {task.dueTime ? ` · ${task.dueTime}` : ""}
@@ -176,7 +176,7 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
                 </span>
                 <span className="flex items-center gap-2">
                   <FollowUpStateBadge state={task.effectiveState} />
-                  <ChevronRight size={13} className="text-slate-300 group-hover:text-slate-600" aria-hidden="true" />
+                  <ChevronRight size={14} className="text-neutral-300 transition-colors group-hover:text-neutral-600" aria-hidden="true" />
                 </span>
               </button>
             </li>
@@ -193,7 +193,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
     <OverviewCard
       id="overview-recent-visits"
       share={2}
-      title="Recent Visits"
+      title="Recent visits"
       action={records.length > 0 ? <TextAction onClick={onViewAll}>View all ({records.length})</TextAction> : null}
     >
       {isLoading && records.length === 0 ? (
@@ -201,7 +201,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
       ) : visible.length === 0 ? (
         <OverviewNote>No health records recorded for this patient yet.</OverviewNote>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-100">
           {visible.map((record) => {
             const recordId = getRecordId(record);
             const outcome = getRecordOutcome(record);
@@ -210,16 +210,16 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
               <li key={recordId}>
                 <button type="button" onClick={() => onView(recordId)} className={ROW_BUTTON}>
                   <span className="min-w-0">
-                    <span className="block text-[11px] tabular-nums text-slate-500">
+                    <span className="block text-xs tabular-nums text-neutral-500">
                       {formatShortDate(getRecordDateValue(record))}
                     </span>
-                    <span className="block truncate text-sm text-slate-900">
+                    <span className="block truncate text-[13px] font-medium text-neutral-900">
                       {formatDisplayValue(summary, "No complaint recorded")}
                     </span>
                   </span>
-                  <span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide">
-                    {outcome && <span className={OUTCOME_TEXT[outcome] || "text-slate-500"}>{outcome}</span>}
-                    <ChevronRight size={13} className="text-slate-300 group-hover:text-slate-600" aria-hidden="true" />
+                  <span className="flex items-center gap-2 text-xs font-medium">
+                    {outcome && <span className={OUTCOME_TEXT[outcome] || "text-neutral-500"}>{outcome}</span>}
+                    <ChevronRight size={14} className="text-neutral-300 transition-colors group-hover:text-neutral-600" aria-hidden="true" />
                   </span>
                 </button>
               </li>
@@ -258,7 +258,7 @@ export default function ClinicalOverviewColumn({
   onViewRecord,
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <BackgroundSummaryCard background={patient.medicalBackground} onView={onViewBackground} />
       <ReferralsPreview
         referrals={referrals}

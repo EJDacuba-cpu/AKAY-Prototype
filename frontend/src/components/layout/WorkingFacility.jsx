@@ -23,13 +23,13 @@ export default function WorkingFacility() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  const select = <label className="block font-sans text-xs font-medium text-gray-600">Working at:
-    <select aria-label="Working at facility" className="ml-2 max-w-48 rounded-none border border-gray-200 bg-white p-2 font-sans text-gray-900 transition-colors hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={user.working_facility_key || ""} disabled={busy || (editing && !required)} onChange={e => choose(e.target.value)}>
+  const select = <label className="block font-sans text-xs font-medium text-neutral-500"><span className="sr-only sm:not-sr-only">Working at</span>
+    <select aria-label="Working at facility" className="h-9 max-w-36 rounded-lg sm:ml-2 sm:max-w-52 border border-neutral-200 bg-white pl-2.5 pr-8 font-sans text-[13px] font-medium text-neutral-900 shadow-xs transition-colors hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 disabled:cursor-not-allowed disabled:opacity-50" value={user.working_facility_key || ""} disabled={busy || (editing && !required)} onChange={e => choose(e.target.value)}>
       <option value="">Select duty location</option>
       {choices.map(f => <option key={f.key} value={f.key}>{f.name}{f.is_home ? " (Home)" : ""}</option>)}
     </select>
-    {editing && !required && <span className="block text-[10px] font-normal">Finish or leave the form before switching.</span>}
-    {error && <span role="alert" className="block text-red-700">{error}</span>}
+    {editing && !required && <span className="block text-[10px] font-normal text-neutral-400">Finish or leave the form before switching.</span>}
+    {error && <span role="alert" className="block text-alert-700">{error}</span>}
   </label>;
-  return required ? <div role="dialog" aria-modal="true" aria-label="Select duty location" className="fixed inset-0 z-[300] grid place-items-center bg-gray-900/40 p-5"><div className="rounded-none border border-gray-200 bg-white p-6 font-sans shadow-xl"><h2 className="mb-2 font-sans text-lg font-semibold tracking-tight">Where are you working today?</h2><p className="mb-5 text-sm text-gray-500">Choose an authorized facility to continue.</p>{select}</div></div> : select;
+  return required ? <div role="dialog" aria-modal="true" aria-label="Select duty location" className="fixed inset-0 z-[300] grid place-items-center bg-neutral-900/40 p-5"><div className="rounded-2xl border border-neutral-200 bg-white p-6 font-sans shadow-xl"><h2 className="mb-2 font-sans text-lg font-semibold text-neutral-900">Where are you working today?</h2><p className="mb-5 text-sm text-neutral-500">Choose an authorized facility to continue.</p>{select}</div></div> : select;
 }

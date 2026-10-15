@@ -143,32 +143,32 @@ export default function CareAndProgramsTab({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 id="care-tracking-title" className="text-lg font-semibold text-[#111827]">Care Tracking</h2>
-            <p className="mt-0.5 text-xs text-[#6B7280]">From finalized consultations and existing health records</p>
+            <p className="mt-0.5 text-xs text-neutral-500">From finalized consultations and existing health records</p>
           </div>
           <div role="group" aria-label="Tracking card layout" className="flex gap-1">
             {["Grid", "List"].map((option) => (
-              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={layout === option} onClick={() => setLayout(option)} className={`h-8 rounded-none border px-3 text-xs ${layout === option ? "border-slate-500 bg-[#F8FAFC]" : "border-[#E5E7EB] bg-white"}`}>{option}</Button>
+              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={layout === option} onClick={() => setLayout(option)} className={`h-8 rounded-lg border px-3 text-xs ${layout === option ? "border-neutral-500 bg-neutral-50" : "border-neutral-200 bg-white"}`}>{option}</Button>
             ))}
           </div>
         </div>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div role="group" aria-label="Filter active tracking" className="flex flex-wrap gap-1.5">
             {["All", "Program", "Disease"].map((option) => (
-              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={typeFilter === option} onClick={() => setTypeFilter(option)} className={`h-8 rounded-none border px-3 text-xs ${typeFilter === option ? "border-slate-500 bg-[#F8FAFC]" : "border-[#E5E7EB] bg-white"}`}>{option}</Button>
+              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={typeFilter === option} onClick={() => setTypeFilter(option)} className={`h-8 rounded-lg border px-3 text-xs ${typeFilter === option ? "border-neutral-500 bg-neutral-50" : "border-neutral-200 bg-white"}`}>{option}</Button>
             ))}
           </div>
           <label className="relative block w-full max-w-64">
             <span className="sr-only">Search care tracking</span>
             <img src={searchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <Input value={cardSearch} onChange={(event) => setCardSearch(event.target.value)} placeholder="Search care tracking" className="h-8 rounded-none border-[#E5E7EB] pl-9 text-xs shadow-none" />
+            <Input value={cardSearch} onChange={(event) => setCardSearch(event.target.value)} placeholder="Search care tracking" className="h-8 rounded-lg border-neutral-200 pl-9 text-xs shadow-none" />
           </label>
         </div>
         {isError ? (
-          <p role="alert" className="border border-red-200 bg-red-50 p-5 text-sm text-red-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-red-700 underline">Retry</Button></p>
+          <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 p-5 text-sm text-alert-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
         ) : isLoading ? (
-          <p role="status" className="border border-[#E5E7EB] bg-white p-5 text-sm text-[#6B7280]">Loading care tracking...</p>
+          <p role="status" className="border border-neutral-200 bg-white p-5 text-sm text-neutral-500">Loading care tracking...</p>
         ) : visibleTracking.length === 0 ? (
-          <Card className="rounded-none border-[#E5E7EB] p-5"><EmptyNote>{careTracking.length === 0 ? "No care tracking from finalized consultations yet." : "No care tracking matches this filter."}</EmptyNote></Card>
+          <Card className="rounded-lg border-neutral-200 p-5"><EmptyNote>{careTracking.length === 0 ? "No care tracking from finalized consultations yet." : "No care tracking matches this filter."}</EmptyNote></Card>
         ) : (
           <div className={`grid gap-3 ${layout === "Grid" ? "@md:grid-cols-2 @2xl:grid-cols-3" : "grid-cols-1"}`}>
             {visibleTracking.map((entry) => (
@@ -190,9 +190,9 @@ export default function CareAndProgramsTab({
           {isError ? null : selectedEntry?.key === "maternal" ? (
             <MaternalTrackingPanel summary={maternalSummary} status={selectedEntry.status} onViewRecords={() => onViewProgramRecords?.("maternal")} />
           ) : selectedEntry ? (
-            <Card className="rounded-none border-[#E5E7EB] p-5 shadow-none">
+            <Card className="rounded-lg border-neutral-200 p-5 shadow-none">
               <h3 className="text-sm font-bold text-[#111827]">{selectedEntry.label} Tracking</h3>
-              <p className="mt-1 text-xs text-[#6B7280]">{selectedEntry.status}</p>
+              <p className="mt-1 text-xs text-neutral-500">{selectedEntry.status}</p>
               <div className="mt-4 max-w-xl">
                 <FieldList rows={[
                   ...selectedEntry.facts.map((fact) => [fact.label, fact.type === "date" ? formatShortDate(fact.value) : fact.value]),
@@ -200,7 +200,7 @@ export default function CareAndProgramsTab({
                   ["Next visit", selectedEntry.nextVisit ? formatShortDate(selectedEntry.nextVisit) : ""],
                 ]} />
               </div>
-              <Button type="button" variant="link" size="sm" onClick={() => onViewProgramRecords?.(selectedEntry.key)} className="mt-4 h-auto rounded-none p-0 text-xs">View health records</Button>
+              <Button type="button" variant="link" size="sm" onClick={() => onViewProgramRecords?.(selectedEntry.key)} className="mt-4 h-auto rounded-lg p-0 text-xs">View health records</Button>
             </Card>
           ) : null}
         </div>

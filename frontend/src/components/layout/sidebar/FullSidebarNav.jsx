@@ -29,9 +29,9 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
   }, [isMenuActive, menuSections]);
 
   return (
-    <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+    <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
       {menuSections.map((section) => (
-        <div key={section.section} className="mb-4">
+        <div key={section.section} className="mb-5">
           <p className={`mb-1.5 ${SECTION_LABEL_CLASS}`}>{section.section}</p>
 
           <div className="space-y-0.5">
@@ -87,7 +87,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                     </button>
 
                     {expanded && (
-                      <div className="ml-[22px] space-y-0.5 border-l border-gray-200">
+                      <div className="ml-[19px] space-y-0.5 border-l border-neutral-200 pl-1.5 pt-0.5">
                         {item.children.map((child) => {
                           const childActive = isMenuActive(child.path);
                           return (
@@ -98,7 +98,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                               className={childLinkClass(childActive)}
                             >
                               {childActive && (
-                                <span className="absolute -left-px top-0 h-full w-0.5 bg-red-600" />
+                                <span className="absolute -left-[7px] top-1.5 bottom-1.5 w-0.5 rounded-full bg-brand-600" />
                               )}
                               {child.label}
                             </Link>

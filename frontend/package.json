@@ -25,7 +25,7 @@
     "test:consultation-identity": "node --test src/utils/consultationIdentity.test.js",
     "test:prenatal-form": "node --test src/utils/prenatalForm.test.js src/utils/maternalRisk.test.js",
     "test:breadcrumbs": "node --test src/utils/breadcrumbs.test.js",
-    "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js",
+    "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js src/utils/carePath.test.js src/utils/allergies.test.js",
     "test:current-conditions": "node --test src/utils/currentConditions.test.js",
     "test:diagnosis-reporting": "node --test src/utils/diagnoses.test.js src/utils/diagnosisReporting.test.js src/utils/reportingEntries.test.js src/utils/consultationWorkflow.test.js src/utils/surveillance.test.js",
     "test:patient-overview": "node --test src/utils/bmi.test.js src/utils/revealSequence.test.js src/utils/revealFocus.test.js src/utils/bodyFigureGeometry.test.js src/utils/bodyFindings.test.js src/utils/findingLink.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
@@ -39,6 +39,7 @@
     "test:access": "node --test src/utils/staffRoles.test.js src/utils/accountForm.test.js src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js src/utils/fieldState.test.js src/utils/passwordRules.test.js src/utils/accessRequestStatus.test.js src/utils/passwordChange.test.js"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/public-sans": "^5.3.0",
     "@fontsource-variable/source-serif-4": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",

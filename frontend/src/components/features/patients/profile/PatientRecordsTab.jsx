@@ -15,11 +15,11 @@ const VISITS = [{ value: "", label: "All visit types" }, { value: "initial_consu
 
 function RecordFilter({ label, options, value, onChange }) {
   return (
-    <div className="min-w-0 space-y-1 text-xs text-slate-600">
+    <div className="min-w-0 space-y-1 text-xs text-neutral-600">
       <span>{label}</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" aria-label={label} className="h-9 w-full justify-between rounded-md border border-slate-300 bg-white px-3 text-xs text-slate-900">
+          <Button variant="ghost" aria-label={label} className="h-9 w-full justify-between rounded-md border border-neutral-300 bg-white px-3 text-xs text-neutral-900">
             {options.find(option => option.value === value)?.label}<ChevronDown size={14} />
           </Button>
         </DropdownMenuTrigger>
@@ -50,22 +50,22 @@ export default function PatientRecordsTab({ patientId, records = [], referrals =
   return (
     <section aria-label="Health Records" className="space-y-3 p-4">
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,2fr)_repeat(4,minmax(130px,1fr))_auto]">
-        <label className="space-y-1 text-xs text-slate-600">Search
+        <label className="space-y-1 text-xs text-neutral-600">Search
           <Input type="search" aria-label="Search health records" value={filters.search} onChange={event => changeFilters({ search: event.target.value })} placeholder="Record ID or chief complaint" className="h-9 text-xs sm:text-xs" />
         </label>
-        <label className="space-y-1 text-xs text-slate-600">Date from
+        <label className="space-y-1 text-xs text-neutral-600">Date from
           <Input type="date" value={filters.dateFrom} onChange={event => changeFilters({ dateFrom: event.target.value })} className="h-9 text-xs sm:text-xs" />
         </label>
-        <label className="space-y-1 text-xs text-slate-600">Date to
+        <label className="space-y-1 text-xs text-neutral-600">Date to
           <Input type="date" value={filters.dateTo} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? "record-date-error" : undefined} onChange={event => changeFilters({ dateTo: event.target.value })} className="h-9 text-xs sm:text-xs" />
         </label>
         <RecordFilter label="Outcome" options={OUTCOMES} value={filters.outcome} onChange={outcome => changeFilters({ outcome })} />
         <RecordFilter label="Visit Type" options={VISITS} value={filters.visitType} onChange={visitType => changeFilters({ visitType })} />
-        <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-slate-300 text-xs text-slate-900">Clear</Button>
+        <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-neutral-300 text-xs text-neutral-900">Clear</Button>
       </div>
-      {dateError && <p id="record-date-error" role="alert" className="text-xs text-slate-900">{dateError}</p>}
+      {dateError && <p id="record-date-error" role="alert" className="text-xs text-neutral-900">{dateError}</p>}
       {isError ? (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-900">
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
           Unable to load health records.<Button variant="ghost" size="sm" onClick={onRetry}>Retry</Button>
         </div>
       ) : isLoading ? (

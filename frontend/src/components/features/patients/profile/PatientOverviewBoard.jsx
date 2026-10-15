@@ -1,6 +1,6 @@
 /**
  * Layout for the patient profile's Overview tab: a three-column grid of white
- * cards on the page background that fills the height its parent gives it.
+ * rounded cards on the canvas that fills the height its parent gives it.
  * Layout only - every column is rendered by the caller.
  *
  * At xl the grid is a single row the height of the board, so each column
@@ -19,7 +19,7 @@ export default function PatientOverviewBoard({ left, right, center }) {
       role="tabpanel"
       id="profile-panel-overview"
       aria-labelledby="profile-tab-overview"
-      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 gap-x-1.5 gap-y-1.5 overflow-y-auto md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)] xl:grid-rows-1"
+      className="akay-content-scroll grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto flow:flex-none flow:overflow-visible md:grid-cols-2 xl:grid-cols-[minmax(0,20fr)_minmax(0,52fr)_minmax(0,28fr)] xl:grid-rows-1"
     >
       <div className="flex min-w-0 flex-col xl:order-1 xl:min-h-0">{left}</div>
       <div className="flex min-w-0 flex-col xl:order-3 xl:min-h-0">{right}</div>

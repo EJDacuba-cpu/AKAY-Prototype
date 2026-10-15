@@ -5,9 +5,9 @@ import { X } from "lucide-react";
  * BackgroundEditor.
  */
 
-const FIELD_LABEL_CLASS = "text-[11px] font-semibold uppercase tracking-wide text-gray-500";
+const FIELD_LABEL_CLASS = "text-xs font-medium text-neutral-500";
 const CONTROL_CLASS =
-  "w-full rounded-none border border-gray-200 px-3 py-2 text-[12.5px] text-gray-700 outline-none transition focus:border-red-600";
+  "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 shadow-xs outline-none transition focus:border-ink-300 focus:ring-4 focus:ring-ink-100";
 
 export function GroupHeading({ children }) {
   return <p className={FIELD_LABEL_CLASS}>{children}</p>;
@@ -16,7 +16,7 @@ export function GroupHeading({ children }) {
 /** Marks a condition the consultation is following today (picked in Start Consultation). */
 export function AddressedBadge() {
   return (
-    <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-red-700">
+    <span className="rounded-full bg-ink-50 px-2 py-0.5 text-[11px] font-medium text-ink-700 ring-1 ring-inset ring-ink-100">
       Addressed in this visit
     </span>
   );
@@ -31,16 +31,16 @@ export function PatientReportedEdit({ diseases, onUpdate, onRemove }) {
     <div>
       <GroupHeading>Patient-Reported Previous Conditions</GroupHeading>
       <div className="mt-1.5 space-y-2">
-        {diseases.length === 0 && <p className="text-[12px] text-gray-400">None reported.</p>}
+        {diseases.length === 0 && <p className="text-[12px] text-neutral-400">None reported.</p>}
         {diseases.map((disease) => (
-          <div key={`${disease.name}-${disease.index}`} className="rounded-none border border-gray-200 bg-white p-3">
+          <div key={`${disease.name}-${disease.index}`} className="rounded-lg border border-neutral-200 bg-white p-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[12.5px] font-semibold text-gray-900">{disease.name}</span>
+              <span className="text-[12.5px] font-semibold text-neutral-900">{disease.name}</span>
               <button
                 type="button"
                 onClick={() => onRemove(disease.index)}
                 aria-label={`Remove ${disease.name}`}
-                className="text-gray-400 transition hover:text-red-600"
+                className="text-neutral-400 transition hover:text-alert-600"
               >
                 <X size={14} />
               </button>
@@ -71,7 +71,7 @@ export function UnverifiedReadOnly({ title, diseases }) {
         {diseases.map((disease) => (
           <li
             key={`${disease.name}-${disease.index}`}
-            className="rounded-none border border-gray-200 bg-gray-50 px-3 py-2 text-[12.5px] font-semibold text-gray-900"
+            className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12.5px] font-semibold text-neutral-900"
           >
             {disease.name}
           </li>

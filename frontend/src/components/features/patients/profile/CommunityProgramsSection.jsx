@@ -10,13 +10,13 @@ import { formatShortDate } from "../../../../utils/patientProfile";
 const STATUS_STYLES = {
   Enrolled: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
   Completed: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-  Withdrawn: "border-[#E5E7EB] bg-[#F8FAFC] text-[#475569]",
+  Withdrawn: "border-neutral-200 bg-neutral-50 text-[#475569]",
 };
 
 function StatusPill({ status }) {
   return (
     <span
-      className={`inline-flex items-center rounded-none border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
         STATUS_STYLES[status] || STATUS_STYLES.Withdrawn
       }`}
     >
@@ -71,7 +71,7 @@ export default function CommunityProgramsSection({
       id="community-programs"
       title="Community Programs"
       meta={
-        <span className="inline-flex items-center rounded-none border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#92400E]">
+        <span className="inline-flex items-center rounded-full border border-warning-100 bg-warning-50 px-2 py-0.5 text-[11px] font-medium text-warning-700">
           Preview data
         </span>
       }
@@ -79,7 +79,7 @@ export default function CommunityProgramsSection({
         <button
           type="button"
           onClick={onEnroll}
-          className="inline-flex h-7 items-center gap-1 rounded-none bg-red-600 px-2.5 text-xs font-semibold text-white transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
+          className="inline-flex h-7 items-center gap-1 rounded-lg bg-ink-700 px-3 text-[13px] font-medium text-white shadow-xs transition hover:bg-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
         >
           <Plus size={12} aria-hidden="true" />
           Enroll
@@ -87,7 +87,7 @@ export default function CommunityProgramsSection({
       }
     >
       {isError ? (
-        <div role="alert" className="py-3 text-sm text-red-700">
+        <div role="alert" className="py-3 text-sm text-alert-700">
           Could not load community programs. <button type="button" onClick={() => onRetry?.()} className="font-semibold underline">Retry</button>
         </div>
       ) : isLoading ? (
@@ -95,15 +95,15 @@ export default function CommunityProgramsSection({
       ) : enrollments.length === 0 ? (
         <EmptyNote>Not enrolled in any community programs.</EmptyNote>
       ) : (
-        <ul className="divide-y divide-gray-100 border-y border-gray-100">
+        <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
           {enrollments.map((enrollment) => (
             <li key={enrollment.id} className="flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="text-sm font-medium text-gray-900">{enrollment.programName}</span>
+                  <span className="text-sm font-medium text-neutral-900">{enrollment.programName}</span>
                   <StatusPill status={enrollment.status} />
                 </div>
-                <p className="mt-0.5 truncate text-xs text-gray-500">
+                <p className="mt-0.5 truncate text-xs text-neutral-500">
                   {[
                     enrollment.programCategory,
                     enrollment.runStart && enrollment.runEnd
@@ -114,7 +114,7 @@ export default function CommunityProgramsSection({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-400">
+                <p className="mt-0.5 text-xs text-neutral-400">
                   Enrolled {formatShortDate(enrollment.enrolledDate)}
                   {enrollment.status === "Withdrawn" && enrollment.withdrawReason
                     ? ` · Withdrawn: ${enrollment.withdrawReason}`

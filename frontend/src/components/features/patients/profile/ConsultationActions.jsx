@@ -18,7 +18,7 @@ export function ConsultationButton({ consultation, onStart }) {
   const { isPending, isError, discarding, opening, primaryLabel, startPath, open } = consultation;
   const disabled = isPending || isError || discarding || opening;
   const className =
-    "inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-none bg-red-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 focus-visible:ring-offset-2 disabled:bg-gray-300 disabled:text-gray-500";
+    "inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:shadow-none";
 
   if (disabled) {
     return (
@@ -76,7 +76,7 @@ export function ConsultationNotice({ consultation }) {
 
   if (isError) {
     return (
-      <p role="status" className="mt-1 flex items-center gap-3 py-1 text-xs text-gray-600">
+      <p role="status" className="mt-3 flex items-center gap-3 text-xs text-neutral-600">
         Unable to check for an unfinished consultation.
         <TextAction onClick={retry}>Retry</TextAction>
       </p>
@@ -87,17 +87,17 @@ export function ConsultationNotice({ consultation }) {
 
   return (
     <>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-xs text-warning-700">
         <span className="min-w-0 truncate">
           <span className="font-semibold">Unfinished consultation</span>
           {draft.lastSavedAt ? (
-            <span className="text-amber-800"> · saved {formatDate(draft.lastSavedAt, "")}</span>
+            <span className="text-warning-700/80"> · saved {formatDate(draft.lastSavedAt, "")}</span>
           ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-3">
           <Link
             to={startPath}
-            className="text-xs font-semibold text-red-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40"
+            className="rounded-md text-xs font-semibold text-ink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
           >
             Resume
           </Link>
@@ -105,7 +105,7 @@ export function ConsultationNotice({ consultation }) {
             type="button"
             disabled={discarding}
             onClick={() => setConfirmingDiscard(true)}
-            className="text-xs text-gray-600 transition-colors hover:text-red-700 hover:underline disabled:opacity-50"
+            className="text-xs text-neutral-600 transition-colors hover:text-alert-700 hover:underline disabled:opacity-50"
           >
             {discarding ? "Discarding..." : "Discard"}
           </button>

@@ -9,6 +9,7 @@ import {
 import { Link } from "react-router";
 import { useEffect, useState } from "react";
 import LogoMark, { LogoWordmark } from "./LogoMark";
+import UserInitials from "./UserInitials";
 import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
 import {
   FOCUS_RING,
@@ -77,13 +78,13 @@ export default function DesktopSidebar({
 
   return (
     <aside
-      className={`font-sans antialiased fixed left-0 top-0 z-50 hidden h-dvh max-h-dvh flex-col overflow-visible border-r border-gray-200 bg-white transition-[width] duration-300 ease-in-out md:flex ${
+      className={`font-sans antialiased fixed left-0 top-0 z-50 hidden h-dvh max-h-dvh flex-col overflow-visible bg-[var(--color-shell)] transition-[width] duration-300 ease-in-out md:flex ${
         expanded ? "w-60" : "w-[72px]"
       }`}
     >
       <div
-        className={`flex h-[62px] shrink-0 items-center border-b border-gray-200 bg-white ${
-          expanded ? "gap-3 px-4" : "justify-center px-0"
+        className={`flex h-16 shrink-0 items-center ${
+          expanded ? "gap-3 pl-5 pr-3" : "justify-center px-0"
         }`}
       >
         {!expanded && (
@@ -95,7 +96,7 @@ export default function DesktopSidebar({
             }}
             aria-label={toggleLabel}
             {...tooltipHandlers(toggleLabel)}
-            className={`group relative flex h-10 w-10 items-center justify-center text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100 ${FOCUS_RING}`}
+            className={`group relative flex h-10 w-10 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900 focus-visible:bg-neutral-900/[0.05] ${FOCUS_RING}`}
           >
             <span className="flex transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-visible:opacity-0 motion-reduce:transition-none">
               <LogoMark />
@@ -119,7 +120,7 @@ export default function DesktopSidebar({
               onClick={onToggle}
               aria-label={toggleLabel}
               title={toggleLabel}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900 ${FOCUS_RING}`}
             >
               <ToggleIcon size={16} />
             </button>
@@ -127,14 +128,14 @@ export default function DesktopSidebar({
         )}
       </div>
 
-      <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-visible px-3 py-3">
+      <nav className="akay-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-visible px-3 pb-3 pt-1">
         {menuSections.map((section, sectionIndex) => (
-          <div key={section.section} className={expanded ? "mb-4" : "mb-2"}>
+          <div key={section.section} className={expanded ? "mb-5" : "mb-2"}>
             {expanded ? (
               <p className={`mb-1.5 ${SECTION_LABEL_CLASS}`}>{section.section}</p>
             ) : (
               sectionIndex > 0 && (
-                <div className="mx-1 mb-2 border-t border-gray-200" aria-hidden="true" />
+                <div className="mx-2 mb-2 border-t border-neutral-200" aria-hidden="true" />
               )
             )}
 
@@ -206,7 +207,7 @@ export default function DesktopSidebar({
                       </button>
 
                       {expanded && groupExpanded && (
-                        <div className="ml-[22px] space-y-0.5 border-l border-gray-200">
+                        <div className="ml-[19px] space-y-0.5 border-l border-neutral-200 pl-1.5 pt-0.5">
                           {item.children.map((child) => {
                             const childActive = isMenuActive(child.path);
                             return (
@@ -216,7 +217,7 @@ export default function DesktopSidebar({
                                 className={childLinkClass(childActive)}
                               >
                                 {childActive && (
-                                  <span className="absolute -left-px top-0 h-full w-0.5 bg-red-600" />
+                                  <span className="absolute -left-[7px] top-1.5 bottom-1.5 w-0.5 rounded-full bg-brand-600" />
                                 )}
                                 {child.label}
                               </Link>
@@ -245,18 +246,18 @@ export default function DesktopSidebar({
         ))}
       </nav>
 
-      <div className="shrink-0 border-t border-gray-200 p-2.5">
+      <div className="shrink-0 p-3 pt-2">
         {expanded && (
-          <div className="mb-2 border border-gray-200 bg-gray-50 px-2.5 py-2">
-            <p className="truncate text-[12px] font-semibold text-gray-900">
-              {user.name}
-            </p>
-            <p className="mt-0.5 truncate text-[11px] text-gray-500">
-              {user.facility}
-            </p>
-            <p className="truncate text-[11px] text-gray-500">
-              {user.roleLabel || user.position}
-            </p>
+          <div className="mb-1.5 flex items-center gap-2.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
+            <UserInitials name={user.name} />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium text-neutral-900">
+                {user.name}
+              </p>
+              <p className="truncate text-[11px] text-neutral-500">
+                {[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
+              </p>
+            </div>
           </div>
         )}
 
@@ -278,7 +279,7 @@ export default function DesktopSidebar({
           style={{ top: hoverLabel.top }}
           role="tooltip"
         >
-          <span className="block whitespace-nowrap bg-gray-900 px-2.5 py-1.5 text-[11px] font-semibold text-white">
+          <span className="block whitespace-nowrap rounded-md bg-neutral-900 px-2.5 py-1.5 text-[11px] font-medium text-white shadow-lg">
             {hoverLabel.label}
           </span>
         </div>

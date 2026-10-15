@@ -23,7 +23,7 @@ const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 function ModeToggle({ mode, onChange }) {
   return (
-    <div role="group" aria-label="Findings shown" className="inline-flex border border-slate-300 bg-white/60 p-0.5">
+    <div role="group" aria-label="Findings shown" className="inline-flex rounded-lg bg-neutral-100 p-0.5">
       {MODES.map(({ key, label }) => {
         const active = key === mode;
         return (
@@ -32,8 +32,8 @@ function ModeToggle({ mode, onChange }) {
             type="button"
             aria-pressed={active}
             onClick={() => onChange(key)}
-            className={`px-2.5 py-1 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 ${
-              active ? "bg-red-600 text-white" : "text-slate-600 hover:text-slate-900"
+            className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
+              active ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-900/[0.06]" : "text-neutral-500 hover:text-neutral-900"
             }`}
           >
             {label}
@@ -203,7 +203,7 @@ export default function AnatomyFindingsPanel({
       areas.length === 0 ? (
         <OverviewNote>No body findings recorded.</OverviewNote>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-neutral-100">
           {areas.map((area) => {
             const active = focus?.key === area.key;
             return (
@@ -219,19 +219,19 @@ export default function AnatomyFindingsPanel({
                   onFocus={(event) => rowEnter(event, area)}
                   onMouseLeave={(event) => rowLeave(event, area)}
                   onBlur={(event) => rowLeave(event, area)}
-                  className={`group flex w-full items-center justify-between gap-2 py-1 text-left text-xs transition-colors hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600/40${
-                    active ? " bg-red-50" : ""
+                  className={`group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center justify-between gap-2 rounded-md px-1.5 py-1.5 text-left text-[13px] transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50${
+                    active ? " bg-brand-50/70" : ""
                   }`}
                 >
-                  <span className="min-w-0 break-words font-semibold text-slate-800 group-hover:text-red-700">
+                  <span className="min-w-0 break-words font-medium text-neutral-800 group-hover:text-neutral-950">
                     {area.label}
                     {area.side === "back" && (
-                      <span className="ml-1 rounded-sm border border-slate-300 px-1 text-[10px] font-semibold uppercase text-slate-500">
+                      <span className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-px text-[11px] font-medium text-neutral-600">
                         Back
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 tabular-nums text-slate-500">{area.count}</span>
+                  <span className="shrink-0 tabular-nums text-neutral-500">{area.count}</span>
                 </button>
               </li>
             );
@@ -243,7 +243,7 @@ export default function AnatomyFindingsPanel({
   return (
     <OverviewCard
       id="overview-visual-summary"
-      title="Visual Health Summary"
+      title="Visual health summary"
       spacious
       minHeight={480}
       action={<ModeToggle mode={mode} onChange={changeMode} />}
@@ -251,12 +251,12 @@ export default function AnatomyFindingsPanel({
       <div ref={panelRef} className="relative flex h-full min-h-0 flex-col gap-3 md:flex-row">
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
 
-        <div className="flex h-80 shrink-0 flex-col border-b border-gray-100 pb-2 md:h-auto md:w-2/5 md:max-w-72 md:border-b-0 md:border-r md:pb-0 md:pr-3">
+        <div className="flex h-80 shrink-0 flex-col border-b border-neutral-100 pb-2 flow:h-auto md:h-auto md:w-2/5 md:max-w-72 md:border-b-0 md:border-r md:pb-0 md:pr-4">
           <PatientFactsSections background={background} conditions={conditions} records={records} recordsLoading={recordsLoading} findings={findings} />
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin] md:pr-0.5">
-          <p role="status" className="text-xs tabular-nums text-slate-600">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin] flow:overflow-visible md:pr-0.5">
+          <p role="status" className="text-xs tabular-nums text-neutral-500">
             {recordsLoading && records.length === 0 ? "Loading body findings..." : caption(summary, records.length > 0)}
           </p>
 
@@ -286,7 +286,7 @@ export default function AnatomyFindingsPanel({
 
           {/* Blank (height kept) until the first records arrive, so it never
               reads "BMI not recorded" while loading. */}
-          <p className="mt-2 text-center text-xs tabular-nums text-slate-500">
+          <p className="mt-2 text-center text-xs tabular-nums text-neutral-500">
             {recordsLoading && records.length === 0 ? <>&nbsp;</> : bmiLabel(bmi)}
           </p>
         </div>

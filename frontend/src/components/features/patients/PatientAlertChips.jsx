@@ -1,6 +1,6 @@
 import { alertConditionNames } from "../../../utils/medicalConditions";
+import { isNoAllergyText } from "../../../utils/allergies";
 
-export const NO_ALLERGY_PATTERN = /^(none|n\/a|na|nka|nkda|no known.*|no allergies?|-+)$/i;
 const MAX_DISEASE_CHIPS = 3;
 
 const CHIP_BASE =
@@ -36,7 +36,7 @@ export default function PatientAlertChips({ background = {}, conditionGroups }) 
     <div className="flex flex-wrap items-center gap-1.5">
       {!allergies ? (
         <Chip tone="muted">Allergies not recorded</Chip>
-      ) : NO_ALLERGY_PATTERN.test(allergies) ? (
+      ) : isNoAllergyText(allergies) ? (
         <Chip tone="muted">No known allergies</Chip>
       ) : (
         <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
