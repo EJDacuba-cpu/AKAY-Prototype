@@ -60,7 +60,7 @@ function ProfileShell({ children }) {
 
 /**
  * Underlined tab strip for the profile's main content: no box or background,
- * so it sits directly on the canvas above a thin rule, with an ink underline
+ * so it sits directly on the canvas above a thin rule, with a brand-red underline
  * on the active tab and a quiet count pill beside each label.
  */
 function ProfileTabs({ tabs, activeTab, onSelect }) {
@@ -85,7 +85,7 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
               onClick={() => onSelect(tab.key)}
               className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
                 active
-                  ? "border-ink-700 text-neutral-900"
+                  ? "border-brand-600 text-neutral-900"
                   : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
               }`}
             >
@@ -93,7 +93,7 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
               {hasCount && (
                 <span
                   className={`rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums ${
-                    active ? "bg-ink-50 text-ink-700" : "bg-neutral-100 text-neutral-500"
+                    active ? "bg-brand-50 text-brand-700" : "bg-neutral-100 text-neutral-500"
                   }`}
                 >
                   {tab.count}

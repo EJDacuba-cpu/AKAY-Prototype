@@ -3,8 +3,8 @@ import { Check } from "lucide-react";
 import { buildCarePath } from "../../../../utils/carePath";
 
 const NODE = {
-  done: "border-ink-700 bg-ink-700 text-white",
-  active: "border-ink-500 bg-white text-ink-700 ring-4 ring-ink-100",
+  done: "border-brand-600 bg-brand-600 text-white",
+  active: "border-brand-600 bg-white text-brand-700 ring-4 ring-brand-100",
   none: "border-neutral-300 bg-white text-transparent",
 };
 
@@ -16,7 +16,7 @@ const LABEL = {
 
 const DETAIL = {
   done: "text-neutral-500",
-  active: "text-ink-600",
+  active: "text-brand-700",
   none: "text-neutral-500",
 };
 
@@ -41,11 +41,11 @@ export default function CarePath({ referrals = [], conditions, isLoading = false
                   className={`relative z-10 flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors ${NODE[step.state]}`}
                 >
                   {step.state === "done" && <Check size={11} strokeWidth={3} />}
-                  {step.state === "active" && <span className="size-1.5 rounded-full bg-ink-600" />}
+                  {step.state === "active" && <span className="size-1.5 rounded-full bg-brand-600" />}
                 </span>
                 {next && (
                   <span
-                    className={`ml-1.5 h-0 flex-1 border-t ${linked ? "border-ink-500" : "border-dashed border-neutral-300"}`}
+                    className={`ml-1.5 h-0 flex-1 border-t ${linked ? "border-brand-500" : "border-dashed border-neutral-300"}`}
                   />
                 )}
               </div>

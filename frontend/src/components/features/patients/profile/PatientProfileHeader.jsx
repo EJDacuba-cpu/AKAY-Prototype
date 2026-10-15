@@ -50,7 +50,7 @@ export default function PatientProfileHeader({ patient, patientId, backPath, upd
             </Link>
             <span
               aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-ink-50 text-sm font-semibold text-ink-700 ring-1 ring-inset ring-ink-100"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-100"
             >
               {initialsOf(name)}
             </span>

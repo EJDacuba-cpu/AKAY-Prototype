@@ -16,35 +16,10 @@ import { phaseReached } from "../../../../utils/revealSequence";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-const MODES = [
-  { key: "latest", label: "Latest visit" },
-  { key: "history", label: "View history" },
-];
-
+// Panel width from which the controls curve around the figure; narrower panels
+// stack them above and below it instead.
+const ARC_MIN_WIDTH = 640;
 const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-
-function ModeToggle({ mode, onChange }) {
-  return (
-    <div role="group" aria-label="Findings shown" className="inline-flex rounded-lg bg-neutral-100 p-0.5">
-      {MODES.map(({ key, label }) => {
-        const active = key === mode;
-        return (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(key)}
-            className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
-              active ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-900/[0.06]" : "text-neutral-500 hover:text-neutral-900"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function caption(summary, hasRecords) {
   if (!hasRecords) return "No health records yet";
@@ -62,7 +37,7 @@ function caption(summary, hasRecords) {
 /**
  * Centre column of the Overview board: the patient's realistic body figure
  * (front or back, switched only by its flip button) with small markers for
- * findings recorded on the latest visit (default) or on every loaded visit,
+ * findings recorded on the latest visit,
  * on an open canvas. Round clinical controls sit to its left and a height
  * rule to its right; weight, BMI and click-to-open lifestyle details sit
  * below. The recorded-areas disclosure keeps findings accessible as a list.
@@ -72,7 +47,7 @@ function caption(summary, hasRecords) {
  * area highlight, then a line (row to marker, or marker to popover), then a
  * small popover of that area's findings. A click or tap pins the popover,
  * whose finding rows open their record; Escape, a click outside, a second
- * click on the same area, a flip or a mode change unpins it. A row for the
+ * click on the same area, or a flip unpins it. A row for the
  * other side only pulses the flip button - the figure never flips by itself.
  * Below 1024px there are no hover reveals or lines: a tap shows the popover
  * at once. Reduced motion makes every reveal instant. Documentation only -
@@ -90,16 +65,30 @@ export default function AnatomyFindingsPanel({
   birthDate,
   age = "",
 }) {
-  const [mode, setMode] = useState("latest");
   const [side, setSide] = useState("front");
   const [openFact, setOpenFact] = useState(null);
   const [reveal, dispatch] = useReducer(revealFocusReducer, INITIAL_REVEAL);
   const panelRef = useRef(null);
+  const [arcLayout, setArcLayout] = useState(true);
   const popoverId = `overview-figure-popover${useId()}`;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
-  const summary = useMemo(() => summarizeBodyFindings(records, mode), [records, mode]);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(([entry]) => setArcLayout(entry.contentRect.width >= ARC_MIN_WIDTH));
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
+
+  const loadNote =
+    recordsLoading && records.length === 0
+      ? "Loading body findings..."
+      : recordsError && records.length === 0
+        ? "Body findings could not be loaded. Please try refreshing the page."
+        : "";
+  const summary = useMemo(() => summarizeBodyFindings(records, "latest"), [records]);
   const findingsBySide = useMemo(() => splitFindingsBySide(summary.findings), [summary]);
   const areas = useMemo(() => groupFindingsByArea(summary.findings), [summary]);
   const measures = useMemo(() => buildBodyMeasures(records, age), [records, age]);
@@ -127,11 +116,6 @@ export default function AnatomyFindingsPanel({
   useEffect(() => {
     if (stalePin) dispatch({ type: "reset" });
   }, [stalePin]);
-
-  function changeMode(next) {
-    setMode(next);
-    dispatch({ type: "reset" });
-  }
 
   function changeFact(next) {
     setOpenFact(next);
@@ -249,70 +233,93 @@ export default function AnatomyFindingsPanel({
 
   return (
     <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className="@container/anatomy min-w-0 px-1 py-1">
-      <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <header className={`mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout ? "" : "pr-[6.5rem]"}`}>
         <h2 id="overview-visual-summary-title" className="font-sans! text-[13px] font-semibold text-neutral-900">Visual health summary</h2>
-        <ModeToggle mode={mode} onChange={changeMode} />
+        {loadNote ? (
+          <p role="status" className="min-w-0 text-xs text-neutral-500">{loadNote}</p>
+        ) : (
+          <p role="status" className="sr-only">{caption(summary, records.length > 0)}</p>
+        )}
       </header>
       <div ref={panelRef} className="relative">
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
-        <p role="status" className="mb-3 text-center text-xs tabular-nums text-neutral-500">
-          {recordsLoading && records.length === 0
-            ? "Loading body findings..."
-            : recordsError && records.length === 0
-              ? "Body findings could not be loaded. Please try refreshing the page."
-              : caption(summary, records.length > 0)}
-        </p>
-        <div className="grid min-w-0 grid-cols-1 items-start gap-4 @lg/anatomy:grid-cols-[5.5rem_minmax(0,1fr)]">
-          <PatientClinicalControls
-            background={background}
-            conditions={conditions}
-            records={records}
-            recordsLoading={recordsLoading}
-            recordsError={recordsError}
-            openFact={openFact}
-            onFactChange={changeFact}
-            onViewRecord={viewRecord}
-          />
-          <div className="min-w-0">
-            {/* The padding reserves the ruler's lane; model and findings share
-                one proportional frame, so markers stay attached as it scales. */}
-            <div className="relative flex h-[420px] min-w-0 items-center justify-center pr-[6.5rem] [container-type:size] @lg/anatomy:h-[520px]">
-              <BodyFigureSvg
-                sex={sex}
-                birthDate={birthDate}
-                side={side}
-                onToggleSide={toggleSide}
-                flipHint={flipHint}
-                flipCorner="left"
-                findingsByRegion={findingsByRegion}
-                isDesktop={isDesktop}
-                popoverId={popoverId}
-                activeRegion={activeRegion}
-                phase={phase}
-                pinned={pinned}
-                leader={leader}
-                onMarkerEnter={markerEnter}
-                onMarkerLeave={markerLeave}
-                onMarkerClick={markerClick}
-                onViewRecord={viewRecord}
-                onDismiss={dismiss}
-              />
-              <HeightRuler
-                height={measures.height}
-                isLoading={recordsLoading && records.length === 0}
-                className="absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
-              />
-            </div>
+        {!arcLayout && (
+          <div className="mb-4">
+            <PatientClinicalControls
+              background={background}
+              conditions={conditions}
+              records={records}
+              recordsLoading={recordsLoading}
+              recordsError={recordsError}
+              openFact={openFact}
+              onFactChange={changeFact}
+              onViewRecord={viewRecord}
+              arc={arcLayout}
+            />
           </div>
-
+        )}
+        <div className="min-w-0">
+          {/* Narrow layouts pad the right to reserve the ruler's lane; the wide one
+              centres the figure on the column. Model and findings share
+              one proportional frame, so markers stay attached as it scales.
+              In the wide layout the clinical and lifestyle controls curve
+              around the figure's left inside this same frame. */}
+          <div
+            style={{ "--figure-s": "min(100cqh, 150cqw)" }}
+            className={`relative flex h-[420px] min-w-0 items-center justify-center [container-type:size] @lg/anatomy:h-[520px] ${arcLayout ? "" : "pr-[6.5rem]"}`}
+          >
+            <BodyFigureSvg
+              sex={sex}
+              birthDate={birthDate}
+              side={side}
+              onToggleSide={toggleSide}
+              flipHint={flipHint}
+              flipCorner="left"
+              findingsByRegion={findingsByRegion}
+              isDesktop={isDesktop}
+              popoverId={popoverId}
+              activeRegion={activeRegion}
+              phase={phase}
+              pinned={pinned}
+              leader={leader}
+              onMarkerEnter={markerEnter}
+              onMarkerLeave={markerLeave}
+              onMarkerClick={markerClick}
+              onViewRecord={viewRecord}
+              onDismiss={dismiss}
+            />
+            <HeightRuler
+              height={measures.height}
+              isLoading={recordsLoading && records.length === 0}
+              className="absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
+            />
+            {arcLayout && (
+              <>
+                <PatientClinicalControls
+                  background={background}
+                  conditions={conditions}
+                  records={records}
+                  recordsLoading={recordsLoading}
+                  recordsError={recordsError}
+                  openFact={openFact}
+                  onFactChange={changeFact}
+                  onViewRecord={viewRecord}
+                  arc={arcLayout}
+                />
+                <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} arc />
+              </>
+            )}
+          </div>
         </div>
-        <div className="mt-4 flex flex-col items-center gap-5">
+
+        {/* Weight and BMI sit right under the feet, centred on the figure. */}
+        <div className={`mt-3 flex flex-col items-center gap-5 ${arcLayout ? "" : "pr-[6.5rem]"}`}>
           {recordsLoading && records.length === 0 ? (
             <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
           ) : (
             <WeightAndBmi weight={measures.weight} bmi={measures.bmi} />
           )}
-          <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />
+          {!arcLayout && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
         </div>
         {areas.length > 0 && (
           <details className="mx-auto mt-5 max-w-sm" onToggle={(event) => { if (!event.currentTarget.open) dispatch({ type: "reset" }); }}>

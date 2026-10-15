@@ -6,6 +6,7 @@ import MedicalConditionsGroups from "../MedicalConditionsGroups";
 import ProfileFactPopover from "./ProfileFactPopover";
 import { isNoAllergyText } from "../../../../utils/allergies";
 import { summarizeMedicines } from "../../../../utils/medicationSummary";
+import { arcPosition } from "../../../../utils/arcPlacement";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 function MedicinesGiven({ records, isLoading, isError, onViewRecord }) {
@@ -52,24 +53,37 @@ function MedicinesGiven({ records, isLoading, isError, onViewRecord }) {
   );
 }
 
-/** Read-only clinical facts. Dispensing history never implies ongoing medicine use. */
-export default function PatientClinicalControls({ background, conditions, records, recordsLoading, recordsError, openFact, onFactChange, onViewRecord }) {
+// Outer arc around the figure: conditions above the chest line, medicines below.
+const ARC = {
+  conditions: { angle: -22, offset: 3.5 },
+  allergies: { angle: 0, offset: 3.5 },
+  medicines: { angle: 22, offset: 3.5 },
+};
+
+/**
+ * Read-only clinical facts. Dispensing history never implies ongoing medicine
+ * use. With `arc` the three controls curve around the left of the body figure
+ * (inside its frame); without it they sit in a row.
+ */
+export default function PatientClinicalControls({ background, conditions, records, recordsLoading, recordsError, openFact, onFactChange, onViewRecord, arc = false }) {
   const groups = conditions?.groups;
   const conditionCount = (groups?.confirmed?.length || 0) + (groups?.legacyPending?.length || 0) + (groups?.underEvaluation?.length || 0);
   const allergyText = String(background?.allergies || "").trim();
   const hasAllergy = Boolean(allergyText) && !isNoAllergyText(allergyText);
 
+  const place = (key) => (arc ? { placement: "left", style: arcPosition(ARC[key].angle, ARC[key].offset) } : {});
+
   return (
-    <div aria-label="Clinical details" className="flex justify-center gap-5 @lg/anatomy:flex-col @lg/anatomy:justify-start @lg/anatomy:gap-6 @lg/anatomy:pt-14">
-      <ProfileFactPopover label="Medical conditions" Icon={HeartPulse} count={conditionCount} open={openFact === "conditions"} onOpenChange={(open) => onFactChange(open ? "conditions" : null)}>
+    <div role="group" aria-label="Clinical details" className={arc ? "contents" : "flex justify-center gap-5"}>
+      <ProfileFactPopover label="Medical conditions" Icon={HeartPulse} count={conditionCount} open={openFact === "conditions"} onOpenChange={(open) => onFactChange(open ? "conditions" : null)} {...place("conditions")}>
         <MedicalConditionsGroups groups={groups} isLoading={conditions?.isLoading} isError={conditions?.isError} />
       </ProfileFactPopover>
-      <ProfileFactPopover label="Allergies" Icon={ShieldAlert} warning={hasAllergy ? "Allergy recorded" : undefined} open={openFact === "allergies"} onOpenChange={(open) => onFactChange(open ? "allergies" : null)}>
+      <ProfileFactPopover label="Allergies" Icon={ShieldAlert} warning={hasAllergy ? "Allergy recorded" : undefined} open={openFact === "allergies"} onOpenChange={(open) => onFactChange(open ? "allergies" : null)} {...place("allergies")}>
         <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${hasAllergy ? "font-medium text-alert-700" : "text-neutral-600"}`}>
           {hasAllergy ? allergyText : allergyText ? "No known allergies" : "Allergies not recorded"}
         </p>
       </ProfileFactPopover>
-      <ProfileFactPopover label="Medicines given" Icon={Pill} open={openFact === "medicines"} onOpenChange={(open) => onFactChange(open ? "medicines" : null)}>
+      <ProfileFactPopover label="Medicines given" Icon={Pill} open={openFact === "medicines"} onOpenChange={(open) => onFactChange(open ? "medicines" : null)} {...place("medicines")}>
         <MedicinesGiven records={records} isLoading={recordsLoading} isError={recordsError} onViewRecord={onViewRecord} />
       </ProfileFactPopover>
     </div>

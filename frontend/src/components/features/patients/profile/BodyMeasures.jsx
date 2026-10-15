@@ -82,7 +82,7 @@ function WeightBars({ history }) {
  */
 export function WeightAndBmi({ weight, bmi }) {
   return (
-    <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+    <div className="flex flex-wrap items-end justify-center gap-x-8 gap-y-2">
       <div className="flex min-w-0 items-end gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1 text-[11px] font-medium text-neutral-500">
