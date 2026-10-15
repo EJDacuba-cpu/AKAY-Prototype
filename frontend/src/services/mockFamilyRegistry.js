@@ -259,9 +259,14 @@ export function commitMockPatient(registry, form, connection, patientId, makeId 
   const connections = (registry.connections || []).filter(edge =>
     patients.some(item => item.id === edge.from) && patients.some(item => item.id === edge.to));
   const knownParentEdges = new Set(connections.filter(edge => edge.type === "parent").map(edge => parentEdgeKey(edge.from, edge.to)));
+  // Staging a household change blanks the form's parent IDs, so a mover's saved
+  // parent links are read back from the registry before it is overwritten.
+  const previous = patientId ? registry.patients.find(item => item.id === patientId) : null;
+  const moved = Boolean(previous?.householdId) && previous.householdId !== household?.id;
   patients = patients.map(item => {
     const next = { ...item };
     for (const key of ["motherPatientId", "fatherPatientId"]) {
+      if (item.id === id && moved && !next[key] && previous[key]) next[key] = previous[key];
       if (!next[key]) continue;
       const parent = patients.find(candidate => candidate.id === next[key]);
       if (parent && parent.householdId && parent.householdId === next.householdId) continue;

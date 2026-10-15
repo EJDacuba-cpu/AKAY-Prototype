@@ -239,3 +239,24 @@ test("a moved child's registration parent ID becomes one explicit parent edge", 
   assert.equal(moved.patients.find((item) => item.id === lucas.id).motherPatientId, "");
   assert.equal(moved.connections.filter((edge) => edge.type === "parent" && edge.from === "mock-patient-ana" && edge.to === lucas.id).length, 1);
 });
+
+test("Change Household keeps a saved parent link as one explicit edge even after staging clears the form IDs", () => {
+  const registry = createMockRegistry();
+  registry.patients = registry.patients.map((item) => item.id === "mock-patient-lucas" ? { ...item, motherPatientId: "mock-patient-ana" } : item);
+  registry.connections = registry.connections.filter((edge) => !(edge.from === "mock-patient-ana" && edge.to === "mock-patient-lucas"));
+  const saved = registry.patients.find((item) => item.id === "mock-patient-lucas");
+  const draft = stageConnection(saved, registry, existing("mock-household-2", "Grandchild"));
+  assert.equal(draft.motherPatientId, "");
+  const moved = commitMockPatient(registry, draft, existing("mock-household-2", "Grandchild"), saved.id, id).registry;
+  assert.equal(moved.connections.filter((edge) => edge.type === "parent" && edge.from === "mock-patient-ana" && edge.to === saved.id).length, 1);
+  assert.equal(moved.patients.find((item) => item.id === saved.id).motherPatientId, "");
+});
+
+test("unlinking a parent without changing household drops the registration link and creates no edge", () => {
+  const registry = createMockRegistry();
+  registry.patients = registry.patients.map((item) => item.id === "mock-patient-lucas" ? { ...item, motherPatientId: "mock-patient-ana" } : item);
+  registry.connections = registry.connections.filter((edge) => !(edge.from === "mock-patient-ana" && edge.to === "mock-patient-lucas"));
+  const saved = registry.patients.find((item) => item.id === "mock-patient-lucas");
+  const unlinked = commitMockPatient(registry, { ...saved, motherPatientId: "" }, connectionForPatient(saved), saved.id, id).registry;
+  assert.ok(!unlinked.connections.some((edge) => edge.from === "mock-patient-ana" && edge.to === saved.id));
+});
