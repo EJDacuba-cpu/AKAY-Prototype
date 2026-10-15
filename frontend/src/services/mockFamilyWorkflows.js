@@ -167,3 +167,59 @@ export function saveNewFamily(draft) {
   });
   return householdId;
 }
+
+export const RELATED_TYPES = [["parent-of", "Parent of"], ["child-of", "Child of"], ["spouse", "Spouse / Partner"], ["sibling", "Sibling"], ["relative", "Other relative"]];
+const RELATED_LABELS = { spouse: "spouse / partner of", sibling: "sibling of", relative: "relative of", "non-relative": "non-relative of" };
+const activeHousehold = (registry, patient) => {
+  const household = registry.households.find(item => item.id === patient?.householdId);
+  return household && !household.archivedAt ? household : null;
+};
+
+// Cross-household links are ordinary connections whose endpoints sit in two different households.
+export function relatedConnections(registry, householdId) {
+  const rows = [];
+  for (const edge of registry.connections || []) {
+    const from = registry.patients.find(patient => patient.id === edge.from);
+    const to = registry.patients.find(patient => patient.id === edge.to);
+    if (!from || !to) continue;
+    const fromHere = from.householdId === householdId;
+    if (fromHere === (to.householdId === householdId)) continue;
+    const [member, relative] = fromHere ? [from, to] : [to, from];
+    const other = activeHousehold(registry, relative);
+    if (!other) continue;
+    const label = edge.type === "parent" ? (fromHere ? "parent of" : "child of") : RELATED_LABELS[edge.type];
+    rows.push({ key: connectionKey(edge), memberId: member.id, relativeId: relative.id, relativeHouseholdId: other.id, label });
+  }
+  return rows;
+}
+
+export function commitRelatedLink(registry, householdId, { memberId, relativeId, type }) {
+  const errors = {};
+  if (!registry.households.some(household => household.id === householdId && !household.archivedAt)) errors.form = "This household no longer exists.";
+  const member = registry.patients.find(patient => patient.id === memberId && patient.householdId === householdId);
+  if (!member) errors.memberId = "Choose a member of this household.";
+  const relative = registry.patients.find(patient => patient.id === relativeId);
+  if (!relative || relative.householdId === householdId || !activeHousehold(registry, relative)) errors.relativeId = "Choose a patient from another household.";
+  if (!RELATED_TYPES.some(([value]) => value === type)) errors.type = "Select a relationship.";
+  if (Object.keys(errors).length) throw new MockRegistryError(errors);
+  const edge = type === "child-of" ? { from: relative.id, to: member.id, type: "parent" }
+    : type === "parent-of" ? { from: member.id, to: relative.id, type: "parent" }
+    : { from: member.id, to: relative.id, type };
+  const members = [...familyMembers(registry, householdId), ...familyMembers(registry, relative.householdId)];
+  const ids = new Set(members.map(patient => patient.id));
+  const existing = [...familyConnections(registry, householdId), ...familyConnections(registry, relative.householdId),
+    ...(registry.connections || []).filter(item => ids.has(item.from) && ids.has(item.to))];
+  const edges = [...new Map(existing.map(item => [connectionKey(item), item])).values(), edge];
+  const graphError = graphErrors(members, edges);
+  if (graphError) throw new MockRegistryError({ form: graphError });
+  return { ...registry, connections: [...(registry.connections || []), edge] };
+}
+
+export function commitRemoveRelatedLink(registry, key) {
+  const connections = registry.connections || [];
+  if (!connections.some(edge => connectionKey(edge) === key)) throw new MockRegistryError({ form: "This link no longer exists." });
+  return { ...registry, connections: connections.filter(edge => connectionKey(edge) !== key) };
+}
+
+export const saveRelatedLink = (householdId, draft) => publishMockRegistry(registry => commitRelatedLink(registry, householdId, draft));
+export const removeRelatedLink = key => publishMockRegistry(registry => commitRemoveRelatedLink(registry, key));

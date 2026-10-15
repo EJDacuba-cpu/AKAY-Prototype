@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createMockRegistry, commitMockPatient, HEAD_RELATIONSHIP } from "./mockFamilyRegistry.js";
-import { commitFamily, commitFamilyMember, commitNewFamily, newFamilyHeadStatus, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
+import { commitFamily, commitFamilyMember, commitNewFamily, newFamilyHeadStatus, commitRelatedLink, commitRemoveRelatedLink, relatedConnections, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
 import { layoutFamilyTree } from "../utils/familyTree.js";
 
 const draft = (registry, overrides = {}) => ({ serialNumber: "FSN-NEW", address: { ...registry.households[0].address }, headPatientId: "mock-patient-7", ...overrides });
@@ -131,4 +131,31 @@ test("saving member connections keeps links to other households", () => {
   const sofia = registry.patients.find(p => p.id === "mock-patient-sofia");
   const next = commitFamilyMember(registry, "mock-household-cruz", { patientId: sofia.id, relationship: sofia.relationshipToHouseholdHead, connections: connectionRows(registry, "mock-household-cruz", sofia.id) });
   assert.ok(next.connections.some(edge => edge.from === "mock-patient-roberto" && edge.to === "mock-patient-4"));
+});
+
+test("child-of creates a reversed parent edge visible from both families", () => {
+  const registry = createMockRegistry();
+  const next = commitRelatedLink(registry, "mock-household-2", { memberId: "mock-patient-4", relativeId: "mock-patient-6", type: "child-of" });
+  assert.ok(next.connections.some(e => e.from === "mock-patient-6" && e.to === "mock-patient-4" && e.type === "parent"));
+  assert.equal(relatedConnections(next, "mock-household-2")[0].label, "child of");
+  assert.equal(relatedConnections(next, "mock-household-3")[0].label, "parent of");
+});
+
+test("related link rejects same-household, archived, duplicate and cyclic targets", () => {
+  const registry = createMockRegistry();
+  assert.throws(() => commitRelatedLink(registry, "mock-household-cruz", { memberId: "mock-patient-miguel", relativeId: "mock-patient-sofia", type: "sibling" }), e => Boolean(e.errors.relativeId));
+  const linked = commitRelatedLink(registry, "mock-household-2", { memberId: "mock-patient-4", relativeId: "mock-patient-6", type: "child-of" });
+  assert.throws(() => commitRelatedLink(linked, "mock-household-2", { memberId: "mock-patient-4", relativeId: "mock-patient-6", type: "sibling" }), e => Boolean(e.errors.form));
+  assert.throws(() => commitRelatedLink(linked, "mock-household-2", { memberId: "mock-patient-4", relativeId: "mock-patient-6", type: "parent-of" }), e => Boolean(e.errors.form));
+  linked.households = linked.households.map(h => h.id === "mock-household-3" ? { ...h, archivedAt: "2026-10-15T00:00:00.000Z" } : h);
+  assert.throws(() => commitRelatedLink(linked, "mock-household-2", { memberId: "mock-patient-5", relativeId: "mock-patient-6", type: "relative" }), e => Boolean(e.errors.relativeId));
+});
+
+test("removing a related link deletes only that edge; stale keys fail cleanly", () => {
+  const registry = createMockRegistry();
+  const linked = commitRelatedLink(registry, "mock-household-2", { memberId: "mock-patient-4", relativeId: "mock-patient-6", type: "relative" });
+  const [row] = relatedConnections(linked, "mock-household-2");
+  const removed = commitRemoveRelatedLink(linked, row.key);
+  assert.equal(removed.connections.length, registry.connections.length);
+  assert.throws(() => commitRemoveRelatedLink(removed, row.key), e => e.errors.form === "This link no longer exists.");
 });
