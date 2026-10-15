@@ -5,6 +5,8 @@ import {
   connectionForPatient, createMockRegistry, searchHouseholds, stageConnection,
   validateConnection,
   headDeparture, validateHeadReplacement,
+  MINOR_HEAD_MESSAGE, MISSING_BIRTH_DATE_MESSAGE, NO_HOUSEHOLD_MESSAGE,
+  canHeadHousehold, nextSerialNumber, withFormAddress,
 } from "./mockFamilyRegistry.js";
 
 const patient = { firstName: "Test", lastName: "Santos", birthDate: "1990-01-01", sex: "Male", civilStatus: "Single", streetAddress: "99 Test Street", purokArea: "Purok 5", barangay: "Tibig", municipality: "Bulakan", familySerialNumber: "" };
@@ -25,16 +27,6 @@ test("same-surname households stay separate; search covers serial, head and exte
   assert.equal(searchHouseholds(registry, "Roberto")[0].id, "mock-household-1");
   assert.equal(searchHouseholds(registry, "Ana Reyes")[0].id, "mock-household-1");
   assert.equal(searchHouseholds(registry, "Paolo").length, 0);
-});
-
-test("unlinked save creates neither a household nor a placeholder serial, regardless of surname", () => {
-  const registry = createMockRegistry();
-  const result = commitMockPatient(registry, { ...patient, familySerialNumber: "IGNORE-ME" }, null, undefined, id);
-  assert.equal(result.registry.households.length, registry.households.length);
-  assert.equal(result.patient.householdId, null);
-  assert.equal(result.patient.familySerialNumber, "");
-  assert.equal(result.patient.relationshipToHouseholdHead, "");
-  assert.deepEqual(addressValues(result.patient), addressValues(patient));
 });
 
 test("confirming a connection stages address without modifying saved patient or registry; discarding draft is safe", () => {
@@ -104,10 +96,10 @@ test("existing unlinked head is linked atomically with new patient; existing lin
 
 test("later Edit Patient links the same saved unlinked patient without creating a duplicate patient", () => {
   const registry = createMockRegistry();
-  const initial = commitMockPatient(registry, patient, null, undefined, id);
-  const updated = commitMockPatient(initial.registry, initial.patient, existing(), initial.patient.id, id);
-  assert.equal(updated.registry.patients.length, initial.registry.patients.length);
-  assert.equal(updated.patient.id, initial.patient.id);
+  const legacy = registry.patients.find((item) => item.id === "mock-patient-7");
+  const updated = commitMockPatient(registry, legacy, existing(), legacy.id, id);
+  assert.equal(updated.registry.patients.length, registry.patients.length);
+  assert.equal(updated.patient.id, legacy.id);
   assert.equal(updated.patient.householdId, "mock-household-1");
   assert.equal(updated.registry.households.length, seed.households.length);
 });
@@ -123,20 +115,6 @@ test("moving a member changes only their saved connection/address; prior snapsho
   assert.deepEqual(addressValues(result.patient), registry.households[1].address);
   assert.deepEqual(registry.patients[2], before);
   assert.equal(result.registry.patients.find((item) => item.id === "mock-patient-1").householdId, "mock-household-1");
-});
-
-test("Remove Connection retains address and clears link/serial only after save", () => {
-  const registry = createMockRegistry();
-  const saved = registry.patients[2];
-  const draft = stageConnection(saved, registry, null);
-  assert.equal(draft.familySerialNumber, "");
-  assert.deepEqual(addressValues(draft), addressValues(saved));
-  assert.equal(connectionForPatient(saved).householdId, "mock-household-1");
-  const result = commitMockPatient(registry, draft, null, saved.id, id);
-  assert.equal(result.patient.householdId, null);
-  assert.equal(result.patient.familySerialNumber, "");
-  assert.equal(result.patient.relationshipToHouseholdHead, "");
-  assert.deepEqual(addressValues(result.patient), addressValues(saved));
 });
 
 test("save rechecks serial/head availability so a stale staged draft cannot partially commit", () => {
@@ -162,17 +140,18 @@ test("a departing head must explicitly choose a remaining head and relationships
   const registry = createMockRegistry();
   const before = structuredClone(registry);
   const saved = registry.patients[0];
-  assert.equal(headDeparture(registry, saved.id, null).members.length, 2);
-  assert.throws(() => commitMockPatient(registry, saved, null, saved.id, id));
+  const moveTo = existing("mock-household-2", "Sibling");
+  assert.equal(headDeparture(registry, saved.id, moveTo).members.length, 2);
+  assert.throws(() => commitMockPatient(registry, saved, moveTo, saved.id, id));
   assert.deepEqual(registry, before);
   const replacement = { householdId: "mock-household-1", headPatientId: "mock-patient-2", relationships: { "mock-patient-3": "Niece / Nephew" } };
-  assert.deepEqual(validateHeadReplacement(registry, saved.id, null, replacement), {});
-  const result = commitMockPatient(registry, saved, null, saved.id, id, replacement);
+  assert.deepEqual(validateHeadReplacement(registry, saved.id, moveTo, replacement), {});
+  const result = commitMockPatient(registry, saved, moveTo, saved.id, id, replacement);
   assert.equal(result.registry.households[0].headPatientId, "mock-patient-2");
   assert.equal(result.registry.patients.find((item) => item.id === "mock-patient-2").relationshipToHouseholdHead, HEAD_RELATIONSHIP);
   assert.equal(result.registry.patients.find((item) => item.id === "mock-patient-3").relationshipToHouseholdHead, "Niece / Nephew");
-  assert.equal(result.patient.householdId, null);
-  assert.deepEqual(addressValues(result.patient), addressValues(saved));
+  assert.equal(result.patient.householdId, "mock-household-2");
+  assert.deepEqual(addressValues(result.patient), registry.households[1].address);
 });
 
 test("moving a head updates both households in one commit while cancelled drafts preserve both", () => {
@@ -188,18 +167,54 @@ test("moving a head updates both households in one commit while cancelled drafts
   assert.equal(result.patient.relationshipToHouseholdHead, "Sibling");
 });
 
-test("removing a sole head preserves the saved household but prevents connecting to a missing head", () => {
-  const registry = createMockRegistry();
-  const saved = registry.patients[5];
-  const result = commitMockPatient(registry, saved, null, saved.id, id);
-  assert.equal(result.registry.households[2].headPatientId, null);
-  assert.ok(validateConnection(result.registry, existing("mock-household-3")).household);
-  assert.equal(result.patient.familySerialNumber, "");
-});
-
 test("failed patient validation does not create even a valid staged household", () => {
   const registry = createMockRegistry();
   const before = structuredClone(registry);
   assert.throws(() => commitMockPatient(registry, { ...patient, firstName: "" }, newHousehold(), undefined, id));
   assert.deepEqual(registry, before);
+});
+
+test("nextSerialNumber counts same-year FSN-YYYY-NNNN serials only, archived included", () => {
+  const registry = createMockRegistry();
+  assert.equal(nextSerialNumber(registry, new Date(2026, 9, 15)), "FSN-2026-0001");
+  registry.households.push({ id: "h-a", serialNumber: "FSN-2026-0007", archivedAt: "2026-10-01T00:00:00.000Z", headPatientId: null, address: {} });
+  registry.households.push({ id: "h-b", serialNumber: "fsn-2025-0099", headPatientId: null, address: {} });
+  assert.equal(nextSerialNumber(registry, new Date(2026, 9, 15)), "FSN-2026-0008");
+  assert.equal(nextSerialNumber(registry, new Date(2025, 2, 1)), "FSN-2025-0100");
+});
+
+test("canHeadHousehold requires a birth date and age 18+", () => {
+  const today = new Date(2026, 9, 15);
+  assert.deepEqual(canHeadHousehold({ birthDate: "" }, today), { ok: false, code: "missing-birth-date", reason: MISSING_BIRTH_DATE_MESSAGE });
+  assert.deepEqual(canHeadHousehold({ birthDate: "2008-10-16" }, today), { ok: false, code: "minor", reason: MINOR_HEAD_MESSAGE });
+  assert.deepEqual(canHeadHousehold({ birthDate: "2008-10-15" }, today), { ok: true });
+});
+
+test("saving without a household is rejected and leaves the registry untouched", () => {
+  const registry = createMockRegistry();
+  const before = structuredClone(registry);
+  assert.deepEqual(validateConnection(registry, null, undefined, patient), { household: NO_HOUSEHOLD_MESSAGE });
+  assert.throws(() => commitMockPatient(registry, patient, null, undefined, id), (error) => error.errors.household === NO_HOUSEHOLD_MESSAGE);
+  assert.deepEqual(registry, before);
+});
+
+test("a minor cannot head a new self household, including after a later DOB change", () => {
+  const registry = createMockRegistry();
+  const minor = { ...patient, birthDate: "2015-01-01" };
+  assert.equal(validateConnection(registry, newHousehold(), undefined, minor).headPatientId, MINOR_HEAD_MESSAGE);
+  assert.throws(() => commitMockPatient(registry, minor, newHousehold(), undefined, id));
+});
+
+test("withFormAddress copies the form address into a new self household only", () => {
+  const form = { ...patient, streetAddress: "1 Late Edit Street" };
+  assert.equal(withFormAddress(newHousehold(), form).household.address.streetAddress, "1 Late Edit Street");
+  const joined = existing();
+  assert.equal(withFormAddress(joined, form), joined);
+});
+
+test("staging a new self household keeps the typed address", () => {
+  const registry = createMockRegistry();
+  const staged = stageConnection(patient, registry, { ...newHousehold(), household: { serialNumber: "FSN-2026-0001", address: {} } });
+  assert.equal(staged.streetAddress, patient.streetAddress);
+  assert.equal(staged.familySerialNumber, "FSN-2026-0001");
 });

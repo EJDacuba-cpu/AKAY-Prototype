@@ -7,12 +7,43 @@ export const RELATIONSHIPS = [
   "Aunt / Uncle", "Cousin", "Other relative", "Non-relative",
 ];
 export const HEAD_RELATIONSHIP = "Household head";
+export const NO_HOUSEHOLD_MESSAGE = "Search for a household or create a new one.";
+export const MINOR_HEAD_MESSAGE = "A patient under 18 can't be a household head. Register the parent or guardian first, then add this child to their household.";
+export const MISSING_BIRTH_DATE_MESSAGE = "Enter the date of birth first.";
 
 const normalize = (value) => String(value ?? "").trim().toLowerCase();
 export const patientName = (patient) =>
   [patient?.firstName, patient?.middleName, patient?.lastName].filter(Boolean).join(" ") || "Unnamed patient";
 export const addressText = (address) => ADDRESS_FIELDS.map((key) => address?.[key]).filter(Boolean).join(", ");
 export const addressValues = (address) => Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, address?.[key] || ""]));
+
+// Whole years on `today`; a birthday later in the year has not happened yet.
+export function canHeadHousehold(patient, today = new Date()) {
+  const [year, month, day] = String(patient?.birthDate || "").split("-").map(Number);
+  if (!year || !month || !day) return { ok: false, code: "missing-birth-date", reason: MISSING_BIRTH_DATE_MESSAGE };
+  const birthdayPassed = today.getMonth() + 1 > month || (today.getMonth() + 1 === month && today.getDate() >= day);
+  const age = today.getFullYear() - year - (birthdayPassed ? 0 : 1);
+  return age >= 18 ? { ok: true } : { ok: false, code: "minor", reason: MINOR_HEAD_MESSAGE };
+}
+
+// Archived households count too, so a retired FSN is never handed out again.
+export function nextSerialNumber(registry, date = new Date()) {
+  const year = date.getFullYear();
+  const highest = registry.households.reduce((max, household) => {
+    const match = /^FSN-(\d{4})-(\d{4})$/i.exec(String(household.serialNumber ?? "").trim());
+    return match && Number(match[1]) === year ? Math.max(max, Number(match[2])) : max;
+  }, 0);
+  return `FSN-${year}-${String(highest + 1).padStart(4, "0")}`;
+}
+
+const isSelfHousehold = (connection) => connection?.kind === "new" && connection.headPatientId === "self";
+
+// A self-headed new household takes its address from the form when saved.
+export function withFormAddress(connection, form) {
+  return isSelfHousehold(connection)
+    ? { ...connection, household: { ...connection.household, address: addressValues(form) } }
+    : connection;
+}
 
 export function createMockRegistry() {
   const households = [
@@ -93,8 +124,8 @@ export function relationshipForConnection(registry, connection, patientId) {
   return isHead ? HEAD_RELATIONSHIP : connection?.relationship === HEAD_RELATIONSHIP ? "" : connection?.relationship || "";
 }
 
-export function validateConnection(registry, connection, patientId) {
-  if (!connection) return {};
+export function validateConnection(registry, connection, patientId, patient) {
+  if (!connection) return { household: NO_HOUSEHOLD_MESSAGE };
   const errors = {};
   const household = householdForConnection(registry, connection);
   if (connection.kind !== "existing" && connection.kind !== "new") {
@@ -113,7 +144,10 @@ export function validateConnection(registry, connection, patientId) {
     ADDRESS_FIELDS.forEach((key) => {
       if (!normalize(household.address?.[key])) errors[key] = `${labels[key]} is required.`;
     });
-    if (connection.headPatientId !== "self") {
+    if (connection.headPatientId === "self") {
+      const eligibility = patient ? canHeadHousehold(patient) : { ok: true };
+      if (!eligibility.ok) errors.headPatientId = eligibility.reason;
+    } else {
       const head = registry.patients.find((patient) => patient.id === connection.headPatientId);
       if (!head || head.householdId || head.id === patientId) errors.headPatientId = "Select an existing unlinked patient as head.";
     }
@@ -130,7 +164,7 @@ export function stageConnection(form, registry, connection) {
   const serial = household?.serialNumber.trim() || "";
   return {
     ...form,
-    ...(household ? addressValues(household.address) : {}),
+    ...(household && !isSelfHousehold(connection) ? addressValues(household.address) : {}),
     familySerialNumber: serial,
     // Parent names remain available as manual entries after moving household.
     ...(serial !== form.familySerialNumber ? { motherPatientId: "", fatherPatientId: "" } : {}),
@@ -168,7 +202,7 @@ export class MockRegistryError extends Error {
 // Pure transaction: validation precedes every mutation. A failed save leaves
 // both the patient and household collections untouched.
 export function commitMockPatient(registry, form, connection, patientId, makeId = () => crypto.randomUUID(), replacement = null) {
-  const errors = { ...validateConnection(registry, connection, patientId), ...validateHeadReplacement(registry, patientId, connection, replacement) };
+  const errors = { ...validateConnection(registry, connection, patientId, form), ...validateHeadReplacement(registry, patientId, connection, replacement) };
   if (!form.firstName?.trim()) errors.firstName = "First name is required.";
   if (!form.lastName?.trim()) errors.lastName = "Last name is required.";
   if (patientId && !registry.patients.some((patient) => patient.id === patientId)) errors.patient = "Patient no longer exists in this mock session.";

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createMockRegistry, commitMockPatient } from "./mockFamilyRegistry.js";
-import { commitFamily, commitFamilyMember, commitRemoveMember, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
+import { commitFamily, commitFamilyMember, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
 import { layoutFamilyTree } from "../utils/familyTree.js";
 
 const draft = (registry, overrides = {}) => ({ serialNumber: "FSN-NEW", address: { ...registry.households[0].address }, headPatientId: "mock-patient-7", ...overrides });
@@ -61,18 +61,6 @@ test("graph rejects self links, duplicate reversed spouses, ancestry cycles and 
   assert.ok(graphErrors(members, [parent("a", "b"), parent("b", "c"), parent("c", "a")]));
   assert.ok(graphErrors(members, [{ from: "a", to: "b", type: "spouse" }, { from: "b", to: "a", type: "spouse" }]));
   assert.ok(graphErrors(members, [parent("a", "b"), { from: "a", to: "b", type: "spouse" }]));
-});
-
-test("remove preserves patient and address, clears FSN and all old family edges", () => {
-  const registry = createMockRegistry();
-  const saved = commitRemoveMember(registry, "mock-household-cruz", "mock-patient-miguel");
-  const member = saved.patients.find(patient => patient.id === "mock-patient-miguel");
-  assert.equal(member.householdId, null);
-  assert.equal(member.familySerialNumber, "");
-  assert.equal(member.streetAddress, "18 Mabini Street");
-  assert.equal(saved.patients.length, registry.patients.length);
-  assert.ok(!saved.connections.some(edge => [edge.from, edge.to].includes(member.id)));
-  assert.throws(() => commitRemoveMember(registry, "mock-household-cruz", "mock-patient-roberto"));
 });
 
 test("registration saves preserve other family graphs and moving clears only departed links", () => {

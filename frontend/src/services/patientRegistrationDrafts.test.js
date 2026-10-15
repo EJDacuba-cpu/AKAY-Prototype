@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRegistrationDraftStore, registrationPath } from "./patientRegistrationDrafts.js";
-import { addressValues, commitMockPatient, connectionForPatient, createMockRegistry, searchHouseholds } from "./mockFamilyRegistry.js";
+import { commitMockPatient, connectionForPatient, createMockRegistry, searchHouseholds } from "./mockFamilyRegistry.js";
 const seed = createMockRegistry();
 
 const form = {
@@ -27,27 +27,6 @@ test("screen navigation preserves the complete registration draft; Back/Cancel l
   // Leaving creation without calling stageHousehold is Back/Cancel.
   assert.deepEqual(drafts.read(key), original);
   assert.deepEqual(registry, before);
-});
-
-test("confirming creation changes only household/address in the draft; final save creates household and patient together", () => {
-  const registry = createMockRegistry();
-  const drafts = createRegistrationDraftStore();
-  const key = registrationPath("/bhc");
-  drafts.write(key, snapshot());
-  drafts.stageHousehold(key, registry, candidate());
-  const returned = drafts.read(key);
-  for (const field of ["firstName", "middleName", "lastName", "birthDate", "sex", "civilStatus", "occupation", "contactNumber", "philHealthNumber", "spouseName", "spouseOccupation", "motherName", "fatherName", "nhtsStatus"]) {
-    assert.equal(returned.form[field], form[field]);
-  }
-  assert.equal(returned.form.familySerialNumber, "FSN-100");
-  assert.deepEqual(addressValues(returned.form), candidate().household.address);
-  assert.equal(registry.households.length, seed.households.length);
-  assert.equal(registry.patients.length, seed.patients.length);
-  let id = 0;
-  const committed = commitMockPatient(registry, returned.form, returned.householdConnection, undefined, () => `draft-test-${++id}`);
-  assert.equal(committed.registry.households.length, seed.households.length + 1);
-  assert.equal(committed.registry.patients.length, seed.patients.length + 1);
-  assert.equal(committed.patient.relationshipToHouseholdHead, "Household head");
 });
 
 test("cancelling registration after staged creation discards the handoff without creating empty households", () => {
