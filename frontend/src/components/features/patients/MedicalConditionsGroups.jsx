@@ -1,4 +1,3 @@
-import { AddressedBadge, GroupHeading } from "./background/BackgroundFields";
 import { conditionEventSourceLabel, conditionStatusLabel } from "../../../utils/medicalConditions";
 import { formatShortDate } from "../../../utils/patientProfile";
 
@@ -12,6 +11,19 @@ const STATUS_TONE = {
   resolved: "bg-success-50 text-success-700 ring-success-100",
   ruled_out: "bg-neutral-100 text-neutral-600 ring-neutral-200",
 };
+
+function GroupHeading({ children }) {
+  return <p className="text-xs font-medium text-neutral-500">{children}</p>;
+}
+
+/** Marks a condition the consultation is following today (picked in Start Consultation). */
+function AddressedBadge() {
+  return (
+    <span className="rounded-full bg-ink-50 px-2 py-0.5 text-[11px] font-medium text-ink-700 ring-1 ring-inset ring-ink-100">
+      Addressed in this visit
+    </span>
+  );
+}
 
 const CHIP = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
 

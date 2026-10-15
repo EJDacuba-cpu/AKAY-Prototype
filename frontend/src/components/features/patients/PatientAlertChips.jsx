@@ -1,5 +1,6 @@
 import { alertConditionNames } from "../../../utils/medicalConditions";
 import { isNoAllergyText } from "../../../utils/allergies";
+import { summarizeAllergies } from "../../../utils/patientHistory";
 
 const MAX_DISEASE_CHIPS = 3;
 
@@ -22,25 +23,38 @@ export function Chip({ tone = "neutral", children, title }) {
 }
 
 /**
+ * The allergy chip: red with the allergens when recorded, muted "No known
+ * allergies" or "Allergies not recorded" otherwise. Takes the structured
+ * allergies ({ noneKnown, items }) or an old free-text answer.
+ */
+export function AllergyChip({ allergies }) {
+  const summary = summarizeAllergies(allergies);
+  if (summary.status === "none" || (summary.status === "recorded" && isNoAllergyText(summary.text))) {
+    return <Chip tone="muted">No known allergies</Chip>;
+  }
+  if (summary.status === "recorded") {
+    return (
+      <Chip tone="alert" title={summary.text}>
+        Allergy: {summary.text}
+      </Chip>
+    );
+  }
+  return <Chip tone="muted">Allergies not recorded</Chip>;
+}
+
+/**
  * Allergies (red when recorded) and up to three confirmed / monitored
  * conditions, as one chip row. Only RHU-confirmed (or legacy-monitored)
  * conditions alert; unverified, under-evaluation and patient-reported ones do not.
  */
 export default function PatientAlertChips({ background = {}, conditionGroups }) {
-  const allergies = String(background?.allergies || "").trim();
   const alertNames = alertConditionNames(conditionGroups).filter(Boolean);
   const shownDiseases = alertNames.slice(0, MAX_DISEASE_CHIPS);
   const hiddenCount = alertNames.length - shownDiseases.length;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {!allergies ? (
-        <Chip tone="muted">Allergies not recorded</Chip>
-      ) : isNoAllergyText(allergies) ? (
-        <Chip tone="muted">No known allergies</Chip>
-      ) : (
-        <Chip tone="alert" title={allergies}>Allergy: {allergies}</Chip>
-      )}
+      <AllergyChip allergies={background?.allergies} />
       {shownDiseases.map((name) => (
         <Chip key={name} tone="neutral">{name}</Chip>
       ))}

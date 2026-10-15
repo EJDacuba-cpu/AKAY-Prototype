@@ -102,7 +102,7 @@ function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePat
 /**
  * The Patient Background tab: Past Medical, Family, and Personal & Social
  * History, read-only, each with its dated Changes log. Reviewing and updating
- * happens inside a consultation (ConsultationBackgroundCard), never here.
+ * happens inside a consultation (PatientHistoryPanel), never here.
  */
 export default function PatientBackgroundTab({ patientId, background, conditions, basePath = "/bhc" }) {
   const history = useQuery({

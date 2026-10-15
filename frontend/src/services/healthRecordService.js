@@ -817,6 +817,9 @@ function toPayload(record = {}, { partial = false } = {}) {
     care_plan: record.carePlan || null,
     // Edited Patient Background sections, applied with the record (create only).
     background_update: record.backgroundUpdate || null,
+    // Patient History per-visit answers, saved on the record (create only).
+    informant: record.informant || null,
+    similar_illness: record.similarIllness || null,
     // RHU-confirmed condition statuses (create only; RHU staff).
     condition_confirmations: record.conditionConfirmations || null,
     // RHU review of legacy BHC monitorings (create only; RHU staff).
@@ -1007,6 +1010,8 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["diagnoses"])) delete payload.diagnoses;
   if (!hasAny(record, ["carePlan"])) delete payload.care_plan;
   if (!record.backgroundUpdate) delete payload.background_update;
+  if (!record.informant) delete payload.informant;
+  if (!record.similarIllness) delete payload.similar_illness;
   if (!record.conditionConfirmations?.length) delete payload.condition_confirmations;
   if (!record.legacyMonitoringDiscontinuations?.length) delete payload.legacy_monitoring_discontinuations;
   if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;

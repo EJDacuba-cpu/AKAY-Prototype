@@ -55,7 +55,7 @@ function RhuGroup({ title, rows, showLock = false }) {
 }
 
 /** Read-only RHU conditions in three groups, each shown only when it has rows. */
-function RhuConditions({ groups }) {
+export function RhuConditions({ groups }) {
   const confirmed = groups?.confirmed || [];
   const underEvaluation = groups?.underEvaluation || [];
   const past = groups?.past || [];

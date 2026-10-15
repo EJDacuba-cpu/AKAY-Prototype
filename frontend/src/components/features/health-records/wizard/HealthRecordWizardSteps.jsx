@@ -276,6 +276,7 @@ export function ConsultationReviewStep({
                 </button>
               )}
             </div>
+            {section.rows.length > 0 && (
             <dl className="divide-y divide-[#E5E7EB]">
               {section.rows.map(({ label, value }) => (
                 <div
@@ -291,6 +292,13 @@ export function ConsultationReviewStep({
                 </div>
               ))}
             </dl>
+            )}
+            {/* A block of its own (Patient History) under the rows. */}
+            {section.content && (
+              <div className={`px-4 py-3${section.rows.length > 0 ? " border-t border-[#E5E7EB]" : ""}`}>
+                {section.content}
+              </div>
+            )}
           </section>
         ))}
       </div>

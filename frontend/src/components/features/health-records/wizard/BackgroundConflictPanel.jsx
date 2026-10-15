@@ -8,8 +8,8 @@ import {
 } from "../../../../utils/backgroundUpdate";
 
 /**
- * Shown on Review & Confirm after the save answered 409: an edited Patient
- * Background section changed since the clinician opened it. Each conflicting
+ * Shown on Review & Confirm after the save answered 409: an edited Patient History
+ * section (any of the four: medical, family, social, obstetric) changed since the clinician opened it. Each conflicting
  * section shows the latest saved version beside theirs; they choose per
  * section, apply, then confirm the save again.
  */
@@ -19,7 +19,7 @@ export default function BackgroundConflictPanel({ conflicts, update, onApply }) 
 
   return (
     <div role="alert" className="mb-4 rounded-none border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50 p-4">
-      <p className="text-[13px] font-bold text-amber-900">Patient Background changed since you opened it</p>
+      <p className="text-[13px] font-bold text-amber-900">Patient History changed since you opened it</p>
       <p className="mt-0.5 text-[12.5px] text-amber-900">
         Another save updated the sections below. Choose which version to keep for each, then save again.
       </p>

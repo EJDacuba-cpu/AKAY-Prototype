@@ -17,6 +17,38 @@ function relativeOptions(relatives) {
 }
 
 /**
+ * Similar Illness in the Family: a per-visit answer, never part of the stored
+ * background. Exported so the history panel can ask it while the section is
+ * only being reviewed.
+ */
+export function SimilarIllnessBlock({ value, onChange }) {
+  const illness = value || { answer: "", who: "", note: "" };
+  return (
+    <Block title="Similar Illness in the Family" note="Asked at this visit.">
+      <FieldGrid>
+        <SelectField
+          label="Anyone with a similar illness?"
+          value={illness.answer}
+          options={ANSWERS}
+          emptyLabel="Not recorded"
+          onChange={(next) => onChange({ ...illness, answer: next })}
+        />
+        <TextField
+          label="Who"
+          value={illness.who}
+          onChange={(next) => onChange({ ...illness, who: next })}
+        />
+        <TextField
+          label="Note"
+          value={illness.note}
+          onChange={(next) => onChange({ ...illness, note: next })}
+        />
+      </FieldGrid>
+    </Block>
+  );
+}
+
+/**
  * Section III. `value` is the family slice { familyHistory }; `relatives` the
  * patient's linked family members. Picking a relative only identifies the
  * person - it never copies their conditions. Similar Illness is per visit and
@@ -32,7 +64,6 @@ export default function FamilySection({
   const family = value?.familyHistory || {};
   const items = Array.isArray(family.items) ? family.items : [];
   const options = relativeOptions(relatives);
-  const illness = similarIllness || { answer: "", who: "", note: "" };
 
   const columns = [
     { key: "condition", label: "Condition", type: "text", required: true },
@@ -75,27 +106,7 @@ export default function FamilySection({
         />
       </Block>
 
-      <Block title="Similar Illness in the Family" note="Asked at this visit.">
-        <FieldGrid>
-          <SelectField
-            label="Anyone with a similar illness?"
-            value={illness.answer}
-            options={ANSWERS}
-            emptyLabel="Not recorded"
-            onChange={(next) => onSimilarIllnessChange({ ...illness, answer: next })}
-          />
-          <TextField
-            label="Who"
-            value={illness.who}
-            onChange={(next) => onSimilarIllnessChange({ ...illness, who: next })}
-          />
-          <TextField
-            label="Note"
-            value={illness.note}
-            onChange={(next) => onSimilarIllnessChange({ ...illness, note: next })}
-          />
-        </FieldGrid>
-      </Block>
+      <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />
     </div>
   );
 }

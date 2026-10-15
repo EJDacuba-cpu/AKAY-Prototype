@@ -89,16 +89,26 @@ import ConditionCardsSection, { ConditionSummaryPanel } from "../../components/f
 import { conditionCardErrors, conditionCardReviewRows, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
-import ConsultationBackgroundCard from "../../components/features/health-records/wizard/ConsultationBackgroundCard";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
+import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
+import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
+import { AllergyChip } from "../../components/features/patients/PatientAlertChips";
 import {
-  BACKGROUND_SECTION_LABELS,
-  backgroundChangeRows,
-  editedSectionKeys,
   readBackgroundConflicts,
   resolveBackgroundConflicts,
+  restoreBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
+import {
+  EDITABLE_SECTION_KEYS,
+  defaultInformant,
+  sectionVisibility,
+} from "../../utils/patientHistory";
+import {
+  historyErrorMessages,
+  informantPayload,
+  similarIllnessPayload,
+} from "../../utils/historyStep";
 import {
   buildCarePlanPayload,
   buildReferralReason,
@@ -166,6 +176,7 @@ import {
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import {
   ASSESSMENT_STEP,
+  HISTORY_STEP,
   INTERVIEW_STEP,
   MONITORING_STEP,
   NEXT_STEP,
@@ -1172,13 +1183,36 @@ export default function ConsultationWorkspace() {
   });
   const selectedPatient = selectedPatientDetails || null;
 
-  // Patient Background (Patient Interview): the only place it is edited.
-  // Edits are staged here and in the draft, and applied with the finalized
-  // record - see docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
-  // Without clinical.history the card is locked and nothing is staged.
+  // Patient History (its own step after Patient Interview): the only place the
+  // background is edited. Edits and "No changes" reviews are staged here and in
+  // the draft, and applied with the finalized record - see
+  // docs/superpowers/specs/2026-10-16-itr-patient-history-design.md.
+  // Without clinical.history the panel is locked and nothing is staged.
   const canViewBackground = (currentUser?.permissions || []).includes("clinical.history");
   const [backgroundUpdate, setBackgroundUpdate] = useState(null);
-  const [backgroundExpanded, setBackgroundExpanded] = useState(false);
+  // Per visit, saved on the record: who gave the history, and whether anyone
+  // at home has a similar illness. The informant gets its default once, when
+  // the patient loads, unless a resumed draft already brought one.
+  const [informant, setInformant] = useState(null);
+  const [similarIllness, setSimilarIllness] = useState(null);
+  const informantSeededRef = useRef(false);
+  useEffect(() => {
+    if (informantSeededRef.current || !selectedPatient || !canViewBackground) return;
+    informantSeededRef.current = true;
+    setInformant(
+      defaultInformant(
+        {
+          birthdate: getEffectivePatientBirthdate(selectedPatient),
+          motherPatientId: selectedPatient.motherPatientId,
+          motherName: selectedPatient.motherName || formatPatientName(selectedPatient.motherPatient, ""),
+          guardianName: selectedPatient.guardianName,
+          name: getPatientName(selectedPatient),
+          id: selectedPatient.id,
+        },
+        dateOfVisit || new Date(),
+      ),
+    );
+  }, [selectedPatient, canViewBackground, dateOfVisit]);
   // The 409 conflicts from the last save, until the clinician applies a choice per section.
   const [backgroundConflicts, setBackgroundConflicts] = useState(null);
 
@@ -1574,6 +1608,11 @@ export default function ConsultationWorkspace() {
       ]),
       tbData,
       ...(canViewBackground && backgroundUpdate ? { backgroundUpdate } : {}),
+      // Patient History per-visit answers; sent only once they are answered.
+      ...(canViewBackground && informantPayload(informant) ? { informant: informantPayload(informant) } : {}),
+      ...(canViewBackground && similarIllnessPayload(similarIllness)
+        ? { similarIllness: similarIllnessPayload(similarIllness) }
+        : {}),
       // Ids and stops only; condition names are re-read from care-overview.
       // Plus the two Next Actions checkboxes (the hidden forms stay in the
       // draft: followUpDate/Time/Reason and referralForm above and below).
@@ -1760,8 +1799,17 @@ export default function ConsultationWorkspace() {
       ...(payload.familyPlanningData || {}),
     });
     setTbData(normalizeTbData(payload.tbData));
-    // The server never sends it to a user without clinical.history.
-    setBackgroundUpdate(payload.backgroundUpdate || null);
+    // The server never sends it to a user without clinical.history. A draft
+    // saved before the ITR shapes has its staged edits dropped (null).
+    setBackgroundUpdate(restoreBackgroundUpdate(payload.backgroundUpdate));
+    {
+      const restoredInformant = informantPayload(payload.informant);
+      if (restoredInformant) {
+        informantSeededRef.current = true;
+        setInformant(restoredInformant);
+      }
+      setSimilarIllness(similarIllnessPayload(payload.similarIllness));
+    }
     setBackgroundConflicts(null);
     setReferralForm((current) => ({
       ...current,
@@ -2627,7 +2675,7 @@ export default function ConsultationWorkspace() {
   }
 
   /**
-   * A 409 because an edited Patient Background section changed since it was
+   * A 409 because an edited Patient History section changed since it was
    * opened. Nothing was saved; the draft already holds the clinician's edits.
    * Refetches the patient so the panel compares against the latest version.
    */
@@ -2646,7 +2694,7 @@ export default function ConsultationWorkspace() {
   function applyBackgroundConflictChoices(choices) {
     setBackgroundUpdate(resolveBackgroundConflicts(backgroundUpdate, backgroundConflicts, choices));
     setBackgroundConflicts(null);
-    toast.success("Patient Background choices applied. Save again to finalize.");
+    toast.success("Patient History choices applied. Save again to finalize.");
   }
 
   function refreshMedicineStock() {
@@ -2952,7 +3000,7 @@ export default function ConsultationWorkspace() {
       return;
     }
     if (backgroundConflicts?.length) {
-      toast.error("Choose which Patient Background version to keep before saving.");
+      toast.error("Choose which Patient History version to keep before saving.");
       goToStepKey(REVIEW_STEP);
       return;
     }
@@ -3277,8 +3325,11 @@ export default function ConsultationWorkspace() {
           : null,
       // Sent whenever Monitoring Details includes the TB card (isTb).
       tbData: isTb ? tbData : null,
-      // Patient Background sections reviewed in this visit (only the edited ones).
+      // Patient History sections updated or reviewed ("No changes") in this visit.
       backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
+      // Per-visit history answers, saved on the record (null when not answered).
+      informant: canViewBackground ? informantPayload(informant) : null,
+      similarIllness: canViewBackground ? similarIllnessPayload(similarIllness) : null,
       // What this visit continues, starts and stops. validateCarePlan already
       // ran in getClinicalValidationErrors above (this payload drops blank
       // stops). A condition's status is the RHU's to set: never sent from here.
@@ -4025,11 +4076,20 @@ export default function ConsultationWorkspace() {
     return handleSave();
   }
 
+  // Patient History: the editable sections this patient has (V only for a
+  // female patient) and the last save's 422 errors that belong to it.
+  const historySections = EDITABLE_SECTION_KEYS.filter(
+    (section) => section !== "obstetric" || sectionVisibility(selectedPatient, dateOfVisit || new Date()).obstetric !== "hidden",
+  );
+  const historyErrors = historyErrorMessages(validationErrors, { withSection: true });
+
   // Heading for the current screen. The wizard still knows its position; that
   // position is simply not shown while the progress UI is switched off.
   const stepSubtitles = {
     [INTERVIEW_STEP]:
-      "Record the patient's reason for visit, present illness and background.",
+      "Record the patient's reason for visit and present illness.",
+    [HISTORY_STEP]:
+      "Review each section with the patient: No changes if it still holds, Update if something is new. Changes save when the consultation is finalized.",
     [ASSESSMENT_STEP]:
       "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
@@ -4114,17 +4174,36 @@ export default function ConsultationWorkspace() {
         { label: "History of Present Illness", value: summaryOfPresentIllness },
       ],
     },
-    // Only when a section was edited; Edit reopens the card expanded.
-    ...(canViewBackground && editedSectionKeys(backgroundUpdate).length
+    // Patient History: the per-visit answers, then what was updated (before
+    // -> after), reviewed with no changes, or not reviewed. Never blocks.
+    ...(canViewBackground && selectedPatient
       ? [{
-          key: "patient-background",
-          title: "Patient Background Changes",
-          stepKey: "patient-background",
-          rows: editedSectionKeys(backgroundUpdate).flatMap((section) =>
-            backgroundChangeRows(selectedPatient?.medicalBackground, backgroundUpdate.sections[section], section).map((row) => ({
-              label: `${BACKGROUND_SECTION_LABELS[section]} · ${row.label}`,
-              value: `Before: ${row.before || "Not recorded"}\nAfter: ${row.after || "Not recorded"}`,
-            })),
+          key: HISTORY_STEP,
+          title: "Patient History",
+          stepKey: HISTORY_STEP,
+          rows: [
+            {
+              label: "Informant",
+              value: informantPayload(informant)
+                ? [informant.relation, String(informant.name || "").trim()].filter(Boolean).join(" · ")
+                : "",
+            },
+            {
+              label: "Similar illness in the family",
+              value: similarIllnessPayload(similarIllness)
+                ? [similarIllness.answer, similarIllness.who, similarIllness.note]
+                    .map((part) => String(part || "").trim())
+                    .filter(Boolean)
+                    .join(" · ")
+                : "",
+            },
+          ],
+          content: (
+            <PatientHistoryReview
+              background={selectedPatient.medicalBackground}
+              update={backgroundUpdate}
+              visibleSections={historySections}
+            />
           ),
         }]
       : []),
@@ -4264,6 +4343,13 @@ export default function ConsultationWorkspace() {
           outside the fieldset so a locked review does not disable them. */}
       <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
+      {/* Whose consultation this is, with the allergy line kept in view on every step. */}
+      {inConsultationWorkspace && selectedPatient && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[12.5px]">
+          <span className="font-semibold text-gray-900">{getPatientName(selectedPatient)}</span>
+          {canViewBackground && <AllergyChip allergies={selectedPatient.medicalBackground?.allergies} />}
+        </div>
+      )}
       {inConsultationWorkspace && currentStepKey !== NEXT_STEP && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
@@ -4312,7 +4398,6 @@ export default function ConsultationWorkspace() {
           errors={reviewErrorMessages}
           onEditStep={key => {
             if (activeDraft?.reviewState === "review" && !(currentUser?.permissions || []).includes("records.correct")) return;
-            if (key === "patient-background") { setBackgroundExpanded(true); goToStepKey(INTERVIEW_STEP); return; }
             goToStepKey(key);
           }}
           indicator={stepHeadingSlot}
@@ -4332,8 +4417,8 @@ export default function ConsultationWorkspace() {
         className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
         {isFirstConsultationStep ? (
-          // The first step is the Patient Interview: Chief Complaint / HPI and
-          // Patient Background, each section under its own heading.
+          // The first step is the Patient Interview: Chief Complaint / HPI.
+          // The patient's background has its own Patient History step next.
           <section className={CONSULTATION_CARD_CLASS}>
             {/* HPI is optional. */}
             <FormSection title="Chief Complaint & History of Present Illness" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
@@ -4346,21 +4431,27 @@ export default function ConsultationWorkspace() {
             </div>
             </FormSection>
 
-            {/* Patient Background: history taking belongs with the interview,
-                so it sits after Chief Complaint / HPI. */}
-            <FormSection title="Patient Background" subtitle="Past medical, family, and personal & social history. Changes are saved when the consultation is finalized." delay={4}>
-              <ConsultationBackgroundCard
-                patientId={selectedPatientId}
-                locked={!canViewBackground}
-                loading={selectedPatientLoading}
-                background={selectedPatient?.medicalBackground}
-                update={backgroundUpdate}
-                onUpdateChange={setBackgroundUpdate}
-                expanded={backgroundExpanded}
-                onExpandedChange={setBackgroundExpanded}
-                followed={continuedMonitorings}
-              />
-            </FormSection>
+          </section>
+        ) : activeFormStep === HISTORY_STEP ? (
+          // ITR page 1, sections I-V: section list on the left, one section open.
+          <section className={CONSULTATION_CARD_CLASS}>
+            <PatientHistoryPanel
+              patient={selectedPatient}
+              background={selectedPatient?.medicalBackground}
+              update={backgroundUpdate}
+              onUpdateChange={setBackgroundUpdate}
+              informant={informant}
+              onInformantChange={setInformant}
+              similarIllness={similarIllness}
+              onSimilarIllnessChange={setSimilarIllness}
+              householdEnvironment={selectedPatient?.householdEnvironment}
+              today={dateOfVisit || new Date()}
+              layout="screen"
+              locked={!canViewBackground}
+              loading={selectedPatientLoading || !selectedPatient}
+              editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
+              errors={historyErrors}
+            />
           </section>
         ) : (
         <div className={CONSULTATION_CARD_CLASS}>
