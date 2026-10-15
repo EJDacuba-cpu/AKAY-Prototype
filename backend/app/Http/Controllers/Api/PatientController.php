@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\HouseholdEnvironment;
 use App\Services\PatientIdentity;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
@@ -187,6 +188,16 @@ class PatientController extends Controller
             'referrals' => fn ($query) => $this->facilityAccess
                 ->scopeReferrals($query, $user),
         ]);
+
+        $serial = trim((string) $patient->family_serial_number);
+        $others = $serial === ''
+            ? collect()
+            : $this->facilityAccess
+                ->scopePatients(Patient::query(), $user)
+                ->where('family_serial_number', $serial)
+                ->whereKeyNot($patient->id)
+                ->get();
+        $patient->setAttribute('household_environment', HouseholdEnvironment::latestFor($patient, $others));
 
         return response()->json(['data' => $patient]);
     }
