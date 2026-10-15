@@ -4,6 +4,7 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * Step model for the New Consultation workspace.
  *
  *   Patient Interview
+ *       -> Patient History (ITR sections I-V; reviewed or updated per section)
  *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
  *       -> Service Details: one screen per selected service (Prenatal / Family
  *          Planning / EPI), only when a service is selected
@@ -16,8 +17,9 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * Interview; their forms follow Physical Examination, so the visit's vital
  * signs (height included) are known when a service form opens.
  *
- * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI and the
- * Patient Background. The interview step's key is INTERVIEW_STEP.
+ * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI; the
+ * patient background lives on its own Patient History step (HISTORY_STEP).
+ * The interview step's key is INTERVIEW_STEP.
  *
  * Two levels:
  *  - GLOBAL steps (one heading each). Health programs are never global steps
@@ -35,6 +37,7 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  */
 
 export const INTERVIEW_STEP = "interview";
+export const HISTORY_STEP = "history";
 export const PROGRAMS_STEP = "programs";
 export const ASSESSMENT_STEP = "assessment";
 export const NEXT_STEP = "next";
@@ -120,6 +123,7 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys = [] } = {}) {
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
+    { key: HISTORY_STEP, phase: "form", label: "Patient History" },
     { key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" },
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
@@ -175,13 +179,14 @@ export function resolveStepHeading({
  * Physical Examination, then each selected service's form in program order.
  */
 export function getFormSequence(programSteps = []) {
-  return [INTERVIEW_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key)];
+  return [INTERVIEW_STEP, HISTORY_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key)];
 }
 
 /** Every screen in order, used to rank validation errors. */
 export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
   return [
     INTERVIEW_STEP,
+    HISTORY_STEP,
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
     NEXT_STEP,
@@ -200,7 +205,7 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
 const PROGRAM_DECISION_ERRORS = new Set(["summaryOfPresentIllness"]);
 
 /** Steps that come before the program decision is made. */
-const BEFORE_PROGRAM_DECISION = new Set([INTERVIEW_STEP]);
+const BEFORE_PROGRAM_DECISION = new Set([INTERVIEW_STEP, HISTORY_STEP]);
 
 /**
  * The errors a step may act on. Before the program decision, any requirement
@@ -301,6 +306,10 @@ export function getErrorOwnerStepKey(errorKey) {
 
   if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
     return INTERVIEW_STEP;
+  }
+  // Patient History: the staged background update and the per-visit informant.
+  if (key.startsWith("background_update") || key.startsWith("informant") || key.startsWith("similar_illness")) {
+    return HISTORY_STEP;
   }
   // Vital Signs are a subsection of Physical Examination.
   if (["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) || key === "vital_signs.fbs") {

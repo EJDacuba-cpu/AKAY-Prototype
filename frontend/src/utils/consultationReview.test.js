@@ -44,3 +44,10 @@ test("the Patient identity row is always present and stays first in the Patient 
   // Even with nothing else filled in, the group (and the identity) survives.
   assert.equal(compactReviewSections([{ key: "i", title: "I", rows: [patientReviewRow({ name: "A", id: 1 })] }]).length, 1);
 });
+
+test("a section with its own content survives without rows", () => {
+  const [history] = compactReviewSections([
+    { key: "history", title: "Patient History", stepKey: "history", rows: [{ label: "Informant", value: "" }], content: "block" },
+  ]);
+  assert.deepEqual(history, { key: "history", title: "Patient History", stepKey: "history", rows: [], content: "block" });
+});

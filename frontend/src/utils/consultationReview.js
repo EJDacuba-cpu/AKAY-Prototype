@@ -16,11 +16,11 @@ export function compactReviewRows(rows = []) {
   return (rows || []).filter((row) => row && hasReviewValue(row.value));
 }
 
-/** Compacts each section's rows and drops a section that ends up with none. */
+/** Compacts each section's rows and drops a section that ends up with none (and has no `content` block). */
 export function compactReviewSections(sections = []) {
   return (sections || [])
     .map((section) => ({ ...section, rows: compactReviewRows(section.rows) }))
-    .filter((section) => section.rows.length > 0);
+    .filter((section) => section.rows.length > 0 || Boolean(section.content));
 }
 
 /** The identity row that opens the review, so a record is never finalized without showing whose it is. */
