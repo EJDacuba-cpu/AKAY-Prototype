@@ -64,6 +64,8 @@ import {
 } from "../../utils/maternalRisk";
 import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
 import {
+  bhcPatientRecordsPath,
+  buildPatientRecordDetailsState,
   locationToPath,
 } from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
@@ -4919,9 +4921,9 @@ export default function ConsultationWorkspace() {
               ? `Consultation finalized. Referrals: ${saveSuccess.submittedReferralCount || 0} submitted; ${saveSuccess.heldReferralCount || 0} awaiting doctor availability. Authorized BHC staff will be notified to review and manually submit pending referrals when a doctor is available.`
             : saveSuccess?.referralSubmitted
               ? `The health record was saved with ${saveSuccess.submittedReferralCount || 1} referral${saveSuccess.submittedReferralCount === 1 ? "" : "s"} linked for RHU review.`
-              : "The record is available in this patient's history and Health Records. You can view it, print it, or open the patient profile."
+              : "The record is available in this patient's Health Records tab. You can view it, print it, or open the patient profile."
         }
-        onClose={() => navigate(healthRecordsPath)}
+        onClose={() => navigate(userRole === "bhc" ? bhcPatientRecordsPath(selectedPatientId) : healthRecordsPath)}
         actions={[
           {
             label: "View Health Record",
@@ -4930,7 +4932,8 @@ export default function ConsultationWorkspace() {
               navigate(
                 saveSuccess?.recordId
                   ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                  : healthRecordsPath,
+                  : userRole === "bhc" ? bhcPatientRecordsPath(selectedPatientId) : healthRecordsPath,
+                userRole === "bhc" ? { state: buildPatientRecordDetailsState({ pathname: `/bhc/patients/${selectedPatientId}`, search: "?tab=records" }) } : undefined,
               ),
           },
           ...(saveSuccess?.recordId
@@ -4940,6 +4943,7 @@ export default function ConsultationWorkspace() {
                   onClick: () =>
                     navigate(
                       `${healthRecordsPath}/${saveSuccess.recordId}?print=1`,
+                      userRole === "bhc" ? { state: buildPatientRecordDetailsState({ pathname: `/bhc/patients/${selectedPatientId}`, search: "?tab=records" }) } : undefined,
                     ),
                 },
               ]

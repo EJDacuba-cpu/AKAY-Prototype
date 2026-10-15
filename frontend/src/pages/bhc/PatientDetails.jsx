@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import LockedPlaceholder from "../../components/common/access/LockedPlaceholder";
@@ -18,7 +18,7 @@ import VitalsTiles from "../../components/features/patients/profile/VitalsTiles"
 import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
 import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
-import RecordsTimeline from "../../components/features/patients/profile/RecordsTimeline";
+import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
 import {
   FollowUpsByStatus,
@@ -27,7 +27,7 @@ import {
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
 import { updatePatient } from "../../services/patientService";
-import { getProfileReturnPath } from "../../utils/profileNavigation";
+import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
@@ -109,9 +109,11 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
  */
 export default function PatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
+  const canRegister = (getCurrentUser()?.permissions || []).includes("patients.register");
   const { patientId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Explicit origin passed by whoever opened the profile; Patients otherwise.
   const backPath = getProfileReturnPath(location, "/bhc/patients");
   const queryClient = useQueryClient();
@@ -124,10 +126,6 @@ export default function PatientDetails() {
   const [form, setForm] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [motherSearch, setMotherSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("overview");
-  // Set by "View records" on a Care & Programs card so Health Records opens
-  // pre-filtered to that program; "all" the rest of the time.
-  const [recordsFilter, setRecordsFilter] = useState("all");
   const editingSectionRef = useRef(null);
 
   const profileQueries = getBhcPatientProfileQueries(patientId, { canViewHistory });
@@ -158,6 +156,7 @@ export default function PatientDetails() {
 
   const {
     data: followUpTasksData = [],
+    isLoading: followUpsLoading,
     isFetching: followUpsFetching,
     error: followUpsError,
     refetch: refetchFollowUps,
@@ -177,7 +176,7 @@ export default function PatientDetails() {
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
   const loadError =
     patientError ||
-    (canViewHistory && (recordsError || referralsError || followUpsError)) ||
+    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError || followUpsError)) ||
     registeredPatientsError ||
     null;
   const retrying =
@@ -253,8 +252,17 @@ export default function PatientDetails() {
       : []),
   ];
 
-  function handleViewProgramRecords(programKey) {
-    setRecordsFilter(programKey || "all");
+  const requestedTab = searchParams.get("tab") || "overview";
+  const activeTab = tabs.some(tab => tab.key === requestedTab) ? requestedTab : "overview";
+
+  function setActiveTab(tab) {
+    const next = new URLSearchParams(searchParams);
+    if (tab === "overview") next.delete("tab");
+    else next.set("tab", tab);
+    setSearchParams(next, { replace: true, state: location.state });
+  }
+
+  function handleViewProgramRecords() {
     setActiveTab("records");
   }
 
@@ -285,8 +293,6 @@ export default function PatientDetails() {
     setEditingSection(null);
     setPendingSaveSection(null);
     setFieldErrors({});
-    setActiveTab("overview");
-    setRecordsFilter("all");
   }, [patientId]);
 
   function handleChange(event) {
@@ -323,6 +329,7 @@ export default function PatientDetails() {
   }
 
   function handleEditSection(section) {
+    if (!canRegister) return;
     setForm(createPatientForm(patient));
     setFieldErrors({});
     setPendingSaveSection(null);
@@ -345,6 +352,7 @@ export default function PatientDetails() {
   }
 
   async function handleConfirmSave() {
+    if (!canRegister) return;
     const section = pendingSaveSection;
     const errors = getSectionErrors(validatePatientForm(form), section);
     if (Object.keys(errors).length > 0) {
@@ -429,7 +437,8 @@ export default function PatientDetails() {
     });
 
   const tabStrip = <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />;
-  const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`);
+  const detailsState = buildPatientRecordDetailsState(location);
+  const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`, { state: detailsState });
 
   return (
     <>
@@ -512,7 +521,7 @@ export default function PatientDetails() {
                     patient={patient}
                     form={form}
                     editingSection={editingSection}
-                    onEdit={handleEditSection}
+                    onEdit={canRegister ? handleEditSection : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}
@@ -556,15 +565,16 @@ export default function PatientDetails() {
                 )}
 
                 {activeTab === "records" && canViewHistory && (
-                  <RecordsTimeline
+                  <PatientRecordsTab
+                    patientId={patientId}
                     records={records}
-                    patient={patient}
-                    conditionalAreas={conditionalProgramAreas}
-                    isLoading={recordsLoading}
-                    isFetching={recordsFetching}
-                    isError={Boolean(recordsError)}
-                    onView={viewRecord}
-                    initialFilter={recordsFilter}
+                    referrals={referrals}
+                    followUps={patientFollowUps}
+                    isLoading={recordsLoading || referralsLoading || followUpsLoading}
+                    isFetching={recordsFetching || referralsFetching || followUpsFetching}
+                    isError={Boolean(recordsError || referralsError || followUpsError)}
+                    onRetry={retryPatientDetails}
+                    detailsState={detailsState}
                   />
                 )}
 

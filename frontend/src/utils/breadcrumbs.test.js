@@ -52,11 +52,11 @@ test("a consultation for a patient sits under that patient's profile", () => {
   );
 });
 
-test("a consultation without a patient keeps the Health Records trail", () => {
+test("a BHC consultation without a patient returns to Patients", () => {
   assert.deepEqual(
     getBreadcrumbs("/bhc/health-records/add", "New Consultation", ""),
     [
-      { label: "Health Records", path: "/bhc/health-records" },
+      { label: "Patients", path: "/bhc/patients" },
       { label: "New Consultation" },
     ],
   );

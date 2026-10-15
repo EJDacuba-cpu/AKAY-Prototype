@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams, useNavigate, useSearchParams } from "react-router";
-import { buildProfileReturnState } from "../../utils/profileNavigation";
+import { buildProfileReturnState, getPatientRecordReturn } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, FilePlus2, HeartPulse, Printer } from "lucide-react";
@@ -104,6 +104,14 @@ export default function HealthRecordDetails() {
   const record = details?.record || (details?.id ? details : null);
   const patient = details?.patient || record?.patient || null;
   const linkedReferral = details?.linkedReferral || null;
+  function returnToProfile() {
+    if (!location.state?.patientProfile && window.history.state?.idx > 0) {
+      navigate(-1);
+      return;
+    }
+    const target = getPatientRecordReturn(location, patient?.id || record?.patientId || record?.patient_id);
+    navigate(target.path, { replace: true, state: target.state });
+  }
 
   useEffect(() => {
     if (!shouldAutoPrint || !record || hasAutoPrintedRef.current) return;
@@ -117,12 +125,12 @@ export default function HealthRecordDetails() {
           next.delete("print");
           return next;
         },
-        { replace: true },
+        { replace: true, state: location.state },
       );
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [shouldAutoPrint, record, setSearchParams]);
+  }, [shouldAutoPrint, record, setSearchParams, location.state]);
 
   const loading = isLoading || (!details && isFetching);
   const detailsUpdating = isFetching && !loading && Boolean(details);
@@ -162,7 +170,7 @@ export default function HealthRecordDetails() {
             Health record not found
           </h1>
           <button
-            onClick={() => navigate(-1)}
+            onClick={returnToProfile}
             className="mt-4 inline-block rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
           >
             Go Back
@@ -249,7 +257,7 @@ export default function HealthRecordDetails() {
           hasLinkedReferral={hasLinkedReferral}
           referralStatus={linkedReferral?.status}
           isUpdating={detailsUpdating}
-          onBack={() => navigate(-1)}
+          onBack={returnToProfile}
           patientName={patientName}
           serviceType={serviceType}
           displayDate={displayDate}

@@ -6,6 +6,9 @@ import {
   buildProfileReturnState,
   getConsultationBackground,
   getProfileReturnPath,
+  bhcPatientRecordsPath,
+  buildPatientRecordDetailsState,
+  getPatientRecordReturn,
 } from "./profileNavigation.js";
 
 const consultation = {
@@ -48,4 +51,18 @@ test("a plain profile visit never hides a background page", () => {
   const state = buildProfileReturnState({ pathname: "/bhc/health-records/15", search: "", hash: "" });
   assert.equal(getConsultationBackground({ pathname: "/bhc/patients/7", state }), null);
   assert.equal(getConsultationBackground({ pathname: "/bhc/patients/7", state: null }), null);
+});
+
+test("record details returns to the exact profile tab and preserves its originating navigation", () => {
+  const profile = { pathname: "/bhc/patients/7", search: "?tab=records", state: { returnTo: "/bhc/patients" } };
+  const target = getPatientRecordReturn({ state: buildPatientRecordDetailsState(profile) }, 7);
+  assert.deepEqual(target, { path: "/bhc/patients/7?tab=records", state: profile.state });
+});
+
+test("direct record links return to the patient's records and reject unrelated/external origins", () => {
+  assert.equal(bhcPatientRecordsPath(7), "/bhc/patients/7?tab=records");
+  assert.equal(bhcPatientRecordsPath(""), "/bhc/patients");
+  for (const path of ["//evil.example/bhc/patients/7", "https://evil.example", "/rhu/patients/7", "/bhc/patients/8"]) {
+    assert.equal(getPatientRecordReturn({ state: { patientProfile: { path } } }, 7).path, "/bhc/patients/7?tab=records");
+  }
 });

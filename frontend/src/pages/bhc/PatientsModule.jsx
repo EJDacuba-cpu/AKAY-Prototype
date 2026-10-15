@@ -14,6 +14,7 @@ import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOver
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
+import useAccess from "../../hooks/useAccess";
 import useLoadMore from "../../hooks/useLoadMore";
 import { PATIENTS_LOAD_BATCH } from "../../utils/tablePaging";
 import useMediaQuery from "../../hooks/useMediaQuery";
@@ -49,6 +50,7 @@ function uniqueOptions(items, selectors, fallback) {
 }
 
 export default function PatientsModule() {
+  const canRegister = useAccess().can("patients.register");
   const {
     patients,
     filteredPatients,
@@ -254,8 +256,8 @@ export default function PatientsModule() {
                 onClearFilters={clearFilters}
                 onRemoveFilter={removeFilter}
                 filterDescription="Narrow the patient directory."
-                primaryActionTo={isDesktop ? "/bhc/patients/add" : undefined}
-                primaryActionLabel={isDesktop ? "New Patient" : undefined}
+                primaryActionTo={isDesktop && canRegister ? "/bhc/patients/add" : undefined}
+                primaryActionLabel={isDesktop && canRegister ? "New Patient" : undefined}
                 primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
                 actions={
                   isDesktop && (
@@ -287,6 +289,7 @@ export default function PatientsModule() {
               {!showInitialLoading && (
                 <PatientDirectory
                   patients={visiblePatients}
+                  canRegister={canRegister}
                   hasAnyFilter={hasAnyFilter}
                   hasMorePatients={hasMorePatients}
                   onLoadMore={loadMorePatients}
@@ -299,7 +302,7 @@ export default function PatientsModule() {
             {/* Below desktop the toolbar button is hidden and this floating one takes
                 over (one at a time). The anchor has no height, so the button floats
                 over the list's bottom-right corner and cards scroll beneath it. */}
-            {!showInitialLoading && !isDesktop && (
+            {!showInitialLoading && !isDesktop && canRegister && (
               <div className="clinical-directory__fab-anchor">
                 <Link to="/bhc/patients/add" className="patients-fab" aria-label="New Patient">
                   <Plus size={24} strokeWidth={2.25} aria-hidden="true" />
@@ -352,6 +355,7 @@ export default function PatientsModule() {
 
 function PatientDirectory({
   patients,
+  canRegister,
   hasAnyFilter,
   hasMorePatients,
   onLoadMore,
@@ -368,10 +372,10 @@ function PatientDirectory({
             description={
               hasAnyFilter
                 ? "Try another search or filter."
-                : "Tap New Patient to start."
+                : canRegister ? "Tap New Patient to start." : "No patients registered at this facility."
             }
             action={
-              !hasAnyFilter && (
+              !hasAnyFilter && canRegister && (
                 <Link
                   to="/bhc/patients/add"
                   className="mt-4 inline-flex items-center gap-2 rounded-none bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700"

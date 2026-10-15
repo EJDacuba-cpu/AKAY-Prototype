@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadAuthorizedDashboardCollections, navigationAllowed } from "./dashboardAccess.js";
+import { canAccessModule } from "../config/accessModules.js";
 
 test("encoder dashboard never requests forbidden historical records or referrals", async () => {
   const result = await loadAuthorizedDashboardCollections({ permissions: ["patients.register", "consultations.encode", "inventory.view"] }, {
@@ -35,4 +36,15 @@ test("sidebar locks restricted modules but keeps assigned modules and admin navi
     assert.equal(navigationAllowed(encoder, `/bhc/${path}`), false);
   }
   assert.equal(navigationAllowed({ role: "admin" }, "/admin/reports"), true);
+});
+
+test("BHC clinical history can read the directory without gaining patient registration or RHU access", () => {
+  const history = { role: "bhc", permissions: ["clinical.history"] };
+  assert.equal(navigationAllowed(history, "/bhc/patients"), true);
+  assert.equal(navigationAllowed(history, "/bhc/patients/add"), false);
+  assert.equal(navigationAllowed(history, "/rhu/patients"), false);
+  assert.equal(canAccessModule(history, "patientDirectory"), true);
+  assert.equal(canAccessModule(history, "patients"), false);
+  assert.equal(canAccessModule({ ...history, role: "rhu" }, "patientDirectory"), false);
+  assert.equal(canAccessModule({ role: "bhc", permissions: ["inventory.view"] }, "patientDirectory"), false);
 });

@@ -69,11 +69,6 @@ export const menuByRole = {
       items: [
         { label: "Patients", path: "/bhc/patients", icon: Users },
         {
-          label: "Health Records",
-          path: "/bhc/health-records",
-          icon: FileText,
-        },
-        {
           label: "Follow-ups",
           path: "/bhc/follow-ups",
           icon: CalendarDays,

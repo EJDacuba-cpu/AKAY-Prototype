@@ -22,7 +22,11 @@ class EnforceActionPermissions
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
             str_contains($path, '/health-record-drafts') => 'consultations.encode',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
-            str_contains($path, '/patients') => $read ? 'patients.register' : 'patients.register',
+            // BHC history now opens through the patient directory/profile. Reading
+            // these does not confer registration/update authority; facility scopes still apply.
+            str_contains($path, '/patients') && $read && $request->user()->isBhc()
+                && ActionPermissions::allows($request->user(), 'clinical.history') => null,
+            str_contains($path, '/patients') => 'patients.register',
             str_contains($path, '/medicines') => $read ? 'inventory.view' : 'inventory.manage',
             str_contains($path, '/rhu-providers') => $read ? 'inventory.view' : 'rhu.manage',
             str_contains($path, '/follow-up-tasks') => $read ? 'clinical.history' : 'followups.manage',

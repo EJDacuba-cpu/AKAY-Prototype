@@ -2,7 +2,7 @@ import ReferralDestinationPicker from "../../components/features/health-records/
 import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
-import { buildProfileReturnState } from "../../utils/profileNavigation";
+import { bhcPatientRecordsPath, buildProfileReturnState } from "../../utils/profileNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -837,10 +837,10 @@ export default function CreateReferral() {
             and click &quot;Submit Referral&quot;.
           </p>
           <Link
-            to="/bhc/health-records"
+            to={bhcPatientRecordsPath(patient?.id || record?.patientId || draftPatientId)}
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
           >
-            Go to Health Records
+            Go to Patients
           </Link>
         </div>
       </DashboardLayout>
@@ -1257,7 +1257,7 @@ export default function CreateReferral() {
         {/* Header */}
         <div className="anim-fade-up mb-3" style={stagger(0)}>
           <Link
-            to="/bhc/health-records"
+            to={bhcPatientRecordsPath(patient?.id || record?.patientId || draftPatientId)}
             className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Health Records

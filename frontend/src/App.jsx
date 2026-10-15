@@ -49,7 +49,6 @@ import {
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
 import PatientsModule from "./pages/bhc/PatientsModule";
-import HealthRecords from "./pages/bhc/HealthRecords";
 import ConsultationWorkspace from "./pages/bhc/ConsultationWorkspace";
 import AddPatient from "./pages/bhc/AddPatient";
 import FollowUps from "./pages/bhc/FollowUps";
@@ -534,7 +533,7 @@ export default function App() {
       <Route
         path="/bhc/patients"
         element={
-          <ProtectedPage allowedRole="bhc" module="patients">
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
             <PatientsModule />
           </ProtectedPage>
         }
@@ -551,7 +550,7 @@ export default function App() {
         path="/bhc/health-records"
         element={
           <ProtectedPage allowedRole="bhc" module="history">
-            <HealthRecords />
+            <Navigate to="/bhc/patients" replace />
           </ProtectedPage>
         }
       />
@@ -643,7 +642,7 @@ export default function App() {
       <Route
         path="/bhc/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="bhc" module="patients">
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
             <PatientDetails />
           </ProtectedPage>
         }

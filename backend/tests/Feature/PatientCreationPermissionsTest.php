@@ -90,4 +90,25 @@ class PatientCreationPermissionsTest extends TestCase
         ])->assertForbidden();
         $this->assertDatabaseCount('patients', 0);
     }
+
+    public function test_bhc_history_only_can_read_own_patient_profile_but_cannot_write_or_read_another_facility(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'History BHC']);
+        $other = BarangayHealthCenter::create(['name' => 'Other BHC']);
+        $user = User::create([
+            'name' => 'History Reader', 'email' => 'reader@example.test', 'password' => 'password123',
+            'status' => 'active', 'role' => 'bhc', 'barangay_health_center_id' => $bhc->id,
+            'permissions' => ['clinical.history'],
+        ]);
+        $patient = Patient::create(['first_name' => 'Local', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id]);
+        $foreign = Patient::create(['first_name' => 'Foreign', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $other->id]);
+        Sanctum::actingAs($user, ['akay:access']);
+
+        $this->getJson('/api/patients')->assertOk();
+        $this->getJson('/api/patients/'.$patient->id)->assertOk()->assertJsonPath('data.id', $patient->id);
+        $this->getJson('/api/patients/'.$foreign->id)->assertForbidden();
+        $this->patchJson('/api/patients/'.$patient->id, ['first_name' => 'Changed'])->assertForbidden();
+        $this->deleteJson('/api/patients/'.$patient->id)->assertForbidden();
+        $this->assertSame('Local', $patient->fresh()->first_name);
+    }
 }

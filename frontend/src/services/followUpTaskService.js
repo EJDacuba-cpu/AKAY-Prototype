@@ -121,6 +121,17 @@ export async function getFollowUpTasks(params = {}) {
   return unwrapList(response).map(normalizeFollowUpTask);
 }
 
+/** Full patient history, including fulfilled/cancelled tasks, across all API pages. */
+export async function getPatientFollowUpTasks(patientId) {
+  const tasks = [];
+  for (let page = 1; ; page += 1) {
+    const query = new URLSearchParams({ patient_id: String(patientId), per_page: "100", page: String(page) });
+    const response = await apiRequest(`/follow-up-tasks?${query}`);
+    tasks.push(...unwrapList(response).map(normalizeFollowUpTask));
+    if (page >= (Number(response?.data?.last_page) || 1)) return tasks;
+  }
+}
+
 /**
  * Part A.4/B.3: the Calendar is a full history for a date range, including
  * rows the List view (getFollowUpTasks) excludes because they've been

@@ -67,7 +67,7 @@ export default function usePatientConsultation(patientId) {
   const { data: unfinished = [], isPending, isError } = useQuery({
     queryKey,
     queryFn: listHealthRecordDrafts,
-    enabled: DRAFTS_ENABLED && Boolean(ownerId && patientId),
+    enabled: DRAFTS_ENABLED && Boolean(ownerId && patientId) && permissions.includes("consultations.encode"),
     staleTime: 0,
   });
   const draft =

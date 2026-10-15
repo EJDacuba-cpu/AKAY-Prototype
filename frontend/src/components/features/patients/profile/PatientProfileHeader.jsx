@@ -6,6 +6,7 @@ import { ConsultationButton, ConsultationNotice, useConsultationActions } from "
 import { formatPatientAddress } from "../PatientIdentityCard";
 import { formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
+import { getCurrentUser } from "../../../../utils/auth";
 
 /**
  * Full-width identity header for the patient profile: name, Patient ID, age,
@@ -15,6 +16,7 @@ import { getPatientAge } from "../../../../utils/patientProfile";
  */
 export default function PatientProfileHeader({ patient, patientId, backPath, updating = false }) {
   const { consultation, onStart, startModal } = useConsultationActions(patient, patientId);
+  const canEncode = (getCurrentUser()?.permissions || []).includes("consultations.encode");
   const age = getPatientAge(patient);
   const ageText = age !== "" ? `${age} yrs` : "";
   const address = patient.barangay || formatPatientAddress(patient);
@@ -45,12 +47,12 @@ export default function PatientProfileHeader({ patient, patientId, backPath, upd
 
         <div className="w-full shrink-0 sm:w-auto sm:min-w-[200px]">
           {updating && <RefreshingIndicator label="Updating patient details..." />}
-          <ConsultationButton consultation={consultation} onStart={onStart} />
+          {canEncode && <ConsultationButton consultation={consultation} onStart={onStart} />}
         </div>
       </div>
 
-      <ConsultationNotice consultation={consultation} />
-      {startModal}
+      {canEncode && <ConsultationNotice consultation={consultation} />}
+      {canEncode && startModal}
     </header>
   );
 }

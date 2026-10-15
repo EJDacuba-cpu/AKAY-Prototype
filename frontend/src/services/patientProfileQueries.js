@@ -1,4 +1,4 @@
-import { getFollowUpTasks } from "./followUpTaskService";
+import { getPatientFollowUpTasks } from "./followUpTaskService";
 import { getHealthRecordsByPatient } from "./healthRecordService";
 import {
   getPatientById,
@@ -45,8 +45,8 @@ export function getBhcPatientProfileQueries(patientId, { canViewHistory = false 
       retry: false,
     },
     followUps: {
-      queryKey: queryKeys.followUpTasks("bhc"),
-      queryFn: () => getFollowUpTasks(),
+      queryKey: [...queryKeys.followUpTasks("bhc"), "patient", patientId],
+      queryFn: () => getPatientFollowUpTasks(patientId),
       enabled: historyEnabled,
       staleTime: 30_000,
       retry: false,

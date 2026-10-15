@@ -169,7 +169,7 @@ export default function RegistrationSections({
       : Number(read(["age"], 99)) < 18);
 
   const actionsFor = (section) =>
-    editingSection === section ? (
+    !onEdit ? null : editingSection === section ? (
       <SectionEditActions
         saving={saving}
         onCancel={onCancel}

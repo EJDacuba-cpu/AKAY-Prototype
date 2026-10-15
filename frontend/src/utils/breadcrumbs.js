@@ -13,11 +13,11 @@ const PARENT_TRAILS = [
   ["/bhc/patients/:patientId", [{ label: "Patients", path: "/bhc/patients" }]],
   [
     "/bhc/health-records/add",
-    [{ label: "Health Records", path: "/bhc/health-records" }],
+    [{ label: "Patients", path: "/bhc/patients" }],
   ],
   [
     "/bhc/health-records/:recordId",
-    [{ label: "Health Records", path: "/bhc/health-records" }],
+    [{ label: "Patients", path: "/bhc/patients" }],
   ],
   ["/bhc/follow-ups/:taskId", [{ label: "Follow-ups", path: "/bhc/follow-ups" }]],
   ["/bhc/programs/:programId", [{ label: "Programs", path: "/bhc/programs" }]],

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { getCurrentUser } from "../utils/auth";
-import { ACCESS_MODULES } from "../config/accessModules";
+import { canAccessModule } from "../config/accessModules";
 
 const CHANGE_EVENTS = ["akay:auth-changed", "akay:facility-changed"];
 
@@ -21,5 +21,5 @@ export default function useAccess() {
   const permissions = list ? list.split(",") : [];
   const isAdmin = role === "admin";
   const can = permission => isAdmin || (Boolean(permission) && permissions.includes(permission));
-  return { permissions, isAdmin, can, canModule: module => can(ACCESS_MODULES[module]?.permission) };
+  return { permissions, isAdmin, can, canModule: module => canAccessModule({ role, permissions }, module) };
 }

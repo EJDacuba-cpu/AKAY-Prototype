@@ -30,6 +30,25 @@ export function buildProfileReturnState(location) {
   return { returnTo: locationToPath(location) };
 }
 
+export function bhcPatientRecordsPath(patientId) {
+  return patientId ? `/bhc/patients/${encodeURIComponent(patientId)}?tab=records` : "/bhc/patients";
+}
+
+/** Only navigation metadata crosses the details route; filters stay in session memory. */
+export function buildPatientRecordDetailsState(location) {
+  return { patientProfile: { path: locationToPath(location), state: location.state || null } };
+}
+
+export function getPatientRecordReturn(location, patientId) {
+  const origin = location?.state?.patientProfile;
+  const path = origin?.path;
+  const match = typeof path === "string" && matchPath(BHC_PATIENT_PROFILE_PATH, path.split(/[?#]/)[0]);
+  if (match && (!patientId || String(match.params.patientId) === String(patientId))) {
+    return { path, state: origin.state || null };
+  }
+  return { path: bhcPatientRecordsPath(patientId), state: null };
+}
+
 /**
  * State for "View Full Profile" during a consultation. The consultation's own
  * location rides along so App can keep that page mounted, hidden, underneath

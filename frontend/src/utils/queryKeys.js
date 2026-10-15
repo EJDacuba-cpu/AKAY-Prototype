@@ -8,6 +8,8 @@ export const queryKeys = {
     patientId,
   ],
   healthRecords: (role = "bhc") => ["health-records", role],
+  // In-memory UI state, separate from refetchable clinical queries.
+  patientRecordView: (role = "bhc", patientId) => ["patient-record-view", role, patientId],
   familyPlanningRecords: (role = "bhc") => ["family-planning-records", role],
   healthRecordDetails: (role = "bhc", recordId) => [
     "health-record-details",
