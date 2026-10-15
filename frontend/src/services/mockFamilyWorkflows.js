@@ -1,4 +1,4 @@
-import { ADDRESS_FIELDS, HEAD_RELATIONSHIP, RELATIONSHIPS, MockRegistryError, addressValues, commitMockPatient, patientName, publishMockRegistry } from "./mockFamilyRegistry.js";
+import { ADDRESS_FIELDS, HEAD_RELATIONSHIP, RELATIONSHIPS, MockRegistryError, addressValues, canHeadHousehold, commitMockPatient, patientName, publishMockRegistry } from "./mockFamilyRegistry.js";
 
 const normalize = value => String(value ?? "").trim().toLowerCase();
 export const familyName = (registry, household) => {
@@ -108,7 +108,8 @@ export function commitFamilyMember(registry, householdId, draft) {
   if (graphError) throw new MockRegistryError({ connections: graphError });
   let next = commitMockPatient(registry, patient, { kind: "existing", householdId, relationship: isHead ? HEAD_RELATIONSHIP : draft.relationship }, patient.id).registry;
   const memberIds = new Set(memberList.map(item => item.id));
-  next = { ...next, connections: [...(next.connections || []).filter(edge => !memberIds.has(edge.from) && !memberIds.has(edge.to)), ...edges] };
+  // Only edges inside this household are replaced; links to other households stay.
+  next = { ...next, connections: [...(next.connections || []).filter(edge => !(memberIds.has(edge.from) && memberIds.has(edge.to))), ...edges] };
   // Removing an explicit parent edge also clears its registration ID; keep the
   // manually entered parent name, just as Patient Registration does on unlink.
   next.patients = next.patients.map(item => {
@@ -120,18 +121,49 @@ export function commitFamilyMember(registry, householdId, draft) {
   return next;
 }
 
-export function commitRemoveMember(registry, householdId, patientId) {
-  const household = registry.households.find(item => item.id === householdId);
-  const patient = registry.patients.find(item => item.id === patientId && item.householdId === householdId);
-  if (!patient) throw new MockRegistryError({ form: "This member is no longer connected to the household." });
-  if (household.headPatientId === patientId) throw new MockRegistryError({ form: "Choose a replacement head in Edit Family before removing this member." });
-  return commitMockPatient(registry, patient, null, patientId).registry;
-}
-
 export function saveFamily(draft, householdId) {
   const next = publishMockRegistry(registry => commitFamily(registry, draft, householdId));
   return householdId || next.households.at(-1).id;
 }
 export const saveFamilyMember = (householdId, draft) => publishMockRegistry(registry => commitFamilyMember(registry, householdId, draft));
-export const removeFamilyMember = (householdId, patientId) => publishMockRegistry(registry => commitRemoveMember(registry, householdId, patientId));
 export const connectionDescription = (edge, registry) => `${patientName(registry.patients.find(item => item.id === edge.from))} — ${edge.type === "parent" ? "parent of" : edge.type === "spouse" ? "spouse / partner of" : edge.type === "sibling" ? "sibling of" : edge.type === "relative" ? "relative of" : "non-relative of"} — ${patientName(registry.patients.find(item => item.id === edge.to))}`;
+
+export function newFamilyHeadStatus(registry, patient) {
+  const eligibility = canHeadHousehold(patient);
+  if (!eligibility.ok) return { ok: false, reason: eligibility.code === "minor" ? "Under 18" : "Date of birth not recorded" };
+  const household = registry.households.find(item => item.id === patient.householdId);
+  if (!household) return { ok: true };
+  if (household.headPatientId === patient.id && familyMembers(registry, household.id).some(member => member.id !== patient.id)) {
+    return { ok: false, reason: `Assign a new head for ${household.serialNumber} first.` };
+  }
+  return { ok: true, notice: `Currently in ${household.serialNumber} (${patient.relationshipToHouseholdHead}). They will move to this new household.` };
+}
+
+// Add Family shares the registration creation path: the head is saved into a new household.
+export function commitNewFamily(registry, draft, makeId = () => crypto.randomUUID()) {
+  const errors = {};
+  if (!normalize(draft.serialNumber)) errors.serialNumber = "Enter a Family Serial Number.";
+  else if (registry.households.some(household => normalize(household.serialNumber) === normalize(draft.serialNumber))) errors.serialNumber = "This Family Serial Number already exists.";
+  const labels = { streetAddress: "House / Street", purokArea: "Purok", barangay: "Barangay", municipality: "Municipality" };
+  for (const key of ADDRESS_FIELDS) if (!normalize(draft.address?.[key])) errors[key] = `${labels[key]} is required.`;
+  const head = registry.patients.find(patient => patient.id === draft.headPatientId);
+  if (!head) errors.headPatientId = "This patient or household is no longer available. Search again.";
+  else {
+    const status = newFamilyHeadStatus(registry, head);
+    if (!status.ok) errors.headPatientId = status.reason;
+  }
+  if (Object.keys(errors).length) throw new MockRegistryError(errors);
+  const connection = { kind: "new", headPatientId: "self", relationship: HEAD_RELATIONSHIP, household: { serialNumber: draft.serialNumber, address: draft.address } };
+  const result = commitMockPatient(registry, head, connection, head.id, makeId);
+  return { registry: result.registry, householdId: result.patient.householdId };
+}
+
+export function saveNewFamily(draft) {
+  let householdId;
+  publishMockRegistry(registry => {
+    const result = commitNewFamily(registry, draft);
+    householdId = result.householdId;
+    return result.registry;
+  });
+  return householdId;
+}

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createMockRegistry, commitMockPatient } from "./mockFamilyRegistry.js";
-import { commitFamily, commitFamilyMember, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
+import { createMockRegistry, commitMockPatient, HEAD_RELATIONSHIP } from "./mockFamilyRegistry.js";
+import { commitFamily, commitFamilyMember, commitNewFamily, newFamilyHeadStatus, familyConnections, graphErrors, connectionRows } from "./mockFamilyWorkflows.js";
 import { layoutFamilyTree } from "../utils/familyTree.js";
 
 const draft = (registry, overrides = {}) => ({ serialNumber: "FSN-NEW", address: { ...registry.households[0].address }, headPatientId: "mock-patient-7", ...overrides });
@@ -92,4 +92,43 @@ test("tree lays out spouses together and children below parents without overlapp
   const node = id => layout.nodes.find(item => item.id === id);
   for (const edge of edges) assert.ok(edge.type === "spouse" ? node(edge.from).y === node(edge.to).y : node(edge.from).y < node(edge.to).y);
   for (const a of layout.nodes) for (const b of layout.nodes) if (a.id !== b.id) assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+});
+
+test("Add Family moves an adult member out as head and keeps their links", () => {
+  const registry = createMockRegistry();
+  const draft = { serialNumber: "FSN-2026-0001", address: { streetAddress: "3 New St", purokArea: "Purok 9", barangay: "Perez", municipality: "Bulakan" }, headPatientId: "mock-patient-miguel" };
+  const { registry: next, householdId } = commitNewFamily(registry, draft, () => "x");
+  const miguel = next.patients.find(p => p.id === "mock-patient-miguel");
+  assert.equal(miguel.householdId, householdId);
+  assert.equal(miguel.relationshipToHouseholdHead, HEAD_RELATIONSHIP);
+  assert.equal(miguel.streetAddress, "3 New St");
+  assert.ok(next.connections.some(edge => edge.from === "mock-patient-roberto" && edge.to === "mock-patient-miguel"));
+});
+
+test("Add Family blocks a head of a multi-member household and a minor", () => {
+  const registry = createMockRegistry();
+  const base = { serialNumber: "FSN-2026-0001", address: { ...registry.households[0].address } };
+  assert.throws(() => commitNewFamily(registry, { ...base, headPatientId: "mock-patient-roberto" }), e => e.errors.headPatientId === "Assign a new head for FSN-00208 first.");
+  assert.throws(() => commitNewFamily(registry, { ...base, headPatientId: "mock-patient-lucas" }), e => e.errors.headPatientId === "Under 18");
+  assert.equal(newFamilyHeadStatus(registry, registry.patients.find(p => p.id === "mock-patient-miguel")).notice, "Currently in FSN-00208 (Son / Daughter). They will move to this new household.");
+});
+
+test("Add Family from a single-person household archives the old one", () => {
+  const registry = createMockRegistry();
+  const { registry: next } = commitNewFamily(registry, { serialNumber: "FSN-2026-0001", address: { ...registry.households[0].address }, headPatientId: "mock-patient-6" }, () => "y");
+  assert.ok(next.households.find(h => h.id === "mock-household-3").archivedAt);
+});
+
+test("Add Family rejects a head who disappeared after the draft was made", () => {
+  const registry = createMockRegistry();
+  registry.patients = registry.patients.filter(p => p.id !== "mock-patient-7");
+  assert.throws(() => commitNewFamily(registry, { serialNumber: "FSN-2026-0001", address: { ...registry.households[0].address }, headPatientId: "mock-patient-7" }), e => e.errors.headPatientId === "This patient or household is no longer available. Search again.");
+});
+
+test("saving member connections keeps links to other households", () => {
+  const registry = createMockRegistry();
+  registry.connections.push({ from: "mock-patient-roberto", to: "mock-patient-4", type: "sibling" });
+  const sofia = registry.patients.find(p => p.id === "mock-patient-sofia");
+  const next = commitFamilyMember(registry, "mock-household-cruz", { patientId: sofia.id, relationship: sofia.relationshipToHouseholdHead, connections: connectionRows(registry, "mock-household-cruz", sofia.id) });
+  assert.ok(next.connections.some(edge => edge.from === "mock-patient-roberto" && edge.to === "mock-patient-4"));
 });

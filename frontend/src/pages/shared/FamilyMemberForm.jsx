@@ -3,13 +3,12 @@ import { Link, useNavigate, useParams } from "react-router";
 import { ArrowLeft, Plus, X } from "lucide-react";
 import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import ModalShell from "../../components/common/modals/ModalShell";
 import { Button } from "../../components/ui/button";
 import { FamilySelect, PatientPicker } from "../../components/features/families/FamilyFields";
 import useAccess from "../../hooks/useAccess";
 import useMockFamilyRegistry from "../../hooks/useMockFamilyRegistry";
 import { HEAD_RELATIONSHIP, RELATIONSHIPS, patientName } from "../../services/mockFamilyRegistry";
-import { connectionRows, familyMembers, removeFamilyMember, saveFamilyMember } from "../../services/mockFamilyWorkflows";
+import { connectionRows, familyMembers, saveFamilyMember } from "../../services/mockFamilyWorkflows";
 
 const types = [
   ["spouse", "Spouse / partner of"], ["child", "Son / daughter of"], ["parent", "Parent of"],
@@ -30,8 +29,6 @@ function MemberEditor({ role, householdId, memberId }) {
   const members = familyMembers(registry, householdId);
   const [draft, setDraft] = useState(() => ({ patientId: memberId || "", relationship: current?.relationshipToHouseholdHead || "", connections: current ? connectionRows(registry, householdId, memberId) : [{ type: "", relativeId: "" }] }));
   const [errors, setErrors] = useState({});
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const patient = registry.patients.find(item => item.id === draft.patientId);
   const isHead = household?.headPatientId === draft.patientId;
   const returnPath = `/${role}/families/${householdId}`;
@@ -45,9 +42,8 @@ function MemberEditor({ role, householdId, memberId }) {
     event.preventDefault();
     if (!access.can("families.manage")) return;
     try {
-      if (removing) removeFamilyMember(householdId, memberId);
-      else saveFamilyMember(householdId, draft);
-      toast.success(removing ? "Household connection removed." : "Member connections saved.");
+      saveFamilyMember(householdId, draft);
+      toast.success("Member connections saved.");
       navigate(returnPath, { replace: true });
     } catch (error) { setErrors(error.errors || { form: error.message }); }
   }
@@ -60,7 +56,7 @@ function MemberEditor({ role, householdId, memberId }) {
         {memberId ? <div><h2 className="text-xl font-semibold">{patientName(current)}</h2><p className="mt-2 text-sm text-neutral-500">{current.birthDate} · {current.sex}</p></div>
           : <PatientPicker patients={registry.patients.filter(item => !item.householdId)} selectedId={draft.patientId} error={errors.patientId} onSelect={patientId => { setDraft(previous => ({ ...previous, patientId })); setErrors(previous => ({ ...previous, patientId: "" })); }} />}
         {errors.patientId && memberId && <p role="alert" className="text-sm text-red-700">{errors.patientId}</p>}
-        {removing ? <div className="space-y-3 border-y border-neutral-200 py-5"><p className="text-sm">On Save Changes, the household connection and Family Serial Number will be cleared. The current address will remain editable in Edit Patient.</p><Button type="button" variant="link" className="px-0" onClick={() => setRemoving(false)}>Keep connection</Button></div> : <>
+        <>
           {isHead ? <p className="text-sm">Relationship to head: {HEAD_RELATIONSHIP}</p> : <FamilySelect label="Relationship to household head" value={draft.relationship} options={RELATIONSHIPS.map(value => ({ value, label: value }))} error={errors.relationship} onChange={event => { setDraft(previous => ({ ...previous, relationship: event.target.value })); setErrors(previous => ({ ...previous, relationship: "" })); }} />}
           <section className="space-y-5 border-t border-neutral-200 pt-6">
             <h2 className="text-lg font-semibold">Member connections</h2>
@@ -73,14 +69,13 @@ function MemberEditor({ role, householdId, memberId }) {
             {errors.connections && <p role="alert" className="text-sm text-red-700">{errors.connections}</p>}
             <Button type="button" variant="link" className="px-0" onClick={() => setDraft(previous => ({ ...previous, connections: [...previous.connections, { type: "", relativeId: "" }] }))}><Plus size={16} />Add another connection</Button>
           </section>
-        </>}
+        </>
         <div className="space-y-4 border-t border-neutral-200 pt-5">
-          {memberId && !removing && (isHead ? <p className="text-xs text-neutral-500">To remove the household head, assign a replacement in Edit Family first.</p> : <Button type="button" variant="link" className="px-0" onClick={() => setConfirmRemove(true)}>Remove Connection</Button>)}
+          {memberId && <p className="text-xs text-neutral-500">{isHead ? "To change the household head, assign a replacement in Edit Family first." : "To move this member, use Change Household in Edit Patient or Add Family."}</p>}
           {errors.form && <p role="alert" className="text-sm text-red-700">{errors.form}</p>}
           <div className="flex justify-end gap-3"><Button asChild variant="ghost"><Link to={returnPath}>Cancel</Link></Button><Button type="submit">{memberId ? "Save Changes" : "Save Member"}</Button></div>
         </div>
       </form>}
     </div>
-    {confirmRemove && <ModalShell title="Remove household connection?" appearance="plain" onClose={() => setConfirmRemove(false)} footer={<><Button type="button" variant="ghost" onClick={() => setConfirmRemove(false)}>Cancel</Button><Button type="button" onClick={() => { setRemoving(true); setConfirmRemove(false); setErrors({}); }}>Remove Connection</Button></>}><p>{patientName(current)} will remain a registered patient. The removal takes effect when you save changes.</p></ModalShell>}
   </DashboardLayout>;
 }
