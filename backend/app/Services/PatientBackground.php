@@ -76,6 +76,41 @@ class PatientBackground
         ],
     ];
 
+    /**
+     * The staged update as the draft sanitizer's node tree: the same sections,
+     * keys and nesting as FIELDS, every leaf a plain value. Drafts carry the
+     * update under $basesKey (camelCase) instead of base_revisions.
+     *
+     * @return array<string, mixed>
+     */
+    public static function draftSchema(string $basesKey): array
+    {
+        $sections = [];
+        $bases = [];
+        foreach (self::SECTIONS as $section => $keys) {
+            $bases[$section] = true;
+            foreach ($keys as $key) {
+                $sections[$section][$key] = self::draftNode(self::FIELDS[$key]);
+            }
+        }
+
+        return ['sections' => $sections, $basesKey => $bases, 'reviewed' => ['*' => true]];
+    }
+
+    private static function draftNode(string|array $schema): bool|array
+    {
+        if ($schema === 'list') {
+            return ['*' => true];
+        }
+        if (is_string($schema)) {
+            return true;
+        }
+
+        return isset($schema['*'])
+            ? ['*' => self::draftNode($schema['*'])]
+            : array_map(fn ($field) => self::draftNode($field), $schema);
+    }
+
     private const STATUS = ['never', 'former', 'current'];
 
     private const YEAR = ['nullable', 'integer', 'between:1900,2100'];

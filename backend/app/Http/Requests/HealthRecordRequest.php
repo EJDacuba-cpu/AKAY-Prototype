@@ -409,6 +409,20 @@ class HealthRecordRequest extends FormRequest
             ...($this->isMethod('post')
                 ? PatientBackground::rules('background_update', 'base_revisions')
                 : ['background_update' => ['prohibited']]),
+            // Who gave this history and whether others at home are ill - answered
+            // per visit and stored on the record (create only; records are immutable).
+            ...($this->isMethod('post')
+                ? [
+                    'informant' => ['nullable', 'array:relation,name,patientId'],
+                    'informant.relation' => ['required_with:informant', 'string', Rule::in(HealthRecord::INFORMANT_RELATIONS)],
+                    'informant.name' => ['nullable', 'string', 'max:150'],
+                    'informant.patientId' => ['nullable', 'integer', 'exists:patients,id'],
+                    'similar_illness' => ['nullable', 'array:answer,who,note'],
+                    'similar_illness.answer' => ['required_with:similar_illness', 'string', Rule::in(HealthRecord::SIMILAR_ILLNESS_ANSWERS)],
+                    'similar_illness.who' => ['nullable', 'string', 'max:150'],
+                    'similar_illness.note' => ['nullable', 'string', 'max:500'],
+                ]
+                : ['informant' => ['prohibited'], 'similar_illness' => ['prohibited']]),
             // RHU staff confirming a condition's clinical status from an RHU
             // record (create only; the record itself is immutable afterwards).
             ...($this->isMethod('post')

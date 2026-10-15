@@ -385,43 +385,18 @@ class HealthRecordDraftPayloadService
         // the clinician changed are present, each with the revision it was
         // opened at. Never stored for or sent to users without clinical.history
         // (HealthRecordDraftService / HealthRecordDraftController::show).
-        'backgroundUpdate' => [
-            'sections' => [
-                'medical' => [
-                    'currentDiseases' => ['*' => [
-                        'name' => self::SCALAR,
-                        'note' => self::SCALAR,
-                        'status' => self::SCALAR,
-                        'firstRecorded' => self::SCALAR,
-                        'lastConfirmed' => self::SCALAR,
-                        'source' => self::SCALAR,
-                        'conditionKey' => self::SCALAR,
-                    ]],
-                    'allergies' => self::SCALAR,
-                    'hospitalizations' => self::SCALAR,
-                    'surgeries' => self::SCALAR,
-                ],
-                'family' => [
-                    'familyHistory' => [
-                        'similarIllness' => self::SCALAR,
-                        'chronicIllness' => self::SCALAR,
-                        'hereditaryIllness' => self::SCALAR,
-                    ],
-                ],
-                'social' => [
-                    'personalSocial' => [
-                        'diet' => self::SCALAR,
-                        'smoking' => self::SCALAR,
-                        'alcohol' => self::SCALAR,
-                        'notes' => self::SCALAR,
-                    ],
-                ],
-            ],
-            'baseRevisions' => [
-                'medical' => self::SCALAR,
-                'family' => self::SCALAR,
-                'social' => self::SCALAR,
-            ],
+        // 'backgroundUpdate' is added by schema(): PatientBackground owns its shape.
+        // Who gave this visit's history, and the similar-illness answer; both
+        // are saved on the record (HealthRecordRequest informant / similar_illness).
+        'informant' => [
+            'relation' => self::SCALAR,
+            'name' => self::SCALAR,
+            'patientId' => self::SCALAR,
+        ],
+        'similarIllness' => [
+            'answer' => self::SCALAR,
+            'who' => self::SCALAR,
+            'note' => self::SCALAR,
         ],
         'referralForm' => [
             'urgencyLevel' => self::SCALAR,
@@ -444,8 +419,23 @@ class HealthRecordDraftPayloadService
         ]],
     ];
 
+    /**
+     * SCHEMA plus the Patient Background update, whose keys come from
+     * PatientBackground's own field whitelist so the two cannot drift.
+     */
+    private function schema(): array
+    {
+        return [...self::SCHEMA, 'backgroundUpdate' => PatientBackground::draftSchema('baseRevisions')];
+    }
+
     public function sanitize(array $payload): array
     {
+        // Drafts saved before the ITR Patient History rework stage the update in
+        // the old string shapes, which no longer validate. Drop it so they open.
+        if (is_array($payload['backgroundUpdate'] ?? null) && PatientBackground::isLegacyUpdate($payload['backgroundUpdate'])) {
+            unset($payload['backgroundUpdate']);
+        }
+
         // Drafts saved before the BHC preferred-doctor field was removed still
         // carry it; drop it so they stay readable.
         if (is_array($payload['referralForm'] ?? null)) {
@@ -476,7 +466,7 @@ class HealthRecordDraftPayloadService
         // them; drop them so they open (the workspace no longer reads them).
         unset($payload['surveillanceTags']);
 
-        $sanitized = $this->sanitizeNode($payload, self::SCHEMA, 'payload');
+        $sanitized = $this->sanitizeNode($payload, $this->schema(), 'payload');
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
         $validator->after(function ($validator) use ($sanitized): void {
@@ -513,6 +503,12 @@ class HealthRecordDraftPayloadService
             }
 
             return $value;
+        }
+
+        // An object or list the form has not filled in (e.g. a Patient Background
+        // slice that was never recorded) is sent as null.
+        if ($value === null) {
+            return null;
         }
 
         if (! is_array($value)) {
@@ -563,6 +559,14 @@ class HealthRecordDraftPayloadService
         return [
             ...ConsultationPrograms::rules('payload'),
             ...PatientBackground::rules('payload.backgroundUpdate', 'baseRevisions'),
+            'payload.informant' => ['nullable', 'array'],
+            'payload.informant.relation' => ['required_with:payload.informant', 'string', Rule::in(HealthRecord::INFORMANT_RELATIONS)],
+            'payload.informant.name' => ['nullable', 'string', 'max:150'],
+            'payload.informant.patientId' => ['nullable', 'integer', 'exists:patients,id'],
+            'payload.similarIllness' => ['nullable', 'array'],
+            'payload.similarIllness.answer' => ['required_with:payload.similarIllness', 'string', Rule::in(HealthRecord::SIMILAR_ILLNESS_ANSWERS)],
+            'payload.similarIllness.who' => ['nullable', 'string', 'max:150'],
+            'payload.similarIllness.note' => ['nullable', 'string', 'max:500'],
             'payload.consultationUuid' => ['nullable', 'uuid'],
             'payload.consultationWorkflow' => ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2])],
             'payload.consultationMode' => ['nullable', 'in:general,program'],

@@ -47,6 +47,14 @@ class HealthRecord extends Model
     // Internal identity, never part of a clinical response. consultation_uuid
     // is hidden for the same reason as the idempotency fields: it is written by
     // the client and read by the draft pipeline, not by record consumers.
+    /** Who gave the history for this visit (ITR "Informant"). */
+    public const INFORMANT_RELATIONS = [
+        'Patient', 'Mother', 'Father', 'Spouse', 'Guardian', 'Grandparent', 'Sibling', 'Other',
+    ];
+
+    /** Whether others in the household had a similar illness (ITR "Similar illness"). */
+    public const SIMILAR_ILLNESS_ANSWERS = ['Yes', 'No', 'Unknown'];
+
     /**
      * Regions of the consultation's front-facing 2D body preview. A body
      * finding records where a symptom was noted - documentation, not diagnosis.
