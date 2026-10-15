@@ -1,35 +1,48 @@
+import {
+  formatAlcohol,
+  formatDiet,
+  formatFamilyHistory,
+  formatHospitalizations,
+  formatSmoking,
+} from "./backgroundFormat.js";
+import { packYears } from "./patientHistory.js";
+
 /**
  * One read-only line per background section for the Overview's compact
  * Patient Background card. Allergies and current diseases are left out -
  * the Overview already shows them in Alerts & Allergies and Current
- * Conditions. The full read-only view is the Patient Background tab; it is
- * updated in a consultation (which also uses this summary on its card).
+ * Conditions. Similar illness is per visit, so it is not part of the
+ * longitudinal summary. The full read-only view is the Patient Background tab;
+ * it is updated in a consultation (which also uses this summary on its card).
  */
 const SECTIONS = [
   {
     key: "medical",
     label: "Past medical",
     fields: [
-      { label: "Hospitalizations", read: (bg) => bg.hospitalizations },
-      { label: "Surgeries", read: (bg) => bg.surgeries },
+      { label: "Hospitalizations & surgeries", read: (bg) => formatHospitalizations(bg.hospitalizations) },
     ],
   },
   {
     key: "family",
     label: "Family",
     fields: [
-      { label: "Similar", read: (bg) => bg.familyHistory?.similarIllness },
-      { label: "Chronic", read: (bg) => bg.familyHistory?.chronicIllness },
-      { label: "Hereditary", read: (bg) => bg.familyHistory?.hereditaryIllness },
+      { label: "Conditions", read: (bg) => formatFamilyHistory(bg.familyHistory) },
     ],
   },
   {
     key: "social",
     label: "Social",
     fields: [
-      { label: "Smoking", read: (bg) => bg.personalSocial?.smoking },
-      { label: "Alcohol", read: (bg) => bg.personalSocial?.alcohol },
-      { label: "Diet", read: (bg) => bg.personalSocial?.diet },
+      {
+        label: "Smoking",
+        read: (bg) => {
+          const smoking = bg.personalSocial?.smoking;
+          return formatSmoking(smoking, packYears(smoking || {}));
+        },
+      },
+      { label: "Alcohol", read: (bg) => formatAlcohol(bg.personalSocial?.alcohol) },
+      { label: "Diet", read: (bg) => formatDiet(bg.personalSocial?.diet) },
     ],
   },
 ];

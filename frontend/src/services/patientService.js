@@ -1,6 +1,7 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { getHealthRecordsByPatient } from "./healthRecordService";
 import { getReferralsByPatient } from "./referrals";
+import { normalizeBackground, normalizeHouseholdEnvironment } from "../utils/backgroundUpdate";
 
 function splitName(name = "") {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
@@ -29,87 +30,19 @@ function normalizeDate(value) {
   return String(value).split("T")[0];
 }
 
-export const EMPTY_MEDICAL_BACKGROUND = {
-  currentDiseases: [],
-  allergies: "",
-  hospitalizations: "",
-  surgeries: "",
-  familyHistory: {
-    similarIllness: "",
-    chronicIllness: "",
-    hereditaryIllness: "",
-  },
-  personalSocial: {
-    diet: "",
-    smoking: "",
-    alcohol: "",
-    notes: "",
-  },
-  // When each section was last edited, so the profile can date the record
-  // rather than showing background of unknown vintage. Not a revision log:
-  // it answers "is this current?", which is the question a BHW actually asks.
-  updatedAt: {
-    medical: "",
-    family: "",
-    social: "",
-  },
-  // Server-owned concurrency token per section, bumped on every change. A
-  // consultation sends the revision it opened a section at; a moved one is a
-  // conflict (see utils/backgroundUpdate.js).
-  revisions: {
-    medical: 0,
-    family: 0,
-    social: 0,
-  },
-};
-
 /**
- * Patient-level clinical background. Always returns the full shape so the
- * profile can render read-only sections without per-field guards; an older
- * patient row with no background at all reads as "not yet recorded" rather
- * than crashing on a missing sub-object.
+ * Patient-level clinical background. Always returns the full shape (all four
+ * sections plus revisions, updatedAt and reviewedAt) so the profile can render
+ * read-only sections without per-field guards; an older patient row with no
+ * background at all, or one still in a pre-ITR string shape, reads as "not yet
+ * recorded" rather than crashing. The shaping lives in utils/backgroundUpdate.js
+ * so it can be unit tested.
  */
 export function normalizeMedicalBackground(source) {
-  const background = source && typeof source === "object" ? source : {};
-
-  return {
-    currentDiseases: Array.isArray(background.currentDiseases)
-      ? background.currentDiseases
-          .filter((entry) => entry && typeof entry === "object")
-          .map((entry) => ({
-            name: entry.name || "",
-            // Optional, patient-reported entries only.
-            note: entry.note || "",
-            status: entry.status || "",
-            firstRecorded: normalizeDate(entry.firstRecorded),
-            lastConfirmed: normalizeDate(entry.lastConfirmed),
-            source: entry.source || "",
-            // Server-resolved.
-            conditionKey: entry.conditionKey || null,
-          }))
-      : [],
-    allergies: background.allergies || "",
-    hospitalizations: background.hospitalizations || "",
-    surgeries: background.surgeries || "",
-    familyHistory: {
-      ...EMPTY_MEDICAL_BACKGROUND.familyHistory,
-      ...(background.familyHistory || {}),
-    },
-    personalSocial: {
-      ...EMPTY_MEDICAL_BACKGROUND.personalSocial,
-      ...(background.personalSocial || {}),
-    },
-    updatedAt: {
-      ...EMPTY_MEDICAL_BACKGROUND.updatedAt,
-      ...(background.updatedAt || {}),
-    },
-    revisions: {
-      medical: Number(background.revisions?.medical) || 0,
-      family: Number(background.revisions?.family) || 0,
-      social: Number(background.revisions?.social) || 0,
-    },
-  };
+  return normalizeBackground(source);
 }
+
+export const EMPTY_MEDICAL_BACKGROUND = normalizeMedicalBackground(null);
 
 export function normalizePatient(patient = {}) {
   const nameParts = splitName(patient.name || patient.fullName);
@@ -217,6 +150,11 @@ export function normalizePatient(patient = {}) {
     category: patient.patient_category || patient.category || "",
     medicalBackground: normalizeMedicalBackground(
       patient.medical_background || patient.medicalBackground,
+    ),
+    // Another household member's environment, offered as a prefill. Absent on
+    // the admin path, where the API omits it.
+    householdEnvironment: normalizeHouseholdEnvironment(
+      patient.household_environment || patient.householdEnvironment,
     ),
     status: patient.status || "active",
     dateRegistered,

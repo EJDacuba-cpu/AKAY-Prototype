@@ -1,100 +1,215 @@
 /**
  * Patient Background edits staged in a consultation, per
- * docs/superpowers/specs/2026-10-03-patient-background-tab-design.md.
+ * docs/superpowers/specs/2026-10-16-itr-patient-history-design.md.
  *
- * The consultation keeps `backgroundUpdate = { sections, baseRevisions }`:
- * only the sections that now differ from the background the workspace loaded,
- * each with the revision it was first edited at. It rides in the draft and is
- * sent with the finalized record, where the server applies it (or answers 409
- * when an edited section moved since). Pure functions only - no React, no API.
+ * The consultation keeps `backgroundUpdate = { sections, baseRevisions, reviewed }`:
+ * `sections` holds only the sections that now differ from the background the
+ * workspace loaded, each with the revision it was first edited at in
+ * `baseRevisions`; `reviewed` lists the sections the clinician looked at and
+ * confirmed ("No changes"). It rides in the draft and is sent with the
+ * finalized record, where the server applies it (or answers 409 when an edited
+ * section moved since). Pure functions only - no React, no API.
+ *
+ * Numbers are numbers end to end, and a flag the server stores as "not
+ * recorded" comes back missing, so a missing flag always reads as false.
  */
 
-export const BACKGROUND_SECTION_KEYS = ["medical", "family", "social"];
+import { packYears } from "./patientHistory.js";
+import {
+  formatAlcohol,
+  formatAllergies,
+  formatCycle,
+  formatDiet,
+  formatEducation,
+  formatEnvironment,
+  formatFamilyHistory,
+  formatHospitalizations,
+  formatPatientReported,
+  formatPregnancies,
+  formatSexual,
+  formatSmoking,
+  formatSymptoms,
+} from "./backgroundFormat.js";
+
+export const BACKGROUND_SECTION_KEYS = ["medical", "family", "social", "obstetric"];
 
 export const BACKGROUND_SECTION_LABELS = {
   medical: "Past Medical History",
   family: "Family History",
   social: "Personal & Social History",
+  obstetric: "Obstetric & Menstrual History",
 };
 
-/** Every field a section owns, in display order. `group` is the nested object it lives in. */
-export const BACKGROUND_SECTION_FIELDS = {
-  medical: [
-    { key: "currentDiseases", label: "Current Conditions" },
-    { key: "allergies", label: "Allergies" },
-    { key: "hospitalizations", label: "Hospitalizations" },
-    { key: "surgeries", label: "Surgeries" },
-  ],
-  family: [
-    { group: "familyHistory", key: "similarIllness", label: "Similar Illness" },
-    { group: "familyHistory", key: "chronicIllness", label: "Chronic Illness" },
-    { group: "familyHistory", key: "hereditaryIllness", label: "Hereditary Illness" },
-  ],
-  social: [
-    { group: "personalSocial", key: "diet", label: "Diet" },
-    { group: "personalSocial", key: "smoking", label: "Smoking" },
-    { group: "personalSocial", key: "alcohol", label: "Alcohol" },
-    { group: "personalSocial", key: "notes", label: "Other Notes" },
-  ],
+/** Section => the background keys it owns (mirrors the backend PatientBackground::SECTIONS). */
+const SECTION_KEYS = {
+  medical: ["currentDiseases", "allergies", "hospitalizations"],
+  family: ["familyHistory"],
+  social: ["personalSocial"],
+  obstetric: ["obstetric"],
 };
-
-const DISEASE_FIELDS = ["name", "note", "status", "firstRecorded", "lastConfirmed", "source", "conditionKey"];
 
 function text(value) {
-  return value === null || value === undefined ? "" : String(value);
+  return value === null || value === undefined ? "" : String(value).trim();
 }
 
-export const PATIENT_REPORTED_SOURCE = "Patient-reported";
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** A number, or null for blank and non-numeric input. */
+function toNumber(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toFlag(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+// Field types, mirroring the backend FIELDS map. `opt` is text left out of the
+// shape while blank (server-owned fields that must not appear on new entries).
+const SCHEMA = {
+  currentDiseases: [
+    { name: "text", yearDiagnosed: "int", diagnosedWhere: "text", note: "text", source: "opt", firstRecorded: "opt" },
+  ],
+  allergies: { noneKnown: "bool", items: [{ allergen: "text", reaction: "text" }] },
+  hospitalizations: {
+    none: "bool",
+    items: [{ type: "text", year: "int", reason: "text", place: "text" }],
+  },
+  familyHistory: {
+    noneKnown: "bool",
+    items: [{ condition: "text", kind: "text", relation: "text", relativePatientId: "int" }],
+  },
+  personalSocial: {
+    education: { level: "text", completed: "text" },
+    pastOccupations: "text",
+    smoking: { status: "text", sticksPerDay: "int", years: "int", quitYear: "int" },
+    alcohol: { status: "text", frequency: "text" },
+    diet: { highSalt: "bool", fatty: "bool", sweetDrinks: "bool", lowFruitVeg: "bool", notes: "text" },
+    sexual: { active: "text", notes: "text" },
+    environment: { waterSource: "text", toilet: "text", exposures: "list", notes: "text" },
+  },
+  obstetric: {
+    menarcheAge: "int",
+    menstrualStatus: "text",
+    menopauseAge: "int",
+    intervalDays: "int",
+    durationDays: "int",
+    amount: "text",
+    regularity: "text",
+    symptoms: "list",
+    symptomNotes: "text",
+    pregnancies: [{ year: "int", outcome: "text", delivery: "text", place: "text", note: "text" }],
+  },
+};
 
 /**
- * A Previous Condition the patient reports: a name and an optional note, no
- * status (only RHU sets one). The server stamps the rest. Null for a blank name.
+ * `value` in the shape of `schema`, with every field present: text "" , numbers
+ * null, flags false, lists []. Anything of the wrong type (including the old
+ * pre-ITR strings) reads as empty.
  */
-export function newPatientReportedCondition(name, note = "") {
-  const trimmed = text(name).trim();
-  if (!trimmed) return null;
-  return { name: trimmed, note: text(note).trim(), source: PATIENT_REPORTED_SOURCE };
-}
+function shape(value, schema) {
+  if (schema === "text") return text(value);
+  if (schema === "int") return toNumber(value);
+  if (schema === "bool") return toFlag(value);
+  if (schema === "list") {
+    return (Array.isArray(value) ? value : []).map(text).filter(Boolean);
+  }
+  if (Array.isArray(schema)) {
+    return (Array.isArray(value) ? value : [])
+      .filter(isObject)
+      .map((item) => shape(item, schema[0]));
+  }
 
-function diseaseList(value) {
-  return (Array.isArray(value) ? value : [])
-    .filter((disease) => disease && typeof disease === "object")
-    .map((disease) =>
-      Object.fromEntries(
-        DISEASE_FIELDS.map((field) => [
-          field,
-          field === "conditionKey" ? disease.conditionKey || null : text(disease[field]),
-        ]),
-      ),
-    );
+  const source = isObject(value) ? value : {};
+  const result = {};
+  Object.entries(schema).forEach(([field, type]) => {
+    if (type === "opt") {
+      const kept = text(source[field]);
+      if (kept) result[field] = kept;
+    } else {
+      result[field] = shape(source[field], type);
+    }
+  });
+  return result;
 }
 
 /** One section of a background, in the exact shape the API accepts for it. */
 export function sliceBackground(background, section) {
-  const bg = background || {};
-  if (section === "medical") {
-    return {
-      currentDiseases: diseaseList(bg.currentDiseases),
-      allergies: text(bg.allergies),
-      hospitalizations: text(bg.hospitalizations),
-      surgeries: text(bg.surgeries),
-    };
-  }
+  const bg = isObject(background) ? background : {};
+  return Object.fromEntries(
+    (SECTION_KEYS[section] || []).map((key) => [key, shape(bg[key], SCHEMA[key])]),
+  );
+}
 
-  const group = section === "family" ? "familyHistory" : "personalSocial";
+/** The patient's whole background with every section, flag and number in its API shape. */
+export function normalizeBackground(source) {
+  const background = isObject(source) ? source : {};
+  const dates = (value) =>
+    Object.fromEntries(
+      BACKGROUND_SECTION_KEYS.map((section) => [section, text(isObject(value) ? value[section] : "")]),
+    );
+
   return {
-    [group]: Object.fromEntries(
-      BACKGROUND_SECTION_FIELDS[section].map(({ key }) => [key, text(bg[group]?.[key])]),
+    ...Object.assign({}, ...BACKGROUND_SECTION_KEYS.map((section) => sliceBackground(background, section))),
+    revisions: Object.fromEntries(
+      BACKGROUND_SECTION_KEYS.map((section) => [section, Number(background.revisions?.[section]) || 0]),
+    ),
+    // When each section was last edited, so the profile can date the record.
+    updatedAt: dates(background.updatedAt),
+    // When each section was last looked at: { date, facility, by } or null.
+    reviewedAt: Object.fromEntries(
+      BACKGROUND_SECTION_KEYS.map((section) => {
+        const stamp = background.reviewedAt?.[section];
+        if (!isObject(stamp) || !text(stamp.date)) return [section, null];
+        return [
+          section,
+          { date: text(stamp.date), facility: text(stamp.facility), by: stamp.by ?? null },
+        ];
+      }),
     ),
   };
 }
 
-/** Comparable form: trimmed text, and conditionKey left out (the server re-resolves it). */
+/**
+ * The environment another household member recorded, offered as a prefill.
+ * Null when absent (the admin path sends none); `date` may be null.
+ */
+export function normalizeHouseholdEnvironment(source) {
+  if (!isObject(source) || !isObject(source.environment)) return null;
+  return {
+    environment: shape(source.environment, SCHEMA.personalSocial.environment),
+    patientId: source.patientId ?? null,
+    patientName: text(source.patientName),
+    date: text(source.date) || null,
+  };
+}
+
+function isBlank(value) {
+  if (value === null || value === undefined || value === false || value === "") return true;
+  if (Array.isArray(value)) return value.every(isBlank);
+  if (isObject(value)) return Object.values(value).every(isBlank);
+  return false;
+}
+
+/** The slice with list entries the clinician has left completely blank removed. */
+function withoutBlankItems(slice) {
+  const prune = (value) => {
+    if (Array.isArray(value)) return value.filter((item) => !isBlank(item)).map(prune);
+    if (isObject(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, prune(v)]));
+    return value;
+  };
+  return prune(slice);
+}
+
+/** Comparable form: blank rows and the server-owned source/firstRecorded left out. */
 function canonical(slice) {
-  return JSON.stringify(slice, (key, value) => {
-    if (key === "conditionKey") return undefined;
-    return typeof value === "string" ? value.trim() : value;
-  });
+  return JSON.stringify(withoutBlankItems(slice), (key, value) =>
+    key === "source" || key === "firstRecorded" ? undefined : value,
+  );
 }
 
 export function sectionChanged(before, after, section) {
@@ -102,10 +217,106 @@ export function sectionChanged(before, after, section) {
 }
 
 /**
+ * Every field a section owns, in display order. `read(slice)` is its display
+ * text and works on a whole background or a section slice alike.
+ */
+export const BACKGROUND_SECTION_FIELDS = {
+  medical: [
+    {
+      key: "currentDiseases",
+      label: "Patient-reported Conditions",
+      read: (slice) => formatPatientReported(slice?.currentDiseases),
+    },
+    { key: "allergies", label: "Allergies", read: (slice) => formatAllergies(slice?.allergies) },
+    {
+      key: "hospitalizations",
+      label: "Hospitalizations & Surgeries",
+      read: (slice) => formatHospitalizations(slice?.hospitalizations),
+    },
+  ],
+  family: [
+    {
+      key: "familyHistory",
+      label: "Family Conditions",
+      read: (slice) => formatFamilyHistory(slice?.familyHistory),
+    },
+  ],
+  social: [
+    {
+      key: "education",
+      label: "Education",
+      read: (slice) => formatEducation(slice?.personalSocial?.education),
+    },
+    {
+      key: "pastOccupations",
+      label: "Past Occupations",
+      read: (slice) => text(slice?.personalSocial?.pastOccupations),
+    },
+    {
+      key: "smoking",
+      label: "Smoking",
+      read: (slice) => {
+        const smoking = slice?.personalSocial?.smoking;
+        return formatSmoking(smoking, packYears(smoking || {}));
+      },
+    },
+    {
+      key: "alcohol",
+      label: "Alcohol",
+      read: (slice) => formatAlcohol(slice?.personalSocial?.alcohol),
+    },
+    { key: "diet", label: "Diet", read: (slice) => formatDiet(slice?.personalSocial?.diet) },
+    {
+      key: "sexual",
+      label: "Sexual History",
+      read: (slice) => formatSexual(slice?.personalSocial?.sexual),
+    },
+    {
+      key: "environment",
+      label: "Household Environment",
+      read: (slice) => formatEnvironment(slice?.personalSocial?.environment),
+    },
+  ],
+  obstetric: [
+    { key: "cycle", label: "Menstrual Cycle", read: (slice) => formatCycle(slice?.obstetric) },
+    { key: "symptoms", label: "Menstrual Symptoms", read: (slice) => formatSymptoms(slice?.obstetric) },
+    {
+      key: "pregnancies",
+      label: "Pregnancies",
+      read: (slice) => formatPregnancies(slice?.obstetric?.pregnancies),
+    },
+  ],
+};
+
+export const PATIENT_REPORTED_SOURCE = "Patient-reported";
+
+/**
+ * A Previous Condition the patient reports: a name and optional detail, no
+ * status (only RHU sets one). The server stamps the rest. Null for a blank name.
+ */
+export function newPatientReportedCondition(name, note = "", detail = {}) {
+  const trimmed = text(name);
+  if (!trimmed) return null;
+  return {
+    name: trimmed,
+    yearDiagnosed: toNumber(detail?.yearDiagnosed),
+    diagnosedWhere: text(detail?.diagnosedWhere),
+    note: text(note),
+    source: PATIENT_REPORTED_SOURCE,
+  };
+}
+
+function validReviewed(list) {
+  const given = Array.isArray(list) ? list : [];
+  return BACKGROUND_SECTION_KEYS.filter((section) => given.includes(section));
+}
+
+/**
  * The staged update for an edited background, or null when nothing differs
- * from what was loaded. A section keeps the base revision it was first edited
- * at (from `previous`), so a background refetched mid-consultation cannot
- * quietly move the base past someone else's change.
+ * from what was loaded and nothing is reviewed. A section keeps the base
+ * revision it was first edited at (from `previous`), so a background refetched
+ * mid-consultation cannot quietly move the base past someone else's change.
+ * `previous.reviewed` is kept.
  */
 export function buildBackgroundUpdate(loaded, edited, previous = null) {
   const sections = {};
@@ -120,7 +331,10 @@ export function buildBackgroundUpdate(loaded, edited, previous = null) {
       : Number(loaded?.revisions?.[section]) || 0;
   });
 
-  return Object.keys(sections).length ? { sections, baseRevisions } : null;
+  const reviewed = validReviewed(previous?.reviewed);
+  return Object.keys(sections).length || reviewed.length
+    ? { sections, baseRevisions, reviewed }
+    : null;
 }
 
 /** The background with a staged update laid over it - what the editor shows on resume. */
@@ -134,21 +348,25 @@ export function editedSectionKeys(update) {
   return BACKGROUND_SECTION_KEYS.filter((section) => update?.sections?.[section]);
 }
 
-/** "Asthma (Controlled); Migraine - since 2020". */
-export function formatDiseases(diseases) {
-  return diseaseList(diseases)
-    .filter((disease) => disease.name.trim())
-    .map((disease) => {
-      const label = disease.status ? `${disease.name} (${disease.status})` : disease.name;
-      return disease.note.trim() ? `${label} - ${disease.note.trim()}` : label;
-    })
-    .join("; ");
+export function reviewedSectionKeys(update) {
+  return validReviewed(update?.reviewed);
 }
 
-function readField(slice, field) {
-  if (field.key === "currentDiseases") return formatDiseases(slice?.currentDiseases);
-  const value = field.group ? slice?.[field.group]?.[field.key] : slice?.[field.key];
-  return text(value).trim();
+/** The update with these sections also marked reviewed ("No changes"). */
+export function markReviewed(update, sectionKeys) {
+  return {
+    sections: { ...(update?.sections || {}) },
+    baseRevisions: { ...(update?.baseRevisions || {}) },
+    reviewed: validReviewed([...reviewedSectionKeys(update), ...(sectionKeys || [])]),
+  };
+}
+
+/** The update without this section marked reviewed; null when nothing is left. */
+export function unmarkReviewed(update, sectionKey) {
+  const reviewed = reviewedSectionKeys(update).filter((section) => section !== sectionKey);
+  const sections = { ...(update?.sections || {}) };
+  if (!Object.keys(sections).length && !reviewed.length) return null;
+  return { sections, baseRevisions: { ...(update?.baseRevisions || {}) }, reviewed };
 }
 
 /** The fields of one section that differ between two backgrounds (or slices), as display text. */
@@ -157,16 +375,88 @@ export function backgroundChangeRows(before, after, section) {
     .map((field) => ({
       key: field.key,
       label: field.label,
-      before: readField(before, field),
-      after: readField(after, field),
+      before: text(field.read(before)),
+      after: text(field.read(after)),
     }))
     .filter((row) => row.before !== row.after);
 }
 
-/** The record API's spelling of a staged update, or undefined when there is none. */
+/**
+ * The record API's spelling of a staged update, or undefined when nothing is
+ * edited and nothing is reviewed. A reviewed-only update sends `reviewed`
+ * alone: `sections` and `base_revisions` are left out when no section is edited.
+ */
 export function toRecordBackgroundUpdate(update) {
-  if (!editedSectionKeys(update).length) return undefined;
-  return { sections: update.sections, base_revisions: update.baseRevisions };
+  const edited = editedSectionKeys(update);
+  const reviewed = reviewedSectionKeys(update);
+  if (!edited.length && !reviewed.length) return undefined;
+
+  const payload = { reviewed };
+  if (edited.length) {
+    payload.sections = Object.fromEntries(
+      edited.map((section) => [section, withoutBlankItems(update.sections[section])]),
+    );
+    payload.base_revisions = Object.fromEntries(
+      edited.map((section) => [section, Number(update.baseRevisions?.[section]) || 0]),
+    );
+  }
+  return payload;
+}
+
+function hasOwn(object, key) {
+  return isObject(object) && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+/**
+ * True for an update in a pre-ITR shape: the string fields of the old
+ * sections (mirrors the backend PatientBackground::isLegacyUpdate), or a
+ * condition carrying server-owned status, conditionKey or lastConfirmed
+ * (drafts saved on this device by the old bundle).
+ */
+function isLegacyUpdate(raw) {
+  const sections = isObject(raw.sections) ? raw.sections : {};
+  const medical = isObject(sections.medical) ? sections.medical : {};
+  if (["allergies", "hospitalizations", "surgeries"].some((key) => typeof medical[key] === "string")) {
+    return true;
+  }
+  if (
+    Array.isArray(medical.currentDiseases) &&
+    medical.currentDiseases.some((entry) =>
+      ["status", "conditionKey", "lastConfirmed"].some((key) => hasOwn(entry, key)),
+    )
+  ) {
+    return true;
+  }
+
+  const family = sections.family?.familyHistory;
+  if (isObject(family) && ["similarIllness", "chronicIllness", "hereditaryIllness"].some((key) => hasOwn(family, key))) {
+    return true;
+  }
+
+  const social = sections.social?.personalSocial;
+  return isObject(social) && ["diet", "smoking", "alcohol"].some((key) => typeof social[key] === "string");
+}
+
+/**
+ * A staged update read back from a saved draft, or null when there is none or
+ * it is in an old shape (it is dropped, not migrated). Sections are re-shaped
+ * because the server drops "not recorded" flags and empty fields from drafts.
+ */
+export function restoreBackgroundUpdate(raw) {
+  if (!isObject(raw) || isLegacyUpdate(raw)) return null;
+
+  const given = isObject(raw.sections) ? raw.sections : {};
+  const sections = {};
+  const baseRevisions = {};
+  BACKGROUND_SECTION_KEYS.forEach((section) => {
+    if (!isObject(given[section])) return;
+    sections[section] = sliceBackground(given[section], section);
+    const base = toNumber(raw.baseRevisions?.[section] ?? raw.base_revisions?.[section]);
+    baseRevisions[section] = Number.isInteger(base) && base >= 0 ? base : 0;
+  });
+
+  const reviewed = validReviewed(raw.reviewed);
+  return Object.keys(sections).length || reviewed.length ? { sections, baseRevisions, reviewed } : null;
 }
 
 /** The per-section conflicts of a 409 from the record save, or null for any other error. */
@@ -178,7 +468,8 @@ export function readBackgroundConflicts(error) {
 /**
  * Applies the clinician's choice per conflicting section: "mine" keeps their
  * edit and rebases it onto the latest revision, "latest" drops their edit.
- * Returns null when no edited section is left.
+ * Sections marked reviewed stay reviewed. Returns null when no edited section
+ * and no reviewed section is left.
  */
 export function resolveBackgroundConflicts(update, conflicts, choices) {
   const sections = { ...(update?.sections || {}) };
@@ -193,7 +484,8 @@ export function resolveBackgroundConflicts(update, conflicts, choices) {
     }
   });
 
-  return Object.keys(sections).length ? { sections, baseRevisions } : null;
+  const reviewed = reviewedSectionKeys(update);
+  return Object.keys(sections).length || reviewed.length ? { sections, baseRevisions, reviewed } : null;
 }
 
 /** Only sections the clinician edited can conflict; every one needs a choice before retrying. */
