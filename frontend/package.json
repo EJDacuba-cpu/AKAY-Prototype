@@ -36,7 +36,8 @@
     "test:families": "node --test src/services/mockFamilyWorkflows.test.js src/services/mockFamilyAccess.test.js src/services/mockFamilyRegistry.test.js",
     "test:table-paging": "node --test src/utils/tablePaging.test.js",
     "test:facility-filters": "node --test src/utils/facilityFilters.test.js",
-    "test:access": "node --test src/utils/staffRoles.test.js src/utils/accountForm.test.js src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js src/utils/fieldState.test.js src/utils/passwordRules.test.js src/utils/accessRequestStatus.test.js src/utils/passwordChange.test.js"
+    "test:access": "node --test src/utils/staffRoles.test.js src/utils/accountForm.test.js src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js src/utils/fieldState.test.js src/utils/passwordRules.test.js src/utils/accessRequestStatus.test.js src/utils/passwordChange.test.js",
+    "test:patient-history": "node --test src/utils/patientHistory.test.js src/utils/backgroundUpdate.test.js"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
