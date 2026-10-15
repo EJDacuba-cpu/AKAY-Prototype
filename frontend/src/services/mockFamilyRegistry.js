@@ -45,6 +45,13 @@ export function withFormAddress(connection, form) {
     : connection;
 }
 
+// A household with no members left is archived, never deleted: its FSN stays reserved.
+export function archiveEmptyHouseholds(households, patients, now = new Date()) {
+  return households.map(household => !household.archivedAt && !patients.some(patient => patient.householdId === household.id)
+    ? { ...household, headPatientId: null, archivedAt: now.toISOString() }
+    : household);
+}
+
 export function createMockRegistry() {
   const households = [
     { id: "mock-household-1", serialNumber: "FSN-001", headPatientId: "mock-patient-1", address: { streetAddress: "12 Mabini Street", purokArea: "Purok 1", barangay: "San Jose", municipality: "Bulakan" } },
@@ -96,6 +103,7 @@ export function createMockRegistry() {
 export function searchHouseholds(registry, query) {
   const needle = normalize(query);
   return registry.households.filter((household) => {
+    if (household.archivedAt) return false;
     const members = registry.patients.filter((patient) => patient.householdId === household.id);
     const head = registry.patients.find((patient) => patient.id === household.headPatientId);
     return [household.serialNumber, patientName(head), addressText(household.address), ...members.map(patientName)]
@@ -245,20 +253,28 @@ export function commitMockPatient(registry, form, connection, patientId, makeId 
       relationshipToHouseholdHead: item.id === previousHousehold.headPatientId ? HEAD_RELATIONSHIP : replacement.relationships[item.id],
     } : item);
   }
-  // Moving/unlinking a patient clears only the old household's tree connections.
-  const connections = (registry.connections || []).filter(edge => {
-    const from = patients.find(item => item.id === edge.from);
-    const to = patients.find(item => item.id === edge.to);
-    return from?.householdId && from.householdId === to?.householdId;
-  });
+  // Links survive a move: edges keep both endpoints, so a moved patient's
+  // relatives in the old household become related-family links.
+  const parentEdgeKey = (from, to) => `parent:${from}:${to}`;
+  const connections = (registry.connections || []).filter(edge =>
+    patients.some(item => item.id === edge.from) && patients.some(item => item.id === edge.to));
+  const knownParentEdges = new Set(connections.filter(edge => edge.type === "parent").map(edge => parentEdgeKey(edge.from, edge.to)));
   patients = patients.map(item => {
     const next = { ...item };
     for (const key of ["motherPatientId", "fatherPatientId"]) {
-      if (next[key] && !patients.some(parent => parent.id === next[key] && parent.householdId && parent.householdId === next.householdId)) next[key] = "";
+      if (!next[key]) continue;
+      const parent = patients.find(candidate => candidate.id === next[key]);
+      if (parent && parent.householdId && parent.householdId === next.householdId) continue;
+      // The registration ID no longer applies across households; keep the relationship as an explicit edge.
+      if (parent && !knownParentEdges.has(parentEdgeKey(parent.id, next.id))) {
+        connections.push({ from: parent.id, to: next.id, type: "parent" });
+        knownParentEdges.add(parentEdgeKey(parent.id, next.id));
+      }
+      next[key] = "";
     }
     return next;
   });
-  return { registry: { ...registry, households, patients, connections }, patient: patients.find(item => item.id === id) };
+  return { registry: { ...registry, households: archiveEmptyHouseholds(households, patients), patients, connections }, patient: patients.find(item => item.id === id) };
 }
 
 let snapshot = createMockRegistry();

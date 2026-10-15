@@ -63,13 +63,13 @@ test("graph rejects self links, duplicate reversed spouses, ancestry cycles and 
   assert.ok(graphErrors(members, [parent("a", "b"), { from: "a", to: "b", type: "spouse" }]));
 });
 
-test("registration saves preserve other family graphs and moving clears only departed links", () => {
+test("moving a member keeps their connections as cross-household links", () => {
   const registry = createMockRegistry();
   const patient = registry.patients.find(item => item.id === "mock-patient-miguel");
   const unchanged = commitMockPatient(registry, patient, { kind: "existing", householdId: patient.householdId, relationship: patient.relationshipToHouseholdHead }, patient.id).registry;
   assert.deepEqual(unchanged.connections, registry.connections);
   const moved = commitMockPatient(registry, patient, { kind: "existing", householdId: "mock-household-2", relationship: "Other relative" }, patient.id).registry;
-  assert.ok(!moved.connections.some(edge => [edge.from, edge.to].includes(patient.id)));
+  for (const edge of registry.connections.filter(item => [item.from, item.to].includes(patient.id))) assert.ok(moved.connections.some(item => item.from === edge.from && item.to === edge.to && item.type === edge.type));
   assert.equal(moved.patients.find(item => item.id === patient.id).streetAddress, "48 Rizal Street");
 });
 

@@ -218,3 +218,24 @@ test("staging a new self household keeps the typed address", () => {
   assert.equal(staged.streetAddress, patient.streetAddress);
   assert.equal(staged.familySerialNumber, "FSN-2026-0001");
 });
+
+test("moving the last member out archives the old household; search hides it; its FSN stays taken", () => {
+  const registry = createMockRegistry();
+  const carmen = registry.patients.find((item) => item.id === "mock-patient-6");
+  const result = commitMockPatient(registry, carmen, existing("mock-household-1", "Other relative"), carmen.id, id);
+  const old = result.registry.households.find((item) => item.id === "mock-household-3");
+  assert.ok(old.archivedAt);
+  assert.equal(old.headPatientId, null);
+  assert.ok(!searchHouseholds(result.registry, "FSN-003").length);
+  const reuse = { ...newHousehold(), household: { serialNumber: "fsn-003 ", address: addressValues(patient) } };
+  assert.equal(validateConnection(result.registry, reuse, undefined, patient).serialNumber, "This Family Serial Number already exists.");
+});
+
+test("a moved child's registration parent ID becomes one explicit parent edge", () => {
+  const registry = createMockRegistry();
+  const lucas = { ...registry.patients.find((item) => item.id === "mock-patient-lucas"), motherPatientId: "mock-patient-ana" };
+  registry.connections = registry.connections.filter((edge) => !(edge.from === "mock-patient-ana" && edge.to === lucas.id));
+  const moved = commitMockPatient(registry, lucas, existing("mock-household-2", "Grandchild"), lucas.id, id).registry;
+  assert.equal(moved.patients.find((item) => item.id === lucas.id).motherPatientId, "");
+  assert.equal(moved.connections.filter((edge) => edge.type === "parent" && edge.from === "mock-patient-ana" && edge.to === lucas.id).length, 1);
+});
