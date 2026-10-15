@@ -100,7 +100,7 @@
   /* IDs and codes stay in Inter, set with tabular figures and a slashed zero
      (see .font-mono below) — the data voice is the same family, not a costume. */
   --font-mono: "Inter Variable", "Inter", system-ui, sans-serif;
-  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-serif: Georgia, "Times New Roman", serif; /* legacy token; no webfont is shipped */
 
   --text-xs: 0.75rem;
   --text-xs--line-height: 1.125rem;
@@ -216,7 +216,7 @@ body {
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--color-neutral-400);
+    color: var(--color-neutral-500);
   }
 
   a {

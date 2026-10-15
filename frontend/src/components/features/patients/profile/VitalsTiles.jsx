@@ -146,7 +146,14 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
         </span>
       </header>
 
-      <div className="akay-content-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain flow:overflow-visible">
+      {/* With no reading at all, flow layouts (mobile, short windows) drop the
+          empty tiles and keep only the note above; the fixed board keeps them
+          so its geometry never depends on the patient. */}
+      <div
+        className={`akay-content-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain flow:overflow-visible ${
+          !record && !isLoading ? "flow:hidden" : ""
+        }`}
+      >
         <div className="flex flex-col gap-2">
           {CHART_CARDS.map((key) => {
             const { label, unit, display, series, Icon } = card(key);

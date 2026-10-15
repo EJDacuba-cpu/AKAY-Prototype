@@ -7,7 +7,7 @@ function Fact({ label, value, date = false }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-neutral-50 py-1.5 text-xs last:border-b-0">
       <dt className="text-neutral-500">{label}</dt>
-      <dd className="m-0 text-right font-semibold text-[#111827]">{value ? (date ? formatShortDate(value) : value) : <span className="font-normal text-neutral-400">Not recorded</span>}</dd>
+      <dd className="m-0 text-right font-semibold text-[#111827]">{value ? (date ? formatShortDate(value) : value) : <span className="font-normal text-neutral-500">Not recorded</span>}</dd>
     </div>
   );
 }
@@ -62,7 +62,7 @@ export default function MaternalTrackingPanel({ summary, status, onViewRecords }
                   {row.tt && <p><span className="font-semibold text-[#15803D]">TT given</span> · {formatShortDate(row.tt)}</p>}
                   {row.td && <p><span className="font-semibold text-[#15803D]">Td given</span> · {formatShortDate(row.td)}</p>}
                 </div>
-              ) : <p className="mt-2 text-[11px] italic text-neutral-400">Not recorded</p>}
+              ) : <p className="mt-2 text-[11px] italic text-neutral-500">Not recorded</p>}
             </div>
           ))}
         </div>
@@ -79,7 +79,7 @@ export default function MaternalTrackingPanel({ summary, status, onViewRecords }
               {summary.labs.map((lab) => (
                 <tr key={lab.label}>
                   <th scope="row" className="px-4 py-3 font-semibold text-[#111827]">{lab.label}</th>
-                  <td className={`px-4 py-3 ${lab.value ? "font-medium text-[#111827]" : "italic text-neutral-400"}`}>{lab.value || "Not recorded"}</td>
+                  <td className={`px-4 py-3 ${lab.value ? "font-medium text-[#111827]" : "italic text-neutral-500"}`}>{lab.value || "Not recorded"}</td>
                   <td className="px-4 py-3 text-neutral-500">
                     {lab.date ? <span className="inline-flex items-center gap-1.5"><img src={calendarIcon} alt="" />{formatShortDate(lab.date)}</span> : "—"}
                   </td>

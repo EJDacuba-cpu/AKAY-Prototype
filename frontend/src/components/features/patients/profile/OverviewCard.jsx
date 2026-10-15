@@ -23,7 +23,7 @@ export function OverviewCard({ id, title, meta, action, children, spacious = fal
       style={{ "--card-min-h": `${minHeight ?? share * MIN_PX_PER_SHARE}px`, flexGrow: share, minHeight: "var(--card-min-h)" }}
       className={`flex min-w-0 shrink-0 basis-(--card-min-h) flex-col rounded-xl border border-neutral-200/80 bg-white shadow-card flow:basis-auto board-xl:shrink board-xl:basis-0 ${spacious ? "px-4 py-3.5" : "px-3.5 py-3"} ${className}`}
     >
-      <header className={`${spacious ? "mb-3 min-h-7" : "mb-1.5 min-h-5"} flex shrink-0 items-center justify-between gap-3`}>
+      <header className={`${spacious ? "mb-3 min-h-7" : "mb-1.5 min-h-5"} flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2`}>
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <h2
             id={`${id}-title`}

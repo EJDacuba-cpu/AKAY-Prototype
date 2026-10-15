@@ -114,7 +114,7 @@ export default function CommunityProgramsSection({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                <p className="mt-0.5 text-xs text-neutral-400">
+                <p className="mt-0.5 text-xs text-neutral-500">
                   Enrolled {formatShortDate(enrollment.enrolledDate)}
                   {enrollment.status === "Withdrawn" && enrollment.withdrawReason
                     ? ` · Withdrawn: ${enrollment.withdrawReason}`

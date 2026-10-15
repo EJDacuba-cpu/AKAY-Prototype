@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getPatientBackgroundHistory } from "../../../services/patientService";
@@ -49,9 +50,10 @@ function ChangeEntry({ entry, section, basePath }) {
           {entry.healthRecordId && (
             <Link
               to={`${basePath}/health-records/${entry.healthRecordId}`}
-              className="font-medium text-ink-600 hover:text-ink-900"
+              className="inline-flex items-center gap-1 font-medium text-ink-600 hover:text-ink-900"
             >
-              From consultation →
+              From consultation
+              <ArrowRight size={13} aria-hidden="true" />
             </Link>
           )}
         </span>

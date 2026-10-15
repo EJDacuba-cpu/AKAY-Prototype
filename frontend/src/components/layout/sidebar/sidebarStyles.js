@@ -25,6 +25,6 @@ export function childLinkClass(active) {
 }
 
 export const SECTION_LABEL_CLASS =
-  "px-2.5 text-[11px] font-medium leading-tight text-neutral-400";
+  "px-2.5 text-[11px] font-medium leading-tight text-neutral-500";
 
 export const SIGN_OUT_CLASS = `flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-medium text-neutral-600 transition-colors duration-150 hover:bg-neutral-900/[0.045] hover:text-alert-700 ${FOCUS_RING}`;

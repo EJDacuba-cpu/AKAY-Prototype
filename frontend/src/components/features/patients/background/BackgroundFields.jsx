@@ -31,7 +31,7 @@ export function PatientReportedEdit({ diseases, onUpdate, onRemove }) {
     <div>
       <GroupHeading>Patient-Reported Previous Conditions</GroupHeading>
       <div className="mt-1.5 space-y-2">
-        {diseases.length === 0 && <p className="text-[12px] text-neutral-400">None reported.</p>}
+        {diseases.length === 0 && <p className="text-[13px] text-neutral-500">None reported.</p>}
         {diseases.map((disease) => (
           <div key={`${disease.name}-${disease.index}`} className="rounded-lg border border-neutral-200 bg-white p-3">
             <div className="flex items-center justify-between gap-3">

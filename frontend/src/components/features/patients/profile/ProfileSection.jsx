@@ -90,7 +90,7 @@ export function FieldList({ rows }) {
           <div key={label} className="contents">
             <dt className="text-neutral-500">{label}</dt>
             <dd className="m-0 min-w-0 break-words tabular-nums text-neutral-900">
-              {text || <span className="text-neutral-400">Not recorded</span>}
+              {text || <span className="text-neutral-500">Not recorded</span>}
             </dd>
           </div>
         );

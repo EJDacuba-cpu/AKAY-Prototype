@@ -11,13 +11,13 @@ const NODE = {
 const LABEL = {
   done: "text-neutral-900",
   active: "text-neutral-900",
-  none: "text-neutral-400",
+  none: "text-neutral-500",
 };
 
 const DETAIL = {
   done: "text-neutral-500",
   active: "text-ink-600",
-  none: "text-neutral-400",
+  none: "text-neutral-500",
 };
 
 /**
@@ -49,7 +49,7 @@ export default function CarePath({ referrals = [], conditions, isLoading = false
                   />
                 )}
               </div>
-              <p className={`mt-1.5 text-[12px] font-medium leading-4 sm:truncate ${LABEL[step.state]}`}>{step.label}</p>
+              <p className={`mt-1.5 text-[12px] font-medium leading-4 max-sm:min-h-8 sm:truncate ${LABEL[step.state]}`}>{step.label}</p>
               <p className={`text-[11px] leading-4 tabular-nums sm:truncate ${DETAIL[step.state]}`} title={step.detail}>
                 {isLoading && step.state === "none" ? "Checking..." : step.detail}
               </p>

@@ -1,4 +1,4 @@
-import { CalendarClock, ChevronRight } from "lucide-react";
+import { ArrowRight, CalendarClock, ChevronRight } from "lucide-react";
 
 import { StatusBadge } from "../../../common";
 import { FollowUpStateBadge, getReferralDate, getReferralDestination } from "./FollowUpsAndReferrals";
@@ -36,13 +36,18 @@ function BackgroundSummaryCard({ background, onView }) {
       id="overview-background"
       title="Patient background"
       share={2.5}
-      action={<TextAction onClick={onView}>View →</TextAction>}
+      action={
+        <TextAction onClick={onView} className="inline-flex items-center gap-1">
+          View
+          <ArrowRight size={13} aria-hidden="true" />
+        </TextAction>
+      }
     >
       <dl className="space-y-1 text-[13px]">
         {summarizeBackground(background).map(({ key, label, text }) => (
           <div key={key} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2">
             <dt className="text-neutral-500">{label}</dt>
-            <dd className={`m-0 line-clamp-2 min-w-0 flow:line-clamp-none break-words ${text ? "text-neutral-900" : "text-neutral-400"}`} title={text || undefined}>
+            <dd className={`m-0 line-clamp-2 min-w-0 flow:line-clamp-none break-words ${text ? "text-neutral-900" : "text-neutral-500"}`} title={text || undefined}>
               {text || "Not recorded"}
             </dd>
           </div>

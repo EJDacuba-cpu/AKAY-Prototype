@@ -3,11 +3,9 @@ import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import App from "./App";
-// Self-hosted fonts (no CDN — poor-connectivity context).
-// Variable families cover their full weight axes (Inter 100–900,
-// Source Serif 4 500/600).
+// Self-hosted font (no CDN — poor-connectivity context). The variable
+// family covers Inter's full 100–900 weight axis.
 import "@fontsource-variable/inter";
-import "@fontsource-variable/source-serif-4";
 import "./index.css";
 import { Toaster } from "react-hot-toast";
 import { NotificationProvider } from "./hooks/useNotificationsContext";

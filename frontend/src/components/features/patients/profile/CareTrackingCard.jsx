@@ -70,7 +70,7 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
         <dl className="mb-2 space-y-1 text-xs text-neutral-600">
           {entry.facts.map((fact) => (
             <div key={fact.label} className="flex items-baseline justify-between gap-3">
-              <dt className="text-neutral-400">{fact.label}</dt>
+              <dt className="text-neutral-500">{fact.label}</dt>
               <dd className="m-0 min-w-0 truncate text-right tabular-nums text-neutral-800">
                 {formatFactValue(fact)}
               </dd>
@@ -83,13 +83,13 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
         <dl className="mb-2 space-y-1 text-xs text-neutral-600">
           {entry.lastVisit && (
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-neutral-400">Last visit</dt>
+              <dt className="text-neutral-500">Last visit</dt>
               <dd className="m-0 tabular-nums text-neutral-800">{formatShortDate(entry.lastVisit)}</dd>
             </div>
           )}
           {entry.nextVisit && (
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-neutral-400">Next visit</dt>
+              <dt className="text-neutral-500">Next visit</dt>
               <dd className="m-0 tabular-nums text-neutral-800">{formatShortDate(entry.nextVisit)}</dd>
             </div>
           )}
