@@ -4,7 +4,7 @@ import { HeartPulse, Pill, ShieldAlert } from "lucide-react";
 import { Button } from "../../../ui/button";
 import MedicalConditionsGroups from "../MedicalConditionsGroups";
 import ProfileFactPopover from "./ProfileFactPopover";
-import { isNoAllergyText } from "../../../../utils/allergies";
+import { summarizeAllergies } from "../../../../utils/patientHistory";
 import { summarizeMedicines } from "../../../../utils/medicationSummary";
 import { arcPosition } from "../../../../utils/arcPlacement";
 import { formatShortDate } from "../../../../utils/patientProfile";
@@ -68,8 +68,8 @@ const ARC = {
 export default function PatientClinicalControls({ background, conditions, records, recordsLoading, recordsError, openFact, onFactChange, onViewRecord, arc = false }) {
   const groups = conditions?.groups;
   const conditionCount = (groups?.confirmed?.length || 0) + (groups?.legacyPending?.length || 0) + (groups?.underEvaluation?.length || 0);
-  const allergyText = String(background?.allergies || "").trim();
-  const hasAllergy = Boolean(allergyText) && !isNoAllergyText(allergyText);
+  const allergies = summarizeAllergies(background?.allergies);
+  const hasAllergy = allergies.status === "recorded";
 
   const place = (key) => (arc ? { placement: "left", style: arcPosition(ARC[key].angle, ARC[key].offset) } : {});
 
@@ -80,7 +80,7 @@ export default function PatientClinicalControls({ background, conditions, record
       </ProfileFactPopover>
       <ProfileFactPopover label="Allergies" Icon={ShieldAlert} warning={hasAllergy ? "Allergy recorded" : undefined} open={openFact === "allergies"} onOpenChange={(open) => onFactChange(open ? "allergies" : null)} {...place("allergies")}>
         <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${hasAllergy ? "font-medium text-alert-700" : "text-neutral-600"}`}>
-          {hasAllergy ? allergyText : allergyText ? "No known allergies" : "Allergies not recorded"}
+          {allergies.status === "unrecorded" ? "Allergies not recorded" : allergies.text}
         </p>
       </ProfileFactPopover>
       <ProfileFactPopover label="Medicines given" Icon={Pill} open={openFact === "medicines"} onOpenChange={(open) => onFactChange(open ? "medicines" : null)} {...place("medicines")}>

@@ -2,7 +2,6 @@ import { conditionEventSourceLabel, conditionStatusLabel } from "../../../utils/
 import { formatShortDate } from "../../../utils/patientProfile";
 
 export const LEGACY_PENDING_LABEL = "Legacy — Pending RHU Verification";
-export const UNVERIFIED_LABEL = "Unverified — recorded from BHC consultation";
 
 const STATUS_TONE = {
   active: "bg-alert-50 text-alert-700 ring-alert-100",
@@ -117,7 +116,7 @@ function PastCondition({ condition }) {
  * A patient's medical conditions by clinical source: Confirmed / Monitored
  * (RHU-confirmed), Legacy — Pending RHU Verification (monitored before confirmation
  * existed), Under Evaluation,
- * Unverified (legacy BHC consultation entries), Patient-Reported Previous Conditions, and Past
+ * Patient-Reported Previous Conditions, and Past
  * (collapsed, with each status change). Read-only; `groups` is the result of
  * groupMedicalConditions. Only Confirmed / Monitored counts as an alert.
  */
@@ -126,11 +125,10 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
     confirmed = [],
     legacyPending = [],
     underEvaluation = [],
-    unverified = [],
     patientReported = [],
     past = [],
   } = groups || {};
-  const empty = [confirmed, legacyPending, underEvaluation, unverified, patientReported, past].every((group) => group.length === 0);
+  const empty = [confirmed, legacyPending, underEvaluation, patientReported, past].every((group) => group.length === 0);
 
   return (
     <div className="space-y-3">
@@ -164,17 +162,6 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
               name={condition.conditionName}
               chip={<StatusChip status={condition.status} />}
               lines={["Under RHU evaluation", stillMonitored(condition)]}
-            />
-          ))}
-        </Group>
-      )}
-      {unverified.length > 0 && (
-        <Group title={UNVERIFIED_LABEL}>
-          {unverified.map((disease) => (
-            <Row
-              key={`${disease.name}-${disease.index}`}
-              name={disease.name}
-              lines={[disease.firstRecorded && `First noted ${formatShortDate(disease.firstRecorded)}`]}
             />
           ))}
         </Group>

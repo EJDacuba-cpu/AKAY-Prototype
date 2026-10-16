@@ -565,6 +565,7 @@ function LivePatientDetails() {
                 {activeTab === "background" && canViewHistory && (
                   <PatientBackgroundTab
                     patientId={patientId}
+                    patient={patient}
                     background={patient.medicalBackground}
                     conditions={conditions}
                     basePath="/bhc"

@@ -3,7 +3,7 @@ import { groupMedicalConditions } from "./medicalConditions.js";
 
 /**
  * The conditions the consultation's Patient Background summary shows: the
- * same five clinical-source groups as the profile (groupMedicalConditions).
+ * same clinical-source groups as the profile (groupMedicalConditions).
  * A confirmed condition that this visit follows (picked in Start Consultation)
  * is flagged `addressed`.
  *
@@ -26,7 +26,6 @@ export function backgroundConditionGroups({
     conditions,
     legacyMonitorings,
     currentDiseases: Array.isArray(diseases) ? diseases : [],
-    registry,
   });
   const addressed = new Set(followed.map((monitoring) => monitoringIdentity(monitoring, registry)));
 

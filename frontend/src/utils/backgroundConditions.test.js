@@ -28,19 +28,18 @@ const followedHtn = { id: 4, conditionName: "Hypertension", conditionKey: "hyper
 test("groups come from groupMedicalConditions", () => {
   const input = { diseases, conditions: [hypertension], legacyMonitorings: [], registry };
   const groups = backgroundConditionGroups(input);
-  const expected = groupMedicalConditions({ conditions: [hypertension], currentDiseases: diseases, registry });
+  const expected = groupMedicalConditions({ conditions: [hypertension], currentDiseases: diseases });
 
   assert.deepEqual(groups.confirmed.map((c) => c.conditionName), expected.confirmed.map((c) => c.conditionName));
-  assert.deepEqual(groups.unverified, expected.unverified);
   assert.deepEqual(groups.patientReported, expected.patientReported);
   assert.deepEqual(groups.underEvaluation, expected.underEvaluation);
   assert.deepEqual(groups.past, expected.past);
 });
 
-test("a documented entry matching a confirmed condition is not listed twice", () => {
-  const { confirmed, unverified } = backgroundConditionGroups({ diseases, conditions: [hypertension], registry });
+test("only patient-reported entries are listed from the background; consultation entries are not", () => {
+  const { confirmed, patientReported } = backgroundConditionGroups({ diseases, conditions: [hypertension], registry });
   assert.equal(confirmed.length, 1);
-  assert.deepEqual(unverified.map((d) => d.name), ["Gastritis"]);
+  assert.deepEqual(patientReported.map((d) => d.name), ["Migraine"]);
 });
 
 test("a condition followed in this visit is flagged addressed, others are not", () => {
@@ -73,7 +72,6 @@ test("nothing documented leaves every group empty", () => {
     confirmed: [],
     legacyPending: [],
     underEvaluation: [],
-    unverified: [],
     patientReported: [],
     past: [],
   });

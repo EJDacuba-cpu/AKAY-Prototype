@@ -5,7 +5,6 @@ import { getPatientConditions } from "../services/patientConditionService";
 import { getCurrentUser } from "../utils/auth";
 import { groupMedicalConditions } from "../utils/medicalConditions";
 import { queryKeys } from "../utils/queryKeys";
-import useClinicalRegistry from "./useClinicalRegistry";
 
 /** GET /patients/{id}/conditions needs clinical.history; without it nothing is requested. */
 export function canViewPatientConditions() {
@@ -21,19 +20,18 @@ export function usePatientConditions(patientId, { enabled = true } = {}) {
 }
 
 /**
- * The patient's medical conditions in the five clinical-source groups. Until
+ * The patient's medical conditions in the clinical-source groups. Until
  * the conditions load (or when they cannot be read) only the background
  * entries are grouped, so nothing is shown as confirmed that the server has
  * not said is.
  */
 export default function usePatientConditionGroups(patientId, currentDiseases, options) {
-  const { registry } = useClinicalRegistry();
   const query = usePatientConditions(patientId, options);
   const { conditions, legacyMonitorings } = query.data || {};
 
   const groups = useMemo(
-    () => groupMedicalConditions({ conditions, legacyMonitorings, currentDiseases, registry }),
-    [conditions, legacyMonitorings, currentDiseases, registry],
+    () => groupMedicalConditions({ conditions, legacyMonitorings, currentDiseases }),
+    [conditions, legacyMonitorings, currentDiseases],
   );
 
   return { groups, isLoading: query.isLoading, isError: query.isError };

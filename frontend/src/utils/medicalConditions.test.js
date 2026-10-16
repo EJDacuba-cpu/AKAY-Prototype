@@ -10,12 +10,6 @@ import {
   monitoringRecommendationOptions,
 } from "./medicalConditions.js";
 
-const registry = {
-  monitored_conditions: {
-    hypertension: { name: "Hypertension", aliases: ["HTN"] },
-  },
-};
-
 const condition = (overrides = {}) => ({
   id: 1,
   conditionName: "Hypertension",
@@ -24,22 +18,17 @@ const condition = (overrides = {}) => ({
   ...overrides,
 });
 
-test("legacy consultation entries are unverified, never patient-reported", () => {
-  const g = groupMedicalConditions({ currentDiseases: [{ name: "Asthma", source: "Consultation", status: "Active" }] });
-  assert.equal(g.unverified.length, 1);
-  assert.equal(g.patientReported.length, 0);
-  assert.equal(g.confirmed.length, 0);
-});
-
-test("an entry with no source is unverified; Patient-reported entries are their own group", () => {
+test("only Patient-reported background entries are listed, with their array position", () => {
   const g = groupMedicalConditions({
     currentDiseases: [
       { name: "Gout" },
+      { name: "Asthma", source: "Consultation", status: "Active" },
       { name: "Migraine", source: "Patient-reported", note: "since 2020" },
     ],
   });
-  assert.deepEqual(g.unverified.map((d) => [d.name, d.index]), [["Gout", 0]]);
-  assert.deepEqual(g.patientReported.map((d) => [d.name, d.note, d.index]), [["Migraine", "since 2020", 1]]);
+  assert.deepEqual(g.patientReported.map((d) => [d.name, d.note, d.index]), [["Migraine", "since 2020", 2]]);
+  assert.equal(g.confirmed.length, 0);
+  assert.equal("unverified" in g, false);
 });
 
 test("legacy monitoring is listed apart from confirmed/monitored and never alerts", () => {
@@ -60,25 +49,6 @@ test("active and controlled conditions are confirmed (rhu); legacy monitoring is
   });
   assert.deepEqual(g.confirmed.map((c) => [c.kind, c.id]), [["rhu", 1], ["rhu", 2]]);
   assert.deepEqual(g.legacyPending.map((c) => [c.kind, c.id]), [["legacy-monitoring", 9]]);
-});
-
-test("an unverified entry matching a confirmed condition is not listed twice", () => {
-  const g = groupMedicalConditions({
-    conditions: [condition()],
-    currentDiseases: [{ name: "HTN", source: "Consultation" }, { name: "Asthma", source: "Consultation" }],
-    registry,
-  });
-  assert.deepEqual(g.unverified.map((d) => d.name), ["Asthma"]);
-});
-
-test("an unverified entry matching a legacy monitoring or a non-confirmed condition is not listed twice", () => {
-  const g = groupMedicalConditions({
-    conditions: [condition({ id: 3, conditionName: "Gout", conditionIdentity: "name:gout", status: "under_evaluation" })],
-    legacyMonitorings: [{ id: 1, conditionName: "Hypertension", conditionIdentity: "hypertension" }],
-    currentDiseases: [{ name: "Hypertension", source: "Consultation" }, { name: "gout", source: "Consultation" }],
-    registry,
-  });
-  assert.deepEqual(g.unverified, []);
 });
 
 test("under evaluation and past are separate and never alert", () => {
@@ -103,7 +73,6 @@ test("grouping tolerates missing input", () => {
     confirmed: [],
     legacyPending: [],
     underEvaluation: [],
-    unverified: [],
     patientReported: [],
     past: [],
   });

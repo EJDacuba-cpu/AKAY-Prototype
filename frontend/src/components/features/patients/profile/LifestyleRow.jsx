@@ -1,11 +1,13 @@
 import { Cigarette, Salad, Wine } from "lucide-react";
 import ProfileFactPopover from "./ProfileFactPopover";
 import { arcPosition } from "../../../../utils/arcPlacement";
+import { formatAlcohol, formatDiet, formatSmoking } from "../../../../utils/backgroundFormat";
+import { packYears } from "../../../../utils/patientHistory";
 
 const ITEMS = [
-  { key: "smoking", label: "Smoking", Icon: Cigarette, angle: -14 },
-  { key: "alcohol", label: "Alcohol", Icon: Wine, angle: 0 },
-  { key: "diet", label: "Diet", Icon: Salad, angle: 14 },
+  { key: "smoking", label: "Smoking", Icon: Cigarette, angle: -14, read: (value) => formatSmoking(value, packYears(value || {})) },
+  { key: "alcohol", label: "Alcohol", Icon: Wine, angle: 0, read: formatAlcohol },
+  { key: "diet", label: "Diet", Icon: Salad, angle: 14, read: formatDiet },
 ];
 
 /**
@@ -20,8 +22,8 @@ export default function LifestyleRow({ personalSocial, openFact, onFactChange, a
 
   return (
     <div role="group" aria-label="Lifestyle details" className={arc ? "contents" : "flex justify-center gap-8"}>
-      {ITEMS.map(({ key, label, Icon, angle }) => {
-        const value = String(social[key] || "").trim();
+      {ITEMS.map(({ key, label, Icon, angle, read }) => {
+        const value = read(social[key]);
         return (
           <ProfileFactPopover
             key={key}

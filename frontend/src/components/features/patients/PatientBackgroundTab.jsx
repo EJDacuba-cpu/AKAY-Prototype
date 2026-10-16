@@ -6,17 +6,42 @@ import { useQuery } from "@tanstack/react-query";
 import { getPatientBackgroundHistory } from "../../../services/patientService";
 import { formatLongDate } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
+import { sectionStatus, sectionVisibility } from "../../../utils/patientHistory";
 import {
   BACKGROUND_SECTION_FIELDS,
   BACKGROUND_SECTION_KEYS,
   BACKGROUND_SECTION_LABELS,
   backgroundChangeRows,
 } from "../../../utils/backgroundUpdate";
-import MedicalConditionsGroups from "./MedicalConditionsGroups";
+import { RhuConditions } from "./history/PastMedicalSection";
 import { FieldList, ProfileSection } from "./profile/ProfileSection";
 
-function readValue(background, field) {
-  return (field.group ? background?.[field.group]?.[field.key] : background?.[field.key]) || "";
+const REPORTED_LABEL = "Reported by patient (not confirmed)";
+
+/** "Last reviewed {date} · {facility}", or "Not yet recorded". */
+function sectionMeta(background, section) {
+  const status = sectionStatus({ background, section });
+  if (status.kind !== "lastReviewed") return "Not yet recorded";
+  if (!status.date) return "Last reviewed date not recorded";
+  const date = formatLongDate(status.date, "");
+  return status.facility ? `Last reviewed ${date} · ${status.facility}` : `Last reviewed ${date}`;
+}
+
+function RhuConditionsBlock({ conditions }) {
+  return (
+    <div className="mb-3">
+      <h3 className="mb-1.5 text-[13px] font-semibold text-neutral-900">Current Conditions</h3>
+      {conditions?.isLoading && (
+        <p role="status" className="mb-2 text-[13px] text-neutral-500">Loading RHU-confirmed conditions...</p>
+      )}
+      {conditions?.isError && (
+        <p role="alert" className="mb-2 text-[13px] text-neutral-500">
+          RHU-confirmed conditions could not be loaded right now.
+        </p>
+      )}
+      {!conditions?.isLoading && !conditions?.isError && <RhuConditions groups={conditions?.groups} />}
+    </div>
+  );
 }
 
 /** One dated entry of a section's Changes log; expands to the fields it changed. */
@@ -100,17 +125,22 @@ function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePat
 }
 
 /**
- * The Patient Background tab: Past Medical, Family, and Personal & Social
- * History, read-only, each with its dated Changes log. Reviewing and updating
- * happens inside a consultation (PatientHistoryPanel), never here.
+ * The Patient Background tab: Past Medical, Family, Personal & Social and
+ * (for female patients) Obstetric & Menstrual History, read-only, each with
+ * its dated Changes log. Reviewing and updating happens inside a consultation
+ * (PatientHistoryPanel), never here.
  */
-export default function PatientBackgroundTab({ patientId, background, conditions, basePath = "/bhc" }) {
+export default function PatientBackgroundTab({ patientId, patient, background, conditions, basePath = "/bhc" }) {
   const history = useQuery({
     queryKey: queryKeys.patientBackgroundHistory(patientId),
     queryFn: () => getPatientBackgroundHistory(patientId),
     enabled: Boolean(patientId),
   });
   const entries = Array.isArray(history.data) ? history.data : [];
+  const visibility = sectionVisibility(patient, new Date());
+  const sections = BACKGROUND_SECTION_KEYS.filter(
+    (section) => section !== "obstetric" || visibility.obstetric !== "hidden",
+  );
 
   return (
     <div>
@@ -118,27 +148,22 @@ export default function PatientBackgroundTab({ patientId, background, conditions
         Background is reviewed and updated during a consultation.
       </p>
 
-      {BACKGROUND_SECTION_KEYS.map((section) => {
+      {sections.map((section) => {
         const lastUpdated = background?.updatedAt?.[section] || "";
-        const fields = BACKGROUND_SECTION_FIELDS[section].filter((field) => field.key !== "currentDiseases");
         return (
           <ProfileSection
             key={section}
             id={`background-${section}`}
             title={BACKGROUND_SECTION_LABELS[section]}
-            meta={lastUpdated ? `Updated ${formatLongDate(lastUpdated, "")}` : "Not yet recorded"}
+            meta={sectionMeta(background, section)}
           >
-            {section === "medical" && (
-              <div className="mb-3">
-                <h3 className="mb-1.5 text-[13px] font-semibold text-neutral-900">Medical Conditions</h3>
-                <MedicalConditionsGroups
-                  groups={conditions?.groups}
-                  isLoading={conditions?.isLoading}
-                  isError={conditions?.isError}
-                />
-              </div>
-            )}
-            <FieldList rows={fields.map((field) => [field.label, readValue(background, field)])} />
+            {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
+            <FieldList
+              rows={BACKGROUND_SECTION_FIELDS[section].map((field) => [
+                field.key === "currentDiseases" ? REPORTED_LABEL : field.label,
+                field.read(background),
+              ])}
+            />
             <ChangesLog
               section={section}
               entries={entries.filter((entry) => entry.section === section)}

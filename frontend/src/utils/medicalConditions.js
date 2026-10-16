@@ -1,5 +1,3 @@
-import { conditionIdentity } from "./carePlan.js";
-
 /**
  * A patient's medical conditions as the profile and the consultation show them
  * (GET /patients/{id}/conditions + the patient background), grouped by how far
@@ -78,31 +76,18 @@ export function mapPatientConditions(data) {
  *   before confirmation existed and pending RHU verification; listed apart from
  *   verified monitoring and never alert;
  * - underEvaluation / past: separate, and never alert;
- * - unverified: background entries not marked Patient-reported (legacy
- *   consultation entries) that match no condition or legacy monitoring, so a
- *   confirmed condition is not listed twice;
- * - patientReported: background entries the patient reported.
+ * - patientReported: background entries the patient reported (source
+ *   "Patient-reported"); they never count as confirmed.
  * Background entries keep their array position as `index`.
  */
 export function groupMedicalConditions({
   conditions = [],
   legacyMonitorings = [],
   currentDiseases = [],
-  registry = {},
 } = {}) {
-  const known = new Set([
-    ...conditions.map((c) => c.conditionIdentity || conditionIdentity(c.conditionName, registry)),
-    ...legacyMonitorings.map((m) => m.conditionIdentity || conditionIdentity(m.conditionName, registry)),
-  ]);
-
-  const unverified = [];
   const patientReported = [];
   currentDiseases.forEach((disease, index) => {
-    if (disease?.source === PATIENT_REPORTED) {
-      patientReported.push({ ...disease, index });
-    } else if (!known.has(conditionIdentity(disease?.name, registry))) {
-      unverified.push({ ...disease, index });
-    }
+    if (disease?.source === PATIENT_REPORTED) patientReported.push({ ...disease, index });
   });
 
   return {
@@ -111,7 +96,6 @@ export function groupMedicalConditions({
     ],
     legacyPending: legacyMonitorings.map((m) => ({ ...m, kind: "legacy-monitoring" })),
     underEvaluation: conditions.filter((c) => c.status === "under_evaluation").map((c) => ({ ...c, kind: "rhu" })),
-    unverified,
     patientReported,
     past: conditions.filter((c) => PAST_STATUSES.has(c.status)).map((c) => ({ ...c, kind: "rhu" })),
   };
