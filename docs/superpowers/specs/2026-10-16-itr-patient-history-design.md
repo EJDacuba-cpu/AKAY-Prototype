@@ -256,12 +256,16 @@ settled first.
 3. A male patient (no V) and a child (informant default = Mother, Sexual collapsed).
 4. A second member of the same FSN gets the environment prefill.
 
-## Implementation notes (2026-10-17)
+## Implementation notes (2026-10-16)
 
 Where the built behavior differs from or refines the design above:
 
 - **API key.** The household environment is exposed as `household_environment` (frontend `householdEnvironment`). It is absent on the admin stored-function path.
-- **Older drafts.** Drafts saved before this change may carry a legacy `backgroundUpdate`. They are dropped instead of failing: the server checks `PatientBackground::isLegacyUpdate`, the client uses `restoreBackgroundUpdate`.
+- **Older drafts.** Drafts saved before this change may carry a legacy `backgroundUpdate`. It is dropped instead of failing: `PatientBackground::isLegacyUpdate` (server) and `restoreBackgroundUpdate` (client) treat any key outside today's sections and fields (`surgeries`, `notes`, `similarIllness`, a condition's `status` / `conditionKey` / `lastConfirmed`, ...) or a wrongly shaped value as legacy. A stored draft whose update still fails validation opens with only `backgroundUpdate` dropped, never as an error.
+- **Draft autosave.** Drafts keep every type, enum and range rule but not the per-row required fields (allergen, hospitalization type, condition name, family condition), so a half-filled row autosaves; finalize still requires them. The client sends the draft's update with completely blank rows pruned, like the record payload.
+- **Cleanup migration.** `2026_10_16_000002_reset_background_for_itr_history` deletes data, so it throws unless `ITR_HISTORY_RESET_CONFIRMED=1` is set (or the app runs in the testing environment). Back up `patients.medical_background` and `health_records.background_changes` first. A background left with no keys is stored as SQL NULL.
 - **Environment prefill.** "Use these" copies only the water source and the toilet, and only on an explicit staff click.
-- **RHU conditions.** They show as three read-only sub-groups (Confirmed by RHU, Under evaluation at RHU, Past (RHU)), plus the unchanged Legacy BHC Monitoring group.
+- **RHU conditions.** They show as three read-only sub-groups (Confirmed by RHU, Under evaluation at RHU, Past (RHU)). The Legacy BHC Monitoring group (pending RHU verification) shows read-only under them, only when it has rows, on the profile tab and in the consultation / RHU Past Medical History.
+- **Section status.** A section with a dated review stamp reads "Last reviewed {date} · {facility}". One never reviewed (only an edit date, or data) reads "Recorded {date} (not yet reviewed)", or "Recorded (not yet reviewed)" without a date, in the section list and on the profile tab.
+- **Edit in Patient Information.** The General Data link opens in a new tab, so an unsaved record is never lost.
 - **Status changes.** Changing a status clears its dependent fields in the UI. The server stores what it is sent.
