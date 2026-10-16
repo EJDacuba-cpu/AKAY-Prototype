@@ -6,6 +6,7 @@ import {
   informantPayload,
   linkedRelatives,
   similarIllnessPayload,
+  visitAnswerRows,
 } from "./historyStep.js";
 
 test("informantPayload sends only an informant with a relation", () => {
@@ -80,4 +81,19 @@ test("linkedRelatives lists the linked mother and father only", () => {
   const father = { patientId: "7", name: "Ben" };
   assert.deepEqual(linkedRelatives({ motherPatient: mother, fatherPatient: father }), [mother, father]);
   assert.deepEqual(linkedRelatives({ motherPatient: { name: "No id" } }), []);
+});
+
+test("visit answer rows list only what was answered", () => {
+  assert.deepEqual(visitAnswerRows({ informant: null, similarIllness: null }), []);
+  assert.deepEqual(
+    visitAnswerRows({ informant: { relation: "", name: "Juana" }, similarIllness: { answer: "", who: "Mother" } }),
+    [],
+  );
+  assert.deepEqual(visitAnswerRows({ informant: { relation: "Mother", name: " Juana " }, similarIllness: null }), [
+    { label: "Informant", value: "Mother · Juana" },
+  ]);
+  assert.deepEqual(
+    visitAnswerRows({ informant: null, similarIllness: { answer: "Yes", who: "Sibling", note: " cough " } }),
+    [{ label: "Similar illness in the family", value: "Yes · Sibling · cough" }],
+  );
 });

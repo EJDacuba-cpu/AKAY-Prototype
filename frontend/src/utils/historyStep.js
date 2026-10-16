@@ -34,6 +34,27 @@ export function similarIllnessPayload(similarIllness) {
 }
 
 /**
+ * The per-visit answers as Review rows ({ label, value }), each only when it
+ * was answered - an unanswered informant or similar illness is left out
+ * rather than shown blank.
+ */
+export function visitAnswerRows({ informant, similarIllness } = {}) {
+  const rows = [];
+  const given = informantPayload(informant);
+  if (given) {
+    rows.push({ label: "Informant", value: [given.relation, given.name].filter(Boolean).join(" · ") });
+  }
+  const similar = similarIllnessPayload(similarIllness);
+  if (similar) {
+    rows.push({
+      label: "Similar illness in the family",
+      value: [similar.answer, similar.who, similar.note].filter(Boolean).join(" · "),
+    });
+  }
+  return rows;
+}
+
+/**
  * The patient's linked family members (mother and father records), for the
  * Family History relative picker. Only entries with an id can be linked.
  */

@@ -109,6 +109,7 @@ import {
   historyErrorMessages,
   informantPayload,
   similarIllnessPayload,
+  visitAnswerRows,
 } from "../../utils/historyStep";
 import {
   buildCarePlanPayload,
@@ -4184,23 +4185,8 @@ export default function ConsultationWorkspace() {
           key: HISTORY_STEP,
           title: "Patient History",
           stepKey: HISTORY_STEP,
-          rows: [
-            {
-              label: "Informant",
-              value: informantPayload(informant)
-                ? [informant.relation, String(informant.name || "").trim()].filter(Boolean).join(" · ")
-                : "",
-            },
-            {
-              label: "Similar illness in the family",
-              value: similarIllnessPayload(similarIllness)
-                ? [similarIllness.answer, similarIllness.who, similarIllness.note]
-                    .map((part) => String(part || "").trim())
-                    .filter(Boolean)
-                    .join(" · ")
-                : "",
-            },
-          ],
+          // Only the answered ones: an unanswered informant / similar illness is left out.
+          rows: visitAnswerRows({ informant, similarIllness }),
           content: (
             <PatientHistoryReview
               background={selectedPatient.medicalBackground}

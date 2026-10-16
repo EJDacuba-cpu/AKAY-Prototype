@@ -84,6 +84,7 @@ import {
   historyErrorMessages,
   informantPayload,
   similarIllnessPayload,
+  visitAnswerRows,
 } from "../../utils/historyStep";
 import { EDITABLE_SECTION_KEYS, defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import { createIdempotencyKey } from "../../utils/idempotency";
@@ -985,6 +986,8 @@ export default function AddHealthRecord() {
       sectionVisibility(historyPatient, dateOfVisit || new Date()).obstetric !== "hidden",
   );
   const historyErrors = historyErrorMessages(validationErrors, { withSection: true });
+  // The answered per-visit questions, for the history review block.
+  const visitAnswers = visitAnswerRows({ informant, similarIllness });
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
       ? "Additional Notes"
@@ -2816,34 +2819,16 @@ export default function AddHealthRecord() {
                   />
                 </div>
               ) : null}
-              <dl className="mb-3 space-y-1 text-xs">
-                {[
-                  [
-                    "Informant",
-                    informantPayload(informant)
-                      ? [informant.relation, String(informant.name || "").trim()]
-                          .filter(Boolean)
-                          .join(" · ")
-                      : "",
-                  ],
-                  [
-                    "Similar illness in the family",
-                    similarIllnessPayload(similarIllness)
-                      ? [similarIllness.answer, similarIllness.who, similarIllness.note]
-                          .map((part) => String(part || "").trim())
-                          .filter(Boolean)
-                          .join(" · ")
-                      : "",
-                  ],
-                ]
-                  .filter(([, value]) => value)
-                  .map(([label, value]) => (
+              {visitAnswers.length > 0 && (
+                <dl className="mb-3 space-y-1 text-xs">
+                  {visitAnswers.map(({ label, value }) => (
                     <div key={label} className="flex flex-wrap gap-x-2">
                       <dt className="font-semibold text-[#6B7280]">{label}</dt>
                       <dd className="m-0 text-[#1A1A1A]">{value}</dd>
                     </div>
                   ))}
-              </dl>
+                </dl>
+              )}
               {historyPatient ? (
                 <PatientHistoryReview
                   background={historyPatient.medicalBackground}
