@@ -255,3 +255,13 @@ settled first.
    "Last reviewed … RHU".
 3. A male patient (no V) and a child (informant default = Mother, Sexual collapsed).
 4. A second member of the same FSN gets the environment prefill.
+
+## Implementation notes (2026-10-17)
+
+Where the built behavior differs from or refines the design above:
+
+- **API key.** The household environment is exposed as `household_environment` (frontend `householdEnvironment`). It is absent on the admin stored-function path.
+- **Older drafts.** Drafts saved before this change may carry a legacy `backgroundUpdate`. They are dropped instead of failing: the server checks `PatientBackground::isLegacyUpdate`, the client uses `restoreBackgroundUpdate`.
+- **Environment prefill.** "Use these" copies only the water source and the toilet, and only on an explicit staff click.
+- **RHU conditions.** They show as three read-only sub-groups (Confirmed by RHU, Under evaluation at RHU, Past (RHU)), plus the unchanged Legacy BHC Monitoring group.
+- **Status changes.** Changing a status clears its dependent fields in the UI. The server stores what it is sent.
