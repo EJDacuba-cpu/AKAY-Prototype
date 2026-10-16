@@ -74,6 +74,7 @@ import {
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
+import { AllergyChip } from "../../components/features/patients/PatientAlertChips";
 import {
   readBackgroundConflicts,
   resolveBackgroundConflicts,
@@ -2023,6 +2024,13 @@ export default function AddHealthRecord() {
         className="relative ml-0 mr-auto w-full max-w-6xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        {/* Whose record this is, with the allergy line in view (from the history details). */}
+        {historyEnabled && selectedPatient && (
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+            <span className="font-semibold text-gray-900">{getPatientName(selectedPatient)}</span>
+            {historyPatient && <AllergyChip allergies={historyPatient.medicalBackground?.allergies} />}
+          </div>
+        )}
         {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
