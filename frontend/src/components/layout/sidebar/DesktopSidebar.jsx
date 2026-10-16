@@ -9,7 +9,6 @@ import {
 import { Link } from "react-router";
 import { useEffect, useState } from "react";
 import LogoMark, { LogoWordmark } from "./LogoMark";
-import UserInitials from "./UserInitials";
 import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
 import {
   FOCUS_RING,
@@ -248,8 +247,7 @@ export default function DesktopSidebar({
 
       <div className="shrink-0 p-3 pt-2">
         {expanded && (
-          <div className="mb-1.5 flex items-center gap-2.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
-            <UserInitials name={user.name} />
+          <div className="mb-1.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
             <div className="min-w-0">
               <p className="truncate text-[13px] font-medium text-neutral-900">
                 {user.name}

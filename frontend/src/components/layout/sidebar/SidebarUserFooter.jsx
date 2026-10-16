@@ -1,12 +1,10 @@
 import { LogOut } from "lucide-react";
 import { SIGN_OUT_CLASS } from "./sidebarStyles";
-import UserInitials from "./UserInitials";
 
 export default function SidebarUserFooter({ user, onLogout }) {
   return (
     <div className="shrink-0 p-3 pt-2">
-      <div className="flex items-center gap-2.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
-        <UserInitials name={user.name} />
+      <div className="rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
         <div className="min-w-0">
           <p className="truncate text-[13px] font-medium text-neutral-900">
             {user.name}

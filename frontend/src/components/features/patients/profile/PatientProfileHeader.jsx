@@ -8,21 +8,8 @@ import { formatPatientName } from "../../../../utils/formatters";
 import { getPatientAge } from "../../../../utils/patientProfile";
 import { getCurrentUser } from "../../../../utils/auth";
 
-function initialsOf(name) {
-  return (
-    String(name || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter((part, index, parts) => index === 0 || index === parts.length - 1)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase() || "?"
-  );
-}
-
 /**
- * Identity card at the top of the patient profile: initials, name, Patient ID,
+ * Identity card at the top of the patient profile: name, Patient ID,
  * age / sex and barangay; the care path (when the viewer may see clinical
  * history) in the middle; the Start / Resume Consultation action on the right.
  * It sits above the tab strip on every tab and carries no status badge:
@@ -48,12 +35,6 @@ export default function PatientProfileHeader({ patient, patientId, backPath, upd
             >
               <ArrowLeft size={16} aria-hidden="true" />
             </Link>
-            <span
-              aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-100"
-            >
-              {initialsOf(name)}
-            </span>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold leading-6 text-neutral-900 font-sans!" title={name}>
                 {name}

@@ -355,12 +355,9 @@ export default function RHUDashboard() {
                         className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
                       >
                         <td className="whitespace-nowrap px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={item.patient} />
-                            <span className="text-[13px] font-semibold text-[#1A1A1A]">
-                              {formatDisplayValue(item.patient, "Patient")}
-                            </span>
-                          </div>
+                          <span className="text-[13px] font-semibold text-[#1A1A1A]">
+                            {formatDisplayValue(item.patient, "Patient")}
+                          </span>
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4">
@@ -757,19 +754,6 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
       </p>
 
       <p className="relative mt-1 text-xs text-[#9CA3AF]">{subtitle}</p>
-    </div>
-  );
-}
-
-function Avatar({ name }) {
-  const displayName = formatDisplayValue(name, "Patient");
-
-  return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3F4F6] text-[10px] font-bold text-[#4B5563]">
-      {displayName
-        .split(" ")
-        .map((part) => part[0])
-        .join("")}
     </div>
   );
 }
