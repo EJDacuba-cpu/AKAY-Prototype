@@ -54,13 +54,47 @@ class FamilyPermissionsTest extends TestCase
         }
     }
 
-    public function test_bhc_family_duties_are_available_but_rhu_family_duties_are_not(): void
+    public function test_family_duties_are_available_at_both_facility_tiers_and_never_default(): void
     {
         $available = $this->getJson('/api/staff-roles')->assertOk()->json('data.available');
-        $this->assertContains('families.view', $available['bhc']);
-        $this->assertContains('families.manage', $available['bhc']);
-        $this->assertNotContains('families.view', $available['rhu']);
-        $this->postJson('/api/users', [...$this->payload(['families.view']), 'role' => 'rhu', 'staff_role' => 'nurse', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $this->rhu->id])->assertUnprocessable()->assertJsonValidationErrors('permissions');
+        foreach (['bhc', 'rhu'] as $tier) {
+            $this->assertContains('families.view', $available[$tier]);
+            $this->assertContains('families.manage', $available[$tier]);
+        }
+    }
+
+    public function test_admin_can_save_read_and_revoke_rhu_family_grants_on_the_server(): void
+    {
+        $payload = [...$this->payload(['clinical.history', 'families.view', 'families.manage']), 'email' => 'rhu-nurse@example.test', 'role' => 'rhu', 'staff_role' => 'nurse', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $this->rhu->id];
+        $this->postJson('/api/users', $payload)->assertCreated();
+        $nurse = User::where('email', 'rhu-nurse@example.test')->firstOrFail();
+        $this->assertSame(['clinical.history', 'families.view', 'families.manage'], $nurse->permissions);
+        $this->assertTrue(ActionPermissions::allows($nurse, 'families.manage'));
+        $this->patchJson('/api/users/'.$nurse->id, ['permissions' => ['clinical.history', 'families.view'], 'permissions_confirmed' => true])->assertOk();
+        $this->assertTrue(ActionPermissions::allows($nurse->fresh(), 'families.view'));
+        $this->assertFalse(ActionPermissions::allows($nurse->fresh(), 'families.manage'));
+        $this->postJson('/api/users', [...$payload, 'email' => 'rhu-manage-only@example.test', 'permissions' => ['families.manage']])->assertUnprocessable()->assertJsonValidationErrors('permissions');
+    }
+
+    public function test_admin_has_no_operational_families_access(): void
+    {
+        $this->getJson('/api/bhc/households')->assertForbidden();
+        $this->getJson('/api/bhc/households/lookup')->assertForbidden();
+        $this->postJson('/api/bhc/households', [])->assertForbidden();
+        $this->patchJson('/api/bhc/households/1', [])->assertForbidden();
+    }
+
+    public function test_view_only_staff_cannot_create_or_edit_households_and_ungranted_staff_cannot_list(): void
+    {
+        $viewer = User::create([...$this->payload(['families.view']), 'email' => 'viewer@example.test', 'password' => 'password123', 'status' => 'active']);
+        $none = User::create([...$this->payload(['inventory.view']), 'email' => 'none@example.test', 'password' => 'password123', 'status' => 'active']);
+        Sanctum::actingAs($viewer, ['*']);
+        $this->getJson('/api/bhc/households')->assertOk();
+        $this->postJson('/api/bhc/households', [])->assertForbidden();
+        $this->patchJson('/api/bhc/households/1', [])->assertForbidden();
+        $this->getJson('/api/bhc/households/candidates')->assertForbidden();
+        Sanctum::actingAs($none, ['*']);
+        $this->getJson('/api/bhc/households')->assertForbidden();
     }
 
     public function test_profile_edit_preserves_explicit_existing_family_grants(): void

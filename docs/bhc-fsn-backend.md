@@ -10,6 +10,10 @@
   Patient household changes use `/bhc/patients/{id}/edit`.
 - Directory/edit permissions are real admin-assigned `families.view` and
   `families.manage` grants. Registration lookup needs `patients.register`.
+- Families is not an Admin/MHO module (no sidebar item; `/admin/families` is refused).
+  `families.view`/`families.manage` are server-stored for BHC and RHU accounts
+  through the Role & Access checklist; browser (localStorage) grants are gone.
+  The RHU Families pages still run on the prototype registry until RHU conversion.
 - RHU conversion, cross-barangay search, related-family graph editing and legacy
   group reconciliation remain outside this phase.
 

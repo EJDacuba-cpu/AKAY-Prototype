@@ -79,7 +79,7 @@ function getPatientConsultationTrail(pathname, search) {
 export function getBreadcrumbs(pathname, title, search = "") {
   const current = { label: title };
   const family = matchPath({ path: "/:role/families/*", end: true }, pathname);
-  if (family && ["bhc", "rhu", "admin"].includes(family.params.role)) {
+  if (family && ["bhc", "rhu"].includes(family.params.role)) {
     const base = `/${family.params.role}/families`;
     const [householdId, action] = family.params["*"].split("/");
     if (householdId) return [{ label: "Families", path: base }, ...(householdId !== "new" && action ? [{ label: "Family", path: `${base}/${householdId}` }] : []), current];
