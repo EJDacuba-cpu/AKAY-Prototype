@@ -403,38 +403,32 @@ export function toRecordBackgroundUpdate(update) {
   return payload;
 }
 
-function hasOwn(object, key) {
-  return isObject(object) && Object.prototype.hasOwnProperty.call(object, key);
+/** Whether `value` only uses the keys and nesting of `schema` (leaf types are not checked). */
+function fitsSchema(value, schema) {
+  if (value === null || value === undefined) return true;
+  if (schema === "list") return Array.isArray(value);
+  if (typeof schema === "string") return typeof value !== "object";
+  if (Array.isArray(schema)) return Array.isArray(value) && value.every((item) => fitsSchema(item, schema[0]));
+  if (!isObject(value)) return false;
+  return Object.entries(value).every(
+    ([key, item]) => Object.prototype.hasOwnProperty.call(schema, key) && fitsSchema(item, schema[key]),
+  );
 }
 
 /**
- * True for an update in a pre-ITR shape: the string fields of the old
- * sections (mirrors the backend PatientBackground::isLegacyUpdate), or a
- * condition carrying server-owned status, conditionKey or lastConfirmed
- * (drafts saved on this device by the old bundle).
+ * True for an update in a pre-ITR shape (mirrors the backend
+ * PatientBackground::isLegacyUpdate): any key outside today's sections and
+ * fields - surgeries, similarIllness, personalSocial.notes, a condition's
+ * status / conditionKey / lastConfirmed - or a value of the wrong kind, such as
+ * the old string fields where an object now belongs.
  */
 function isLegacyUpdate(raw) {
   const sections = isObject(raw.sections) ? raw.sections : {};
-  const medical = isObject(sections.medical) ? sections.medical : {};
-  if (["allergies", "hospitalizations", "surgeries"].some((key) => typeof medical[key] === "string")) {
-    return true;
-  }
-  if (
-    Array.isArray(medical.currentDiseases) &&
-    medical.currentDiseases.some((entry) =>
-      ["status", "conditionKey", "lastConfirmed"].some((key) => hasOwn(entry, key)),
-    )
-  ) {
-    return true;
-  }
-
-  const family = sections.family?.familyHistory;
-  if (isObject(family) && ["similarIllness", "chronicIllness", "hereditaryIllness"].some((key) => hasOwn(family, key))) {
-    return true;
-  }
-
-  const social = sections.social?.personalSocial;
-  return isObject(social) && ["diet", "smoking", "alcohol"].some((key) => typeof social[key] === "string");
+  return Object.entries(sections).some(([section, slice]) => {
+    const keys = SECTION_KEYS[section];
+    if (!keys || !isObject(slice)) return false;
+    return Object.entries(slice).some(([key, value]) => !keys.includes(key) || !fitsSchema(value, SCHEMA[key]));
+  });
 }
 
 /**

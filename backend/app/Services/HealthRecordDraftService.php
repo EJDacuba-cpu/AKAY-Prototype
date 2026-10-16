@@ -271,7 +271,7 @@ class HealthRecordDraftService
             $plaintext = Crypt::decryptString((string) $draft->encrypted_payload);
             $decoded = json_decode($plaintext, true, flags: JSON_THROW_ON_ERROR);
 
-            return $this->payloads->sanitize(is_array($decoded) ? $decoded : []);
+            return $this->payloads->sanitizeStored(is_array($decoded) ? $decoded : []);
         } catch (Throwable $exception) {
             Log::warning('Health-record draft decryption failed.', [
                 'draft_public_id' => $draft->public_id,

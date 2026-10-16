@@ -428,6 +428,31 @@ class HealthRecordDraftPayloadService
         return [...self::SCHEMA, 'backgroundUpdate' => PatientBackground::draftSchema('baseRevisions')];
     }
 
+    /**
+     * sanitize() for a payload read back from storage. A staged background
+     * update an older bundle saved can still fail today's rules in a way
+     * isLegacyUpdate() does not foresee; the draft must still open, so that
+     * one node is dropped (the clinician re-enters the history) rather than
+     * the whole draft failing.
+     */
+    public function sanitizeStored(array $payload): array
+    {
+        try {
+            return $this->sanitize($payload);
+        } catch (ValidationException $exception) {
+            $inBackground = array_filter(
+                array_keys($exception->errors()),
+                fn (string $key): bool => $key === 'payload.backgroundUpdate' || str_starts_with($key, 'payload.backgroundUpdate.')
+            );
+            if ($inBackground === [] || ! array_key_exists('backgroundUpdate', $payload)) {
+                throw $exception;
+            }
+            unset($payload['backgroundUpdate']);
+
+            return $this->sanitize($payload);
+        }
+    }
+
     public function sanitize(array $payload): array
     {
         // Drafts saved before the ITR Patient History rework stage the update in

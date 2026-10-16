@@ -435,6 +435,88 @@ class HealthRecordDraftTest extends TestCase
         ]);
     }
 
+    /** A draft row whose stored payload was written by an older bundle (bypassing today's sanitizer). */
+    private function storedDraft(array $payload): string
+    {
+        $publicId = $this->createDraft();
+        HealthRecordDraft::where('public_id', $publicId)->update([
+            'encrypted_payload' => \Illuminate\Support\Facades\Crypt::encryptString(json_encode($payload)),
+        ]);
+
+        return $publicId;
+    }
+
+    private function assertOpensWithoutBackgroundUpdate(array $backgroundUpdate): void
+    {
+        $publicId = $this->storedDraft([...$this->draftPayload('Kept diagnosis'), 'backgroundUpdate' => $backgroundUpdate]);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.diagnosis', 'Kept diagnosis')
+            ->assertJsonMissingPath('data.payload.backgroundUpdate');
+    }
+
+    public function test_full_pre_itr_draft_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => [[
+                        'name' => 'Hypertension', 'note' => 'On meds', 'status' => 'Confirmed',
+                        'firstRecorded' => '2026-05-01', 'lastConfirmed' => '2026-06-01',
+                        'source' => 'Consultation', 'conditionKey' => 'hypertension',
+                    ], [
+                        'name' => 'Asthma', 'note' => '', 'status' => '',
+                        'firstRecorded' => '2026-05-05', 'lastConfirmed' => '',
+                        'source' => 'Patient-reported', 'conditionKey' => null,
+                    ]],
+                    'allergies' => 'Dust',
+                    'hospitalizations' => '',
+                    'surgeries' => 'Appendectomy 2020',
+                ],
+                'family' => [
+                    'familyHistory' => ['similarIllness' => '', 'chronicIllness' => 'Diabetes (mother)', 'hereditaryIllness' => ''],
+                ],
+                'social' => [
+                    'personalSocial' => ['diet' => 'Low salt', 'smoking' => 'Never', 'alcohol' => '', 'notes' => 'Farmer'],
+                ],
+            ],
+            'baseRevisions' => ['medical' => 1, 'family' => 0, 'social' => 0],
+        ]);
+    }
+
+    public function test_pre_itr_medical_slice_with_null_strings_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['medical' => [
+                'currentDiseases' => [['name' => 'Asthma', 'status' => 'Confirmed', 'conditionKey' => 'asthma', 'lastConfirmed' => '2026-06-01']],
+                'allergies' => null,
+                'hospitalizations' => null,
+                'surgeries' => null,
+            ]],
+            'baseRevisions' => ['medical' => 0],
+        ]);
+    }
+
+    public function test_pre_itr_social_notes_only_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['social' => ['personalSocial' => ['notes' => 'x']]],
+            'baseRevisions' => ['social' => 0],
+        ]);
+    }
+
+    public function test_stored_background_update_that_no_longer_validates_is_dropped_not_the_draft(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['medical' => [
+                'hospitalizations' => ['items' => [['type' => 'Confinement', 'year' => 2020]]],
+            ]],
+            'baseRevisions' => ['medical' => 0],
+        ]);
+    }
+
     private function createDraft(?array $payload = null): string
     {
         return $this->actingAs($this->bhwA, 'sanctum')

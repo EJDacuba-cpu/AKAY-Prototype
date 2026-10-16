@@ -252,32 +252,64 @@ class PatientBackground
     }
 
     /**
-     * True when a staged update still uses the pre-ITR string shapes (a draft
-     * saved before this change), so the caller can drop it instead of failing.
+     * True when a staged update is not in today's shape - a draft saved before
+     * the ITR rework (old string fields, surgeries, similarIllness, notes, a
+     * condition's status / conditionKey / lastConfirmed ...) - so the caller can
+     * drop it instead of failing. Any key outside SECTIONS / FIELDS, or a value
+     * of the wrong kind (a string where an object or list belongs), counts.
      */
     public static function isLegacyUpdate(array $update): bool
     {
         $sections = is_array($update['sections'] ?? null) ? $update['sections'] : [];
-        $medical = is_array($sections['medical'] ?? null) ? $sections['medical'] : [];
-        foreach (['allergies', 'hospitalizations', 'surgeries'] as $key) {
-            if (is_string($medical[$key] ?? null)) {
-                return true;
+        foreach ($sections as $section => $slice) {
+            $keys = self::SECTIONS[$section] ?? null;
+            if ($keys === null || ! is_array($slice)) {
+                continue; // an unknown section or a non-object slice is the validator's to reject
             }
-        }
-
-        $family = $sections['family']['familyHistory'] ?? null;
-        if (is_array($family) && array_intersect(['similarIllness', 'chronicIllness', 'hereditaryIllness'], array_keys($family)) !== []) {
-            return true;
-        }
-
-        $social = $sections['social']['personalSocial'] ?? null;
-        foreach (['diet', 'smoking', 'alcohol'] as $key) {
-            if (is_array($social) && is_string($social[$key] ?? null)) {
-                return true;
+            foreach ($slice as $key => $value) {
+                if (! in_array($key, $keys, true) || ! self::fitsSchema($value, self::FIELDS[$key])) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /** Whether $value only uses the keys and nesting of $schema (see FIELDS); leaf types are left to the rules. */
+    private static function fitsSchema(mixed $value, string|array $schema): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+        if ($schema === 'list') {
+            return is_array($value) && array_is_list($value);
+        }
+        if (is_string($schema)) {
+            return ! is_array($value);
+        }
+        if (! is_array($value)) {
+            return false;
+        }
+        if (isset($schema['*'])) {
+            if (! array_is_list($value)) {
+                return false;
+            }
+            foreach ($value as $item) {
+                if (! self::fitsSchema($item, $schema['*'])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        foreach ($value as $key => $item) {
+            if (! array_key_exists($key, $schema) || ! self::fitsSchema($item, $schema[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function revision(array $background, string $section): int

@@ -365,6 +365,13 @@ class PatientHistorySectionsTest extends TestCase
             ['sections' => ['social' => ['personalSocial' => ['diet' => 'Low salt']]]],
             ['sections' => ['social' => ['personalSocial' => ['smoking' => 'Never']]]],
             ['sections' => ['social' => ['personalSocial' => ['alcohol' => 'Occasional']]]],
+            ['sections' => ['medical' => [
+                'currentDiseases' => [['name' => 'Asthma', 'status' => 'Confirmed', 'conditionKey' => 'asthma']],
+                'allergies' => null, 'hospitalizations' => null, 'surgeries' => null,
+            ]]],
+            ['sections' => ['medical' => ['currentDiseases' => [['name' => 'Asthma', 'lastConfirmed' => '2026-06-01']]]]],
+            ['sections' => ['social' => ['personalSocial' => ['notes' => 'x']]]],
+            ['sections' => ['family' => ['familyHistory' => ['chronicIllness' => null]]]],
         ];
         foreach ($legacy as $update) {
             $this->assertTrue(PatientBackground::isLegacyUpdate($update), json_encode($update));

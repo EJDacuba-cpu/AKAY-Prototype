@@ -330,6 +330,54 @@ test("restore drops on-device drafts whose conditions still carry status, condit
   }
 });
 
+test("restore drops updates with any key outside the new shape (null-valued old fields, old notes)", () => {
+  const shapes = [
+    {
+      medical: {
+        currentDiseases: [{ name: "Asthma", status: "Confirmed", conditionKey: "asthma" }],
+        allergies: null,
+        hospitalizations: null,
+        surgeries: null,
+      },
+    },
+    { medical: { allergies: null, surgeries: null } },
+    { social: { personalSocial: { notes: "x" } } },
+    { social: { personalSocial: { diet: { highSalt: true, salt: "low" } } } },
+    { family: { familyHistory: { chronicIllness: null } } },
+    { medical: { hospitalizations: { items: "Appendectomy" } } },
+  ];
+  for (const sections of shapes) {
+    assert.equal(restoreBackgroundUpdate({ sections, baseRevisions: {} }), null, JSON.stringify(sections));
+  }
+});
+
+test("a full pre-ITR update is dropped", () => {
+  const raw = {
+    sections: {
+      medical: {
+        currentDiseases: [
+          {
+            name: "Hypertension",
+            note: "",
+            status: "Confirmed",
+            firstRecorded: "2026-05-01",
+            lastConfirmed: "2026-06-01",
+            source: "Consultation",
+            conditionKey: "hypertension",
+          },
+        ],
+        allergies: "",
+        hospitalizations: "",
+        surgeries: "",
+      },
+      family: { familyHistory: { similarIllness: "", chronicIllness: "Diabetes", hereditaryIllness: "" } },
+      social: { personalSocial: { diet: "", smoking: "Never", alcohol: "", notes: "x" } },
+    },
+    baseRevisions: { medical: 1, family: 0, social: 0 },
+  };
+  assert.equal(restoreBackgroundUpdate(raw), null);
+});
+
 test("restore keeps a new-shape update and fills what the server dropped", () => {
   const raw = {
     sections: {
