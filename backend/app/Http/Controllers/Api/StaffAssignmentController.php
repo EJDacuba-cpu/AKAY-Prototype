@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\FacilityAssignment;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\ActionPermissions;
 use App\Services\NurseAssignmentPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StaffAssignmentController extends Controller
 {
@@ -34,6 +36,9 @@ class StaffAssignmentController extends Controller
             'assignment_type' => ['required', 'in:temporary,ongoing'],
             'ends_on' => ['exclude_unless:assignment_type,temporary', 'required_if:assignment_type,temporary', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
         ]);
+        if ($missing = ActionPermissions::missingRequirements($data['permissions'])) {
+            throw ValidationException::withMessages(['permissions' => collect($missing)->map(fn ($required, $permission) => "{$permission} also requires ".implode(', ', $required).'.')->values()->all()]);
+        }
         $assignment = DB::transaction(function () use ($request, $data, $audit) {
             $user = User::whereKey($data['user_id'])->lockForUpdate()->firstOrFail();
             abort_unless(NurseAssignmentPolicy::eligible($user), 422, 'Additional BHC assignments are available only for active RHU-based nurses.');

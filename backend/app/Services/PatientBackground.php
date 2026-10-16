@@ -359,7 +359,7 @@ class PatientBackground
      * @throws PatientBackgroundConflictException when an edited section is stale
      * @throws ValidationException when obstetric history is updated or reviewed for a non-Female patient
      */
-    public function apply(Patient $patient, array $update, User $user, string $date): array
+    public function apply(Patient $patient, array $update, User $user, string $date, string $source = 'consultation'): array
     {
         $sections = array_intersect_key(
             array_filter(is_array($update['sections'] ?? null) ? $update['sections'] : [], 'is_array'),
@@ -402,6 +402,19 @@ class PatientBackground
         $changes = [];
         foreach ($sections as $section => $edited) {
             $before = self::slice($background, $section);
+            if ($user->isBhc() && $section === 'social' && array_key_exists('personalSocial', $edited)) {
+                $social = is_array($edited['personalSocial']) ? $edited['personalSocial'] : [];
+                // Education now belongs to demographics; past occupations are
+                // historical only. Neither a new form nor an old draft may
+                // erase or overwrite the original nested values at the BHC.
+                unset($social['education'], $social['pastOccupations']);
+                foreach (['education', 'pastOccupations'] as $key) {
+                    if (is_array($before['personalSocial']) && array_key_exists($key, $before['personalSocial'])) {
+                        $social[$key] = $before['personalSocial'][$key];
+                    }
+                }
+                $edited['personalSocial'] = $social;
+            }
             $after = $this->normalize($section, $edited, $before, $date);
             if (self::canonicalSlice($after) === self::canonicalSlice($before)) {
                 continue;
@@ -411,7 +424,7 @@ class PatientBackground
             $background = [...$background, ...$after];
             $background['revisions'][$section] = $revision;
             $background['updatedAt'][$section] = $date;
-            $changes[] = self::entry($section, 'consultation', $before, $after, $revision, $user);
+            $changes[] = self::entry($section, $source, $before, $after, $revision, $user);
         }
 
         // Edited and reviewed sections alike were looked at in this consultation.

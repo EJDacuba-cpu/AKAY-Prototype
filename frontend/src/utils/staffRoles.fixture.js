@@ -11,7 +11,7 @@ export const rolesData = {
     { key: "doctor", label: "Doctor", tier: "rhu", licensed: true, defaults: rhu },
   ],
   available: {
-    bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"],
+    bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "clinical.background.update", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"],
     rhu: ["patients.register", "clinical.history", "inventory.view", "reports.view", "rhu.manage", "conditions.confirm"],
   },
 };

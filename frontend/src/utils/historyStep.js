@@ -1,5 +1,6 @@
 /**
- * Glue between the Patient History step and the record / draft payloads:
+ * Glue between the visit's history questions (the RHU Patient History step,
+ * the BHC Patient Interview) and the record / draft payloads:
  * the per-visit informant and similar-illness answers in the shape the API
  * accepts, and the server's 422 keys turned into lines staff can act on.
  * Pure functions only - no React, no API.
@@ -31,6 +32,31 @@ export function similarIllnessPayload(similarIllness) {
   const answer = text(similarIllness?.answer);
   if (!answer) return null;
   return { answer, who: text(similarIllness?.who), note: text(similarIllness?.note) };
+}
+
+/**
+ * The visit answers as the draft payload stores them: each key only once it is
+ * answered, and nothing without clinical.history (`allowed`).
+ */
+export function visitAnswerDraftFields({ informant, similarIllness, allowed } = {}) {
+  if (!allowed) return {};
+  const given = informantPayload(informant);
+  const similar = similarIllnessPayload(similarIllness);
+  return {
+    ...(given ? { informant: given } : {}),
+    ...(similar ? { similarIllness: similar } : {}),
+  };
+}
+
+/**
+ * The visit answers as the finalized record payload sends them: both keys
+ * always, null when unanswered or without clinical.history (`allowed`).
+ */
+export function visitAnswerRecordFields({ informant, similarIllness, allowed } = {}) {
+  return {
+    informant: allowed ? informantPayload(informant) : null,
+    similarIllness: allowed ? similarIllnessPayload(similarIllness) : null,
+  };
 }
 
 /**
@@ -143,4 +169,13 @@ export function historyErrorMessages(errors, { withSection = false } = {}) {
       const line = `${context}: ${body}`;
       return withSection ? { section, text: line } : line;
     });
+}
+
+/** The 422 lines for the visit questions only (Informant, Similar Illness). */
+export function visitAnswerErrorMessages(errors) {
+  return historyErrorMessages(
+    Object.fromEntries(
+      Object.entries(errors || {}).filter(([key]) => key.startsWith("informant") || key.startsWith("similar_illness")),
+    ),
+  );
 }

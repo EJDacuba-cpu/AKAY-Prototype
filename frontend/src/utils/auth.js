@@ -12,7 +12,8 @@ export function loginUser(email, password) {
 }
 
 export function getCurrentUser() {
-  return withFamilyAccess(getUser());
+  const user = getUser();
+  return user?.role === "rhu" ? withFamilyAccess(user) : user;
 }
 
 export function getStoredAuthToken() {

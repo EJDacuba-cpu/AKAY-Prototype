@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   checkContinuedStart,
+  reachedPath,
   hasStartChoices,
   legacyMonitoringOptions,
   monitoredConditionOptions,
@@ -234,4 +235,14 @@ test("checkContinuedStart reports a fulfilled follow-up as dropped", () => {
     droppedConditionIds: [],
     droppedFollowUpIds: [99],
   });
+});
+
+test("opening the workspace counts as done only when the browser reached its path", () => {
+  const path = "/bhc/health-records/add?patientId=4&draftId=9";
+  assert.equal(reachedPath({ pathname: "/bhc/health-records/add", search: "?patientId=4&draftId=9" }, path), true);
+  // A leave guard kept the user on the profile: the button must recover.
+  assert.equal(reachedPath({ pathname: "/bhc/patients/4", search: "?tab=background" }, path), false);
+  assert.equal(reachedPath({ pathname: "/bhc/health-records/add", search: "?patientId=5" }, path), false);
+  assert.equal(reachedPath({ pathname: "/bhc/health-records/add", search: "" }, "/bhc/health-records/add"), true);
+  assert.equal(reachedPath(null, path), false);
 });

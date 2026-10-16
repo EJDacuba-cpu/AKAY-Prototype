@@ -6,7 +6,7 @@ use App\Models\User;
 
 class NurseAssignmentPolicy
 {
-    public const DUTIES = ['patients.register', 'consultations.encode', 'clinical.history', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'items.dispense', 'reports.view'];
+    public const DUTIES = ['patients.register', 'consultations.encode', 'clinical.history', 'clinical.background.update', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'items.dispense', 'reports.view', 'families.view', 'families.manage'];
 
     public static function eligible(User $user): bool
     {

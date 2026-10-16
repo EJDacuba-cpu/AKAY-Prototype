@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { reviewPermissions, setPermission, withRequirements } from "./accessPolicy.js";
+import { ALL_PERMISSIONS, NURSE_ASSIGNMENT_DUTIES, PERMISSION_CATALOG, suggestedNurseDuties } from "./actionPermissions.js";
+import { rolesData } from "./staffRoles.fixture.js";
 
 const encoder = ["patients.register", "consultations.encode", "inventory.view"];
 
@@ -32,4 +34,20 @@ test("review marks added and licensed duties against the role defaults", () => {
 test("licensed roles never get the licensed chip", () => {
   const review = reviewPermissions({ permissions: ["clinical.history", "consultations.finalize"], defaults: [], licensedRole: true });
   assert.ok(review.rows.every(r => !r.licensed));
+});
+
+test("Patient Background editing is an explicit duty that needs history reading", () => {
+  assert.ok(ALL_PERMISSIONS.includes("clinical.background.update"));
+  assert.deepEqual(PERMISSION_CATALOG["clinical.background.update"].requires, ["clinical.history"]);
+  assert.deepEqual(withRequirements(["clinical.background.update"]), ["clinical.history", "clinical.background.update"]);
+  assert.deepEqual(setPermission(["clinical.history", "clinical.background.update"], "clinical.history", false), []);
+  assert.ok(NURSE_ASSIGNMENT_DUTIES.includes("clinical.background.update"));
+});
+
+test("no role or suggestion grants Patient Background editing implicitly", () => {
+  assert.equal(suggestedNurseDuties().includes("clinical.background.update"), false);
+  assert.ok(suggestedNurseDuties().includes("clinical.history"));
+  rolesData.roles.forEach(role => assert.equal(role.defaults.includes("clinical.background.update"), false, role.key));
+  assert.ok(rolesData.available.bhc.includes("clinical.background.update"));
+  assert.equal(rolesData.available.rhu.includes("clinical.background.update"), false);
 });

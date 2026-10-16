@@ -52,7 +52,9 @@ export function SimilarIllnessBlock({ value, onChange }) {
  * Section III. `value` is the family slice { familyHistory }; `relatives` the
  * patient's linked family members. Picking a relative only identifies the
  * person - it never copies their conditions. Similar Illness is per visit and
- * has its own props.
+ * has its own props; `showSimilarIllness={false}` leaves it out (Patient
+ * Background and the BHC Patient Interview own it elsewhere). The default
+ * keeps it for the RHU record form.
  */
 export default function FamilySection({
   value,
@@ -60,6 +62,7 @@ export default function FamilySection({
   similarIllness,
   onSimilarIllnessChange,
   relatives,
+  showSimilarIllness = true,
 }) {
   const family = value?.familyHistory || {};
   const items = Array.isArray(family.items) ? family.items : [];
@@ -106,7 +109,7 @@ export default function FamilySection({
         />
       </Block>
 
-      <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />
+      {showSimilarIllness && <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />}
     </div>
   );
 }

@@ -21,6 +21,12 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * patient background lives on its own Patient History step (HISTORY_STEP).
  * The interview step's key is INTERVIEW_STEP.
  *
+ * Patient History is opt-out: every helper takes `{ includeHistory }`
+ * (default true, so RHU and other callers keep it). The BHC workspace passes
+ * BHC_STEP_OPTIONS: no History step, the visit questions (Informant, Similar
+ * Illness) sit on Patient Interview, and the background is edited in Patient
+ * Background - see docs/superpowers/specs/2026-10-16-bhc-patient-background-design.md.
+ *
  * Two levels:
  *  - GLOBAL steps (one heading each). Health programs are never global steps
  *    of their own: however many are selected they share the single
@@ -46,6 +52,13 @@ export const REVIEW_STEP = "review";
 export const MONITORING_STEP = "monitoring";
 
 const PROGRAM_PREFIX = "program:";
+
+/** The BHC consultation: no Patient History step. */
+export const BHC_STEP_OPTIONS = Object.freeze({ includeHistory: false });
+
+function historySteps(includeHistory) {
+  return includeHistory === false ? [] : [HISTORY_STEP];
+}
 
 const PROGRAM_STEP_DETAILS = {
   Maternal: {
@@ -120,10 +133,10 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
  * share the one Service Details step, which is listed only when there is at
  * least one.
  */
-export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys = [] } = {}) {
+export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys = [], includeHistory = true } = {}) {
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
-    { key: HISTORY_STEP, phase: "form", label: "Patient History" },
+    ...historySteps(includeHistory).map((key) => ({ key, phase: "form", label: "Patient History" })),
     { key: ASSESSMENT_STEP, phase: "form", label: "Physical Examination" },
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
@@ -178,15 +191,20 @@ export function resolveStepHeading({
  * The screens Next / Previous walk through in the form phase: Interview,
  * Physical Examination, then each selected service's form in program order.
  */
-export function getFormSequence(programSteps = []) {
-  return [INTERVIEW_STEP, HISTORY_STEP, ASSESSMENT_STEP, ...programSteps.map((step) => step.key)];
+export function getFormSequence(programSteps = [], { includeHistory = true } = {}) {
+  return [
+    INTERVIEW_STEP,
+    ...historySteps(includeHistory),
+    ASSESSMENT_STEP,
+    ...programSteps.map((step) => step.key),
+  ];
 }
 
 /** Every screen in order, used to rank validation errors. */
-export function getStepOrder(programSteps = [], monitoringDetailKeys = []) {
+export function getStepOrder(programSteps = [], monitoringDetailKeys = [], { includeHistory = true } = {}) {
   return [
     INTERVIEW_STEP,
-    HISTORY_STEP,
+    ...historySteps(includeHistory),
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
     NEXT_STEP,
@@ -270,13 +288,20 @@ const NEXT_CARE_PHASE = "next";
  *
  * Monitoring Details is saved as the next phase, so it resumes on
  * Medication, Treatment & Next Steps.
+ *
+ * Without the History step (BHC), a draft saved on Patient History reopens on
+ * Patient Interview, where its visit questions now live.
  */
-export function resolveRestoredPosition(payload = {}) {
+export function resolveRestoredPosition(payload = {}, { includeHistory = true } = {}) {
   const phase = payload?.wizardPhase;
   const resumesOnNextCare = phase === NEXT_CARE_PHASE;
   const raw = typeof payload?.formStep === "string" ? payload.formStep : "";
   const stored =
-    raw === LEGACY_VITALS_STEP ? INTERVIEW_STEP : raw === LEGACY_TREATMENT_STEP ? ASSESSMENT_STEP : raw;
+    raw === LEGACY_VITALS_STEP || (raw === HISTORY_STEP && includeHistory === false)
+      ? INTERVIEW_STEP
+      : raw === LEGACY_TREATMENT_STEP
+        ? ASSESSMENT_STEP
+        : raw;
   const usable = phase !== LEGACY_CURRENT_VISIT_PHASE && stored;
 
   return {
@@ -301,15 +326,17 @@ export function resolveFormStep(current, formSequence, programSteps = []) {
  * Which screen shows the field behind a validation error. Null means the error
  * is not tied to a specific screen (the caller decides what to do with it).
  */
-export function getErrorOwnerStepKey(errorKey) {
+export function getErrorOwnerStepKey(errorKey, { includeHistory = true } = {}) {
   const key = String(errorKey || "");
 
   if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
     return INTERVIEW_STEP;
   }
   // Patient History: the staged background update and the per-visit informant.
+  // Without that step (BHC) they are shown on Patient Interview: the visit
+  // questions and an old draft's staged background recovery both live there.
   if (key.startsWith("background_update") || key.startsWith("informant") || key.startsWith("similar_illness")) {
-    return HISTORY_STEP;
+    return includeHistory === false ? INTERVIEW_STEP : HISTORY_STEP;
   }
   // Vital Signs are a subsection of Physical Examination.
   if (["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) || key === "vital_signs.fbs") {
@@ -360,18 +387,18 @@ export function remapServerErrorKeys(errors, entries = []) {
 }
 
 /** The subset of errors whose field lives on the given screen. */
-export function pickErrorsForStep(errors, stepKey) {
+export function pickErrorsForStep(errors, stepKey, options) {
   return Object.fromEntries(
     Object.entries(errors || {}).filter(
-      ([key]) => getErrorOwnerStepKey(key) === stepKey,
+      ([key]) => getErrorOwnerStepKey(key, options) === stepKey,
     ),
   );
 }
 
 /** The earliest screen in workflow order that owns any of the errors. */
-export function findFirstErrorStepKey(errors, stepOrder) {
+export function findFirstErrorStepKey(errors, stepOrder, options) {
   const owners = new Set(
-    Object.keys(errors || {}).map(getErrorOwnerStepKey).filter(Boolean),
+    Object.keys(errors || {}).map((key) => getErrorOwnerStepKey(key, options)).filter(Boolean),
   );
   return stepOrder.find((key) => owners.has(key)) || "";
 }

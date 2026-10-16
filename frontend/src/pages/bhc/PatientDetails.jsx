@@ -12,6 +12,7 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
+import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import CarePath from "../../components/features/patients/profile/CarePath";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
@@ -21,10 +22,7 @@ import AnatomyFindingsPanel from "../../components/features/patients/profile/Ana
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
-import {
-  FollowUpsByStatus,
-  ReferralsSection,
-} from "../../components/features/patients/profile/FollowUpsAndReferrals";
+import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
 import { updatePatient } from "../../services/patientService";
@@ -45,7 +43,8 @@ import {
   validatePatientForm,
 } from "../../utils/patientProfile";
 import { errorStateVariant } from "../../utils/errorStateVariant";
-import { PatientRegistrationPage } from "./AddPatient";
+import { canUpdateBackground } from "../../utils/backgroundEditing";
+import { registrationErrors } from "../../utils/householdData";
 
 // The profile fills the whole content area inside an even 12-16px margin.
 const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
@@ -63,46 +62,49 @@ function ProfileShell({ children }) {
  * so it sits directly on the canvas above a thin rule, with a brand-red underline
  * on the active tab and a quiet count pill beside each label.
  */
-function ProfileTabs({ tabs, activeTab, onSelect }) {
+function ProfileTabs({ tabs, activeTab, onSelect, aside }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Patient profile"
-      className="mb-3 mt-1 shrink-0 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-neutral-200)]"
-    >
-      <nav className="flex gap-1">
-        {tabs.map((tab) => {
-          const active = tab.key === activeTab;
-          const hasCount = tab.count !== undefined && tab.count !== null;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              id={`profile-tab-${tab.key}`}
-              aria-selected={active}
-              aria-controls={`profile-panel-${tab.key}`}
-              onClick={() => onSelect(tab.key)}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
-                active
-                  ? "border-brand-600 text-neutral-900"
-                  : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
-              }`}
-            >
-              {tab.label}
-              {hasCount && (
-                <span
-                  className={`rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums ${
-                    active ? "bg-brand-50 text-brand-700" : "bg-neutral-100 text-neutral-500"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+    <div className="mb-3 mt-1 flex shrink-0 items-center gap-2 shadow-[inset_0_-1px_0_var(--color-neutral-200)]">
+      <div
+        role="tablist"
+        aria-label="Patient profile"
+        className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+      >
+        <nav className="flex gap-1">
+          {tabs.map((tab) => {
+            const active = tab.key === activeTab;
+            const hasCount = tab.count !== undefined && tab.count !== null;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                id={`profile-tab-${tab.key}`}
+                aria-selected={active}
+                aria-controls={`profile-panel-${tab.key}`}
+                onClick={() => onSelect(tab.key)}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
+                  active
+                    ? "border-brand-600 text-neutral-900"
+                    : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
+                }`}
+              >
+                {tab.label}
+                {hasCount && (
+                  <span
+                    className={`rounded-full px-1.5 py-px text-[11px] font-medium tabular-nums ${
+                      active ? "bg-brand-50 text-brand-700" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+      {aside ? <div className="shrink-0 pb-1.5">{aside}</div> : null}
     </div>
   );
 }
@@ -114,22 +116,19 @@ function ProfileTabs({ tabs, activeTab, onSelect }) {
  * with its conditions / allergies / medications dropdowns in the middle; the
  * background, referrals, follow-ups, programs and visits cards on the right).
  * Every other tab scrolls inside its own panel, so the header and tabs stay put.
- * Past Medical / Family / Personal & Social History have their own read-only
- * Patient Background tab; they are updated only inside a consultation.
+ * Past Medical / Family / Personal & Social History have their own Patient
+ * Background tab: read-only, or editable section by section for a BHC user
+ * granted clinical.background.update. Overview has a read-only Patient History
+ * reference whose Edit in Patient Background opens that tab.
  */
 export default function PatientDetails() {
-  const { patientId } = useParams();
-  // Mock records stay entirely in the Phase 1 registration editor. Never pass
-  // their IDs into live profile queries, clinical actions or updatePatient.
-  if (patientId?.startsWith("mock-patient-")) {
-    return <PatientRegistrationPage key={patientId} patientId={patientId} />;
-  }
   return <LivePatientDetails />;
 }
 
 function LivePatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const canRegister = (getCurrentUser()?.permissions || []).includes("patients.register");
+  const canEditBackground = canUpdateBackground(getCurrentUser());
   const { patientId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -258,14 +257,13 @@ function LivePatientDetails() {
     { key: "patient-info", label: "Patient Information" },
     ...(canViewHistory
       ? [
-          // Read-only; the background is updated in a consultation.
+          // Editable only with clinical.background.update (see PatientBackgroundTab).
           { key: "background", label: "Patient Background" },
           {
             key: "programs",
             label: "Care & Programs",
             count: careTracking.filter((entry) => entry.records.length > 0).length || null,
           },
-          { key: "follow-ups", label: "Follow-ups", count: activeFollowUps.length || null },
           { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
           { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
         ]
@@ -393,8 +391,10 @@ function LivePatientDetails() {
         queryClient.invalidateQueries({ queryKey: queryKeys.patientDetails("bhc", patientId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
       ]);
-    } catch {
-      // The section stays open so the user can retry.
+    } catch (error) {
+      // The section stays open so the user can retry; field errors (such as
+      // Education) show on their inputs.
+      if (error?.status === 422 && error?.errors) setFieldErrors(registrationErrors(error));
       setPendingSaveSection(null);
     } finally {
       setSaving(false);
@@ -456,7 +456,20 @@ function LivePatientDetails() {
         .includes(search);
     });
 
-  const tabStrip = <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />;
+  const historyReference =
+    activeTab === "overview" && canViewHistory ? (
+      <PatientHistoryReference
+        patient={patient}
+        background={patient.medicalBackground}
+        conditions={conditions}
+        onEditBackground={canEditBackground ? () => setActiveTab("background") : undefined}
+      />
+    ) : null;
+  // PatientBackgroundTab is keyed by patient below, so an open section edit is
+  // never carried over to another patient's profile.
+  const tabStrip = (
+    <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} aside={historyReference} />
+  );
   const detailsState = buildPatientRecordDetailsState(location);
   const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`, { state: detailsState });
 
@@ -514,7 +527,6 @@ function LivePatientDetails() {
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                      onViewFollowUps={() => setActiveTab("follow-ups")}
                       onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
                       onViewRecords={() => setActiveTab("records")}
                       onViewRecord={viewRecord}
@@ -549,7 +561,10 @@ function LivePatientDetails() {
                     patient={patient}
                     form={form}
                     editingSection={editingSection}
-                    onEdit={canRegister ? handleEditSection : undefined}
+                    onEdit={canRegister ? (section) => {
+                      if (patient.householdId) navigate(`/bhc/patients/${patientId}/edit`);
+                      else handleEditSection(section);
+                    } : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}
@@ -564,11 +579,13 @@ function LivePatientDetails() {
 
                 {activeTab === "background" && canViewHistory && (
                   <PatientBackgroundTab
+                    key={patientId}
                     patientId={patientId}
                     patient={patient}
                     background={patient.medicalBackground}
                     conditions={conditions}
                     basePath="/bhc"
+                    canEdit={canEditBackground}
                   />
                 )}
 
@@ -583,13 +600,6 @@ function LivePatientDetails() {
                     basePath="/bhc"
                     onViewProgramRecords={handleViewProgramRecords}
                     onViewRecord={viewRecord}
-                  />
-                )}
-
-                {activeTab === "follow-ups" && canViewHistory && (
-                  <FollowUpsByStatus
-                    followUps={patientFollowUps}
-                    onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
                   />
                 )}
 

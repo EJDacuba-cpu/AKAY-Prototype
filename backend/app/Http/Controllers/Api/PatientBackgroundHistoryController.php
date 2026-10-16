@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\HealthRecord;
 use App\Models\Patient;
+use App\Models\PatientBackgroundChange;
 use App\Models\User;
 use App\Services\FacilityAccessService;
 use App\Services\PatientBackground;
@@ -37,13 +38,18 @@ class PatientBackgroundHistoryController extends Controller
                 'dateRecorded' => $record->date_recorded?->toDateString(),
             ]));
 
+        $standalone = PatientBackgroundChange::query()->where('patient_id', $patient->id)
+            ->when(! $request->user()->isAdmin(), fn ($query) => $query->where('barangay_health_center_id', $request->user()->isBhc() ? $request->user()->barangay_health_center_id : -1))
+            ->get()->map(fn (PatientBackgroundChange $change) => $change->historyEntry());
+        $entries = $entries->concat($standalone);
+
         $names = User::query()
             ->whereIn('id', $entries->pluck('changedBy')->filter()->unique()->values())
             ->pluck('name', 'id');
 
         return response()->json(['data' => $entries
             ->map(fn (array $entry) => [...$entry, 'changedByName' => $names[$entry['changedBy'] ?? 0] ?? null])
-            ->sortByDesc(fn (array $entry) => [$entry['changedAt'] ?? '', $entry['healthRecordId']])
+            ->sortByDesc(fn (array $entry) => [$entry['changedAt'] ?? '', $entry['healthRecordId'] ?? $entry['auditId'] ?? 0])
             ->values()]);
     }
 }

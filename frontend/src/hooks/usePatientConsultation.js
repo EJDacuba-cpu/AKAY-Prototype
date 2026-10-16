@@ -14,7 +14,7 @@ import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
 import { DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
-import { hasStartChoices, startRoute } from "../utils/startConsultation";
+import { hasStartChoices, reachedPath, startRoute } from "../utils/startConsultation";
 
 /**
  * The consultation state of one patient: whether the signed-in user has an
@@ -55,7 +55,10 @@ export default function usePatientConsultation(patientId) {
     try {
       await Promise.all([queryClient.fetchQuery(getConsultationPatientQuery(patientId)), prepare?.()]);
       // Stays "opening" until the profile unmounts, so the button never flashes back.
-      navigate(path);
+      await navigate(path);
+      // A leave guard (an unsaved Patient Background edit) can stop the
+      // navigation; then the user is still here and the button must recover.
+      if (typeof window !== "undefined" && !reachedPath(window.location, path)) setOpening(false);
     } catch (error) {
       setOpening(false);
       throw error;

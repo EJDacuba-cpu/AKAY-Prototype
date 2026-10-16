@@ -5,8 +5,26 @@ import { overlayBackgroundUpdate } from "../../../../utils/backgroundUpdate";
 import { hasRecordedData } from "../../../../utils/patientHistory";
 import HistorySectionSummary from "./HistorySectionSummary";
 
-/** A view of the shared history, including edits staged in this consultation. */
-export default function PrenatalHistorySummary({ background, update, locked = false, canReview = true, editLink, onReview }) {
+/**
+ * A view of the shared history, including edits staged in this consultation.
+ *
+ * `backgroundEditing` (opt-in, BHC): the history is edited in Patient
+ * Background, not in a consultation step. The button reads "Edit in Patient
+ * Background" and calls `onEditBackground`; without that callback (no editing
+ * duty) the summary is view-only. `editBusy` disables it while the caller
+ * saves the draft before leaving. Other callers keep Review / Update History.
+ */
+export default function PrenatalHistorySummary({
+  background,
+  update,
+  locked = false,
+  canReview = true,
+  editLink,
+  onReview,
+  backgroundEditing = false,
+  onEditBackground,
+  editBusy = false,
+}) {
   if (locked) {
     return (
       <RestrictedArea
@@ -19,6 +37,14 @@ export default function PrenatalHistorySummary({ background, update, locked = fa
 
   const current = overlayBackgroundUpdate(background, update);
   const pending = Boolean(update?.sections?.obstetric);
+  const action = backgroundEditing
+    ? onEditBackground && { label: editBusy ? "Saving..." : "Edit in Patient Background", onClick: onEditBackground }
+    : { label: "Review / Update History", onClick: onReview };
+  const emptyHint = canReview && action
+    ? backgroundEditing
+      ? " Use Edit in Patient Background to record it."
+      : " Use Review / Update History to record it once."
+    : "";
 
   return (
     <section aria-label="Shared obstetric and menstrual history" className="space-y-3">
@@ -28,12 +54,16 @@ export default function PrenatalHistorySummary({ background, update, locked = fa
           <p className="mt-1 text-xs text-neutral-600">
             {pending
               ? "Includes changes from this visit. They save when the consultation is finalized."
-              : "From Patient History. The patient profile uses this same history."}
+              : backgroundEditing
+                ? "From Patient Background. The patient profile uses this same history."
+                : "From Patient History. The patient profile uses this same history."}
           </p>
         </div>
-        <Button type="button" variant="ghost" size="sm" disabled={!canReview} onClick={onReview}>
-          Review / Update History
-        </Button>
+        {action && (
+          <Button type="button" variant="ghost" size="sm" disabled={!canReview || editBusy} onClick={action.onClick}>
+            {action.label}
+          </Button>
+        )}
       </div>
       {!canReview && (
         <p className="text-sm text-neutral-600">
@@ -49,7 +79,7 @@ export default function PrenatalHistorySummary({ background, update, locked = fa
         <HistorySectionSummary section="obstetric" value={current} />
       ) : (
         <p className="text-sm text-neutral-600">
-          No obstetric or menstrual history recorded yet.{canReview && " Use Review / Update History to record it once."}
+          No obstetric or menstrual history recorded yet.{emptyHint}
         </p>
       )}
     </section>

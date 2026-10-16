@@ -5,7 +5,7 @@ import {
   HEAD_RELATIONSHIP, RELATIONSHIPS, addressText, headDeparture,
   householdForConnection, patientName, relationshipForConnection,
   validateConnection, validateHeadReplacement,
-} from "../../../services/mockFamilyRegistry";
+} from "../../../services/familyRegistry";
 
 export const householdSelectClass = "h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus-visible:border-red-700 focus-visible:ring-2 focus-visible:ring-red-700/15 aria-invalid:border-red-700";
 

@@ -1,9 +1,13 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useBlocker } from "react-router";
 import { ArrowRight } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
-import { getPatientBackgroundHistory } from "../../../services/patientService";
+import NoticeModal from "../../common/modals/NoticeModal";
+import usePatientConsultation from "../../../hooks/usePatientConsultation";
+import { consultationPatientQueryKey } from "../../../services/consultationPatientQuery";
+import { getPatientBackgroundHistory, savePatientBackground } from "../../../services/patientService";
 import { formatLongDate } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
 import { sectionStatus, sectionVisibility } from "../../../utils/patientHistory";
@@ -13,9 +17,23 @@ import {
   BACKGROUND_SECTION_LABELS,
   backgroundChangeRows,
 } from "../../../utils/backgroundUpdate";
+import {
+  BHC_HIDDEN_SOCIAL_FIELDS,
+  backgroundSaveErrorLines,
+  backgroundSavedFeedback,
+  consultationBannerVisible,
+  isSectionEditDirty,
+  resolveSectionConflict,
+  sectionConflict,
+  sectionSavePayload,
+  shouldBlockBackgroundLeave,
+  startSectionEdit,
+  updateSectionEdit,
+} from "../../../utils/backgroundEditing";
 import { LegacyPendingConditions, REPORTED_LABEL } from "./MedicalConditionsGroups";
+import PatientBackgroundEditor from "./PatientBackgroundEditor";
 import { RhuConditions } from "./history/PastMedicalSection";
-import { FieldList, ProfileSection } from "./profile/ProfileSection";
+import { FieldList, ProfileSection, SectionEditActions, TextAction } from "./profile/ProfileSection";
 
 /**
  * "Last reviewed {date} · {facility}", "Recorded {date} (not yet reviewed)"
@@ -54,11 +72,16 @@ function RhuConditionsBlock({ conditions }) {
   );
 }
 
-/** One dated entry of a section's Changes log; expands to the fields it changed. */
+/**
+ * One dated entry of a section's Changes log; expands to the fields it changed.
+ * Consultation entries link to their health record; standalone Patient
+ * Background saves (source "patient_background") have no record to open.
+ */
 function ChangeEntry({ entry, section, basePath }) {
   const [open, setOpen] = useState(false);
   const rows = backgroundChangeRows(entry.before, entry.after, section);
   const fromDiagnosis = entry.source === "diagnosis";
+  const fromBackground = entry.source === "patient_background";
 
   return (
     <li className="py-2">
@@ -82,7 +105,7 @@ function ChangeEntry({ entry, section, basePath }) {
               {open ? "Hide changes" : "Show changes"}
             </button>
           )}
-          {entry.healthRecordId && (
+          {entry.healthRecordId ? (
             <Link
               to={`${basePath}/health-records/${entry.healthRecordId}`}
               className="inline-flex items-center gap-1 font-medium text-ink-600 hover:text-ink-900"
@@ -90,7 +113,9 @@ function ChangeEntry({ entry, section, basePath }) {
               From consultation
               <ArrowRight size={13} aria-hidden="true" />
             </Link>
-          )}
+          ) : fromBackground ? (
+            <span className="font-medium text-neutral-500">Patient Background</span>
+          ) : null}
         </span>
       </div>
       {open && (
@@ -122,7 +147,12 @@ function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePat
       ) : entries.length ? (
         <ul className="divide-y divide-neutral-100">
           {entries.map((entry, index) => (
-            <ChangeEntry key={`${entry.healthRecordId}-${entry.revision}-${index}`} entry={entry} section={section} basePath={basePath} />
+            <ChangeEntry
+              key={`${entry.healthRecordId ?? `audit-${entry.auditId ?? ""}`}-${entry.revision}-${index}`}
+              entry={entry}
+              section={section}
+              basePath={basePath}
+            />
           ))}
         </ul>
       ) : (
@@ -134,50 +164,316 @@ function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePat
   );
 }
 
-/**
- * The Patient Background tab: Past Medical, Family, Personal & Social and
- * (for female patients) Obstetric & Menstrual History, read-only, each with
- * its dated Changes log. Reviewing and updating happens inside a consultation
- * (PatientHistoryPanel), never here.
- */
-export default function PatientBackgroundTab({ patientId, patient, background, conditions, basePath = "/bhc" }) {
+/** The saved values of a section as label/value rows; `hideMoved` drops Education / Past Occupations. */
+function SectionFields({ background, section, hideMoved = false }) {
+  const fields = BACKGROUND_SECTION_FIELDS[section].filter(
+    (field) => !(hideMoved && section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(field.key)),
+  );
+  return (
+    <FieldList
+      rows={fields.map((field) => [
+        field.key === "currentDiseases" ? REPORTED_LABEL : field.label,
+        field.read(background),
+      ])}
+    />
+  );
+}
+
+function useBackgroundHistory(patientId) {
   const history = useQuery({
     queryKey: queryKeys.patientBackgroundHistory(patientId),
     queryFn: () => getPatientBackgroundHistory(patientId),
     enabled: Boolean(patientId),
   });
-  const entries = Array.isArray(history.data) ? history.data : [];
+  return { ...history, entries: Array.isArray(history.data) ? history.data : [] };
+}
+
+function visibleSections(patient) {
   const visibility = sectionVisibility(patient, new Date());
-  const sections = BACKGROUND_SECTION_KEYS.filter(
-    (section) => section !== "obstetric" || visibility.obstetric !== "hidden",
-  );
+  return BACKGROUND_SECTION_KEYS.filter((section) => section !== "obstetric" || visibility.obstetric !== "hidden");
+}
+
+/**
+ * The Patient Background tab: Past Medical, Family, Personal & Social and
+ * (for female patients) Obstetric & Menstrual History, each with its dated
+ * Changes log. Read-only unless `canEdit` (a BHC user granted
+ * clinical.background.update, see utils/backgroundEditing canUpdateBackground):
+ * then each section has its own Edit / Save / Cancel. Both views show the
+ * Consultation in progress banner while the patient has an open draft, and
+ * neither shows Education / Past Occupations rows (Patient Information owns
+ * Education); their old values stay readable in the Changes log.
+ */
+export default function PatientBackgroundTab({ canEdit = false, ...props }) {
+  return canEdit ? <EditableBackground {...props} /> : <ReadOnlyBackground {...props} />;
+}
+
+function ReadOnlyBackground({ patientId, patient, background, conditions, basePath = "/bhc" }) {
+  const history = useBackgroundHistory(patientId);
+  const consultation = usePatientConsultation(patientId);
 
   return (
     <div>
+      {consultationBannerVisible({ draft: consultation.draft }) && (
+        <ConsultationBanner consultation={consultation} />
+      )}
       <p className="mb-3 text-sm text-neutral-500">
-        Background is reviewed and updated during a consultation.
+        View only. Patient Background is updated here by staff allowed to edit it.
       </p>
 
-      {sections.map((section) => {
-        const lastUpdated = background?.updatedAt?.[section] || "";
+      {visibleSections(patient).map((section) => (
+        <ProfileSection
+          key={section}
+          id={`background-${section}`}
+          title={BACKGROUND_SECTION_LABELS[section]}
+          meta={sectionMeta(background, section)}
+        >
+          {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
+          {/* Education is Patient Information and Past Occupations is history only; the Changes log still shows both. */}
+          <SectionFields background={background} section={section} hideMoved />
+          <ChangesLog
+            section={section}
+            entries={history.entries.filter((entry) => entry.section === section)}
+            lastUpdated={background?.updatedAt?.[section] || ""}
+            isLoading={history.isLoading}
+            isError={history.isError}
+            basePath={basePath}
+          />
+        </ProfileSection>
+      ))}
+    </div>
+  );
+}
+
+/** Shown with an edited section after a 409: latest saved vs. the typed values, and an explicit choice. */
+function SectionConflict({ conflict, edit, onResolve }) {
+  const rows = backgroundChangeRows(conflict.current, edit.value, edit.section).filter(
+    (row) => !(edit.section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(row.key)),
+  );
+  return (
+    <div role="alert" className="mb-4 rounded-lg border border-warning-100 border-l-4 border-l-warning-500 bg-warning-50 p-3">
+      <p className="text-[13px] font-semibold text-neutral-900">This section was changed by another save</p>
+      <p className="mt-0.5 text-[12.5px] text-neutral-700">
+        Your changes are kept below and were not saved. Reload the latest version, or keep your changes and save again.
+      </p>
+      {rows.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-[12px]">
+            <thead>
+              <tr className="text-[11px] text-neutral-500">
+                <th className="py-1 pr-3 font-medium">Field</th>
+                <th className="py-1 pr-3 font-medium">
+                  Latest saved{conflict.updatedAt ? ` (${formatLongDate(conflict.updatedAt, "")})` : ""}
+                </th>
+                <th className="py-1 font-medium">Your changes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-warning-100 align-top">
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td className="py-1 pr-3 text-neutral-500">{row.label}</td>
+                  <td className="py-1 pr-3 text-neutral-900">{row.before || "Not recorded"}</td>
+                  <td className="py-1 text-neutral-900">{row.after || "Not recorded"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onResolve("latest")}
+          className="inline-flex h-8 items-center rounded-lg border border-neutral-300 bg-white px-3 text-[13px] font-medium text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
+        >
+          Reload latest
+        </button>
+        <button
+          type="button"
+          onClick={() => onResolve("mine")}
+          className="inline-flex h-8 items-center rounded-lg px-3 text-[13px] font-medium text-ink-700 transition hover:bg-ink-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
+        >
+          Keep my changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConsultationBanner({ consultation }) {
+  return (
+    <div
+      role="status"
+      className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-card border border-neutral-200/80 border-l-4 border-l-brand-600 bg-white px-4 py-2.5 shadow-card"
+    >
+      <p className="text-sm text-neutral-700">
+        <span className="font-semibold text-neutral-900">Consultation in progress</span>
+        <span className="text-neutral-500"> · This patient&apos;s consultation is saved and still open.</span>
+      </p>
+      <button
+        type="button"
+        onClick={() => consultation.open()}
+        disabled={consultation.opening}
+        className="inline-flex h-8 items-center gap-1 rounded-lg bg-ink-700 px-3 text-[13px] font-medium text-white shadow-xs transition hover:bg-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-1 disabled:bg-ink-300"
+      >
+        {consultation.opening ? "Opening..." : "Continue Consultation"}
+        <ArrowRight size={13} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function EditableBackground({ patientId, patient, background, conditions, basePath = "/bhc" }) {
+  const queryClient = useQueryClient();
+  const history = useBackgroundHistory(patientId);
+  const consultation = usePatientConsultation(patientId);
+  // One section at a time: { section, baseRevision, initial, value }, held
+  // apart from the patient query so a refetch never resets typed values.
+  const [edit, setEdit] = useState(null);
+  const [errors, setErrors] = useState([]);
+  const [conflict, setConflict] = useState(null);
+  const [savedNotice, setSavedNotice] = useState(null);
+  const dirty = isSectionEditDirty(edit);
+  const save = useMutation({ mutationFn: (payload) => savePatientBackground(patientId, payload) });
+
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    shouldBlockBackgroundLeave({ dirty, currentLocation, nextLocation }),
+  );
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  function startEdit(section) {
+    if (edit) return;
+    setEdit(startSectionEdit(background, section));
+    setErrors([]);
+    setConflict(null);
+  }
+
+  function cancelEdit() {
+    if (save.isPending) return;
+    setEdit(null);
+    setErrors([]);
+    setConflict(null);
+  }
+
+  function resolveConflict(choice) {
+    setEdit((current) => resolveSectionConflict(current, conflict, choice));
+    setConflict(null);
+  }
+
+  async function saveEdit() {
+    if (!edit || save.isPending) return;
+    if (conflict) {
+      setErrors(["Choose Reload latest or Keep my changes first."]);
+      return;
+    }
+    if (!isSectionEditDirty(edit)) {
+      cancelEdit();
+      return;
+    }
+    const { section } = edit;
+    setErrors([]);
+    try {
+      const saved = await save.mutateAsync(sectionSavePayload(edit));
+      // The PATCH answers with the same serialization as GET /patients/{id}.
+      queryClient.setQueryData(queryKeys.patientDetails("bhc", patientId), saved);
+      setEdit(null);
+      setConflict(null);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.patientBackgroundHistory(patientId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
+        queryClient.invalidateQueries({ queryKey: consultationPatientQueryKey(patientId) }),
+      ]);
+      const feedback = backgroundSavedFeedback({ draft: consultation.draft, section });
+      if (feedback.kind === "modal") setSavedNotice(feedback);
+      else toast.success(feedback.message);
+    } catch (error) {
+      const found = sectionConflict(error, section);
+      if (found) {
+        // Keep the typed values; refresh the saved view so it shows the latest.
+        setConflict(found);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.patientDetails("bhc", patientId) });
+        return;
+      }
+      setErrors(backgroundSaveErrorLines(error));
+    }
+  }
+
+  const sectionActions = (section) =>
+    edit?.section === section ? (
+      <SectionEditActions saving={save.isPending} onCancel={cancelEdit} onSave={saveEdit} />
+    ) : (
+      <TextAction
+        onClick={() => startEdit(section)}
+        disabled={Boolean(edit)}
+        title={edit ? "Save or cancel the section you are editing first" : undefined}
+        aria-label={`Edit ${BACKGROUND_SECTION_LABELS[section]}`}
+      >
+        Edit
+      </TextAction>
+    );
+
+  const closeSavedNotice = () => setSavedNotice(null);
+  const leavingLabel = edit ? BACKGROUND_SECTION_LABELS[edit.section] : "This section";
+
+  return (
+    <div>
+      {consultationBannerVisible({ draft: consultation.draft }) && (
+        <ConsultationBanner consultation={consultation} />
+      )}
+      <p className="mb-3 text-sm text-neutral-500">
+        Edit one section at a time. Each save is added to that section&apos;s Changes log.
+      </p>
+
+      {visibleSections(patient).map((section) => {
+        const editing = edit?.section === section;
         return (
           <ProfileSection
             key={section}
             id={`background-${section}`}
             title={BACKGROUND_SECTION_LABELS[section]}
-            meta={sectionMeta(background, section)}
+            meta={editing ? "Editing" : sectionMeta(background, section)}
+            actions={sectionActions(section)}
+            className={editing ? "border-brand-200 ring-1 ring-brand-100" : undefined}
           >
-            {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
-            <FieldList
-              rows={BACKGROUND_SECTION_FIELDS[section].map((field) => [
-                field.key === "currentDiseases" ? REPORTED_LABEL : field.label,
-                field.read(background),
-              ])}
-            />
+            {editing ? (
+              <div>
+                {errors.length > 0 && (
+                  <div role="alert" className="mb-4 rounded-lg border border-alert-200 border-l-4 border-l-alert-600 bg-alert-50 p-3">
+                    <p className="text-[13px] font-semibold text-alert-700">This section was not saved</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-alert-700">
+                      {errors.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {conflict && <SectionConflict conflict={conflict} edit={edit} onResolve={resolveConflict} />}
+                <PatientBackgroundEditor
+                  section={section}
+                  value={edit.value}
+                  onChange={(value) => setEdit((current) => updateSectionEdit(current, value))}
+                  patient={patient}
+                  conditions={conditions}
+                />
+              </div>
+            ) : (
+              <>
+                {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
+                <SectionFields background={background} section={section} hideMoved />
+              </>
+            )}
             <ChangesLog
               section={section}
-              entries={entries.filter((entry) => entry.section === section)}
-              lastUpdated={lastUpdated}
+              entries={history.entries.filter((entry) => entry.section === section)}
+              lastUpdated={background?.updatedAt?.[section] || ""}
               isLoading={history.isLoading}
               isError={history.isError}
               basePath={basePath}
@@ -185,6 +481,28 @@ export default function PatientBackgroundTab({ patientId, patient, background, c
           </ProfileSection>
         );
       })}
+
+      <NoticeModal
+        open={Boolean(savedNotice)}
+        title={savedNotice?.title}
+        message={savedNotice?.message}
+        onClose={closeSavedNotice}
+        actions={[
+          { label: "Stay on Background", variant: "secondary", onClick: closeSavedNotice },
+          { label: "Continue Consultation", variant: "primary", onClick: () => consultation.open() },
+        ]}
+      />
+      <NoticeModal
+        open={blocker.state === "blocked"}
+        title="Leave without saving?"
+        message={`${leavingLabel} has unsaved changes. If you leave now, they will be lost.`}
+        onClose={() => {}}
+        dismissOnBackdrop={false}
+        actions={[
+          { label: "Keep Editing", variant: "secondary", onClick: () => blocker.reset?.() },
+          { label: "Discard Changes", variant: "destructive", onClick: () => blocker.proceed?.() },
+        ]}
+      />
     </div>
   );
 }

@@ -6,13 +6,13 @@ import HouseholdConnectionReview, { RelationshipField } from "./HouseholdConnect
 import {
   HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
   patientName, relationshipForConnection, searchHouseholds,
-} from "../../../services/mockFamilyRegistry";
+} from "../../../services/familyRegistry";
 
 const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]";
 
 export default function FamilyRegistryField({
   registry, patient, connection, savedConnection, headReplacement,
-  onChange, onPendingChange, error, relationshipError,
+  onChange, onPendingChange, error, relationshipError, live = false, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
 }) {
   const id = useId();
   const inputRef = useRef(null);
@@ -22,7 +22,7 @@ export default function FamilyRegistryField({
   const [submitted, setSubmitted] = useState("");
   const [review, setReview] = useState(null);
   const household = householdForConnection(registry, connection);
-  const results = searchHouseholds(registry, submitted);
+  const results = live ? searchResults : searchHouseholds(registry, submitted);
   const head = connection?.kind === "new" && connection.headPatientId === "self"
     ? patient
     : registry.patients.find((item) => item.id === (connection?.kind === "new" ? connection.headPatientId : household?.headPatientId));
@@ -37,6 +37,7 @@ export default function FamilyRegistryField({
 
   function runSearch() {
     setSubmitted(query);
+    onSearch?.(query);
   }
 
   function requestConnection(candidate) {
@@ -55,7 +56,7 @@ export default function FamilyRegistryField({
   function createHousehold() {
     onChange({
       kind: "new", headPatientId: "self", relationship: HEAD_RELATIONSHIP,
-      household: { serialNumber: nextSerialNumber(registry), address: {} },
+      household: { serialNumber: live ? "" : nextSerialNumber(registry), ...(live ? {serialMode:"auto"} : {}), address: {} },
     }, null);
     resetSearch();
     setSearching(false);
@@ -78,16 +79,20 @@ export default function FamilyRegistryField({
 
   return (
     <div className="min-w-0 space-y-3">
+      {refreshError && <div className="space-y-2 text-xs text-red-700"><p role="status">Saved household data could not refresh. Your draft is kept.</p><Button type="button" variant="outline" size="sm" onClick={onRefresh}>Retry refresh</Button></div>}
       <div>
         <label htmlFor={searching || !connection ? id : `${id}-serial`} className={labelClass}>Family Serial Number</label>
         {creatingHousehold && <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Input id={`${id}-serial`} aria-label="Family Serial Number" value={connection.household.serialNumber}
+            <Input id={`${id}-serial`} aria-label="Family Serial Number" value={live && connection.household.serialMode === "auto" ? "Assigned automatically on save" : connection.household.serialNumber}
+              readOnly={live && connection.household.serialMode === "auto"} maxLength={100}
+              aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined}
               onChange={(event) => onChange({ ...connection, household: { ...connection.household, serialNumber: event.target.value } }, null)}
               className="h-9 min-w-28 flex-1 shadow-none" />
+            {live && <Button type="button" variant="outline" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
             <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>
           </div>
-          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.</p>
+          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{live && connection.household.serialMode === "auto" ? " Format: FSN-YYYY-NNNN. The number is assigned by your BHC on save." : ""}</p>
         </div>}
         {household && !creatingHousehold && <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -121,7 +126,9 @@ export default function FamilyRegistryField({
             <Button type="button" variant="ghost" size="sm" className="border border-gray-300 text-gray-900" onClick={runSearch}>Search</Button>
           </div>
           <p className="text-[10px] leading-relaxed text-[#64748B]">Search by family serial number, household head, or address.</p>
-          {hasQuery && results.length > 0 && <fieldset id={`${id}-results`} className="max-h-60 overflow-y-auto divide-y divide-gray-200 border-y border-gray-200">
+          {searchLoading && <p role="status" className="text-xs text-gray-600">Searching households…</p>}
+          {searchError && <p role="alert" className="text-xs text-red-700">{searchError} Select Search to retry.</p>}
+          {hasQuery && !searchLoading && !searchError && results.length > 0 && <fieldset id={`${id}-results`} className="max-h-60 overflow-y-auto divide-y divide-gray-200 border-y border-gray-200">
             <legend className="sr-only">Matching households</legend>
             {results.map((item) => <button key={item.id} type="button" disabled={!item.headPatientId}
               className="block w-full px-2 py-3 text-left outline-none hover:bg-gray-50 focus-visible:bg-gray-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-700/30 disabled:cursor-not-allowed disabled:opacity-50"
@@ -130,7 +137,7 @@ export default function FamilyRegistryField({
               <span className="mt-1 block text-xs text-gray-600">{addressText(item.address)}</span>
             </button>)}
           </fieldset>}
-          {hasQuery && results.length === 0 ? <div id={`${id}-results`} className="flex flex-col items-center gap-3 border border-gray-300 px-4 py-8 text-center">
+          {hasQuery && !searchLoading && !searchError && results.length === 0 ? <div id={`${id}-results`} className="flex flex-col items-center gap-3 border border-gray-300 px-4 py-8 text-center">
             <CircleX size={24} aria-hidden="true" className="text-gray-500" />
             <div>
               <p role="status" className="text-sm font-semibold text-gray-950">No household found</p>
@@ -142,7 +149,7 @@ export default function FamilyRegistryField({
           </div>}
         </div>}
       </div>
-      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      {error && <p id={`${id}-error`} role="alert" className="text-xs text-red-700">{error}</p>}
       {review && <HouseholdConnectionReview
         key={review.candidate?.householdId || "remove"}
         registry={registry} patient={patient} currentConnection={connection} savedConnection={savedConnection}

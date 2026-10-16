@@ -89,7 +89,7 @@ export default function AddUser() {
         const u = unwrapData(response);
         originalAccount.current = u;
         // Accounts saved before roles existed hold no role; Role & Access asks for one before saving.
-        const permissions = withRequirements([...backendPermissions(u.permissions ?? roleDefaults(roles, u.staff_role)), ...readFamilyAccess(u)]);
+        const permissions = withRequirements([...backendPermissions(u.permissions ?? roleDefaults(roles, u.staff_role), u.role), ...readFamilyAccess(u)]);
         setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
         setOriginalTier(u.role);
       }
@@ -215,23 +215,23 @@ export default function AddUser() {
     setBusy(true);
     const body = {
       name: form.name.trim(), email: form.email, contact_number: normalizeContactNumber(form.contact_number), role: form.role,
-      staff_role: admin ? null : form.staff_role, permissions: admin ? [] : backendPermissions(form.permissions), permissions_confirmed: true,
+      staff_role: admin ? null : form.staff_role, permissions: admin ? [] : backendPermissions(form.permissions, form.role), permissions_confirmed: true,
       barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
     };
     try {
-      // A Families-only permission change stays fully local. Existing account
-      // edits still use their original API flow, with mock keys stripped out.
+      // Only deferred RHU Families edits may stay local. BHC duties always save
+      // through the server, even when Families is the only access change.
       const original = originalAccount.current;
-      const onlyLocalChanges = id && original && Object.entries(body).every(([key, value]) => {
+      const onlyLocalChanges = form.role === TIERS.rhu && id && original && Object.entries(body).every(([key, value]) => {
         if (key === "permissions_confirmed") return true;
-        if (key === "permissions") return JSON.stringify([...value].sort()) === JSON.stringify([...backendPermissions(original.permissions)].sort());
+        if (key === "permissions") return JSON.stringify([...value].sort()) === JSON.stringify([...backendPermissions(original.permissions, original.role)].sort());
         if (key === "contact_number") return value === normalizeContactNumber(original[key]);
         return String(value ?? "") === String(original[key] ?? "");
       });
       const result = onlyLocalChanges ? { data: original } : await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
       const savedAccount = unwrapData(result);
       const savedId = id || savedAccount?.user?.id || savedAccount?.id;
-      if (savedId) saveFamilyAccess({ ...form, id: savedId }, admin ? [] : form.permissions);
+      if (savedId && form.role === TIERS.rhu) saveFamilyAccess({ ...form, id: savedId }, form.permissions);
       if (id) navigate("/admin/users");
       else setCreated({ inviteSent: result?.invite?.delivery !== "failed" });
     }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { formatLongDate } from "../../../../utils/formatters";
+import { BHC_HIDDEN_SOCIAL_FIELDS } from "../../../../utils/backgroundEditing";
 import {
   BACKGROUND_SECTION_LABELS,
   allConflictsResolved,
@@ -13,7 +14,7 @@ import {
  * section shows the latest saved version beside theirs; they choose per
  * section, apply, then confirm the save again.
  */
-export default function BackgroundConflictPanel({ conflicts, update, onApply }) {
+export default function BackgroundConflictPanel({ conflicts, update, onApply, hideMovedSocialFields = false }) {
   const [choices, setChoices] = useState({});
   const ready = allConflictsResolved(conflicts, choices);
 
@@ -26,7 +27,9 @@ export default function BackgroundConflictPanel({ conflicts, update, onApply }) 
 
       <div className="mt-3 space-y-3">
         {conflicts.map(({ section, current, updatedAt }) => {
-          const rows = backgroundChangeRows(current, update?.sections?.[section], section);
+          const rows = backgroundChangeRows(current, update?.sections?.[section], section).filter(
+            (row) => !hideMovedSocialFields || section !== "social" || !BHC_HIDDEN_SOCIAL_FIELDS.includes(row.key),
+          );
           return (
             <fieldset key={section} className="rounded-none border border-amber-200 bg-white p-3">
               <legend className="px-1 text-[12.5px] font-semibold text-gray-900">

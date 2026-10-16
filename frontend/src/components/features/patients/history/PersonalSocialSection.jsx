@@ -61,8 +61,20 @@ function fillEmptyEnvironment(target, source) {
  * Section IV. `value` is the social slice { personalSocial }. Occupation is
  * read-only from registration. Changing a status clears the fields that only
  * apply to another status, so nothing stale is saved.
+ *
+ * `showEducationAndOccupation={false}` leaves out the Education & Occupation
+ * block (BHC: Education and Occupation belong to Patient Information, Past
+ * Occupations is history only); the values in `value` are passed through
+ * untouched. The default keeps the block for the RHU record form.
  */
-export default function PersonalSocialSection({ value, onChange, patient, householdEnvironment, today = new Date() }) {
+export default function PersonalSocialSection({
+  value,
+  onChange,
+  patient,
+  householdEnvironment,
+  today = new Date(),
+  showEducationAndOccupation = true,
+}) {
   const social = value?.personalSocial || {};
   const education = social.education || {};
   const smoking = social.smoking || {};
@@ -104,17 +116,19 @@ export default function PersonalSocialSection({ value, onChange, patient, househ
 
   return (
     <div className="space-y-5">
-      <Block title="Education & Occupation">
-        <FieldGrid>
-          <SelectField label="Education level" value={education.level} options={EDUCATION_LEVELS} emptyLabel="Not recorded" onChange={(next) => set("education", { level: next })} />
-          <SelectField label="Completed" value={education.completed} options={["Level", "Graduate"]} emptyLabel="Not recorded" onChange={(next) => set("education", { completed: next })} />
-          <div>
-            <p className="text-xs font-medium text-gray-500">Occupation</p>
-            <p className="mt-1 py-2 text-[12.5px] text-gray-900">{formatDisplayValue(patient?.occupation, "Not recorded")}</p>
-          </div>
-          <TextField label="Past occupations" value={social.pastOccupations} onChange={(next) => onChange({ ...value, personalSocial: { ...social, pastOccupations: next } })} />
-        </FieldGrid>
-      </Block>
+      {showEducationAndOccupation && (
+        <Block title="Education & Occupation">
+          <FieldGrid>
+            <SelectField label="Education level" value={education.level} options={EDUCATION_LEVELS} emptyLabel="Not recorded" onChange={(next) => set("education", { level: next })} />
+            <SelectField label="Completed" value={education.completed} options={["Level", "Graduate"]} emptyLabel="Not recorded" onChange={(next) => set("education", { completed: next })} />
+            <div>
+              <p className="text-xs font-medium text-gray-500">Occupation</p>
+              <p className="mt-1 py-2 text-[12.5px] text-gray-900">{formatDisplayValue(patient?.occupation, "Not recorded")}</p>
+            </div>
+            <TextField label="Past occupations" value={social.pastOccupations} onChange={(next) => onChange({ ...value, personalSocial: { ...social, pastOccupations: next } })} />
+          </FieldGrid>
+        </Block>
+      )}
 
       <Block title="Smoking">
         <FieldGrid>

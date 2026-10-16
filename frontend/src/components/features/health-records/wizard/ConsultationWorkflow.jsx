@@ -25,6 +25,9 @@ export function ConsultationActionBar({
   // The first screen has no previous step; it returns to the launching patient
   // or follow-up context, so the caller names that destination.
   previousLabel = "Previous",
+  // Optional, beside Previous (the BHC Patient History reference), so it
+  // stays reachable on every step without scrolling.
+  leadingAction = null,
   secondaryAction = null,
   onContinue,
   continueLabel = "Next",
@@ -36,17 +39,20 @@ export function ConsultationActionBar({
     <div
       className={`ehr-consult__actionbar sticky bottom-[-12px] z-30 mt-5 -mb-3 border-t border-[#D1D5DB] bg-white pb-3 sm:bottom-[-16px] sm:-mb-4 sm:pb-4 lg:bottom-[-20px] lg:-mb-5 lg:pb-5 ${EDGE}`}
     >
-      <div className="flex h-14 items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onPrevious}
-          disabled={previousDisabled}
-          className="inline-flex items-center gap-1.5 rounded-none border border-[#D1D5DB] bg-white px-4 py-2 text-[13px] font-semibold leading-tight text-[#111827] transition-colors duration-150 hover:bg-[#F9FAFB] active:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:border-[#E5E7EB] disabled:text-[#9CA3AF] disabled:hover:bg-white"
-        >
-          {previousLabel}
-        </button>
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 py-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onPrevious}
+            disabled={previousDisabled}
+            className="inline-flex items-center gap-1.5 rounded-none border border-[#D1D5DB] bg-white px-4 py-2 text-[13px] font-semibold leading-tight text-[#111827] transition-colors duration-150 hover:bg-[#F9FAFB] active:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:border-[#E5E7EB] disabled:text-[#9CA3AF] disabled:hover:bg-white"
+          >
+            {previousLabel}
+          </button>
+          {leadingAction}
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {secondaryAction}
           <button
             type="button"

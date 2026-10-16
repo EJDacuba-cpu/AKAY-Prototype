@@ -21,10 +21,37 @@ function Row({ label, value }) {
 }
 
 /**
- * Section I. Identity rows are read-only (they come from registration); the
- * informant is the one per-visit input. `informant` may be null (no default).
+ * Who gave this history at this visit. `informant` may be null (no default).
  * Changing the relation or the name drops `patientId`, because the linked
- * patient no longer describes the person typed in.
+ * patient no longer describes the person typed in. Shared by Section I (RHU)
+ * and the BHC Patient Interview.
+ */
+export function InformantBlock({ informant, onInformantChange }) {
+  const current = informant || { relation: "", name: "", patientId: null };
+
+  function change(field, next) {
+    onInformantChange({ ...current, [field]: next, patientId: null });
+  }
+
+  return (
+    <Block title="Informant" note="Who gave this history at this visit.">
+      <FieldGrid>
+        <SelectField
+          label="Relation to patient"
+          value={current.relation}
+          options={INFORMANT_RELATIONS}
+          emptyLabel="Not recorded"
+          onChange={(next) => change("relation", next)}
+        />
+        <TextField label="Informant name" value={current.name} onChange={(next) => change("name", next)} />
+      </FieldGrid>
+    </Block>
+  );
+}
+
+/**
+ * Section I. Identity rows are read-only (they come from registration); the
+ * informant (InformantBlock) is the one per-visit input.
  */
 export default function GeneralDataSection({
   patient,
@@ -37,14 +64,9 @@ export default function GeneralDataSection({
   const age = calculateAgeInYears(birthdate, today);
   const sex = pick(patient, ["sex"]);
   const civilStatus = pick(patient, ["civilStatus", "civil_status"]);
-  const current = informant || { relation: "", name: "", patientId: null };
 
   const agePart = age === null ? "Age not recorded" : `${age} yrs`;
   const summary = [agePart, sex || "Sex not recorded", civilStatus || "Civil status not recorded"].join(" · ");
-
-  function change(field, next) {
-    onInformantChange({ ...current, [field]: next, patientId: null });
-  }
 
   return (
     <div className="space-y-4">
@@ -70,18 +92,7 @@ export default function GeneralDataSection({
         )}
       </Block>
 
-      <Block title="Informant" note="Who gave this history at this visit.">
-        <FieldGrid>
-          <SelectField
-            label="Relation to patient"
-            value={current.relation}
-            options={INFORMANT_RELATIONS}
-            emptyLabel="Not recorded"
-            onChange={(next) => change("relation", next)}
-          />
-          <TextField label="Informant name" value={current.name} onChange={(next) => change("name", next)} />
-        </FieldGrid>
-      </Block>
+      <InformantBlock informant={informant} onInformantChange={onInformantChange} />
     </div>
   );
 }

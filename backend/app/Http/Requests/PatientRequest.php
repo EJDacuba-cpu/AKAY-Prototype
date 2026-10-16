@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Controllers\Api\HouseholdController;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +17,8 @@ class PatientRequest extends FormRequest
     {
         $aliases = [
             'civilStatus' => 'civil_status',
+            'educationLevel' => 'education_level',
+            'educationCompleted' => 'education_completed',
             'philHealthStatus' => 'philhealth_status',
             'philHealthNumber' => 'philhealth_number',
             'spouseName' => 'spouse_name',
@@ -47,6 +50,20 @@ class PatientRequest extends FormRequest
         $required = $this->isMethod('post') ? 'required' : 'sometimes';
 
         return [
+            'household' => ['sometimes', 'required', 'array:kind,household_id,relationship,version,serial_mode,serial_number,address'],
+            'household.kind' => ['required_with:household', 'in:existing,new'],
+            'household.household_id' => ['required_if:household.kind,existing', 'integer'],
+            'household.relationship' => ['required_if:household.kind,existing', 'string', 'max:100'],
+            'household.version' => ['sometimes', 'integer', 'min:1'],
+            'household.serial_mode' => ['required_if:household.kind,new', 'in:auto,manual'],
+            'household.serial_number' => ['required_if:household.serial_mode,manual', 'nullable', 'string', 'max:100'],
+            ...HouseholdController::addressRules('household.'),
+            'head_replacement' => ['sometimes', 'array:household_id,head_patient_id,relationships,version'],
+            'head_replacement.household_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.head_patient_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.relationships' => ['present_with:head_replacement', 'array'],
+            'head_replacement.relationships.*' => ['required', 'string', 'max:100'],
+            'head_replacement.version' => ['required_with:head_replacement', 'integer', 'min:1'],
             'first_name' => [$required, 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
@@ -59,6 +76,8 @@ class PatientRequest extends FormRequest
             'purok_area' => ['nullable', 'string', 'max:255'],
             'civil_status' => ['nullable', 'string', 'max:100'],
             'occupation' => ['nullable', 'string', 'max:255'],
+            'education_level' => ['nullable', Rule::in(['None', 'Elementary', 'High School', 'Senior High School', 'Vocational', 'College', 'Postgraduate'])],
+            'education_completed' => ['nullable', Rule::in(['Level', 'Graduate'])],
             'philhealth_status' => ['nullable', 'string', 'max:255'],
             'spouse_name' => ['nullable', 'string', 'max:255'],
             'spouse_occupation' => ['nullable', 'string', 'max:255'],
@@ -83,7 +102,7 @@ class PatientRequest extends FormRequest
             'patient_category' => ['nullable', 'string', 'max:100'],
             // medical_background is deliberately absent: it is not accepted on
             // create or update, so validated() drops it. The background only
-            // changes through a finalized consultation (PatientBackground).
+            // changes through PatientBackground's audited clinical paths.
             'status' => ['sometimes', 'string', 'max:100'],
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],

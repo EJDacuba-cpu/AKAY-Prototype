@@ -133,6 +133,13 @@ class PatientHistorySectionsTest extends TestCase
 
             $background = $this->background();
             foreach ($staged as $key => $value) {
+                if ($section === 'social') {
+                    // Education is demographic data now, so a BHC clinical-history
+                    // write must not store the nested education/pastOccupations keys.
+                    unset($value['education'], $value['pastOccupations']);
+                    $this->assertArrayNotHasKey('education', $background[$key], "{$section}.{$key}.education");
+                    $this->assertArrayNotHasKey('pastOccupations', $background[$key], "{$section}.{$key}.pastOccupations");
+                }
                 $this->assertSame($value, $background[$key], "{$section}.{$key}");
             }
             $this->assertSame($revision + 1, $background['revisions'][$section], $section);

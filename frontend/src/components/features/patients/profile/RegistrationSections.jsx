@@ -1,4 +1,10 @@
+import { formatEducation } from "../../../../utils/backgroundFormat";
 import { formatLongDate, formatPatientName } from "../../../../utils/formatters";
+import {
+  EDUCATION_COMPLETED_OPTIONS,
+  EDUCATION_LEVEL_OPTIONS,
+  readEducation,
+} from "../../../../utils/patientRegistrationPayload";
 import { calculateAge, calculateAgeInMonths } from "../../../../utils/patientUtils";
 import {
   BULAKAN_BARANGAYS,
@@ -207,6 +213,7 @@ export default function RegistrationSections({
   ]
     .filter(Boolean)
     .join(", ");
+  const education = readEducation(patient);
   const philHealth = [
     read(["philHealthStatus", "philhealth_status", "philHealthMembership", "philhealth_membership"]),
     read(["philHealthNumber", "philhealthNumber", "philhealth_number"]),
@@ -237,6 +244,18 @@ export default function RegistrationSections({
               <option>Separated</option>
             </EditSelect>
             <EditField label="Occupation" name="occupation" value={form.occupation} onChange={onChange} />
+            <EditSelect label="Education level" name="educationLevel" value={form.educationLevel} onChange={onChange} error={fieldErrors.educationLevel}>
+              <option value="">Not recorded</option>
+              {EDUCATION_LEVEL_OPTIONS.map((level) => (
+                <option key={level}>{level}</option>
+              ))}
+            </EditSelect>
+            <EditSelect label="Education completed" name="educationCompleted" value={form.educationCompleted} onChange={onChange} error={fieldErrors.educationCompleted}>
+              <option value="">Not recorded</option>
+              {EDUCATION_COMPLETED_OPTIONS.map((completed) => (
+                <option key={completed}>{completed}</option>
+              ))}
+            </EditSelect>
             <EditField label="NHTS status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
             {!showChildSections && (
               <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
@@ -255,6 +274,7 @@ export default function RegistrationSections({
               ["Sex", read(["sex"])],
               ["Civil status", read(["civilStatus", "civil_status"])],
               ["Occupation", read(["occupation"])],
+              ["Education", formatEducation({ level: education.educationLevel, completed: education.educationCompleted })],
               ["NHTS status", read(["nhtsStatus", "nhts_status"])],
               ...(!showChildSections ? [["Family serial no.", read(["familySerialNumber", "family_serial_number"])]] : []),
               ...(hasDisplayValue(read(["spouseName", "spouse_name"])) ? [["Spouse", read(["spouseName", "spouse_name"])]] : []),

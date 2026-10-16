@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   ArrowLeft,
   
@@ -37,11 +37,13 @@ import {
 import { Button } from "../../components/ui/button";
 import ModalShell from "../../components/common/modals/ModalShell";
 import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
-import useMockFamilyRegistry from "../../hooks/useMockFamilyRegistry";
+import BhcPatientRegistration from "./BhcPatientRegistration";
+import { registrationErrors } from "../../utils/householdData";
+import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS } from "../../utils/patientRegistrationPayload";
 import {
   ADDRESS_FIELDS, connectionForPatient, householdForConnection, patientName,
-  saveMockPatient, stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
-} from "../../services/mockFamilyRegistry";
+  stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
+} from "../../services/familyRegistry";
 import toast from "react-hot-toast";
 import "../../components/features/patients/registration-form.css";
 import {
@@ -100,6 +102,16 @@ const OCCUPATION_OPTIONS = [
   "Senior Citizen",
 ].map((occupation) => ({ value: occupation, label: occupation }));
 
+// "Not recorded" is a real choice, so a saved Education can be cleared.
+const EDUCATION_LEVEL_SELECT_OPTIONS = [
+  { value: "", label: "Not recorded" },
+  ...EDUCATION_LEVEL_OPTIONS.map((level) => ({ value: level, label: level })),
+];
+const EDUCATION_COMPLETED_SELECT_OPTIONS = [
+  { value: "", label: "Not recorded" },
+  ...EDUCATION_COMPLETED_OPTIONS.map((completed) => ({ value: completed, label: completed })),
+];
+
 // Initial State Definition
 const INITIAL_FORM_STATE = {
   firstName: "",
@@ -110,6 +122,8 @@ const INITIAL_FORM_STATE = {
   sex: "",
   civilStatus: "",
   occupation: "",
+  educationLevel: "",
+  educationCompleted: "",
   spouseName: "",
   spouseOccupation: "",
   contactNumber: "",
@@ -141,19 +155,33 @@ function registrationForm(patient) {
   };
 }
 
-export function PatientRegistrationPage({
+const PrototypeRegistration = lazy(() => import("../shared/PrototypeRegistration"));
+
+export function PatientRegistrationPage(props) {
+  return props.role && props.role !== "bhc"
+    ? <Suspense fallback={<p role="status">Loading registration…</p>}><PrototypeRegistration {...props} /></Suspense>
+    : <BhcPatientRegistration {...props} />;
+}
+
+export function EditPatientRegistration() {
+  const { patientId } = useParams();
+  return <PatientRegistrationPage patientId={patientId} />;
+}
+
+export function RegistrationForm({
   role = "bhc",
   basePath = "/bhc",
   patientId,
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
+  registry, savedPatientOverride, savePatient, live = false, initialConnection,
+  onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
 }) {
   const navigate = useNavigate();
-  const registry = useMockFamilyRegistry();
   const [createdPatientId, setCreatedPatientId] = useState("");
   const editingPatientId = patientId || createdPatientId || undefined;
-  const savedPatient = registry.patients.find((patient) => patient.id === editingPatientId);
+  const savedPatient = savedPatientOverride || registry.patients.find((patient) => patient.id === editingPatientId);
   const savedConnection = connectionForPatient(savedPatient);
-  const [householdConnection, setHouseholdConnection] = useState(() => connectionForPatient(savedPatient));
+  const [householdConnection, setHouseholdConnection] = useState(() => connectionForPatient(savedPatient) || initialConnection || null);
   const [headReplacement, setHeadReplacement] = useState(null);
   const [householdReviewPending, setHouseholdReviewPending] = useState(false);
   const patientsPath = `${basePath}/patients`;
@@ -169,7 +197,7 @@ export function PatientRegistrationPage({
     success: false,
   });
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(() => registrationForm(savedPatient));
+  const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection) : registrationForm(savedPatient));
   const [fieldErrors, setFieldErrors] = useState({});
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
@@ -275,6 +303,8 @@ function handleBirthDateChange(valueOrEvent) {
     // EPI-age patients use child registration fields instead of general profile fields.
     civilStatus: nextIsEpiTarget ? "Single" : prev.civilStatus,
     occupation: nextIsEpiTarget ? "" : prev.occupation,
+    educationLevel: nextIsEpiTarget ? "" : prev.educationLevel,
+    educationCompleted: nextIsEpiTarget ? "" : prev.educationCompleted,
     nhtsStatus: nextIsEpiTarget ? "" : prev.nhtsStatus,
     spouseName:
       !nextIsEpiTarget && prev.civilStatus === "Married"
@@ -432,6 +462,8 @@ function handleBirthDateChange(valueOrEvent) {
           : null,
       civilStatus: isEpiTargetAge ? "Single" : form.civilStatus,
       occupation: isEpiTargetAge ? null : form.occupation || null,
+      educationLevel: isEpiTargetAge ? null : form.educationLevel || null,
+      educationCompleted: isEpiTargetAge ? null : form.educationCompleted || null,
       nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
       purokArea: form.purokArea || null,
       familySerialNumber: form.familySerialNumber || null,
@@ -444,7 +476,7 @@ function handleBirthDateChange(valueOrEvent) {
     };
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (saving || !validateForm()) {
       setModals((current) => ({ ...current, confirm: false }));
       return;
@@ -453,15 +485,15 @@ function handleBirthDateChange(valueOrEvent) {
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const saved = saveMockPatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement);
+      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement);
       setCreatedPatientId(saved.id);
       setForm(registrationForm(saved));
       setHouseholdConnection(connectionForPatient(saved));
       setHeadReplacement(null);
       setModals({ ...modals, confirm: false, success: true });
-      toast.success("Patient saved in this mock session.");
+      toast.success(live ? "Patient and household saved." : "Patient saved in this mock session.");
     } catch (error) {
-      setFieldErrors((current) => ({ ...current, familySerialNumber: error.message }));
+      setFieldErrors((current) => ({ ...current, ...registrationErrors(error) }));
       setModals((current) => ({ ...current, confirm: false }));
     } finally {
       setSaving(false);
@@ -480,7 +512,7 @@ function handleBirthDateChange(valueOrEvent) {
 
   if (patientId && !savedPatient) return (
     <DashboardLayout role={role} title="Edit Patient">
-      <p className="text-sm text-gray-900">This patient is no longer available in the mock session.</p>
+      <p className="text-sm text-gray-900">{live ? "This patient is unavailable." : "This patient is no longer available in the mock session."}</p>
       <Link to={`${patientsPath}/add`} className="mt-3 inline-block text-sm text-red-700">Register a patient</Link>
     </DashboardLayout>
   );
@@ -616,6 +648,26 @@ function handleBirthDateChange(valueOrEvent) {
                       </datalist>
                     </div>
 
+                    <ModernSelect
+                      label="Education Level"
+                      name="educationLevel"
+                      value={form.educationLevel}
+                      onChange={handleSelectChange}
+                      options={EDUCATION_LEVEL_SELECT_OPTIONS}
+                      placeholder="Not recorded"
+                      error={fieldErrors.educationLevel}
+                    />
+
+                    <ModernSelect
+                      label="Education Completed"
+                      name="educationCompleted"
+                      value={form.educationCompleted}
+                      onChange={handleSelectChange}
+                      options={EDUCATION_COMPLETED_SELECT_OPTIONS}
+                      placeholder="Not recorded"
+                      error={fieldErrors.educationCompleted}
+                    />
+
                     <NhtsRadioGroup
                       label="NHTS Status"
                       name="nhtsStatus"
@@ -626,6 +678,7 @@ function handleBirthDateChange(valueOrEvent) {
                   </div>
                 )}
                 <FamilyRegistryField
+                  live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
                   registry={registry}
                   patient={{ ...form, id: editingPatientId }}
                   connection={householdConnection}
@@ -831,7 +884,7 @@ function handleBirthDateChange(valueOrEvent) {
             <button
               type="submit"
               disabled={saving || householdReviewPending}
-              className="flex w-full items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:bg-gray-300 disabled:text-gray-500 sm:w-auto"
+              className="flex w-full items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:opacity-50 sm:w-auto"
             >
               {saving ? <ButtonSpinner /> : <UserPlus size={15} />}
               {saving ? "Saving patient..." : "Save Patient"}
@@ -846,9 +899,9 @@ function handleBirthDateChange(valueOrEvent) {
         onClose={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}
         footer={<>
           <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
-          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}>Edit Patient</Button>
+          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "/edit" : ""}`); }}>Edit Patient</Button>
         </>}
-      ><p>Patient registration saved for this mock session.</p></ModalShell>}
+      ><p>{live ? "Patient registration and household connection saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
       {modals.confirm && <ModalShell
         title="Save Patient?" appearance="plain"
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}

@@ -1,13 +1,12 @@
-// Prototype permissions live only in this browser. Never send these keys to the
-// Laravel permissions endpoint; the server does not implement Families yet.
+// Only deferred RHU Families use browser prototype grants. BHC grants come from
+// Laravel, including for RHU nurses working at an assigned BHC.
 export const FAMILY_PERMISSIONS = ["families.view", "families.manage"];
 const STORAGE_KEY = "akay.mock-family-access.v1";
-export const backendPermissions = permissions => (permissions || []).filter(key => !FAMILY_PERMISSIONS.includes(key));
-export const suggestedFamilyPermissions = staffRole => ["bhw", "midwife", "encoder"].includes(staffRole) ? [...FAMILY_PERMISSIONS] : [];
+export const backendPermissions = (permissions, tier = "bhc") => (permissions || []).filter(key => tier !== "rhu" || !FAMILY_PERMISSIONS.includes(key));
 
 export function familyAccessKey(user) {
-  if (!user?.id || !["bhc", "rhu"].includes(user.role)) return null;
-  const facility = user.working_facility_key || `${user.role}:${user.role === "bhc" ? user.barangay_health_center_id : user.rural_health_unit_id}`;
+  if (!user?.id || user.role !== "rhu" || user.working_facility_key?.startsWith("bhc:")) return null;
+  const facility = user.working_facility_key || `rhu:${user.rural_health_unit_id}`;
   return `${user.id}|${facility}`;
 }
 
@@ -33,16 +32,16 @@ export function saveFamilyAccess(user, permissions, storage = globalThis.localSt
   if (typeof window !== "undefined") window.dispatchEvent(new Event("akay:auth-changed"));
 }
 
-export function withFamilyAccess(user) {
-  return user ? { ...user, permissions: [...backendPermissions(user.permissions), ...readFamilyAccess(user)] } : user;
+export function withFamilyAccess(user, storage = globalThis.localStorage) {
+  if (!user || user.role !== "rhu" || user.working_facility_key?.startsWith("bhc:")) return user;
+  return { ...user, permissions: [...backendPermissions(user.permissions, "rhu"), ...readFamilyAccess(user, storage)] };
 }
 
-// Suggestions are applied only inside the admin's unsaved account form. They
-// grant nothing until that admin explicitly saves the account's access.
+// Expose the deferred RHU prototype only in the unsaved admin checklist.
+// BHC availability and all role defaults remain server owned.
 export function withFamilyRoleSuggestions(data) {
   return {
     ...data,
-    available: { ...data?.available, bhc: [...(data?.available?.bhc || []), ...FAMILY_PERMISSIONS], rhu: [...(data?.available?.rhu || []), ...FAMILY_PERMISSIONS] },
-    roles: (data?.roles || []).map(role => ({ ...role, defaults: [...role.defaults, ...suggestedFamilyPermissions(role.key)] })),
+    available: { ...data?.available, rhu: [...new Set([...(data?.available?.rhu || []), ...FAMILY_PERMISSIONS])] },
   };
 }

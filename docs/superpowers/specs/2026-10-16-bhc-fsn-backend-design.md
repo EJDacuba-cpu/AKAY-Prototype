@@ -1,7 +1,7 @@
 # BHC Family Serial Number Backend — Design
 
 Date: 2026-10-16
-Status: Conversational design approved by Eric; written specification for review.
+Status: Approved by Eric for execution; implemented in the workspace. Database activation and environment-dependent PostgreSQL/browser checks remain separate.
 
 ## 1. Layunin at confirmed workflow
 
@@ -266,6 +266,7 @@ data or claims a mock-only save is persistent.
 ## 11. Review notes
 
 Sections 5 (normalization and post-save correction), 7 (real permission grants),
-and 8 (legacy-data preservation) make necessary implementation policies explicit
-for written-spec review. They were not separate confirmed facts about the paper
-workflow. Product code has not been changed by this specification.
+and 8 (legacy-data preservation) make necessary implementation policies explicit.
+Eric approved the written specification and requested execution. They are system
+policies, not separately verified facts about the paper workflow. Activation and
+verification instructions are in `docs/bhc-fsn-backend.md`.

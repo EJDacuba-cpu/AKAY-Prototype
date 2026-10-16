@@ -1,17 +1,9 @@
+import { readEducation, splitName, toPayload } from "../utils/patientRegistrationPayload";
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { getHealthRecordsByPatient } from "./healthRecordService";
 import { getReferralsByPatient } from "./referrals";
 import { normalizeBackground, normalizeHouseholdEnvironment } from "../utils/backgroundUpdate";
 
-function splitName(name = "") {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { firstName: parts[0] || "", middleName: "", lastName: "" };
-  return {
-    firstName: parts[0],
-    middleName: parts.length > 2 ? parts.slice(1, -1).join(" ") : "",
-    lastName: parts.at(-1) || "",
-  };
-}
 
 function fullName(patient = {}) {
   return (
@@ -96,6 +88,8 @@ export function normalizePatient(patient = {}) {
     purok_area: patient.purok_area || patient.purokArea || "",
     civilStatus: patient.civil_status || patient.civilStatus || "",
     occupation: patient.occupation || "",
+    // Patient Information fields; "" when not recorded (an explicit clear stays cleared).
+    ...readEducation(patient),
     philHealthStatus:
       patient.philhealth_status ||
       patient.philHealthStatus ||
@@ -131,6 +125,8 @@ export function normalizePatient(patient = {}) {
       patient.guardianContactNumber ||
       patient.guardianContact ||
       "",
+    householdId: patient.household_id == null ? patient.householdId || "" : String(patient.household_id),
+    relationshipToHouseholdHead: patient.relationship_to_household_head || patient.relationshipToHouseholdHead || "",
     familySerialNumber:
       patient.family_serial_number || patient.familySerialNumber || "",
     birthPlace: patient.birth_place || patient.birthPlace || "",
@@ -166,81 +162,6 @@ export function normalizePatient(patient = {}) {
   };
 }
 
-function toPayload(patient = {}) {
-  const parts = splitName(patient.name || patient.fullName);
-  const ageSexParts = String(patient.ageSex || "").split("/");
-  const philHealthStatus =
-    patient.philHealthStatus || patient.philhealthStatus || patient.philhealth_status || null;
-  const hasExplicitPhilHealthStatus = Boolean(philHealthStatus);
-  const shouldSendPhilHealthNumber =
-    !hasExplicitPhilHealthStatus || philHealthStatus === "With PhilHealth";
-  const payload = {
-    first_name: patient.firstName || parts.firstName,
-    middle_name: patient.middleName || parts.middleName || null,
-    last_name: patient.lastName || parts.lastName || patient.firstName || "Patient",
-    sex: patient.sex || ageSexParts[1]?.trim() || "Other",
-    birthdate: patient.birthdate || patient.dateOfBirth || patient.birthDate || null,
-    contact_number: patient.contactNumber || patient.contact || null,
-    street_address: patient.streetAddress || patient.address || null,
-    barangay: patient.barangay || patient.patientBarangay || null,
-    municipality: patient.municipality || null,
-    purok_area: patient.purokArea || patient.purok_area || null,
-    civil_status: patient.civilStatus || null,
-    occupation: patient.occupation || null,
-    philhealth_status: philHealthStatus,
-    spouse_name: patient.spouseName || patient.spouse_name || null,
-    spouse_occupation:
-      patient.spouseOccupation || patient.spouse_occupation || null,
-    registration_type:
-      patient.registrationType || patient.patientType || patient.patient_type || "general",
-    mother_patient_id:
-      patient.motherPatientId || patient.mother_patient_id || null,
-    father_patient_id:
-      patient.fatherPatientId || patient.father_patient_id || null,
-    mother_name: patient.motherName || patient.mother_name || null,
-    mother_birth_date:
-      patient.motherBirthDate || patient.mother_birth_date || null,
-    father_name: patient.fatherName || patient.father_name || null,
-    father_birth_date:
-      patient.fatherBirthDate || patient.father_birth_date || null,
-    guardian_name: patient.guardianName || patient.guardian_name || null,
-    guardian_relationship:
-      patient.guardianRelationship || patient.guardian_relationship || null,
-    guardian_contact_number:
-      patient.guardianContactNumber ||
-      patient.guardianContact ||
-      patient.guardian_contact_number ||
-      null,
-    family_serial_number:
-      patient.familySerialNumber || patient.family_serial_number || null,
-    birth_place: patient.birthPlace || patient.birth_place || null,
-    birth_time: patient.birthTime || patient.birth_time || null,
-    birth_weight: patient.birthWeight || patient.birth_weight || null,
-    birth_height: patient.birthHeight || patient.birth_height || null,
-    nhts_status: patient.nhtsStatus || patient.nhts_status || null,
-    philhealth_number: shouldSendPhilHealthNumber
-      ? patient.philHealthNumber || patient.philhealthNumber || null
-      : null,
-    philhealth_category: patient.philHealthCategory || null,
-    status: patient.status || undefined,
-    barangay_health_center_id: patient.barangayHealthCenterId || patient.bhcId || null,
-    rural_health_unit_id: patient.ruralHealthUnitId || patient.rhuId || null,
-  };
-
-  const hasCategoryField = ["patientClassification", "patientCategory", "category"].some(
-    (key) => Object.prototype.hasOwnProperty.call(patient, key),
-  );
-
-  if (hasCategoryField) {
-    payload.patient_category =
-      patient.patientClassification || patient.patientCategory || patient.category || null;
-  }
-
-  // medical_background is never sent: the API ignores it. The background
-  // only changes through a finalized consultation.
-
-  return payload;
-}
 
 async function listPatients(params = {}) {
   const query = new URLSearchParams(
@@ -282,8 +203,25 @@ export async function updateBhcPatient(id, data) {
 }
 
 /**
+ * Saves Patient Background sections outside a consultation (BHC, needs
+ * clinical.background.update). `backgroundUpdate` is `{ sections,
+ * base_revisions }` (see utils/backgroundEditing sectionSavePayload). Resolves
+ * to the normalized patient - the same shape as getBhcPatientById, so it can
+ * replace the patient-details cache. Rejects with status 422 (field errors) or
+ * 409 (PATIENT_BACKGROUND_CONFLICT with `payload.conflicts`).
+ */
+export async function savePatientBackground(id, backgroundUpdate) {
+  const response = await apiRequest(`/patients/${id}/background`, {
+    method: "PATCH",
+    body: { background_update: backgroundUpdate },
+  });
+  return normalizePatient(unwrapData(response));
+}
+
+/**
  * The Patient Background tab's Changes log: what each finalized consultation
- * changed in the background, newest first.
+ * changed in the background (and each standalone Patient Background save,
+ * source "patient_background", without a health record), newest first.
  */
 export async function getPatientBackgroundHistory(id) {
   const response = await apiRequest(`/patients/${id}/background-history`);

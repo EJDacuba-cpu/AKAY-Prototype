@@ -90,10 +90,20 @@ import { conditionCardErrors, conditionCardReviewRows, restoreSharedReferralDraf
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
-import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
-import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
+import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
+import LegacyBackgroundRecoveryPanel from "../../components/features/health-records/wizard/LegacyBackgroundRecoveryPanel";
+import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PrenatalHistorySummary from "../../components/features/patients/history/PrenatalHistorySummary";
-import { AllergyChip } from "../../components/features/patients/PatientAlertChips";
+import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
+import { canUpdateBackground } from "../../utils/backgroundEditing";
+import { saveDraftBeforeNavigation } from "../../utils/backgroundNavigation";
+import {
+  backgroundUpdateErrorMessages,
+  legacyBackgroundRecovery,
+  resolveLegacyRecovery,
+  legacyRecoveryErrors as validateLegacyRecovery,
+  correctLegacySection,
+} from "../../utils/legacyBackgroundRecovery";
 import {
   readBackgroundConflicts,
   resolveBackgroundConflicts,
@@ -107,9 +117,11 @@ import {
   sectionVisibility,
 } from "../../utils/patientHistory";
 import {
-  historyErrorMessages,
   informantPayload,
   similarIllnessPayload,
+  visitAnswerDraftFields,
+  visitAnswerErrorMessages,
+  visitAnswerRecordFields,
   visitAnswerRows,
 } from "../../utils/historyStep";
 import {
@@ -179,7 +191,7 @@ import {
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import {
   ASSESSMENT_STEP,
-  HISTORY_STEP,
+  BHC_STEP_OPTIONS,
   INTERVIEW_STEP,
   MONITORING_STEP,
   NEXT_STEP,
@@ -1180,20 +1192,32 @@ export default function ConsultationWorkspace() {
     }
   }, [currentUserName, attendingStaff]);
 
-  const { data: selectedPatientDetails, isLoading: selectedPatientLoading } = useQuery({
+  const {
+    data: selectedPatientDetails,
+    isLoading: selectedPatientLoading,
+    isError: selectedPatientError,
+  } = useQuery({
     ...getConsultationPatientQuery(selectedPatientId),
     enabled: Boolean(selectedPatientId),
   });
   const selectedPatient = selectedPatientDetails || null;
+  // RHU-confirmed conditions for the Patient History reference (clinical.history only).
+  const patientConditionGroups = usePatientConditionGroups(
+    selectedPatientId,
+    selectedPatient?.medicalBackground?.currentDiseases,
+  );
 
-  // Patient History (its own step after Patient Interview): the only place the
-  // background is edited. Edits and "No changes" reviews are staged here and in
-  // the draft, and applied with the finalized record - see
-  // docs/superpowers/specs/2026-10-16-itr-patient-history-design.md.
-  // Without clinical.history the panel is locked and nothing is staged.
+  // The BHC consultation has no Patient History step: the background is edited
+  // in Patient Background (docs/superpowers/specs/2026-10-16-bhc-patient-background-design.md)
+  // and read here through the floating Patient History reference. A new visit
+  // stages nothing; `backgroundUpdate` only holds what an OLD draft staged,
+  // shown in the recovery panel and applied with the finalized record unless
+  // discarded. Without clinical.history nothing is shown or sent.
   const canViewBackground = (currentUser?.permissions || []).includes("clinical.history");
   const [backgroundUpdate, setBackgroundUpdate] = useState(null);
-  const [historyInitialSection, setHistoryInitialSection] = useState("general");
+  // The recovery panel stays open until the clinician keeps or discards.
+  const [legacyRecoveryExpanded, setLegacyRecoveryExpanded] = useState(true);
+  const [legacyRecoveryAcknowledged, setLegacyRecoveryAcknowledged] = useState(false);
   // Per visit, saved on the record: who gave the history, and whether anyone
   // at home has a similar illness. The informant gets its default once, when
   // the patient loads, unless a resumed draft already brought one.
@@ -1340,11 +1364,11 @@ export default function ConsultationWorkspace() {
     [selectedPrograms, primaryProgram],
   );
   const consultationSteps = useMemo(
-    () => buildConsultationSteps({ programSteps: programFormSteps, monitoringDetailKeys }),
+    () => buildConsultationSteps({ programSteps: programFormSteps, monitoringDetailKeys, ...BHC_STEP_OPTIONS }),
     [programFormSteps, monitoringDetailKeys],
   );
-  const formSequence = useMemo(() => getFormSequence(programFormSteps), [programFormSteps]);
-  const stepOrder = getStepOrder(programFormSteps, monitoringDetailKeys);
+  const formSequence = useMemo(() => getFormSequence(programFormSteps, BHC_STEP_OPTIONS), [programFormSteps]);
+  const stepOrder = getStepOrder(programFormSteps, monitoringDetailKeys, BHC_STEP_OPTIONS);
   const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
   // Interview, Vital Signs, Clinical Assessment, each program form, and
   // Treatment are all screens of the one form phase; formStep says which.
@@ -1613,12 +1637,10 @@ export default function ConsultationWorkspace() {
         "medicinesSupplies",
       ]),
       tbData,
+      // Only an old draft's staged edits (kept until finalized or discarded).
       ...(draftBackgroundUpdate ? { backgroundUpdate: draftBackgroundUpdate } : {}),
-      // Patient History per-visit answers; sent only once they are answered.
-      ...(canViewBackground && informantPayload(informant) ? { informant: informantPayload(informant) } : {}),
-      ...(canViewBackground && similarIllnessPayload(similarIllness)
-        ? { similarIllness: similarIllnessPayload(similarIllness) }
-        : {}),
+      // The visit questions (Patient Interview); sent only once they are answered.
+      ...visitAnswerDraftFields({ informant, similarIllness, allowed: canViewBackground }),
       // Ids and stops only; condition names are re-read from care-overview.
       // Plus the two Next Actions checkboxes (the hidden forms stay in the
       // draft: followUpDate/Time/Reason and referralForm above and below).
@@ -1817,6 +1839,8 @@ export default function ConsultationWorkspace() {
       setSimilarIllness(similarIllnessPayload(payload.similarIllness));
     }
     setBackgroundConflicts(null);
+    setLegacyRecoveryExpanded(true);
+    setLegacyRecoveryAcknowledged(false);
     setReferralForm((current) => ({
       ...current,
       ...restoredReferral.referralForm,
@@ -1872,7 +1896,8 @@ export default function ConsultationWorkspace() {
     // ahead of the server; reloading after a conflict deliberately is not.
     setPendingLocalSync(false);
     // Back to the exact screen the user left on - see resolveRestoredPosition.
-    const restored = resolveRestoredPosition(payload);
+    // A draft saved on the old Patient History step reopens on Patient Interview.
+    const restored = resolveRestoredPosition(payload, BHC_STEP_OPTIONS);
     setNextScreen([NEXT_STEP, OUTCOME_STEP, MONITORING_STEP].includes(payload.nextScreen) ? payload.nextScreen : NEXT_STEP);
     setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
@@ -2227,22 +2252,61 @@ export default function ConsultationWorkspace() {
 
   const [leavingConsultation, setLeavingConsultation] = useState(false);
   const [leaveError, setLeaveError] = useState("");
+  // The Leave & Resume Later save: sync the draft, or else keep a protected
+  // copy on this device. "" when the work is safe to leave, else the error.
+  async function secureDraftBeforeLeaving(requireServer = false) {
+    return saveDraftBeforeNavigation({
+      flush: flushDraftBeforeLeave,
+      protectLocal: protectLocalRecovery,
+      notifyLocal: () => toast("Saved securely on this device; not yet synced. Resume on this device."),
+      requireServer,
+    });
+  }
   async function leaveAndResumeLater() {
     if (leavingConsultation || saving) return;
     setLeavingConsultation(true);
     setLeaveError("");
     try {
-      const synced = await flushDraftBeforeLeave();
-      if (!synced) {
-        const secured = await protectLocalRecovery();
-        if (!secured) {
-          setLeaveError("Your latest changes could not be saved securely. Keep this page open and reconnect before leaving.");
-          return;
-        }
-        toast("Saved securely on this device; not yet synced. Resume on this device.");
+      const error = await secureDraftBeforeLeaving();
+      if (error) {
+        setLeaveError(error);
+        return;
       }
       leaveBlockerRef.current.proceed?.();
     } finally {
+      setLeavingConsultation(false);
+    }
+  }
+
+  // Edit in Patient Background (from the Patient History reference or the
+  // Prenatal panel): flush the same draft as Leave & Resume Later, then
+  // open Patient Background in this tab. The draft is already saved, so the
+  // Leave Consultation prompt is skipped; Continue Consultation there resumes
+  // it on this step. Require a server save for that return path; a device-only
+  // copy keeps the consultation open with the error.
+  async function saveDraftAndEditBackground() {
+    if (leavingConsultation || saving || !selectedPatientId) return;
+    const notSaved = (message) => setNoticeModal({ title: "Consultation Not Saved", message });
+    setLeavingConsultation(true);
+    try {
+      // A review this user may only read has nothing to save.
+      if (!workspaceLocked) {
+        if (!canSaveCurrentDraft) {
+          notSaved("This consultation cannot be saved as a draft right now, so it stays open. Finish it before editing Patient Background.");
+          return;
+        }
+        const error = await secureDraftBeforeLeaving(true);
+        if (error) {
+          notSaved(error);
+          return;
+        }
+      }
+      bypassLeaveGuardRef.current = true;
+      await navigate(`/bhc/patients/${selectedPatientId}?tab=background`);
+    } catch (error) {
+      notSaved(error?.message || "The consultation could not be saved. It stays open; try again.");
+    } finally {
+      bypassLeaveGuardRef.current = false;
       setLeavingConsultation(false);
     }
   }
@@ -3000,6 +3064,13 @@ export default function ConsultationWorkspace() {
   async function handleSave(event) {
     event?.preventDefault();
     if (saving) return;
+    const recoveryErrors = canViewBackground ? validateLegacyRecovery(backgroundUpdate, legacyRecoveryAcknowledged) : {};
+    if (Object.keys(recoveryErrors).length) {
+      setLegacyRecoveryExpanded(true);
+      setValidationErrorsAndFocus(recoveryErrors);
+      goToStepKey(INTERVIEW_STEP);
+      return;
+    }
     if (reportingEntries.length === 0) {
       const errors = conditionCardErrors(reportingEntries);
       if (!revealErrorStep(errors)) setValidationErrorsAndFocus(errors);
@@ -3331,11 +3402,10 @@ export default function ConsultationWorkspace() {
           : null,
       // Sent whenever Monitoring Details includes the TB card (isTb).
       tbData: isTb ? tbData : null,
-      // Patient History sections updated or reviewed ("No changes") in this visit.
+      // Only an old draft's staged Patient History edits, kept by the clinician.
       backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
       // Per-visit history answers, saved on the record (null when not answered).
-      informant: canViewBackground ? informantPayload(informant) : null,
-      similarIllness: canViewBackground ? similarIllnessPayload(similarIllness) : null,
+      ...visitAnswerRecordFields({ informant, similarIllness, allowed: canViewBackground }),
       // What this visit continues, starts and stops. validateCarePlan already
       // ran in getClinicalValidationErrors above (this payload drops blank
       // stops). A condition's status is the RHU's to set: never sent from here.
@@ -3730,7 +3800,7 @@ export default function ConsultationWorkspace() {
 
   // Same idea for Save: an error that belongs to another screen is shown there.
   function revealErrorStep(errors) {
-    const target = findFirstErrorStepKey(errors, stepOrder);
+    const target = findFirstErrorStepKey(errors, stepOrder, BHC_STEP_OPTIONS);
     if (!target || target === currentStepKey) return false;
     setValidationErrorsAndFocus(errors);
     goToStepKey(target, { scroll: false });
@@ -3830,7 +3900,7 @@ export default function ConsultationWorkspace() {
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
   // Details when a condition monitored in this visit needs it.
-  const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP)).filter(Boolean);
+  const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP, BHC_STEP_OPTIONS)).filter(Boolean);
   // Unlink a follow-up before saving; saving is what completes the rest.
   function removeFollowUpLink(id) {
     const next = removeContinuedFollowUp(
@@ -4082,20 +4152,73 @@ export default function ConsultationWorkspace() {
     return handleSave();
   }
 
-  // Patient History: the editable sections this patient has (V only for a
-  // female patient) and the last save's 422 errors that belong to it.
+  // The background sections this patient has (V only for a female patient):
+  // the Prenatal panel's sex-verification guard reads it.
   const historySections = EDITABLE_SECTION_KEYS.filter(
     (section) => section !== "obstetric" || sectionVisibility(selectedPatient, dateOfVisit || new Date()).obstetric !== "hidden",
   );
-  const historyErrors = historyErrorMessages(validationErrors, { withSection: true });
+  // The visit questions' 422 lines (Patient Interview) and an old draft's
+  // staged background: what it holds, and its 422 lines.
+  const visitAnswerErrors = visitAnswerErrorMessages(validationErrors);
+  const legacyRecovery = canViewBackground
+    ? legacyBackgroundRecovery(backgroundUpdate, selectedPatient?.medicalBackground)
+    : null;
+  const legacyRecoveryErrors = backgroundUpdateErrorMessages(validationErrors);
+  // Only BHC staff granted clinical.background.update get Edit in Patient Background.
+  const editBackground = canUpdateBackground(currentUser) ? saveDraftAndEditBackground : undefined;
+
+  function clearErrorsStartingWith(prefixes) {
+    setValidationErrors((current) => {
+      const keys = Object.keys(current).filter((key) => prefixes.some((prefix) => key.startsWith(prefix)));
+      if (!keys.length) return current;
+      const next = { ...current };
+      keys.forEach((key) => delete next[key]);
+      return next;
+    });
+  }
+
+  function keepLegacyBackground() {
+    setLegacyRecoveryAcknowledged(true);
+    clearErrorsStartingWith(["background_update.recovery"]);
+    setLegacyRecoveryExpanded(false);
+  }
+
+  function correctLegacyBackground(section, value) {
+    if (workspaceLocked) return;
+    setBackgroundUpdate((current) => correctLegacySection(current, section, value));
+    setLegacyRecoveryAcknowledged(false);
+    clearErrorsStartingWith([`background_update.sections.${section}`, "background_update.recovery"]);
+  }
+
+  // Discarding staged clinical changes is confirmed on its own.
+  function confirmDiscardLegacyBackground() {
+    setNoticeModal({
+      title: "Discard Patient History Changes?",
+      message:
+        "The Patient History changes from the earlier draft will be removed from this consultation and will not be saved. The Patient Background stays as it is.",
+      actions: [
+        {
+          label: "Discard Changes",
+          variant: "destructive",
+          onClick: () => {
+            setBackgroundUpdate(resolveLegacyRecovery(backgroundUpdate, "discard").update);
+            setLegacyRecoveryAcknowledged(true);
+            setBackgroundConflicts(null);
+            clearErrorsStartingWith(["background_update"]);
+            setNoticeModal(null);
+          },
+        },
+        { label: "Keep Them", variant: "secondary", onClick: () => setNoticeModal(null) },
+      ],
+    });
+  }
 
   // Heading for the current screen. The wizard still knows its position; that
   // position is simply not shown while the progress UI is switched off.
   const stepSubtitles = {
-    [INTERVIEW_STEP]:
-      "Record the patient's reason for visit and present illness.",
-    [HISTORY_STEP]:
-      "Review each section with the patient: No changes if it still holds, Update if something is new. Changes save when the consultation is finalized.",
+    [INTERVIEW_STEP]: canViewBackground
+      ? "Record the patient's reason for visit, present illness, and who gave the history."
+      : "Record the patient's reason for visit and present illness.",
     [ASSESSMENT_STEP]:
       "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
@@ -4115,13 +4238,13 @@ export default function ConsultationWorkspace() {
     subtitles: stepSubtitles,
   });
   // The fixed right-hand column changes with the step: Barangay Health Services
-  // (the visit's service context) is chosen during Interview or Patient History;
+  // (the visit's service context) is chosen during Interview;
   // Physical Examination shows the body preview; Care and Outcome shows a
   // read-only list of this consultation's conditions grouped by outcome.
   const sidePanelAllowed =
     wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
-  const showProgramPanel = sidePanelAllowed && [INTERVIEW_STEP, HISTORY_STEP].includes(activeFormStep);
+  const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showConditionPanel = wizardPhase === WIZARD_NEXT && nextScreen === OUTCOME_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel || showConditionPanel;
@@ -4178,26 +4301,10 @@ export default function ConsultationWorkspace() {
         patientReviewRow({ name: getPatientName(selectedPatient), id: selectedPatientId }),
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
+        // The visit questions; only the answered ones (unanswered are left out).
+        ...(canViewBackground ? visitAnswerRows({ informant, similarIllness }) : []),
       ],
     },
-    // Patient History: the per-visit answers, then what was updated (before
-    // -> after), reviewed with no changes, or not reviewed. Never blocks.
-    ...(canViewBackground && selectedPatient
-      ? [{
-          key: HISTORY_STEP,
-          title: "Patient History",
-          stepKey: HISTORY_STEP,
-          // Only the answered ones: an unanswered informant / similar illness is left out.
-          rows: visitAnswerRows({ informant, similarIllness }),
-          content: (
-            <PatientHistoryReview
-              background={selectedPatient.medicalBackground}
-              update={backgroundUpdate}
-              visibleSections={historySections}
-            />
-          ),
-        }]
-      : []),
     // Present only when a program was chosen. Edit opens the first program
     // form; Next from there walks the rest in order.
     ...programFormSteps.map(step => ({
@@ -4334,13 +4441,6 @@ export default function ConsultationWorkspace() {
           outside the fieldset so a locked review does not disable them. */}
       <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
-      {/* Whose consultation this is, with the allergy line kept in view on every step. */}
-      {inConsultationWorkspace && selectedPatient && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-[12.5px]">
-          <span className="font-semibold text-gray-900">{getPatientName(selectedPatient)}</span>
-          {canViewBackground && <AllergyChip allergies={selectedPatient.medicalBackground?.allergies} />}
-        </div>
-      )}
       {inConsultationWorkspace && currentStepKey !== NEXT_STEP && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
@@ -4359,6 +4459,26 @@ export default function ConsultationWorkspace() {
             ))}
           </div>
         </div>
+      )}
+      {/* An old draft's staged Patient History changes: open on every screen
+          until kept or discarded; once kept, a reminder on Patient Interview.
+          Review lists them in its own section. */}
+      {legacyRecovery && (isReviewStep || legacyRecoveryExpanded || legacyRecoveryErrors.length > 0 || isFirstConsultationStep) && (
+        <LegacyBackgroundRecoveryPanel
+          recovery={legacyRecovery}
+          errors={legacyRecoveryErrors}
+          expanded={isReviewStep || legacyRecoveryExpanded}
+          disabled={workspaceLocked}
+          canKeep={!workspaceLocked || canFinalize}
+          update={backgroundUpdate}
+          patient={selectedPatient}
+          conditions={patientConditionGroups}
+          today={dateOfVisit || new Date()}
+          onCorrect={correctLegacyBackground}
+          onKeep={keepLegacyBackground}
+          onDiscard={confirmDiscardLegacyBackground}
+          onShow={() => setLegacyRecoveryExpanded(true)}
+        />
       )}
       <fieldset disabled={workspaceLocked} className="min-w-0">
       {continuedCareLoading ? (
@@ -4398,6 +4518,7 @@ export default function ConsultationWorkspace() {
               conflicts={backgroundConflicts}
               update={backgroundUpdate}
               onApply={applyBackgroundConflictChoices}
+              hideMovedSocialFields
             />
           ) : null}
         />
@@ -4408,8 +4529,10 @@ export default function ConsultationWorkspace() {
         className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
       >
         {isFirstConsultationStep ? (
-          // The first step is the Patient Interview: Chief Complaint / HPI.
-          // The patient's background has its own Patient History step next.
+          // The first step is the Patient Interview: Chief Complaint / HPI and
+          // the visit questions. There is no Patient History step at the BHC:
+          // the background is read in the Patient History reference and
+          // edited in Patient Background.
           <section className={CONSULTATION_CARD_CLASS}>
             {/* HPI is optional. */}
             <FormSection title="Chief Complaint & History of Present Illness" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
@@ -4422,28 +4545,21 @@ export default function ConsultationWorkspace() {
             </div>
             </FormSection>
 
-          </section>
-        ) : activeFormStep === HISTORY_STEP ? (
-          // ITR page 1, sections I-V: section list on the left, one section open.
-          <section className={CONSULTATION_CARD_CLASS}>
-            <PatientHistoryPanel
-              patient={selectedPatient}
-              background={selectedPatient?.medicalBackground}
-              update={backgroundUpdate}
-              onUpdateChange={setBackgroundUpdate}
-              informant={informant}
-              onInformantChange={setInformant}
-              similarIllness={similarIllness}
-              onSimilarIllnessChange={setSimilarIllness}
-              householdEnvironment={selectedPatient?.householdEnvironment}
-              today={dateOfVisit || new Date()}
-              layout="screen"
-              locked={!canViewBackground}
-              initialSection={historyInitialSection}
-              loading={selectedPatientLoading || !selectedPatient}
-              editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
-              errors={historyErrors}
-            />
+            {/* Per visit, saved on the record; they never change the background. */}
+            {canViewBackground && (
+              <div className="mt-4">
+                <FormSection title="Informant & Similar Illness" subtitle="Who gave the history at this visit, and whether anyone at home has a similar illness." delay={4}>
+                  <InterviewVisitQuestions
+                    informant={informant}
+                    onInformantChange={(next) => { clearErrorsStartingWith(["informant"]); setInformant(next); }}
+                    similarIllness={similarIllness}
+                    onSimilarIllnessChange={(next) => { clearErrorsStartingWith(["similar_illness"]); setSimilarIllness(next); }}
+                    errors={visitAnswerErrors}
+                  />
+                </FormSection>
+              </div>
+            )}
+
           </section>
         ) : (
         <div className={CONSULTATION_CARD_CLASS}>
@@ -4498,16 +4614,16 @@ export default function ConsultationWorkspace() {
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
             <FormSection title="Patient History" subtitle="Review the shared history before completing this prenatal assessment.">
+              {/* Read-only here; edited in Patient Background (save draft, then go). */}
               <PrenatalHistorySummary
                 background={canViewBackground ? selectedPatient?.medicalBackground : null}
                 update={canViewBackground ? backgroundUpdate : null}
                 locked={!canViewBackground}
                 canReview={historySections.includes("obstetric")}
                 editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
-                onReview={() => {
-                  setHistoryInitialSection("obstetric");
-                  goToStepKey(HISTORY_STEP);
-                }}
+                backgroundEditing
+                onEditBackground={editBackground}
+                editBusy={leavingConsultation}
               />
             </FormSection>
 
@@ -4991,6 +5107,19 @@ export default function ConsultationWorkspace() {
       {inConsultationWorkspace && (
         <ConsultationActionBar
           onPrevious={handleWorkspacePrevious}
+          // Read-only and closed by default; non-modal, so typing goes on.
+          leadingAction={canViewBackground && selectedPatientId ? (
+            <PatientHistoryReference
+              patient={selectedPatient}
+              background={selectedPatient?.medicalBackground}
+              conditions={patientConditionGroups}
+              onEditBackground={editBackground}
+              loading={selectedPatientLoading}
+              error={selectedPatientError}
+              align="start"
+              triggerClassName="rounded-none"
+            />
+          ) : null}
           previousLabel={
             currentStepKey === INTERVIEW_STEP ? "Back to Patient" : "Previous"
           }

@@ -1,10 +1,10 @@
 // Same order as backend ActionPermissions::ALL. Role rules (defaults, availability) come from GET /staff-roles.
-export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
+export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
 
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
   { key: "patients", label: "Patients" },
-  { key: "families", label: "Families · prototype" },
+  { key: "families", label: "Families" },
   { key: "consultations", label: "Consultations" },
   { key: "history", label: "Health Records & History" },
   { key: "followups", label: "Follow-ups" },
@@ -16,11 +16,12 @@ export const PERMISSION_GROUPS = [
 
 export const PERMISSION_CATALOG = {
   "patients.register": { group: "patients", label: "Register patients", note: "Can register patients and update their identification details." },
-  "families.view": { group: "families", label: "View Families", note: "Can view household details, members and family connections." },
-  "families.manage": { group: "families", label: "Manage Families", requires: ["families.view"], note: "Can create and edit households and manage member connections. Saved locally for this prototype." },
+  "families.view": { group: "families", label: "View Families", note: "Can view household details and members at the assigned facility." },
+  "families.manage": { group: "families", label: "Manage Families", requires: ["families.view"], note: "Can create households and correct household details, family serial numbers and head relationships." },
   "consultations.encode": { group: "consultations", label: "Encode consultations", note: "Can start current consultations and submit them for review." },
   "consultations.finalize": { group: "consultations", label: "Review & finalize consultations", requires: ["clinical.history"], note: "Can finalize consultations into permanent clinical records." },
   "clinical.history": { group: "history", label: "View health records & patient history", note: "Can open full patient histories, previous diagnoses and completed records." },
+  "clinical.background.update": { group: "history", label: "Update patient background", requires: ["clinical.history"], note: "Can edit Patient Background (medical, family, lifestyle and obstetric history) outside a consultation. BHC only; never granted by a role automatically." },
   "records.correct": { group: "history", label: "Correct finalized records", requires: ["clinical.history"], note: "Can add documented corrections to finalized records." },
   "followups.manage": { group: "followups", label: "Manage follow-ups", requires: ["clinical.history"], note: "Can schedule, reschedule and close patient follow-ups." },
   "referrals.submit": { group: "referrals", label: "Submit referrals", requires: ["clinical.history"], note: "Can submit patient referrals to the RHU." },
@@ -34,7 +35,15 @@ export const PERMISSION_CATALOG = {
 
 export const LICENSED_PERMISSIONS = ["consultations.finalize", "records.correct", "referrals.submit", "conditions.confirm"];
 // Mirrors backend NurseAssignmentPolicy::DUTIES: what an RHU nurse may be given at an assigned BHC.
-export const NURSE_ASSIGNMENT_DUTIES = ["patients.register", "consultations.encode", "clinical.history", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view"];
+export const NURSE_ASSIGNMENT_DUTIES = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view", "families.view", "families.manage"];
+
+// Duties an admin ticks one by one: never in role defaults or a "suggested" bundle.
+export const EXPLICIT_ONLY_PERMISSIONS = ["clinical.background.update"];
+
+/** The "Use suggested clinical duties" bundle for a nurse assignment. */
+export function suggestedNurseDuties() {
+  return NURSE_ASSIGNMENT_DUTIES.filter((key) => !EXPLICIT_ONLY_PERMISSIONS.includes(key));
+}
 
 export function can(user, permission) {
   return (user?.permissions || []).includes(permission);

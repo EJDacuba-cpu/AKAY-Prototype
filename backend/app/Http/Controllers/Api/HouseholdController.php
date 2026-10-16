@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Household;
+use App\Models\Patient;
+use App\Services\ActionPermissions;
+use App\Services\Households;
+use App\Services\PatientIdentity;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class HouseholdController extends Controller
+{
+    public function __construct(private Households $households) {}
+
+    public function index(Request $request)
+    {
+        return $this->listing($request, false);
+    }
+
+    public function lookup(Request $request)
+    {
+        return $this->listing($request, true);
+    }
+
+    public function candidates(Request $request)
+    {
+        $bhc = $this->households->bhc($request->user());
+        ActionPermissions::ensure($request->user(), 'families.manage');
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $query = Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->with(['household' => fn ($q) => $q->withCount('members')])->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'inactive'));
+        if ($search = trim($data['search'] ?? '')) {
+            $needle = '%'.mb_strtolower($search).'%';
+            $query->where(fn ($q) => $q->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])->orWhereRaw('LOWER(family_serial_number) LIKE ?', [$needle]));
+        }
+        $page = $query->orderBy('last_name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+
+        return response()->json(['data' => $page->getCollection()->map(fn ($patient) => PatientIdentity::householdResponse($patient, true)), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);
+    }
+
+    private function listing(Request $request, bool $lookup)
+    {
+        $bhc = $this->households->bhc($request->user());
+        if (! ($lookup && ActionPermissions::allows($request->user(), 'patients.register'))) {
+            ActionPermissions::ensure($request->user(), 'families.view');
+        }
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $query = Household::where('barangay_health_center_id', $bhc)->whereNull('archived_at');
+        if ($search = trim($data['search'] ?? '')) {
+            $needle = '%'.mb_strtolower($search).'%';
+            $query->where(fn ($q) => $q->whereRaw('LOWER(serial_number) LIKE ?', [$needle])->orWhereRaw('LOWER(CAST(address AS TEXT)) LIKE ?', [$needle])->orWhereHas('members', fn ($m) => $m->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(middle_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])));
+        }
+        $page = $query->orderBy('id', 'desc')->paginate($data['per_page'] ?? 25);
+
+        return response()->json(['data' => $page->getCollection()->map(fn ($h) => $this->households->response($h)), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);
+    }
+
+    public function show(Request $request, int $id)
+    {
+        $bhc = $this->households->bhc($request->user());
+        abort_unless(ActionPermissions::allows($request->user(), 'families.view') || ActionPermissions::allows($request->user(), 'patients.register'), 403);
+
+        return response()->json(['data' => $this->households->response($this->households->find($bhc, $id))]);
+    }
+
+    public function store(Request $request)
+    {
+        $bhc = $this->households->bhc($request->user());
+        ActionPermissions::ensure($request->user(), 'families.manage');
+        $data = $request->validate([
+            'head_patient_id' => ['required', 'integer'],
+            'serial_mode' => ['required', 'in:auto,manual'],
+            'serial_number' => ['required_if:serial_mode,manual', 'nullable', 'string', 'max:100'],
+            ...self::addressRules('', true),
+            'head_replacement' => ['nullable', 'array:household_id,head_patient_id,relationships,version'],
+            'head_replacement.household_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.head_patient_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.version' => ['required_with:head_replacement', 'integer', 'min:1'],
+            'head_replacement.relationships' => ['present_with:head_replacement', 'array'],
+            'head_replacement.relationships.*' => ['required', 'string', 'max:100'],
+        ]);
+        $household = DB::transaction(function () use ($request, $bhc, $data) {
+            $this->households->lock($bhc);
+            $patient = Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->findOrFail($data['head_patient_id']);
+
+            return $this->households->attach($request, $patient, ['kind' => 'new', ...$data], $data['head_replacement'] ?? null);
+        });
+
+        return response()->json(['data' => $this->households->response($household)], 201);
+    }
+
+    public function update(Request $request, int $id)
+    {
+        $bhc = $this->households->bhc($request->user());
+        ActionPermissions::ensure($request->user(), 'families.manage');
+        $data = $request->validate(['version' => ['required', 'integer', 'min:1'], 'serial_number' => ['sometimes', 'required', 'string', 'max:100'], 'head_patient_id' => ['sometimes', 'required', 'integer'], 'relationships' => ['sometimes', 'array'], 'relationships.*' => ['required', 'string', 'max:100'], ...self::addressRules()]);
+        $household = DB::transaction(fn () => $this->households->update($request, $this->households->find($bhc, $id), $data));
+
+        return response()->json(['data' => $this->households->response($household)]);
+    }
+
+    public static function addressRules(string $prefix = '', bool $required = false): array
+    {
+        $presence = $prefix !== '' ? 'required_if:household.kind,new' : ($required ? 'required' : 'sometimes');
+        $fieldPresence = $prefix !== '' ? 'required_if:household.kind,new' : ($required ? 'required' : 'required_with:address');
+        $rules = [$prefix.'address' => [$presence, 'array:streetAddress,purokArea,barangay,municipality', 'required_array_keys:streetAddress,purokArea,barangay,municipality']];
+        foreach (['streetAddress', 'purokArea', 'barangay', 'municipality'] as $field) {
+            $rules[$prefix.'address.'.$field] = [$fieldPresence, 'string', 'max:255'];
+        }
+
+        return $rules;
+    }
+}

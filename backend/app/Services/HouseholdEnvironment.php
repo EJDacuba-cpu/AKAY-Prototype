@@ -9,16 +9,16 @@ use Illuminate\Support\Collection;
  * The household environment suggestion for the ITR Patient History social
  * section (decision D8 in docs/superpowers/specs/2026-10-16-itr-patient-history-design.md).
  *
- * Households have no table: "same household" is another patient with the same
- * non-empty family_serial_number. The caller passes only patients the user may
- * see, so nothing outside their facility can leak through here.
+ * Linked BHC patients share a permanent household ID within their BHC. Legacy
+ * unlinked patients retain the serial-based lookup. The caller supplies only
+ * patients authorized in the current facility.
  */
 class HouseholdEnvironment
 {
     /**
      * The environment most recently recorded for a household member other than
      * $patient, or null when nobody in the household has one. $others are
-     * candidates already scoped to the user's facility; the same-serial filter
+     * candidates already scoped to the user's facility; household membership
      * and the patient's own exclusion are applied here as well.
      *
      * @param  Collection<int, Patient>  $others
@@ -27,13 +27,15 @@ class HouseholdEnvironment
     public static function latestFor(Patient $patient, Collection $others): ?array
     {
         $serial = trim((string) $patient->family_serial_number);
-        if ($serial === '') {
+        if ($serial === '' && ! $patient->household_id) {
             return null;
         }
 
         $best = $others
             ->filter(fn (Patient $other) => $other->id !== $patient->id
-                && trim((string) $other->family_serial_number) === $serial
+                && ($patient->household_id
+                    ? $other->household_id === $patient->household_id && $other->barangay_health_center_id === $patient->barangay_health_center_id
+                    : ! $other->household_id && trim((string) $other->family_serial_number) === $serial)
                 && self::environmentOf($other) !== null)
             // Newest social update first; an undated record sorts last, and
             // the most recent patient id breaks any remaining tie.

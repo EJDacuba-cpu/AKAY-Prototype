@@ -81,6 +81,8 @@ export function createPatientForm(patient = {}) {
     sex: read(["sex"]),
     civilStatus: read(["civilStatus", "civil_status"]),
     occupation: read(["occupation"]),
+    educationLevel: read(["educationLevel", "education_level"]),
+    educationCompleted: read(["educationCompleted", "education_completed"]),
     nhtsStatus: read(["nhtsStatus", "nhts_status"]),
     familySerialNumber: read(["familySerialNumber", "family_serial_number"]),
     spouseName: read(["spouseName", "spouse_name"]),
@@ -119,7 +121,7 @@ export function createPatientForm(patient = {}) {
 export const REGISTRATION_SECTION_FIELDS = Object.freeze({
   demographics: [
     "firstName", "middleName", "lastName", "birthDate", "age", "sex",
-    "civilStatus", "occupation", "nhtsStatus", "familySerialNumber",
+    "civilStatus", "occupation", "educationLevel", "educationCompleted", "nhtsStatus", "familySerialNumber",
     "spouseName", "spouseOccupation",
   ],
   contact: [

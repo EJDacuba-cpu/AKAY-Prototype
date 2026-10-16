@@ -54,6 +54,7 @@ import AddPatient from "./pages/bhc/AddPatient";
 import FamiliesDirectory from "./pages/shared/FamiliesDirectory";
 import FamilyDetails from "./pages/shared/FamilyDetails";
 import FamilyForm from "./pages/shared/FamilyForm";
+import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
 import RelatedFamilyForm from "./pages/shared/RelatedFamilyForm";
 import FamilyMemberForm from "./pages/shared/FamilyMemberForm";
 import FollowUps from "./pages/bhc/FollowUps";
@@ -64,6 +65,7 @@ import ReferralDetails from "./pages/bhc/ReferralDetails";
 import MedicineAvailability from "./pages/bhc/MedicineAvailability";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
+import { EditPatientRegistration } from "./pages/bhc/AddPatient";
 import HealthRecordDetails from "./pages/bhc/HealthRecordDetails";
 import Programs from "./pages/bhc/Programs";
 import ProgramDetails from "./pages/bhc/ProgramDetails";
@@ -460,13 +462,13 @@ export default function App() {
       >
       <Routes location={consultationBackground || location}>
       {["bhc", "rhu", "admin"].flatMap(role => [
-        <Route key={`${role}-families`} path={`/${role}/families`} element={<ProtectedPage allowedRole={role} module="families"><FamiliesDirectory role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyForm role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families"><FamilyDetails role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-family-edit`} path={`/${role}/families/:householdId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyForm role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-related-new`} path={`/${role}/families/:householdId/related/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><RelatedFamilyForm role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyMemberForm role={role} /></ProtectedPage>} />,
-        <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><FamilyMemberForm role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-families`} path={`/${role}/families`} element={<ProtectedPage allowedRole={role} module="families">{role === "bhc" ? <BhcFamiliesDirectory /> : <FamiliesDirectory role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcFamilyForm /> : <FamilyForm role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families">{role === "bhc" ? <BhcFamilyDetails /> : <FamilyDetails role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-family-edit`} path={`/${role}/families/:householdId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcFamilyForm /> : <FamilyForm role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-related-new`} path={`/${role}/families/:householdId/related/new`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcDeferredFamilyAction /> : <RelatedFamilyForm role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcAddMember /> : <FamilyMemberForm role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcDeferredFamilyAction /> : <FamilyMemberForm role={role} />}</ProtectedPage>} />,
       ])}
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
@@ -551,6 +553,10 @@ export default function App() {
             <PatientsModule />
           </ProtectedPage>
         }
+      />
+      <Route
+        path="/bhc/patients/:patientId/edit"
+        element={<ProtectedPage allowedRole="bhc" module="patients"><EditPatientRegistration /></ProtectedPage>}
       />
       <Route
         path="/bhc/patients/add"

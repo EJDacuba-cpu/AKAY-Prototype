@@ -121,7 +121,7 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
   );
 }
 
-function FollowUpsPreview({ followUps, onViewAll, onView }) {
+function FollowUpsPreview({ followUps, onView }) {
   const visible = followUps.slice(0, PREVIEW_COUNT);
   return (
     <OverviewCard
@@ -129,7 +129,6 @@ function FollowUpsPreview({ followUps, onViewAll, onView }) {
       share={2}
       title="Upcoming follow-ups"
       meta={followUps.length ? `${followUps.length} active` : null}
-      action={followUps.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
     >
       {visible.length === 0 ? (
         <OverviewNote>No active or pending follow-ups.</OverviewNote>
@@ -210,7 +209,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
 /**
  * Right column of the Overview board, top to bottom: latest referrals,
  * the next follow-ups, care programs and the most recent
- * visits - each a compact card linking to its full tab, splitting the column
+ * visits - compact cards with record links, splitting the column
  * height by card share. Only rendered for roles that may view clinical
  * history.
  */
@@ -226,7 +225,6 @@ export default function ClinicalOverviewColumn({
   onViewPrograms,
   onViewReferrals,
   onViewReferral,
-  onViewFollowUps,
   onViewFollowUp,
   onViewRecords,
   onViewRecord,
@@ -240,7 +238,7 @@ export default function ClinicalOverviewColumn({
         onViewAll={onViewReferrals}
         onView={onViewReferral}
       />
-      <FollowUpsPreview followUps={activeFollowUps} onViewAll={onViewFollowUps} onView={onViewFollowUp} />
+      <FollowUpsPreview followUps={activeFollowUps} onView={onViewFollowUp} />
       <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <RecentVisitsPreview records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>

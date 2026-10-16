@@ -22,6 +22,8 @@ class Patient extends Model
         'purok_area',
         'civil_status',
         'occupation',
+        'education_level',
+        'education_completed',
         'philhealth_status',
         'spouse_name',
         'spouse_occupation',
@@ -36,6 +38,8 @@ class Patient extends Model
         'guardian_relationship',
         'guardian_contact_number',
         'family_serial_number',
+        'household_id',
+        'relationship_to_household_head',
         'birth_place',
         'birth_time',
         'birth_weight',
@@ -86,6 +90,11 @@ class Patient extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function household(): BelongsTo
+    {
+        return $this->belongsTo(Household::class);
     }
 
     public function barangayHealthCenter(): BelongsTo

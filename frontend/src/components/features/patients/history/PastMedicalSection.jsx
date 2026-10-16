@@ -81,8 +81,12 @@ export function RhuConditions({ groups }) {
  * Section II. `value` is the medical slice { currentDiseases, allergies,
  * hospitalizations }; `conditionGroups` is groupMedicalConditions over the
  * patient. Only patient-reported conditions are editable here.
+ *
+ * `rhuConditionsSlot` (optional) replaces the read-only RHU / legacy condition
+ * groups, e.g. with a loading or "could not be loaded" notice so a failed
+ * fetch never reads as "No conditions confirmed by RHU". Default: the groups.
  */
-export default function PastMedicalSection({ value, onChange, conditionGroups }) {
+export default function PastMedicalSection({ value, onChange, conditionGroups, rhuConditionsSlot }) {
   const diseases = Array.isArray(value?.currentDiseases) ? value.currentDiseases : [];
   const allergies = value?.allergies || {};
   const hospitalizations = value?.hospitalizations || {};
@@ -92,9 +96,13 @@ export default function PastMedicalSection({ value, onChange, conditionGroups })
   return (
     <div className="space-y-5">
       <Block title="Current Conditions">
-        <RhuConditions groups={conditionGroups} />
-        {/* Read-only, like the profile tab: legacy BHC monitoring awaiting RHU verification. */}
-        <LegacyPendingConditions rows={conditionGroups?.legacyPending} />
+        {rhuConditionsSlot ?? (
+          <>
+            <RhuConditions groups={conditionGroups} />
+            {/* Read-only, like the profile tab: legacy BHC monitoring awaiting RHU verification. */}
+            <LegacyPendingConditions rows={conditionGroups?.legacyPending} />
+          </>
+        )}
         <div>
           <p className="text-xs font-medium text-gray-500">Reported by patient (not confirmed)</p>
           <div className="mt-1">

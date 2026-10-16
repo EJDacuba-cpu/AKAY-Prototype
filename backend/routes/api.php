@@ -64,11 +64,18 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     });
 
     Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
+        Route::get('bhc/households/lookup', [\App\Http\Controllers\Api\HouseholdController::class, 'lookup']);
+        Route::get('bhc/households/candidates', [\App\Http\Controllers\Api\HouseholdController::class, 'candidates']);
+        Route::get('bhc/households', [\App\Http\Controllers\Api\HouseholdController::class, 'index']);
+        Route::get('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'show'])->whereNumber('id');
+        Route::post('bhc/households', [\App\Http\Controllers\Api\HouseholdController::class, 'store']);
+        Route::patch('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'update'])->whereNumber('id');
         Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
         Route::get('patients/{patient}/care-overview', [\App\Http\Controllers\Api\CareOverviewController::class, 'show']);
         Route::get('patients/{patient}/background-history', \App\Http\Controllers\Api\PatientBackgroundHistoryController::class);
+        Route::patch('patients/{patient}/background', \App\Http\Controllers\Api\PatientBackgroundController::class);
         Route::get('patients/{patient}/conditions', [\App\Http\Controllers\Api\PatientConditionController::class, 'index']);
         Route::get('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'index']);
         Route::post('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'store']);

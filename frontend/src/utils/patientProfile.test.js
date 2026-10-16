@@ -139,3 +139,12 @@ test("follow-ups group into overdue, pending, completed and cancelled", () => {
     cancelled: [5],
   });
 });
+
+test("Patient Information carries Education level and completion, blank when cleared", () => {
+  const form = createPatientForm({ education_level: "College", education_completed: "Graduate" });
+  assert.equal(form.educationLevel, "College");
+  assert.equal(form.educationCompleted, "Graduate");
+  const cleared = createPatientForm({ educationLevel: "", education_level: null });
+  assert.equal(cleared.educationLevel, "");
+  assert.equal(cleared.educationCompleted, "");
+});

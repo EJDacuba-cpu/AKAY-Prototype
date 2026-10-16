@@ -147,3 +147,16 @@ export function checkContinuedStart(overview, monitoringIds = [], startCondition
     droppedFollowUpIds,
   };
 }
+
+/**
+ * Whether the browser is now at `path` (pathname and query). Opening the
+ * workspace checks this after navigate(): a leave guard (an unsaved Patient
+ * Background edit) can stop the navigation, and the Start / Resume button must
+ * then stop showing "Opening..." instead of staying disabled.
+ */
+export function reachedPath(location, path) {
+  if (!location || !path) return false;
+  const [pathname, query = ""] = String(path).split("?");
+  const search = query ? `?${query}` : "";
+  return location.pathname === pathname && (location.search || "") === search;
+}

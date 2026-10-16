@@ -6,6 +6,9 @@ import {
   informantPayload,
   linkedRelatives,
   similarIllnessPayload,
+  visitAnswerDraftFields,
+  visitAnswerErrorMessages,
+  visitAnswerRecordFields,
   visitAnswerRows,
 } from "./historyStep.js";
 
@@ -96,4 +99,58 @@ test("visit answer rows list only what was answered", () => {
     visitAnswerRows({ informant: null, similarIllness: { answer: "Yes", who: "Sibling", note: " cough " } }),
     [{ label: "Similar illness in the family", value: "Yes · Sibling · cough" }],
   );
+});
+
+/* ── Visit answers on the BHC Patient Interview (moved from Patient History) ── */
+
+const informant = { relation: "Mother", name: " Juana ", patientId: "12" };
+const similarIllness = { answer: "Yes", who: "Sibling", note: "cough" };
+
+test("draft fields keep the same keys and leave out unanswered questions", () => {
+  assert.deepEqual(visitAnswerDraftFields({ informant, similarIllness, allowed: true }), {
+    informant: { relation: "Mother", name: "Juana", patientId: 12 },
+    similarIllness: { answer: "Yes", who: "Sibling", note: "cough" },
+  });
+  assert.deepEqual(visitAnswerDraftFields({ informant: { relation: "" }, similarIllness: null, allowed: true }), {});
+  // Without clinical.history nothing is written to the draft.
+  assert.deepEqual(visitAnswerDraftFields({ informant, similarIllness, allowed: false }), {});
+});
+
+test("record fields always carry both keys (null when unanswered or not allowed)", () => {
+  assert.deepEqual(visitAnswerRecordFields({ informant, similarIllness, allowed: true }), {
+    informant: { relation: "Mother", name: "Juana", patientId: 12 },
+    similarIllness: { answer: "Yes", who: "Sibling", note: "cough" },
+  });
+  assert.deepEqual(visitAnswerRecordFields({ informant: null, similarIllness: { answer: "" }, allowed: true }), {
+    informant: null,
+    similarIllness: null,
+  });
+  assert.deepEqual(visitAnswerRecordFields({ informant, similarIllness, allowed: false }), {
+    informant: null,
+    similarIllness: null,
+  });
+});
+
+test("a restored draft's visit answers round-trip through the draft fields unchanged", () => {
+  const draft = visitAnswerDraftFields({ informant, similarIllness, allowed: true });
+  assert.deepEqual(informantPayload(draft.informant), draft.informant);
+  assert.deepEqual(similarIllnessPayload(draft.similarIllness), draft.similarIllness);
+  assert.deepEqual(visitAnswerRows(draft), [
+    { label: "Informant", value: "Mother · Juana" },
+    { label: "Similar illness in the family", value: "Yes · Sibling · cough" },
+  ]);
+});
+
+test("visit answer errors are the informant / similar illness lines only", () => {
+  const lines = visitAnswerErrorMessages({
+    "informant.relation": "The selected informant.relation is invalid.",
+    "similar_illness.answer": "The selected similar illness.answer is invalid.",
+    "background_update.sections.medical.allergies": "Bad.",
+    chiefComplaint: "Chief complaint is required.",
+  });
+  assert.deepEqual(lines, [
+    "Informant: The selected relation is invalid.",
+    "Similar Illness: The selected answer is invalid.",
+  ]);
+  assert.deepEqual(visitAnswerErrorMessages(null), []);
 });

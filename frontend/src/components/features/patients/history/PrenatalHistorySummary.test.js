@@ -3,6 +3,7 @@ import { after, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
 import {
   buildBackgroundUpdate,
   normalizeBackground,
@@ -10,7 +11,12 @@ import {
   toDraftBackgroundUpdate,
 } from "../../../../utils/backgroundUpdate.js";
 
-const server = await createServer({ server: { middlewareMode: true, hmr: false, watch: null } });
+const server = await createServer({
+  configFile: false,
+  plugins: [react()],
+  optimizeDeps: { noDiscovery: true, include: [] },
+  server: { middlewareMode: true, hmr: false, ws: false, watch: null },
+});
 after(() => server.close());
 const { default: Summary } = await server.ssrLoadModule("/src/components/features/patients/history/PrenatalHistorySummary.jsx");
 
@@ -62,4 +68,41 @@ test("an unavailable OB section directs staff to patient information instead of 
   assert.match(html, /href="\/bhc\/patients\/7"/);
   assert.match(html, /target="_blank"/);
   assert.match(html, /patient sex/);
+});
+
+/* ── BHC: Obstetric history is edited in Patient Background (opt-in) ──── */
+
+test("BHC prenatal offers Edit in Patient Background instead of the removed History step", () => {
+  const html = render({ backgroundEditing: true, onEditBackground: () => {} });
+  assert.match(html, /Edit in Patient Background/);
+  assert.doesNotMatch(html, /Review \/ Update History/);
+  assert.match(html, /From Patient Background/);
+  assert.doesNotMatch(html, /target="_blank"/);
+});
+
+test("BHC prenatal without the editing duty is view-only (no edit button)", () => {
+  const html = render({ backgroundEditing: true });
+  assert.doesNotMatch(html, /<button/);
+  assert.doesNotMatch(html, /Review \/ Update History|Edit in Patient Background/);
+  assert.match(html, /2019 live birth/);
+});
+
+test("BHC prenatal keeps the sex-verification guard and its Patient Information link", () => {
+  const html = render({ backgroundEditing: true, onEditBackground: () => {}, canReview: false, editLink: "/bhc/patients/7" });
+  assert.match(html, /<button\b[^>]*\bdisabled=""[^>]*>[^<]*Edit in Patient Background/);
+  assert.match(html, /patient sex/);
+  assert.match(html, /href="\/bhc\/patients\/7"/);
+});
+
+test("BHC prenatal edit button is disabled while the draft is being saved", () => {
+  const html = render({ backgroundEditing: true, onEditBackground: () => {}, editBusy: true });
+  assert.match(html, /<button\b[^>]*\bdisabled=""/);
+  assert.match(html, /Saving/);
+});
+
+test("without the opt-in the prenatal summary is unchanged for other callers", () => {
+  const html = render({ onReview: () => {} });
+  assert.match(html, /Review \/ Update History/);
+  assert.doesNotMatch(html, /Edit in Patient Background/);
+  assert.match(html, /From Patient History/);
 });

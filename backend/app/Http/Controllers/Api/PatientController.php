@@ -8,18 +8,20 @@ use App\Models\Patient;
 use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
-use App\Services\HouseholdEnvironment;
+use App\Services\Households;
+use App\Services\PatientDetail;
 use App\Services\PatientIdentity;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PatientController extends Controller
 {
     public function __construct(
         private readonly FacilityAccessService $facilityAccess
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -76,9 +78,10 @@ class PatientController extends Controller
         }
 
         $results = $query->latest()->paginate($request->integer('per_page', 25));
-        if (! $user->isAdmin() && ! \App\Services\ActionPermissions::allows($user, 'clinical.history')) {
-            $results->through(fn (Patient $patient) => \App\Services\PatientIdentity::response($patient));
+        if (! $user->isAdmin() && ! ActionPermissions::allows($user, 'clinical.history')) {
+            $results->through(fn (Patient $patient) => PatientIdentity::response($patient));
         }
+
         return response()->json(['data' => $results]);
     }
 
@@ -131,10 +134,32 @@ class PatientController extends Controller
             $data['rural_health_unit_id'] = $user->rural_health_unit_id;
         }
 
-        $patient = Patient::create($data);
-        $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
+        $householdInput = $data['household'] ?? null;
+        unset($data['household'], $data['head_replacement']);
+        $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger) {
+            if ($request->user()->isBhc()) {
+                $households = app(Households::class);
+                $bhc = $households->bhc($request->user());
+                $households->lock($bhc);
+                $households->validateLegacySerial($bhc, $data);
+            }
+            if ($householdInput) {
+                app(Households::class)->bhc($request->user());
+                ActionPermissions::ensure($request->user(), 'patients.register');
+                if (! empty($data['family_serial_number'])) {
+                    throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
+                }
+            }
+            $patient = Patient::create($data);
+            if ($householdInput) {
+                app(Households::class)->attach($request, $patient, $householdInput);
+            }
+            $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
 
-        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father']);
+            return $patient;
+        });
+
+        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father', 'household']);
         if (! $canAccessHistory) {
             $response = $patient->makeHidden(['medical_background', 'mother', 'father'])->toArray();
             $response['mother'] = $patient->mother ? PatientIdentity::response($patient->mother) : null;
@@ -150,8 +175,8 @@ class PatientController extends Controller
     {
         $this->facilityAccess->authorizePatient($request->user(), $patient);
 
-        if (! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')) {
-            return response()->json(['data' => \App\Services\PatientIdentity::response($patient)]);
+        if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
+            return response()->json(['data' => PatientIdentity::response($patient)]);
         }
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
@@ -170,44 +195,18 @@ class PatientController extends Controller
             return response()->json(['data' => $data]);
         }
 
-        $user = $request->user();
-        $patient->load([
-            'healthRecords' => fn ($query) => $this->facilityAccess
-                ->scopePatientHealthRecords($query, $user),
-            'referrals' => fn ($query) => $this->facilityAccess
-                ->scopeReferrals($query, $user)
-                ->with('feedback'),
-            'mother' => fn ($query) => $this->facilityAccess
-                ->scopePatients($query, $user),
-            'father' => fn ($query) => $this->facilityAccess
-                ->scopePatients($query, $user),
-        ]);
-        $patient->loadCount([
-            'healthRecords' => fn ($query) => $this->facilityAccess
-                ->scopePatientHealthRecords($query, $user),
-            'referrals' => fn ($query) => $this->facilityAccess
-                ->scopeReferrals($query, $user),
-        ]);
-
-        $serial = trim((string) $patient->family_serial_number);
-        $others = $serial === ''
-            ? collect()
-            : $this->facilityAccess
-                ->scopePatients(Patient::query(), $user)
-                ->where('family_serial_number', $serial)
-                ->whereKeyNot($patient->id)
-                ->get();
-        $patient->setAttribute('household_environment', HouseholdEnvironment::latestFor($patient, $others));
-
-        return response()->json(['data' => $patient]);
+        return response()->json(['data' => app(PatientDetail::class)->for($patient, $request->user())]);
     }
 
     public function update(PatientRequest $request, Patient $patient, AuditLogger $auditLogger)
     {
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $data = $this->normalizeProfileFields($request->validated(), $patient);
-        if (! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')) {
-            $data = array_intersect_key($data, array_flip(\App\Services\PatientIdentity::FIELDS));
+        $householdInput = $data['household'] ?? null;
+        $replacement = $data['head_replacement'] ?? null;
+        unset($data['household'], $data['head_replacement']);
+        if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
+            $data = array_intersect_key($data, array_flip(PatientIdentity::FIELDS));
         }
         if (! $request->user()->isAdmin()) {
             unset(
@@ -217,12 +216,37 @@ class PatientController extends Controller
             );
         }
         $this->authorizeParentLinks($request, $data);
-        $patient->update($data);
-        $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
+        DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $auditLogger) {
+            if ($request->user()->isBhc()) {
+                // Acquire the same facility lock before any patient row write;
+                // FSN corrections lock in this order too, avoiding deadlocks.
+                app(Households::class)->lock((int) $request->user()->barangay_health_center_id);
+                $patient->refresh();
+                if (! $patient->household_id) {
+                    app(Households::class)->validateLegacySerial((int) $request->user()->barangay_health_center_id, $data, $patient);
+                }
+            }
+            if ($householdInput) {
+                app(Households::class)->bhc($request->user());
+                ActionPermissions::ensure($request->user(), 'patients.register');
+            }
+            if ($patient->household_id && array_key_exists('family_serial_number', $data) && $data['family_serial_number'] !== $patient->family_serial_number) {
+                throw ValidationException::withMessages(['family_serial_number' => 'Use Edit Family to correct the household FSN.']);
+            }
+            if ($householdInput && ! empty($data['family_serial_number']) && ! $patient->household_id) {
+                throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
+            }
+            $patient->update($data);
+            if ($householdInput) {
+                app(Households::class)->attach($request, $patient, $householdInput, $replacement);
+            }
+            app(Households::class)->validateHeadPatient($patient);
+            $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
+        });
 
-        return response()->json(['data' => ! $request->user()->isAdmin() && ! \App\Services\ActionPermissions::allows($request->user(), 'clinical.history')
-            ? \App\Services\PatientIdentity::response($patient->fresh())
-            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father'])]);
+        return response()->json(['data' => ! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')
+            ? PatientIdentity::response($patient->fresh())
+            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father', 'household'])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
@@ -269,6 +293,8 @@ class PatientController extends Controller
     {
         foreach ([
             'occupation',
+            'education_level',
+            'education_completed',
             'philhealth_status',
             'philhealth_number',
             'spouse_name',
