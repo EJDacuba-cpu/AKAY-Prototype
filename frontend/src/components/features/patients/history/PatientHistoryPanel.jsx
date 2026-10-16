@@ -7,7 +7,6 @@ import useClinicalRegistry from "../../../../hooks/useClinicalRegistry";
 import { usePatientConditions } from "../../../../hooks/usePatientConditionGroups";
 import { backgroundConditionGroups } from "../../../../utils/backgroundConditions";
 import {
-  BACKGROUND_SECTION_FIELDS,
   buildBackgroundUpdate,
   editedSectionKeys,
   markReviewed,
@@ -25,6 +24,7 @@ import {
 } from "../../../../utils/patientHistory";
 import FamilySection, { SimilarIllnessBlock } from "./FamilySection";
 import GeneralDataSection from "./GeneralDataSection";
+import HistorySectionSummary from "./HistorySectionSummary";
 import { SMALL_BUTTON_CLASS } from "./HistoryFields";
 import ObstetricSection from "./ObstetricSection";
 import { LegacyPendingConditions } from "../MedicalConditionsGroups";
@@ -42,25 +42,6 @@ export const HISTORY_SECTION_TITLES = {
 
 const PRESSED_BUTTON_CLASS =
   "inline-flex items-center gap-1 rounded-none border border-gray-900 bg-gray-900 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-gray-700";
-
-/** Read-only lines of a section, as the Review step and the profile word them. */
-function SectionSummary({ section, value }) {
-  return (
-    <dl className="divide-y divide-gray-100 border border-gray-200">
-      {BACKGROUND_SECTION_FIELDS[section].map((field) => {
-        const text = String(field.read(value) || "").trim();
-        return (
-          <div key={field.key} className="grid gap-1 px-3 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
-            <dt className="text-xs font-medium text-gray-500">{field.label}</dt>
-            <dd className={`m-0 min-w-0 break-words text-[13px] ${text ? "text-gray-900" : "text-gray-400"}`}>
-              {text || "Not recorded"}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
-  );
-}
 
 /** One editable section (II-V): its status, No changes / Update, and the summary or the form. */
 function SectionFrame({ title, status, updated, reviewed, canReview, editing, onReview, onToggleEdit, onUndo, children }) {
@@ -130,10 +111,11 @@ export default function PatientHistoryPanel({
   relatives,
   editLink,
   errors = [],
+  initialSection = "general",
 }) {
   const { registry } = useClinicalRegistry();
   const conditionsQuery = usePatientConditions(patient?.id, { enabled: !locked });
-  const [active, setActive] = useState("general");
+  const [active, setActive] = useState(initialSection);
   const [editing, setEditing] = useState({});
   // The values as typed, kept while `update` is still the one they produced:
   // the staged update is trimmed and drops blank rows, which must not happen
@@ -245,7 +227,7 @@ export default function PatientHistoryPanel({
           </div>
         )}
         {recorded ? (
-          <SectionSummary section={section} value={current} />
+          <HistorySectionSummary section={section} value={current} />
         ) : (
           <p className="text-[13px] text-gray-500">
             Nothing recorded yet. Use Update to record it; &ldquo;None known&rdquo; is an answer too.
@@ -335,9 +317,9 @@ export default function PatientHistoryPanel({
 
   const shown = navSections.some((section) => section.key === active && section.visible !== false) ? active : "general";
   return (
-    <div className="space-y-4">
+    <div className="@container/history space-y-4">
       {errorList}
-      <div className="grid gap-4 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
+      <div className="grid gap-4 @3xl/history:grid-cols-[13rem_minmax(0,1fr)] @3xl/history:items-start">
         <div className="space-y-3">
           <SectionNav sections={navSections} active={shown} onSelect={setActive} />
           {markAll}

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1821-1792092139/content/history-layout.html"
+        ],
+        "createdAt": "2026-10-15T19:23:24.406Z",
+        "reason": "Claude: throwaway low-fidelity brainstorm wireframe (visual companion), not product UI"
+      }
+    ]
+  }
+}

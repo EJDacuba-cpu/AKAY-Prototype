@@ -1,7 +1,7 @@
 /**
  * Patient History logic (ITR page 1): option lists, derived values and
  * per-section status. Pure functions only - no React, no API. Nothing computed
- * here is stored; age, pack-years and G/P are worked out when displayed.
+ * here is stored; age and pack-years are worked out when displayed.
  *
  * Booleans the server stores as "not recorded" come back missing, so a missing
  * flag always means false.
@@ -121,16 +121,6 @@ export function packYears({ sticksPerDay, years } = {}) {
   const span = toNumber(years);
   if (sticks === null || span === null || sticks <= 0 || span < 0) return null;
   return Math.round((sticks / 20) * span * 10) / 10;
-}
-
-/** G = number of pregnancies; P = live births + stillbirths. */
-export function gravidaPara(pregnancies) {
-  const list = Array.isArray(pregnancies) ? pregnancies : [];
-  const para = list.filter(
-    (pregnancy) =>
-      pregnancy?.outcome === "liveBirth" || pregnancy?.outcome === "stillbirth",
-  ).length;
-  return { gravida: list.length, para };
 }
 
 /**

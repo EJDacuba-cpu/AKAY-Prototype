@@ -2,7 +2,6 @@ import {
   DELIVERY_TYPES,
   MENSTRUAL_SYMPTOMS,
   PREGNANCY_OUTCOMES,
-  gravidaPara,
   sectionVisibility,
 } from "../../../../utils/patientHistory";
 import {
@@ -40,8 +39,8 @@ const PREGNANCY_COLUMNS = [
 const PREGNANCY_NEW = { year: null, outcome: "", delivery: "", place: "", note: "" };
 
 /**
- * Section V. `value` is the obstetric slice { obstetric }. G/P is worked out
- * from the pregnancy list and shown read-only. When `patient` is given, the
+ * Section V. `value` is the obstetric slice { obstetric }. It records previous
+ * pregnancies; the prenatal form owns the current pregnancy's OB score. The
  * section starts collapsed (with a Show button) below the age that
  * sectionVisibility() opens it; the caller leaves it out for non-female patients.
  */
@@ -49,7 +48,6 @@ export default function ObstetricSection({ value, onChange, patient, today = new
   const obstetric = value?.obstetric || {};
   const symptoms = Array.isArray(obstetric.symptoms) ? obstetric.symptoms : [];
   const pregnancies = Array.isArray(obstetric.pregnancies) ? obstetric.pregnancies : [];
-  const { gravida, para } = gravidaPara(pregnancies);
   const collapsed = patient ? sectionVisibility(patient, today).obstetric === "collapsed" : false;
 
   const set = (patch) => onChange({ ...value, obstetric: { ...obstetric, ...patch } });
@@ -103,18 +101,18 @@ export default function ObstetricSection({ value, onChange, patient, today = new
           <TextField label="Symptom notes" value={obstetric.symptomNotes} onChange={(next) => set({ symptomNotes: next })} />
         </Block>
 
-        <Block title="Pregnancies">
+        <Block title="Previous pregnancies">
+          <p className="text-xs text-neutral-600">
+            Record previous pregnancies here. G/P and TPAL for the current prenatal assessment are recorded in Prenatal Care.
+          </p>
           <ListEditor
-            label="pregnancy"
-            addLabel="Add pregnancy"
+            label="previous pregnancy"
+            addLabel="Add previous pregnancy"
             items={pregnancies}
             columns={PREGNANCY_COLUMNS}
             newItem={PREGNANCY_NEW}
             onChange={(next) => set({ pregnancies: next })}
           />
-          <p className="text-[12.5px] text-gray-700">
-            G{gravida} P{para} <span className="text-gray-500">(worked out from the list above)</span>
-          </p>
         </Block>
       </div>
     </CollapsibleBlock>

@@ -1,17 +1,19 @@
 import { programEnrollLabel } from "../../../../utils/consultationPrograms";
+import { Button } from "../../../ui/button";
 
 /**
  * Barangay Health Services for a consultation, shown as a fixed column to the
- * right of the form. Optional: enrolling in nothing is a general consultation.
+ * right of Interview and Patient History. Selection belongs to the same draft;
+ * it is saved with the consultation. No selection is a general consultation.
  *
  * The services (Maternal Care, Family Planning, EPI) render as one flat list.
- * Each starts "Not Started" with an Enroll button; enrolling turns it Active
- * for this visit and the same button becomes Remove, which puts it back. The
+ * Each starts "Not included"; choosing it makes it "Included" for this visit
+ * and the same button becomes Remove, which puts it back. The
  * status badge sits at the top right of the card. The service's form is a screen of
  * its own after Physical Examination, so the panel has no form button.
  * Conditions such as TB are not services here - they are monitored through the
  * Care Plan. "Primary" only means something when two or more services are
- * Active, so the badge and the "Make primary" control appear only then.
+ * included, so the badge and the "Make primary" control appear only then.
  */
 
 /**
@@ -42,7 +44,7 @@ export default function ConsultationProgramPanel({
             Barangay Health Services
           </h2>
           <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            Enroll the patient in any service provided during this consultation. Leave all as Not Started for a general consultation.
+            Choose services provided during this visit. They save with the consultation. Leave all unselected for a general consultation.
           </p>
         </div>
         <span className="mt-0.5 inline-flex min-w-[20px] flex-none items-center justify-center rounded-sm bg-[#F3F4F6] px-1.5 py-0.5 text-[11px] font-semibold text-[#374151]">
@@ -57,7 +59,7 @@ export default function ConsultationProgramPanel({
             <div
               key={program.key}
               className={`border-b border-[#E5E7EB] px-3 py-2 transition-colors duration-300 motion-reduce:transition-none last:border-b-0 ${
-                active ? "border-l-4 border-l-[#DC2626] bg-red-50" : "border-l-4 border-l-transparent"
+                active ? "bg-red-50" : ""
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -69,7 +71,7 @@ export default function ConsultationProgramPanel({
                     active ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#F3F4F6] text-[#374151]"
                   }`}
                 >
-                  {active ? "Active" : "Not Started"}
+                  {active ? "Included" : "Not included"}
                 </span>
               </div>
               {program.description && (
@@ -90,32 +92,37 @@ export default function ConsultationProgramPanel({
                       Primary
                     </span>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => onPrimaryChange(program.key)}
                       aria-label={`Make ${program.title} primary`}
                       className="text-[11px] font-semibold text-[#6B7280] hover:text-[#111827]"
                     >
                       Make primary
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
 
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 disabled={program.disabled}
                 title={program.disabledReason}
                 onClick={() => onSelect(program.key)}
-                aria-label={active ? `Remove ${program.title}` : undefined}
-                className={`mt-2 w-full rounded-none border bg-white px-3 py-1.5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white ${
+                aria-label={active ? `Remove ${program.title} from this visit` : undefined}
+                aria-pressed={active}
+                className={`mt-2 h-auto min-h-9 w-full whitespace-normal rounded-none border bg-white px-3 py-1.5 text-center text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white ${
                   active
                     ? "border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB]"
                     : "border-[#DC2626] text-[#DC2626] hover:bg-red-50"
                 }`}
               >
                 {active ? "Remove" : programEnrollLabel(program.key)}
-              </button>
+              </Button>
             </div>
           );
         })}

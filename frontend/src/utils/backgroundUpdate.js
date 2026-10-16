@@ -282,7 +282,7 @@ export const BACKGROUND_SECTION_FIELDS = {
     { key: "symptoms", label: "Menstrual Symptoms", read: (slice) => formatSymptoms(slice?.obstetric) },
     {
       key: "pregnancies",
-      label: "Pregnancies",
+      label: "Previous pregnancies",
       read: (slice) => formatPregnancies(slice?.obstetric?.pregnancies),
     },
   ],

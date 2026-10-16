@@ -200,20 +200,26 @@ test("formatSymptoms", () => {
   assert.equal(formatSymptoms({ symptoms: ["unknown"] }), "");
 });
 
-test("formatPregnancies", () => {
+test("previous pregnancy history does not claim to be the current pregnancy's G/P score", () => {
   const list = [
     { year: 2019, outcome: "liveBirth", delivery: "normal" },
     { year: 2021, outcome: "miscarriage" },
   ];
-  assert.equal(formatPregnancies(list), "G2 P1: 2019 live birth (normal), 2021 miscarriage");
-  assert.ok(formatPregnancies(list).startsWith("G2 P1"));
+  assert.equal(formatPregnancies(list), "2019 live birth (normal); 2021 miscarriage");
   assert.equal(
     formatPregnancies([
       { year: 2015, outcome: "liveBirth", delivery: "cesarean", place: "Provincial Hospital" },
       { outcome: "stillbirth", delivery: "notApplicable" },
       { year: 2022 },
     ]),
-    "G3 P2: 2015 live birth (cesarean, Provincial Hospital), stillbirth, 2022 outcome not recorded",
+    "2015 live birth (cesarean, Provincial Hospital); stillbirth; 2022 outcome not recorded",
+  );
+});
+
+test("shared pregnancy history includes the clinician's recorded notes", () => {
+  assert.equal(
+    formatPregnancies([{ year: 2019, outcome: "liveBirth", delivery: "cesarean", note: "Patient reports postpartum bleeding" }]),
+    "2019 live birth (cesarean) · Patient reports postpartum bleeding",
   );
 });
 

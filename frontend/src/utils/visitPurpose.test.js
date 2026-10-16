@@ -4,8 +4,8 @@ import { VISIT_SERVICES } from './visitPurpose.js';
 import { buildConsultationSteps, getFormSequence } from './consultationSteps.js';
 
 test('every flow, program-only included, keeps assessment, vitals, treatment and final actions', () => {
-  // Service forms are a detour from the first step, not part of Next/Previous.
-  assert.deepEqual(getFormSequence(), ['interview', 'assessment']);
+  // History is reviewed before assessment, including visits with a selected service.
+  assert.deepEqual(getFormSequence(), ['interview', 'history', 'assessment']);
   const steps = buildConsultationSteps({ selectedPrograms: ['EPI'], primaryProgram: 'EPI' });
   assert.equal(steps[0].label, 'Patient Interview');
   assert.equal(steps.some(step => step.key === 'assessment'), true);

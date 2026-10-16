@@ -61,7 +61,7 @@ test("once the patient has loaded, eligibility is left exactly as computed", () 
 });
 
 test("each service has its own enroll button label", () => {
-  assert.equal(programEnrollLabel("Maternal"), "Enroll to Prenatal Care");
+  assert.equal(programEnrollLabel("Maternal"), "Add Prenatal Care to This Visit");
   assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
   assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");
   assert.equal(programEnrollLabel("Something Else"), "Enroll");

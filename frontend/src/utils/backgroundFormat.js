@@ -14,7 +14,6 @@ import {
   EXPOSURES,
   MENSTRUAL_SYMPTOMS,
   PREGNANCY_OUTCOMES,
-  gravidaPara,
   summarizeAllergies,
 } from "./patientHistory.js";
 
@@ -203,10 +202,9 @@ export function formatSymptoms(obstetric) {
   return join([symptoms.join(", "), text(obstetric.symptomNotes)]);
 }
 
-/** "G2 P1: 2019 live birth (normal), 2021 miscarriage" - G/P comes from gravidaPara. */
+/** Previous pregnancies are history entries, not a verified current-pregnancy OB score. */
 export function formatPregnancies(list) {
   if (!Array.isArray(list) || list.length === 0) return "";
-  const { gravida, para } = gravidaPara(list);
   const entries = list.map((pregnancy) => {
     if (!isObject(pregnancy)) return "outcome not recorded";
     const year = whole(pregnancy.year);
@@ -215,9 +213,9 @@ export function formatPregnancies(list) {
       pregnancy.delivery === "notApplicable" ? "" : labelFor(DELIVERY_TYPES, pregnancy.delivery).toLowerCase();
     const detail = join([delivery, text(pregnancy.place)], ", ");
     const main = join([year !== null ? String(year) : "", outcome || "outcome not recorded"], " ");
-    return detail ? `${main} (${detail})` : main;
+    return join([detail ? `${main} (${detail})` : main, text(pregnancy.note)]);
   });
-  return `G${gravida} P${para}: ${entries.join(", ")}`;
+  return entries.join("; ");
 }
 
 /** Conditions the patient reported that RHU has not confirmed. */

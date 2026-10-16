@@ -50,7 +50,7 @@ export function lockProgramsWhilePatientLoads(programs, patientLoading) {
 }
 
 const PROGRAM_ENROLL_LABELS = Object.freeze({
-  Maternal: "Enroll to Prenatal Care",
+  Maternal: "Add Prenatal Care to This Visit",
   "Family Planning": "Enroll to Family Planning",
   EPI: "Enroll to Child Health / EPI",
 });

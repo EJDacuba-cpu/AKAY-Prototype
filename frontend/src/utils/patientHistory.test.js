@@ -12,7 +12,6 @@ import {
   TOILET_TYPES,
   WATER_SOURCES,
   defaultInformant,
-  gravidaPara,
   hasRecordedData,
   packYears,
   reviewGroups,
@@ -60,18 +59,6 @@ test("packYears is null when an input is missing", () => {
   assert.equal(packYears({ sticksPerDay: "", years: 10 }), null);
   assert.equal(packYears({ sticksPerDay: 0, years: 10 }), null);
   assert.equal(packYears(), null);
-});
-
-test("gravidaPara counts pregnancies and live births plus stillbirths", () => {
-  const pregnancies = [
-    { outcome: "liveBirth" },
-    { outcome: "liveBirth" },
-    { outcome: "stillbirth" },
-    { outcome: "miscarriage" },
-  ];
-  assert.deepEqual(gravidaPara(pregnancies), { gravida: 4, para: 3 });
-  assert.deepEqual(gravidaPara([]), { gravida: 0, para: 0 });
-  assert.deepEqual(gravidaPara(null), { gravida: 0, para: 0 });
 });
 
 test("defaultInformant is the patient from age 18", () => {

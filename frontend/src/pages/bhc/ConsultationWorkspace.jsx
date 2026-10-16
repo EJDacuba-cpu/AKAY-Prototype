@@ -92,6 +92,7 @@ import MonitoringDetailsForms from "../../components/features/health-records/wiz
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
+import PrenatalHistorySummary from "../../components/features/patients/history/PrenatalHistorySummary";
 import { AllergyChip } from "../../components/features/patients/PatientAlertChips";
 import {
   readBackgroundConflicts,
@@ -1192,6 +1193,7 @@ export default function ConsultationWorkspace() {
   // Without clinical.history the panel is locked and nothing is staged.
   const canViewBackground = (currentUser?.permissions || []).includes("clinical.history");
   const [backgroundUpdate, setBackgroundUpdate] = useState(null);
+  const [historyInitialSection, setHistoryInitialSection] = useState("general");
   // Per visit, saved on the record: who gave the history, and whether anyone
   // at home has a similar illness. The informant gets its default once, when
   // the patient loads, unless a resumed draft already brought one.
@@ -4113,13 +4115,13 @@ export default function ConsultationWorkspace() {
     subtitles: stepSubtitles,
   });
   // The fixed right-hand column changes with the step: Barangay Health Services
-  // (the visit's service context) is chosen on Patient Interview only;
+  // (the visit's service context) is chosen during Interview or Patient History;
   // Physical Examination shows the body preview; Care and Outcome shows a
   // read-only list of this consultation's conditions grouped by outcome.
   const sidePanelAllowed =
     wizardPhase === WIZARD_FORM &&
     !(activeDraft?.reviewState === "review" && !canFinalize);
-  const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
+  const showProgramPanel = sidePanelAllowed && [INTERVIEW_STEP, HISTORY_STEP].includes(activeFormStep);
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showConditionPanel = wizardPhase === WIZARD_NEXT && nextScreen === OUTCOME_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel || showConditionPanel;
@@ -4437,6 +4439,7 @@ export default function ConsultationWorkspace() {
               today={dateOfVisit || new Date()}
               layout="screen"
               locked={!canViewBackground}
+              initialSection={historyInitialSection}
               loading={selectedPatientLoading || !selectedPatient}
               editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
               errors={historyErrors}
@@ -4494,9 +4497,23 @@ export default function ConsultationWorkspace() {
           <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
 
+            <FormSection title="Patient History" subtitle="Review the shared history before completing this prenatal assessment.">
+              <PrenatalHistorySummary
+                background={canViewBackground ? selectedPatient?.medicalBackground : null}
+                update={canViewBackground ? backgroundUpdate : null}
+                locked={!canViewBackground}
+                canReview={historySections.includes("obstetric")}
+                editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
+                onReview={() => {
+                  setHistoryInitialSection("obstetric");
+                  goToStepKey(HISTORY_STEP);
+                }}
+              />
+            </FormSection>
+
             <FormSection
               title="Pregnancy / Obstetric Information"
-              subtitle="Record pregnancy and obstetric information for this prenatal consultation."
+              subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment. Previous pregnancies use the shared history above."
               delay={3}
             >
               <LockedFormContent locked={patientGateLocked}>
