@@ -27,6 +27,7 @@ import FamilySection, { SimilarIllnessBlock } from "./FamilySection";
 import GeneralDataSection from "./GeneralDataSection";
 import { SMALL_BUTTON_CLASS } from "./HistoryFields";
 import ObstetricSection from "./ObstetricSection";
+import { LegacyPendingConditions } from "../MedicalConditionsGroups";
 import PastMedicalSection, { RhuConditions } from "./PastMedicalSection";
 import PersonalSocialSection from "./PersonalSocialSection";
 import SectionNav, { statusText } from "./SectionNav";
@@ -237,7 +238,12 @@ export default function PatientHistoryPanel({
     const recorded = hasRecordedData(current, section);
     return (
       <div className="space-y-4">
-        {section === "medical" && <RhuConditions groups={conditionGroups} />}
+        {section === "medical" && (
+          <div className="space-y-3">
+            <RhuConditions groups={conditionGroups} />
+            <LegacyPendingConditions rows={conditionGroups.legacyPending} />
+          </div>
+        )}
         {recorded ? (
           <SectionSummary section={section} value={current} />
         ) : (

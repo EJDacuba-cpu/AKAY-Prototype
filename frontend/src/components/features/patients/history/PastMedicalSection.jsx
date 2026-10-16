@@ -2,6 +2,7 @@ import { Lock } from "lucide-react";
 
 import { conditionStatusLabel } from "../../../../utils/medicalConditions";
 import { formatShortDate } from "../../../../utils/patientProfile";
+import { LegacyPendingConditions } from "../MedicalConditionsGroups";
 import { Block } from "./HistoryFields";
 import ListEditor from "./ListEditor";
 
@@ -92,6 +93,8 @@ export default function PastMedicalSection({ value, onChange, conditionGroups })
     <div className="space-y-5">
       <Block title="Current Conditions">
         <RhuConditions groups={conditionGroups} />
+        {/* Read-only, like the profile tab: legacy BHC monitoring awaiting RHU verification. */}
+        <LegacyPendingConditions rows={conditionGroups?.legacyPending} />
         <div>
           <p className="text-xs font-medium text-gray-500">Reported by patient (not confirmed)</p>
           <div className="mt-1">
