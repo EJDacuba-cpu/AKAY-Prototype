@@ -11,6 +11,7 @@ import useBhcHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { getHouseholds, getHouseholdById, saveHousehold, getHouseholdCandidates } from '../../services/householdService';
 import FamilyTreeCanvas from '../../components/features/families/FamilyTreeCanvas';
 import FamilyMembersList from '../../components/features/families/FamilyMembersList';
+import TransferHouseholdModal from '../../components/features/families/TransferHouseholdModal';
 import { buildFamilyGraph } from '../../utils/familyGraph';
 import { RELATIONSHIP_LABELS } from '../../utils/relationshipLabels';
 import { addressText, addressValues, canHeadHousehold, patientName } from '../../services/familyRegistry';
@@ -54,6 +55,7 @@ export function BhcFamilyDetails() {
   const access=useAccess();
   const navigate=useNavigate();
   const [view,setView]=useState('tree');
+  const [transferring,setTransferring]=useState(null);
   const query=useQuery({queryKey:[...scope.key,'detail',householdId],queryFn:()=>getHouseholdById(householdId),retry:false});
   const item=query.data;
   const graph=useMemo(()=>buildFamilyGraph(item),[item]);
@@ -72,7 +74,8 @@ export function BhcFamilyDetails() {
     <div role="tablist" aria-label="Family view" className="flex gap-7 border-b border-neutral-200">{tabs.map(([key,label])=><button key={key} type="button" role="tab" id={`family-tab-${key}`} aria-selected={view === key} aria-controls={`family-panel-${key}`} tabIndex={view === key ? 0 : -1} onClick={()=>setView(key)} onKeyDown={moveTab} className={`border-b-2 pb-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-red-600 ${view === key ? 'border-red-700 text-red-700' : 'border-transparent text-neutral-500'}`}>{label}</button>)}</div>
     <section role="tabpanel" id={`family-panel-${view}`} aria-labelledby={`family-tab-${view}`}>{view === 'tree'
       ? <FamilyTreeCanvas members={graph.members} edges={graph.edges} headId={item.headPatientId} onOpenMember={openMember}/>
-      : <FamilyMembersList members={graph.members} headId={item.headPatientId} canManage={access.can('families.manage')} familyPath={`${base}/${item.id}`}/>}</section>
+      : <FamilyMembersList members={graph.members} headId={item.headPatientId} canManage={access.can('families.manage')} canTransfer={access.can('patients.register')} onTransfer={setTransferring} familyPath={`${base}/${item.id}`}/>}</section>
+    {transferring && <TransferHouseholdModal member={transferring} household={item} onClose={()=>setTransferring(null)}/>}
   </>}</FamilyFrame>;
 }
 function Field({name,label,error,children}) {

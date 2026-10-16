@@ -28,7 +28,6 @@ const PARENT_FIELDS = [
   ["Guardian relationship", ["guardianRelationship", "guardian_relationship"]],
   ["Guardian contact", ["guardianContactNumber", "guardian_contact_number"]],
   ["Household head", ["householdHead", "household_head"]],
-  ["Relation to head", ["relationshipToHouseholdHead", "relationship_to_household_head"]],
 ];
 
 const INPUT_CLASS =
@@ -98,7 +97,7 @@ export default function RegistrationSections({
   fieldErrors = {},
   saving = false,
   householdLocked = false,
-  onChangeHousehold,
+  onViewHousehold,
 }) {
   const read = (keys, fallback = "") => getPatientValue(patient, keys, fallback);
   const editing = editingSection !== null;
@@ -269,16 +268,16 @@ export default function RegistrationSections({
       <ProfileSection
         id="household"
         title="Household"
-        actions={onChangeHousehold ? (
-          <TextAction onClick={onChangeHousehold} disabled={editing} title={editing ? "Save or cancel the section you are editing first" : undefined}>
-            {householdLocked ? "Change Household" : "Assign Household"}
+        actions={onViewHousehold ? (
+          <TextAction onClick={onViewHousehold} disabled={editing} title={editing ? "Save or cancel the section you are editing first" : undefined}>
+            View Household
           </TextAction>
         ) : null}
       >
         <FieldList
           rows={[
             ["Family serial no.", read(["familySerialNumber", "family_serial_number"]) || "No household assigned"],
-            ...(householdLocked ? [["Relation to head", read(["relationshipToHouseholdHead", "relationship_to_household_head"])]] : []),
+            ...(householdLocked ? [["Relationship to head", read(["relationshipToHouseholdHead", "relationship_to_household_head"])]] : []),
           ]}
         />
       </ProfileSection>

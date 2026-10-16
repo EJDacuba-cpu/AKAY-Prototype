@@ -2,17 +2,27 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { legacyBackgroundRecovery } from "../../../../utils/legacyBackgroundRecovery.js";
 
+// Own cache dir: sharing node_modules/.vite with a dev server made the optimizer rename fail with EPERM on Windows.
+const cacheDir = join(tmpdir(), `akay-vite-ssr-legacy-${process.pid}`);
 const server = await createServer({
   configFile: false,
+  cacheDir,
   plugins: [react()],
   optimizeDeps: { noDiscovery: true, include: [] },
   server: { middlewareMode: true, hmr: false, ws: false, watch: null },
 });
-after(() => server.close());
+after(async () => {
+  await server.close();
+  rmSync(cacheDir, { recursive: true, force: true });
+});
 const { default: Panel } = await server.ssrLoadModule("/src/components/features/health-records/wizard/LegacyBackgroundRecoveryPanel.jsx");
 const { default: Conflict } = await server.ssrLoadModule("/src/components/features/health-records/wizard/BackgroundConflictPanel.jsx");
 const update = {

@@ -31,7 +31,6 @@ import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
-import ChangeHouseholdPanel from "../../components/features/patients/profile/ChangeHouseholdPanel";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
 import { getCurrentUser } from "../../utils/auth";
 import {
@@ -129,6 +128,7 @@ export default function PatientDetails() {
 function LivePatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const canRegister = (getCurrentUser()?.permissions || []).includes("patients.register");
+  const canViewFamilies = (getCurrentUser()?.permissions || []).includes("families.view");
   const canEditBackground = canUpdateBackground(getCurrentUser());
   const { patientId } = useParams();
   const navigate = useNavigate();
@@ -143,7 +143,6 @@ function LivePatientDetails() {
   const [pendingSaveSection, setPendingSaveSection] = useState(null);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [changingHousehold, setChangingHousehold] = useState(false);
   const [form, setForm] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const editingSectionRef = useRef(null);
@@ -540,7 +539,7 @@ function LivePatientDetails() {
                     editingSection={editingSection}
                     onEdit={canRegister ? handleEditSection : undefined}
                     householdLocked={Boolean(patient.householdId)}
-                    onChangeHousehold={canRegister ? () => setChangingHousehold(true) : undefined}
+                    onViewHousehold={patient.householdId && canViewFamilies ? () => navigate(`/bhc/families/${patient.householdId}`) : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}
@@ -604,7 +603,6 @@ function LivePatientDetails() {
         </div>
       </ProfileShell>
 
-      {changingHousehold && <ChangeHouseholdPanel patient={patient} onClose={() => setChangingHousehold(false)} />}
       <ConfirmationModal
         open={pendingSaveSection !== null}
         title="Update Changes to Profile?"

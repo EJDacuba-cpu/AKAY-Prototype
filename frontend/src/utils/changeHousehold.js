@@ -15,9 +15,3 @@ export function changeHouseholdPayload(connection, registry, replacement) {
     } : {}),
   };
 }
-
-// Same household and same relationship as already saved: nothing to change.
-export function isUnchangedHousehold(connection, saved) {
-  return Boolean(connection && saved && connection.kind === "existing" && saved.kind === "existing"
-    && connection.householdId === saved.householdId && connection.relationship === saved.relationship && !connection.relationshipLink);
-}

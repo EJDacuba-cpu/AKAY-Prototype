@@ -13,7 +13,7 @@ const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wi
 
 export default function FamilyRegistryField({
   registry, patient, connection, savedConnection, headReplacement,
-  onChange, onPendingChange, error, relationshipError, live = false, allowCreate = true, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
+  onChange, onPendingChange, error, relationshipError, live = false, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
 }) {
   const id = useId();
   const inputRef = useRef(null);
@@ -69,7 +69,7 @@ export default function FamilyRegistryField({
   }
 
   // The patient becomes the head, so a minor can't start a household of their own.
-  const emptyActions = connection || !allowCreate
+  const emptyActions = connection
     ? <p className="text-xs text-gray-700">To start a separate household for an existing patient, use Add Family in the Families module.</p>
     : eligibility.code === "minor"
     ? <p className="text-xs text-gray-700">{eligibility.reason}</p>

@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\BarangayHealthCenter;
 use App\Models\Household;
 use App\Models\Patient;
+use App\Models\PatientRelationship;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -96,5 +98,34 @@ class ChangeHouseholdCommandTest extends TestCase
         $this->actAs(['families.view', 'families.manage']);
         $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Niece'))->assertForbidden();
         $this->assertSame((int) $one['household_id'], Patient::find($member['id'])->household_id);
+    }
+
+    public function test_a_transfer_keeps_parent_links_birth_and_guardian_data_and_stored_relationships_and_is_audited(): void
+    {
+        $this->actAs();
+        [$one, $two] = [$this->newHead('First road'), $this->newHead('Second road')];
+        $mother = $this->join($one, 'Wife', ['sex' => 'Female']);
+        $child = $this->join($one, 'Daughter', ['first_name' => 'Kid', 'birthdate' => '2021-03-04']);
+        Patient::whereKey($child['id'])->update(['mother_patient_id' => $mother['id'], 'father_patient_id' => $one['id'], 'mother_name' => 'Wife Test', 'guardian_name' => 'Lola', 'guardian_relationship' => 'Grandmother', 'birth_place' => 'Bulakan', 'birth_weight' => 3.1]);
+        PatientRelationship::create(['barangay_health_center_id' => $this->bhc->id, 'patient_id' => min($child['id'], $mother['id']), 'relative_id' => max($child['id'], $mother['id']), 'type' => 'sibling']);
+        $version = $this->getJson('/api/bhc/households/'.$one['household_id'])->json('data.version');
+
+        $this->patchJson('/api/patients/'.$child['id'], $this->command($two['household_id'], 'Niece'))->assertOk();
+
+        $fresh = Patient::find($child['id']);
+        $this->assertSame($mother['id'], $fresh->mother_patient_id);
+        $this->assertSame($one['id'], $fresh->father_patient_id);
+        $this->assertSame('Lola', $fresh->guardian_name);
+        $this->assertSame('Grandmother', $fresh->guardian_relationship);
+        $this->assertSame('Wife Test', $fresh->mother_name);
+        $this->assertSame('Bulakan', $fresh->birth_place);
+        $this->assertSame('2021-03-04', $fresh->birthdate->toDateString());
+        $this->assertSame('Niece', $fresh->relationship_to_household_head);
+        $this->assertSame(1, PatientRelationship::count());
+        $this->assertGreaterThan($version, $this->getJson('/api/bhc/households/'.$one['household_id'])->json('data.version'));
+        $this->assertSame(1, AuditLog::where('action', 'membership_departed')->count());
+        $this->assertSame(1, AuditLog::where('action', 'membership_updated')->where('description', "Patient {$child['id']} joined household {$two['household_id']}.")->count());
+        $sourceIds = collect($this->getJson('/api/bhc/households/'.$one['household_id'])->json('data.members'))->pluck('id');
+        $this->assertFalse($sourceIds->contains($child['id']));
     }
 }

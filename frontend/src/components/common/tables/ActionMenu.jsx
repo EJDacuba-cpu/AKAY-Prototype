@@ -20,6 +20,7 @@ export default function ActionMenu({
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
   actions = [],
+  triggerLabel = "Open actions",
   showHeader = true,
   triggerVariant = "default",
 }) {
@@ -228,7 +229,7 @@ export default function ActionMenu({
         ref={btnRef}
         type="button"
         onClick={() => (open ? closeMenu() : openMenu())}
-        aria-label="Open actions"
+        aria-label={triggerLabel}
         className={
           calendarTrigger
             ? `inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent bg-transparent transition-colors active:scale-[0.92] ${
