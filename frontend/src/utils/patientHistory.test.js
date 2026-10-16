@@ -157,9 +157,8 @@ test("sectionStatus covers every kind", () => {
     facility: "RHU Bulakan",
   });
   assert.deepEqual(sectionStatus({ background, update: null, section: "family", today }), {
-    kind: "lastReviewed",
+    kind: "recorded",
     date: "2026-07-15",
-    facility: undefined,
   });
   assert.deepEqual(
     sectionStatus({ background, update: { sections: {}, reviewed: ["medical"] }, section: "medical", today }),
@@ -176,15 +175,28 @@ test("sectionStatus covers every kind", () => {
   );
 });
 
-test("sectionStatus shows legacy data with no date as last reviewed", () => {
+test("sectionStatus shows data with no date as recorded, not reviewed", () => {
   const status = sectionStatus({
     background: { familyHistory: "Diabetes - mother" },
     update: null,
     section: "family",
     today,
   });
-  assert.equal(status.kind, "lastReviewed");
-  assert.equal(status.date, undefined);
+  assert.deepEqual(status, { kind: "recorded", date: undefined });
+});
+
+test("sectionStatus is last reviewed only with a review stamp that has a date", () => {
+  const status = sectionStatus({
+    background: {
+      allergies: { noneKnown: true },
+      reviewedAt: { medical: { date: "", facility: "RHU Bulakan" } },
+      updatedAt: { medical: "2026-08-01" },
+    },
+    update: null,
+    section: "medical",
+    today,
+  });
+  assert.deepEqual(status, { kind: "recorded", date: "2026-08-01" });
 });
 
 test("summarizeAllergies", () => {

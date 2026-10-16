@@ -17,12 +17,17 @@ import { LegacyPendingConditions, REPORTED_LABEL } from "./MedicalConditionsGrou
 import { RhuConditions } from "./history/PastMedicalSection";
 import { FieldList, ProfileSection } from "./profile/ProfileSection";
 
-/** "Last reviewed {date} · {facility}", or "Not yet recorded". */
+/**
+ * "Last reviewed {date} · {facility}", "Recorded {date} (not yet reviewed)"
+ * for a section never reviewed, or "Not yet recorded".
+ */
 function sectionMeta(background, section) {
   const status = sectionStatus({ background, section });
+  const date = status.date ? formatLongDate(status.date, "") : "";
+  if (status.kind === "recorded") {
+    return date ? `Recorded ${date} (not yet reviewed)` : "Recorded (not yet reviewed)";
+  }
   if (status.kind !== "lastReviewed") return "Not yet recorded";
-  if (!status.date) return "Last reviewed date not recorded";
-  const date = formatLongDate(status.date, "");
   if (!date) return "Last reviewed date not recorded";
   return status.facility ? `Last reviewed ${date} · ${status.facility}` : `Last reviewed ${date}`;
 }

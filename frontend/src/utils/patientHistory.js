@@ -183,7 +183,11 @@ function hasOwn(object, key) {
   return Boolean(object) && Object.prototype.hasOwnProperty.call(object, key);
 }
 
-/** How a section reads in the section list. General Data is rendered by the caller. */
+/**
+ * How a section reads in the section list. General Data is rendered by the
+ * caller. "lastReviewed" needs a dated review stamp; a section that only has
+ * an edit date or data is "recorded" (not yet reviewed), dated when it can be.
+ */
 export function sectionStatus({ background, update, section, today } = {}) {
   if (hasOwn(update?.sections, section)) return { kind: "updatedToday", date: today };
   if (Array.isArray(update?.reviewed) && update.reviewed.includes(section)) {
@@ -191,13 +195,12 @@ export function sectionStatus({ background, update, section, today } = {}) {
   }
 
   const reviewed = background?.reviewedAt?.[section];
-  const date = reviewed?.date || background?.updatedAt?.[section] || undefined;
-  if (date || hasRecordedData(background, section)) {
-    return {
-      kind: "lastReviewed",
-      date,
-      facility: reviewed?.date ? reviewed.facility : undefined,
-    };
+  if (reviewed?.date) {
+    return { kind: "lastReviewed", date: reviewed.date, facility: reviewed.facility || undefined };
+  }
+  const updatedAt = background?.updatedAt?.[section] || undefined;
+  if (updatedAt || hasRecordedData(background, section)) {
+    return { kind: "recorded", date: updatedAt };
   }
   return { kind: "notRecorded" };
 }

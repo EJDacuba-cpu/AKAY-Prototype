@@ -14,6 +14,10 @@ export function statusText(status) {
       const facility = status.facility ? ` · ${status.facility}` : "";
       return `Last reviewed${date}${facility}`;
     }
+    case "recorded": {
+      const date = status.date ? formatShortDate(status.date) : "";
+      return date ? `Recorded ${date} (not yet reviewed)` : "Recorded (not yet reviewed)";
+    }
     default:
       return "Not recorded";
   }
