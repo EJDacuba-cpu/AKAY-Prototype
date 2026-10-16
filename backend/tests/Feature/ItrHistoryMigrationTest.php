@@ -79,4 +79,71 @@ class ItrHistoryMigrationTest extends TestCase
         $this->assertSame($revisions, $background['revisions']);
         $this->assertNull(HealthRecord::findOrFail($record->id)->background_changes);
     }
+
+    private function cleanupMigration(): object
+    {
+        return require database_path('migrations/2026_10_16_000002_reset_background_for_itr_history.php');
+    }
+
+    private function withEnvironment(string $environment, ?string $flag, callable $callback): void
+    {
+        $originalEnv = $this->app['env'];
+        $this->app['env'] = $environment;
+        if ($flag === null) {
+            unset($_ENV['ITR_HISTORY_RESET_CONFIRMED'], $_SERVER['ITR_HISTORY_RESET_CONFIRMED']);
+            putenv('ITR_HISTORY_RESET_CONFIRMED');
+        } else {
+            $_ENV['ITR_HISTORY_RESET_CONFIRMED'] = $_SERVER['ITR_HISTORY_RESET_CONFIRMED'] = $flag;
+            putenv('ITR_HISTORY_RESET_CONFIRMED='.$flag);
+        }
+
+        try {
+            $callback();
+        } finally {
+            $this->app['env'] = $originalEnv;
+            unset($_ENV['ITR_HISTORY_RESET_CONFIRMED'], $_SERVER['ITR_HISTORY_RESET_CONFIRMED']);
+            putenv('ITR_HISTORY_RESET_CONFIRMED');
+        }
+    }
+
+    public function test_cleanup_refuses_to_run_outside_testing_without_confirmation(): void
+    {
+        $patient = $this->patient(['allergies' => 'Dust']);
+
+        $thrown = null;
+        $this->withEnvironment('production', null, function () use (&$thrown) {
+            try {
+                $this->cleanupMigration()->up();
+            } catch (\RuntimeException $e) {
+                $thrown = $e;
+            }
+        });
+
+        $this->assertNotNull($thrown, 'The cleanup migration ran without ITR_HISTORY_RESET_CONFIRMED.');
+        $this->assertStringContainsString('ITR_HISTORY_RESET_CONFIRMED=1', $thrown->getMessage());
+        $this->assertStringContainsString('medical_background', $thrown->getMessage());
+        $this->assertStringContainsString('background_changes', $thrown->getMessage());
+
+        $this->assertSame('Dust', Patient::findOrFail($patient->id)->medical_background['allergies']);
+    }
+
+    public function test_cleanup_runs_outside_testing_when_confirmed(): void
+    {
+        $patient = $this->patient(['allergies' => 'Dust', 'revisions' => ['medical' => 1]]);
+
+        $this->withEnvironment('production', '1', fn () => $this->cleanupMigration()->up());
+
+        $background = Patient::findOrFail($patient->id)->medical_background;
+        $this->assertArrayNotHasKey('allergies', $background);
+        $this->assertSame(['medical' => 1], $background['revisions']);
+    }
+
+    public function test_cleanup_stores_null_when_no_background_keys_remain(): void
+    {
+        $patient = $this->patient(['allergies' => 'Dust', 'updatedAt' => ['medical' => '2026-01-01']]);
+
+        $this->cleanupMigration()->up();
+
+        $this->assertNull(\Illuminate\Support\Facades\DB::table('patients')->where('id', $patient->id)->value('medical_background'));
+    }
 }

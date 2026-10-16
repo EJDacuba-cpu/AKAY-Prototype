@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
  * alone so the base-revision checks keep working. The now-meaningless
  * health_records.background_changes audit entries are cleared.
  *
+ * It deletes data, so outside the testing environment it refuses to run until the
+ * operator has backed up both columns and set ITR_HISTORY_RESET_CONFIRMED=1.
+ *
  * Portable on purpose (Eloquent + DB facade, no JSON SQL operators) - it runs on
  * both PostgreSQL and the SQLite used by the tests.
  */
@@ -26,6 +29,14 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (! env('ITR_HISTORY_RESET_CONFIRMED') && ! app()->environment('testing')) {
+            throw new RuntimeException(
+                'The ITR patient history cleanup permanently removes old background data. '
+                .'Back up patients.medical_background and health_records.background_changes first, '
+                .'then set ITR_HISTORY_RESET_CONFIRMED=1 and run the migration again.'
+            );
+        }
+
         Patient::query()->whereNotNull('medical_background')->chunkById(200, function ($patients) {
             foreach ($patients as $patient) {
                 $background = $patient->medical_background;
@@ -47,7 +58,7 @@ return new class extends Migration
 
                 // Query builder, not save(): the cleanup must not touch updated_at.
                 DB::table('patients')->where('id', $patient->id)->update([
-                    'medical_background' => json_encode($background),
+                    'medical_background' => $background === [] ? null : json_encode($background),
                 ]);
             }
         });
