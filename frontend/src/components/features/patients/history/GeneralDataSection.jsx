@@ -56,9 +56,16 @@ export default function GeneralDataSection({
           <Row label="Occupation" value={formatDisplayValue(pick(patient, ["occupation"]), "Not recorded")} />
           <Row label="Birthday" value={formatLongDate(birthdate, "Not recorded")} />
         </dl>
+        {/* A new tab, so the unsaved record in this one is never lost. */}
         {editLink && (
-          <Link to={editLink} className="inline-block text-xs font-medium text-red-600 hover:text-red-800 hover:underline">
+          <Link
+            to={editLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-xs font-medium text-red-600 hover:text-red-800 hover:underline"
+          >
             Edit in Patient Information
+            <span className="sr-only"> (opens in a new tab)</span>
           </Link>
         )}
       </Block>
