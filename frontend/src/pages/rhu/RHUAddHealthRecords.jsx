@@ -1353,18 +1353,23 @@ export default function AddHealthRecord() {
     });
   }
 
+  // A history edit changes what is sent, so a retry after a failed save must
+  // not reuse the earlier snapshot: the next save is a new submission.
   function changeBackgroundUpdate(next) {
     clearHistoryErrors();
+    officialSubmissionRef.current = null;
     setBackgroundUpdate(next);
   }
 
   function changeInformant(next) {
     clearHistoryErrors();
+    officialSubmissionRef.current = null;
     setInformant(next);
   }
 
   function changeSimilarIllness(next) {
     clearHistoryErrors();
+    officialSubmissionRef.current = null;
     setSimilarIllness(next);
   }
 
