@@ -403,6 +403,26 @@ export function toRecordBackgroundUpdate(update) {
   return payload;
 }
 
+/**
+ * The staged update as the draft stores it (camelCase, like the update itself),
+ * with completely blank rows pruned the same way the record payload prunes
+ * them; null when nothing is edited or reviewed. Half-filled rows are kept -
+ * the server only demands the required fields on finalize.
+ */
+export function toDraftBackgroundUpdate(update) {
+  const edited = editedSectionKeys(update);
+  const reviewed = reviewedSectionKeys(update);
+  if (!edited.length && !reviewed.length) return null;
+
+  return {
+    sections: Object.fromEntries(edited.map((section) => [section, withoutBlankItems(update.sections[section])])),
+    baseRevisions: Object.fromEntries(
+      edited.map((section) => [section, Number(update.baseRevisions?.[section]) || 0]),
+    ),
+    reviewed,
+  };
+}
+
 /** Whether `value` only uses the keys and nesting of `schema` (leaf types are not checked). */
 function fitsSchema(value, schema) {
   if (value === null || value === undefined) return true;

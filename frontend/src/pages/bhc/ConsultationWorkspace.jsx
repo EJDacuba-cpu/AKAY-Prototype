@@ -97,6 +97,7 @@ import {
   readBackgroundConflicts,
   resolveBackgroundConflicts,
   restoreBackgroundUpdate,
+  toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
 import {
@@ -1447,6 +1448,8 @@ export default function ConsultationWorkspace() {
   }, []);
 
   function buildHealthRecordDraftPayload() {
+    // Blank rows pruned like the record payload; half-filled rows stay (drafts may hold them).
+    const draftBackgroundUpdate = canViewBackground ? toDraftBackgroundUpdate(backgroundUpdate) : null;
     return {
       receivingRhuId,
       // Rides in the payload so the encrypted device copy carries the same
@@ -1607,7 +1610,7 @@ export default function ConsultationWorkspace() {
         "medicinesSupplies",
       ]),
       tbData,
-      ...(canViewBackground && backgroundUpdate ? { backgroundUpdate } : {}),
+      ...(draftBackgroundUpdate ? { backgroundUpdate: draftBackgroundUpdate } : {}),
       // Patient History per-visit answers; sent only once they are answered.
       ...(canViewBackground && informantPayload(informant) ? { informant: informantPayload(informant) } : {}),
       ...(canViewBackground && similarIllnessPayload(similarIllness)

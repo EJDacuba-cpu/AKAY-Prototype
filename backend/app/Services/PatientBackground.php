@@ -123,9 +123,12 @@ class PatientBackground
     /**
      * Validation for a staged update under $prefix: { sections, $basesKey, reviewed }.
      * An edited section needs its base revision; a reviewed-only one does not.
+     * A $draft (autosave) keeps every type, enum and range but not the per-row
+     * "required" fields, so a half-filled row saves; finalize still demands them.
      */
-    public static function rules(string $prefix, string $basesKey): array
+    public static function rules(string $prefix, string $basesKey, bool $draft = false): array
     {
+        $rowKey = $draft ? 'nullable' : 'required';
         $sections = "{$prefix}.sections";
         $bases = "{$prefix}.{$basesKey}";
         $names = implode(',', array_keys(self::SECTIONS));
@@ -154,7 +157,7 @@ class PatientBackground
             // II. Past Medical History
             "{$medical}.currentDiseases" => ['nullable', 'array', 'max:50'],
             "{$medical}.currentDiseases.*" => ['array'],
-            "{$medical}.currentDiseases.*.name" => ['required', 'string', 'max:150'],
+            "{$medical}.currentDiseases.*.name" => [$rowKey, 'string', 'max:150'],
             "{$medical}.currentDiseases.*.yearDiagnosed" => self::YEAR,
             "{$medical}.currentDiseases.*.diagnosedWhere" => $text(150),
             "{$medical}.currentDiseases.*.note" => $text(500),
@@ -162,13 +165,13 @@ class PatientBackground
             "{$medical}.allergies.noneKnown" => ['nullable', 'boolean'],
             "{$medical}.allergies.items" => ['nullable', 'array', 'max:50'],
             "{$medical}.allergies.items.*" => ['array'],
-            "{$medical}.allergies.items.*.allergen" => ['required', 'string', 'max:150'],
+            "{$medical}.allergies.items.*.allergen" => [$rowKey, 'string', 'max:150'],
             "{$medical}.allergies.items.*.reaction" => $text(255),
             "{$medical}.hospitalizations" => ['nullable', 'array', self::exclusive('none')],
             "{$medical}.hospitalizations.none" => ['nullable', 'boolean'],
             "{$medical}.hospitalizations.items" => ['nullable', 'array', 'max:50'],
             "{$medical}.hospitalizations.items.*" => ['array'],
-            "{$medical}.hospitalizations.items.*.type" => ['required', 'string', Rule::in(['Hospitalization', 'Surgery'])],
+            "{$medical}.hospitalizations.items.*.type" => [$rowKey, 'string', Rule::in(['Hospitalization', 'Surgery'])],
             "{$medical}.hospitalizations.items.*.year" => self::YEAR,
             "{$medical}.hospitalizations.items.*.reason" => $text(255),
             "{$medical}.hospitalizations.items.*.place" => $text(150),
@@ -178,7 +181,7 @@ class PatientBackground
             "{$family}.noneKnown" => ['nullable', 'boolean'],
             "{$family}.items" => ['nullable', 'array', 'max:50'],
             "{$family}.items.*" => ['array'],
-            "{$family}.items.*.condition" => ['required', 'string', 'max:150'],
+            "{$family}.items.*.condition" => [$rowKey, 'string', 'max:150'],
             "{$family}.items.*.kind" => ['nullable', 'string', Rule::in(['Chronic', 'Hereditary'])],
             "{$family}.items.*.relation" => ['nullable', 'string', Rule::in(['Mother', 'Father', 'Sibling', 'Grandparent', 'Child', 'Other'])],
             "{$family}.items.*.relativePatientId" => ['nullable', 'integer', 'min:1'],

@@ -583,7 +583,7 @@ class HealthRecordDraftPayloadService
     {
         return [
             ...ConsultationPrograms::rules('payload'),
-            ...PatientBackground::rules('payload.backgroundUpdate', 'baseRevisions'),
+            ...PatientBackground::rules('payload.backgroundUpdate', 'baseRevisions', draft: true),
             'payload.informant' => ['nullable', 'array'],
             'payload.informant.relation' => ['required_with:payload.informant', 'string', Rule::in(HealthRecord::INFORMANT_RELATIONS)],
             'payload.informant.name' => ['nullable', 'string', 'max:150'],

@@ -19,6 +19,7 @@ import {
   resolveBackgroundConflicts,
   reviewedSectionKeys,
   sliceBackground,
+  toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
   unmarkReviewed,
 } from "./backgroundUpdate.js";
@@ -232,6 +233,26 @@ test("the record payload uses the API spelling, and nothing when empty", () => {
   assert.equal(payload.sections.medical.allergies.items[0].allergen, "Penicillin");
   assert.equal(toRecordBackgroundUpdate(null), undefined);
   assert.equal(toRecordBackgroundUpdate({ sections: {}, baseRevisions: {}, reviewed: [] }), undefined);
+});
+
+test("the draft payload drops completely blank rows but keeps half-filled ones", () => {
+  const edited = edit((bg) => {
+    bg.allergies.items.push({ allergen: "", reaction: "" });
+    bg.allergies.items.push({ allergen: "", reaction: "Hives" });
+  });
+  const update = buildBackgroundUpdate(loaded, edited, markReviewed(null, ["family"]));
+  const draft = toDraftBackgroundUpdate(update);
+
+  assert.deepEqual(
+    draft.sections.medical.allergies.items.map((item) => item.reaction),
+    ["Sneezing", "Hives"],
+  );
+  assert.deepEqual(draft.baseRevisions, { medical: 3 });
+  assert.deepEqual(draft.reviewed, ["family"]);
+  assert.equal(update.sections.medical.allergies.items.length, 3, "the staged update itself is untouched");
+  assert.deepEqual(restoreBackgroundUpdate(JSON.parse(JSON.stringify(draft))).sections.medical.allergies.items.length, 2);
+  assert.equal(toDraftBackgroundUpdate(null), null);
+  assert.equal(toDraftBackgroundUpdate({ sections: {}, baseRevisions: {}, reviewed: [] }), null);
 });
 
 test("a reviewed-only update sends reviewed and no sections or base revisions", () => {

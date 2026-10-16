@@ -162,6 +162,28 @@ class PatientHistorySectionsTest extends TestCase
         $this->assertSame(0, HealthRecord::count());
     }
 
+    public function test_finalize_rejects_half_filled_history_rows(): void
+    {
+        $this->finalize([
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => [['note' => 'Since childhood']],
+                    'allergies' => ['items' => [['reaction' => 'Hives']]],
+                    'hospitalizations' => ['items' => [['year' => 2019]]],
+                ],
+                'family' => ['familyHistory' => ['items' => [['relation' => 'Mother']]]],
+            ],
+            'base_revisions' => ['medical' => 2, 'family' => 1],
+        ])->assertUnprocessable()->assertJsonValidationErrors([
+            'background_update.sections.medical.currentDiseases.0.name',
+            'background_update.sections.medical.allergies.items.0.allergen',
+            'background_update.sections.medical.hospitalizations.items.0.type',
+            'background_update.sections.family.familyHistory.items.0.condition',
+        ]);
+
+        $this->assertSame(0, HealthRecord::count());
+    }
+
     public function test_family_none_known_with_items_is_422(): void
     {
         $this->finalize([

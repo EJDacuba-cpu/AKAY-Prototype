@@ -435,6 +435,51 @@ class HealthRecordDraftTest extends TestCase
         ]);
     }
 
+    /** The draft owner with clinical.history, so staged background edits are saved and shown. */
+    private function grantHistoryAccess(): void
+    {
+        $this->bhwA->update(['permissions' => \App\Services\StaffRoles::defaults('midwife')]);
+        $this->bhwA->refresh();
+    }
+
+    public function test_draft_autosave_accepts_half_filled_history_rows(): void
+    {
+        $this->grantHistoryAccess();
+        $payload = [...$this->draftPayload(), 'backgroundUpdate' => [
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => [['note' => 'Since childhood']],
+                    'allergies' => ['items' => [['reaction' => 'Hives']]],
+                    'hospitalizations' => ['items' => [['year' => 2019]]],
+                ],
+                'family' => ['familyHistory' => ['items' => [['relation' => 'Mother']]]],
+            ],
+            'baseRevisions' => ['medical' => 0, 'family' => 0],
+        ]];
+
+        $publicId = $this->createDraft($payload);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.reaction', 'Hives');
+    }
+
+    public function test_draft_autosave_still_checks_history_types_and_enums(): void
+    {
+        $this->grantHistoryAccess();
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftRequest([...$this->draftPayload(), 'backgroundUpdate' => [
+                'sections' => ['medical' => ['hospitalizations' => ['items' => [['type' => 'Confinement', 'year' => 1800]]]]],
+                'baseRevisions' => ['medical' => 0],
+            ]]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'payload.backgroundUpdate.sections.medical.hospitalizations.items.0.type',
+                'payload.backgroundUpdate.sections.medical.hospitalizations.items.0.year',
+            ]);
+    }
+
     /** A draft row whose stored payload was written by an older bundle (bypassing today's sanitizer). */
     private function storedDraft(array $payload): string
     {
@@ -448,6 +493,7 @@ class HealthRecordDraftTest extends TestCase
 
     private function assertOpensWithoutBackgroundUpdate(array $backgroundUpdate): void
     {
+        $this->grantHistoryAccess();
         $publicId = $this->storedDraft([...$this->draftPayload('Kept diagnosis'), 'backgroundUpdate' => $backgroundUpdate]);
 
         $this->actingAs($this->bhwA, 'sanctum')
@@ -455,6 +501,20 @@ class HealthRecordDraftTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.payload.diagnosis', 'Kept diagnosis')
             ->assertJsonMissingPath('data.payload.backgroundUpdate');
+    }
+
+    public function test_stored_new_shape_background_update_is_returned_to_history_users(): void
+    {
+        $this->grantHistoryAccess();
+        $publicId = $this->storedDraft([...$this->draftPayload(), 'backgroundUpdate' => [
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Dust']]]]],
+            'baseRevisions' => ['medical' => 0],
+        ]]);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.allergen', 'Dust');
     }
 
     public function test_full_pre_itr_draft_opens_with_its_background_update_dropped(): void
