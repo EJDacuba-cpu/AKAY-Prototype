@@ -13,10 +13,9 @@ import {
   BACKGROUND_SECTION_LABELS,
   backgroundChangeRows,
 } from "../../../utils/backgroundUpdate";
+import { LegacyPendingConditions, REPORTED_LABEL } from "./MedicalConditionsGroups";
 import { RhuConditions } from "./history/PastMedicalSection";
 import { FieldList, ProfileSection } from "./profile/ProfileSection";
-
-const REPORTED_LABEL = "Reported by patient (not confirmed)";
 
 /** "Last reviewed {date} · {facility}", or "Not yet recorded". */
 function sectionMeta(background, section) {
@@ -24,6 +23,7 @@ function sectionMeta(background, section) {
   if (status.kind !== "lastReviewed") return "Not yet recorded";
   if (!status.date) return "Last reviewed date not recorded";
   const date = formatLongDate(status.date, "");
+  if (!date) return "Last reviewed date not recorded";
   return status.facility ? `Last reviewed ${date} · ${status.facility}` : `Last reviewed ${date}`;
 }
 
@@ -39,7 +39,12 @@ function RhuConditionsBlock({ conditions }) {
           RHU-confirmed conditions could not be loaded right now.
         </p>
       )}
-      {!conditions?.isLoading && !conditions?.isError && <RhuConditions groups={conditions?.groups} />}
+      {!conditions?.isLoading && !conditions?.isError && (
+        <div className="space-y-3">
+          <RhuConditions groups={conditions?.groups} />
+          <LegacyPendingConditions rows={conditions?.groups?.legacyPending} />
+        </div>
+      )}
     </div>
   );
 }

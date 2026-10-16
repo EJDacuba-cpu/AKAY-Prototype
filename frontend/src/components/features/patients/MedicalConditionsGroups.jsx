@@ -2,6 +2,7 @@ import { conditionEventSourceLabel, conditionStatusLabel } from "../../../utils/
 import { formatShortDate } from "../../../utils/patientProfile";
 
 export const LEGACY_PENDING_LABEL = "Legacy — Pending RHU Verification";
+export const REPORTED_LABEL = "Reported by patient (not confirmed)";
 
 const STATUS_TONE = {
   active: "bg-alert-50 text-alert-700 ring-alert-100",
@@ -85,6 +86,18 @@ function ConfirmedRow({ condition }) {
   );
 }
 
+/** The legacy BHC monitorings pending RHU verification, as their own read-only group (nothing when empty). */
+export function LegacyPendingConditions({ rows }) {
+  if (!rows?.length) return null;
+  return (
+    <Group title={LEGACY_PENDING_LABEL}>
+      {rows.map((condition) => (
+        <ConfirmedRow key={`${condition.kind}-${condition.id}`} condition={condition} />
+      ))}
+    </Group>
+  );
+}
+
 function EventLine({ event }) {
   const change = event.fromStatus
     ? `${conditionStatusLabel(event.fromStatus)} → ${conditionStatusLabel(event.toStatus)}`
@@ -116,7 +129,7 @@ function PastCondition({ condition }) {
  * A patient's medical conditions by clinical source: Confirmed / Monitored
  * (RHU-confirmed), Legacy — Pending RHU Verification (monitored before confirmation
  * existed), Under Evaluation,
- * Patient-Reported Previous Conditions, and Past
+ * Reported by patient (not confirmed), and Past
  * (collapsed, with each status change). Read-only; `groups` is the result of
  * groupMedicalConditions. Only Confirmed / Monitored counts as an alert.
  */
@@ -148,11 +161,7 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
         </Group>
       )}
       {legacyPending.length > 0 && (
-        <Group title={LEGACY_PENDING_LABEL}>
-          {legacyPending.map((condition) => (
-            <ConfirmedRow key={`${condition.kind}-${condition.id}`} condition={condition} />
-          ))}
-        </Group>
+        <LegacyPendingConditions rows={legacyPending} />
       )}
       {underEvaluation.length > 0 && (
         <Group title="Under Evaluation">
@@ -167,7 +176,7 @@ export default function MedicalConditionsGroups({ groups, isLoading = false, isE
         </Group>
       )}
       {patientReported.length > 0 && (
-        <Group title="Patient-Reported Previous Conditions">
+        <Group title={REPORTED_LABEL}>
           {patientReported.map((disease) => (
             <Row
               key={`${disease.name}-${disease.index}`}
