@@ -18,3 +18,16 @@ export async function getHouseholdCandidates(search='') {
   const data=unwrapData(response);
   return (Array.isArray(data) ? data : data?.data || []).map(normalizeHouseholdPatient);
 }
+export async function addRelationship(householdId,{version,patientId,relativeId,type}) {
+  return normalizeHousehold(unwrapData(await apiRequest(`/bhc/households/${householdId}/relationships`,{method:'POST',body:{version,patient_id:patientId,relative_id:relativeId,type}})));
+}
+export async function changeRelationship(householdId,relationshipId,{version,type}) {
+  return normalizeHousehold(unwrapData(await apiRequest(`/bhc/households/${householdId}/relationships/${relationshipId}`,{method:'PATCH',body:{version,type}})));
+}
+export async function removeRelationship(householdId,relationshipId,{version}) {
+  return normalizeHousehold(unwrapData(await apiRequest(`/bhc/households/${householdId}/relationships/${relationshipId}`,{method:'DELETE',body:{version}})));
+}
+// Household-only command: PATCH /patients/{id} with just the household (and head replacement). No demographics are sent.
+export async function changePatientHousehold(patientId,command) {
+  return normalizeHouseholdPatient(unwrapData(await apiRequest(`/patients/${patientId}`,{method:'PATCH',body:command})));
+}

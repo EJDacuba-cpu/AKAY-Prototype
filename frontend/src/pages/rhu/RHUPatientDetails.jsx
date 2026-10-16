@@ -347,7 +347,7 @@ function PatientInformationTab({ patient, latestBmiRecord = null }) {
                 <PatientDetailItem label="Last Name" value={patient.lastName} />
                 <PatientDetailItem
                   label="Date of Birth"
-                  value={patient.birthDate || patient.dateOfBirth}
+                  value={formatDate(patient.birthDate || patient.dateOfBirth, "")}
                 />
                 <PatientDetailItem
                   label="Age"

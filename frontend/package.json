@@ -31,6 +31,7 @@
     "test:patient-overview": "node --test src/utils/bmi.test.js src/utils/revealSequence.test.js src/utils/revealFocus.test.js src/utils/bodyFigureGeometry.test.js src/utils/bodyFindings.test.js src/utils/findingLink.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
     "test:request-timeout": "node --test src/services/requestTimeout.test.js",
     "test:prefetch-profile": "node --test src/utils/prefetchPatientProfile.test.js",
+    "test:family-relationships": "node --test src/utils/relationshipLabels.test.js src/utils/familyGraph.test.js src/utils/householdData.test.js src/utils/householdTreeLayout.test.js src/utils/canvasViewport.test.js src/utils/familyConnections.test.js src/utils/changeHousehold.test.js src/utils/formatters.test.js",
     "test:household-parents": "node --test src/utils/householdParents.test.js",
     "test:household-workflow": "node --test src/services/mockFamilyRegistry.test.js src/utils/householdParents.test.js",
     "test:families": "node --test src/services/mockFamilyWorkflows.test.js src/utils/familyAccess.test.js src/services/mockFamilyRegistry.test.js",

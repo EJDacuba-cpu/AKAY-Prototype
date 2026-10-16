@@ -148,6 +148,8 @@ export default function RegistrationSections({
   motherPatientOptions,
   onMotherSearchChange,
   onMotherPatientChange,
+  householdLocked = false,
+  onChangeHousehold,
 }) {
   const read = (keys, fallback = "") => getPatientValue(patient, keys, fallback);
   const editing = editingSection !== null;
@@ -258,7 +260,7 @@ export default function RegistrationSections({
             </EditSelect>
             <EditField label="NHTS status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
             {!showChildSections && (
-              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
+              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} readOnly={householdLocked} />
             )}
             {form.civilStatus === "Married" && (
               <>
@@ -296,15 +298,22 @@ export default function RegistrationSections({
             {form.philHealthStatus === "With PhilHealth" && (
               <EditField label="PhilHealth number" name="philHealthNumber" value={form.philHealthNumber} onChange={onChange} error={fieldErrors.philHealthNumber} required />
             )}
-            <EditField label="Street address" name="streetAddress" value={form.streetAddress} onChange={onChange} error={fieldErrors.streetAddress} required />
-            <EditField label="Purok / Area" name="purokArea" value={form.purokArea} onChange={onChange} />
-            <EditSelect label="Barangay" name="barangay" value={form.barangay} onChange={onChange} error={fieldErrors.barangay} required>
-              <option value="">Select barangay</option>
-              {BULAKAN_BARANGAYS.map((barangay) => (
-                <option key={barangay}>{barangay}</option>
-              ))}
-            </EditSelect>
-            <EditField label="Municipality / City" name="municipality" value={form.municipality} onChange={onChange} error={fieldErrors.municipality} required />
+            <EditField label="Street address" name="streetAddress" value={form.streetAddress} onChange={onChange} error={fieldErrors.streetAddress} required readOnly={householdLocked} />
+            <EditField label="Purok / Area" name="purokArea" value={form.purokArea} onChange={onChange} readOnly={householdLocked} />
+            {householdLocked ? (
+              <EditField label="Barangay" name="barangay" value={form.barangay} onChange={onChange} readOnly />
+            ) : (
+              <EditSelect label="Barangay" name="barangay" value={form.barangay} onChange={onChange} error={fieldErrors.barangay} required>
+                <option value="">Select barangay</option>
+                {BULAKAN_BARANGAYS.map((barangay) => (
+                  <option key={barangay}>{barangay}</option>
+                ))}
+              </EditSelect>
+            )}
+            <EditField label="Municipality / City" name="municipality" value={form.municipality} onChange={onChange} error={fieldErrors.municipality} required readOnly={householdLocked} />
+            {householdLocked && (
+              <p className="col-span-full text-xs text-neutral-500">The address belongs to the household. Use Edit Family or Change Household to change it.</p>
+            )}
           </EditGrid>
         ) : (
           <FieldList
@@ -317,12 +326,29 @@ export default function RegistrationSections({
         )}
       </ProfileSection>
 
+      <ProfileSection
+        id="household"
+        title="Household"
+        actions={onChangeHousehold ? (
+          <TextAction onClick={onChangeHousehold} disabled={editing} title={editing ? "Save or cancel the section you are editing first" : undefined}>
+            {householdLocked ? "Change Household" : "Assign Household"}
+          </TextAction>
+        ) : null}
+      >
+        <FieldList
+          rows={[
+            ["Family serial no.", read(["familySerialNumber", "family_serial_number"]) || "No household assigned"],
+            ...(householdLocked ? [["Relation to head", read(["relationshipToHouseholdHead", "relationship_to_household_head"])]] : []),
+          ]}
+        />
+      </ProfileSection>
+
       {showChildSections && (
         <ProfileSection id="family" title="Family & Birth" actions={actionsFor("family")}>
           {editingSection === "family" ? (
             <EditGrid>
               <EditField label="Mother name" name="motherName" value={form.motherName} onChange={onChange} error={fieldErrors.motherName} required={isFormMinor} />
-              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} />
+              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} readOnly={householdLocked} />
               <EditLinkedMotherSelect
                 value={form.motherPatientId}
                 search={motherSearch}

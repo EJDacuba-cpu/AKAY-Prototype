@@ -122,6 +122,12 @@ class Patient extends Model
         return $this->hasMany(self::class, 'mother_patient_id');
     }
 
+    /** Explicit spouse/sibling rows where this patient is either side of the pair. */
+    public function relationshipLinks(): \Illuminate\Database\Eloquent\Builder
+    {
+        return PatientRelationship::where(fn ($query) => $query->where('patient_id', $this->id)->orWhere('relative_id', $this->id));
+    }
+
     public function healthRecords(): HasMany
     {
         return $this->hasMany(HealthRecord::class);

@@ -31,6 +31,7 @@ import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
+import ChangeHouseholdPanel from "../../components/features/patients/profile/ChangeHouseholdPanel";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
 import { getCurrentUser } from "../../utils/auth";
 import {
@@ -142,6 +143,7 @@ function LivePatientDetails() {
   const [pendingSaveSection, setPendingSaveSection] = useState(null);
   const [openSuccess, setOpenSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [changingHousehold, setChangingHousehold] = useState(false);
   const [form, setForm] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [motherSearch, setMotherSearch] = useState("");
@@ -312,6 +314,21 @@ function LivePatientDetails() {
     setPendingSaveSection(null);
     setFieldErrors({});
   }, [patientId]);
+
+  // "Edit Patient" entry points link here with ?tab=patient-info&edit=<section>; open that section once the patient loads.
+  const requestedEdit = searchParams.get("edit");
+  useEffect(() => {
+    if (!requestedEdit || !patientData) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("edit");
+    setSearchParams(next, { replace: true, state: location.state });
+    if (canRegister && ["demographics", "contact", "family"].includes(requestedEdit) && editingSectionRef.current === null) {
+      setForm(createPatientForm(patientData));
+      setFieldErrors({});
+      setEditingSection(requestedEdit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedEdit, patientData]);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -561,10 +578,9 @@ function LivePatientDetails() {
                     patient={patient}
                     form={form}
                     editingSection={editingSection}
-                    onEdit={canRegister ? (section) => {
-                      if (patient.householdId) navigate(`/bhc/patients/${patientId}/edit`);
-                      else handleEditSection(section);
-                    } : undefined}
+                    onEdit={canRegister ? handleEditSection : undefined}
+                    householdLocked={Boolean(patient.householdId)}
+                    onChangeHousehold={canRegister ? () => setChangingHousehold(true) : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}
@@ -632,6 +648,7 @@ function LivePatientDetails() {
         </div>
       </ProfileShell>
 
+      {changingHousehold && <ChangeHouseholdPanel patient={patient} onClose={() => setChangingHousehold(false)} />}
       <ConfirmationModal
         open={pendingSaveSection !== null}
         title="Update Changes to Profile?"

@@ -83,7 +83,10 @@ export function relationshipForConnection(registry, connection, patientId) {
   return isHead ? HEAD_RELATIONSHIP : connection?.relationship === HEAD_RELATIONSHIP ? "" : connection?.relationship || "";
 }
 
-export function validateConnection(registry, connection, patientId, patient) {
+const defaultAllowed = (label) => RELATIONSHIPS.includes(label);
+
+// `isAllowed(label, savedLabel)` lets live BHC registration use the specific label list; the default keeps the mock prototype on its own list.
+export function validateConnection(registry, connection, patientId, patient, isAllowed = defaultAllowed) {
   if (!connection) return { household: NO_HOUSEHOLD_MESSAGE };
   const errors = {};
   const household = householdForConnection(registry, connection);
@@ -112,7 +115,9 @@ export function validateConnection(registry, connection, patientId, patient) {
     }
   }
   const relationship = relationshipForConnection(registry, connection, patientId);
-  if (relationship !== HEAD_RELATIONSHIP && !RELATIONSHIPS.includes(relationship)) {
+  const saved = registry.patients.find((item) => item.id === patientId);
+  const savedLabel = saved && connection.kind === "existing" && saved.householdId === connection.householdId ? saved.relationshipToHouseholdHead : "";
+  if (relationship !== HEAD_RELATIONSHIP && !isAllowed(relationship, savedLabel)) {
     errors.relationship = "Select the patient's relationship to the household head.";
   }
   return errors;
@@ -138,7 +143,7 @@ export function headDeparture(registry, patientId, connection) {
   return { household, members: registry.patients.filter((item) => item.householdId === household.id && item.id !== patientId) };
 }
 
-export function validateHeadReplacement(registry, patientId, connection, replacement) {
+export function validateHeadReplacement(registry, patientId, connection, replacement, isAllowed = defaultAllowed) {
   const departure = headDeparture(registry, patientId, connection);
   if (!departure?.members.length) return {};
   const errors = {};
@@ -146,7 +151,7 @@ export function validateHeadReplacement(registry, patientId, connection, replace
     errors.headPatientId = "Choose a replacement head for the household being left.";
   }
   departure.members.filter((item) => item.id !== replacement?.headPatientId).forEach((item) => {
-    if (!RELATIONSHIPS.includes(replacement?.relationships?.[item.id])) errors[item.id] = "Select relationship to the new head.";
+    if (!isAllowed(replacement?.relationships?.[item.id], item.relationshipToHouseholdHead)) errors[item.id] = "Select relationship to the new head.";
   });
   return errors;
 }

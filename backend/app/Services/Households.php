@@ -30,10 +30,17 @@ class Households
         $this->serials->lock($bhc);
     }
 
-    public function response(Household $household): array
+    /** Relationships are only included where callers need the graph (not in directory listings). */
+    public function response(Household $household, bool $withRelationships = true): array
     {
-        return [...$household->only(['id', 'barangay_health_center_id', 'serial_number', 'address', 'head_patient_id', 'archived_at', 'version']),
+        $data = [...$household->only(['id', 'barangay_health_center_id', 'serial_number', 'address', 'head_patient_id', 'archived_at', 'version']),
             'members' => $household->members()->orderBy('id')->get()->map(fn (Patient $p) => PatientIdentity::householdResponse($p))->all()];
+        if ($withRelationships) {
+            $data['relationships'] = app(PatientRelationships::class)->forHousehold($household)
+                ->map(fn ($link) => $link->only(['id', 'patient_id', 'relative_id', 'type']))->values()->all();
+        }
+
+        return $data;
     }
 
     public function checkVersion(Household $household, mixed $version): void
@@ -112,12 +119,34 @@ class Households
                 $address[$field] = $target->address[$key];
             }
         }
+        if ($target->head_patient_id !== $patient->id) {
+            // A saved legacy label is only kept while the member stays in the same household.
+            $current = (int) $patient->household_id === $target->id ? $patient->relationship_to_household_head : null;
+            RelationshipLabels::validate($relationship, $current, 'household.relationship');
+        }
         $patient->update([...$address, 'household_id' => $target->id, 'family_serial_number' => $target->serial_number, 'relationship_to_household_head' => $relationship]);
+        $this->confirmLink($request, $target, $patient, $relationship, $input['relationship_link']['type'] ?? null);
         $target->version++;
         $target->save();
         app(AuditLogger::class)->log($request, 'membership_updated', 'households', "Patient {$patient->id} joined household {$target->id}.");
 
         return $target;
+    }
+
+    /** An explicit, staff-confirmed spouse/sibling link between the saved patient and the household head. */
+    private function confirmLink(Request $request, Household $target, Patient $patient, string $relationship, ?string $type): void
+    {
+        if ($type === null) {
+            return;
+        }
+        $field = 'household.relationship_link';
+        if ($target->head_patient_id === $patient->id) {
+            throw ValidationException::withMessages([$field => 'A household head cannot be linked to themselves.']);
+        }
+        if (RelationshipLabels::linkTypeFor($relationship) !== $type) {
+            throw ValidationException::withMessages([$field => 'Only Husband or Wife can be recorded as spouse, and Brother or Sister as sibling.']);
+        }
+        app(PatientRelationships::class)->create($request, $target, $patient, Patient::findOrFail($target->head_patient_id), $type, $field);
     }
 
     private function depart(Request $request, Household $source, Patient $patient, ?array $replacement): void
@@ -151,6 +180,9 @@ class Households
             $relation = $member->id === $headId ? 'Household head' : trim((string) ($relationships[$member->id] ?? ($headChanged ? '' : $member->relationship_to_household_head)));
             if ($relation === '' || mb_strlen($relation) > 100 || ($member->id !== $headId && in_array(mb_strtolower($relation), ['head', 'household head'], true))) {
                 throw ValidationException::withMessages(['relationships.'.$member->id => 'Review the relationship of every member to the selected head.']);
+            }
+            if ($member->id !== $headId && array_key_exists($member->id, $relationships)) {
+                RelationshipLabels::validate($relation, $member->relationship_to_household_head, 'relationships.'.$member->id);
             }
             $member->update(['relationship_to_household_head' => $relation]);
         }

@@ -14,7 +14,8 @@ export function normalizeHouseholdPatient(patient = {}) {
 export function normalizeHousehold(item = {}) {
   return { ...item, id:id(item.id), serialNumber:item.serial_number ?? item.serialNumber ?? '',
     headPatientId:id(item.head_patient_id ?? item.headPatientId), archivedAt:item.archived_at ?? item.archivedAt ?? null,
-    address:item.address || {}, members:(item.members || []).map(normalizeHouseholdPatient) };
+    address:item.address || {}, members:(item.members || []).map(normalizeHouseholdPatient),
+    relationships:(item.relationships || []).map(row => ({id:id(row.id),patientId:id(row.patient_id ?? row.patientId),relativeId:id(row.relative_id ?? row.relativeId),type:row.type})) };
 }
 export function householdRegistry(households = [], patient) {
   const unique = [...new Map(households.filter(Boolean).map(item => [item.id,item])).values()];
@@ -23,7 +24,8 @@ export function householdRegistry(households = [], patient) {
 export function householdPayload(connection, registry = {households:[]}) {
   if (!connection) return null;
   if (connection.kind === 'existing') return { kind:'existing',household_id:connection.householdId,relationship:connection.relationship,
-    version:registry.households.find(item => item.id === connection.householdId)?.version };
+    version:registry.households.find(item => item.id === connection.householdId)?.version,
+    ...(connection.relationshipLink?.type ? {relationship_link:{type:connection.relationshipLink.type}} : {}) };
   const household=connection.household;
   return {kind:'new',serial_mode:household.serialMode || 'auto',address:household.address,
     ...(household.serialMode === 'manual' ? {serial_number:household.serialNumber} : {})};
@@ -35,7 +37,7 @@ const fields={first_name:'firstName',middle_name:'middleName',last_name:'lastNam
 export function registrationErrors(error = {}) {
   const result={};
   for (const [key,value] of Object.entries(error.errors || {})) {
-    const target=key === 'household.relationship' ? 'relationshipToHouseholdHead'
+    const target=key === 'household.relationship' || key === 'household.relationship_link' ? 'relationshipToHouseholdHead'
       : key.startsWith('household') || key.startsWith('head_replacement') || key.startsWith('relationships') || key === 'head_patient_id' ? 'familySerialNumber' : fields[key] || key;
     result[target]=Array.isArray(value) ? value[0] : String(value);
   }

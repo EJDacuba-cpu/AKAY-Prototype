@@ -70,6 +70,9 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'show'])->whereNumber('id');
         Route::post('bhc/households', [\App\Http\Controllers\Api\HouseholdController::class, 'store']);
         Route::patch('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'update'])->whereNumber('id');
+        Route::post('bhc/households/{id}/relationships', [\App\Http\Controllers\Api\HouseholdController::class, 'storeRelationship'])->whereNumber('id');
+        Route::patch('bhc/households/{id}/relationships/{relationshipId}', [\App\Http\Controllers\Api\HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId']);
+        Route::delete('bhc/households/{id}/relationships/{relationshipId}', [\App\Http\Controllers\Api\HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId']);
         Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);

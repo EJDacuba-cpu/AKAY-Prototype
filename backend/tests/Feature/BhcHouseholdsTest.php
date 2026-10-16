@@ -81,7 +81,7 @@ class BhcHouseholdsTest extends TestCase
         $this->staff();
         $first = $this->register()->assertCreated();
         $id = $first->json('data.household_id');
-        $second = $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Child'], ['birthdate' => '2010-01-01'])->assertCreated();
+        $second = $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'], ['birthdate' => '2010-01-01'])->assertCreated();
         $household = $this->getJson('/api/bhc/households/'.$id)->assertOk()->json('data');
         $this->patchJson('/api/bhc/households/'.$id, ['version' => $household['version'], 'serial_number' => ' corrected '])->assertOk()->assertJsonPath('data.serial_number', 'CORRECTED')->assertJsonCount(2, 'data.members')->assertJsonMissingPath('data.members.0.medical_background');
         $this->assertSame('CORRECTED', Patient::find($second->json('data.id'))->family_serial_number);
@@ -94,7 +94,7 @@ class BhcHouseholdsTest extends TestCase
         $this->staff();
         $id = $this->register()->assertCreated()->json('data.household_id');
         $this->staff();
-        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Child'])->assertNotFound();
+        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])->assertNotFound();
         $this->register([], ['birthdate' => '2020-01-01'])->assertUnprocessable();
         $this->assertDatabaseCount('patients', 1);
         $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-'.now('Asia/Manila')->year.'-0001');
@@ -125,7 +125,7 @@ class BhcHouseholdsTest extends TestCase
     {
         $this->staff();
         $head = $this->register()->assertCreated()->json('data');
-        $member = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Spouse'])->assertCreated()->json('data');
+        $member = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife'])->assertCreated()->json('data');
         $this->patchJson('/api/patients/'.$head['id'], ['household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => $this->address()]])->assertUnprocessable()->assertJsonValidationErrors('head_replacement');
         $source = $this->getJson('/api/bhc/households/'.$head['household_id'])->json('data');
         $this->patchJson('/api/patients/'.$head['id'], ['household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => $this->address()], 'head_replacement' => ['household_id' => $source['id'], 'head_patient_id' => $member['id'], 'relationships' => [], 'version' => $source['version']]])->assertOk();
@@ -162,9 +162,9 @@ class BhcHouseholdsTest extends TestCase
     {
         $this->staff();
         $head = $this->register()->assertCreated()->json('data');
-        $member = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Spouse'])->assertCreated()->json('data');
+        $member = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife'])->assertCreated()->json('data');
         $household = $this->getJson('/api/bhc/households/'.$head['household_id'])->json('data');
-        $this->patchJson('/api/bhc/households/'.$household['id'], ['version' => $household['version'], 'serial_number' => 'EDITED', 'head_patient_id' => $head['id'], 'relationships' => [], 'address' => [...$this->address(), 'streetAddress' => 'River Road']])->assertOk()->assertJsonPath('data.members.1.relationship_to_household_head', 'Spouse');
+        $this->patchJson('/api/bhc/households/'.$household['id'], ['version' => $household['version'], 'serial_number' => 'EDITED', 'head_patient_id' => $head['id'], 'relationships' => [], 'address' => [...$this->address(), 'streetAddress' => 'River Road']])->assertOk()->assertJsonPath('data.members.1.relationship_to_household_head', 'Wife');
         $this->assertSame('River Road', Patient::find($member['id'])->street_address);
         $this->getJson('/api/bhc/households?search=river')->assertOk()->assertJsonCount(1, 'data');
         $this->getJson('/api/bhc/households/candidates')->assertOk()->assertJsonPath('data.0.household.members_count', 2);

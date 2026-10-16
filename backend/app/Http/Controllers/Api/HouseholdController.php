@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Household;
 use App\Models\Patient;
+use App\Models\PatientRelationship;
 use App\Services\ActionPermissions;
 use App\Services\Households;
 use App\Services\PatientIdentity;
+use App\Services\PatientRelationships;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -54,7 +56,7 @@ class HouseholdController extends Controller
         }
         $page = $query->orderBy('id', 'desc')->paginate($data['per_page'] ?? 25);
 
-        return response()->json(['data' => $page->getCollection()->map(fn ($h) => $this->households->response($h)), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);
+        return response()->json(['data' => $page->getCollection()->map(fn ($h) => $this->households->response($h, false)), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);
     }
 
     public function show(Request $request, int $id)
@@ -99,6 +101,52 @@ class HouseholdController extends Controller
         $household = DB::transaction(fn () => $this->households->update($request, $this->households->find($bhc, $id), $data));
 
         return response()->json(['data' => $this->households->response($household)]);
+    }
+
+    public function storeRelationship(Request $request, int $id, PatientRelationships $relationships)
+    {
+        return $this->relationshipMutation($request, $id, ['patient_id' => ['required', 'integer'], 'relative_id' => ['required', 'integer'], 'type' => ['required', 'string']], 201,
+            function (Household $household, array $data, int $bhc) use ($request, $relationships) {
+                $people = fn (int $patientId) => Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->findOrFail($patientId);
+                $relationships->create($request, $household, $people($data['patient_id']), $people($data['relative_id']), $data['type']);
+            });
+    }
+
+    public function updateRelationship(Request $request, int $id, int $relationshipId, PatientRelationships $relationships)
+    {
+        return $this->relationshipMutation($request, $id, ['type' => ['required', 'string']], 200,
+            function (Household $household, array $data, int $bhc) use ($request, $relationships, $relationshipId) {
+                $relationships->change($request, $household, PatientRelationship::where('barangay_health_center_id', $bhc)->findOrFail($relationshipId), $data['type']);
+            });
+    }
+
+    public function destroyRelationship(Request $request, int $id, int $relationshipId, PatientRelationships $relationships)
+    {
+        return $this->relationshipMutation($request, $id, [], 200,
+            function (Household $household, array $data, int $bhc) use ($request, $relationships, $relationshipId) {
+                $relationships->remove($request, $household, PatientRelationship::where('barangay_health_center_id', $bhc)->findOrFail($relationshipId));
+            });
+    }
+
+    /** Explicit spouse/sibling changes: families.manage, facility scoped, version checked, one transaction. */
+    private function relationshipMutation(Request $request, int $id, array $rules, int $status, callable $mutate)
+    {
+        $bhc = $this->households->bhc($request->user());
+        ActionPermissions::ensure($request->user(), 'families.manage');
+        $data = $request->validate(['version' => ['required', 'integer', 'min:1'], ...$rules]);
+        $household = DB::transaction(function () use ($bhc, $id, $data, $mutate) {
+            $this->households->lock($bhc);
+            $household = $this->households->find($bhc, $id);
+            $this->households->checkVersion($household, $data['version']);
+            abort_if($household->archived_at !== null, 404);
+            $mutate($household, $data, $bhc);
+            $household->version++;
+            $household->save();
+
+            return $household;
+        });
+
+        return response()->json(['data' => $this->households->response($household)], $status);
     }
 
     public static function addressRules(string $prefix = '', bool $required = false): array

@@ -3,6 +3,7 @@ import { CircleX, Plus, Search } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import HouseholdConnectionReview, { RelationshipField } from "./HouseholdConnectionReview";
+import { relationshipLinkOffer } from "../../../utils/relationshipLink";
 import {
   HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
   patientName, relationshipForConnection, searchHouseholds,
@@ -12,7 +13,7 @@ const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wi
 
 export default function FamilyRegistryField({
   registry, patient, connection, savedConnection, headReplacement,
-  onChange, onPendingChange, error, relationshipError, live = false, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
+  onChange, onPendingChange, error, relationshipError, live = false, allowCreate = true, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
 }) {
   const id = useId();
   const inputRef = useRef(null);
@@ -68,7 +69,7 @@ export default function FamilyRegistryField({
   }
 
   // The patient becomes the head, so a minor can't start a household of their own.
-  const emptyActions = connection
+  const emptyActions = connection || !allowCreate
     ? <p className="text-xs text-gray-700">To start a separate household for an existing patient, use Add Family in the Families module.</p>
     : eligibility.code === "minor"
     ? <p className="text-xs text-gray-700">{eligibility.reason}</p>
@@ -103,10 +104,19 @@ export default function FamilyRegistryField({
             <p className="font-medium text-gray-950">{patientName(head)}</p>
             <p className="mt-1">{addressText(household.address)}</p>
           </div>
-          {!review && <RelationshipField
+          {!review && <RelationshipField live={live}
             value={relationshipForConnection(registry, connection, patient.id)} error={relationshipError}
-            onChange={(relationship) => onChange({ ...connection, relationship }, headReplacement)}
+            saved={savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId ? savedConnection.relationship : ""}
+            onChange={(relationship) => onChange({ ...connection, relationship, relationshipLink: undefined }, headReplacement)}
           />}
+          {!review && live && connection.kind === "existing" && !(savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId) && (() => {
+            const offer = relationshipLinkOffer(relationshipForConnection(registry, connection, patient.id), patientName(head));
+            return offer && <label className="flex items-start gap-2 text-xs text-gray-950">
+              <input type="checkbox" className="mt-0.5" checked={connection.relationshipLink?.type === offer.type}
+                onChange={(event) => onChange({ ...connection, relationshipLink: event.target.checked ? { type: offer.type } : undefined }, headReplacement)} />
+              <span>{offer.text}<span className="block text-gray-500">Optional. Saved with the patient only if you tick this.</span></span>
+            </label>;
+          })()}
         </div>}
         {(searching || !connection) && !review && <div className={household ? "mt-3 space-y-3" : "space-y-3"}>
           <div className="flex gap-2">
@@ -153,7 +163,7 @@ export default function FamilyRegistryField({
       {review && <HouseholdConnectionReview
         key={review.candidate?.householdId || "remove"}
         registry={registry} patient={patient} currentConnection={connection} savedConnection={savedConnection}
-        candidate={review.candidate} initialReplacement={headReplacement} onConfirm={finishReview}
+        live={live} candidate={review.candidate} initialReplacement={headReplacement} onConfirm={finishReview}
         onCancel={() => { setReview(null); onPendingChange(false); }}
       />}
     </div>

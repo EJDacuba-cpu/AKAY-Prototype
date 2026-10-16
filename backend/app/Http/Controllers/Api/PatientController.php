@@ -11,6 +11,7 @@ use App\Services\FacilityAccessService;
 use App\Services\Households;
 use App\Services\PatientDetail;
 use App\Services\PatientIdentity;
+use App\Services\PatientRelationships;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -233,6 +234,9 @@ class PatientController extends Controller
             if ($patient->household_id && array_key_exists('family_serial_number', $data) && $data['family_serial_number'] !== $patient->family_serial_number) {
                 throw ValidationException::withMessages(['family_serial_number' => 'Use Edit Family to correct the household FSN.']);
             }
+            if ($patient->household_id && ! $householdInput) {
+                $this->guardHouseholdAddress($patient, $data);
+            }
             if ($householdInput && ! empty($data['family_serial_number']) && ! $patient->household_id) {
                 throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
             }
@@ -256,6 +260,16 @@ class PatientController extends Controller
         $auditLogger->log($request, 'deactivated', 'patients', "Deactivated patient {$patient->full_name}.");
 
         return response()->json(['data' => $patient->fresh()]);
+    }
+
+    /** A household member's address belongs to the household; only Edit Family (or a household move) changes it. */
+    private function guardHouseholdAddress(Patient $patient, array $data): void
+    {
+        foreach (['street_address', 'purok_area', 'barangay', 'municipality'] as $field) {
+            if (array_key_exists($field, $data) && trim((string) $data[$field]) !== trim((string) $patient->{$field})) {
+                throw ValidationException::withMessages([$field => 'Use Edit Family to change the household address.']);
+            }
+        }
     }
 
     /**
@@ -286,6 +300,9 @@ class PatientController extends Controller
                 422,
                 "The linked {$role} must be a {$sex} patient."
             );
+            if ($currentPatient instanceof Patient && (int) $currentPatient->{"{$role}_patient_id"} !== (int) $parentId) {
+                app(PatientRelationships::class)->assertParentLinkAllowed($currentPatient, (int) $parentId, "{$role}_patient_id");
+            }
         }
     }
 

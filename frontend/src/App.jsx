@@ -55,6 +55,7 @@ import FamiliesDirectory from "./pages/shared/FamiliesDirectory";
 import FamilyDetails from "./pages/shared/FamilyDetails";
 import FamilyForm from "./pages/shared/FamilyForm";
 import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
+import BhcFamilyConnections from "./pages/bhc/BhcFamilyConnections";
 import RelatedFamilyForm from "./pages/shared/RelatedFamilyForm";
 import FamilyMemberForm from "./pages/shared/FamilyMemberForm";
 import FollowUps from "./pages/bhc/FollowUps";
@@ -468,7 +469,7 @@ export default function App() {
         <Route key={`${role}-family-edit`} path={`/${role}/families/:householdId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcFamilyForm /> : <FamilyForm role={role} />}</ProtectedPage>} />,
         <Route key={`${role}-related-new`} path={`/${role}/families/:householdId/related/new`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcDeferredFamilyAction /> : <RelatedFamilyForm role={role} />}</ProtectedPage>} />,
         <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcAddMember /> : <FamilyMemberForm role={role} />}</ProtectedPage>} />,
-        <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcDeferredFamilyAction /> : <FamilyMemberForm role={role} />}</ProtectedPage>} />,
+        <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage">{role === "bhc" ? <BhcFamilyConnections /> : <FamilyMemberForm role={role} />}</ProtectedPage>} />,
       ])}
       <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />

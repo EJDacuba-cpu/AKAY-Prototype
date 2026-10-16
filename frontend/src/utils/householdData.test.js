@@ -41,3 +41,6 @@ test('education validation errors land on the education fields', () => {
   assert.deepEqual(registrationErrors({errors:{education_level:['The selected education level is invalid.'],education_completed:['Invalid.']}}),
     {educationLevel:'The selected education level is invalid.',educationCompleted:'Invalid.'});
 });
+test('a rejected registration link is reported on the relationship field', () => {
+  assert.deepEqual(registrationErrors({errors:{'household.relationship_link':['Only Husband or Wife can be recorded as spouse']}}),{relationshipToHouseholdHead:'Only Husband or Wife can be recorded as spouse'});
+});

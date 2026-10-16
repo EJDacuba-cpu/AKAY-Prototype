@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Plus, Search } from 'lucide-react';
@@ -9,7 +9,11 @@ import { Input } from '../../components/ui/input';
 import useAccess from '../../hooks/useAccess';
 import useBhcHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { getHouseholds, getHouseholdById, saveHousehold, getHouseholdCandidates } from '../../services/householdService';
-import { addressText, addressValues, canHeadHousehold, HEAD_RELATIONSHIP, patientName, RELATIONSHIPS } from '../../services/familyRegistry';
+import FamilyTreeCanvas from '../../components/features/families/FamilyTreeCanvas';
+import FamilyMembersList from '../../components/features/families/FamilyMembersList';
+import { buildFamilyGraph } from '../../utils/familyGraph';
+import { RELATIONSHIP_LABELS } from '../../utils/relationshipLabels';
+import { addressText, addressValues, canHeadHousehold, patientName } from '../../services/familyRegistry';
 
 const base='/bhc/families';
 function FamilyFrame({title,children}) {
@@ -48,13 +52,27 @@ export function BhcFamilyDetails() {
   const {householdId}=useParams();
   const scope=useBhcHouseholdScope();
   const access=useAccess();
+  const navigate=useNavigate();
+  const [view,setView]=useState('tree');
   const query=useQuery({queryKey:[...scope.key,'detail',householdId],queryFn:()=>getHouseholdById(householdId),retry:false});
   const item=query.data;
+  const graph=useMemo(()=>buildFamilyGraph(item),[item]);
   const head=item?.members.find(member=>member.id === item.headPatientId);
+  const tabs=[['tree','Family Tree'],['list','Members List']];
+  const openMember=id=>navigate(`/bhc/patients/${id}?tab=patient-info`);
+  function moveTab(event) {
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const next=event.key === 'Home' ? 'tree' : event.key === 'End' ? 'list' : view === 'tree' ? 'list' : 'tree';
+    setView(next);document.getElementById(`family-tab-${next}`)?.focus();
+  }
   return <FamilyFrame title="Family Details"><BackLink/>{query.isPending || query.error ? <QueryState query={query}/> : item.archivedAt ? <p role="status">This household is archived.</p> : <>
     <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-3xl font-normal tracking-tight">{head ? `${head.lastName} Household` : 'Household'}</h1><p className="mt-2 font-mono text-sm text-neutral-500">{item.serialNumber}</p></div><div className="flex flex-wrap gap-2">{access.can('families.manage') && <Button asChild variant="outline"><Link to={`${base}/${item.id}/edit`}>Edit Family</Link></Button>}{access.can('patients.register') && <Button asChild><Link to={`/bhc/patients/add?household=${item.id}`}><Plus size={17}/>Register Member</Link></Button>}</div></header>
     <dl className="grid gap-5 border-y border-neutral-200 py-5 sm:grid-cols-3"><div><dt className="text-xs text-neutral-500">Household head</dt><dd className="mt-2 text-sm">{head ? patientName(head) : 'Not assigned'}</dd></div><div><dt className="text-xs text-neutral-500">Address</dt><dd className="mt-2 text-sm">{addressText(item.address)}</dd></div><div><dt className="text-xs text-neutral-500">Members</dt><dd className="mt-2 text-sm">{item.members.length}</dd></div></dl>
-    <h2 className="text-xl font-semibold">Household members</h2><div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-sm"><thead><tr className="h-11 border-b border-neutral-200 text-neutral-500"><th className="pr-4 font-medium">Patient</th><th className="pr-4 font-medium">Relationship to head</th><th className="font-medium">Date of birth</th>{access.can('patients.register') && <th><span className="sr-only">Actions</span></th>}</tr></thead><tbody>{item.members.map(member=><tr key={member.id} className="h-14 border-b border-neutral-200"><td className="pr-4 font-medium">{patientName(member)}</td><td className="pr-4">{member.relationshipToHouseholdHead || 'Not recorded'}</td><td>{member.birthDate || 'Not recorded'}</td>{access.can('patients.register') && <td className="text-right"><Link to={`/bhc/patients/${member.id}/edit`} className="text-red-700 underline">Edit patient<span className="sr-only"> {patientName(member)}</span></Link></td>}</tr>)}</tbody></table></div>
+    <div role="tablist" aria-label="Family view" className="flex gap-7 border-b border-neutral-200">{tabs.map(([key,label])=><button key={key} type="button" role="tab" id={`family-tab-${key}`} aria-selected={view === key} aria-controls={`family-panel-${key}`} tabIndex={view === key ? 0 : -1} onClick={()=>setView(key)} onKeyDown={moveTab} className={`border-b-2 pb-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-red-600 ${view === key ? 'border-red-700 text-red-700' : 'border-transparent text-neutral-500'}`}>{label}</button>)}</div>
+    <section role="tabpanel" id={`family-panel-${view}`} aria-labelledby={`family-tab-${view}`}>{view === 'tree'
+      ? <FamilyTreeCanvas members={graph.members} edges={graph.edges} headId={item.headPatientId} onOpenMember={openMember}/>
+      : <FamilyMembersList members={graph.members} headId={item.headPatientId} canManage={access.can('families.manage')} familyPath={`${base}/${item.id}`}/>}</section>
   </>}</FamilyFrame>;
 }
 function Field({name,label,error,children}) {
@@ -97,7 +115,7 @@ function FamilyEditor({scope,initialItem,refreshError,onRefresh}) {
       }) : <p className="py-5 text-sm text-neutral-500">No matching patients.</p>}</div>}{chosenHead && <p className="text-sm font-medium">Selected head: {patientName(chosenHead)}</p>}{errorFor('head_patient_id') && <p role="alert" className="text-xs text-red-700">{errorFor('head_patient_id')}</p>}</section>}
       <section className="space-y-3"><Field name="serial_number" label="Family Serial Number" error={errorFor('serial_number')}><Input {...inputProps('serial_number')} readOnly={!item && draft.serial_mode === 'auto'} value={!item && draft.serial_mode === 'auto' ? 'Assigned automatically on save' : draft.serial_number} maxLength={100} onChange={event=>change('serial_number',event.target.value)}/></Field>{!item && <><Button type="button" variant="outline" onClick={()=>setDraft(previous=>({...previous,serial_mode:previous.serial_mode === 'auto' ? 'manual':'auto',serial_number:''}))}>{draft.serial_mode === 'auto' ? 'Enter manually':'Use automatic FSN'}</Button><p className="text-xs text-neutral-500">Automatic format: FSN-YYYY-NNNN. Your BHC assigns the number when this family is saved.</p></>}{item && <p className="text-xs text-neutral-500">Correcting the FSN updates all linked members and keeps their household connection.</p>}</section>
       <div className="grid gap-5 sm:grid-cols-2">{[['streetAddress','House / Street'],['purokArea','Purok / Area'],['barangay','Barangay'],['municipality','Municipality']].map(([key,label])=><Field key={key} name={`address.${key}`} label={label} error={errorFor(`address.${key}`)}><Input {...inputProps(`address.${key}`)} required value={draft.address[key]} onChange={event=>{change('address',{...draft.address,[key]:event.target.value});setErrors(previous=>({...previous,[`address.${key}`]:undefined}));}}/></Field>)}</div>
-      {item && <section className="space-y-4"><Field name="head_patient_id" label="Household head" error={errorFor('head_patient_id')}><select {...inputProps('head_patient_id')} value={draft.head_patient_id} onChange={event=>{change('head_patient_id',event.target.value);change('relationships',{});}} className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm"><option value="">Select head</option>{item.members.map(member=><option key={member.id} value={member.id}>{patientName(member)}</option>)}</select></Field>{draft.head_patient_id !== item.headPatientId && item.members.filter(member=>member.id !== draft.head_patient_id).map(member=><Field key={member.id} name={`relationships.${member.id}`} label={`${patientName(member)} — relationship to new head`} error={errorFor(`relationships.${member.id}`)}><select {...inputProps(`relationships.${member.id}`)} value={draft.relationships[member.id] || ''} onChange={event=>change('relationships',{...draft.relationships,[member.id]:event.target.value})} className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm"><option value="">Select relationship</option>{RELATIONSHIPS.filter(value=>value !== HEAD_RELATIONSHIP).map(value=><option key={value}>{value}</option>)}</select></Field>)}</section>}
+      {item && <section className="space-y-4"><Field name="head_patient_id" label="Household head" error={errorFor('head_patient_id')}><select {...inputProps('head_patient_id')} value={draft.head_patient_id} onChange={event=>{change('head_patient_id',event.target.value);change('relationships',{});}} className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm"><option value="">Select head</option>{item.members.map(member=><option key={member.id} value={member.id}>{patientName(member)}</option>)}</select></Field>{draft.head_patient_id !== item.headPatientId && item.members.filter(member=>member.id !== draft.head_patient_id).map(member=><Field key={member.id} name={`relationships.${member.id}`} label={`${patientName(member)} — relationship to new head`} error={errorFor(`relationships.${member.id}`)}><select {...inputProps(`relationships.${member.id}`)} value={draft.relationships[member.id] || ''} onChange={event=>change('relationships',{...draft.relationships,[member.id]:event.target.value})} className="h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm"><option value="">Select relationship</option>{RELATIONSHIP_LABELS.map(value=><option key={value}>{value}</option>)}</select></Field>)}</section>}
       {errors.form && <p role="alert" className="text-sm text-red-700">{errors.form}</p>}{conflict && <Button type="button" variant="outline" onClick={()=>window.location.reload()}>Reload saved family and discard this draft</Button>}<div className="flex justify-end gap-3 border-t border-neutral-200 pt-5"><Button asChild variant="ghost"><Link to={item ? `${base}/${item.id}`:base}>Cancel</Link></Button><Button disabled={mutation.isPending || conflict} type="submit">{mutation.isPending ? 'Saving…':'Save Family'}</Button></div>
     </form></FamilyFrame>;
 }

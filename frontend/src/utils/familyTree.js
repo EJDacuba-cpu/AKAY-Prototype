@@ -1,13 +1,15 @@
 // Layout only: relationships must already be explicit. No surname, civil-status
 // or relationship-to-head inference belongs here.
-export function layoutFamilyTree(members, edges, headId) {
-  const width = 216, height = 112, gap = 88, rowGap = 100, padding = 32;
+const CARD = { width: 216, height: 112, gap: 88, rowGap: 100, padding: 32 };
+
+function layoutGroups(members, edges, headId, groupTypes) {
+  const { width, height, gap, rowGap, padding } = CARD;
   const groupOf = new Map(members.map(member => [member.id, member.id]));
   const root = id => {
     while (groupOf.get(id) !== id) id = groupOf.get(id);
     return id;
   };
-  for (const edge of edges.filter(item => item.type === "spouse")) groupOf.set(root(edge.to), root(edge.from));
+  for (const edge of edges.filter(item => groupTypes.includes(item.type))) groupOf.set(root(edge.to), root(edge.from));
   const groups = new Map();
   for (const member of members) {
     const key = root(member.id);
@@ -42,4 +44,33 @@ export function layoutFamilyTree(members, edges, headId) {
     }
   });
   return { nodes, width: canvasWidth, height: Math.max(240, ...nodes.map(node => node.y + height + padding)) };
+}
+
+export const layoutFamilyTree = (members, edges, headId) => layoutGroups(members, edges, headId, ["spouse"]);
+// The live BHC tree also keeps explicitly linked siblings side by side.
+const HOUSEHOLD_GROUPS = ["spouse", "sibling"];
+const LOOSE_COLUMNS = 6;
+
+// The live BHC tree also keeps explicitly linked siblings side by side. Members with no saved
+// connection are drawn as plain cards; when there are many they wrap into a grid below the tree.
+export function layoutHouseholdTree(members, edges, headId) {
+  const linked = new Set(edges.flatMap((edge) => [edge.from, edge.to]));
+  const loose = members.filter((member) => !linked.has(member.id));
+  if (loose.length <= LOOSE_COLUMNS) return layoutGroups(members, edges, headId, HOUSEHOLD_GROUPS);
+  const tree = layoutGroups(members.filter((member) => linked.has(member.id)), edges, headId, HOUSEHOLD_GROUPS);
+  const { width, height, gap, rowGap, padding } = CARD;
+  const gridWidth = LOOSE_COLUMNS * width + (LOOSE_COLUMNS - 1) * gap;
+  const canvasWidth = Math.max(tree.nodes.length ? tree.width : 0, gridWidth + padding * 2);
+  const shift = (canvasWidth - (tree.nodes.length ? tree.width : 0)) / 2;
+  const top = tree.nodes.length ? tree.height - padding + rowGap / 2 : padding;
+  const gridLeft = (canvasWidth - gridWidth) / 2;
+  const nodes = [
+    ...tree.nodes.map((node) => ({ ...node, x: node.x + shift })),
+    ...loose.map((member, index) => ({
+      ...member, width, height,
+      x: gridLeft + (index % LOOSE_COLUMNS) * (width + gap),
+      y: top + Math.floor(index / LOOSE_COLUMNS) * (height + rowGap / 2),
+    })),
+  ];
+  return { nodes, width: canvasWidth, height: Math.max(...nodes.map((node) => node.y + height)) + padding };
 }

@@ -37,6 +37,7 @@ import {
 import { Button } from "../../components/ui/button";
 import ModalShell from "../../components/common/modals/ModalShell";
 import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
+import { isAcceptedLabel } from "../../utils/relationshipLabels";
 import BhcPatientRegistration from "./BhcPatientRegistration";
 import { registrationErrors } from "../../utils/householdData";
 import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS } from "../../utils/patientRegistrationPayload";
@@ -364,7 +365,8 @@ function handleBirthDateChange(valueOrEvent) {
     const nextErrors = {};
     if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
     const connectionToSave = withFormAddress(householdConnection, form);
-    const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement) };
+    const allowedLabel = live ? isAcceptedLabel : undefined;
+    const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form, allowedLabel), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement, allowedLabel) };
     const { relationship, ...allOtherHouseholdErrors } = householdErrors;
     // The Address Information panel reports its own address errors.
     const otherHouseholdErrors = Object.fromEntries(Object.entries(allOtherHouseholdErrors).filter(([key]) => !ADDRESS_FIELDS.includes(key)));
@@ -899,7 +901,7 @@ function handleBirthDateChange(valueOrEvent) {
         onClose={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}
         footer={<>
           <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
-          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "/edit" : ""}`); }}>Edit Patient</Button>
+          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>Edit Patient</Button>
         </>}
       ><p>{live ? "Patient registration and household connection saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
       {modals.confirm && <ModalShell
