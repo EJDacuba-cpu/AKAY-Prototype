@@ -51,3 +51,16 @@ test('education options match the API and the history form lists', () => {
   assert.deepEqual(EDUCATION_LEVEL_OPTIONS,['None','Elementary','High School','Senior High School','Vocational','College','Postgraduate']);
   assert.deepEqual(EDUCATION_COMPLETED_OPTIONS,['Level','Graduate']);
 });
+
+test('birth details are never sent, even when a form still carries stored values', () => {
+  const payload=toPayload({firstName:'Mia',lastName:'Cruz',birthPlace:'Bulakan',birth_place:'Bulakan',birthTime:'08:30',birthWeight:'3.1',birthHeight:'50'});
+  for(const field of ['birth_place','birth_time','birth_weight','birth_height']) assert.equal(Object.hasOwn(payload,field),false,field);
+});
+test('parent links are sent only by forms that carry them', () => {
+  assert.equal(Object.hasOwn(toPayload({firstName:'Mia',lastName:'Cruz',motherName:'Ana'}),'mother_patient_id'),false);
+  assert.equal(Object.hasOwn(toPayload({firstName:'Mia',lastName:'Cruz'}),'father_patient_id'),false);
+  const linked=toPayload({firstName:'Mia',lastName:'Cruz',motherPatientId:'7',fatherPatientId:'8'});
+  assert.equal(linked.mother_patient_id,'7');
+  assert.equal(linked.father_patient_id,'8');
+  assert.equal(toPayload({motherPatientId:''}).mother_patient_id,null);
+});

@@ -31,13 +31,6 @@ const PARENT_FIELDS = [
   ["Relation to head", ["relationshipToHouseholdHead", "relationship_to_household_head"]],
 ];
 
-const BIRTH_FIELDS = [
-  ["Birth place", ["birthPlace", "birth_place"]],
-  ["Time of birth", ["birthTime", "birth_time"]],
-  ["Birth weight", ["birthWeight", "birth_weight"]],
-  ["Birth height", ["birthHeight", "birth_height"]],
-];
-
 const INPUT_CLASS =
   "mt-1 h-9 w-full min-w-0 rounded-lg border bg-white px-3 text-sm text-neutral-900 shadow-xs outline-none transition focus:border-ink-300 focus:ring-4 focus:ring-ink-100";
 
@@ -84,46 +77,6 @@ function EditSelect({ label, required, error, children, value, ...props }) {
   );
 }
 
-function getMotherPatientLabel(patient = {}) {
-  return [
-    patient.fullName || patient.name || "Unnamed patient",
-    patient.patientId || patient.id ? `Patient ID: ${patient.patientId || patient.id}` : "",
-    patient.barangay || "",
-  ]
-    .filter(Boolean)
-    .join(" - ");
-}
-
-function EditLinkedMotherSelect({ value, search, options, onSearchChange, onChange }) {
-  return (
-    <div className="min-w-0 text-xs text-neutral-500 @sm:col-span-2">
-      <label>
-        Registered mother link
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search registered mother"
-          className={`${INPUT_CLASS} border-neutral-300`}
-        />
-      </label>
-      <select
-        aria-label="Linked mother"
-        value={value || ""}
-        onChange={(event) => onChange(event.target.value)}
-        className={`${INPUT_CLASS} mt-2 border-neutral-300`}
-      >
-        <option value="">No linked mother selected</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {getMotherPatientLabel(option)}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 function EditGrid({ children }) {
   return <div className="grid gap-x-4 gap-y-3 @sm:grid-cols-2">{children}</div>;
 }
@@ -144,10 +97,6 @@ export default function RegistrationSections({
   onChange,
   fieldErrors = {},
   saving = false,
-  motherSearch,
-  motherPatientOptions,
-  onMotherSearchChange,
-  onMotherPatientChange,
   householdLocked = false,
   onChangeHousehold,
 }) {
@@ -161,7 +110,6 @@ export default function RegistrationSections({
   const hasParentData =
     PARENT_FIELDS.some(([, keys]) => hasDisplayValue(read(keys))) ||
     hasDisplayValue(displayMotherName);
-  const hasBirthData = BIRTH_FIELDS.some(([, keys]) => hasDisplayValue(read(keys)));
 
   const formAgeYears = calculateAge(form.birthDate);
   const formAgeMonths = calculateAgeInMonths(form.birthDate);
@@ -171,7 +119,6 @@ export default function RegistrationSections({
   const shouldRequireCivilStatus = hasBirthDate && !isEpiTargetAge;
   const showChildSections =
     hasParentData ||
-    hasBirthData ||
     (editingSection === "family" || editingSection === "demographics"
       ? isFormMinor
       : Number(read(["age"], 99)) < 18);
@@ -188,7 +135,7 @@ export default function RegistrationSections({
         onClick={() => onEdit(section)}
         disabled={editing}
         title={editing ? "Save or cancel the section you are editing first" : undefined}
-        aria-label={`Edit ${section === "demographics" ? "demographics" : section === "contact" ? "contact and address" : "family and birth"}`}
+        aria-label={`Edit ${section === "demographics" ? "demographics" : section === "contact" ? "contact and address" : "parent and guardian information"}`}
       >
         Edit
       </TextAction>
@@ -201,9 +148,6 @@ export default function RegistrationSections({
         ? [label, label.includes("birthday") ? formatLongDate(value, "") : value]
         : null;
     }),
-    ...BIRTH_FIELDS.map(([label, keys]) =>
-      hasDisplayValue(read(keys)) ? [label, read(keys)] : null,
-    ),
   ].filter(Boolean);
   const age = getPatientAge(patient);
   const birthday = formatLongDate(read(["birthDate", "birthdate", "dateOfBirth", "date_of_birth"]), "");
@@ -259,9 +203,6 @@ export default function RegistrationSections({
               ))}
             </EditSelect>
             <EditField label="NHTS status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
-            {!showChildSections && (
-              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} readOnly={householdLocked} />
-            )}
             {form.civilStatus === "Married" && (
               <>
                 <EditField label="Spouse name" name="spouseName" value={form.spouseName} onChange={onChange} />
@@ -278,7 +219,6 @@ export default function RegistrationSections({
               ["Occupation", read(["occupation"])],
               ["Education", formatEducation({ level: education.educationLevel, completed: education.educationCompleted })],
               ["NHTS status", read(["nhtsStatus", "nhts_status"])],
-              ...(!showChildSections ? [["Family serial no.", read(["familySerialNumber", "family_serial_number"])]] : []),
               ...(hasDisplayValue(read(["spouseName", "spouse_name"])) ? [["Spouse", read(["spouseName", "spouse_name"])]] : []),
               ...(hasDisplayValue(read(["spouseOccupation", "spouse_occupation"])) ? [["Spouse occupation", read(["spouseOccupation", "spouse_occupation"])]] : []),
             ]}
@@ -344,26 +284,14 @@ export default function RegistrationSections({
       </ProfileSection>
 
       {showChildSections && (
-        <ProfileSection id="family" title="Family & Birth" actions={actionsFor("family")}>
+        <ProfileSection id="family" title="Parent & Guardian Information" actions={actionsFor("family")}>
           {editingSection === "family" ? (
             <EditGrid>
               <EditField label="Mother name" name="motherName" value={form.motherName} onChange={onChange} error={fieldErrors.motherName} required={isFormMinor} />
-              <EditField label="Family serial number" name="familySerialNumber" value={form.familySerialNumber} onChange={onChange} readOnly={householdLocked} />
-              <EditLinkedMotherSelect
-                value={form.motherPatientId}
-                search={motherSearch}
-                options={motherPatientOptions}
-                onSearchChange={onMotherSearchChange}
-                onChange={onMotherPatientChange}
-              />
               <EditField label="Father name" name="fatherName" value={form.fatherName} onChange={onChange} />
               <EditField label="Guardian name" name="guardianName" value={form.guardianName} onChange={onChange} />
               <EditField label="Guardian relationship" name="guardianRelationship" value={form.guardianRelationship} onChange={onChange} />
               <EditField label="Guardian contact" name="guardianContactNumber" value={form.guardianContactNumber} onChange={onChange} />
-              <EditField label="Birth place" name="birthPlace" value={form.birthPlace} onChange={onChange} />
-              <EditField label="Time of birth" name="birthTime" type="time" value={form.birthTime} onChange={onChange} />
-              <EditField label="Birth weight" name="birthWeight" value={form.birthWeight} onChange={onChange} />
-              <EditField label="Birth height" name="birthHeight" value={form.birthHeight} onChange={onChange} />
             </EditGrid>
           ) : (
             <FieldList rows={familyRows} />

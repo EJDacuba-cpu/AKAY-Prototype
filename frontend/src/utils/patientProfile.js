@@ -95,18 +95,12 @@ export function createPatientForm(patient = {}) {
     barangay: read(["barangay"]),
     municipality: read(["municipality", "city"], "Bulakan"),
     motherName: read(["motherName", "mother_name"]),
-    motherPatientId: read(["motherPatientId", "mother_patient_id"]),
     motherBirthDate: read(["motherBirthDate", "mother_birth_date"]),
     fatherName: read(["fatherName", "father_name"]),
-    fatherPatientId: read(["fatherPatientId", "father_patient_id"]),
     fatherBirthDate: read(["fatherBirthDate", "father_birth_date"]),
     guardianName: read(["guardianName", "guardian_name"]),
     guardianRelationship: read(["guardianRelationship", "guardian_relationship"]),
     guardianContactNumber: read(["guardianContactNumber", "guardian_contact_number"]),
-    birthPlace: read(["birthPlace", "birth_place"]),
-    birthTime: read(["birthTime", "birth_time"]),
-    birthWeight: read(["birthWeight", "birth_weight"]),
-    birthHeight: read(["birthHeight", "birth_height"]),
     registrationType: read(["registrationType", "registration_type", "patientType"]),
     patientClassification: read(["patientClassification", "patientCategory", "category"]),
   };
@@ -121,7 +115,7 @@ export function createPatientForm(patient = {}) {
 export const REGISTRATION_SECTION_FIELDS = Object.freeze({
   demographics: [
     "firstName", "middleName", "lastName", "birthDate", "age", "sex",
-    "civilStatus", "occupation", "educationLevel", "educationCompleted", "nhtsStatus", "familySerialNumber",
+    "civilStatus", "occupation", "educationLevel", "educationCompleted", "nhtsStatus",
     "spouseName", "spouseOccupation",
   ],
   contact: [
@@ -129,9 +123,8 @@ export const REGISTRATION_SECTION_FIELDS = Object.freeze({
     "streetAddress", "purokArea", "barangay", "municipality",
   ],
   family: [
-    "motherName", "motherPatientId", "familySerialNumber", "fatherName",
+    "motherName", "fatherName",
     "guardianName", "guardianRelationship", "guardianContactNumber",
-    "birthPlace", "birthTime", "birthWeight", "birthHeight",
   ],
 });
 

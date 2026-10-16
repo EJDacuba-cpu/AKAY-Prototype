@@ -76,3 +76,15 @@ export function memberAgeLabel(member = {}) {
   if (months === "") return "Age —";
   return months < 12 ? `${months} mo` : `${calculateAge(birthDate)} y`;
 }
+
+const PARENT_LINK_KEYS = ["motherPatientId", "mother_patient_id", "fatherPatientId", "father_patient_id"];
+
+/**
+ * Registration never sets, clears, or resends a confirmed parent link (mother/father patient IDs);
+ * those are managed through Families. A household relationship label never creates one either.
+ */
+export function omitParentLinks(form = {}) {
+  const rest = { ...form };
+  for (const key of PARENT_LINK_KEYS) delete rest[key];
+  return rest;
+}

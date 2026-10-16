@@ -4,6 +4,7 @@ import {
   changeFamilySerial,
   linkParent,
   memberAgeLabel,
+  omitParentLinks,
   parentRoleFor,
   unlinkParent,
 } from "./householdParents.js";
@@ -73,4 +74,26 @@ test("member ages read compactly in years, or months for infants", () => {
   infant.setMonth(infant.getMonth() - 5);
   assert.equal(memberAgeLabel({ birthdate: infant.toISOString().slice(0, 10) }), "5 mo");
   assert.equal(memberAgeLabel({ birthdate: "" }), "Age —");
+});
+
+import { toPayload } from "./patientRegistrationPayload.js";
+
+test("registration drops confirmed parent links so they are never sent, cleared, or created from a label", () => {
+  const form = { firstName: "Nina", lastName: "Garcia", motherName: "Lucia", motherPatientId: "7", mother_patient_id: 7, fatherPatientId: "8", father_patient_id: 8, relationshipToHouseholdHead: "Niece" };
+  const rest = omitParentLinks(form);
+  for (const key of ["motherPatientId", "mother_patient_id", "fatherPatientId", "father_patient_id"]) assert.equal(Object.hasOwn(rest, key), false, key);
+  assert.equal(rest.motherName, "Lucia");
+  assert.equal(form.motherPatientId, "7");
+  const payload = toPayload({ ...rest, motherName: "Lucia" });
+  assert.equal(Object.hasOwn(payload, "mother_patient_id"), false);
+  assert.equal(Object.hasOwn(payload, "father_patient_id"), false);
+  assert.equal(payload.mother_name, "Lucia");
+});
+
+test("a household relationship label alone produces no parent link in the payload", () => {
+  for (const label of ["Son", "Daughter", "Niece", "Grandson", "Husband", "Brother"]) {
+    const payload = toPayload({ ...omitParentLinks({ firstName: "A", lastName: "B", relationshipToHouseholdHead: label }) });
+    assert.equal(Object.hasOwn(payload, "mother_patient_id"), false, label);
+    assert.equal(Object.hasOwn(payload, "father_patient_id"), false, label);
+  }
 });

@@ -146,7 +146,6 @@ function LivePatientDetails() {
   const [changingHousehold, setChangingHousehold] = useState(false);
   const [form, setForm] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
-  const [motherSearch, setMotherSearch] = useState("");
   const editingSectionRef = useRef(null);
 
   const profileQueries = getBhcPatientProfileQueries(patientId, { canViewHistory });
@@ -183,13 +182,6 @@ function LivePatientDetails() {
     refetch: refetchFollowUps,
   } = useQuery(profileQueries.followUps);
 
-  const {
-    data: registeredPatients = [],
-    isFetching: registeredPatientsFetching,
-    error: registeredPatientsError,
-    refetch: refetchRegisteredPatients,
-  } = useQuery(profileQueries.registeredPatients);
-
   const overrideMatchesPatient =
     patientOverride &&
     String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
@@ -198,14 +190,12 @@ function LivePatientDetails() {
   const loadError =
     patientError ||
     (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError || followUpsError)) ||
-    registeredPatientsError ||
     null;
   const retrying =
     patientFetching ||
     recordsFetching ||
     referralsFetching ||
-    followUpsFetching ||
-    registeredPatientsFetching;
+    followUpsFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   const records = useMemo(
@@ -291,7 +281,6 @@ function LivePatientDetails() {
     refetchRecords();
     refetchReferrals();
     refetchFollowUps();
-    refetchRegisteredPatients();
   }
 
   useEffect(() => {
@@ -348,19 +337,6 @@ function LivePatientDetails() {
       }
       return next;
     });
-  }
-
-  function handleMotherPatientChange(value) {
-    setFieldErrors((current) => ({ ...current, motherName: "", motherPatientId: "" }));
-    const selectedMother = registeredPatients.find((item) => String(item.id) === String(value));
-
-    setForm((current) => ({
-      ...current,
-      motherPatientId: value,
-      motherName: selectedMother
-        ? selectedMother.fullName || selectedMother.name || current.motherName
-        : current.motherName,
-    }));
   }
 
   function handleEditSection(section) {
@@ -456,22 +432,6 @@ function LivePatientDetails() {
       </ProfileShell>
     );
   }
-
-  const motherPatientOptions = registeredPatients
-    .filter((item) => String(item.id) !== String(patientId))
-    .filter((item) => {
-      const age = calculateAge(item.birthDate || item.birthdate);
-      return item.sex === "Female" && (age === "" || Number(age) >= 12);
-    })
-    .filter((item) => {
-      const search = motherSearch.trim().toLowerCase();
-      if (!search) return true;
-      return [item.fullName || item.name, item.patientId || item.id, item.barangay]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(search);
-    });
 
   const historyReference =
     activeTab === "overview" && canViewHistory ? (
@@ -586,10 +546,6 @@ function LivePatientDetails() {
                     onChange={handleChange}
                     fieldErrors={fieldErrors}
                     saving={saving}
-                    motherSearch={motherSearch}
-                    motherPatientOptions={motherPatientOptions}
-                    onMotherSearchChange={setMotherSearch}
-                    onMotherPatientChange={handleMotherPatientChange}
                   />
                 )}
 

@@ -12,6 +12,7 @@ import {
   orderFollowUps,
   validatePatientForm,
 } from "./patientProfile.js";
+import { toPayload } from "./patientRegistrationPayload.js";
 
 const validAdult = {
   firstName: "Ana",
@@ -68,15 +69,44 @@ test("the form reads alias keys and defaults the municipality", () => {
   assert.equal(getPatientValue({}, ["x"]), "Not recorded");
 });
 
-test("a profile edit carries the household parent links and birthdates through", () => {
+test("a profile edit carries parent and guardian text but no longer holds birth details or parent links", () => {
   const form = createPatientForm({
-    mother_patient_id: 7, mother_birth_date: "1992-03-04",
-    father_patient_id: 8, father_birth_date: "1990-05-06",
+    mother_name: "Ana Cruz", mother_birth_date: "1992-03-04",
+    father_name: "Ben Cruz", father_birth_date: "1990-05-06",
+    guardian_name: "Lola", guardian_relationship: "Grandmother", guardian_contact_number: "09171234567",
+    mother_patient_id: 7, father_patient_id: 8,
+    birth_place: "Bulakan", birth_time: "08:30", birth_weight: "3.1", birth_height: "50",
+    family_serial_number: "FSN-2026-0001",
   });
-  assert.equal(form.motherPatientId, 7);
+  assert.equal(form.motherName, "Ana Cruz");
   assert.equal(form.motherBirthDate, "1992-03-04");
-  assert.equal(form.fatherPatientId, 8);
+  assert.equal(form.fatherName, "Ben Cruz");
   assert.equal(form.fatherBirthDate, "1990-05-06");
+  assert.equal(form.guardianName, "Lola");
+  assert.equal(form.familySerialNumber, "FSN-2026-0001");
+  for (const key of ["motherPatientId", "fatherPatientId", "birthPlace", "birthTime", "birthWeight", "birthHeight"]) {
+    assert.equal(Object.hasOwn(form, key), false, key);
+  }
+});
+
+test("saving a profile edit never sends birth details or clears stored parent links", () => {
+  const stored = {
+    first_name: "Mia", last_name: "Cruz", birthdate: "2024-05-01", sex: "Female", street_address: "Main", barangay: "Pitpitan", municipality: "Bulakan",
+    mother_patient_id: 7, father_patient_id: 8, mother_name: "Ana Cruz",
+    birth_place: "Bulakan", birth_time: "08:30", birth_weight: "3.1", birth_height: "50",
+  };
+  const payload = toPayload({ ...createPatientForm(stored), occupation: "" });
+  for (const field of ["mother_patient_id", "father_patient_id", "birth_place", "birth_time", "birth_weight", "birth_height"]) {
+    assert.equal(Object.hasOwn(payload, field), false, field);
+  }
+  assert.equal(payload.mother_name, "Ana Cruz");
+  assert.equal(payload.birthdate, "2024-05-01");
+});
+
+test("the Parent & Guardian section validates only its own fields", () => {
+  const errors = validatePatientForm({ ...validAdult, birthDate: getTodayIsoDate(new Date(Date.now() - 5 * 365 * 24 * 3600 * 1000)), motherName: "" }, getTodayIsoDate());
+  assert.equal(getSectionErrors(errors, "family").motherName, "Mother name is required.");
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "contact")), []);
 });
 
 test("overdue pending follow-ups read as no-show and resolved ones stay resolved", () => {

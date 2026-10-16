@@ -70,10 +70,6 @@ export function toPayload(patient = {}) {
     guardian_relationship: optional('guardianRelationship', 'guardian_relationship'),
     guardian_contact_number: optional('guardianContactNumber', 'guardianContact', 'guardian_contact_number'),
     family_serial_number: optional('familySerialNumber', 'family_serial_number'),
-    birth_place: optional('birthPlace', 'birth_place'),
-    birth_time: optional('birthTime', 'birth_time'),
-    birth_weight: optional('birthWeight', 'birth_weight'),
-    birth_height: optional('birthHeight', 'birth_height'),
     nhts_status: optional('nhtsStatus', 'nhts_status'),
     philhealth_number: shouldSendPhilHealthNumber
       ? optional('philHealthNumber', 'philhealthNumber', 'philhealth_number')
@@ -100,6 +96,14 @@ export function toPayload(patient = {}) {
     if (keys.some((key) => Object.hasOwn(patient, key) && patient[key] !== undefined)) payload[field] = optional(...keys);
   });
 
+  // Birth details (place, time, weight, height) are not part of general registration, so they are never
+  // sent and stored values stay untouched. Parent links are sent only by forms that carry them, so a
+  // profile edit never clears a stored mother/father link.
+  const parentLinkKeys = { mother_patient_id: ['motherPatientId', 'mother_patient_id'], father_patient_id: ['fatherPatientId', 'father_patient_id'] };
+  Object.entries(parentLinkKeys).forEach(([field, keys]) => {
+    if (!keys.some((key) => Object.hasOwn(patient, key) && patient[key] !== undefined)) delete payload[field];
+  });
+
   // medical_background is never sent: the API ignores it. The background
   // only changes through a finalized consultation.
 
@@ -107,4 +111,4 @@ export function toPayload(patient = {}) {
   if (hasHouseholdCommand) delete payload.family_serial_number;
   return payload;
 }
-
+

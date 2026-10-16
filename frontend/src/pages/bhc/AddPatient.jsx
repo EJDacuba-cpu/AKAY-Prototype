@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
-  House,
   MapPinHouse,
   Users,
   UserPlus,
@@ -18,7 +17,6 @@ import {
   ButtonSpinner,
   DatePickerField,
   FormInput,
-  TimePickerField,
 } from "../../components/common";
 
 // Import extracted utils and components
@@ -42,18 +40,12 @@ import BhcPatientRegistration from "./BhcPatientRegistration";
 import { registrationErrors } from "../../utils/householdData";
 import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS } from "../../utils/patientRegistrationPayload";
 import {
-  ADDRESS_FIELDS, connectionForPatient, householdForConnection, patientName,
+  ADDRESS_FIELDS, connectionForPatient,
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
 import "../../components/features/patients/registration-form.css";
-import {
-  PARENT_FIELDS,
-  linkParent,
-  memberAgeLabel,
-  parentRoleFor,
-  unlinkParent,
-} from "../../utils/householdParents";
+import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
 
 // Flat bordered panel used for each registration section.
 function FormPanel({ icon, title, description, children }) {
@@ -137,15 +129,11 @@ const INITIAL_FORM_STATE = {
   municipality: "Bulakan",
 
   motherName: "",
-  motherPatientId: "",
   motherBirthDate: "",
   fatherName: "",
-  fatherPatientId: "",
   fatherBirthDate: "",
   familySerialNumber: "",
 
-  birthPlace: "",
-  birthTime: "",
   nhtsStatus: "",
 };
 
@@ -224,14 +212,6 @@ export function RegistrationForm({
     String(currentDate.getMonth() + 1).padStart(2, "0"),
     String(currentDate.getDate()).padStart(2, "0"),
   ].join("-");
-  const selectedHousehold = householdForConnection(registry, householdConnection);
-  const householdMembers = registry.patients.filter((patient) =>
-    patient.id !== editingPatientId && (householdConnection?.kind === "new"
-      ? patient.id === householdConnection.headPatientId
-      : Boolean(selectedHousehold && patient.householdId === selectedHousehold.id)),
-  ).map((patient) => ({ ...patient, fullName: patientName(patient) }));
-
-
   // --- HANDLERS ---
 
   const handleChange = (e) => {
@@ -318,15 +298,10 @@ function handleBirthDateChange(valueOrEvent) {
 
     // clear child-only fields kapag adult na yung bagong DOB
     motherName: nextIsChild ? prev.motherName : "",
-    motherPatientId: nextIsChild ? prev.motherPatientId : "",
     motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
     fatherName: nextIsChild ? prev.fatherName : "",
-    fatherPatientId: nextIsChild ? prev.fatherPatientId : "",
     fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
 
-    // clear EPI-only fields kapag hindi na EPI age
-    birthPlace: nextIsEpiTarget ? prev.birthPlace : "",
-    birthTime: nextIsEpiTarget ? prev.birthTime : "",
   }));
 }
   function handleParentBirthDateChange(name, value) {
@@ -345,20 +320,6 @@ function handleBirthDateChange(valueOrEvent) {
 
   function cancelRegistration() {
     navigate(backPath);
-  }
-
-  function handleUseAsParent(role, member) {
-    const fields = PARENT_FIELDS[role];
-    setFieldErrors((prev) => ({
-      ...prev,
-      [fields.name]: "",
-      [fields.birthDate]: "",
-    }));
-    setForm((prev) => linkParent(prev, role, member));
-  }
-
-  function handleUnlinkParent(role) {
-    setForm((prev) => unlinkParent(prev, role));
   }
 
     function validateForm() {
@@ -434,29 +395,21 @@ function handleBirthDateChange(valueOrEvent) {
           registrationType: "child",
           patientClassification: "Child Patient",
           motherName: form.motherName || null,
-          motherPatientId: form.motherPatientId || null,
           motherBirthDate: form.motherBirthDate || null,
           fatherName: form.fatherName || null,
-          fatherPatientId: form.fatherPatientId || null,
           fatherBirthDate: form.fatherBirthDate || null,
-          birthPlace: isEpiTargetAge ? form.birthPlace || null : null,
-          birthTime: isEpiTargetAge ? form.birthTime || null : null,
         }
       : {
           registrationType: "general",
           patientClassification: form.patientClassification || "",
           motherName: null,
-          motherPatientId: null,
           motherBirthDate: null,
           fatherName: null,
-          fatherPatientId: null,
           fatherBirthDate: null,
-          birthPlace: null,
-          birthTime: null,
         };
 
     return {
-      ...form,
+      ...omitParentLinks(form),
       ...childPatientData,
       philHealthNumber:
         form.philHealthStatus === "With PhilHealth"
@@ -723,12 +676,6 @@ function handleBirthDateChange(valueOrEvent) {
                   description="The Family Serial Number links this child to their household."
                 >
                   <div className="space-y-4">
-                    <HouseholdPanel
-                      members={householdMembers}
-                      form={form}
-                      onUseAsParent={handleUseAsParent}
-                    />
-
                     {Object.keys(PARENT_FIELDS).map((role) => (
                       <ParentFields
                         key={role}
@@ -739,39 +686,12 @@ function handleBirthDateChange(valueOrEvent) {
                         required={role === "mother"}
                         onChange={handleChange}
                         onBirthDateChange={handleParentBirthDateChange}
-                        onUnlink={handleUnlinkParent}
                       />
                     ))}
                   </div>
                 </FormPanel>
               )}
 
-              {isChildRegistration && isEpiTargetAge && (
-                <FormPanel
-                  icon={ClipboardList}
-                  title="Birth / EPI Details"
-                  description="Basic birth and household details for child registration."
-                >
-                  <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <FormInput
-                      label="Birth Place"
-                      name="birthPlace"
-                      value={form.birthPlace}
-                      onChange={handleChange}
-                    />
-
-                    <TimePickerField
-                      label="Time of Birth"
-                      name="birthTime"
-                      value={form.birthTime}
-                      onChange={(value) => {
-                        setFieldErrors((prev) => ({ ...prev, birthTime: "" }));
-                        setForm((prev) => ({ ...prev, birthTime: value }));
-                      }}
-                    />
-                  </div>
-                </FormPanel>
-              )}
             </div>
 
             {/* RIGHT COLUMN */}
@@ -921,58 +841,6 @@ export default function AddPatient() {
 }
 
 // Preserve explicit parent linking for children using the selected mock household.
-function HouseholdPanel({ members, form, onUseAsParent }) {
-  if (!members.length) return null;
-
-  return (
-    <div aria-live="polite">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 py-2.5">
-        <House size={15} className="shrink-0 text-[#B91C1C]" />
-        <p className="text-sm font-semibold text-gray-950">Household members</p>
-      </div>
-
-      <ul className="divide-y divide-[#F1F5F9] bg-white">
-        {members.map((member) => {
-          const role = parentRoleFor(member);
-          const fields = role ? PARENT_FIELDS[role] : null;
-          const linked = fields && String(form[fields.id]) === String(member.id);
-
-          return (
-            <li
-              key={member.id}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[#1F2937]">
-                  {member.fullName || "Unnamed patient"}
-                </p>
-                <p className="text-[11px] text-[#6B7280]">
-                  {memberAgeLabel(member)} · {member.sex || "Sex not recorded"}
-                </p>
-              </div>
-
-              {linked ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-950">
-                  <Check size={12} />
-                  {fields.label}
-                </span>
-              ) : fields ? (
-                <button
-                  type="button"
-                  onClick={() => onUseAsParent(role, member)}
-                  className="border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-600 transition hover:border-red-600 hover:bg-red-50"
-                >
-                  Use as {fields.label}
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 /**
  * One parent's Name / Date of Birth / Age. A parent linked from the household
  * is locked to their registered record until unlinked.
@@ -985,7 +853,6 @@ function ParentFields({
   required,
   onChange,
   onBirthDateChange,
-  onUnlink,
 }) {
   const fields = PARENT_FIELDS[role];
   const linked = Boolean(form[fields.id]);
@@ -1005,14 +872,6 @@ function ParentFields({
             <span className="inline-flex flex-wrap items-center gap-1.5 font-medium text-[#B91C1C]">
               <Check size={11} />
               Linked to registered patient
-              <span className="text-[#D1D5DB]">·</span>
-              <button
-                type="button"
-                onClick={() => onUnlink(role)}
-                className="font-semibold text-[#6B7280] underline-offset-2 hover:text-[#B91C1C] hover:underline"
-              >
-                Unlink
-              </button>
             </span>
           ) : null
         }
