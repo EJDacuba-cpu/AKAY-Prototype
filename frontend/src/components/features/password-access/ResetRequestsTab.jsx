@@ -19,13 +19,13 @@ import useAccessRows from "./useAccessRows";
  * Reset requests tab: rows from the reset request API, statuses from `resetRequestStatus` (spec F2). Each row's ⋯
  * menu lists the controls its status allows; choosing one opens a confirmation modal.
  */
-export default function ResetRequestsTab({ rolesData, toolbarHeading }) {
+export default function ResetRequestsTab({ rolesData }) {
   const notify = useNotification();
   const list = useAccessRows(getPasswordResetRequests, notify.error);
   const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
   const [manualCopy, setManualCopy] = useState(null);
   const columns = useMemo(
-    () => accessColumns({ rolesData, dateOf: (row) => row.requested_at }),
+    () => accessColumns({ rolesData, dateOf: (row) => row.requested_at, dateLabel: "Requested" }),
     [rolesData],
   );
 
@@ -83,14 +83,15 @@ export default function ResetRequestsTab({ rolesData, toolbarHeading }) {
         columns={columns}
         statusOf={(row) => resetRequestStatus(row)}
         menuFor={menuFor}
-        emptyMessage="No password reset requests found."
+        emptyMessage="No reset requests yet"
+        emptyHint="When staff ask to reset their password, the request appears here for you to approve or decline."
         loading={list.loading}
         error={list.error}
         onRetry={list.refresh}
         filters={list.filters}
         onFiltersChange={list.updateFilters}
-        searchPlaceholder="Search by account or email..."
-        toolbarHeading={toolbarHeading}
+        searchPlaceholder="Search by account or email"
+        searchLabel="Search reset requests"
       />
 
       <ConfirmationModal

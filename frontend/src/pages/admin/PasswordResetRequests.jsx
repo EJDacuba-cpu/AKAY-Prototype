@@ -39,38 +39,58 @@ export default function PasswordResetRequests() {
     setSearchParams(id === "invites" ? { tab: "invites" } : {}, { replace: true });
   }
 
-  // The tabs sit in the toolbar row, as on Facilities.
-  const tabs = (
-    <div className="flex gap-2" role="tablist" aria-label="Password & Invites">
-      {TABS.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          id={`access-tab-${tab.id}`}
-          aria-selected={tab.id === activeTab}
-          aria-controls="access-tabpanel"
-          onClick={() => selectTab(tab.id)}
-          className={`h-10 rounded-xl px-5 text-sm font-medium transition-colors ${
-            tab.id === activeTab ? "bg-[#B91C1C] text-white" : "bg-white text-slate-600 hover:bg-red-50"
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
+  // Arrow keys move between the two tabs, as the tab pattern expects.
+  function onTabKeyDown(event) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const next = TABS[(TABS.findIndex((tab) => tab.id === activeTab) + 1) % TABS.length];
+    selectTab(next.id);
+    document.getElementById(`access-tab-${next.id}`)?.focus();
+  }
 
   return (
     <DashboardLayout role="admin" title="Password & Invites">
-      <div className="mx-auto w-full max-w-[1500px] space-y-5">
-        <p className="text-sm text-slate-500">{TABS.find((tab) => tab.id === activeTab).description}</p>
+      <div className="mx-auto w-full max-w-[1500px]">
+        {/* Same underlined strip as the patient profile: no box, a thin rule, and navy ink for the active tab. */}
+        <div
+          role="tablist"
+          aria-label="Password & Invites"
+          onKeyDown={onTabKeyDown}
+          className="flex gap-1 shadow-[inset_0_-1px_0_var(--color-neutral-200)]"
+        >
+          {TABS.map((tab) => {
+            const active = tab.id === activeTab;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`access-tab-${tab.id}`}
+                aria-selected={active}
+                aria-controls="access-tabpanel"
+                tabIndex={active ? 0 : -1}
+                onClick={() => selectTab(tab.id)}
+                className={`whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
+                  active
+                    ? "border-ink-700 text-neutral-900"
+                    : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mb-4 mt-3 max-w-2xl text-[13px] text-neutral-600">
+          {TABS.find((tab) => tab.id === activeTab).description}
+        </p>
 
         <div role="tabpanel" id="access-tabpanel" aria-labelledby={`access-tab-${activeTab}`}>
           {activeTab === "invites" ? (
-            <InvitesTab key="invites" rolesData={rolesData} toolbarHeading={tabs} />
+            <InvitesTab key="invites" rolesData={rolesData} />
           ) : (
-            <ResetRequestsTab key="resets" rolesData={rolesData} toolbarHeading={tabs} />
+            <ResetRequestsTab key="resets" rolesData={rolesData} />
           )}
         </div>
       </div>

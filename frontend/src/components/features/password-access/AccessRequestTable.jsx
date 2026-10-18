@@ -1,9 +1,8 @@
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import {
   ActionMenu,
   ConnectionErrorState,
   FixedTable,
-  ListToolbar,
   SoftLoadingArea,
   TablePagination,
 } from "../../common";
@@ -15,13 +14,16 @@ import usePagedRows from "../../../hooks/usePagedRows";
 
 export const DEFAULT_FILTERS = { search: "", status: "all" };
 
-const FILTER_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_OPTIONS];
+const STATUS_SEGMENTS = [{ value: "all", label: "All" }, ...STATUS_OPTIONS];
+
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
 
 /**
- * The shared list for both Password & Invites tabs: toolbar (the page's tabs go in `toolbarHeading`),
- * desktop table and mobile cards. Statuses come from `statusOf` (accessRequestStatus.js); each row's single ⋯ menu
- * is `menuFor(row)`, a list of `ActionMenu` entries (every row has the menu; unavailable controls are greyed). A list with no rows shows a
- * centered message instead of the card, as Facilities does.
+ * The shared list for both Password & Invites tabs: a toolbar (search and a status switch), then one card holding the
+ * desktop table or the mobile rows. Statuses come from `statusOf` (accessRequestStatus.js) and the row's reason is
+ * printed under the status chip, since it says what the admin can do next. Each row's single ⋯ menu is
+ * `menuFor(row)`, a list of `ActionMenu` entries (every row has the menu; unavailable controls are greyed). A list
+ * with no rows keeps the column heads and says what will appear there.
  */
 export default function AccessRequestTable({
   rows,
@@ -29,93 +31,97 @@ export default function AccessRequestTable({
   statusOf,
   menuFor,
   emptyMessage,
+  emptyHint,
   loading = false,
   error = "",
   onRetry,
   filters,
   onFiltersChange,
   searchPlaceholder,
-  toolbarHeading,
+  searchLabel,
 }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
-
-  const activeFilters = [
-    filters.status !== "all" && {
-      key: "status",
-      label: FILTER_OPTIONS.find((option) => option.value === filters.status)?.label || filters.status,
-    },
-  ].filter(Boolean);
   const narrowed = Boolean(filters.search) || filters.status !== "all";
 
   return (
-    <div className="space-y-5">
-      {/* Outside the loading area, so the tabs stay on screen (and focusable) while a tab loads. */}
-      <ListToolbar
-        heading={toolbarHeading}
-        searchValue={filters.search}
-        onSearchChange={(value) => onFiltersChange({ search: value })}
+    <div className="space-y-4">
+      {/* Outside the loading area, so search and the status switch stay usable while a tab loads. */}
+      <AccessToolbar
+        filters={filters}
+        onFiltersChange={onFiltersChange}
         searchPlaceholder={searchPlaceholder}
-        filters={[{ key: "status", label: "Status", value: filters.status, options: FILTER_OPTIONS }]}
-        activeFilterCount={activeFilters.length}
-        activeFilters={activeFilters}
-        onApplyFilters={onFiltersChange}
-        onClearFilters={() => onFiltersChange(DEFAULT_FILTERS)}
-        onRemoveFilter={(key) => onFiltersChange({ [key]: key === "status" ? "all" : "" })}
+        searchLabel={searchLabel}
       />
 
       <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading..." scope="area">
         {!loading && (
-        <div className="space-y-5">
-          {rows.length === 0 && error ? (
-            // The server's message is shown as a toast; this keeps a way to try again on the page.
-            <ConnectionErrorState variant="error" onRetry={onRetry} />
-          ) : rows.length === 0 ? (
-            <EmptyState message={emptyMessage} narrowed={narrowed} />
-          ) : (
-            <div className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-              <div className="hidden md:block">
-                <FixedTable minWidth="min-w-[980px]">
-                  <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    <tr>
-                      {columns.map((column) => (
-                        <th key={column.key} className="px-4 py-3">{column.label}</th>
-                      ))}
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#F3F4F6]">
-                    {pageRows.map((row) => (
-                      <tr key={row.id} className="hover:bg-[#FAFBFD]">
-                        {columns.map((column) => (
-                          <td key={column.key} className={`px-4 py-3.5 ${column.className || "text-[#64748B]"}`}>
-                            {column.render(row)}
+          <div>
+            {rows.length === 0 && error ? (
+              // The server's message is shown as a toast; this keeps a way to try again on the page.
+              <ConnectionErrorState variant="error" onRetry={onRetry} />
+            ) : (
+              <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
+                <div className="hidden md:block">
+                  <FixedTable minWidth="min-w-[920px]">
+                    <TableHead columns={columns} />
+                    <tbody className="divide-y divide-neutral-100">
+                      {rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={columns.length + 2} className="px-6 py-0">
+                            <EmptyBody
+                              className="min-h-[300px]"
+                              message={emptyMessage}
+                              hint={emptyHint}
+                              narrowed={narrowed}
+                              onClear={() => onFiltersChange(DEFAULT_FILTERS)}
+                            />
                           </td>
-                        ))}
-                        <td className="px-4 py-3.5">
-                          <AccessStatusBadge {...statusOf(row)} />
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <RowActions row={row} menuFor={menuFor} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </FixedTable>
-              </div>
+                        </tr>
+                      ) : (
+                        pageRows.map((row) => (
+                          <tr key={row.id} className="transition-colors hover:bg-neutral-50">
+                            {columns.map((column) => (
+                              <td key={column.key} className={`px-4 ${column.className || "text-neutral-600"}`}>
+                                {column.render(row)}
+                              </td>
+                            ))}
+                            <td className="px-4">
+                              <StatusCell status={statusOf(row)} />
+                            </td>
+                            <td className="px-4 text-right">
+                              <RowActions row={row} menuFor={menuFor} />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </FixedTable>
+                </div>
 
-              <div className="divide-y divide-[#F3F4F6] md:hidden">
-                {pageRows.map((row) => (
-                  <RowCard key={row.id} row={row} columns={columns} statusOf={statusOf} menuFor={menuFor} />
-                ))}
-              </div>
+                <div className="divide-y divide-neutral-100 md:hidden">
+                  {rows.length === 0 ? (
+                    <EmptyBody
+                      className="min-h-[240px] px-6 py-10"
+                      message={emptyMessage}
+                      hint={emptyHint}
+                      narrowed={narrowed}
+                      onClear={() => onFiltersChange(DEFAULT_FILTERS)}
+                    />
+                  ) : (
+                    pageRows.map((row) => (
+                      <RowCard key={row.id} row={row} columns={columns} statusOf={statusOf} menuFor={menuFor} />
+                    ))
+                  )}
+                </div>
 
-              <div className="mt-auto">
-                <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                {rows.length > 0 && (
+                  <div className="mt-auto border-t border-neutral-100">
+                    <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+                  </div>
+                )}
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
         )}
       </SoftLoadingArea>
     </div>
@@ -140,14 +146,23 @@ export function menuEntries(kind, statusActions, onPick) {
   ]);
 }
 
-/** Account, Email, Role, Facility and Date: the columns both tabs share (spec F3). */
-export function accessColumns({ rolesData, dateOf }) {
+/** Account (name over email), Role, Facility and a date: the columns both tabs share (spec F3). `dateLabel` names the date ("Requested", "Sent"). */
+export function accessColumns({ rolesData, dateOf, dateLabel = "Date" }) {
   return [
-    { key: "account", label: "Account", className: "font-semibold text-[#111827]", render: accountName },
-    { key: "email", label: "Email", render: (row) => row.email || row.user?.email || "" },
-    { key: "role", label: "Role", className: "text-[#334155]", render: (row) => roleLabel(rolesData, row.user) },
-    { key: "facility", label: "Facility", className: "max-w-[220px] truncate text-[#64748B]", render: (row) => row.user?.facility || "No facility assigned" },
-    { key: "date", label: "Date", render: (row) => formatDateTime(dateOf(row)) },
+    {
+      key: "account",
+      label: "Account",
+      className: "text-neutral-900",
+      render: (row) => (
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[13px] font-semibold text-neutral-900">{accountName(row)}</p>
+          <p className="mt-0.5 truncate text-[12px] font-normal text-neutral-500">{row.email || row.user?.email || ""}</p>
+        </div>
+      ),
+    },
+    { key: "role", label: "Role", className: "text-neutral-700", render: (row) => roleLabel(rolesData, row.user) },
+    { key: "facility", label: "Facility", className: "max-w-[220px] truncate text-neutral-600", render: (row) => row.user?.facility || "No facility assigned" },
+    { key: "date", label: dateLabel, className: "tabular-nums text-neutral-500", render: (row) => formatDateTime(dateOf(row)) },
   ];
 }
 
@@ -186,37 +201,130 @@ function titleCase(key) {
     .join(" ");
 }
 
-function EmptyState({ message, narrowed }) {
+/** Search on the left, the status switch beside it. Both write to the same filters the table already reads. */
+function AccessToolbar({ filters, onFiltersChange, searchPlaceholder, searchLabel = "Search" }) {
   return (
-    <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9]">
-        <Search size={20} className="text-[#94A3B8]" />
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative w-full sm:max-w-[340px]">
+        <Search
+          aria-hidden="true"
+          size={15}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+        />
+        <input
+          type="text"
+          value={filters.search}
+          onChange={(event) => onFiltersChange({ search: event.target.value })}
+          placeholder={searchPlaceholder}
+          aria-label={searchLabel}
+          className="h-9 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-9 text-[13px] text-neutral-900 shadow-xs outline-none transition-colors placeholder:text-neutral-500 hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30"
+        />
+        {filters.search && (
+          <button
+            type="button"
+            onClick={() => onFiltersChange({ search: "" })}
+            aria-label="Clear search"
+            className={`absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 ${FOCUS_RING}`}
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
-      <p className="text-[13px] font-semibold text-[#334155]">{message}</p>
+
+      <div
+        role="group"
+        aria-label="Filter by status"
+        className="-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0"
+      >
+        <div className="inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5">
+          {STATUS_SEGMENTS.map((segment) => {
+            const active = filters.status === segment.value;
+            return (
+              <button
+                key={segment.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onFiltersChange({ status: segment.value })}
+                className={`h-8 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-colors duration-150 ${FOCUS_RING} ${
+                  active
+                    ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-200"
+                    : "text-neutral-600 hover:text-neutral-900"
+                }`}
+              >
+                {segment.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TableHead({ columns }) {
+  return (
+    <thead className="border-b border-neutral-200 bg-neutral-50 text-[12px] font-medium text-neutral-500">
+      <tr>
+        {columns.map((column) => (
+          <th key={column.key} scope="col" className="px-4">{column.label}</th>
+        ))}
+        <th scope="col" className="px-4">Status</th>
+        <th scope="col" className="px-4 text-right"><span className="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+  );
+}
+
+/** The chip, with the reason (what happens next, or when it expires) quietly beneath it. */
+function StatusCell({ status }) {
+  return (
+    <div className="leading-tight">
+      <AccessStatusBadge {...status} />
+      {status.reason && <p className="mt-1 truncate text-[12px] text-neutral-500">{status.reason}</p>}
+    </div>
+  );
+}
+
+function EmptyBody({ message, hint, narrowed, onClear, className = "" }) {
+  return (
+    <div className={`flex flex-col items-center justify-center text-center ${className}`}>
+      <p className="text-[14px] font-semibold text-neutral-900">
+        {narrowed ? "Nothing matches your search" : message}
+      </p>
+      <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
+        {narrowed ? "Try a different name or email, or look at every status." : hint}
+      </p>
       {narrowed && (
-        <p className="mt-1 max-w-sm text-[11.5px] text-[#94A3B8]">Try adjusting your search or filters.</p>
+        <button
+          type="button"
+          onClick={onClear}
+          className={`mt-4 h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-800 shadow-xs transition-colors hover:border-neutral-300 hover:bg-neutral-50 ${FOCUS_RING}`}
+        >
+          Clear search and status
+        </button>
       )}
     </div>
   );
 }
 
 function RowCard({ row, columns, statusOf, menuFor }) {
-  const [account, email, ...rest] = columns;
+  const [account, ...rest] = columns;
+  const status = statusOf(row);
   return (
     <div className="space-y-3 px-4 py-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-[#0F172A]">{account.render(row)}</p>
-          <p className="mt-0.5 truncate text-xs text-[#64748B]">{email.render(row)}</p>
-        </div>
-        <AccessStatusBadge {...statusOf(row)} />
+        <div className="min-w-0 flex-1">{account.render(row)}</div>
+        <RowActions row={row} menuFor={menuFor} />
       </div>
-      <div className="grid gap-2 text-xs text-[#64748B]">
+      <StatusCell status={status} />
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
         {rest.map((column) => (
-          <span key={column.key} className="truncate">{column.render(row)}</span>
+          <div key={column.key} className="contents">
+            <dt className="text-neutral-500">{column.label}</dt>
+            <dd className="truncate text-neutral-700">{column.render(row)}</dd>
+          </div>
         ))}
-      </div>
-      <RowActions row={row} menuFor={menuFor} />
+      </dl>
     </div>
   );
 }

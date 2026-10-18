@@ -18,14 +18,14 @@ import useAccessRows from "./useAccessRows";
  * Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). Each row's ⋯ menu lists
  * the controls its status allows; choosing one opens a confirmation modal. The email is changed in Users.
  */
-export default function InvitesTab({ rolesData, toolbarHeading }) {
+export default function InvitesTab({ rolesData }) {
   const notify = useNotification();
   const list = useAccessRows(getAccountInvites, notify.error);
   const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
   const [tempPassword, setTempPassword] = useState(null);
   const [manualCopy, setManualCopy] = useState(null);
   const columns = useMemo(
-    () => accessColumns({ rolesData, dateOf: (row) => row.sent_at }),
+    () => accessColumns({ rolesData, dateOf: (row) => row.sent_at, dateLabel: "Sent" }),
     [rolesData],
   );
 
@@ -77,14 +77,15 @@ export default function InvitesTab({ rolesData, toolbarHeading }) {
         columns={columns}
         statusOf={(row) => inviteStatus(row)}
         menuFor={menuFor}
-        emptyMessage="No account invites found."
+        emptyMessage="No invites yet"
+        emptyHint="Adding a user in Users sends them an invite, and you can follow it here until they set a password."
         loading={list.loading}
         error={list.error}
         onRetry={list.refresh}
         filters={list.filters}
         onFiltersChange={list.updateFilters}
-        searchPlaceholder="Search by account or email..."
-        toolbarHeading={toolbarHeading}
+        searchPlaceholder="Search by account or email"
+        searchLabel="Search invites"
       />
 
       <ConfirmationModal
