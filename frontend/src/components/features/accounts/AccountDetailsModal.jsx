@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ModalButton, ModalShell } from "../../common";
 import AccountStatusBadge from "./AccountStatusBadge";
 import { getAdminAccount } from "../../../services/adminAccountsService";
-import { roleLabel } from "../../../utils/accountSetup";
+import {
+  accountTypeLabel,
+  activeFacilityAssignments,
+  homeFacilityLabel,
+  roleLabel,
+} from "../../../utils/accountSetup";
 import { formatUserName } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
 
@@ -49,7 +54,8 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
             <Row label="Email">{current.email || "Not recorded"}</Row>
             <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>
             <Row label="Role">{roleLabel(current, rolesData)}</Row>
-            <Row label="Facility">{current.facility || "-"}</Row>
+            <Row label="Account type">{accountTypeLabel(current) || "Not recorded"}</Row>
+            <Row label="Home facility">{homeFacilityLabel(current)}</Row>
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>
             <Row label="Date created">{formatDateTime(current.created_at)}</Row>
           </dl>
@@ -79,10 +85,7 @@ function Row({ label, children }) {
 
 /** The nurse's current additional BHC access ("Pitpitan BHC · 1 active"), or "No active assignments". */
 function assignmentSummary(user) {
-  const today = new Date().toLocaleDateString("en-CA");
-  const active = (user.facility_assignments || []).filter(
-    (a) => !a.revoked_at && a.starts_on && a.starts_on.slice(0, 10) <= today && (!a.ends_on || a.ends_on.slice(0, 10) >= today),
-  );
+  const active = activeFacilityAssignments(user);
   return active.length
     ? active.map((a) => a.barangay_health_center?.name || "BHC").join(", ") + " · " + active.length + " active"
     : "No active assignments";

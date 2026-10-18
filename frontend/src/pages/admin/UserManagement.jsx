@@ -1,4 +1,9 @@
-import { roleLabel } from "../../utils/accountSetup";
+import {
+  accountTypeLabel,
+  additionalAccessLabel,
+  homeFacilityLabel,
+  roleLabel,
+} from "../../utils/accountSetup";
 import { getStaffRoles } from "../../services/staffRolesService";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -383,7 +388,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
         <FixedTable minWidth="min-w-[900px]">
           <thead className="border-b border-neutral-200 bg-neutral-50 text-[12px] font-medium text-neutral-500">
             <tr>
-              {["Account", "Role & access", "Home facility", "Status"].map((label) => (
+              {["Account", "Role", "Home facility", "Status"].map((label) => (
                 <th key={label} scope="col" className="px-4">{label}</th>
               ))}
               <th scope="col" className="px-4 text-right"><span className="sr-only">Actions</span></th>
@@ -402,10 +407,18 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
                   <td className="px-4">
                     <AccountCell user={user} />
                   </td>
-                  <td className="px-4 text-neutral-700">
-                    {formatDisplayValue(roleLabel(user, rolesData), "Unassigned")}
+                  <td className="px-4">
+                    <TwoLine
+                      primary={formatDisplayValue(roleLabel(user, rolesData), "Unassigned")}
+                      secondary={accountTypeLabel(user)}
+                    />
                   </td>
-                  <td className="px-4 text-neutral-600">{getFacilityName(user)}</td>
+                  <td className="px-4">
+                    <TwoLine
+                      primary={homeFacilityLabel(user, getFacilityName(user))}
+                      secondary={additionalAccessLabel(user)}
+                    />
+                  </td>
                   <td className="px-4">
                     <AccountStatusBadge status={user.status} />
                   </td>
@@ -432,8 +445,8 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
               <AccountStatusBadge status={user.status} />
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
                 {[
-                  ["Role & access", formatDisplayValue(roleLabel(user, rolesData), "Unassigned")],
-                  ["Home facility", getFacilityName(user)],
+                  ["Role", [formatDisplayValue(roleLabel(user, rolesData), "Unassigned"), accountTypeLabel(user)].filter(Boolean).join(" · ")],
+                  ["Home facility", [homeFacilityLabel(user, getFacilityName(user)), additionalAccessLabel(user)].filter(Boolean).join(" · ")],
                   ["Contact", user.contact_number || "Not recorded"],
                 ].map(([label, value]) => (
                   <div key={label} className="contents">
@@ -450,6 +463,16 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
       {users.length > 0 && <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
       {detailsUser && <AccountDetailsModal accountId={detailsUser.id} account={detailsUser} rolesData={rolesData} onClose={() => setDetailsUser(null)} />}
       {editUser && <EditAccountModal accountId={editUser.id} account={editUser} onClose={() => setEditUser(null)} />}
+    </div>
+  );
+}
+
+/** A main line with a quieter line under it, the same pattern as the account cell. */
+function TwoLine({ primary, secondary }) {
+  return (
+    <div className="min-w-0 leading-tight">
+      <p className="truncate text-[13px] text-neutral-700">{primary}</p>
+      {secondary && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{secondary}</p>}
     </div>
   );
 }
@@ -633,7 +656,7 @@ function AccountActions({ user, currentUserId, onRequestStatus, onViewDetails, o
           className={`${MENU_ITEM} text-neutral-700 hover:bg-neutral-50 hover:text-neutral-900`}
         >
           <Pencil size={14} aria-hidden="true" className="text-neutral-400" />
-          Edit
+          Edit account
         </button>
 
         <div role="separator" className="my-1 border-t border-neutral-100" />
