@@ -1,8 +1,9 @@
-import { Search, X } from "lucide-react";
 import {
   ActionMenu,
   ConnectionErrorState,
   FixedTable,
+  SearchField,
+  SegmentedFilter,
   SoftLoadingArea,
   TablePagination,
 } from "../../common";
@@ -205,58 +206,19 @@ function titleCase(key) {
 function AccessToolbar({ filters, onFiltersChange, searchPlaceholder, searchLabel = "Search" }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="relative w-full sm:max-w-[340px]">
-        <Search
-          aria-hidden="true"
-          size={15}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
-        />
-        <input
-          type="text"
-          value={filters.search}
-          onChange={(event) => onFiltersChange({ search: event.target.value })}
-          placeholder={searchPlaceholder}
-          aria-label={searchLabel}
-          className="h-9 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-9 text-[13px] text-neutral-900 shadow-xs outline-none transition-colors placeholder:text-neutral-500 hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30"
-        />
-        {filters.search && (
-          <button
-            type="button"
-            onClick={() => onFiltersChange({ search: "" })}
-            aria-label="Clear search"
-            className={`absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-800 ${FOCUS_RING}`}
-          >
-            <X size={13} />
-          </button>
-        )}
-      </div>
-
-      <div
-        role="group"
-        aria-label="Filter by status"
-        className="-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0"
-      >
-        <div className="inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5">
-          {STATUS_SEGMENTS.map((segment) => {
-            const active = filters.status === segment.value;
-            return (
-              <button
-                key={segment.value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onFiltersChange({ status: segment.value })}
-                className={`h-8 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-colors duration-150 ${FOCUS_RING} ${
-                  active
-                    ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-200"
-                    : "text-neutral-600 hover:text-neutral-900"
-                }`}
-              >
-                {segment.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <SearchField
+        value={filters.search}
+        onChange={(value) => onFiltersChange({ search: value })}
+        placeholder={searchPlaceholder}
+        label={searchLabel}
+        className="sm:max-w-[340px]"
+      />
+      <SegmentedFilter
+        label="Filter by status"
+        options={STATUS_SEGMENTS}
+        value={filters.status}
+        onChange={(value) => onFiltersChange({ status: value })}
+      />
     </div>
   );
 }

@@ -51,7 +51,7 @@ export default function PasswordResetRequests() {
   return (
     <DashboardLayout role="admin" title="Password & Invites">
       <div className="mx-auto w-full max-w-[1500px]">
-        {/* Same underlined strip as the patient profile: no box, a thin rule, and navy ink for the active tab. */}
+        {/* Same underlined strip as the patient profile: no box, a thin rule, and a brand-red underline on the active tab. */}
         <div
           role="tablist"
           aria-label="Password & Invites"
@@ -72,7 +72,7 @@ export default function PasswordResetRequests() {
                 onClick={() => selectTab(tab.id)}
                 className={`whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
                   active
-                    ? "border-ink-700 text-neutral-900"
+                    ? "border-brand-600 text-neutral-900"
                     : "border-transparent text-neutral-500 hover:border-neutral-300 hover:text-neutral-800"
                 }`}
               >

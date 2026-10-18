@@ -66,7 +66,7 @@ export default function TablePagination({
     <div className="flex flex-col gap-3 border-t border-[#F1F5F9] bg-white px-4 py-3 select-none sm:flex-row sm:items-center sm:justify-between">
       <span className="text-xs font-medium text-[#6B7280]">
         Page{" "}
-        <span className="font-bold text-[#B91C1C]">{safeCurrentPage}</span> of{" "}
+        <span className="font-bold text-ink-700">{safeCurrentPage}</span> of{" "}
         <span className="font-bold text-[#0F172A]">{displayTotalPages}</span>
       </span>
 
@@ -75,7 +75,7 @@ export default function TablePagination({
           type="button"
           onClick={() => !isFirstPage && onPageChange(safeCurrentPage - 1)}
           disabled={isFirstPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
           aria-label="Previous page"
         >
           <ChevronLeft size={14} />
@@ -96,7 +96,7 @@ export default function TablePagination({
               onClick={() => onPageChange(pageNumber)}
               data-active={safeCurrentPage === pageNumber}
               disabled={displayTotalPages <= 1}
-              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-2 text-xs font-semibold text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] data-[active=true]:border-[#B91C1C] data-[active=true]:bg-[#B91C1C] data-[active=true]:text-white data-[active=true]:shadow-none disabled:pointer-events-none disabled:opacity-60"
+              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-2 text-xs font-semibold text-[#64748B] shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 data-[active=true]:border-ink-700 data-[active=true]:bg-ink-700 data-[active=true]:text-white data-[active=true]:shadow-none disabled:pointer-events-none disabled:opacity-60"
             >
               {pageNumber}
             </button>
@@ -107,7 +107,7 @@ export default function TablePagination({
           type="button"
           onClick={() => !isLastPage && onPageChange(safeCurrentPage + 1)}
           disabled={isLastPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
           aria-label="Next page"
         >
           <ChevronRight size={14} />
