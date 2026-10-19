@@ -29,7 +29,7 @@ import {
  * hasHistory` rule as programApplicability.js), and its status is worked out
  * fresh from the records every time. Records themselves are never modified.
  *
- * This is distinct from Community Programs (see communityProgramService.js),
+* This derives clinical care tracking from finalized health records.
  * which are RHU-published programs a patient is explicitly enrolled into.
  */
 

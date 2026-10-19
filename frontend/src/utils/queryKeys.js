@@ -56,16 +56,7 @@ export const queryKeys = {
     String(medicineId || ""),
     ...(page === undefined ? [] : [Number(page) || 1]),
   ],
-  communityPrograms: () => ["community-programs"],
-  communityProgramDetails: (programId) => ["community-program-details", programId],
-  communityProgramParticipants: (programId) => [
-    "community-program-participants",
-    programId,
-  ],
-  patientCommunityEnrollments: (patientId) => [
-    "patient-community-enrollments",
-    patientId,
-  ],
+
   adminAccounts: () => ["admin-accounts"],
   adminAccount: (id) => ["admin-accounts", String(id)],
   adminFacilities: () => ["admin-facilities"],

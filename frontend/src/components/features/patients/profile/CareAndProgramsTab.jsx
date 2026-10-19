@@ -17,7 +17,7 @@ import searchIcon from "../../../../assets/figma/search.svg";
 /**
  * Patient care tracking derived from finalized consultations and health records.
  * Includes clinical care tracking and dispensed medicines.
- * This view is read-only and does not manage community program enrollment.
+ * This view is read-only.
  */
 
 export default function CareAndProgramsTab({
