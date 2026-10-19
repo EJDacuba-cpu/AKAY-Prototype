@@ -1,11 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import CareTrackingCard from "./CareTrackingCard";
-import CommunityProgramsSection from "./CommunityProgramsSection";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
-import EnrollProgramModal from "./EnrollProgramModal";
 import MaternalTrackingPanel from "./MaternalTrackingPanel";
 import { EmptyNote, FieldList } from "./ProfileSection";
 import { Button } from "../../../ui/button";
@@ -14,23 +11,15 @@ import { Input } from "../../../ui/input";
 import { getCareTracking } from "../../../../utils/careTracking";
 import { buildDispensedMedicineRows, buildMaternalTracking } from "../../../../utils/patientTrackingView";
 import { formatShortDate } from "../../../../utils/patientProfile";
-import { queryKeys } from "../../../../utils/queryKeys";
 import searchIcon from "../../../../assets/figma/search.svg";
-import {
-  completeEnrollment,
-  enrollPatient,
-  getPatientEnrollments,
-  getPublishedPrograms,
-  withdrawEnrollment,
-} from "../../../../services/communityProgramService";
+
 
 /**
- * "Care & Programs" tab body: Care Tracking (derived, read-only, from health
- * records) above Community Programs (explicit RHU-published enrollments,
- * mock data in Phase 1). Kept as two clearly separate sections per plan - a
- * patient is never "in" a community program just because of a clinical
- * record, and Care Tracking is never editable here.
+ * Patient care tracking derived from finalized consultations and health records.
+ * Includes clinical care tracking and dispensed medicines.
+ * This view is read-only and does not manage community program enrollment.
  */
+
 export default function CareAndProgramsTab({
   patient,
   patientId,
@@ -43,8 +32,6 @@ export default function CareAndProgramsTab({
   onViewRecord,
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [enrollOpen, setEnrollOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [layout, setLayout] = useState("Grid");
@@ -66,56 +53,6 @@ export default function CareAndProgramsTab({
       entry.label.toLowerCase().includes(cardSearch.trim().toLowerCase());
   });
   const selectedEntry = visibleTracking.find((entry) => entry.key === selectedKey) || null;
-
-  const { data: programs = [], isLoading: programsLoading, isError: programsError, refetch: retryPrograms } = useQuery({
-    queryKey: queryKeys.communityPrograms(),
-    queryFn: getPublishedPrograms,
-    staleTime: 60_000,
-  });
-
-  const {
-    data: enrollments = [],
-    isLoading: enrollmentsLoading,
-    isError: enrollmentsError,
-    refetch: retryEnrollments,
-  } = useQuery({
-    queryKey: queryKeys.patientCommunityEnrollments(patientId),
-    queryFn: () => getPatientEnrollments(patientId),
-    enabled: Boolean(patientId),
-  });
-
-  function invalidateEnrollments() {
-    return queryClient.invalidateQueries({
-      queryKey: queryKeys.patientCommunityEnrollments(patientId),
-    });
-  }
-
-  const patientName =
-    patient?.name || patient?.fullName ||
-    [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") ||
-    "Unknown Patient";
-
-  const enrollMutation = useMutation({
-    mutationFn: (payload) => enrollPatient({ ...payload, patientId, patientName }),
-    onSuccess: async () => {
-      await invalidateEnrollments();
-      setEnrollOpen(false);
-    },
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: (enrollmentId) => completeEnrollment(enrollmentId),
-    onSuccess: invalidateEnrollments,
-  });
-
-  const withdrawMutation = useMutation({
-    mutationFn: ({ enrollmentId, reason }) => withdrawEnrollment(enrollmentId, reason),
-    onSuccess: invalidateEnrollments,
-  });
-
-  const activeEnrolledProgramIds = enrollments
-    .filter((enrollment) => enrollment.status === "Enrolled")
-    .map((enrollment) => enrollment.programId);
 
   function handleCardAction(action) {
     if (action?.type === "start-postpartum-follow-up") {
@@ -207,28 +144,6 @@ export default function CareAndProgramsTab({
       </section>
 
       <DispensedMedicinesSection rows={medicineRows} isLoading={isLoading} isError={isError} onRetry={onRetryRecords} onViewRecord={onViewRecord} />
-
-      <CommunityProgramsSection
-        enrollments={enrollments}
-        isLoading={enrollmentsLoading}
-        isError={enrollmentsError}
-        onRetry={retryEnrollments}
-        onEnroll={() => setEnrollOpen(true)}
-        onComplete={(enrollmentId) => completeMutation.mutateAsync(enrollmentId)}
-        onWithdraw={(enrollmentId, reason) => withdrawMutation.mutateAsync({ enrollmentId, reason })}
-      />
-
-      <EnrollProgramModal
-        open={enrollOpen}
-        programs={programs}
-        programsLoading={programsLoading}
-        programsError={programsError}
-        onRetryPrograms={retryPrograms}
-        enrolledProgramIds={activeEnrolledProgramIds}
-        submitting={enrollMutation.isPending}
-        onEnroll={(payload) => enrollMutation.mutateAsync(payload)}
-        onClose={() => setEnrollOpen(false)}
-      />
     </div>
   );
 }

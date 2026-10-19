@@ -4,7 +4,6 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
-  HeartHandshake,
   House,
   KeyRound,
   LayoutGrid,
@@ -76,7 +75,6 @@ export const menuByRole = {
           icon: CalendarDays,
         },
         { label: "Referrals", path: "/bhc/referrals", icon: ClipboardList },
-        { label: "Programs", path: "/bhc/programs", icon: HeartHandshake },
       ],
     },
     {
