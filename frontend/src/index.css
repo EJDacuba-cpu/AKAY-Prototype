@@ -20,9 +20,10 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    AKAY DESIGN TOKENS — "Calm Clinical Workspace"
    Clinical SaaS x modern productivity: a tinted cool-gray shell holding a
-   rounded content canvas, white cards with a soft border and a faint offset
-   shadow, navy-ink primary actions, and brand red kept for the logo, the
-   active place, and real danger. Inter throughout with tabular numerals.
+   rectangular content canvas, white sheets with a soft border, pill-shaped
+   controls, navy-ink text and chrome, and brand red for the one primary
+   action, the logo, the active place, and real danger. Inter throughout
+   with tabular numerals. Canonical rules live in DESIGN.md.
 
    @theme  → generating tokens. Tailwind v4 emits these as CSS vars AND builds
              utilities from them (bg-ink-700, text-neutral-600, rounded-card,

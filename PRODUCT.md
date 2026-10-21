@@ -49,8 +49,10 @@ AKAY is built around the real BHC-to-RHU clinical boundary: BHC detects and refe
 
 - Name: AKAY, with the red wordmark and logo mark ("Medical EHR and Referral System", Bulakan, Bulacan).
 - Standing visual preference (confirmed 2026-10-16): a modern medical SaaS that combines clinical SaaS (Healthie, Elation, Canvas Medical) with modern productivity tools (Linear, Notion, Vercel). Their craft level is the bar.
+- Three-color core (confirmed 2026-10-22): navy ink, brand red, and white. Red is the one primary action and the brand mark; ink is text and chrome; white is the readable surface.
+- Controls are pills (buttons, in-page tabs, filter triggers, status chips). Data sheets, tables, and filter popovers stay rectangular and dense. See DESIGN.md, Control-Is-A-Pill Rule.
 - Red stays the brand color but is used sparingly; it no longer carries most of the interface.
-- The previous flat, square, dense "EHR minimalism" look is being replaced. The user found it boxy, too dense, too red, and dated.
+- The previous flat, square, dense "EHR minimalism" look is being replaced. The user found it boxy, too dense, too red, and dated. Square buttons and underline-only module tabs are retired.
 
 ## Evidence on Hand
 

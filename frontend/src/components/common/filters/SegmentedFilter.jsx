@@ -2,15 +2,26 @@
  * A short row of mutually exclusive choices (for example All / Active / Inactive) on a quiet gray track, the chosen
  * one lifted to white. `options` are `{ value, label }`; `label` names the group for screen readers.
  * `visibleLabel` is the 12px caption above the track.
+ * `wrap` keeps longer option sets visible by wrapping chips instead of hiding them in a horizontal scroll.
  */
-export default function SegmentedFilter({ options, value, onChange, label, visibleLabel }) {
+export default function SegmentedFilter({ options, value, onChange, label, visibleLabel, wrap = false }) {
   const group = (
     <div
       role="group"
       aria-label={label || visibleLabel}
-      className="-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0"
+      className={
+        wrap
+          ? "max-w-full"
+          : "-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0"
+      }
     >
-      <div className="inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5">
+      <div
+        className={
+          wrap
+            ? "flex flex-wrap gap-0.5 rounded-lg bg-neutral-100 p-0.5"
+            : "inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5"
+        }
+      >
         {options.map((option) => {
           const active = value === option.value;
           return (

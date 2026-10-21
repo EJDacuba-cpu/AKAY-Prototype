@@ -9,22 +9,28 @@ import {
   MoreVertical,
   Package,
   PackagePlus,
-  Plus,
   SlidersHorizontal,
   Trash2,
+  X,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import {
   ConfirmationModal,
   FixedTable,
-  ListToolbar,
   NoticeModal,
   PageStateWrapper,
   RefreshingIndicator,
+  SearchField,
   SuccessModal,
   TablePagination,
 } from "../../components/common";
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
 import usePagedRows from "../../hooks/usePagedRows";
 import { resetKeyOf } from "../../utils/tablePaging";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
@@ -63,6 +69,25 @@ const DEFAULT_FILTERS = {
   status: "All Status",
   expiry: "All Expiry",
 };
+
+const LIST_FILTER_DEFAULTS = {
+  category: DEFAULT_FILTERS.category,
+  status: DEFAULT_FILTERS.status,
+  expiry: DEFAULT_FILTERS.expiry,
+};
+
+const CATEGORY_OPTIONS = ["All Categories", ...MEDICINE_CATEGORIES];
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
+const PILL_FILTER =
+  "inline-flex h-9 items-center gap-2 rounded-full border py-0 pl-1.5 pr-3 text-[13px] font-medium shadow-xs transition-colors";
+const FILTER_SELECT =
+  "h-8 w-full min-w-0 rounded-none border border-neutral-200 bg-white px-2.5 text-[13px] text-ink-800 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
+const PILL_SECONDARY =
+  "inline-flex h-8 items-center justify-center rounded-full border border-neutral-200 bg-white px-3.5 text-[12px] font-medium text-neutral-700 shadow-xs transition-colors hover:bg-neutral-50";
+const PILL_PRIMARY =
+  "inline-flex h-8 items-center justify-center rounded-full bg-brand-600 px-3.5 text-[12px] font-medium text-white shadow-xs transition-colors hover:bg-brand-700";
 
 export default function MedicineAvailability() {
   const queryClient = useQueryClient();
@@ -124,55 +149,35 @@ export default function MedicineAvailability() {
     (item) => item.status === "Low Stock",
   ).length;
 
-  const activeFilters = [
-    filters.category !== "All Categories" && {
-      key: "category",
-      label: filters.category,
-    },
-    filters.status !== "All Status" && {
+  const activeFilterChips = [
+    filters.status !== DEFAULT_FILTERS.status && {
       key: "status",
       label: filters.status,
     },
-    filters.expiry !== "All Expiry" && {
+    filters.expiry !== DEFAULT_FILTERS.expiry && {
       key: "expiry",
       label: filters.expiry,
     },
-  ].filter(Boolean);
-
-  const toolbarFilters = [
-    {
+    filters.category !== DEFAULT_FILTERS.category && {
       key: "category",
-      label: "Category",
-      value: filters.category,
-      options: ["All Categories", ...MEDICINE_CATEGORIES],
+      label: filters.category,
     },
-    {
-      key: "status",
-      label: "Stock Status",
-      value: filters.status,
-      options: BHC_STOCK_FILTER_OPTIONS,
-    },
-    {
-      key: "expiry",
-      label: "Expiry Status",
-      value: filters.expiry,
-      options: BHC_EXPIRY_FILTER_OPTIONS,
-    },
-  ];
+  ].filter(Boolean);
+  const narrowed =
+    Boolean(filters.search.trim()) || activeFilterChips.length > 0;
+  const itemsWord = activeItems.length === 1 ? "item" : "items";
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
 
-  function clearFilters() {
-    setFilters(DEFAULT_FILTERS);
-  }
-
-  function removeFilter(key) {
-    if (key === "search") updateFilter("search", "");
-    if (key === "category") updateFilter("category", "All Categories");
-    if (key === "status") updateFilter("status", "All Status");
-    if (key === "expiry") updateFilter("expiry", "All Expiry");
+  function applyListFilters(next) {
+    setFilters((prev) => ({
+      ...prev,
+      category: next.category,
+      status: next.status,
+      expiry: next.expiry,
+    }));
   }
 
   function openAddModal() {
@@ -294,7 +299,7 @@ export default function MedicineAvailability() {
   const deleteCopy = describeBhcMedicineDeletion(pendingDelete || {});
 
   return (
-    <DashboardLayout role="bhc" title="Medicine Availability">
+    <DashboardLayout role="bhc" title="Health Commodities">
       <PageStateWrapper skeleton="medicine"
         isLoading={isLoading}
         isError={Boolean(loadError)}
@@ -304,102 +309,100 @@ export default function MedicineAvailability() {
         onRetry={() => refetch()}
         loadingMessage="Loading medicine inventory..."
       >
-      <div className="space-y-4">
-        <ListToolbar
-          searchValue={filters.search}
-          onSearchChange={(value) => updateFilter("search", value)}
-          searchPlaceholder="Search by medicine name, category, item ID, or notes..."
-          filters={toolbarFilters}
-          activeFilterCount={
-            activeFilters.filter((filter) => filter.key !== "search").length
-          }
-          activeFilters={activeFilters}
-          onApplyFilters={(nextFilters) =>
-            setFilters((prev) => ({ ...prev, ...nextFilters }))
-          }
-          onClearFilters={clearFilters}
-          onRemoveFilter={removeFilter}
-          actions={
-            activeTab === "bhc" ? (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <h1 className="text-[17px] font-bold leading-tight tracking-tight text-ink-800">
+              Health Commodities
+            </h1>
+            <p className="mt-0.5 text-[13px] text-neutral-600">
+              Review BHC stock and RHU availability.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <CommoditiesFilterMenu
+              key={activeTab}
+              applied={listFiltersOf(filters)}
+              activeCount={activeFilterChips.length}
+              onApply={applyListFilters}
+            />
+            {activeTab === "bhc" ? (
               <RestrictedArea
                 locked={!canManageBhcInventory}
                 label="Stock Management"
                 compact
-                className="shrink-0 rounded-lg"
+                className="shrink-0 rounded-full"
                 placeholder={<AddMedicineButton />}
               >
                 <AddMedicineButton onClick={openAddModal} />
               </RestrictedArea>
-            ) : null
-          }
-        />
-
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex w-fit items-center gap-1.5 rounded-lg bg-[#F1F5F9] p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("bhc")}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-              activeTab === "bhc"
-                ? "bg-white text-[#0F172A] shadow-sm"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            }`}
-          >
-            <Package
-              size={13}
-              className={activeTab === "bhc" ? "text-[#0F172A]" : ""}
-            />
-            BHC Inventory
-            {lowStockCount > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FEF3C7] px-1 text-[9px] font-bold text-[#B45309]">
-                {lowStockCount}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("rhu")}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-2 text-[11.5px] font-medium transition-all ${
-              activeTab === "rhu"
-                ? "bg-white text-[#0F172A] shadow-sm"
-                : "text-[#64748B] hover:text-[#0F172A]"
-            }`}
-          >
-            <Eye
-              size={13}
-              className={activeTab === "rhu" ? "text-[#0F172A]" : ""}
-            />
-            RHU Availability
-            <span className="rounded-md bg-[#FEF2F2] px-1.5 py-0.5 text-[9px] font-bold text-[#B91C1C]">
-              View-only
-            </span>
-          </button>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-        <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">
-              {activeTab === "bhc"
-                ? "BHC Medicine Inventory"
-                : "RHU Medicine Availability"}
-            </h2>
-            <p className="mt-1 text-xs text-[#9CA3AF]">
-              {activeTab === "bhc"
-                ? "Local BHC stock managed by BHC staff."
-                : "Read-only RHU availability for referral planning."}
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div
+            role="tablist"
+            aria-label="Inventory source"
+            className="flex w-fit items-center gap-0.5 rounded-full bg-neutral-100 p-0.5"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "bhc"}
+              onClick={() => setActiveTab("bhc")}
+              className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors ${FOCUS_RING} ${
+                activeTab === "bhc"
+                  ? "bg-white text-ink-800 shadow-xs"
+                  : "text-neutral-600 hover:text-ink-800"
+              }`}
+            >
+              <Package size={13} aria-hidden="true" />
+              BHC Inventory
+              {lowStockCount > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-100 px-1 text-[9px] font-bold text-amber-800">
+                  {lowStockCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "rhu"}
+              onClick={() => setActiveTab("rhu")}
+              className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors ${FOCUS_RING} ${
+                activeTab === "rhu"
+                  ? "bg-white text-ink-800 shadow-xs"
+                  : "text-neutral-600 hover:text-ink-800"
+              }`}
+            >
+              <Eye size={13} aria-hidden="true" />
+              RHU Availability
+              <span className="rounded-full bg-brand-50 px-1.5 py-px text-[9px] font-bold text-brand-700">
+                View-only
+              </span>
+            </button>
           </div>
+          <div className="min-w-[220px] flex-1 sm:max-w-[320px]">
+            <SearchField
+              value={filters.search}
+              onChange={(value) => updateFilter("search", value)}
+              placeholder="Search name, category, item ID, or notes"
+              label="Search medicines"
+            />
+          </div>
+        </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {isFetching && safeMedicineItems.length > 0 && (
-              <RefreshingIndicator label="Updating medicine inventory..." />
-            )}
-            <span className="rounded-md bg-[#F3F4F6] px-2 py-1 text-[10px] font-semibold text-[#6B7280]">
-              {filteredItems.length} of {activeItems.length} items
-            </span>
-          </div>
+      <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2">
+          <span aria-live="polite" className="text-[12px] text-neutral-600">
+            {narrowed
+              ? `Showing ${filteredItems.length} of ${activeItems.length} ${itemsWord}`
+              : `${activeItems.length} ${itemsWord}`}
+          </span>
+          {isFetching && safeMedicineItems.length > 0 && (
+            <RefreshingIndicator label="Updating medicine inventory..." />
+          )}
         </div>
 
         <MedicineTable
@@ -854,15 +857,169 @@ function formatDateTime(value) {
   });
 }
 
+function listFiltersOf(filters) {
+  return {
+    category: filters.category,
+    status: filters.status,
+    expiry: filters.expiry,
+  };
+}
+
+function CommoditiesFilterMenu({ applied, activeCount, onApply }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(() => listFiltersOf(applied));
+  const appliedActive = activeCount > 0;
+  const draftIsDefault =
+    draft.category === LIST_FILTER_DEFAULTS.category &&
+    draft.status === LIST_FILTER_DEFAULTS.status &&
+    draft.expiry === LIST_FILTER_DEFAULTS.expiry;
+
+  function handleOpenChange(nextOpen) {
+    if (nextOpen) setDraft(listFiltersOf(applied));
+    setOpen(nextOpen);
+  }
+
+  function updateDraft(key, value) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function resetDraft() {
+    setDraft(LIST_FILTER_DEFAULTS);
+  }
+
+  function applyDraft() {
+    onApply(draft);
+    setOpen(false);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={`${PILL_FILTER} ${FOCUS_RING} ${
+            appliedActive
+              ? "border-brand-200 bg-brand-50 text-brand-800"
+              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
+          }`}
+        >
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-full ${
+              appliedActive
+                ? "bg-white text-brand-700"
+                : "bg-neutral-100 text-neutral-600"
+            }`}
+          >
+            <SlidersHorizontal size={13} strokeWidth={2.1} aria-hidden="true" />
+          </span>
+          Filter
+          {appliedActive && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[10px] font-bold text-white">
+              {activeCount}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        collisionPadding={12}
+        aria-label="Filters"
+        className="w-[min(calc(100vw-1.5rem),370px)] max-w-[370px] overflow-visible rounded-none p-0"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
+          <p className="text-[13px] font-semibold text-ink-800">Filters</p>
+          <PopoverClose asChild>
+            <button
+              type="button"
+              className={`flex h-7 w-7 items-center justify-center rounded-none text-neutral-500 hover:bg-neutral-100 hover:text-ink-800 ${FOCUS_RING}`}
+              aria-label="Close filters"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </PopoverClose>
+        </div>
+        <div className="grid grid-cols-1 gap-2.5 px-3 py-3 min-[360px]:grid-cols-2">
+          <FilterSelect
+            id="commodities-stock-filter"
+            label="Stock"
+            value={draft.status}
+            options={BHC_STOCK_FILTER_OPTIONS}
+            onChange={(value) => updateDraft("status", value)}
+          />
+          <FilterSelect
+            id="commodities-expiry-filter"
+            label="Expiry"
+            value={draft.expiry}
+            options={BHC_EXPIRY_FILTER_OPTIONS}
+            onChange={(value) => updateDraft("expiry", value)}
+          />
+          <div className="min-[360px]:col-span-2">
+            <FilterSelect
+              id="commodities-category-filter"
+              label="Category"
+              value={draft.category}
+              options={CATEGORY_OPTIONS}
+              onChange={(value) => updateDraft("category", value)}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={resetDraft}
+            disabled={draftIsDefault}
+            className={`${PILL_SECONDARY} ${FOCUS_RING} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={applyDraft}
+            className={`${PILL_PRIMARY} ${FOCUS_RING}`}
+          >
+            Apply Filters
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function FilterSelect({ id, label, value, options, onChange }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <label
+        htmlFor={id}
+        className="text-[10px] font-bold uppercase tracking-wide text-neutral-600"
+      >
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={FILTER_SELECT}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function AddMedicineButton({ onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+      className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full bg-brand-600 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-brand-700 ${FOCUS_RING}`}
     >
-      <Plus size={15} />
-      Add Medicine
+      + Add Medicine
     </button>
   );
 }
