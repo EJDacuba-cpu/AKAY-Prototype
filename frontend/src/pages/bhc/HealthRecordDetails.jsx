@@ -1,8 +1,8 @@
-import { Link, useLocation, useParams, useNavigate, useSearchParams } from "react-router";
-import { buildProfileReturnState, getPatientRecordReturn } from "../../utils/profileNavigation";
+import { useLocation, useParams, useNavigate, useSearchParams } from "react-router";
+import { getPatientRecordReturn } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { HeartPulse, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
@@ -14,10 +14,8 @@ import {
 } from "../../services/referrals";
 import {
   ConnectionErrorState,
-  SideCard,
   SoftLoadingArea,
 } from "../../components/common";
-import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import {
   NEXT_ACTION_REFERRAL,
   NEXT_ACTION_SCHEDULE,
@@ -25,10 +23,11 @@ import {
 } from "../../utils/nextAction";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
 import BhcConsultationDetails from "../../components/features/health-records/BhcConsultationDetails";
+import BhcHealthRecordWorkspace from "../../components/features/health-records/BhcHealthRecordWorkspace";
 import FollowUpEpisodePanel from "../../components/features/health-records/FollowUpEpisodePanel";
+import { Button } from "../../components/ui/button";
 
 import {
-  formatDisplayValue,
   formatLongDate,
   formatPatientName,
 } from "../../utils/formatters";
@@ -53,7 +52,6 @@ export default function HealthRecordDetails() {
   const [searchParams, setSearchParams] = useSearchParams();
   const shouldAutoPrint = searchParams.get("print") === "1";
   const hasAutoPrintedRef = useRef(false);
-
 
   const {
     data: details,
@@ -99,8 +97,6 @@ export default function HealthRecordDetails() {
       requestError?.status !== 404 && failureCount < 2,
   });
 
-  // Accept a raw record left by older clients while the corrected composite
-  // details query refreshes, so an existing browser session never flashes 404.
   const record = details?.record || (details?.id ? details : null);
   const patient = details?.patient || record?.patient || null;
   const linkedReferral = details?.linkedReferral || null;
@@ -165,16 +161,19 @@ export default function HealthRecordDetails() {
   if (!record) {
     return (
       <DashboardLayout role="bhc" title="Health Record Details">
-        <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-[#0F172A]">
+        <div className="mx-auto max-w-md rounded-card border border-neutral-200/80 bg-white p-10 text-center shadow-card">
+          <h1 className="text-xl font-bold text-neutral-900">
             Health record not found
           </h1>
-          <button
+          <Button
+            type="button"
+            variant="brand"
+            size="sm"
             onClick={returnToProfile}
-            className="mt-4 inline-block rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
+            className="mt-4 h-9"
           >
             Go Back
-          </button>
+          </Button>
         </div>
       </DashboardLayout>
     );
@@ -182,7 +181,6 @@ export default function HealthRecordDetails() {
 
   const isFollowUpVisitRecord = getRecordVisitTypeValue(record) === "follow_up_visit";
   const parentHealthRecordId = getParentHealthRecordId(record);
-  const showPatientProfileSidebar = false;
   const linkedReferralTarget =
     linkedReferral?.trackingId ||
     linkedReferral?.id ||
@@ -196,9 +194,6 @@ export default function HealthRecordDetails() {
     record.needs_referral === true ||
     record.needsReferral === true ||
     record.needsReferral === "yes";
-  // What the Next Action step resolved to, read back through the same
-  // derivation the form uses - a view over needsReferral + followUpStatus,
-  // never a fourth stored field.
   const nextAction = deriveNextAction({
     needsReferral: needsRhuReferral,
     followUpStatus: record.followUpStatus || record.follow_up_status,
@@ -237,47 +232,69 @@ export default function HealthRecordDetails() {
   const pageTitle = getHealthRecordDetailsTitle(serviceType);
   const isGeneralConsultationRecord =
     serviceType === "General Consultation";
+  const parentRecordId = isGeneralConsultationRecord
+    ? null
+    : parentHealthRecordId;
+  const printHeader = (
+    <RecordHeaderCard
+      title={pageTitle}
+      recordId={recordId}
+      hasLinkedReferral={hasLinkedReferral}
+      referralStatus={linkedReferral?.status}
+      isUpdating={detailsUpdating}
+      onBack={returnToProfile}
+      patientName={patientName}
+      serviceType={serviceType}
+      displayDate={displayDate}
+      displayTime={displayTime}
+      practitioner={getRecordPractitioner(record)}
+      isFollowUpVisit={isFollowUpVisitRecord}
+      parentRecordId={parentRecordId}
+      parentRecordNavigable={false}
+      outcomeRecord={record}
+      nextActionLabel={nextActionLabel}
+      actions={
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+        >
+          <Printer size={14} />
+          Print
+        </button>
+      }
+    />
+  );
 
   return (
-    <>
-      <DashboardLayout role="bhc" title="Health Record Details">
-        <div className="min-h-[520px]">
+    <DashboardLayout role="bhc" title="Health Record Details">
+      <div className="min-h-[520px]">
+        <div className="print:hidden">
+          <BhcHealthRecordWorkspace
+            record={record}
+            patient={patient}
+            linkedReferral={linkedReferral}
+            title={pageTitle}
+            recordId={recordId}
+            patientName={patientName}
+            serviceType={serviceType}
+            displayDate={displayDate}
+            displayTime={displayTime}
+            practitioner={getRecordPractitioner(record)}
+            isFollowUpVisit={isFollowUpVisitRecord}
+            parentRecordId={parentRecordId}
+            nextActionLabel={nextActionLabel}
+            hasLinkedReferral={hasLinkedReferral}
+            referralStatus={linkedReferral?.status}
+            isUpdating={detailsUpdating}
+            outcomeRecord={record}
+            onBack={returnToProfile}
+            onPrint={() => window.print()}
+          />
+        </div>
 
-        {/* ─── Header ─── */}
-        <RecordHeaderCard
-          title={pageTitle}
-          recordId={recordId}
-          hasLinkedReferral={hasLinkedReferral}
-          referralStatus={linkedReferral?.status}
-          isUpdating={detailsUpdating}
-          onBack={returnToProfile}
-          patientName={patientName}
-          serviceType={serviceType}
-          displayDate={displayDate}
-          displayTime={displayTime}
-          practitioner={getRecordPractitioner(record)}
-          isFollowUpVisit={isFollowUpVisitRecord}
-          parentRecordId={
-            isGeneralConsultationRecord ? null : parentHealthRecordId
-          }
-          parentRecordNavigable={false}
-          outcomeRecord={record}
-          nextActionLabel={nextActionLabel}
-          actions={
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-            >
-              <Printer size={14} />
-              Print
-            </button>
-          }
-        />
-
-        {/* ─── Main Content ─── */}
-        <div className="space-y-5">
-          {/* ═══ Clinical Record ═══ */}
+        <div className="hidden print:block">
+          {printHeader}
           <div className="space-y-6">
             <BhcConsultationDetails
               record={record}
@@ -291,50 +308,8 @@ export default function HealthRecordDetails() {
               />
             )}
           </div>
-
-          {showPatientProfileSidebar && (
-          <aside className="space-y-6">
-            <SideCard title="Patient Profile" icon={<HeartPulse size={14} />}>
-              {patient ? (
-                <div>
-                  <div className="space-y-1">
-                    <PatientDetailItem
-                      label="Full Name"
-                      value={
-                        patientName
-                      }
-                    />
-                    <PatientDetailItem
-                      label="Initial Registration Category"
-                      value={formatDisplayValue(patient.category, "General")}
-                    />
-                    <PatientDetailItem
-                      label="Age / Sex"
-                      value={`${patient.age || "—"} yrs old / ${patient.sex || "—"}`}
-                    />
-                  </div>
-
-                  <div className="mt-5 border-t border-slate-100 pt-4">
-                    <Link
-                      to={`/bhc/patients/${patient.id || patient._id}`}
-                      state={buildProfileReturnState(location)}
-                      className="flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
-                    >
-                      View Full Patient Profile
-                    </Link>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-slate-400">
-                  Patient data unavailable.
-                </div>
-              )}
-            </SideCard>
-          </aside>
-          )}
         </div>
-        </div>
-      </DashboardLayout>
-    </>
+      </div>
+    </DashboardLayout>
   );
 }

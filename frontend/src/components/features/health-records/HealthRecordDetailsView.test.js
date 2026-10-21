@@ -32,6 +32,9 @@ const { FollowUpEpisodeContent } = await server.ssrLoadModule(
 const { default: HealthRecordClinicalDetails } = await server.ssrLoadModule(
   "/src/components/features/health-records/HealthRecordClinicalDetails.jsx",
 );
+const { default: BhcHealthRecordWorkspace } = await server.ssrLoadModule(
+  "/src/components/features/health-records/BhcHealthRecordWorkspace.jsx",
+);
 
 const sampleTabs = [
   { id: "clinical", label: "Clinical Details", content: createElement("p", null, "Vital signs 120/80") },
@@ -140,4 +143,72 @@ test("BHC clinical details stay continuous and keep referral facts without actio
   assert.doesNotMatch(html, /View Referral Details/);
   assert.doesNotMatch(html, /Create Referral/);
   assert.doesNotMatch(html, /View Referral/);
+});
+
+test("BHC ledger workspace uses section cards, keeps values, and always shows follow-up and referral", () => {
+  const html = wrap(
+    createElement(BhcHealthRecordWorkspace, {
+      record: {
+        id: 77,
+        patientClassification: "General Consultation",
+        chiefComplaint: "Fever for two days",
+        history_of_present_illness: "Onset after rainfall",
+        physicalExam: "Warm to touch",
+        diagnosis: "Acute febrile illness",
+        initialActionsTaken: "Gave paracetamol",
+        followUpReason: "Recheck temperature",
+        needsReferral: true,
+        systolicBp: 110,
+        diastolicBp: 70,
+        temperature: "37.2",
+        dispensedMedicines: [
+          {
+            id: 1,
+            medicineName: "Paracetamol",
+            quantity: 10,
+            unit: "tablet",
+            remarks: "Every 6 hours",
+          },
+        ],
+        followUpEpisode: episode,
+      },
+      linkedReferral: {
+        status: "Pending",
+        urgencyLevel: "Routine",
+        receivingFacility: "Rural Health Unit Bulakan",
+        reasonForReferral: "Needs physician review",
+        trackingId: "TRK-77",
+      },
+      title: "General Consultation Record",
+      recordId: "77",
+      patientName: "Ana Cruz",
+      serviceType: "General Consultation",
+      displayDate: "October 8, 2026",
+      displayTime: "9:00 AM",
+      practitioner: "Midwife Santos",
+      nextActionLabel: "Referral",
+      hasLinkedReferral: true,
+      referralStatus: "Pending",
+      onBack() {},
+      onPrint() {},
+    }),
+  );
+
+  assert.doesNotMatch(html, /role="tablist"/);
+  assert.match(html, /Vital signs/);
+  assert.match(html, /Clinical assessment/);
+  assert.match(html, /Treatment/);
+  assert.match(html, /Dispensed medicines/);
+  assert.match(html, /Follow-up &amp; referral information/);
+  assert.match(html, /Fever for two days/);
+  assert.match(html, /Gave paracetamol/);
+  assert.match(html, /Paracetamol/);
+  assert.match(html, /Needs physician review/);
+  assert.match(html, /Rural Health Unit Bulakan/);
+  assert.match(html, /Ana Cruz/);
+  assert.match(html, />Back</);
+  assert.match(html, />Print</);
+  assert.doesNotMatch(html, /View Referral Details/);
+  assert.doesNotMatch(html, /Create Referral/);
+  assert.doesNotMatch(html, /View record/);
 });
