@@ -8,6 +8,7 @@ import {
   History,
   MoreVertical,
   Package,
+  PackageMinus,
   PackagePlus,
   ChevronDown,
   SlidersHorizontal,
@@ -39,7 +40,7 @@ import MedicineInventoryActionModal from "../../components/features/medicine/Med
 import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
 import {
   addBhcMedicine,
-  adjustMedicine,
+  deductMedicine,
   deleteBhcMedicine,
   formatMedicineQuantity,
   loadMedicineAvailability,
@@ -210,13 +211,18 @@ export default function MedicineAvailability() {
   async function handleSubmit(payload, options = {}) {
     const nextItems =
       modalMode === "edit" && selectedItem
-        ? await updateBhcMedicine(selectedItem.id, payload)
+        ? await updateBhcMedicine(selectedItem.id, payload, options)
         : await addBhcMedicine(payload, options);
 
     queryClient.setQueryData(
       queryKeys.medicineAvailability("bhc"),
       Array.isArray(nextItems) ? nextItems : [],
     );
+    if (modalMode === "edit" && selectedItem && payload.quantity != null) {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
+      });
+    }
     closeModal();
     setSuccessNotice({
       title: modalMode === "edit" ? "Medicine updated" : "Medicine added",
@@ -273,11 +279,11 @@ export default function MedicineAvailability() {
     }
   }
 
-  async function handleInventoryAction(payload) {
+  async function handleInventoryAction(payload, options = {}) {
     const result =
       inventoryAction === "restock"
-        ? await restockMedicine(selectedItem.id, payload)
-        : await adjustMedicine(selectedItem.id, payload);
+        ? await restockMedicine(selectedItem.id, payload, options)
+        : await deductMedicine(selectedItem.id, payload, options);
     queryClient.setQueryData(
       queryKeys.medicineAvailability("bhc"),
       Array.isArray(result.items) ? result.items : [],
@@ -399,8 +405,7 @@ export default function MedicineAvailability() {
           : `${activeItems.length} ${itemsWord}`}
       </p>
 
-      <div className="rounded-xl border border-neutral-200 bg-white">
-        <div className="overflow-x-auto sm:overflow-visible">
+      <div className="min-w-0 rounded-xl border border-neutral-200 bg-white">
           <MedicineTable
             key={activeTab}
             items={pageRows}
@@ -409,11 +414,10 @@ export default function MedicineAvailability() {
             setOpenMenuId={setOpenMenuId}
             onEdit={openEditModal}
             onRestock={(item) => openInventoryAction(item, "restock")}
-            onAdjust={(item) => openInventoryAction(item, "adjust")}
+            onDeduct={(item) => openInventoryAction(item, "deduct")}
             onHistory={openInventoryHistory}
             onDelete={requestDelete}
           />
-        </div>
 
         <TablePagination
           currentPage={page}
@@ -473,6 +477,22 @@ export default function MedicineAvailability() {
   );
 }
 
+function useMinWidth(query) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    function update() {
+      setMatches(media.matches);
+    }
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+
+  return matches;
+}
+
 function MedicineTable({
   items,
   editable,
@@ -480,84 +500,107 @@ function MedicineTable({
   setOpenMenuId,
   onEdit,
   onRestock,
-  onAdjust,
+  onDeduct,
   onHistory,
   onDelete,
 }) {
   const [expandedId, setExpandedId] = useState("");
+  const showTable = useMinWidth("(min-width: 768px)");
   const columnCount = editable ? 5 : 4;
+
+  useEffect(() => {
+    setOpenMenuId("");
+  }, [showTable, setOpenMenuId]);
 
   function toggleExpanded(id) {
     setExpandedId((current) => (current === id ? "" : id));
   }
 
+  const rowProps = {
+    editable,
+    openMenuId,
+    setOpenMenuId,
+    onEdit,
+    onRestock,
+    onDeduct,
+    onHistory,
+    onDelete,
+  };
+
+  if (!showTable) {
+    return items.length === 0 ? (
+      <MedicineEmptyState />
+    ) : (
+      <div className="divide-y divide-neutral-100">
+        {items.map((item) => (
+          <MedicineInventoryRecord
+            key={item.id}
+            item={item}
+            inventory={getMedicineInventoryView(item)}
+            expanded={expandedId === item.id}
+            detailsId={`medicine-details-record-${item.id}`}
+            onToggleExpanded={() => toggleExpanded(item.id)}
+            {...rowProps}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <table className="w-full min-w-[36rem] table-fixed text-left sm:min-w-0">
-      <colgroup>
-        <col />
-        <col className="w-[7.5rem]" />
-        <col className="w-[8.75rem]" />
-        <col className="w-[8.75rem]" />
-        {editable ? <col className="w-14" /> : null}
-      </colgroup>
-      <thead>
-        <tr className="bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-          <th className="px-4 py-2.5">Medicine / Supply</th>
-          <th className="px-3 py-2.5">Quantity</th>
-          <th className="px-3 py-2.5">Stock</th>
-          <th className="px-3 py-2.5">Expiry</th>
-          {editable && (
-            <th className="sticky right-0 bg-neutral-100 px-2 py-2.5 text-right">
-              Actions
-            </th>
-          )}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-neutral-100">
-        {items.length === 0 ? (
-          <tr>
-            <td colSpan={columnCount} className="px-4 py-10 text-center">
-              <div className="flex flex-col items-center justify-center">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100">
-                  <Boxes size={18} className="text-neutral-400" />
-                </div>
-                <p className="text-sm font-semibold text-ink-800">
-                  No medicines yet.
-                </p>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Try adjusting your search or filters.
-                </p>
-              </div>
-            </td>
-          </tr>
-        ) : (
-          items.map((item) => {
-            const inventory = getMedicineInventoryView(item);
-            const expanded = expandedId === item.id;
-            const detailsId = `medicine-details-${item.id}`;
-            return (
-              <MedicineInventoryRow
-                key={item.id}
-                item={item}
-                inventory={inventory}
-                expanded={expanded}
-                detailsId={detailsId}
-                columnCount={columnCount}
-                editable={editable}
-                openMenuId={openMenuId}
-                setOpenMenuId={setOpenMenuId}
-                onToggleExpanded={() => toggleExpanded(item.id)}
-                onEdit={onEdit}
-                onRestock={onRestock}
-                onAdjust={onAdjust}
-                onHistory={onHistory}
-                onDelete={onDelete}
-              />
-            );
-          })
-        )}
-      </tbody>
-    </table>
+        <table className="w-full table-fixed text-left">
+          <colgroup>
+            {editable ? (
+              <>
+                <col className="w-[32%] lg:w-[40%]" />
+                <col className="w-[16%] lg:w-[12%]" />
+                <col className="w-[18%] lg:w-[16%]" />
+                <col className="w-[20%] lg:w-[20%]" />
+                <col className="w-[14%] lg:w-[12%]" />
+              </>
+            ) : (
+              <>
+                <col className="w-[38%] lg:w-[46%]" />
+                <col className="w-[18%] lg:w-[14%]" />
+                <col className="w-[22%] lg:w-[20%]" />
+                <col className="w-[22%] lg:w-[20%]" />
+              </>
+            )}
+          </colgroup>
+          <thead>
+            <tr className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+              <th className="px-3 py-2.5 lg:px-4">Medicine / Supply</th>
+              <th className="px-2.5 py-2.5 lg:px-3">Quantity</th>
+              <th className="px-2.5 py-2.5 lg:px-3">Stock</th>
+              <th className="px-2.5 py-2.5 lg:px-3">Expiry</th>
+              {editable && (
+                <th className="px-2 py-2.5 text-right lg:px-3">Actions</th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={columnCount}>
+                  <MedicineEmptyState />
+                </td>
+              </tr>
+            ) : (
+              items.map((item) => (
+                <MedicineInventoryRow
+                  key={item.id}
+                  item={item}
+                  inventory={getMedicineInventoryView(item)}
+                  expanded={expandedId === item.id}
+                  detailsId={`medicine-details-row-${item.id}`}
+                  columnCount={columnCount}
+                  onToggleExpanded={() => toggleExpanded(item.id)}
+                  {...rowProps}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
   );
 }
 
@@ -573,7 +616,7 @@ function MedicineInventoryRow({
   onToggleExpanded,
   onEdit,
   onRestock,
-  onAdjust,
+  onDeduct,
   onHistory,
   onDelete,
 }) {
@@ -581,92 +624,254 @@ function MedicineInventoryRow({
 
   return (
     <>
-      <tr className="group transition-colors hover:bg-neutral-100">
-        <td className="px-4 py-2.5 align-middle">
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={detailsId}
-            onClick={onToggleExpanded}
-            className={`flex w-full min-w-0 items-start gap-2 rounded-sm text-left ${FOCUS_RING}`}
-          >
-            <ChevronDown
-              size={14}
-              aria-hidden="true"
-              className={`mt-0.5 shrink-0 text-neutral-400 transition-transform ${
-                expanded ? "rotate-180" : ""
-              }`}
-            />
-            <span className="min-w-0">
-              <span
-                className="block truncate text-sm font-semibold text-ink-800"
-                title={item.name}
-              >
-                {item.name}
-              </span>
-              <span className="mt-0.5 block truncate text-[11px] leading-tight text-neutral-500">
-                {categoryLabel}
-                <span className="tabular-nums"> · {item.id}</span>
-              </span>
-            </span>
-          </button>
+      <tr className="group min-h-14 transition-colors hover:bg-neutral-100">
+        <td className="overflow-hidden px-3 py-2 align-middle lg:px-4">
+          <MedicineNameControl
+            item={item}
+            categoryLabel={categoryLabel}
+            expanded={expanded}
+            detailsId={detailsId}
+            onToggle={onToggleExpanded}
+            showMeta
+          />
         </td>
-        <td className="px-3 py-2.5 text-sm font-medium tabular-nums text-ink-800">
+        <td className="truncate px-2.5 py-2 align-middle text-sm font-medium tabular-nums text-ink-800 lg:px-3">
           {formatMedicineQuantity(item)}
         </td>
-        <td className="px-3 py-2.5">
-          <div className="flex flex-col items-start gap-1">
-            <InventoryStamp
-              label={inventory.stockStatus}
-              tone={stockStatusTone(inventory.stockStatus)}
-            />
-            {inventory.reconciliationRequired && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-warning-700">
-                Reconciliation Required
-              </span>
-            )}
-          </div>
+        <td className="px-2.5 py-2 align-middle lg:px-3">
+          <StockCell inventory={inventory} />
         </td>
-        <td className="px-3 py-2.5">
+        <td className="px-2.5 py-2 align-middle lg:px-3">
           <ExpiryCell
             dateLabel={inventory.expiryDateLabel}
             status={inventory.expiryStatus}
           />
         </td>
         {editable && (
-          <td className="sticky right-0 bg-white px-2 py-2.5 text-right group-hover:bg-neutral-100">
-            <ActionMenu
+          <td className="relative z-10 px-2 py-2 text-right align-middle lg:px-3">
+            <RowActionMenu
               item={item}
-              open={openMenuId === item.id}
-              onToggle={() =>
-                setOpenMenuId(openMenuId === item.id ? "" : item.id)
-              }
-              onClose={() => setOpenMenuId("")}
-              onEdit={() => onEdit(item)}
-              onRestock={() => onRestock(item)}
-              onAdjust={() => onAdjust(item)}
-              onHistory={() => onHistory(item)}
-              onDelete={() => onDelete(item)}
+              openMenuId={openMenuId}
+              setOpenMenuId={setOpenMenuId}
+              onEdit={onEdit}
+              onRestock={onRestock}
+              onDeduct={onDeduct}
+              onHistory={onHistory}
+              onDelete={onDelete}
             />
           </td>
         )}
       </tr>
       {expanded && (
         <tr className="bg-neutral-50">
-          <td colSpan={columnCount} className="px-4 py-2.5" id={detailsId}>
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailField label="Item ID" value={item.id} tabular />
-              <DetailField label="Category" value={categoryLabel} />
-              <DetailField
-                label="Last Updated"
-                value={formatDateTime(itemUpdatedAt(item))}
-              />
-              <DetailField label="Notes" value={item.notes || "\u2014"} />
-            </dl>
+          <td colSpan={columnCount} className="px-3 py-2.5 lg:px-4">
+            <MedicineDetails
+              item={item}
+              detailsId={detailsId}
+              categoryLabel={categoryLabel}
+            />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+function MedicineInventoryRecord({
+  item,
+  inventory,
+  expanded,
+  detailsId,
+  editable,
+  openMenuId,
+  setOpenMenuId,
+  onToggleExpanded,
+  onEdit,
+  onRestock,
+  onDeduct,
+  onHistory,
+  onDelete,
+}) {
+  const categoryLabel = item.category || "Uncategorized";
+
+  return (
+    <article>
+      <div className="flex items-start gap-2 px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <MedicineNameControl
+            item={item}
+            categoryLabel={categoryLabel}
+            expanded={expanded}
+            detailsId={detailsId}
+            onToggle={onToggleExpanded}
+          />
+        </div>
+        {editable && (
+          <RowActionMenu
+            item={item}
+            openMenuId={openMenuId}
+            setOpenMenuId={setOpenMenuId}
+            onEdit={onEdit}
+            onRestock={onRestock}
+            onDeduct={onDeduct}
+            onHistory={onHistory}
+            onDelete={onDelete}
+            touch
+          />
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 pb-3 min-[420px]:grid-cols-3">
+        <RecordMetric label="Quantity">
+          <span className="block truncate text-sm font-medium tabular-nums text-ink-800">
+            {formatMedicineQuantity(item)}
+          </span>
+        </RecordMetric>
+        <RecordMetric label="Stock">
+          <StockCell inventory={inventory} />
+        </RecordMetric>
+        <RecordMetric label="Expiry" className="col-span-2 min-[420px]:col-span-1">
+          <ExpiryCell
+            dateLabel={inventory.expiryDateLabel}
+            status={inventory.expiryStatus}
+          />
+        </RecordMetric>
+      </div>
+      {expanded && (
+        <div className="bg-neutral-50 px-3 py-2.5">
+          <MedicineDetails
+            item={item}
+            detailsId={detailsId}
+            categoryLabel={categoryLabel}
+          />
+        </div>
+      )}
+    </article>
+  );
+}
+
+function MedicineNameControl({
+  item,
+  categoryLabel,
+  expanded,
+  detailsId,
+  onToggle,
+  showMeta = false,
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      aria-controls={detailsId}
+      onClick={onToggle}
+      className={`flex w-full min-w-0 items-start gap-2 rounded-sm text-left ${FOCUS_RING}`}
+    >
+      <ChevronDown
+        size={14}
+        aria-hidden="true"
+        className={`mt-0.5 shrink-0 text-neutral-400 transition-transform ${
+          expanded ? "rotate-180" : ""
+        }`}
+      />
+      <span className="min-w-0">
+        <span
+          className="block truncate text-sm font-semibold text-ink-800"
+          title={item.name}
+        >
+          {item.name}
+        </span>
+        {showMeta ? (
+          <span className="mt-0.5 block truncate text-[11px] leading-tight text-neutral-500">
+            {categoryLabel}
+            <span className="tabular-nums"> · {item.id}</span>
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+function MedicineDetails({ item, detailsId, categoryLabel }) {
+  return (
+    <dl
+      id={detailsId}
+      className="grid grid-cols-1 gap-x-6 gap-y-2 min-[420px]:grid-cols-2 lg:grid-cols-4"
+    >
+      <DetailField label="Item ID" value={item.id} tabular />
+      <DetailField label="Category" value={categoryLabel} />
+      <DetailField
+        label="Last Updated"
+        value={formatDateTime(itemUpdatedAt(item))}
+      />
+      <DetailField label="Notes" value={item.notes || "\u2014"} />
+    </dl>
+  );
+}
+
+function StockCell({ inventory }) {
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <InventoryStamp
+        label={inventory.stockStatus}
+        tone={stockStatusTone(inventory.stockStatus)}
+      />
+      {inventory.reconciliationRequired && (
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-warning-700">
+          Reconciliation Required
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RecordMetric({ label, children, className = "" }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+        {label}
+      </p>
+      <div className="mt-0.5 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function MedicineEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100">
+        <Boxes size={18} className="text-neutral-400" />
+      </div>
+      <p className="text-sm font-semibold text-ink-800">No medicines yet.</p>
+      <p className="mt-1 text-xs text-neutral-500">
+        Try adjusting your search or filters.
+      </p>
+    </div>
+  );
+}
+
+function RowActionMenu({
+  item,
+  openMenuId,
+  setOpenMenuId,
+  onEdit,
+  onRestock,
+  onDeduct,
+  onHistory,
+  onDelete,
+  touch = false,
+}) {
+  return (
+    <ActionMenu
+      item={item}
+      open={openMenuId === item.id}
+      touch={touch}
+      onToggle={() => setOpenMenuId(openMenuId === item.id ? "" : item.id)}
+      onClose={() => setOpenMenuId("")}
+      onEdit={() => onEdit(item)}
+      onRestock={() => onRestock(item)}
+      onDeduct={() => onDeduct(item)}
+      onHistory={() => onHistory(item)}
+      onDelete={() => onDelete(item)}
+    />
   );
 }
 
@@ -729,11 +934,12 @@ function filterMedicineItems(items, filters) {
 function ActionMenu({
   item,
   open,
+  touch = false,
   onToggle,
   onClose,
   onEdit,
   onRestock,
-  onAdjust,
+  onDeduct,
   onHistory,
   onDelete,
 }) {
@@ -763,7 +969,7 @@ function ActionMenu({
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
 
     function handleClick(event) {
       if (
@@ -779,10 +985,14 @@ function ActionMenu({
       onClose();
     }
 
-    document.addEventListener("mousedown", handleClick);
-    window.addEventListener("scroll", handleWindowChange, true);
-    window.addEventListener("resize", handleWindowChange);
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", handleClick);
+      window.addEventListener("scroll", handleWindowChange, true);
+      window.addEventListener("resize", handleWindowChange);
+    }, 0);
+
     return () => {
+      window.clearTimeout(timer);
       document.removeEventListener("mousedown", handleClick);
       window.removeEventListener("scroll", handleWindowChange, true);
       window.removeEventListener("resize", handleWindowChange);
@@ -798,7 +1008,9 @@ function ActionMenu({
           if (!open) updatePosition();
           onToggle();
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
+        className={`inline-flex items-center justify-center rounded-lg border border-[#E8ECF0] bg-white text-[#9CA3AF] transition hover:bg-[#F9FAFB] hover:text-[#0F172A] ${
+          touch ? "h-11 w-11" : "h-8 w-8"
+        }`}
         aria-label={`Actions for ${item.name}`}
       >
         <MoreVertical size={15} />
@@ -847,13 +1059,13 @@ function ActionMenu({
             <button
               type="button"
               onClick={() => {
-                onAdjust();
+                onDeduct();
                 onClose();
               }}
               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
             >
-              <SlidersHorizontal size={14} className="text-[#9CA3AF]" />
-              Adjust Stock
+              <PackageMinus size={14} className="text-[#9CA3AF]" />
+              Deduct Stock
             </button>
             <button
               type="button"
@@ -883,7 +1095,7 @@ function ExpiryCell({ dateLabel, status }) {
       className="flex min-w-0 flex-col items-start gap-0.5"
       title={`${dateLabel} · ${status}`}
     >
-      <span className="text-sm font-medium tabular-nums text-ink-700">
+      <span className="truncate text-sm font-medium tabular-nums text-ink-700">
         {dateLabel}
       </span>
       <span

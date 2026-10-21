@@ -1,22 +1,15 @@
-import { useEffect, useId, useState } from "react";
-import { LoaderCircle, Package, PackagePlus } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { LoaderCircle, PackageMinus, PackagePlus } from "lucide-react";
 import {
   ModalButton,
   ModalShell,
 } from "../../common";
+import { createIdempotencyKey } from "../../../utils/idempotency";
 import {
   formatStockQuantity,
   previewInventoryResult,
 } from "../../../utils/medicineInventoryPreview";
-
-const ACTIONS = [
-  { value: "adjustment_in", label: "Adjustment In" },
-  { value: "adjustment_out", label: "Adjustment Out" },
-  { value: "damaged_disposal", label: "Damaged Disposal" },
-  { value: "expired_disposal", label: "Expired Disposal" },
-  { value: "correction", label: "Correction" },
-  { value: "physical_count", label: "Reconcile Physical Count" },
-];
+import { createSubmitGate } from "../../../utils/medicineSubmitGate";
 
 export default function MedicineInventoryActionModal({
   open,
@@ -26,34 +19,33 @@ export default function MedicineInventoryActionModal({
   onSubmit,
 }) {
   const [form, setForm] = useState({
-    action: "adjustment_out",
-    direction: "out",
     quantity: "",
     reason: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const formId = useId();
+  const gateRef = useRef(null);
+  if (!gateRef.current) gateRef.current = createSubmitGate();
 
   useEffect(() => {
     if (!open) return;
+    gateRef.current.end();
     setForm({
-      action: "adjustment_out",
-      direction: "out",
       quantity: "",
       reason: "",
     });
     setSubmitting(false);
     setError("");
+    setIdempotencyKey(createIdempotencyKey());
   }, [open, mode, item]);
 
   if (!open || !item) return null;
 
   const isRestock = mode === "restock";
   const preview = previewInventoryResult({
-    mode,
-    action: form.action,
-    direction: form.direction,
+    mode: isRestock ? "restock" : "deduct",
     currentQuantity: item.quantity,
     inputQuantity: form.quantity,
     unit: item.unit,
@@ -61,35 +53,39 @@ export default function MedicineInventoryActionModal({
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitting) return;
+    if (!gateRef.current.begin()) return;
     if (preview.wouldBeNegative) {
       setError("Resulting stock cannot be negative.");
+      gateRef.current.end();
       return;
     }
 
     try {
       setSubmitting(true);
       setError("");
-      await onSubmit?.({
-        ...form,
-        quantity: Number(form.quantity),
-        reason: form.reason.trim(),
-      });
+      await onSubmit?.(
+        {
+          quantity: Number(form.quantity),
+          reason: form.reason.trim(),
+        },
+        { idempotencyKey },
+      );
     } catch (submitError) {
       setError(
         submitError?.message || "Unable to update medicine inventory.",
       );
       setSubmitting(false);
+      gateRef.current.end();
     }
   }
 
   return (
     <ModalShell
       open={Boolean(open && item)}
-      title={isRestock ? "Restock Medicine" : "Adjust Stock"}
+      title={isRestock ? "Restock Medicine" : "Deduct Stock"}
       subtitle={item.name}
       icon={
-        isRestock ? <PackagePlus size={14} /> : <Package size={14} />
+        isRestock ? <PackagePlus size={14} /> : <PackageMinus size={14} />
       }
       size="lg"
       onClose={onClose}
@@ -114,7 +110,7 @@ export default function MedicineInventoryActionModal({
               ? "Saving..."
               : isRestock
                 ? "Add Stock"
-                : "Apply Adjustment"}
+                : "Deduct Stock"}
           </ModalButton>
         </>
       }
@@ -140,51 +136,10 @@ export default function MedicineInventoryActionModal({
             )}
           </div>
 
-          {!isRestock && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Action" required>
-                <select
-                  value={form.action}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      action: event.target.value,
-                    }))
-                  }
-                  className={inputClass}
-                >
-                  {ACTIONS.map((action) => (
-                    <option key={action.value} value={action.value}>
-                      {action.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              {form.action === "correction" && (
-                <Field label="Direction" required>
-                  <select
-                    value={form.direction}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        direction: event.target.value,
-                      }))
-                    }
-                    className={inputClass}
-                  >
-                    <option value="in">Increase</option>
-                    <option value="out">Decrease</option>
-                  </select>
-                </Field>
-              )}
-            </div>
-          )}
-
-          <Field label={isRestock ? "Quantity to Add" : form.action === "physical_count" ? "Actual Remaining Stock (Physical Count)" : "Quantity"} required>
+          <Field label={isRestock ? "Quantity to Add" : "Quantity"} required>
             <input
               type="number"
-              min={form.action === "physical_count" ? "0" : "1"}
+              min="1"
               max="2147483647"
               value={form.quantity}
               onChange={(event) =>
@@ -198,7 +153,7 @@ export default function MedicineInventoryActionModal({
             />
           </Field>
 
-          <Field label="Reason / Reference" required>
+          <Field label="Reason" required>
             <textarea
               value={form.reason}
               onChange={(event) =>
@@ -210,7 +165,11 @@ export default function MedicineInventoryActionModal({
               rows={3}
               maxLength={1000}
               className={`${inputClass} min-h-24 resize-none py-2.5`}
-              placeholder="Enter the stock movement reason"
+              placeholder={
+                isRestock
+                  ? "Enter the restock reason"
+                  : "Damaged, expired, lost, missing, or other deduction reason"
+              }
               required
             />
           </Field>

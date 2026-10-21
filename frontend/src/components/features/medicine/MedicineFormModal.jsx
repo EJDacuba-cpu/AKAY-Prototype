@@ -11,7 +11,12 @@ import {
 } from "../../../services/medicineService";
 import { createIdempotencyKey } from "../../../utils/idempotency";
 import {
+  formatStockQuantity,
+  previewInventoryResult,
+} from "../../../utils/medicineInventoryPreview";
+import {
   medicineFormHasErrors,
+  medicineFormNeedsCorrection,
   validateMedicineForm,
 } from "../../../utils/medicineFormValidation";
 import { createSubmitGate } from "../../../utils/medicineSubmitGate";
@@ -24,6 +29,7 @@ const DEFAULT_FORM = {
   lowStockThreshold: "10",
   expiryDate: "",
   notes: "",
+  reason: "",
 };
 
 export default function MedicineFormModal({
@@ -50,7 +56,7 @@ export default function MedicineFormModal({
     setSubmitting(false);
     setError("");
     setFieldErrors({});
-    setIdempotencyKey(mode === "add" && !item ? createIdempotencyKey() : "");
+    setIdempotencyKey(createIdempotencyKey());
 
     if (item) {
       setForm({
@@ -61,6 +67,7 @@ export default function MedicineFormModal({
         lowStockThreshold: String(item.lowStockThreshold ?? 10),
         expiryDate: item.expiryDate || "",
         notes: item.notes || "",
+        reason: "",
       });
     } else {
       setForm(DEFAULT_FORM);
@@ -69,8 +76,26 @@ export default function MedicineFormModal({
 
   if (!open) return null;
 
-  const previewQuantity = mode === "edit" ? item?.quantity : form.quantity;
-  const previewStatus = computeMedicineStatus(previewQuantity, form.lowStockThreshold);
+  const originalQuantity = Number(item?.quantity ?? 0);
+  const correctionOptions = {
+    originalQuantity,
+    reconciliationRequired: Boolean(item?.reconciliationRequired),
+  };
+  const needsCorrection =
+    mode === "edit" && medicineFormNeedsCorrection(form, correctionOptions);
+  const previewStatus = computeMedicineStatus(
+    form.quantity,
+    form.lowStockThreshold,
+  );
+  const stockPreview =
+    mode === "edit"
+      ? previewInventoryResult({
+          mode: "correction",
+          currentQuantity: originalQuantity,
+          inputQuantity: form.quantity,
+          unit: form.unit || item?.unit,
+        })
+      : null;
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -86,7 +111,7 @@ export default function MedicineFormModal({
     event.preventDefault();
     if (!gateRef.current.begin()) return;
 
-    const nextErrors = validateMedicineForm(form, mode);
+    const nextErrors = validateMedicineForm(form, mode, correctionOptions);
     if (medicineFormHasErrors(nextErrors)) {
       setFieldErrors(nextErrors);
       gateRef.current.end();
@@ -101,15 +126,21 @@ export default function MedicineFormModal({
     };
     if (mode === "add") {
       payload.quantity = parseInt(form.quantity, 10) || 0;
+      delete payload.reason;
+    } else if (needsCorrection) {
+      payload.quantity = parseInt(form.quantity, 10);
+      payload.reason = form.reason.trim();
     } else {
       delete payload.quantity;
+      delete payload.reason;
     }
 
     try {
       setSubmitting(true);
       setError("");
       await onSubmit?.(payload, {
-        idempotencyKey: mode === "add" ? idempotencyKey : undefined,
+        idempotencyKey:
+          mode === "add" || needsCorrection ? idempotencyKey : undefined,
       });
     } catch (submitError) {
       setError(submitError?.message || "Unable to save this medicine.");
@@ -124,7 +155,7 @@ export default function MedicineFormModal({
       title={title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
       subtitle={
         mode === "edit"
-          ? "Edit item details. Use Restock or Adjust Stock to change quantity."
+          ? "Edit item details. Changing recorded stock requires a reason and writes an inventory correction."
           : "Opening balance sets the first ledgered stock quantity."
       }
       icon={<PackagePlus size={14} />}
@@ -143,7 +174,7 @@ export default function MedicineFormModal({
             form={formId}
             variant="primary"
             primary
-            disabled={submitting}
+            disabled={submitting || Boolean(stockPreview?.wouldBeNegative)}
             aria-busy={submitting}
           >
             {submitting && <LoaderCircle size={14} className="animate-spin" />}
@@ -221,6 +252,26 @@ export default function MedicineFormModal({
               </Field>
             )}
 
+            {mode === "edit" && (
+              <Field
+                label="Recorded Stock"
+                required
+                error={fieldErrors.quantity}
+              >
+                <input
+                  type="number"
+                  min="0"
+                  value={form.quantity}
+                  onChange={(event) =>
+                    updateField("quantity", event.target.value)
+                  }
+                  className={inputClass}
+                  aria-invalid={fieldErrors.quantity ? true : undefined}
+                  disabled={submitting}
+                />
+              </Field>
+            )}
+
             <Field label="Unit">
               <select
                 value={form.unit}
@@ -252,16 +303,59 @@ export default function MedicineFormModal({
               />
             </Field>
 
-            <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                {mode === "edit" ? "Current Stock" : "Computed Status"}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-[#B91C1C]">
-                {mode === "edit"
-                  ? `${Number(item?.quantity || 0).toLocaleString()} ${item?.unit || ""}`
-                  : previewStatus}
-              </p>
-            </div>
+            {mode === "add" ? (
+              <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Computed Status
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[#B91C1C]">
+                  {previewStatus}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  Current quantity → Resulting quantity
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A]">
+                  {formatStockQuantity(stockPreview?.current, stockPreview?.unit)}
+                  {" → "}
+                  {formatStockQuantity(stockPreview?.resulting, stockPreview?.unit)}
+                </p>
+                {stockPreview?.wouldBeNegative && (
+                  <p role="alert" className="mt-2 text-xs font-medium text-[#B91C1C]">
+                    Resulting stock cannot be negative.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {mode === "edit" && item?.reconciliationRequired && (
+              <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-medium text-amber-800">
+                This item needs stock verification after a dispensing discrepancy.
+                Confirm or correct the quantity and enter a reason.
+              </div>
+            )}
+
+            {needsCorrection && (
+              <Field
+                label="Reason"
+                required
+                className="md:col-span-2"
+                error={fieldErrors.reason}
+              >
+                <textarea
+                  value={form.reason}
+                  onChange={(event) => updateField("reason", event.target.value)}
+                  placeholder="Explain why the recorded stock is being corrected"
+                  rows={3}
+                  maxLength={1000}
+                  className={`${inputClass} min-h-21 resize-none py-2.5`}
+                  aria-invalid={fieldErrors.reason ? true : undefined}
+                  disabled={submitting}
+                />
+              </Field>
+            )}
 
             <Field label="Notes" className="md:col-span-2">
               <textarea

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   medicineFormHasErrors,
+  medicineFormNeedsCorrection,
   validateMedicineForm,
 } from "./medicineFormValidation.js";
 
@@ -25,13 +26,48 @@ test("add requires name, opening balance, and threshold without mutating the for
   assert.equal(medicineFormHasErrors(errors), true);
 });
 
-test("edit does not require quantity and keeps a valid form unchanged", () => {
-  const form = { name: "Amoxicillin", lowStockThreshold: "8" };
-  const errors = validateMedicineForm(form, "edit");
+test("edit keeps metadata-only forms valid when recorded stock is unchanged", () => {
+  const form = { name: "Amoxicillin", quantity: "8", lowStockThreshold: "8" };
+  const errors = validateMedicineForm(form, "edit", { originalQuantity: 8 });
 
   assert.deepEqual(errors, {});
   assert.equal(form.name, "Amoxicillin");
   assert.equal(medicineFormHasErrors(errors), false);
+  assert.equal(
+    medicineFormNeedsCorrection(form, { originalQuantity: 8 }),
+    false,
+  );
+});
+
+test("edit requires a reason when recorded stock changes", () => {
+  const form = {
+    name: "Amoxicillin",
+    quantity: "5",
+    lowStockThreshold: "8",
+    reason: "",
+  };
+  const errors = validateMedicineForm(form, "edit", { originalQuantity: 8 });
+
+  assert.equal(errors.reason, "Enter a reason for this stock correction.");
+  assert.equal(
+    medicineFormNeedsCorrection(form, { originalQuantity: 8 }),
+    true,
+  );
+});
+
+test("edit requires a reason when reconciliation is pending", () => {
+  const form = {
+    name: "Amoxicillin",
+    quantity: "8",
+    lowStockThreshold: "8",
+    reason: "  ",
+  };
+  const errors = validateMedicineForm(form, "edit", {
+    originalQuantity: 8,
+    reconciliationRequired: true,
+  });
+
+  assert.equal(errors.reason, "Enter a reason for this stock correction.");
 });
 
 test("a failed submit path keeps entered values", () => {

@@ -5,7 +5,7 @@ function wholeNumberOrEmpty(value) {
   return { empty: false, number };
 }
 
-export function validateMedicineForm(form = {}, mode = "add") {
+export function validateMedicineForm(form = {}, mode = "add", options = {}) {
   const errors = {};
 
   if (!String(form.name || "").trim()) {
@@ -21,6 +21,21 @@ export function validateMedicineForm(form = {}, mode = "add") {
     }
   }
 
+  if (mode === "edit") {
+    const quantity = wholeNumberOrEmpty(form.quantity);
+    if (quantity.empty) {
+      errors.quantity = "Enter the recorded stock quantity.";
+    } else if (quantity.number == null || quantity.number < 0) {
+      errors.quantity = "Recorded stock must be zero or a whole number.";
+    }
+    if (
+      medicineFormNeedsCorrection(form, options) &&
+      !String(form.reason || "").trim()
+    ) {
+      errors.reason = "Enter a reason for this stock correction.";
+    }
+  }
+
   const threshold = wholeNumberOrEmpty(form.lowStockThreshold);
   if (threshold.empty) {
     errors.lowStockThreshold = "Enter a low stock threshold.";
@@ -29,6 +44,18 @@ export function validateMedicineForm(form = {}, mode = "add") {
   }
 
   return errors;
+}
+
+export function medicineFormNeedsCorrection(form = {}, options = {}) {
+  const originalQuantity = Number(options.originalQuantity ?? 0);
+  const reconciliationRequired = Boolean(options.reconciliationRequired);
+  const quantity = wholeNumberOrEmpty(form.quantity);
+  const quantityChanged =
+    !quantity.empty &&
+    quantity.number != null &&
+    quantity.number !== originalQuantity;
+
+  return quantityChanged || reconciliationRequired;
 }
 
 export function medicineFormHasErrors(errors = {}) {

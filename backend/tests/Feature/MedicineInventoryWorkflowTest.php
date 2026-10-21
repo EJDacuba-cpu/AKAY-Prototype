@@ -237,6 +237,156 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->assertSame('Updated Metadata Medicine', $medicine->fresh()->name);
     }
 
+    public function test_quantity_correction_requires_reason_and_writes_a_ledger_row(): void
+    {
+        $medicine = $this->medicine('Correctable Medicine', 11, $this->bhc->id);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'name' => 'Corrected Medicine',
+                'quantity' => 8,
+                'reason' => 'Physical count mismatch',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Corrected Medicine')
+            ->assertJsonPath('data.quantity', 8);
+
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $medicine->id,
+            'transaction_type' => 'correction',
+            'quantity_before' => 11,
+            'quantity_after' => 8,
+            'quantity_delta' => -3,
+            'reason' => 'Physical count mismatch',
+            'source_type' => 'correction',
+        ]);
+        $this->assertSame(1, $medicine->inventoryTransactions()->count());
+    }
+
+    public function test_matching_quantity_with_reason_clears_reconciliation_without_a_ledger_row(): void
+    {
+        $medicine = $this->medicine('Reconcile Confirm', 3, $this->bhc->id, null, [
+            'reconciliation_required' => true,
+        ]);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'quantity' => 3,
+                'reason' => 'Verified remaining stock',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.quantity', 3)
+            ->assertJsonPath('data.reconciliation_required', false);
+
+        $this->assertFalse($medicine->fresh()->reconciliation_required);
+        $this->assertSame(0, $medicine->inventoryTransactions()->count());
+    }
+
+    public function test_deduct_requires_reason_decrements_stock_and_rejects_negative_or_cross_facility(): void
+    {
+        $medicine = $this->medicine('Deductible Medicine', 6, $this->bhc->id);
+        $expired = $this->medicine('Expired Deductible', 4, $this->bhc->id, null, [
+            'expiration_date' => now()->subDay()->toDateString(),
+        ]);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['quantity' => 2])
+            ->assertUnprocessable();
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+                'quantity' => 2,
+                'reason' => 'Unauthorized deduction',
+            ])
+            ->assertForbidden();
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'quantity' => 1,
+                'reason' => 'Unauthorized correction',
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+                'quantity' => 2,
+                'reason' => 'Damaged during storage',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.medicine.quantity', 4)
+            ->assertJsonPath('data.transaction.transaction_type', 'adjustment_out')
+            ->assertJsonPath('data.transaction.quantity_delta', -2);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$expired->id}/deduct", [
+                'quantity' => 1,
+                'reason' => 'Expired stock removed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.medicine.quantity', 3);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+                'quantity' => 9,
+                'reason' => 'Excessive deduction',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_CONFLICT');
+
+        $this->assertSame(4, $medicine->fresh()->quantity);
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $medicine->id,
+            'transaction_type' => 'adjustment_out',
+            'reason' => 'Damaged during storage',
+            'source_type' => 'manual_adjustment',
+        ]);
+    }
+
+    public function test_duplicate_http_idempotency_key_applies_restock_and_deduct_once(): void
+    {
+        $restock = $this->medicine('Http Restock Once', 5, $this->bhc->id);
+        $deduct = $this->medicine('Http Deduct Once', 8, $this->bhc->id);
+        $restockKey = (string) Str::uuid();
+        $deductKey = (string) Str::uuid();
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $restockKey)
+            ->postJson("/api/medicines/{$restock->id}/restock", [
+                'quantity' => 4,
+                'reason' => 'Delivery receipt',
+            ])
+            ->assertOk();
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $restockKey)
+            ->postJson("/api/medicines/{$restock->id}/restock", [
+                'quantity' => 4,
+                'reason' => 'Delivery receipt',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_OPERATION_ALREADY_APPLIED');
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $deductKey)
+            ->postJson("/api/medicines/{$deduct->id}/deduct", [
+                'quantity' => 3,
+                'reason' => 'Lost during transfer',
+            ])
+            ->assertOk();
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $deductKey)
+            ->postJson("/api/medicines/{$deduct->id}/deduct", [
+                'quantity' => 3,
+                'reason' => 'Lost during transfer',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_OPERATION_ALREADY_APPLIED');
+
+        $this->assertSame(9, $restock->fresh()->quantity);
+        $this->assertSame(5, $deduct->fresh()->quantity);
+        $this->assertSame(1, MedicineInventoryTransaction::query()
+            ->where('operation_key', $restockKey)
+            ->count());
+        $this->assertSame(1, MedicineInventoryTransaction::query()
+            ->where('operation_key', $deductKey)
+            ->count());
+    }
+
     public function test_used_medicine_is_archived_while_unused_zero_stock_can_be_deleted(): void
     {
         $used = $this->medicine('Used Medicine', 1, $this->bhc->id);
@@ -367,6 +517,7 @@ class MedicineInventoryWorkflowTest extends TestCase
                 'quantity_before',
                 'quantity_delta',
                 'quantity_after',
+                'discrepancy',
                 'reason',
                 'source_type',
                 'created_at',

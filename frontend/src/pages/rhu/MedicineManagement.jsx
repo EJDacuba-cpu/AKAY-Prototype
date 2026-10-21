@@ -8,8 +8,8 @@ import {
   Edit3,
   History,
   MoreVertical,
+  PackageMinus,
   PackagePlus,
-  SlidersHorizontal,
   Trash2,
   XCircle,
 } from "lucide-react";
@@ -27,7 +27,7 @@ import MedicineInventoryActionModal from "../../components/features/medicine/Med
 import MedicineInventoryHistoryModal from "../../components/features/medicine/MedicineInventoryHistoryModal";
 import {
   addRhuMedicine,
-  adjustMedicine,
+  deductMedicine,
   deleteRhuMedicine,
   formatMedicineQuantity,
   getMedicineExpiryStatus,
@@ -188,16 +188,21 @@ export default function MedicineManagement() {
     setHistoryItem(item);
   }
 
-  async function handleSubmit(payload) {
+  async function handleSubmit(payload, options = {}) {
     const nextItems =
       modalMode === "edit" && selectedItem
-        ? await updateRhuMedicine(selectedItem.id, payload)
-        : await addRhuMedicine(payload);
+        ? await updateRhuMedicine(selectedItem.id, payload, options)
+        : await addRhuMedicine(payload, options);
 
     queryClient.setQueryData(
       queryKeys.medicineAvailability("rhu"),
       Array.isArray(nextItems) ? nextItems : [],
     );
+    if (modalMode === "edit" && selectedItem && payload.quantity != null) {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
+      });
+    }
     closeModal();
   }
 
@@ -212,11 +217,11 @@ export default function MedicineManagement() {
     );
   }
 
-  async function handleInventoryAction(payload) {
+  async function handleInventoryAction(payload, options = {}) {
     const result =
       inventoryAction === "restock"
-        ? await restockMedicine(selectedItem.id, payload)
-        : await adjustMedicine(selectedItem.id, payload);
+        ? await restockMedicine(selectedItem.id, payload, options)
+        : await deductMedicine(selectedItem.id, payload, options);
     queryClient.setQueryData(
       queryKeys.medicineAvailability("rhu"),
       Array.isArray(result.items) ? result.items : [],
@@ -412,7 +417,7 @@ export default function MedicineManagement() {
                         onClose={() => setOpenMenuId("")}
                         onEdit={() => openEditModal(item)}
                         onRestock={() => openInventoryAction(item, "restock")}
-                        onAdjust={() => openInventoryAction(item, "adjust")}
+                        onDeduct={() => openInventoryAction(item, "deduct")}
                         onHistory={() => openInventoryHistory(item)}
                         onDelete={() => handleDelete(item)}
                       />
@@ -494,7 +499,7 @@ function ActionMenu({
   onClose,
   onEdit,
   onRestock,
-  onAdjust,
+  onDeduct,
   onHistory,
   onDelete,
 }) {
@@ -608,13 +613,13 @@ function ActionMenu({
             <button
               type="button"
               onClick={() => {
-                onAdjust();
+                onDeduct();
                 onClose();
               }}
               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] font-medium text-[#374151] transition hover:bg-[#F9FAFB] hover:text-[#0F172A]"
             >
-              <SlidersHorizontal size={14} className="text-[#9CA3AF]" />
-              Adjust Stock
+              <PackageMinus size={14} className="text-[#9CA3AF]" />
+              Deduct Stock
             </button>
             <button
               type="button"

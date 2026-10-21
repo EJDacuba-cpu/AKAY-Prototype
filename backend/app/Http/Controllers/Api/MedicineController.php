@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AdjustMedicineRequest;
+use App\Http\Requests\DeductMedicineRequest;
 use App\Http\Requests\MedicineRequest;
 use App\Http\Requests\RestockMedicineRequest;
 use App\Models\HealthRecordMedicine;
@@ -184,20 +185,51 @@ class MedicineController extends Controller
     {
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
         $data = $request->validated();
-        $threshold = array_key_exists('low_stock_threshold', $data)
-            ? (int) $data['low_stock_threshold']
-            : (int) ($medicine->low_stock_threshold ?? 10);
-        $data['availability_status'] = $this->medicineStatus((int) $medicine->quantity, $threshold);
-        $medicine->update([...$data, 'updated_by' => $request->user()->id]);
-        $auditLogger->log(
-            $request,
-            'medicine_updated',
-            'medicines',
-            "medicine_id={$medicine->id}."
-        );
-        $this->cache->invalidateMedicine($medicine);
+        $quantity = array_key_exists('quantity', $data) ? (int) $data['quantity'] : null;
+        $reason = trim((string) ($data['reason'] ?? ''));
+        $operationKey = $data['idempotency_key'] ?? null;
+        unset($data['quantity'], $data['reason'], $data['idempotency_key']);
 
-        return response()->json(['data' => $medicine->fresh()]);
+        $updated = DB::transaction(function () use (
+            $request,
+            $medicine,
+            $auditLogger,
+            $data,
+            $quantity,
+            $reason,
+            $operationKey
+        ): Medicine {
+            $locked = Medicine::query()->whereKey($medicine->id)->lockForUpdate()->firstOrFail();
+            $this->facilityAccess->authorizeMedicine($request->user(), $locked);
+
+            if ($quantity !== null) {
+                $this->medicineStock->correctRecordedQuantity(
+                    $request,
+                    $locked,
+                    $quantity,
+                    $reason,
+                    $operationKey
+                );
+                $locked->refresh();
+            }
+
+            $threshold = array_key_exists('low_stock_threshold', $data)
+                ? (int) $data['low_stock_threshold']
+                : (int) ($locked->low_stock_threshold ?? 10);
+            $data['availability_status'] = $this->medicineStatus((int) $locked->quantity, $threshold);
+            $locked->update([...$data, 'updated_by' => $request->user()->id]);
+            $auditLogger->log(
+                $request,
+                'medicine_updated',
+                'medicines',
+                "medicine_id={$locked->id}."
+            );
+
+            return $locked->fresh();
+        });
+        $this->cache->invalidateMedicine($updated);
+
+        return response()->json(['data' => $updated]);
     }
 
     public function restock(RestockMedicineRequest $request, Medicine $medicine)
@@ -206,7 +238,29 @@ class MedicineController extends Controller
             $request,
             $medicine,
             (int) $request->validated('quantity'),
-            (string) $request->validated('reason')
+            (string) $request->validated('reason'),
+            $request->validated('idempotency_key')
+        ));
+        $this->cache->invalidateMedicine($medicine);
+
+        return response()->json([
+            'data' => [
+                'medicine' => $medicine->fresh(),
+                'transaction' => $result,
+            ],
+        ]);
+    }
+
+    public function deduct(DeductMedicineRequest $request, Medicine $medicine)
+    {
+        $result = DB::transaction(fn (): array => $this->medicineStock->adjust(
+            $request,
+            $medicine,
+            'adjustment_out',
+            (int) $request->validated('quantity'),
+            (string) $request->validated('reason'),
+            null,
+            $request->validated('idempotency_key')
         ));
         $this->cache->invalidateMedicine($medicine);
 

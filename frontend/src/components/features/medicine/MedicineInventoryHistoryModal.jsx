@@ -23,7 +23,7 @@ const TRANSACTION_LABELS = {
   restock: "Restock",
   dispense: "Dispensed",
   adjustment_in: "Stock Added",
-  adjustment_out: "Stock Removed",
+  adjustment_out: "Deducted",
   damaged_disposal: "Damaged Stock Disposal",
   expired_disposal: "Expired Stock Disposal",
   correction: "Inventory Correction",

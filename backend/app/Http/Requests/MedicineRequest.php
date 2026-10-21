@@ -10,7 +10,7 @@ class MedicineRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
-        if ($this->isMethod('post') && filled($this->header('Idempotency-Key'))) {
+        if (filled($this->header('Idempotency-Key'))) {
             $this->merge([
                 'idempotency_key' => $this->header('Idempotency-Key'),
             ]);
@@ -37,15 +37,16 @@ class MedicineRequest extends FormRequest
         $isCreate = $this->isMethod('post');
 
         return [
-            'idempotency_key' => $isCreate
-                ? ['nullable', 'uuid']
-                : ['prohibited'],
+            'idempotency_key' => ['nullable', 'uuid'],
             'name' => [$isCreate ? 'required' : 'sometimes', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'quantity' => $isCreate
                 ? ['required', 'integer', 'min:0', 'max:2147483647']
-                : ['prohibited'],
+                : ['sometimes', 'integer', 'min:0', 'max:2147483647'],
+            'reason' => $isCreate
+                ? ['prohibited']
+                : ['required_with:quantity', 'nullable', 'string', 'max:1000'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'unit' => ['nullable', 'string', 'max:50'],
             'availability_status' => ['prohibited'],

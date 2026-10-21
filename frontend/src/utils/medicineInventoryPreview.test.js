@@ -24,10 +24,9 @@ test("restock previews current plus quantity with the unit", () => {
   );
 });
 
-test("adjustment out does not permit negative stock", () => {
+test("deduct does not permit negative stock", () => {
   const preview = previewInventoryResult({
-    mode: "adjust",
-    action: "adjustment_out",
+    mode: "deduct",
     currentQuantity: 4,
     inputQuantity: "6",
     unit: "pcs",
@@ -38,10 +37,21 @@ test("adjustment out does not permit negative stock", () => {
   assert.equal(preview.valid, false);
 });
 
-test("physical count uses the entered remaining stock as the result", () => {
+test("deduct subtracts the entered quantity", () => {
   const preview = previewInventoryResult({
-    mode: "adjust",
-    action: "physical_count",
+    mode: "deduct",
+    currentQuantity: 10,
+    inputQuantity: "3",
+    unit: "vials",
+  });
+
+  assert.equal(preview.resulting, 7);
+  assert.equal(preview.valid, true);
+});
+
+test("recorded stock correction uses the entered remaining stock as the result", () => {
+  const preview = previewInventoryResult({
+    mode: "correction",
     currentQuantity: 10,
     inputQuantity: "3",
     unit: "vials",

@@ -101,6 +101,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
         Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu');
         Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
+        Route::post('/medicines/{medicine}/deduct', [MedicineController::class, 'deduct']);
         Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
         Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
         Route::apiResource('medicines', MedicineController::class);

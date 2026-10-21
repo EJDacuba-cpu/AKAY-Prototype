@@ -176,6 +176,49 @@ class MedicineStockService
         return $result;
     }
 
+    public function correctRecordedQuantity(
+        Request $request,
+        Medicine $medicine,
+        int $quantity,
+        string $reason,
+        ?string $operationKey = null
+    ): array {
+        ActionPermissions::ensure($request->user(), 'inventory.manage');
+        $locked = Medicine::whereKey($medicine->id)->lockForUpdate()->firstOrFail();
+        $this->facilityAccess->authorizeMedicine($request->user(), $locked);
+        $before = (int) $locked->quantity;
+        $difference = $quantity - $before;
+        $trimmedReason = trim($reason);
+        $result = $difference === 0
+            ? [
+                'transaction_id' => null,
+                'medicine_id' => $locked->id,
+                'quantity_before' => $before,
+                'quantity_after' => $quantity,
+                'quantity_delta' => 0,
+                'transaction_type' => 'correction',
+            ]
+            : $this->adjust(
+                $request,
+                $locked,
+                'correction',
+                abs($difference),
+                $trimmedReason,
+                $difference > 0 ? 'in' : 'out',
+                $operationKey
+            );
+        $locked->refresh();
+        $locked->update(['reconciliation_required' => false]);
+        $this->auditLogger->log(
+            $request,
+            'inventory_corrected',
+            'medicines',
+            "medicine_id={$locked->id}; recorded_quantity={$quantity}; reason={$trimmedReason}"
+        );
+
+        return $result;
+    }
+
     public function dispense(Request $request, HealthRecord $record, array $requestedItems): void
     {
         ActionPermissions::ensure($request->user(), 'items.dispense');

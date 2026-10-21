@@ -87,7 +87,7 @@ function toCreatePayload(item = {}) {
 }
 
 function toMetadataPayload(item = {}) {
-  return {
+  const payload = {
     name: item.name,
     category: item.category || null,
     description: item.description || item.notes || null,
@@ -98,6 +98,12 @@ function toMetadataPayload(item = {}) {
     expiration_date:
       item.expiryDate || item.expirationDate || item.expiration_date || null,
   };
+  const reason = String(item.reason || "").trim();
+  if (item.quantity != null && item.quantity !== "" && reason) {
+    payload.quantity = parseQuantity(item.quantity);
+    payload.reason = reason;
+  }
+  return payload;
 }
 
 export async function refreshRhuMedicines() {
@@ -151,10 +157,11 @@ export async function addRhuMedicine(data, options = {}) {
   return medicineCache;
 }
 
-export async function updateRhuMedicine(id, data) {
+export async function updateRhuMedicine(id, data, options = {}) {
   const response = await apiRequest(`/medicines/${id}`, {
     method: "PATCH",
     body: toMetadataPayload(data),
+    headers: medicineCreateRequestHeaders(options.idempotencyKey),
   });
   const updated = normalizeMedicine(unwrapData(response));
   medicineCache = medicineCache.map((item) => (item.id === String(id) ? updated : item));
@@ -191,32 +198,58 @@ export async function addBhcMedicine(data, options = {}) {
   );
 }
 
-export async function updateBhcMedicine(id, data) {
-  return updateRhuMedicine(id, {
-    ...data,
-    ruralHealthUnitId: "",
-    rhuId: "",
-  });
+export async function updateBhcMedicine(id, data, options = {}) {
+  return updateRhuMedicine(
+    id,
+    {
+      ...data,
+      ruralHealthUnitId: "",
+      rhuId: "",
+    },
+    options,
+  );
 }
 
 export async function deleteBhcMedicine(id) {
   return deleteRhuMedicine(id);
 }
 
-export async function restockMedicine(id, data) {
-  return mutateMedicineInventory(id, "restock", {
-    quantity: parseQuantity(data.quantity),
-    reason: String(data.reason || "").trim(),
-  });
+export async function restockMedicine(id, data, options = {}) {
+  return mutateMedicineInventory(
+    id,
+    "restock",
+    {
+      quantity: parseQuantity(data.quantity),
+      reason: String(data.reason || "").trim(),
+    },
+    options,
+  );
 }
 
-export async function adjustMedicine(id, data) {
-  return mutateMedicineInventory(id, "adjust", {
-    action: data.action,
-    direction: data.action === "correction" ? data.direction : null,
-    quantity: parseQuantity(data.quantity),
-    reason: String(data.reason || "").trim(),
-  });
+export async function deductMedicine(id, data, options = {}) {
+  return mutateMedicineInventory(
+    id,
+    "deduct",
+    {
+      quantity: parseQuantity(data.quantity),
+      reason: String(data.reason || "").trim(),
+    },
+    options,
+  );
+}
+
+export async function adjustMedicine(id, data, options = {}) {
+  return mutateMedicineInventory(
+    id,
+    "adjust",
+    {
+      action: data.action,
+      direction: data.action === "correction" ? data.direction : null,
+      quantity: parseQuantity(data.quantity),
+      reason: String(data.reason || "").trim(),
+    },
+    options,
+  );
 }
 
 export async function getMedicineTransactions(id, params = {}) {
@@ -234,10 +267,11 @@ export async function loadMedicineTransactions(id, page = 1) {
   return getMedicineTransactions(id, { page });
 }
 
-async function mutateMedicineInventory(id, operation, body) {
+async function mutateMedicineInventory(id, operation, body, options = {}) {
   const response = await apiRequest(`/medicines/${id}/${operation}`, {
     method: "POST",
     body,
+    headers: medicineCreateRequestHeaders(options.idempotencyKey),
   });
   const payload = unwrapData(response);
   const updated = normalizeMedicine(payload?.medicine || {});

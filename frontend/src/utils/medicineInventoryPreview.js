@@ -36,7 +36,9 @@ export function previewInventoryResult({
   let resulting;
   if (mode === "restock") {
     resulting = current + input;
-  } else if (action === "physical_count") {
+  } else if (mode === "deduct") {
+    resulting = current - input;
+  } else if (mode === "correction" || action === "physical_count") {
     resulting = input;
   } else {
     const increase =
@@ -46,7 +48,7 @@ export function previewInventoryResult({
   }
 
   const wouldBeNegative = resulting < 0;
-  const minimum = action === "physical_count" ? 0 : 1;
+  const minimum = mode === "correction" || action === "physical_count" ? 0 : 1;
   const valid =
     Number.isInteger(input) &&
     input >= minimum &&

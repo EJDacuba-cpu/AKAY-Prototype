@@ -8,6 +8,15 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class RestockMedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (filled($this->header('Idempotency-Key'))) {
+            $this->merge([
+                'idempotency_key' => $this->header('Idempotency-Key'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -28,6 +37,7 @@ class RestockMedicineRequest extends FormRequest
         return [
             'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
+            'idempotency_key' => ['nullable', 'uuid'],
         ];
     }
 }
