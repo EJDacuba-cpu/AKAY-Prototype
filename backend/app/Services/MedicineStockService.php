@@ -257,6 +257,13 @@ class MedicineStockService
             );
         }
 
+        if (in_array($operation, ['opening_balance', 'restock'], true)) {
+            $this->assertUsableForIncrease($medicine);
+        }
+        if ($action === 'expired_disposal' && ! $medicine->isExpiredOnFacilityCalendar()) {
+            abort(422, 'Expired disposal is only available for expired stock.');
+        }
+
         try {
             if ($operation === 'opening_balance') {
                 $rows = DB::select(
@@ -303,6 +310,17 @@ class MedicineStockService
         array $items,
         string $operationKey
     ): array {
+        $medicines = Medicine::query()
+            ->whereIn('id', array_column($items, 'medicine_id'))
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $medicine = $medicines->get($item['medicine_id']);
+            $this->assertOwnedMedicine($medicine, $context, true);
+            $this->assertDispensable($medicine);
+        }
+
         $payload = array_map(fn (array $item): array => [
             'medicine_id' => $item['medicine_id'],
             'quantity' => $item['quantity'],
@@ -369,7 +387,7 @@ class MedicineStockService
             abort_unless(in_array($transactionType, self::ADJUSTMENT_ACTIONS, true), 422, 'Invalid inventory operation.');
             abort_if(
                 $transactionType === 'expired_disposal'
-                    && (! $locked->expiration_date || ! $locked->expiration_date->isBefore(today())),
+                    && ! $locked->isExpiredOnFacilityCalendar(),
                 422,
                 'Expired disposal is only available for expired stock.'
             );
@@ -437,16 +455,7 @@ class MedicineStockService
 
         foreach ($items as $item) {
             $medicine = $medicines->get($item['medicine_id']);
-            if (
-                ! $medicine->is_active
-                || $medicine->expiration_date?->isBefore(today())
-            ) {
-                $this->inventoryError(
-                    'MEDICINE_NOT_DISPENSABLE',
-                    422,
-                    'One or more selected medicines cannot be dispensed.'
-                );
-            }
+            $this->assertDispensable($medicine);
         }
 
         $results = [];
@@ -520,9 +529,20 @@ class MedicineStockService
         abort_unless($owned, 403, 'This resource is outside your assigned facility.');
     }
 
+    private function assertDispensable(Medicine $medicine): void
+    {
+        if (! $medicine->is_active || $medicine->isExpiredOnFacilityCalendar()) {
+            $this->inventoryError(
+                'MEDICINE_NOT_DISPENSABLE',
+                422,
+                'One or more selected medicines cannot be dispensed.'
+            );
+        }
+    }
+
     private function assertUsableForIncrease(Medicine $medicine): void
     {
-        $this->conflictIf(! $medicine->is_active || $medicine->expiration_date?->isBefore(today()));
+        $this->conflictIf(! $medicine->is_active || $medicine->isExpiredOnFacilityCalendar());
     }
 
     private function assertOperationKeyAvailable(string $operationKey, ?int $medicineId = null): void

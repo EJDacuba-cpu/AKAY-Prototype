@@ -2,8 +2,15 @@ import { AlertCircle, LoaderCircle, Package, RefreshCw, Trash2 } from "lucide-re
 import { useEffect, useMemo, useState } from "react";
 import {
   formatMedicineQuantity,
-  getMedicineExpiryStatus,
 } from "../../../services/medicineService";
+import {
+  EXPIRY_STATUS,
+  STOCK_STATUS,
+  formatFacilityDate,
+  getMedicineExpiryStatus,
+  getMedicineStockStatus,
+  isExpiredMedicine,
+} from "../../../utils/medicineInventoryStatus";
 
 const EMPTY_DRAFT = {
   category: "",
@@ -17,10 +24,6 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeText(value = "") {
-  return String(value || "").trim().toLowerCase();
-}
-
 function hasDraftValues(draft = {}) {
   return Boolean(
     draft.category ||
@@ -31,49 +34,29 @@ function hasDraftValues(draft = {}) {
 }
 
 function formatDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function getItemStatus(item) {
-  if (!item) return "Available";
-  const expiryStatus = getMedicineExpiryStatus(item);
-  if (expiryStatus === "Expired") return "Expired";
-  if (
-    toNumber(item.quantity) <= 0 ||
-    normalizeText(item.status || item.availabilityStatus).includes("unavailable")
-  ) {
-    return "Out of stock";
-  }
-  if (
-    expiryStatus === "Expiring Soon" ||
-    normalizeText(item.status || item.availabilityStatus).includes("low")
-  ) {
-    return "Low stock";
-  }
-  return "Available";
+  const label = formatFacilityDate(value);
+  return label === "\u2014" ? "" : label;
 }
 
 function isBlocked(item) {
-  const status = getItemStatus(item);
-  return status === "Expired";
+  return isExpiredMedicine(item);
 }
 
 function getStatusClasses(status) {
-  if (status === "Expired" || status === "Out of stock") {
-    return "border-red-100 bg-red-50 text-[#B91C1C]";
+  if (status === EXPIRY_STATUS.EXPIRED || status === STOCK_STATUS.OUT_OF_STOCK) {
+    return "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]";
   }
-  if (status === "Low stock") {
-    return "border-amber-100 bg-amber-50 text-amber-700";
+  if (
+    status === STOCK_STATUS.LOW_STOCK ||
+    status === EXPIRY_STATUS.EXPIRES_TODAY ||
+    status === EXPIRY_STATUS.EXPIRING_SOON
+  ) {
+    return "border-[#fde68a] bg-[#fffbeb] text-[#b45309]";
   }
-  return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  if (status === EXPIRY_STATUS.NOT_RECORDED) {
+    return "border-[#d1d5db] bg-[#f3f4f6] text-[#4b5563]";
+  }
+  return "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]";
 }
 
 export default function DispensedMedicinesSection({
@@ -117,7 +100,10 @@ export default function DispensedMedicinesSection({
     [availableInventory],
   );
   const selectedMedicine = inventoryById.get(String(draft.medicineId));
-  const selectedStatus = getItemStatus(selectedMedicine);
+  const selectedStockStatus = getMedicineStockStatus(selectedMedicine || {});
+  const selectedExpiryStatus = selectedMedicine
+    ? getMedicineExpiryStatus(selectedMedicine)
+    : EXPIRY_STATUS.NOT_RECORDED;
   const draftWarnings = useMemo(
     () =>
       value
@@ -126,12 +112,19 @@ export default function DispensedMedicinesSection({
           if (!inventoryItem) {
             return `${item.medicineName || "Medicine"} is no longer listed in inventory.`;
           }
-          const status = getItemStatus(inventoryItem);
-          if (status === "Expired") {
+          const expiryStatus = getMedicineExpiryStatus(inventoryItem);
+          const stockStatus = getMedicineStockStatus(inventoryItem);
+          if (expiryStatus === EXPIRY_STATUS.EXPIRED) {
             return `${item.medicineName || inventoryItem.name} is now expired.`;
           }
-          if (status === "Out of stock") {
+          if (stockStatus === STOCK_STATUS.OUT_OF_STOCK) {
             return `${item.medicineName || inventoryItem.name} is now out of stock.`;
+          }
+          if (expiryStatus === EXPIRY_STATUS.EXPIRES_TODAY) {
+            return `${item.medicineName || inventoryItem.name} expires today.`;
+          }
+          if (expiryStatus === EXPIRY_STATUS.NOT_RECORDED) {
+            return `${item.medicineName || inventoryItem.name} has no recorded expiry date.`;
           }
           if (toNumber(item.quantity) > toNumber(inventoryItem.quantity)) {
             return `${item.medicineName || inventoryItem.name} exceeds current available stock.`;
@@ -173,7 +166,7 @@ export default function DispensedMedicinesSection({
       setValidationError("Quantity must be greater than 0.");
       return;
     }
-    if (getItemStatus(medicine) === "Expired") {
+    if (isExpiredMedicine(medicine)) {
       setValidationError("This medicine is expired and cannot be dispensed.");
       return;
     }
@@ -326,11 +319,16 @@ export default function DispensedMedicinesSection({
                 {draft.category ? "Select medicine or supply" : "Select category first"}
               </option>
               {filteredInventory.map((item) => {
-                const status = getItemStatus(item);
+                const stockStatus = getMedicineStockStatus(item);
+                const expiryStatus = getMedicineExpiryStatus(item);
+                const notes = [
+                  stockStatus !== STOCK_STATUS.IN_STOCK ? stockStatus : null,
+                  expiryStatus !== EXPIRY_STATUS.VALID ? expiryStatus : null,
+                ].filter(Boolean);
                 return (
                   <option key={item.id} value={item.id} disabled={isBlocked(item)}>
                     {item.name} - {formatMedicineQuantity(item)}
-                    {status !== "Available" ? ` - ${status}` : ""}
+                    {notes.length ? ` - ${notes.join(", ")}` : ""}
                   </option>
                 );
               })}
@@ -344,28 +342,33 @@ export default function DispensedMedicinesSection({
         </div>
 
         {selectedMedicine && (
-          <div className="mt-3 flex flex-wrap gap-2 rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
             <span>
-              Available Stock:{" "}
-              <strong className="text-[#0F172A]">
+              Stock:{" "}
+              <strong className="text-[#111827]">
                 {formatMedicineQuantity(selectedMedicine)}
               </strong>
             </span>
             <span
               className={`rounded-full border px-2 py-0.5 font-semibold ${getStatusClasses(
-                selectedStatus,
+                selectedStockStatus,
               )}`}
             >
-              {selectedStatus}
+              {selectedStockStatus}
             </span>
-            {selectedMedicine.expiryDate && (
-              <span>
-                Expiry Date:{" "}
-                <strong className="text-[#0F172A]">
-                  {formatDate(selectedMedicine.expiryDate)}
-                </strong>
-              </span>
-            )}
+            <span
+              className={`rounded-full border px-2 py-0.5 font-semibold ${getStatusClasses(
+                selectedExpiryStatus,
+              )}`}
+            >
+              {selectedExpiryStatus}
+            </span>
+            <span>
+              Expiry Date:{" "}
+              <strong className="text-[#111827]">
+                {formatDate(selectedMedicine.expiryDate) || "Not recorded"}
+              </strong>
+            </span>
           </div>
         )}
 

@@ -35,12 +35,20 @@ import {
   adjustMedicine,
   deleteBhcMedicine,
   formatMedicineQuantity,
-  getMedicineExpiryStatus,
   loadMedicineAvailability,
   MEDICINE_CATEGORIES,
   restockMedicine,
   updateBhcMedicine,
 } from "../../services/medicineService";
+import {
+  BHC_EXPIRY_FILTER_OPTIONS,
+  BHC_STOCK_FILTER_OPTIONS,
+  expiryStatusTone,
+  getMedicineExpiryStatus,
+  getMedicineInventoryView,
+  getMedicineStockStatus,
+  stockStatusTone,
+} from "../../utils/medicineInventoryStatus";
 import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
 import {
@@ -142,13 +150,13 @@ export default function MedicineAvailability() {
       key: "status",
       label: "Stock Status",
       value: filters.status,
-      options: ["All Status", "Available", "Low Stock", "Unavailable"],
+      options: BHC_STOCK_FILTER_OPTIONS,
     },
     {
       key: "expiry",
       label: "Expiry Status",
       value: filters.expiry,
-      options: ["All Expiry", "Valid", "Expiring Soon", "Expired"],
+      options: BHC_EXPIRY_FILTER_OPTIONS,
     },
   ];
 
@@ -485,8 +493,8 @@ function MedicineTable({
             <th className="px-4 py-3">Medicine / Supply Name</th>
             <th className="px-4 py-3">Category</th>
             <th className="px-4 py-3">Quantity + Unit</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Expiry Date</th>
+            <th className="px-4 py-3">Stock</th>
+            <th className="px-4 py-3">Expiry</th>
             <th className="px-4 py-3">Last Updated</th>
             <th className="px-4 py-3">Notes</th>
             {editable && <th className="px-4 py-3 text-right">Actions</th>}
@@ -511,11 +519,13 @@ function MedicineTable({
               </td>
             </tr>
           ) : (
-            items.map((item) => (
-              <tr
-                key={item.id}
-                className="transition-colors hover:bg-[#F9FAFB]"
-              >
+            items.map((item) => {
+              const inventory = getMedicineInventoryView(item);
+              return (
+                <tr
+                  key={item.id}
+                  className="transition-colors hover:bg-[#F9FAFB]"
+                >
                 <td className="whitespace-nowrap px-6 py-3.5">
                   <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
                     {item.id}
@@ -532,16 +542,38 @@ function MedicineTable({
                   <CategoryBadge category={item.category} />
                 </td>
 
-                <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                <td className="whitespace-nowrap px-4 py-3.5 text-sm font-medium tabular-nums text-[#111827]">
                   {formatMedicineQuantity(item)}
                 </td>
 
-                <td className="whitespace-nowrap px-4 py-3.5">
-                  <StatusBadge status={item.status} />{item.reconciliationRequired && <span className="mt-1 block text-xs font-semibold text-amber-700">Reconciliation Required</span>}
+                <td className="px-4 py-3.5">
+                  <div className="flex flex-col items-start gap-1">
+                    <InventoryStamp
+                      label={inventory.stockStatus}
+                      tone={stockStatusTone(inventory.stockStatus)}
+                    />
+                    {inventory.reconciliationRequired && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[#b45309]">
+                        Reconciliation Required
+                      </span>
+                    )}
+                  </div>
                 </td>
 
-                <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                  {formatDate(item.expiryDate)}
+                <td className="px-4 py-3.5">
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="text-sm text-[#4b5563]">
+                      {inventory.expiryDateLabel}
+                    </span>
+                    <InventoryStamp
+                      label={inventory.expiryStatus}
+                      tone={expiryStatusTone(inventory.expiryStatus)}
+                      prominent={
+                        inventory.expiryStatus === "Expired" ||
+                        inventory.expiryStatus === "Expires Today"
+                      }
+                    />
+                  </div>
                 </td>
 
                 <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
@@ -575,8 +607,9 @@ function MedicineTable({
                     />
                   </td>
                 )}
-              </tr>
-            ))
+                </tr>
+              );
+            })
           )}
         </tbody>
     </FixedTable>
@@ -602,7 +635,8 @@ function filterMedicineItems(items, filters) {
       filters.category === "All Categories" ||
       item.category === filters.category;
     const matchesStatus =
-      filters.status === "All Status" || item.status === filters.status;
+      filters.status === "All Status" ||
+      getMedicineStockStatus(item) === filters.status;
     const matchesExpiry =
       filters.expiry === "All Expiry" ||
       getMedicineExpiryStatus(item) === filters.expiry;
@@ -758,20 +792,28 @@ function ActionMenu({
   );
 }
 
-function StatusBadge({ status }) {
+function InventoryStamp({ label, tone = "neutral", prominent = false }) {
   const map = {
-    Available: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "Low Stock": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Unavailable: "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]",
+    info: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
+    warning: "border-[#fde68a] bg-[#fffbeb] text-[#b45309]",
+    danger: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",
+    neutral: "border-[#d1d5db] bg-[#f3f4f6] text-[#4b5563]",
+  };
+  const dot = {
+    info: "bg-[#0891b2]",
+    warning: "bg-[#f59e0b]",
+    danger: "bg-[#ef4444]",
+    neutral: "bg-[#9ca3af]",
   };
 
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        map[status] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 uppercase tracking-wide ${
+        map[tone] || map.neutral
+      } ${prominent ? "text-[11px] font-extrabold" : "text-[10px] font-bold"}`}
     >
-      {status}
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot[tone] || dot.neutral}`} />
+      {label}
     </span>
   );
 }
@@ -795,19 +837,6 @@ function CategoryBadge({ category }) {
       {category}
     </span>
   );
-}
-
-function formatDate(value) {
-  if (!value) return "\u2014";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "\u2014";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function formatDateTime(value) {

@@ -1,5 +1,6 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { medicineCreateRequestHeaders } from "../utils/medicineMutationSafety";
+import { getMedicineExpiryStatus as getFacilityExpiryStatus } from "../utils/medicineInventoryStatus";
 
 export const MEDICINE_CATEGORIES = [
   "Basic Medicines",
@@ -256,19 +257,8 @@ export function formatMedicineQuantity(item) {
   return `${parseQuantity(item.quantity).toLocaleString()} ${item.unit || ""}`.trim();
 }
 
-export function getMedicineExpiryStatus(item) {
-  if (!item?.expiryDate) return "Valid";
-  const expiry = new Date(item.expiryDate);
-  if (Number.isNaN(expiry.getTime())) return "Valid";
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const thirtyDaysFromNow = new Date(today);
-  thirtyDaysFromNow.setDate(today.getDate() + 30);
-
-  if (expiry < today) return "Expired";
-  if (expiry <= thirtyDaysFromNow) return "Expiring Soon";
-  return "Valid";
+export function getMedicineExpiryStatus(item, now) {
+  return getFacilityExpiryStatus(item, now);
 }
 
 export const RHU_MEDICINES_UPDATED_EVENT = RHU_UPDATE_EVENT;

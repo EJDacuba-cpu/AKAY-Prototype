@@ -636,8 +636,14 @@ class HealthRecordDraftService
         if (! $medicine->is_active) {
             return 'This medicine has been archived. Remove or replace it before official submission.';
         }
-        if ($medicine->expiration_date?->isPast()) {
+        if ($medicine->isExpiredOnFacilityCalendar()) {
             return 'This medicine is expired. Remove or replace it before official submission.';
+        }
+        if ($medicine->expiresTodayOnFacilityCalendar()) {
+            return 'This medicine expires today. Confirm it is still appropriate before official submission.';
+        }
+        if ($medicine->expirationCalendarDate() === null) {
+            return 'Expiry is not recorded for this medicine. Confirm it is still appropriate before official submission.';
         }
         if ((int) $medicine->quantity <= 0
             || str_contains(strtolower((string) $medicine->availability_status), 'unavailable')) {

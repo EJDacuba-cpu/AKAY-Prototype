@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Medicine extends Model
 {
+    public const FACILITY_TIMEZONE = 'Asia/Manila';
+
     protected $fillable = [
         'name',
         'category',
@@ -34,11 +38,48 @@ class Medicine extends Model
     ];
 
     protected $casts = [
-        'expiration_date' => 'date',
+        'expiration_date' => 'date:Y-m-d',
         'is_active' => 'boolean',
         'reconciliation_required' => 'boolean',
         'archived_at' => 'datetime',
     ];
+
+    public static function facilityCalendarDate(?DateTimeInterface $now = null): string
+    {
+        $moment = $now ? Carbon::parse($now) : now();
+
+        return $moment->copy()->timezone(self::FACILITY_TIMEZONE)->toDateString();
+    }
+
+    public function expirationCalendarDate(): ?string
+    {
+        $raw = $this->getRawOriginal('expiration_date') ?? $this->attributes['expiration_date'] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        if (is_string($raw)) {
+            $date = substr($raw, 0, 10);
+
+            return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : null;
+        }
+
+        return $this->expiration_date?->toDateString();
+    }
+
+    public function isExpiredOnFacilityCalendar(?DateTimeInterface $now = null): bool
+    {
+        $expiry = $this->expirationCalendarDate();
+
+        return $expiry !== null && $expiry < self::facilityCalendarDate($now);
+    }
+
+    public function expiresTodayOnFacilityCalendar(?DateTimeInterface $now = null): bool
+    {
+        $expiry = $this->expirationCalendarDate();
+
+        return $expiry !== null && $expiry === self::facilityCalendarDate($now);
+    }
 
     public function ruralHealthUnit(): BelongsTo
     {
