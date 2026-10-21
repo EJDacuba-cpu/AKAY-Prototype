@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, MoreHorizontal, Pencil, Plus, SlidersHorizontal, UserCheck, UserX, X } from "lucide-react";
+import { Eye, MoreHorizontal, Pencil, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import AccountDetailsModal from "../../components/features/accounts/AccountDetailsModal";
@@ -41,7 +41,7 @@ import usePagedRows from "../../hooks/usePagedRows";
 const DEFAULT_FILTERS = {
   search: "",
   role: "All Roles",
-  position: "All Positions",
+  position: "All Roles",
   facility: "All Facilities",
   status: "All Status",
 };
@@ -60,15 +60,15 @@ const ROLE_SEGMENTS = [
 ];
 
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
+const FILTER_CAPTION = "text-[12px] font-medium text-neutral-600";
 const SELECT_CLASS =
-  "h-9 min-w-[200px] rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
+  "h-9 min-w-[168px] rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
 
 export default function UserManagement() {
   const queryClient = useQueryClient();
   const notify = useNotification();
   const [pendingStatus, setPendingStatus] = useState(null); // { user, next } awaiting confirmation
   const [savingStatus, setSavingStatus] = useState(false);
-  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const currentUserId = String(getCurrentUser()?.id ?? "");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const {
@@ -141,6 +141,7 @@ export default function UserManagement() {
 
     return users.filter((user) => {
       const facilityName = getFacilityName(user);
+      const homeFacility = homeFacilityLabel(user, facilityName);
       const position = formatDisplayValue(user.position, "Unassigned");
       const searchText = [
         user.id,
@@ -149,6 +150,7 @@ export default function UserManagement() {
         user.role,
         position,
         facilityName,
+        homeFacility,
         user.accountRoleLabel,
       ]
         .filter(Boolean)
@@ -159,11 +161,11 @@ export default function UserManagement() {
       const matchesRole =
         filters.role === "All Roles" || user.role === filters.role;
       const matchesPosition =
-        filters.position === "All Positions" ||
+        filters.position === "All Roles" ||
         position === filters.position;
       const matchesFacility =
         filters.facility === "All Facilities" ||
-        facilityName === filters.facility;
+        homeFacility === filters.facility;
       const matchesStatus =
         filters.status === "All Status" || user.status === filters.status;
 
@@ -179,7 +181,7 @@ export default function UserManagement() {
 
   const positionOptions = useMemo(
     () => [
-      "All Positions",
+      "All Roles",
       ...uniqueValues(
         users.map((user) => formatDisplayValue(user.position, "")),
       ),
@@ -187,23 +189,19 @@ export default function UserManagement() {
     [users],
   );
   const facilityOptions = useMemo(
-    () => ["All Facilities", ...uniqueValues(users.map(getFacilityName))],
+    () => [
+      "All Facilities",
+      ...uniqueValues(users.map((user) => homeFacilityLabel(user, getFacilityName(user)))),
+    ],
     [users],
   );
 
-  // Role and status are always on screen as switches; facility and position are the two that live under "More filters".
-  const extraFilters = [
-    filters.facility !== DEFAULT_FILTERS.facility && {
-      key: "facility",
-      label: `Facility: ${filters.facility === "-" ? "No facility" : filters.facility}`,
-    },
-    filters.position !== DEFAULT_FILTERS.position && { key: "position", label: `Position: ${filters.position}` },
-  ].filter(Boolean);
   const narrowed =
     Boolean(filters.search.trim()) ||
     filters.role !== DEFAULT_FILTERS.role ||
     filters.status !== DEFAULT_FILTERS.status ||
-    extraFilters.length > 0;
+    filters.facility !== DEFAULT_FILTERS.facility ||
+    filters.position !== DEFAULT_FILTERS.position;
   const accountsWord = users.length === 1 ? "account" : "accounts";
 
   return (
@@ -218,85 +216,64 @@ export default function UserManagement() {
         loadingMessage="Loading accounts..."
       >
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
-          <SearchField
-            value={filters.search}
-            onChange={(value) => updateFilters({ search: value })}
-            placeholder="Search name, email, role, or facility"
-            label="Search accounts"
-            className="sm:max-w-[320px]"
-          />
-          <SegmentedFilter
-            label="Filter by status"
-            options={STATUS_SEGMENTS}
-            value={filters.status}
-            onChange={(value) => updateFilters({ status: value })}
-          />
-          <SegmentedFilter
-            label="Filter by account role"
-            options={ROLE_SEGMENTS}
-            value={filters.role}
-            onChange={(value) => updateFilters({ role: value })}
-          />
-          <button
-            type="button"
-            onClick={() => setMoreFiltersOpen((open) => !open)}
-            aria-expanded={moreFiltersOpen}
-            aria-controls="more-account-filters"
-            className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-xs transition-colors ${FOCUS_RING} ${
-              moreFiltersOpen
-                ? "border-neutral-300 bg-neutral-50 text-neutral-900"
-                : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
-            }`}
-          >
-            <SlidersHorizontal size={14} aria-hidden="true" />
-            More filters
-            {extraFilters.length > 0 && (
-              <span className="rounded-full bg-ink-700 px-1.5 text-[11px] font-medium leading-4 text-white tabular-nums">
-                {extraFilters.length}
-              </span>
-            )}
-          </button>
+        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-3">
+          <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-[320px]">
+            <span className={FILTER_CAPTION}>Search</span>
+            <SearchField
+              value={filters.search}
+              onChange={(value) => updateFilters({ search: value })}
+              placeholder="Search name, email, role, or facility"
+              label="Search accounts"
+            />
+          </div>
           <Link
             to="/admin/users/add"
-            className={`ml-auto inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:ring-offset-2 ${FOCUS_RING}`}
+            className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:ring-offset-2 ${FOCUS_RING}`}
           >
             <Plus size={14} strokeWidth={2.25} aria-hidden="true" />
             Add user account
           </Link>
         </div>
-
-        {moreFiltersOpen && (
-          <div
-            id="more-account-filters"
-            className="flex flex-wrap items-end gap-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-card"
-          >
-            <label className="flex flex-col gap-1.5 text-[12px] font-medium text-neutral-600">
-              Facility
-              <select
-                value={filters.facility}
-                onChange={(event) => updateFilters({ facility: event.target.value })}
-                className={SELECT_CLASS}
-              >
-                {facilityOptions.map((option) => (
-                  <option key={option} value={option}>{option === "-" ? "No facility" : option}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5 text-[12px] font-medium text-neutral-600">
-              Position
-              <select
-                value={filters.position}
-                onChange={(event) => updateFilters({ position: event.target.value })}
-                className={SELECT_CLASS}
-              >
-                {positionOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+          <SegmentedFilter
+            label="Filter by status"
+            visibleLabel="Status"
+            options={STATUS_SEGMENTS}
+            value={filters.status}
+            onChange={(value) => updateFilters({ status: value })}
+          />
+          <SegmentedFilter
+            label="Filter by account type"
+            visibleLabel="Type"
+            options={ROLE_SEGMENTS}
+            value={filters.role}
+            onChange={(value) => updateFilters({ role: value })}
+          />
+          <label className={`flex flex-col gap-1.5 ${FILTER_CAPTION}`}>
+            Facility
+            <select
+              value={filters.facility}
+              onChange={(event) => updateFilters({ facility: event.target.value })}
+              className={SELECT_CLASS}
+            >
+              {facilityOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+          <label className={`flex flex-col gap-1.5 ${FILTER_CAPTION}`}>
+            Role
+            <select
+              value={filters.position}
+              onChange={(event) => updateFilters({ position: event.target.value })}
+              className={SELECT_CLASS}
+            >
+              {positionOptions.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-neutral-600">
           <span aria-live="polite">
@@ -304,22 +281,6 @@ export default function UserManagement() {
               ? `Showing ${visibleUsers.length} of ${users.length} ${accountsWord}`
               : `${users.length} ${accountsWord}`}
           </span>
-          {extraFilters.map((filter) => (
-            <span
-              key={filter.key}
-              className="inline-flex items-center gap-1 rounded-full bg-neutral-100 py-0.5 pl-2.5 pr-1 text-[12px] font-medium text-neutral-700"
-            >
-              {filter.label}
-              <button
-                type="button"
-                onClick={() => updateFilters({ [filter.key]: DEFAULT_FILTERS[filter.key] })}
-                aria-label={`Remove ${filter.label} filter`}
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-neutral-800 ${FOCUS_RING}`}
-              >
-                <X size={12} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
           {narrowed && (
             <button
               type="button"
@@ -358,6 +319,7 @@ export default function UserManagement() {
         description={statusConfirm?.description}
         confirmText={statusConfirm?.confirmText}
         cancelText="Cancel"
+        tone={pendingStatus?.next === "Active" ? "neutral" : "danger"}
         loading={savingStatus}
         loadingText="Saving..."
         onCancel={() => !savingStatus && setPendingStatus(null)}
@@ -451,7 +413,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
                 ].map(([label, value]) => (
                   <div key={label} className="contents">
                     <dt className="text-neutral-500">{label}</dt>
-                    <dd className="truncate text-neutral-700">{value}</dd>
+                    <dd className="truncate text-neutral-700" title={value}>{value}</dd>
                   </div>
                 ))}
               </dl>
@@ -471,8 +433,8 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
 function TwoLine({ primary, secondary }) {
   return (
     <div className="min-w-0 leading-tight">
-      <p className="truncate text-[13px] text-neutral-700">{primary}</p>
-      {secondary && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{secondary}</p>}
+      <p className="truncate text-[13px] text-neutral-700" title={primary}>{primary}</p>
+      {secondary && <p className="mt-0.5 truncate text-[12px] text-neutral-500" title={secondary}>{secondary}</p>}
     </div>
   );
 }
@@ -481,8 +443,8 @@ function TwoLine({ primary, secondary }) {
 function AccountCell({ user }) {
   return (
     <div className="min-w-0 leading-tight">
-      <p className="truncate text-[13px] font-semibold text-neutral-900">{getDisplayName(user)}</p>
-      <p className="mt-0.5 truncate text-[12px] font-normal text-neutral-500">{user.email}</p>
+      <p className="truncate text-[13px] font-semibold text-neutral-900" title={getDisplayName(user)}>{getDisplayName(user)}</p>
+      <p className="mt-0.5 truncate text-[12px] font-normal text-neutral-500" title={user.email}>{user.email}</p>
     </div>
   );
 }
@@ -495,7 +457,7 @@ function EmptyBody({ narrowed, onClear, className = "" }) {
       </p>
       <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
         {narrowed
-          ? "Try a different search, or set status and role back to All."
+          ? "Try a different search, or clear status, type, role, or facility."
           : "Accounts you add appear here."}
       </p>
       {narrowed && (
@@ -514,8 +476,9 @@ function EmptyBody({ narrowed, onClear, className = "" }) {
 /** Title, description and button for confirming a status change; names the person, their role and facility. */
 function statusConfirmCopy(user, next, rolesData) {
   const name = getDisplayName(user);
-  const facility = getFacilityName(user);
-  const who = `${name} (${roleLabel(user, rolesData)}${facility === "-" ? "" : `, ${facility}`})`;
+  const facility = homeFacilityLabel(user, getFacilityName(user));
+  const extra = additionalAccessLabel(user);
+  const who = `${name} (${roleLabel(user, rolesData)}, ${facility})`;
 
   if (next === "Active") {
     return {
@@ -526,7 +489,9 @@ function statusConfirmCopy(user, next, rolesData) {
   }
   return {
     title: `Deactivate ${name}?`,
-    description: `${who} will be signed out and cannot sign in until you activate the account again. Their records are not deleted.`,
+    description: `${who} will be signed out and cannot sign in until you activate the account again.${
+      extra ? ` ${extra}.` : ""
+    } Their records are not deleted.`,
     confirmText: "Deactivate account",
   };
 }

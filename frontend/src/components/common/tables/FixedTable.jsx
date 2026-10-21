@@ -22,6 +22,7 @@ export default function FixedTable({ minWidth = "min-w-[900px]", pageSize = TABL
         <table
           className={`w-full ${minWidth} border-separate border-spacing-0 text-left`}
           onMouseOver={setTitleIfTruncated}
+          onFocusCapture={setTitleIfTruncated}
         >
           {children}
         </table>

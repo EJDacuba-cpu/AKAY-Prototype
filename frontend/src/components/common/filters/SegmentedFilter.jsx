@@ -1,10 +1,15 @@
 /**
  * A short row of mutually exclusive choices (for example All / Active / Inactive) on a quiet gray track, the chosen
  * one lifted to white. `options` are `{ value, label }`; `label` names the group for screen readers.
+ * `visibleLabel` is the 12px caption above the track.
  */
-export default function SegmentedFilter({ options, value, onChange, label }) {
-  return (
-    <div role="group" aria-label={label} className="-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0">
+export default function SegmentedFilter({ options, value, onChange, label, visibleLabel }) {
+  const group = (
+    <div
+      role="group"
+      aria-label={label || visibleLabel}
+      className="-mx-1 flex max-w-full overflow-x-auto px-1 sm:mx-0 sm:px-0"
+    >
       <div className="inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5">
         {options.map((option) => {
           const active = value === option.value;
@@ -25,6 +30,15 @@ export default function SegmentedFilter({ options, value, onChange, label }) {
           );
         })}
       </div>
+    </div>
+  );
+
+  if (!visibleLabel) return group;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-neutral-600">{visibleLabel}</span>
+      {group}
     </div>
   );
 }

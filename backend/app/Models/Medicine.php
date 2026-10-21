@@ -24,6 +24,13 @@ class Medicine extends Model
         'updated_by',
         'is_active',
         'archived_at',
+        'idempotency_key',
+        'idempotency_hash',
+    ];
+
+    protected $hidden = [
+        'idempotency_key',
+        'idempotency_hash',
     ];
 
     protected $casts = [

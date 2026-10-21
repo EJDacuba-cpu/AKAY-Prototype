@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from "react";
-import { PackagePlus } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { LoaderCircle, PackagePlus } from "lucide-react";
 import {
   ModalButton,
   ModalShell,
@@ -9,6 +9,12 @@ import {
   MEDICINE_CATEGORIES,
   MEDICINE_UNITS,
 } from "../../../services/medicineService";
+import { createIdempotencyKey } from "../../../utils/idempotency";
+import {
+  medicineFormHasErrors,
+  validateMedicineForm,
+} from "../../../utils/medicineFormValidation";
+import { createSubmitGate } from "../../../utils/medicineSubmitGate";
 
 const DEFAULT_FORM = {
   name: "",
@@ -29,10 +35,22 @@ export default function MedicineFormModal({
   onSubmit,
 }) {
   const [form, setForm] = useState(DEFAULT_FORM);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const formId = useId();
+  const gateRef = useRef(null);
+  if (!gateRef.current) gateRef.current = createSubmitGate();
 
   useEffect(() => {
     if (!open) return;
+
+    gateRef.current.end();
+    setSubmitting(false);
+    setError("");
+    setFieldErrors({});
+    setIdempotencyKey(mode === "add" && !item ? createIdempotencyKey() : "");
 
     if (item) {
       setForm({
@@ -47,7 +65,7 @@ export default function MedicineFormModal({
     } else {
       setForm(DEFAULT_FORM);
     }
-  }, [open, item]);
+  }, [open, item, mode]);
 
   if (!open) return null;
 
@@ -56,11 +74,25 @@ export default function MedicineFormModal({
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    if (!form.name.trim()) return;
+    if (!gateRef.current.begin()) return;
+
+    const nextErrors = validateMedicineForm(form, mode);
+    if (medicineFormHasErrors(nextErrors)) {
+      setFieldErrors(nextErrors);
+      gateRef.current.end();
+      return;
+    }
+
     const payload = {
       ...form,
       name: form.name.trim(),
@@ -72,7 +104,18 @@ export default function MedicineFormModal({
     } else {
       delete payload.quantity;
     }
-    onSubmit?.(payload);
+
+    try {
+      setSubmitting(true);
+      setError("");
+      await onSubmit?.(payload, {
+        idempotencyKey: mode === "add" ? idempotencyKey : undefined,
+      });
+    } catch (submitError) {
+      setError(submitError?.message || "Unable to save this medicine.");
+      setSubmitting(false);
+      gateRef.current.end();
+    }
   }
 
   return (
@@ -87,16 +130,28 @@ export default function MedicineFormModal({
       icon={<PackagePlus size={14} />}
       size="xl"
       onClose={onClose}
+      closeDisabled={submitting}
+      dismissOnBackdrop={!submitting}
+      dismissOnEscape={!submitting}
       footer={
         <>
-          <ModalButton onClick={onClose}>Cancel</ModalButton>
+          <ModalButton onClick={onClose} disabled={submitting}>
+            Cancel
+          </ModalButton>
           <ModalButton
             type="submit"
             form={formId}
             variant="primary"
             primary
+            disabled={submitting}
+            aria-busy={submitting}
           >
-            {mode === "edit" ? "Save Changes" : "Add Medicine"}
+            {submitting && <LoaderCircle size={14} className="animate-spin" />}
+            {submitting
+              ? "Saving..."
+              : mode === "edit"
+                ? "Save Changes"
+                : "Add Medicine"}
           </ModalButton>
         </>
       }
@@ -106,13 +161,19 @@ export default function MedicineFormModal({
         onSubmit={handleSubmit}
       >
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Medicine / Supply Name" required className="md:col-span-2">
+            <Field
+              label="Medicine / Supply Name"
+              required
+              className="md:col-span-2"
+              error={fieldErrors.name}
+            >
               <input
                 value={form.name}
                 onChange={(event) => updateField("name", event.target.value)}
                 placeholder="e.g. Paracetamol 500mg"
                 className={inputClass}
-                required
+                aria-invalid={fieldErrors.name ? true : undefined}
+                disabled={submitting}
               />
             </Field>
 
@@ -123,6 +184,7 @@ export default function MedicineFormModal({
                   updateField("category", event.target.value)
                 }
                 className={inputClass}
+                disabled={submitting}
               >
                 {MEDICINE_CATEGORIES.map((category) => (
                   <option key={category}>{category}</option>
@@ -138,11 +200,12 @@ export default function MedicineFormModal({
                   updateField("expiryDate", event.target.value)
                 }
                 className={inputClass}
+                disabled={submitting}
               />
             </Field>
 
             {mode === "add" && (
-              <Field label="Opening Balance" required>
+              <Field label="Opening Balance" required error={fieldErrors.quantity}>
                 <input
                   type="number"
                   min="0"
@@ -152,7 +215,8 @@ export default function MedicineFormModal({
                   }
                   placeholder="0"
                   className={inputClass}
-                  required
+                  aria-invalid={fieldErrors.quantity ? true : undefined}
+                  disabled={submitting}
                 />
               </Field>
             )}
@@ -162,6 +226,7 @@ export default function MedicineFormModal({
                 value={form.unit}
                 onChange={(event) => updateField("unit", event.target.value)}
                 className={inputClass}
+                disabled={submitting}
               >
                 {MEDICINE_UNITS.map((unit) => (
                   <option key={unit}>{unit}</option>
@@ -169,7 +234,11 @@ export default function MedicineFormModal({
               </select>
             </Field>
 
-            <Field label="Low Stock Threshold" required>
+            <Field
+              label="Low Stock Threshold"
+              required
+              error={fieldErrors.lowStockThreshold}
+            >
               <input
                 type="number"
                 min="0"
@@ -178,7 +247,8 @@ export default function MedicineFormModal({
                   updateField("lowStockThreshold", event.target.value)
                 }
                 className={inputClass}
-                required
+                aria-invalid={fieldErrors.lowStockThreshold ? true : undefined}
+                disabled={submitting}
               />
             </Field>
 
@@ -200,15 +270,25 @@ export default function MedicineFormModal({
                 placeholder="Optional coordination note..."
                 rows={3}
                 className={`${inputClass} min-h-21 resize-none py-2.5`}
+                disabled={submitting}
               />
             </Field>
+
+            {error && (
+              <div
+                role="alert"
+                className="md:col-span-2 rounded-lg border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-[#B91C1C]"
+              >
+                {error}
+              </div>
+            )}
           </div>
       </form>
     </ModalShell>
   );
 }
 
-function Field({ label, required = false, className = "", children }) {
+function Field({ label, required = false, className = "", error, children }) {
   return (
     <div className={className}>
       <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
@@ -216,9 +296,17 @@ function Field({ label, required = false, className = "", children }) {
         {required && <span className="ml-0.5 text-[#B91C1C]">*</span>}
       </label>
       {children}
+      {(error || required) && (
+        <p
+          role={error ? "alert" : undefined}
+          className="mt-1 min-h-4 text-xs leading-4 text-[#B91C1C]"
+        >
+          {error || ""}
+        </p>
+      )}
     </div>
   );
 }
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#BCC3CD] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10";
+  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#BCC3CD] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60";

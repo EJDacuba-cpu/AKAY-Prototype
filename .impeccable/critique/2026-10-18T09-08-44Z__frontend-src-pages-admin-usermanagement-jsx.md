@@ -10,6 +10,7 @@ target_fingerprint: "sha256:76eb934ed8f6ae31780232d7272828a56cc62f87bda54df99807
 target_path: "D:\\Projects\\AKAY-Prototype\\frontend\\src\\pages\\admin\\UserManagement.jsx"
 timestamp: 2026-10-18T09-08-44Z
 slug: frontend-src-pages-admin-usermanagement-jsx
+closed: true
 ---
 # Critique: Account Directory (/admin/users), re-run
 

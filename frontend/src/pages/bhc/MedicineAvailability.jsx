@@ -16,10 +16,13 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import {
+  ConfirmationModal,
   FixedTable,
   ListToolbar,
+  NoticeModal,
   PageStateWrapper,
   RefreshingIndicator,
+  SuccessModal,
   TablePagination,
 } from "../../components/common";
 import usePagedRows from "../../hooks/usePagedRows";
@@ -40,6 +43,11 @@ import {
 } from "../../services/medicineService";
 import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  applyInventoryListAfterDelete,
+  describeBhcMedicineDeletion,
+} from "../../utils/medicineMutationSafety";
+import { createSubmitGate } from "../../utils/medicineSubmitGate";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -60,6 +68,12 @@ export default function MedicineAvailability() {
   const [openMenuId, setOpenMenuId] = useState("");
   const [inventoryAction, setInventoryAction] = useState(null);
   const [historyItem, setHistoryItem] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [successNotice, setSuccessNotice] = useState(null);
+  const deleteGateRef = useRef(null);
+  if (!deleteGateRef.current) deleteGateRef.current = createSubmitGate();
   const {
     data: medicineItems = [],
     isLoading,
@@ -185,29 +199,70 @@ export default function MedicineAvailability() {
     setHistoryItem(item);
   }
 
-  async function handleSubmit(payload) {
+  async function handleSubmit(payload, options = {}) {
     const nextItems =
       modalMode === "edit" && selectedItem
         ? await updateBhcMedicine(selectedItem.id, payload)
-        : await addBhcMedicine(payload);
+        : await addBhcMedicine(payload, options);
 
     queryClient.setQueryData(
       queryKeys.medicineAvailability("bhc"),
       Array.isArray(nextItems) ? nextItems : [],
     );
     closeModal();
+    setSuccessNotice({
+      title: modalMode === "edit" ? "Medicine updated" : "Medicine added",
+      description:
+        modalMode === "edit"
+          ? `${payload.name} was saved.`
+          : `${payload.name} was added to BHC inventory.`,
+    });
   }
 
-  function handleDelete(item) {
+  function requestDelete(item) {
     setOpenMenuId("");
-    const confirmed = window.confirm(`Delete ${item.name} from BHC inventory?`);
-    if (!confirmed) return;
-    deleteBhcMedicine(item.id).then((nextItems) => {
+    setPendingDelete(item);
+    setDeleteError("");
+  }
+
+  function cancelDelete() {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError("");
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete || !deleteGateRef.current.begin()) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const nextItems = await deleteBhcMedicine(pendingDelete.id);
       queryClient.setQueryData(
         queryKeys.medicineAvailability("bhc"),
-        Array.isArray(nextItems) ? nextItems : [],
+        applyInventoryListAfterDelete(
+          Array.isArray(nextItems) ? nextItems : safeMedicineItems,
+          pendingDelete.id,
+          { ok: true },
+        ),
       );
-    });
+      setSuccessNotice({
+        title: "Medicine removed",
+        description: `${pendingDelete.name} (Item ID ${pendingDelete.id}) was removed from BHC inventory.`,
+      });
+      setPendingDelete(null);
+    } catch (error) {
+      queryClient.setQueryData(
+        queryKeys.medicineAvailability("bhc"),
+        applyInventoryListAfterDelete(safeMedicineItems, pendingDelete.id, {
+          ok: false,
+        }),
+      );
+      setPendingDelete(null);
+      setDeleteError(error?.message || "Unable to delete this medicine.");
+    } finally {
+      setDeleting(false);
+      deleteGateRef.current.end();
+    }
   }
 
   async function handleInventoryAction(payload) {
@@ -227,6 +282,8 @@ export default function MedicineAvailability() {
     });
     closeInventoryAction();
   }
+
+  const deleteCopy = describeBhcMedicineDeletion(pendingDelete || {});
 
   return (
     <DashboardLayout role="bhc" title="Medicine Availability">
@@ -346,7 +403,7 @@ export default function MedicineAvailability() {
           onRestock={(item) => openInventoryAction(item, "restock")}
           onAdjust={(item) => openInventoryAction(item, "adjust")}
           onHistory={openInventoryHistory}
-          onDelete={handleDelete}
+          onDelete={requestDelete}
         />
 
         <div className="mt-auto">
@@ -378,6 +435,30 @@ export default function MedicineAvailability() {
         item={historyItem}
         user={currentUser}
         onClose={() => setHistoryItem(null)}
+      />
+      <ConfirmationModal
+        open={Boolean(pendingDelete)}
+        title={deleteCopy.title}
+        description={deleteCopy.description}
+        confirmText={deleteCopy.confirmText}
+        cancelText="Cancel"
+        loading={deleting}
+        loadingText="Deleting..."
+        onCancel={cancelDelete}
+        onConfirm={confirmDelete}
+      />
+      <NoticeModal
+        open={Boolean(deleteError)}
+        title="Unable to delete medicine"
+        message={deleteError}
+        onClose={() => setDeleteError("")}
+      />
+      <SuccessModal
+        open={Boolean(successNotice)}
+        title={successNotice?.title}
+        description={successNotice?.description}
+        buttonText="Continue"
+        onClose={() => setSuccessNotice(null)}
       />
       </div>
       </PageStateWrapper>

@@ -8,6 +8,15 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class MedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->isMethod('post') && filled($this->header('Idempotency-Key'))) {
+            $this->merge([
+                'idempotency_key' => $this->header('Idempotency-Key'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -28,6 +37,9 @@ class MedicineRequest extends FormRequest
         $isCreate = $this->isMethod('post');
 
         return [
+            'idempotency_key' => $isCreate
+                ? ['nullable', 'uuid']
+                : ['prohibited'],
             'name' => [$isCreate ? 'required' : 'sometimes', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],

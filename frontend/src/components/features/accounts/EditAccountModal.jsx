@@ -93,6 +93,7 @@ export default function EditAccountModal({ accountId, account, onClose }) {
 
   return (
     <ModalShell
+      appearance="plain"
       title="Edit account"
       subtitle={current.email || "No email"}
       size="md"
@@ -101,13 +102,16 @@ export default function EditAccountModal({ accountId, account, onClose }) {
       footer={
         <>
           <ModalButton onClick={onClose} disabled={saving}>Cancel</ModalButton>
-          <ModalButton type="submit" form={FORM_ID} variant="primary" disabled={!canSave}>
+          <ModalButton type="submit" form={FORM_ID} variant="ink" primary disabled={!canSave}>
             {saving ? "Saving..." : "Save"}
           </ModalButton>
         </>
       }
     >
       <form id={FORM_ID} onSubmit={save} noValidate>
+        <p className="mb-4 text-[13px] leading-5 text-neutral-600">
+          This form updates name, email, and contact number. Role, home facility, and status are not changed here because they control access and routing.
+        </p>
         <Field label="Name" error={touched.name ? errors.name : ""}>
           <Input value={form.name} onChange={(event) => setField("name", event.target.value)} onBlur={() => touch("name")} />
         </Field>

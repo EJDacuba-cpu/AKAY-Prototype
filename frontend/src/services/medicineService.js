@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { medicineCreateRequestHeaders } from "../utils/medicineMutationSafety";
 
 export const MEDICINE_CATEGORIES = [
   "Basic Medicines",
@@ -136,10 +137,11 @@ export async function saveRhuMedicines() {
   return refreshRhuMedicines();
 }
 
-export async function addRhuMedicine(data) {
+export async function addRhuMedicine(data, options = {}) {
   const response = await apiRequest("/medicines", {
     method: "POST",
     body: toCreatePayload(data),
+    headers: medicineCreateRequestHeaders(options.idempotencyKey),
   });
   const created = normalizeMedicine(unwrapData(response));
   medicineCache = [created, ...medicineCache.filter((item) => item.id !== created.id)];
@@ -177,12 +179,15 @@ export async function saveBhcMedicines() {
   return refreshRhuMedicines();
 }
 
-export async function addBhcMedicine(data) {
-  return addRhuMedicine({
-    ...data,
-    ruralHealthUnitId: "",
-    rhuId: "",
-  });
+export async function addBhcMedicine(data, options = {}) {
+  return addRhuMedicine(
+    {
+      ...data,
+      ruralHealthUnitId: "",
+      rhuId: "",
+    },
+    options,
+  );
 }
 
 export async function updateBhcMedicine(id, data) {

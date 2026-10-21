@@ -166,7 +166,9 @@ export default function ModalShell({
             {subtitle && (
               <p
                 id={ariaDescribedBy ? undefined : generatedDescriptionId}
-                className="mt-0.5 text-xs leading-4 text-white/85"
+                className={`mt-0.5 text-xs leading-4 ${
+                  appearance === "plain" ? "text-neutral-500" : "text-white/85"
+                }`}
               >
                 {subtitle}
               </p>
@@ -219,6 +221,8 @@ const buttonVariants = {
     "border-[#B91C1C] bg-[#B91C1C] text-white hover:border-[#991B1B] hover:bg-[#991B1B] active:border-[#7F1D1D] active:bg-[#7F1D1D]",
   destructive:
     "border-[#B91C1C] bg-[#B91C1C] text-white hover:border-[#991B1B] hover:bg-[#991B1B] active:border-[#7F1D1D] active:bg-[#7F1D1D]",
+  ink:
+    "border-ink-700 bg-ink-700 text-white hover:border-ink-600 hover:bg-ink-600 active:border-ink-800 active:bg-ink-800",
   secondary:
     "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
   ghost:
@@ -239,9 +243,9 @@ export function ModalButton({
       type={type}
       ref={ref}
       data-modal-primary={primary || variant === "primary" ? "true" : undefined}
-      className={`press-scale inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/25 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-55 ${
-        buttonVariants[variant] || buttonVariants.secondary
-      } ${className}`}
+      className={`press-scale inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-55 ${
+        variant === "ink" ? "focus:ring-ink-400/30" : "focus:ring-[#B91C1C]/25"
+      } ${buttonVariants[variant] || buttonVariants.secondary} ${className}`}
       {...props}
     >
       {children}

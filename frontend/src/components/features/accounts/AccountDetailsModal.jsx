@@ -28,6 +28,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 
   return (
     <ModalShell
+      appearance="plain"
       title="Account details"
       subtitle={current?.email || "No email"}
       size="md"
@@ -47,9 +48,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 
       {current && (
         <>
-          <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account</h3>
-
-          <dl className="divide-y divide-slate-100">
+          <dl className="divide-y divide-neutral-100">
             <Row label="Name">{formatUserName(current, "User Account")}</Row>
             <Row label="Email">{current.email || "Not recorded"}</Row>
             <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>
@@ -63,7 +62,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
           {!isAdmin && (
             <Link
               to={"/admin/staff-assignments?userId=" + current.id}
-              className="mt-3 block text-xs font-medium text-red-700 hover:underline"
+              className="mt-3 block text-xs font-medium text-ink-700 hover:underline"
             >
               Additional assignments: {assignmentSummary(current)}
             </Link>
@@ -77,8 +76,8 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
 function Row({ label, children }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="text-right text-sm font-medium text-slate-800">{children}</dd>
+      <dt className="text-xs text-neutral-500">{label}</dt>
+      <dd className="text-right text-sm font-medium text-neutral-800">{children}</dd>
     </div>
   );
 }

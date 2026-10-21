@@ -4,6 +4,10 @@ import {
   ModalButton,
   ModalShell,
 } from "../../common";
+import {
+  formatStockQuantity,
+  previewInventoryResult,
+} from "../../../utils/medicineInventoryPreview";
 
 const ACTIONS = [
   { value: "adjustment_in", label: "Adjustment In" },
@@ -46,10 +50,22 @@ export default function MedicineInventoryActionModal({
   if (!open || !item) return null;
 
   const isRestock = mode === "restock";
+  const preview = previewInventoryResult({
+    mode,
+    action: form.action,
+    direction: form.direction,
+    currentQuantity: item.quantity,
+    inputQuantity: form.quantity,
+    unit: item.unit,
+  });
 
   async function handleSubmit(event) {
     event.preventDefault();
     if (submitting) return;
+    if (preview.wouldBeNegative) {
+      setError("Resulting stock cannot be negative.");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -90,7 +106,7 @@ export default function MedicineInventoryActionModal({
             form={formId}
             variant="primary"
             primary
-            disabled={submitting}
+            disabled={submitting || preview.wouldBeNegative}
             aria-busy={submitting}
           >
             {submitting && <LoaderCircle size={14} className="animate-spin" />}
@@ -110,11 +126,18 @@ export default function MedicineInventoryActionModal({
         <div className="space-y-4">
           <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3.5 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Current Quantity
+              Current quantity → Resulting quantity
             </p>
             <p className="mt-1 text-base font-semibold text-[#0F172A]">
-              {Number(item.quantity || 0).toLocaleString()} {item.unit || ""}
+              {formatStockQuantity(preview.current, preview.unit)}
+              {" → "}
+              {formatStockQuantity(preview.resulting, preview.unit)}
             </p>
+            {preview.wouldBeNegative && (
+              <p role="alert" className="mt-2 text-xs font-medium text-[#B91C1C]">
+                Resulting stock cannot be negative.
+              </p>
+            )}
           </div>
 
           {!isRestock && (

@@ -729,6 +729,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
+            'permissions' => ['inventory.view', 'inventory.manage', 'items.dispense'],
         ]);
     }
 

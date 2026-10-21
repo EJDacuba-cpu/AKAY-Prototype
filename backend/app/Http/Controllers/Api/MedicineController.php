@@ -12,7 +12,9 @@ use App\Models\MedicineInventoryTransaction;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\MedicineCreateIdempotencyService;
 use App\Services\MedicineStockService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -21,6 +23,7 @@ class MedicineController extends Controller
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
         private readonly MedicineStockService $medicineStock,
+        private readonly MedicineCreateIdempotencyService $createIdempotency,
         private readonly AkayCacheService $cache
     ) {}
 
@@ -90,7 +93,8 @@ class MedicineController extends Controller
     {
         $data = $request->validated();
         $openingQuantity = (int) $data['quantity'];
-        unset($data['quantity']);
+        $idempotencyKey = $data['idempotency_key'] ?? null;
+        unset($data['quantity'], $data['idempotency_key']);
 
         if ($request->user()->isRhu()) {
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
@@ -102,30 +106,70 @@ class MedicineController extends Controller
             abort(403, 'A BHC or RHU facility assignment is required to create inventory.');
         }
 
-        $medicine = DB::transaction(function () use ($request, $auditLogger, $data, $openingQuantity): Medicine {
-            $medicine = Medicine::create([
+        $threshold = (int) ($data['low_stock_threshold'] ?? 10);
+        $idempotencyHash = $idempotencyKey
+            ? $this->createIdempotency->hash([
                 ...$data,
-                'quantity' => 0,
-                'low_stock_threshold' => $data['low_stock_threshold'] ?? 10,
-                'availability_status' => 'Unavailable',
-                'created_by' => $request->user()->id,
-                'updated_by' => $request->user()->id,
-            ]);
-            $this->medicineStock->openingBalance($request, $medicine, $openingQuantity);
-            if ($openingQuantity === 0) {
-                $auditLogger->log(
-                    $request,
-                    'medicine_created',
-                    'medicines',
-                    "medicine_id={$medicine->id}; opening_balance=0."
-                );
+                'quantity' => $openingQuantity,
+                'low_stock_threshold' => $threshold,
+            ])
+            : null;
+
+        if ($idempotencyKey) {
+            $existing = Medicine::query()->where('idempotency_key', $idempotencyKey)->first();
+            if ($existing) {
+                return $this->replayMedicineCreate($request, $existing, $idempotencyHash);
+            }
+        }
+
+        try {
+            $medicine = DB::transaction(function () use (
+                $request,
+                $auditLogger,
+                $data,
+                $openingQuantity,
+                $threshold,
+                $idempotencyKey,
+                $idempotencyHash
+            ): Medicine {
+                $medicine = Medicine::create([
+                    ...$data,
+                    'quantity' => 0,
+                    'low_stock_threshold' => $threshold,
+                    'availability_status' => 'Unavailable',
+                    'created_by' => $request->user()->id,
+                    'updated_by' => $request->user()->id,
+                    'idempotency_key' => $idempotencyKey,
+                    'idempotency_hash' => $idempotencyHash,
+                ]);
+                $this->medicineStock->openingBalance($request, $medicine, $openingQuantity);
+                if ($openingQuantity === 0) {
+                    $auditLogger->log(
+                        $request,
+                        'medicine_created',
+                        'medicines',
+                        "medicine_id={$medicine->id}; opening_balance=0."
+                    );
+                }
+
+                return $medicine;
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isMedicineIdempotencyConflict($exception)) {
+                throw $exception;
             }
 
-            return $medicine;
-        });
+            $existing = Medicine::query()->where('idempotency_key', $idempotencyKey)->first();
+            if (! $existing) {
+                throw $exception;
+            }
+
+            return $this->replayMedicineCreate($request, $existing, $idempotencyHash);
+        }
+
         $this->cache->invalidateMedicine($medicine);
 
-        return response()->json(['data' => $medicine->fresh()], 201);
+        return $this->storeMedicineResponse($medicine->fresh(), false, 201);
     }
 
     public function show(Request $request, Medicine $medicine)
@@ -296,6 +340,58 @@ class MedicineController extends Controller
             'rural_health_unit' => $medicine->ruralHealthUnit?->only(['id', 'name', 'status']),
             'barangay_health_center' => $medicine->barangayHealthCenter?->only(['id', 'name', 'status']),
         ];
+    }
+
+    private function replayMedicineCreate(
+        Request $request,
+        Medicine $medicine,
+        ?string $idempotencyHash
+    ) {
+        if ((int) $medicine->created_by !== (int) $request->user()->id) {
+            return $this->medicineIdempotencyConflictResponse(
+                'This submission key is not available for this inventory save.',
+                'IDEMPOTENCY_KEY_UNAVAILABLE'
+            );
+        }
+
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
+
+        if (
+            ! is_string($idempotencyHash)
+            || ! hash_equals((string) $medicine->idempotency_hash, $idempotencyHash)
+        ) {
+            return $this->medicineIdempotencyConflictResponse(
+                'This submission key was already used for different inventory data.',
+                'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH'
+            );
+        }
+
+        return $this->storeMedicineResponse($medicine->fresh(), true, 200);
+    }
+
+    private function storeMedicineResponse(Medicine $medicine, bool $replay, int $status)
+    {
+        return response()->json([
+            'data' => $medicine,
+            'idempotent_replay' => $replay,
+        ], $status);
+    }
+
+    private function medicineIdempotencyConflictResponse(string $message, string $code)
+    {
+        return response()->json([
+            'message' => $message,
+            'code' => $code,
+        ], 409);
+    }
+
+    private function isMedicineIdempotencyConflict(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23505', '23000'], true)
+            && str_contains($message, 'idempotency_key');
     }
 
     private function medicineStatus(int $quantity, int $lowStockThreshold): string
