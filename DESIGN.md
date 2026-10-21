@@ -2,31 +2,31 @@
 name: AKAY
 description: A dense clinical ledger of white sheets on pale paper, with pill controls and a three-color core of navy ink, brand red, and white.
 colors:
-  ledger-paper: "#f9fafb"
+  ledger-paper: "#f8f9fb"
   ledger-sheet: "#ffffff"
-  ledger-sheet-sunk: "#f3f4f6"
-  rule-hairline: "#e5e7eb"
-  rule-strong: "#d1d5db"
-  ink: "#111827"
+  ledger-sheet-sunk: "#f1f3f6"
+  rule-hairline: "#e4e7ec"
+  rule-strong: "#d0d5dd"
+  ink: "#101828"
   ink-navy: "#1b2638"
-  ink-secondary: "#4b5563"
-  ink-muted: "#6b7280"
-  ink-disabled: "#9ca3af"
+  ink-secondary: "#475467"
+  ink-muted: "#667085"
+  ink-disabled: "#98a2b3"
   register-red: "#dc2626"
   register-red-deep: "#b91c1c"
   register-red-pressed: "#991b1b"
   register-red-tint: "#fef2f2"
   register-red-wash: "#fee2e2"
-  alert-red: "#ef4444"
-  stamp-green: "#059669"
-  stamp-green-ink: "#047857"
-  stamp-green-tint: "#ecfdf5"
-  stamp-amber: "#f59e0b"
-  stamp-amber-ink: "#b45309"
-  stamp-amber-tint: "#fffbeb"
-  stamp-cyan: "#0891b2"
-  stamp-cyan-ink: "#0e7490"
-  stamp-cyan-tint: "#ecfeff"
+  alert-red: "#d92d20"
+  stamp-green: "#12b76a"
+  stamp-green-ink: "#027a48"
+  stamp-green-tint: "#ecfdf3"
+  stamp-amber: "#f79009"
+  stamp-amber-ink: "#b54708"
+  stamp-amber-tint: "#fffaeb"
+  stamp-cyan: "#2e90fa"
+  stamp-cyan-ink: "#175cd3"
+  stamp-cyan-tint: "#eff8ff"
 typography:
   headline:
     fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
@@ -61,9 +61,10 @@ typography:
     lineHeight: 1.4
 rounded:
   none: "0px"
+  badge: "6px"
   input: "8px"
   card: "12px"
-  badge: "6px"
+  modal: "16px"
   pill: "999px"
 spacing:
   page-mobile: "12px"
@@ -117,6 +118,14 @@ components:
     backgroundColor: "{colors.ledger-sheet}"
     rounded: "{rounded.card}"
     padding: "16px"
+  filter-popover:
+    backgroundColor: "{colors.ledger-sheet}"
+    rounded: "{rounded.card}"
+  filter-select:
+    backgroundColor: "{colors.ledger-sheet}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.pill}"
+    height: "32px"
   table-row:
     height: "56px"
   table-head:
@@ -138,7 +147,7 @@ Screens are built for repeated daily work on a desktop or laptop in a facility, 
 
 **Key Characteristics:**
 - Three-color core: navy ink, brand red, white. Status color is extra, not a fourth brand color.
-- Rectangular sheets and tables; pill-shaped buttons, tabs, and status chips.
+- Rectangular sheets and tables with `--radius-card` (12px) on cards and filter popovers; pill-shaped buttons, tabs, dropdowns, and status chips.
 - One red. Primary actions and active place use it. Alert red is for danger only.
 - Fixed-size tables: the same row height whether the page has three rows or ten.
 - Cool-gray neutrals tinted toward blue, never warm.
@@ -148,24 +157,24 @@ Screens are built for repeated daily work on a desktop or laptop in a facility, 
 A cool-gray ledger with a single red stamp. Neutrals do almost all the work; color is spent only where a decision or a danger lives.
 
 ### Primary
-- **Register Red / Brand 600** (#dc2626): The action color. Fills for pill primary buttons (Add, Save, Submit, Apply Filters, Refer) and the brand mark. Token: `--color-brand` / `--color-brand-600`.
-- **Register Red Deep / Brand 700** (#b91c1c): Hover fill for primary pills, active nav text, links, and on-tint text. Token: `--color-brand-700`.
-- **Register Red Pressed / Brand 800** (#991b1b): Pressed state of primary fills.
-- **Register Red Tint** (#fef2f2) and **Wash** (#fee2e2): Active nav background, selected filter pills, and tinted notices. Never a decorative wash.
+- **Register Red / Brand 600** (`{colors.register-red}`): The action color. Fills for pill primary buttons (Add, Save, Submit, Apply Filters, Refer) and the brand mark. Token: `--color-brand` / `--color-brand-600`.
+- **Register Red Deep / Brand 700** (`{colors.register-red-deep}`): Hover fill for primary pills, active nav text, links, and on-tint text. Token: `--color-brand-700`.
+- **Register Red Pressed / Brand 800** (`{colors.register-red-pressed}`): Pressed state of primary fills.
+- **Register Red Tint** (`{colors.register-red-tint}`) and **Wash** (`{colors.register-red-wash}`): Active nav background, selected filter pills, and tinted notices. Never a decorative wash.
 
 ### Secondary
-- **Navy Ink** (#1b2638, `--color-ink-700`): Text chrome, sidebar weight, and secondary solid actions when a screen must not spend red (for example an admin directory add that is not a clinical CTA). Most UI text uses `--color-text` / Ink (#111827).
-- **Alert Red** (#ef4444): Emergency and triage flags, destructive confirms, validation errors, overdue and critical alerts. If it appears on nearly every screen it is the wrong red.
+- **Navy Ink** (`{colors.ink-navy}`, `--color-ink-700`): Text chrome, sidebar weight, and secondary solid actions when a screen must not spend red (for example an admin directory add that is not a clinical CTA). Most UI text uses `--color-text` / Ink (`{colors.ink}`).
+- **Alert Red** (`{colors.alert-red}`, `--color-danger`): Emergency and triage flags, destructive confirms, validation errors, overdue and critical alerts. If it appears on nearly every screen it is the wrong red.
 
 ### Tertiary (status)
-- **Stamp Green** (#059669, ink #047857, tint #ecfdf5): Completed, healthy, in stock, confirmed.
-- **Stamp Amber** (#f59e0b, ink #b45309, tint #fffbeb): Caution, pending review, low stock, follow-up required.
-- **Stamp Cyan** (#0891b2, ink #0e7490, tint #ecfeff): Neutral information. Pending and Received statuses also use a blue family in the status badge today.
+- **Stamp Green** (`{colors.stamp-green}`, ink `{colors.stamp-green-ink}`, tint `{colors.stamp-green-tint}`): Completed, healthy, in stock, confirmed. Tokens: `--color-success-*`.
+- **Stamp Amber** (`{colors.stamp-amber}`, ink `{colors.stamp-amber-ink}`, tint `{colors.stamp-amber-tint}`): Caution, pending review, low stock, follow-up required. Tokens: `--color-warning-*`.
+- **Info Blue** (`{colors.stamp-cyan}`, ink `{colors.stamp-cyan-ink}`, tint `{colors.stamp-cyan-tint}`): Neutral information, Pending, and Received. Tokens: `--color-info-*`.
 
 ### Neutral
-- **Ledger Paper** (#f9fafb / `--color-bg`): The page background, the desk the sheets sit on.
-- **Ledger Sheet** (#ffffff / `--color-surface`): Cards, tables, modals, the sidebar. Every readable surface.
-- **Ledger Sheet Sunk** (#f3f4f6 / `--color-surface-2`): Table headers, hover rows, inset panels, pill-tab tracks.
+- **Ledger Paper** (`{colors.ledger-paper}` / `--color-bg`): The page background, the desk the sheets sit on.
+- **Ledger Sheet** (`{colors.ledger-sheet}` / `--color-surface`): Cards, tables, modals, the sidebar. Every readable surface.
+- **Ledger Sheet Sunk** (`{colors.ledger-sheet-sunk}` / `--color-neutral-100`): Table headers, hover rows, inset panels, pill-tab tracks.
 - **Rule Hairline** (`--color-border`): Every border and divider. **Rule Strong** (`--color-border-strong`) for emphasis and hover borders.
 - **Ink** (`--color-text`): Primary text. **Ink Secondary** (`--color-text-secondary`): supporting text. **Ink Muted** (`--color-text-muted`): captions and metadata.
 
@@ -227,10 +236,10 @@ Flat by default. Depth is carried by 1px hairline borders and by the contrast of
 
 Two families, never mixed on the same component:
 
-- **Sheets** (pages, table cards, popover panels, modals): rectangular. Use `--radius-card` (12px) on the outer sheet, `--radius-input` (8px) on fields, and `rounded-none` on compact filter panels that must read as a ledger overlay.
-- **Controls** (primary/secondary/ghost buttons, module tabs, filter triggers, status chips, avatars, spinners): pills (`rounded-full` / `--radius-pill`).
+- **Sheets** (pages, table cards, filter popovers, modals): rectangular. Use `--radius-card` (12px) on the outer sheet, including filter popovers so they match inventory cards. Ordinary fields use `--radius-input` (8px).
+- **Controls** (primary/secondary/ghost buttons, module tabs, filter triggers, filter dropdowns, status chips, avatars, spinners): pills (`rounded-full` / `--radius-pill`).
 
-Do not put a pill radius on a data table. Do not put square corners on Add, Filter, Apply, Reset, or in-page tabs. Borders are 1px. The only thick stroke is the 4px left bar marking the active sidebar item.
+Do not put a pill radius on a data table or a filter popover sheet. Do not put square corners on Add, Filter, Apply, Reset, in-page tabs, or filter dropdowns. Borders are 1px. The only thick stroke is the 4px left bar marking the active sidebar item.
 
 ### Named Rules
 **The Control-Is-A-Pill Rule.** If the user can press it to change the view or commit an action, it is a pill. If it holds records, it is a rectangle.
@@ -238,10 +247,12 @@ Do not put a pill radius on a data table. Do not put square corners on Add, Filt
 ## Components
 
 ### Buttons
-- **Shape:** Pill (`rounded-full`), 36px tall (h-9) in toolbars, 32px (h-8) inside compact popovers. Icon-only buttons may stay 36px circular.
+- **Implementation:** `Button` in `frontend/src/components/ui/button.jsx`. Use `variant="brand"` for clinical primary pills, `variant="secondary"` for Reset/Cancel pills, and `variant="filter"` for the Filter trigger (`aria-pressed` when filters are applied). `variant="default"` is navy-ink chrome, not a clinical CTA. `variant="destructive"` is Alert Red, never Brand 600. Compact popover actions use `size="compact"` (32px).
+- **Shape:** Pill (`rounded-full`), 36px tall (h-9) in toolbars, 32px (h-8) inside compact popovers. Icon-only buttons may stay 36px circular. `default`, `ghost`, and `link` keep the incumbent rounded-lg chrome so existing family and login screens do not change.
 - **Primary:** Brand 600 fill, white 13px medium text, 8px by 16px padding. Label may include a leading `+` in the text; do not wrap the plus in its own circle. Hover moves to Brand 700.
 - **Secondary:** White fill, 1px Rule Hairline, Ink text. Used for Filter, Reset, and Cancel. An optional circular icon well (sliders, etc.) may sit inside the pill; the pill itself stays one control.
 - **Ghost:** Transparent with Ink Secondary text; hover fills Ledger Sheet Sunk.
+- **Destructive:** Alert Red fill (`--color-danger`). Confirm dialogs that already use `ModalButton` / `ConfirmationModal` stay on that path.
 - **Focus / Disabled:** Ink ring at 50% opacity; disabled drops to 50% opacity and ignores pointer events.
 
 ### Chips and Status Badges
@@ -249,15 +260,15 @@ Do not put a pill radius on a data table. Do not put square corners on Add, Filt
 - **State:** Active, Completed, and In Stock use green; Pending, Received, and Referred use blue; Follow-up Required, Under Observation, Low Stock, and Expiring use amber; Needs Referral uses orange; Cancelled, Inactive, Unavailable, and Expired use red; Not recorded uses gray.
 
 ### Cards / Containers
-- **Corner Style:** `--radius-card` (12px) on the outer sheet. Nested tables and compact filter popovers stay rectangular.
+- **Corner Style:** `--radius-card` (12px) on the outer sheet, including filter popovers. Nested tables stay rectangular.
 - **Background:** Ledger Sheet on Ledger Paper.
 - **Shadow Strategy:** Card hairline on top-level sheets, none on nested cards. See Elevation & Depth.
 - **Border:** 1px Rule Hairline; Rule Strong on hover for interactive cards.
 - **Internal Padding:** 16px, 20px for large panels. Toolbars use 8 to 12px gaps, not a second padded card.
 
 ### Inputs / Fields
-- **Style:** 1px Rule Hairline border, `--radius-input` (8px), 8px by 12px padding, 13 to 14px text, with a 10px bold uppercase label above.
-- **Focus:** Border shifts toward Ink 400 and an ink ring appears. Do not restyle native `<select>` menus; keep the field compact enough for a 370px filter popover.
+- **Style:** 1px Rule Hairline border, `--radius-input` (8px) on ordinary fields, 8px by 12px padding, 13 to 14px text, with a 10px bold uppercase label above. Filter popover dropdowns are pills (`rounded-full`), 32px tall, with a trailing chevron.
+- **Focus:** Border shifts toward Ink 400 and an ink ring appears. Do not restyle the native open `<select>` menu; keep the closed field compact enough for a 370px filter popover.
 - **Error / Disabled:** Error uses an Alert Red border with a 12px message beneath; disabled uses Ledger Sheet Sunk with muted text.
 
 ### Navigation
@@ -270,8 +281,8 @@ Do not put a pill radius on a data table. Do not put square corners on Add, Filt
 - **Do not** use underline tabs for in-page inventory or list switching. Underlines remain acceptable only in dense clinical record section switchers that already use them.
 
 ### Filter popovers
-- **Style:** Rectangular floating sheet, about 370px wide (`min(100vw - 1.5rem, 370px)`), hairline border, no card radius, aligned to the Filter pill.
-- **Content:** Compact dropdowns, not expanded chip clouds. Two columns for short fields (Stock / Expiry), full width for long fields (Category).
+- **Style:** Rectangular floating sheet, about 370px wide (`min(100vw - 1.5rem, 370px)`), hairline border, `--radius-card` (12px) to match inventory cards, aligned to the Filter pill.
+- **Content:** Compact pill dropdowns, not expanded chip clouds and not square fields. Two columns for short fields (Stock / Expiry), full width for long fields (Category).
 - **Footer:** Right-aligned pill actions, Reset (secondary) then Apply Filters (primary red).
 - **Behavior:** Edits land on a draft. Apply commits and closes. Reset restores the draft to defaults. Dismissing without Apply keeps the last committed filters. Search stays outside the popover and applies live. BHC and RHU keep independent committed filter state.
 
@@ -288,8 +299,8 @@ Skeleton blocks stand in for data and keep the layout stable, with a thin top lo
 
 ### Do:
 - **Do** build surfaces from Ledger Sheet on Ledger Paper with 1px Rule Hairline borders, adding only the card hairline shadow on top-level sheets.
-- **Do** use pill buttons, pill tabs, and pill status chips. Use rectangular sheets, tables, and filter popovers.
-- **Do** use Brand 600 (#dc2626) for the one primary pill on a screen, Ink for text and chrome, and white for surfaces.
+- **Do** use pill buttons, pill tabs, pill dropdowns, and pill status chips. Use rectangular sheets and tables. Filter popovers use `--radius-card` (12px), not a pill and not a square.
+- **Do** use Brand 600 (`{colors.register-red}`) for the one primary pill on a screen, Ink for text and chrome, and white for surfaces.
 - **Do** reserve Alert Red for danger, urgency, errors, and destructive confirms.
 - **Do** use the green, amber, and cyan families for ordinary status.
 - **Do** keep table rows at 56px and headers at 44px, and truncate long text with an ellipsis and a title.
@@ -299,8 +310,8 @@ Skeleton blocks stand in for data and keep the layout stable, with a thin top lo
 - **Do** show locked modules as visible, labeled placeholders.
 
 ### Don't:
-- **Don't** make buttons, tabs, or filter triggers square. That is the retired EHR-minimalism look.
-- **Don't** make data tables or filter popovers into pills.
+- **Don't** make buttons, tabs, filter triggers, or filter dropdowns square. That is the retired EHR-minimalism look.
+- **Don't** make data tables or filter popover sheets into pills. Card radius on the sheet is required; pill radius on the sheet is not.
 - **Don't** lift, translate, or add a shadow to a card on hover.
 - **Don't** introduce `slate-*` utilities, rainbow category palettes, or new hardcoded hex values; they are migration targets.
 - **Don't** use red for anything that is not an action, an active place, or a danger.

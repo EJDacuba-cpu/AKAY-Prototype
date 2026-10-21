@@ -1,22 +1,22 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-15T15:53:35+00:00",
+  "generatedAt": "2026-10-22T04:42:00+08:00",
   "title": "Design System: AKAY",
   "extensions": {
     "colorMeta": {
       "ledger-paper": {
         "role": "neutral",
         "displayName": "Ledger Paper",
-        "canonical": "#f9fafb",
+        "canonical": "#f8f9fb",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "ledger-sheet": {
@@ -24,119 +24,134 @@
         "displayName": "Ledger Sheet",
         "canonical": "#ffffff",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "ledger-sheet-sunk": {
         "role": "neutral",
         "displayName": "Ledger Sheet Sunk",
-        "canonical": "#f3f4f6",
+        "canonical": "#f1f3f6",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "rule-hairline": {
         "role": "neutral",
         "displayName": "Rule Hairline",
-        "canonical": "#e5e7eb",
+        "canonical": "#e4e7ec",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "rule-strong": {
         "role": "neutral",
         "displayName": "Rule Strong",
-        "canonical": "#d1d5db",
+        "canonical": "#d0d5dd",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "ink": {
         "role": "neutral",
         "displayName": "Ink",
-        "canonical": "#111827",
+        "canonical": "#101828",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
+        ]
+      },
+      "ink-navy": {
+        "role": "secondary",
+        "displayName": "Navy Ink",
+        "canonical": "#1b2638",
+        "tonalRamp": [
+          "#0c121c",
+          "#131b29",
+          "#1b2638",
+          "#2c3a52",
+          "#45536b",
+          "#6b7a93",
+          "#c9d1de",
+          "#f2f4f8"
         ]
       },
       "ink-secondary": {
         "role": "neutral",
         "displayName": "Ink Secondary",
-        "canonical": "#4b5563",
+        "canonical": "#475467",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "ink-muted": {
         "role": "neutral",
         "displayName": "Ink Muted",
-        "canonical": "#6b7280",
+        "canonical": "#667085",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "ink-disabled": {
         "role": "neutral",
         "displayName": "Ink Disabled",
-        "canonical": "#9ca3af",
+        "canonical": "#98a2b3",
         "tonalRamp": [
-          "#111827",
-          "#1f2937",
-          "#374151",
-          "#4b5563",
-          "#6b7280",
-          "#9ca3af",
-          "#e5e7eb",
-          "#f9fafb"
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#e4e7ec",
+          "#f8f9fb"
         ]
       },
       "register-red": {
@@ -149,7 +164,7 @@
           "#b91c1c",
           "#dc2626",
           "#ef4444",
-          "#fca5a5",
+          "#fecaca",
           "#fee2e2",
           "#fef2f2"
         ]
@@ -164,7 +179,7 @@
           "#b91c1c",
           "#dc2626",
           "#ef4444",
-          "#fca5a5",
+          "#fecaca",
           "#fee2e2",
           "#fef2f2"
         ]
@@ -179,7 +194,7 @@
           "#b91c1c",
           "#dc2626",
           "#ef4444",
-          "#fca5a5",
+          "#fecaca",
           "#fee2e2",
           "#fef2f2"
         ]
@@ -194,7 +209,7 @@
           "#b91c1c",
           "#dc2626",
           "#ef4444",
-          "#fca5a5",
+          "#fecaca",
           "#fee2e2",
           "#fef2f2"
         ]
@@ -209,7 +224,7 @@
           "#b91c1c",
           "#dc2626",
           "#ef4444",
-          "#fca5a5",
+          "#fecaca",
           "#fee2e2",
           "#fef2f2"
         ]
@@ -217,151 +232,151 @@
       "alert-red": {
         "role": "secondary",
         "displayName": "Alert Red",
-        "canonical": "#ef4444",
+        "canonical": "#d92d20",
         "tonalRamp": [
-          "#7f1d1d",
-          "#991b1b",
-          "#b91c1c",
-          "#dc2626",
-          "#ef4444",
-          "#fca5a5",
-          "#fee2e2",
-          "#fef2f2"
+          "#b42318",
+          "#d92d20",
+          "#f04438",
+          "#f97066",
+          "#fda29b",
+          "#fecdca",
+          "#fee4e2",
+          "#fef3f2"
         ]
       },
       "stamp-green": {
         "role": "tertiary",
         "displayName": "Stamp Green",
-        "canonical": "#059669",
+        "canonical": "#12b76a",
         "tonalRamp": [
-          "#024a34",
-          "#04825b",
-          "#06bb83",
-          "#08f3aa",
-          "#3df9be",
-          "#76fad1",
-          "#aefce4",
-          "#e6fef7"
+          "#027a48",
+          "#0b9a58",
+          "#12b76a",
+          "#3cc985",
+          "#6edba3",
+          "#a6edc4",
+          "#d1fadf",
+          "#ecfdf3"
         ]
       },
       "stamp-green-ink": {
         "role": "tertiary",
         "displayName": "Stamp Green Ink",
-        "canonical": "#047857",
+        "canonical": "#027a48",
         "tonalRamp": [
-          "#024a36",
-          "#04825f",
-          "#06bb87",
-          "#08f3b0",
-          "#3df9c3",
-          "#76fad5",
-          "#aefce6",
-          "#e6fef7"
+          "#027a48",
+          "#0b9a58",
+          "#12b76a",
+          "#3cc985",
+          "#6edba3",
+          "#a6edc4",
+          "#d1fadf",
+          "#ecfdf3"
         ]
       },
       "stamp-green-tint": {
         "role": "tertiary",
         "displayName": "Stamp Green Tint",
-        "canonical": "#ecfdf5",
+        "canonical": "#ecfdf3",
         "tonalRamp": [
-          "#074528",
-          "#0d7a47",
-          "#12af65",
-          "#18e384",
-          "#4aeca0",
-          "#7ef1bb",
-          "#b3f7d7",
-          "#e8fdf3"
+          "#027a48",
+          "#0b9a58",
+          "#12b76a",
+          "#3cc985",
+          "#6edba3",
+          "#a6edc4",
+          "#d1fadf",
+          "#ecfdf3"
         ]
       },
       "stamp-amber": {
         "role": "tertiary",
         "displayName": "Stamp Amber",
-        "canonical": "#f59e0b",
+        "canonical": "#f79009",
         "tonalRamp": [
-          "#492f03",
-          "#815305",
-          "#b97708",
-          "#f19b0a",
-          "#f7b23f",
-          "#f9c977",
-          "#fcdfaf",
-          "#fef5e7"
+          "#b54708",
+          "#d66a08",
+          "#f79009",
+          "#f9a73a",
+          "#fbc06b",
+          "#fdd89c",
+          "#fef0c7",
+          "#fffaeb"
         ]
       },
       "stamp-amber-ink": {
         "role": "tertiary",
         "displayName": "Stamp Amber Ink",
-        "canonical": "#b45309",
+        "canonical": "#b54708",
         "tonalRamp": [
-          "#492204",
-          "#803b06",
-          "#b85509",
-          "#ef6e0c",
-          "#f58f40",
-          "#f8af78",
-          "#fbd0af",
-          "#fef1e7"
+          "#b54708",
+          "#d66a08",
+          "#f79009",
+          "#f9a73a",
+          "#fbc06b",
+          "#fdd89c",
+          "#fef0c7",
+          "#fffaeb"
         ]
       },
       "stamp-amber-tint": {
         "role": "tertiary",
         "displayName": "Stamp Amber Tint",
-        "canonical": "#fffbeb",
+        "canonical": "#fffaeb",
         "tonalRamp": [
-          "#4c3d00",
-          "#876c00",
-          "#c19a00",
-          "#fbc900",
-          "#ffd737",
-          "#ffe371",
-          "#ffeeab",
-          "#fffae5"
+          "#b54708",
+          "#d66a08",
+          "#f79009",
+          "#f9a73a",
+          "#fbc06b",
+          "#fdd89c",
+          "#fef0c7",
+          "#fffaeb"
         ]
       },
       "stamp-cyan": {
         "role": "tertiary",
-        "displayName": "Stamp Cyan",
-        "canonical": "#0891b2",
+        "displayName": "Info Blue",
+        "canonical": "#2e90fa",
         "tonalRamp": [
-          "#033c49",
-          "#066981",
-          "#0897b9",
-          "#0bc4f1",
-          "#3fd3f6",
-          "#77e0f9",
-          "#afedfb",
-          "#e7f9fe"
+          "#175cd3",
+          "#2276e7",
+          "#2e90fa",
+          "#5ba8fb",
+          "#88c0fc",
+          "#b5d8fe",
+          "#d1e9ff",
+          "#eff8ff"
         ]
       },
       "stamp-cyan-ink": {
         "role": "tertiary",
-        "displayName": "Stamp Cyan Ink",
-        "canonical": "#0e7490",
+        "displayName": "Info Blue Ink",
+        "canonical": "#175cd3",
         "tonalRamp": [
-          "#073846",
-          "#0c637b",
-          "#118eb0",
-          "#16b9e5",
-          "#48caed",
-          "#7ed9f2",
-          "#b3e9f8",
-          "#e8f8fd"
+          "#175cd3",
+          "#2276e7",
+          "#2e90fa",
+          "#5ba8fb",
+          "#88c0fc",
+          "#b5d8fe",
+          "#d1e9ff",
+          "#eff8ff"
         ]
       },
       "stamp-cyan-tint": {
         "role": "tertiary",
-        "displayName": "Stamp Cyan Tint",
-        "canonical": "#ecfeff",
+        "displayName": "Info Blue Tint",
+        "canonical": "#eff8ff",
         "tonalRamp": [
-          "#00484c",
-          "#008087",
-          "#00b7c1",
-          "#00eefb",
-          "#37f4ff",
-          "#71f8ff",
-          "#abfbff",
-          "#e5feff"
+          "#175cd3",
+          "#2276e7",
+          "#2e90fa",
+          "#5ba8fb",
+          "#88c0fc",
+          "#b5d8fe",
+          "#d1e9ff",
+          "#eff8ff"
         ]
       }
     },
@@ -372,7 +387,7 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Section and card headings."
+        "purpose": "Section and card headings. Smaller cards use 14px bold."
       },
       "body": {
         "displayName": "Body",
@@ -380,7 +395,7 @@
       },
       "nav": {
         "displayName": "Nav",
-        "purpose": "Sidebar items."
+        "purpose": "Sidebar items and pill buttons."
       },
       "label": {
         "displayName": "Label",
@@ -388,41 +403,41 @@
       },
       "data": {
         "displayName": "Data",
-        "purpose": "Patient IDs, referral codes, quantities in IBM Plex Mono."
+        "purpose": "Patient IDs, referral codes, quantities in tabular Inter."
       }
     },
     "shadows": [
       {
         "name": "card-hairline",
-        "value": "0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.03)",
+        "value": "var(--shadow-card)",
         "purpose": "Top-level sheets only; reads as a hairline, not a lift."
       },
       {
         "name": "floating-layer",
-        "value": "0 4px 12px rgba(17, 24, 39, 0.08)",
+        "value": "var(--shadow-lg)",
         "purpose": "Menus, popovers, modals, toasts only."
       },
       {
         "name": "focus-ring",
-        "value": "0 0 0 3px rgba(220, 38, 38, 0.3)",
-        "purpose": "Input and keyboard focus."
+        "value": "0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent)",
+        "purpose": "Input and keyboard focus. Do not use a colored halo as decoration."
       }
     ],
     "motion": [
       {
         "name": "ease-ui",
-        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
-        "purpose": "Global 150ms transition on buttons, links, and inputs."
+        "value": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Global transition on buttons, links, and inputs."
       },
       {
         "name": "ease-out-expo",
-        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "350ms fade-up when sheets and list items enter."
+        "value": "0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Fade-up when sheets and list items enter."
       },
       {
         "name": "ease-modal",
-        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
-        "purpose": "240ms modal entrance."
+        "value": "0.24s cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Modal entrance."
       }
     ],
     "breakpoints": [
@@ -433,6 +448,10 @@
       {
         "name": "lg",
         "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
       },
       {
         "name": "short",
@@ -449,33 +468,41 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The one main action on a screen: Save, Submit, Refer.",
-      "html": "<button class=\"ds-btn-primary\">Save record</button>",
-      "css": ".ds-btn-primary { font-family: 'Public Sans Variable', system-ui, sans-serif; height: 44px; padding: 8px 16px; background: #dc2626; color: #fff; border: 0; border-radius: 0; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s; } .ds-btn-primary:hover { background: #b91c1c; } .ds-btn-primary:active { background: #991b1b; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(220,38,38,0.3); }"
+      "description": "The one red pill on a screen: Add, Save, Submit, Apply Filters, Refer.",
+      "html": "<button class=\"ds-btn-primary\">+ Add Medicine</button>",
+      "css": ".ds-btn-primary { font-family: var(--font-sans); display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 8px 16px; background: var(--color-brand); color: #fff; border: 0; border-radius: var(--radius-pill); font-size: 13px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-xs); transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-primary:hover { background: var(--color-brand-700); } .ds-btn-primary:active { background: var(--color-brand-800); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent); }"
+    },
+    {
+      "name": "Filter Pill",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary pill with a circular sliders well; the count appears only when filters are applied.",
+      "html": "<button class=\"ds-btn-filter\" type=\"button\"><span class=\"ds-btn-filter-icon\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.1\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><line x1=\"21\" x2=\"14\" y1=\"4\" y2=\"4\"/><line x1=\"10\" x2=\"3\" y1=\"4\" y2=\"4\"/><line x1=\"21\" x2=\"12\" y1=\"12\" y2=\"12\"/><line x1=\"8\" x2=\"3\" y1=\"12\" y2=\"12\"/><line x1=\"21\" x2=\"16\" y1=\"20\" y2=\"20\"/><line x1=\"12\" x2=\"3\" y1=\"20\" y2=\"20\"/><line x1=\"14\" x2=\"14\" y1=\"2\" y2=\"6\"/><line x1=\"8\" x2=\"8\" y1=\"10\" y2=\"14\"/><line x1=\"16\" x2=\"16\" y1=\"18\" y2=\"22\"/></svg></span>Filter<span class=\"ds-btn-filter-count\">2</span></button>",
+      "css": ".ds-btn-filter { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 6px; background: var(--color-surface); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-pill); font-size: 13px; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-xs); transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-filter:hover { background: var(--color-neutral-50); border-color: var(--color-border-strong); } .ds-btn-filter:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent); } .ds-btn-filter-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: var(--color-neutral-100); color: var(--color-neutral-600); } .ds-btn-filter-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--color-brand); color: #fff; font-size: 10px; font-weight: 700; }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "Secondary and tertiary actions.",
+      "description": "Tertiary pill for Cancel and quiet actions.",
       "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
-      "css": ".ds-btn-ghost { font-family: 'Public Sans Variable', system-ui, sans-serif; height: 36px; padding: 0 12px; background: transparent; color: #4b5563; border: 0; border-radius: 0; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s; } .ds-btn-ghost:hover { background: #f3f4f6; color: #111827; } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(220,38,38,0.3); }"
+      "css": ".ds-btn-ghost { font-family: var(--font-sans); display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 12px; background: transparent; color: var(--color-text-secondary); border: 0; border-radius: var(--radius-pill); font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-ghost:hover { background: var(--color-neutral-100); color: var(--color-text); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent); }"
     },
     {
       "name": "Text Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "Single-line field with an uppercase micro-label.",
+      "description": "Single-line field with an uppercase micro-label and an ink focus ring.",
       "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-ln\">Last name</label><input id=\"ds-ln\" class=\"ds-input\" value=\"Dela Cruz\" /></div>",
-      "css": ".ds-field { font-family: 'Public Sans Variable', system-ui, sans-serif; width: 240px; } .ds-field-label { display: block; margin-bottom: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280; } .ds-input { width: 100%; box-sizing: border-box; padding: 8px 12px; background: #fff; color: #111827; border: 1px solid #e5e7eb; border-radius: 0; font: inherit; font-size: 14px; transition: border-color 0.15s, box-shadow 0.15s; } .ds-input:hover { border-color: #d1d5db; } .ds-input:focus { outline: none; border-color: #fca5a5; box-shadow: 0 0 0 3px rgba(220,38,38,0.3); }"
+      "css": ".ds-field { font-family: var(--font-sans); width: 240px; } .ds-field-label { display: block; margin-bottom: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); } .ds-input { width: 100%; box-sizing: border-box; padding: 8px 12px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); border-radius: var(--radius-input); font: inherit; font-size: 13px; transition: border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-input:hover { border-color: var(--color-border-strong); } .ds-input:focus { outline: none; border-color: var(--color-ink-400); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 30%, transparent); }"
     },
     {
       "name": "Sidebar Nav Item",
       "kind": "nav",
       "refersTo": "nav-item",
       "description": "Rail item with a 4px left bar; the active item carries the red bar and tint, locked items stay visible.",
-      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-active\" href=\"#\">Patients</a><a class=\"ds-nav-item\" href=\"#\">Referrals</a><span class=\"ds-nav-item ds-nav-locked\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"11\" width=\"18\" height=\"11\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/></svg>Reports</span></nav>",
-      "css": ".ds-nav { font-family: 'Public Sans Variable', system-ui, sans-serif; width: 220px; background: #fff; border-right: 1px solid #e5e7eb; } .ds-nav-item { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-left: 4px solid transparent; font-size: 13px; font-weight: 500; color: #4b5563; text-decoration: none; transition: background 0.15s, color 0.15s; } .ds-nav-item:hover { background: #f9fafb; color: #111827; } .ds-nav-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #fca5a5; } .ds-nav-active { border-left-color: #dc2626; background: #fef2f2; color: #b91c1c; font-weight: 600; } .ds-nav-active:hover { background: #fef2f2; color: #b91c1c; } .ds-nav-locked { color: #9ca3af; cursor: not-allowed; } .ds-nav-locked:hover { background: transparent; color: #9ca3af; }"
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-active\" href=\"#\">Patients</a><a class=\"ds-nav-item\" href=\"#\">Referrals</a><span class=\"ds-nav-item ds-nav-locked\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/></svg>Reports</span></nav>",
+      "css": ".ds-nav { font-family: var(--font-sans); width: 220px; background: var(--color-surface); border-right: 1px solid var(--color-border); } .ds-nav-item { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-left: 4px solid transparent; font-size: 13px; font-weight: 500; color: var(--color-text-secondary); text-decoration: none; transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-nav-item:hover { background: var(--color-neutral-50); color: var(--color-text); } .ds-nav-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent); } .ds-nav-active { border-left-color: var(--color-brand); background: var(--color-brand-50); color: var(--color-brand-700); font-weight: 600; } .ds-nav-active:hover { background: var(--color-brand-50); color: var(--color-brand-700); } .ds-nav-locked { color: var(--color-neutral-400); cursor: not-allowed; } .ds-nav-locked:hover { background: transparent; color: var(--color-neutral-400); }"
     },
     {
       "name": "Status Badge",
@@ -483,23 +510,31 @@
       "refersTo": "status-badge",
       "description": "Bordered pill with a dot and uppercase label; the color family follows meaning.",
       "html": "<div class=\"ds-badges\"><span class=\"ds-badge ds-badge-ok\"><i></i>Completed</span><span class=\"ds-badge ds-badge-info\"><i></i>Pending</span><span class=\"ds-badge ds-badge-warn\"><i></i>Follow-up Required</span><span class=\"ds-badge ds-badge-bad\"><i></i>Cancelled</span></div>",
-      "css": ".ds-badges { font-family: 'Public Sans Variable', system-ui, sans-serif; display: flex; flex-wrap: wrap; gap: 8px; } .ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; } .ds-badge i { width: 6px; height: 6px; border-radius: 999px; } .ds-badge-ok { background: #ecfdf5; color: #047857; border-color: #a7f3d0; } .ds-badge-ok i { background: #10b981; } .ds-badge-info { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; } .ds-badge-info i { background: #3b82f6; } .ds-badge-warn { background: #fffbeb; color: #b45309; border-color: #fde68a; } .ds-badge-warn i { background: #f59e0b; } .ds-badge-bad { background: #fef2f2; color: #b91c1c; border-color: #fecaca; } .ds-badge-bad i { background: #dc2626; }"
+      "css": ".ds-badges { font-family: var(--font-sans); display: flex; flex-wrap: wrap; gap: 8px; } .ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid; border-radius: var(--radius-pill); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; } .ds-badge i { width: 6px; height: 6px; border-radius: 999px; } .ds-badge-ok { background: var(--color-success-50); color: var(--color-success-700); border-color: var(--color-success-100); } .ds-badge-ok i { background: var(--color-success-500); } .ds-badge-info { background: var(--color-info-50); color: var(--color-info-700); border-color: var(--color-info-100); } .ds-badge-info i { background: var(--color-info-500); } .ds-badge-warn { background: var(--color-warning-50); color: var(--color-warning-700); border-color: var(--color-warning-100); } .ds-badge-warn i { background: var(--color-warning-500); } .ds-badge-bad { background: var(--color-brand-50); color: var(--color-brand-700); border-color: var(--color-brand-200); } .ds-badge-bad i { background: var(--color-danger); }"
     },
     {
       "name": "Record Card",
       "kind": "card",
       "refersTo": "record-card",
-      "description": "Flat bordered sheet; the border strengthens on hover and nothing moves.",
+      "description": "White sheet with 12px corners; the border strengthens on hover and nothing moves.",
       "html": "<section class=\"ds-card\"><h3>Vital signs</h3><p>Recorded 14 Oct 2026, 09:12</p></section>",
-      "css": ".ds-card { font-family: 'Public Sans Variable', system-ui, sans-serif; width: 280px; padding: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 0; transition: border-color 0.18s; } .ds-card:hover { border-color: #d1d5db; } .ds-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: #111827; } .ds-card p { margin: 0; font-size: 12px; color: #6b7280; }"
+      "css": ".ds-card { font-family: var(--font-sans); width: 280px; padding: 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); transition: border-color 0.18s ease; } .ds-card:hover { border-color: var(--color-border-strong); } .ds-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--color-text); } .ds-card p { margin: 0; font-size: 12px; color: var(--color-text-muted); }"
     },
     {
-      "name": "Record Tabs",
+      "name": "Pill Tabs",
       "kind": "nav",
-      "refersTo": "nav-item-active",
-      "description": "Ruled tab strip with a 2px underline; the active tab is deep red.",
-      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab ds-tab-active\" role=\"tab\" aria-selected=\"true\">Overview</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Records</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Background</button></div>",
-      "css": ".ds-tabs { font-family: 'Public Sans Variable', system-ui, sans-serif; display: flex; border-bottom: 1px solid #e5e7eb; background: #fff; } .ds-tab { padding: 12px 16px; margin-bottom: -1px; background: none; border: 0; border-bottom: 2px solid transparent; font: inherit; font-size: 12px; font-weight: 600; color: #9ca3af; cursor: pointer; transition: color 0.15s, border-color 0.15s; } .ds-tab:hover { color: #4b5563; border-bottom-color: #d1d5db; } .ds-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px #fca5a5; } .ds-tab-active, .ds-tab-active:hover { color: #b91c1c; border-bottom-color: #b91c1c; }"
+      "refersTo": "tab-pill",
+      "description": "Segmented control on a sunk track for in-page inventory and list switching.",
+      "html": "<div class=\"ds-pills\" role=\"tablist\"><button class=\"ds-pill ds-pill-active\" role=\"tab\" aria-selected=\"true\">BHC Inventory</button><button class=\"ds-pill\" role=\"tab\" aria-selected=\"false\">RHU Stock</button></div>",
+      "css": ".ds-pills { font-family: var(--font-sans); display: inline-flex; align-items: center; gap: 2px; padding: 4px; background: var(--color-neutral-100); border-radius: var(--radius-pill); } .ds-pill { height: 32px; padding: 0 12px; background: transparent; border: 0; border-radius: var(--radius-pill); font: inherit; font-size: 12px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1), color 0.15s cubic-bezier(0.4, 0, 0.2, 1); } .ds-pill:hover { color: var(--color-text); } .ds-pill:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 50%, transparent); } .ds-pill-active, .ds-pill-active:hover { background: var(--color-surface); color: var(--color-text); }"
+    },
+    {
+      "name": "Filter Popover",
+      "kind": "custom",
+      "refersTo": "filter-popover",
+      "description": "370px card-radius draft/apply sheet: pill dropdowns, Reset then Apply Filters.",
+      "html": "<div class=\"ds-filter\"><div class=\"ds-filter-head\"><p>Filters</p></div><div class=\"ds-filter-body\"><label class=\"ds-filter-field\">Stock<select><option>All</option></select></label><label class=\"ds-filter-field\">Expiry<select><option>All</option></select></label><label class=\"ds-filter-field ds-filter-full\">Category<select><option>All categories</option></select></label></div><div class=\"ds-filter-foot\"><button class=\"ds-filter-reset\" type=\"button\">Reset</button><button class=\"ds-filter-apply\" type=\"button\">Apply Filters</button></div></div>",
+      "css": ".ds-filter { font-family: var(--font-sans); width: 370px; max-width: 100%; overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); box-shadow: var(--shadow-lg); } .ds-filter-head { padding: 10px 12px; border-bottom: 1px solid var(--color-border); } .ds-filter-head p { margin: 0; font-size: 13px; font-weight: 600; color: var(--color-ink-800); } .ds-filter-body { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; } .ds-filter-field { display: flex; flex-direction: column; gap: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-secondary); } .ds-filter-field select { height: 32px; width: 100%; padding: 0 28px 0 12px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); appearance: none; background-color: var(--color-surface); background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\"); background-repeat: no-repeat; background-position: right 10px center; color: var(--color-ink-800); font-size: 13px; font-weight: 400; letter-spacing: normal; text-transform: none; } .ds-filter-field select:hover { border-color: var(--color-border-strong); } .ds-filter-field select:focus { outline: none; border-color: var(--color-ink-400); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ink-400) 30%, transparent); } .ds-filter-full { grid-column: 1 / -1; } .ds-filter-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--color-border); } .ds-filter-reset, .ds-filter-apply { height: 32px; padding: 0 14px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; cursor: pointer; } .ds-filter-reset { background: var(--color-surface); color: var(--color-neutral-700); border: 1px solid var(--color-border); } .ds-filter-reset:hover { background: var(--color-neutral-50); } .ds-filter-apply { background: var(--color-brand); color: #fff; border: 0; } .ds-filter-apply:hover { background: var(--color-brand-700); }"
     },
     {
       "name": "Fixed Data Table",
@@ -507,20 +542,25 @@
       "refersTo": "table-row",
       "description": "44px header, 56px single-line rows; long text truncates with an ellipsis.",
       "html": "<table class=\"ds-table\"><thead><tr><th>Patient</th><th>ID</th><th>Barangay</th></tr></thead><tbody><tr><td>Maria Dela Cruz</td><td class=\"ds-mono\">PT-00412</td><td>San Isidro</td></tr><tr><td>Jose Santos</td><td class=\"ds-mono\">PT-00413</td><td>Poblacion</td></tr></tbody></table>",
-      "css": ".ds-table { font-family: 'Public Sans Variable', system-ui, sans-serif; width: 420px; border-collapse: separate; border-spacing: 0; background: #fff; border: 1px solid #e5e7eb; text-align: left; } .ds-table th { height: 44px; padding: 0 16px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280; white-space: nowrap; } .ds-table td { height: 56px; padding: 0 16px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22rem; } .ds-table tbody tr:last-child td { border-bottom: 0; } .ds-table tbody tr:hover td { background: #f9fafb; } .ds-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; }"
+      "css": ".ds-table { font-family: var(--font-sans); width: 420px; border-collapse: separate; border-spacing: 0; background: var(--color-surface); border: 1px solid var(--color-border); text-align: left; } .ds-table th { height: 44px; padding: 0 16px; background: var(--color-neutral-100); border-bottom: 1px solid var(--color-border); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-muted); white-space: nowrap; } .ds-table td { height: 56px; padding: 0 16px; border-bottom: 1px solid var(--color-border); font-size: 13px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22rem; } .ds-table tbody tr:last-child td { border-bottom: 0; } .ds-table tbody tr:hover td { background: var(--color-neutral-100); } .ds-mono { font-feature-settings: \"tnum\", \"zero\"; font-size: 12px; }"
     }
   ],
   "narrative": {
-    "northStar": "The Clinic Ledger",
-    "overview": "AKAY looks like a well-kept logbook at a health center: white sheets ruled with hairlines on a pale gray desk. Nothing floats, nothing is rounded for charm, and nothing is decorated. Structure comes from 1px borders and consistent row heights, so a midwife scanning forty rows at the end of a clinic day lands on the same column in the same place every time. Red is the single mark of attention. It appears on the one primary action, on the active place in navigation, and, in its alert form, when something is wrong or irreversible.\n\nThe register is dense but not cramped. Body text is 14px, headings are bold sans, and IDs and codes sit in monospace. Screens are built for repeated daily work on a desktop or laptop in a facility, sometimes over a weak connection, so loading and error states are first-class parts of the system rather than afterthoughts. The interface should feel competent and calm to someone on a long shift, and never promotional.\n\nThe system does not suggest, diagnose, or decorate. Clinical fields look like fields a trained person fills in. Saved records look permanent. Locked modules are visible and honest about being locked.",
+    "northStar": "The Clinic Ledger, with modern SaaS controls",
+    "overview": "AKAY still reads as a well-kept logbook at a health center: white sheets ruled with hairlines on a pale gray desk. Data stays dense and scannable. What changed is the control language. Buttons, tabs, and filter triggers are pills, so daily actions feel like current clinical SaaS (Healthie, Elation, Canvas, Linear) rather than a boxy 2016 EHR. Sheets, tables, and popover panels stay rectangular. Red is still the single mark of attention: the one primary action, the active place, and, in its alert form, danger.\n\nThe three-color core is navy ink, brand red, and white. Ink carries text and chrome. White carries readable surfaces. Red is spent once per screen on the thing to do. Ordinary clinical state still uses green, amber, and cyan stamps.\n\nScreens are built for repeated daily work on a desktop or laptop in a facility, sometimes over a weak connection. Loading and error states are first-class. The interface should feel competent and calm on a long shift, never promotional, and never like a diagnosis engine.",
     "keyCharacteristics": [
-      "Flat sheets separated by 1px hairlines; a visible shadow only on floating layers.",
-      "Square corners everywhere. A 2px radius on small tags is the only softening, and the pill shape is reserved for dots, avatars, and status chips.",
-      "One red. Primary actions and active states use it, and urgency uses its alert form. Ordinary state uses green, amber, and cyan.",
+      "Three-color core: navy ink, brand red, white. Status color is extra, not a fourth brand color.",
+      "Rectangular sheets and tables with `--radius-card` (12px) on cards and filter popovers; pill-shaped buttons, tabs, dropdowns, and status chips.",
+      "One red. Primary actions and active place use it. Alert red is for danger only.",
       "Fixed-size tables: the same row height whether the page has three rows or ten.",
       "Cool-gray neutrals tinted toward blue, never warm."
     ],
     "rules": [
+      {
+        "name": "The Three-Color Core Rule",
+        "body": "Ink, red, and white are the brand. Green, amber, and cyan are stamps, not a second brand. A new module that introduces purple, slate, or rainbow category chips is drift.",
+        "section": "colors"
+      },
       {
         "name": "The One Stamp Rule",
         "body": "Red marks the one thing to do or the one thing that is wrong. Brand red is for action and place; Alert Red is for danger. If a screen has red everywhere, none of it is read.",
@@ -528,12 +568,12 @@
       },
       {
         "name": "The Status-Is-Not-Danger Rule",
-        "body": "Ordinary state (completed, pending, low stock) uses green, amber, or cyan. Alert Red is never spent on state that is merely noteworthy.",
+        "body": "Ordinary state (completed, pending, low stock) uses green, amber, and cyan. Alert Red is never spent on state that is merely noteworthy.",
         "section": "colors"
       },
       {
         "name": "The Tokens-First Rule",
-        "body": "Screens reference role tokens (`--color-text`, `--color-surface`, `--color-primary`) or the neutral and brand ramps. Raw `slate-*` utilities and hardcoded hex such as `#0F172A`, `#F8FAFC`, or `#B91C1C` are drift from before the token rework and are migration targets, not part of the system.",
+        "body": "Screens reference role tokens (`--color-text`, `--color-surface`, `--color-brand`, `--color-ink-*`, `--color-neutral-*`) or the ramps in `frontend/src/index.css`. Raw `slate-*` utilities and hardcoded hex such as `#0F172A`, `#F8FAFC`, or `#B91C1C` are migration targets, not part of the system.",
         "section": "colors"
       },
       {
@@ -543,7 +583,7 @@
       },
       {
         "name": "The Mono-For-Identity Rule",
-        "body": "If a value is something a person might read aloud or copy (an ID, a code), it is monospace.",
+        "body": "If a value is something a person might read aloud or copy (an ID, a code), it uses tabular figures, not a decorative monospace costume.",
         "section": "typography"
       },
       {
@@ -552,26 +592,38 @@
         "section": "layout"
       },
       {
+        "name": "The Toolbar-Then-Table Rule",
+        "body": "Search, filters, and the primary action sit in a compact toolbar above the sheet. Do not insert a second page header, a third filter band, or extra chrome between the toolbar and the rows.",
+        "section": "layout"
+      },
+      {
         "name": "The Flat-At-Rest Rule",
-        "body": "Sheets do not lift on hover. Hover changes a border to Rule Strong or a fill to Ledger Sheet Sunk; it never moves the element or adds a shadow. The existing `.card-hover` lift and the `SectionCard` hover translate and shadow are drift from this rule.",
+        "body": "Sheets do not lift on hover. Hover changes a border to Rule Strong or a fill to Ledger Sheet Sunk; it never moves the element or adds a shadow.",
         "section": "elevation"
+      },
+      {
+        "name": "The Control-Is-A-Pill Rule",
+        "body": "If the user can press it to change the view or commit an action, it is a pill. If it holds records, it is a rectangle.",
+        "section": "shapes"
       }
     ],
     "dos": [
       "Do build surfaces from Ledger Sheet on Ledger Paper with 1px Rule Hairline borders, adding only the card hairline shadow on top-level sheets.",
-      "Do use Register Red (#dc2626) for fills and Register Red Deep (#b91c1c) for red text, active states, and hover.",
-      "Do reserve Alert Red (#ef4444) for danger, urgency, errors, and destructive confirms.",
+      "Do use pill buttons, pill tabs, pill dropdowns, and pill status chips. Use rectangular sheets and tables. Filter popovers use `--radius-card` (12px), not a pill and not a square.",
+      "Do use Brand 600 (`{colors.register-red}`) for the one primary pill on a screen, Ink for text and chrome, and white for surfaces.",
+      "Do reserve Alert Red for danger, urgency, errors, and destructive confirms.",
       "Do use the green, amber, and cyan families for ordinary status.",
       "Do keep table rows at 56px and headers at 44px, and truncate long text with an ellipsis and a title.",
-      "Do put IDs and codes in IBM Plex Mono.",
-      "Do reference `--color-*` role tokens or the neutral and brand ramps instead of raw hex.",
+      "Do put IDs and codes in tabular Inter, not a costume mono.",
+      "Do reference `--color-*` role tokens or the ink, brand, and neutral ramps instead of raw hex.",
       "Do respect `prefers-reduced-motion`, and keep motion to short fades and state transitions.",
       "Do show locked modules as visible, labeled placeholders."
     ],
     "donts": [
-      "Don't round corners, other than the 2px badge radius and the pill on dots, avatars, and status chips.",
+      "Don't make buttons, tabs, filter triggers, or filter dropdowns square. That is the retired EHR-minimalism look.",
+      "Don't make data tables or filter popover sheets into pills. Card radius on the sheet is required; pill radius on the sheet is not.",
       "Don't lift, translate, or add a shadow to a card on hover.",
-      "Don't introduce `slate-*` utilities or new hardcoded hex values; they are migration targets.",
+      "Don't introduce `slate-*` utilities, rainbow category palettes, or new hardcoded hex values; they are migration targets.",
       "Don't use red for anything that is not an action, an active place, or a danger.",
       "Don't blur real data to indicate a lock; render a placeholder.",
       "Don't make type larger or looser for decoration; density is intentional.",

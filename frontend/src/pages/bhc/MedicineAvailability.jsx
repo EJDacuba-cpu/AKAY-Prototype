@@ -9,6 +9,7 @@ import {
   MoreVertical,
   Package,
   PackagePlus,
+  ChevronDown,
   SlidersHorizontal,
   Trash2,
   X,
@@ -17,7 +18,6 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import {
   ConfirmationModal,
-  FixedTable,
   NoticeModal,
   PageStateWrapper,
   RefreshingIndicator,
@@ -31,6 +31,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../../components/ui/popover";
+import { Button } from "../../components/ui/button";
 import usePagedRows from "../../hooks/usePagedRows";
 import { resetKeyOf } from "../../utils/tablePaging";
 import MedicineFormModal from "../../components/features/medicine/MedicineFormModal";
@@ -49,7 +50,7 @@ import {
 import {
   BHC_EXPIRY_FILTER_OPTIONS,
   BHC_STOCK_FILTER_OPTIONS,
-  expiryStatusTone,
+  EXPIRY_STATUS,
   getMedicineExpiryStatus,
   getMedicineInventoryView,
   getMedicineStockStatus,
@@ -80,14 +81,8 @@ const CATEGORY_OPTIONS = ["All Categories", ...MEDICINE_CATEGORIES];
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
-const PILL_FILTER =
-  "inline-flex h-9 items-center gap-2 rounded-full border py-0 pl-1.5 pr-3 text-[13px] font-medium shadow-xs transition-colors";
 const FILTER_SELECT =
-  "h-8 w-full min-w-0 rounded-none border border-neutral-200 bg-white px-2.5 text-[13px] text-ink-800 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
-const PILL_SECONDARY =
-  "inline-flex h-8 items-center justify-center rounded-full border border-neutral-200 bg-white px-3.5 text-[12px] font-medium text-neutral-700 shadow-xs transition-colors hover:bg-neutral-50";
-const PILL_PRIMARY =
-  "inline-flex h-8 items-center justify-center rounded-full bg-brand-600 px-3.5 text-[12px] font-medium text-white shadow-xs transition-colors hover:bg-brand-700";
+  "h-8 w-full min-w-0 cursor-pointer appearance-none rounded-full border border-neutral-200 bg-white py-0 pl-3 pr-8 text-[13px] text-ink-800 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
 
 export default function MedicineAvailability() {
   const queryClient = useQueryClient();
@@ -341,6 +336,7 @@ export default function MedicineAvailability() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div
             role="tablist"
             aria-label="Inventory source"
@@ -383,6 +379,10 @@ export default function MedicineAvailability() {
               </span>
             </button>
           </div>
+          {isFetching && safeMedicineItems.length > 0 && (
+            <RefreshingIndicator label="Updating medicine inventory..." />
+          )}
+          </div>
           <div className="min-w-[220px] flex-1 sm:max-w-[320px]">
             <SearchField
               value={filters.search}
@@ -393,37 +393,33 @@ export default function MedicineAvailability() {
           </div>
         </div>
 
-      <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2">
-          <span aria-live="polite" className="text-[12px] text-neutral-600">
-            {narrowed
-              ? `Showing ${filteredItems.length} of ${activeItems.length} ${itemsWord}`
-              : `${activeItems.length} ${itemsWord}`}
-          </span>
-          {isFetching && safeMedicineItems.length > 0 && (
-            <RefreshingIndicator label="Updating medicine inventory..." />
-          )}
-        </div>
+      <p className="sr-only" aria-live="polite">
+        {narrowed
+          ? `Showing ${filteredItems.length} of ${activeItems.length} ${itemsWord}`
+          : `${activeItems.length} ${itemsWord}`}
+      </p>
 
-        <MedicineTable
-          items={pageRows}
-          editable={activeTab === "bhc" && canManageBhcInventory}
-          openMenuId={openMenuId}
-          setOpenMenuId={setOpenMenuId}
-          onEdit={openEditModal}
-          onRestock={(item) => openInventoryAction(item, "restock")}
-          onAdjust={(item) => openInventoryAction(item, "adjust")}
-          onHistory={openInventoryHistory}
-          onDelete={requestDelete}
-        />
-
-        <div className="mt-auto">
-          <TablePagination
-            currentPage={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
+      <div className="rounded-xl border border-neutral-200 bg-white">
+        <div className="overflow-x-auto sm:overflow-visible">
+          <MedicineTable
+            key={activeTab}
+            items={pageRows}
+            editable={activeTab === "bhc" && canManageBhcInventory}
+            openMenuId={openMenuId}
+            setOpenMenuId={setOpenMenuId}
+            onEdit={openEditModal}
+            onRestock={(item) => openInventoryAction(item, "restock")}
+            onAdjust={(item) => openInventoryAction(item, "adjust")}
+            onHistory={openInventoryHistory}
+            onDelete={requestDelete}
           />
         </div>
+
+        <TablePagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
       </div>
 
       <MedicineFormModal
@@ -488,134 +484,216 @@ function MedicineTable({
   onHistory,
   onDelete,
 }) {
+  const [expandedId, setExpandedId] = useState("");
+  const columnCount = editable ? 5 : 4;
+
+  function toggleExpanded(id) {
+    setExpandedId((current) => (current === id ? "" : id));
+  }
+
   return (
-    <FixedTable minWidth="min-w-[1120px]">
-        <thead>
-          <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            <th className="px-6 py-3">Item ID</th>
-            <th className="px-4 py-3">Medicine / Supply Name</th>
-            <th className="px-4 py-3">Category</th>
-            <th className="px-4 py-3">Quantity + Unit</th>
-            <th className="px-4 py-3">Stock</th>
-            <th className="px-4 py-3">Expiry</th>
-            <th className="px-4 py-3">Last Updated</th>
-            <th className="px-4 py-3">Notes</th>
-            {editable && <th className="px-4 py-3 text-right">Actions</th>}
-          </tr>
-        </thead>
-
-        <tbody className="divide-y divide-[#F3F4F6]">
-          {items.length === 0 ? (
-            <tr>
-              <td colSpan={editable ? 9 : 8} className="px-6 py-0 text-center">
-                <div className="flex min-h-[var(--akay-empty-h,260px)] flex-col items-center justify-center">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F3F4F6]">
-                    <Boxes size={20} className="text-[#9CA3AF]" />
-                  </div>
-                  <p className="text-sm font-semibold text-[#0F172A]">
-                    No medicines yet.
-                  </p>
-                  <p className="mt-1 text-xs text-[#9CA3AF]">
-                    Try adjusting your search or filters.
-                  </p>
-                </div>
-              </td>
-            </tr>
-          ) : (
-            items.map((item) => {
-              const inventory = getMedicineInventoryView(item);
-              return (
-                <tr
-                  key={item.id}
-                  className="transition-colors hover:bg-[#F9FAFB]"
-                >
-                <td className="whitespace-nowrap px-6 py-3.5">
-                  <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
-                    {item.id}
-                  </span>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5">
-                  <p className="text-sm font-semibold text-[#1A1A1A]">
-                    {item.name}
-                  </p>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5">
-                  <CategoryBadge category={item.category} />
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5 text-sm font-medium tabular-nums text-[#111827]">
-                  {formatMedicineQuantity(item)}
-                </td>
-
-                <td className="px-4 py-3.5">
-                  <div className="flex flex-col items-start gap-1">
-                    <InventoryStamp
-                      label={inventory.stockStatus}
-                      tone={stockStatusTone(inventory.stockStatus)}
-                    />
-                    {inventory.reconciliationRequired && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[#b45309]">
-                        Reconciliation Required
-                      </span>
-                    )}
-                  </div>
-                </td>
-
-                <td className="px-4 py-3.5">
-                  <div className="flex flex-col items-start gap-1">
-                    <span className="text-sm text-[#4b5563]">
-                      {inventory.expiryDateLabel}
-                    </span>
-                    <InventoryStamp
-                      label={inventory.expiryStatus}
-                      tone={expiryStatusTone(inventory.expiryStatus)}
-                      prominent={
-                        inventory.expiryStatus === "Expired" ||
-                        inventory.expiryStatus === "Expires Today"
-                      }
-                    />
-                  </div>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
-                  {formatDateTime(
-                    item.updated_at ||
-                      item.updatedAt ||
-                      item.created_at ||
-                      item.createdAt ||
-                      item.lastUpdated,
-                  )}
-                </td>
-
-                <td className="max-w-[220px] truncate px-4 py-3.5 text-sm text-[#6B7280]">
-                  {item.notes || "-"}
-                </td>
-
-                {editable && (
-                  <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                    <ActionMenu
-                      item={item}
-                      open={openMenuId === item.id}
-                      onToggle={() =>
-                        setOpenMenuId(openMenuId === item.id ? "" : item.id)
-                      }
-                      onClose={() => setOpenMenuId("")}
-                      onEdit={() => onEdit(item)}
-                      onRestock={() => onRestock(item)}
-                      onAdjust={() => onAdjust(item)}
-                      onHistory={() => onHistory(item)}
-                      onDelete={() => onDelete(item)}
-                    />
-                  </td>
-                )}
-                </tr>
-              );
-            })
+    <table className="w-full min-w-[36rem] table-fixed text-left sm:min-w-0">
+      <colgroup>
+        <col />
+        <col className="w-[7.5rem]" />
+        <col className="w-[8.75rem]" />
+        <col className="w-[8.75rem]" />
+        {editable ? <col className="w-14" /> : null}
+      </colgroup>
+      <thead>
+        <tr className="bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+          <th className="px-4 py-2.5">Medicine / Supply</th>
+          <th className="px-3 py-2.5">Quantity</th>
+          <th className="px-3 py-2.5">Stock</th>
+          <th className="px-3 py-2.5">Expiry</th>
+          {editable && (
+            <th className="sticky right-0 bg-neutral-100 px-2 py-2.5 text-right">
+              Actions
+            </th>
           )}
-        </tbody>
-    </FixedTable>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-neutral-100">
+        {items.length === 0 ? (
+          <tr>
+            <td colSpan={columnCount} className="px-4 py-10 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100">
+                  <Boxes size={18} className="text-neutral-400" />
+                </div>
+                <p className="text-sm font-semibold text-ink-800">
+                  No medicines yet.
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Try adjusting your search or filters.
+                </p>
+              </div>
+            </td>
+          </tr>
+        ) : (
+          items.map((item) => {
+            const inventory = getMedicineInventoryView(item);
+            const expanded = expandedId === item.id;
+            const detailsId = `medicine-details-${item.id}`;
+            return (
+              <MedicineInventoryRow
+                key={item.id}
+                item={item}
+                inventory={inventory}
+                expanded={expanded}
+                detailsId={detailsId}
+                columnCount={columnCount}
+                editable={editable}
+                openMenuId={openMenuId}
+                setOpenMenuId={setOpenMenuId}
+                onToggleExpanded={() => toggleExpanded(item.id)}
+                onEdit={onEdit}
+                onRestock={onRestock}
+                onAdjust={onAdjust}
+                onHistory={onHistory}
+                onDelete={onDelete}
+              />
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+function MedicineInventoryRow({
+  item,
+  inventory,
+  expanded,
+  detailsId,
+  columnCount,
+  editable,
+  openMenuId,
+  setOpenMenuId,
+  onToggleExpanded,
+  onEdit,
+  onRestock,
+  onAdjust,
+  onHistory,
+  onDelete,
+}) {
+  const categoryLabel = item.category || "Uncategorized";
+
+  return (
+    <>
+      <tr className="group transition-colors hover:bg-neutral-100">
+        <td className="px-4 py-2.5 align-middle">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            onClick={onToggleExpanded}
+            className={`flex w-full min-w-0 items-start gap-2 rounded-sm text-left ${FOCUS_RING}`}
+          >
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={`mt-0.5 shrink-0 text-neutral-400 transition-transform ${
+                expanded ? "rotate-180" : ""
+              }`}
+            />
+            <span className="min-w-0">
+              <span
+                className="block truncate text-sm font-semibold text-ink-800"
+                title={item.name}
+              >
+                {item.name}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] leading-tight text-neutral-500">
+                {categoryLabel}
+                <span className="tabular-nums"> · {item.id}</span>
+              </span>
+            </span>
+          </button>
+        </td>
+        <td className="px-3 py-2.5 text-sm font-medium tabular-nums text-ink-800">
+          {formatMedicineQuantity(item)}
+        </td>
+        <td className="px-3 py-2.5">
+          <div className="flex flex-col items-start gap-1">
+            <InventoryStamp
+              label={inventory.stockStatus}
+              tone={stockStatusTone(inventory.stockStatus)}
+            />
+            {inventory.reconciliationRequired && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-warning-700">
+                Reconciliation Required
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-2.5">
+          <ExpiryCell
+            dateLabel={inventory.expiryDateLabel}
+            status={inventory.expiryStatus}
+          />
+        </td>
+        {editable && (
+          <td className="sticky right-0 bg-white px-2 py-2.5 text-right group-hover:bg-neutral-100">
+            <ActionMenu
+              item={item}
+              open={openMenuId === item.id}
+              onToggle={() =>
+                setOpenMenuId(openMenuId === item.id ? "" : item.id)
+              }
+              onClose={() => setOpenMenuId("")}
+              onEdit={() => onEdit(item)}
+              onRestock={() => onRestock(item)}
+              onAdjust={() => onAdjust(item)}
+              onHistory={() => onHistory(item)}
+              onDelete={() => onDelete(item)}
+            />
+          </td>
+        )}
+      </tr>
+      {expanded && (
+        <tr className="bg-neutral-50">
+          <td colSpan={columnCount} className="px-4 py-2.5" id={detailsId}>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+              <DetailField label="Item ID" value={item.id} tabular />
+              <DetailField label="Category" value={categoryLabel} />
+              <DetailField
+                label="Last Updated"
+                value={formatDateTime(itemUpdatedAt(item))}
+              />
+              <DetailField label="Notes" value={item.notes || "\u2014"} />
+            </dl>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function DetailField({ label, value, tabular = false }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+        {label}
+      </dt>
+      <dd
+        className={`mt-0.5 break-words text-[13px] text-ink-800 ${
+          tabular ? "font-medium tabular-nums" : ""
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function itemUpdatedAt(item) {
+  return (
+    item.updated_at ||
+    item.updatedAt ||
+    item.created_at ||
+    item.createdAt ||
+    item.lastUpdated
   );
 }
 
@@ -795,6 +873,32 @@ function ActionMenu({
   );
 }
 
+function ExpiryCell({ dateLabel, status }) {
+  const attention =
+    status === EXPIRY_STATUS.EXPIRED ||
+    status === EXPIRY_STATUS.EXPIRES_TODAY;
+
+  return (
+    <div
+      className="flex min-w-0 flex-col items-start gap-0.5"
+      title={`${dateLabel} · ${status}`}
+    >
+      <span className="text-sm font-medium tabular-nums text-ink-700">
+        {dateLabel}
+      </span>
+      <span
+        className={`text-[11px] leading-tight ${
+          attention
+            ? "font-semibold text-neutral-700"
+            : "font-medium text-neutral-500"
+        }`}
+      >
+        {status}
+      </span>
+    </div>
+  );
+}
+
 function InventoryStamp({ label, tone = "neutral", prominent = false }) {
   const map = {
     info: "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]",
@@ -817,27 +921,6 @@ function InventoryStamp({ label, tone = "neutral", prominent = false }) {
     >
       <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot[tone] || dot.neutral}`} />
       {label}
-    </span>
-  );
-}
-
-function CategoryBadge({ category }) {
-  const map = {
-    "Basic Medicines": "bg-slate-100 text-slate-700",
-    Vaccines: "bg-violet-50 text-violet-700",
-    "Medical Supplies": "bg-slate-100 text-slate-600",
-    "Maternal Care Supplies": "bg-rose-50 text-rose-700",
-    "Child Health Supplies": "bg-emerald-50 text-emerald-700",
-    "Referral-related Resources": "bg-amber-50 text-amber-700",
-  };
-
-  return (
-    <span
-      className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[category] || "bg-slate-100 text-slate-600"
-      }`}
-    >
-      {category}
     </span>
   );
 }
@@ -895,13 +978,12 @@ function CommoditiesFilterMenu({ applied, activeCount, onApply }) {
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
-          className={`${PILL_FILTER} ${FOCUS_RING} ${
-            appliedActive
-              ? "border-brand-200 bg-brand-50 text-brand-800"
-              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
-          }`}
+          variant="filter"
+          size="sm"
+          aria-pressed={appliedActive}
+          className="gap-2 py-0 pl-1.5 pr-3"
         >
           <span
             className={`flex h-6 w-6 items-center justify-center rounded-full ${
@@ -918,7 +1000,7 @@ function CommoditiesFilterMenu({ applied, activeCount, onApply }) {
               {activeCount}
             </span>
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
@@ -926,14 +1008,14 @@ function CommoditiesFilterMenu({ applied, activeCount, onApply }) {
         sideOffset={8}
         collisionPadding={12}
         aria-label="Filters"
-        className="w-[min(calc(100vw-1.5rem),370px)] max-w-[370px] overflow-visible rounded-none p-0"
+        className="w-[min(calc(100vw-1.5rem),370px)] max-w-[370px] overflow-hidden rounded-card p-0"
       >
         <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
           <p className="text-[13px] font-semibold text-ink-800">Filters</p>
           <PopoverClose asChild>
             <button
               type="button"
-              className={`flex h-7 w-7 items-center justify-center rounded-none text-neutral-500 hover:bg-neutral-100 hover:text-ink-800 ${FOCUS_RING}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-ink-800 ${FOCUS_RING}`}
               aria-label="Close filters"
             >
               <X size={14} aria-hidden="true" />
@@ -966,21 +1048,18 @@ function CommoditiesFilterMenu({ applied, activeCount, onApply }) {
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-3 py-2.5">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="compact"
             onClick={resetDraft}
             disabled={draftIsDefault}
-            className={`${PILL_SECONDARY} ${FOCUS_RING} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             Reset
-          </button>
-          <button
-            type="button"
-            onClick={applyDraft}
-            className={`${PILL_PRIMARY} ${FOCUS_RING}`}
-          >
+          </Button>
+          <Button type="button" variant="brand" size="compact" onClick={applyDraft}>
             Apply Filters
-          </button>
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -996,31 +1075,41 @@ function FilterSelect({ id, label, value, options, onChange }) {
       >
         {label}
       </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={FILTER_SELECT}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={FILTER_SELECT}
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={14}
+          strokeWidth={2.1}
+          aria-hidden="true"
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500"
+        />
+      </div>
     </div>
   );
 }
 
 function AddMedicineButton({ onClick }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="brand"
+      size="sm"
       onClick={onClick}
-      className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full bg-brand-600 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-brand-700 ${FOCUS_RING}`}
+      className="shrink-0 px-4"
     >
       + Add Medicine
-    </button>
+    </Button>
   );
 }
 

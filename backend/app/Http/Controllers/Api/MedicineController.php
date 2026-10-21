@@ -137,6 +137,7 @@ class MedicineController extends Controller
                     'quantity' => 0,
                     'low_stock_threshold' => $threshold,
                     'availability_status' => 'Unavailable',
+                    'is_active' => true,
                     'created_by' => $request->user()->id,
                     'updated_by' => $request->user()->id,
                     'idempotency_key' => $idempotencyKey,
