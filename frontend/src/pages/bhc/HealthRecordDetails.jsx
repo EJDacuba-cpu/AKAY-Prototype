@@ -2,7 +2,7 @@ import { Link, useLocation, useParams, useNavigate, useSearchParams } from "reac
 import { buildProfileReturnState, getPatientRecordReturn } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardList, FilePlus2, HeartPulse, Printer } from "lucide-react";
+import { HeartPulse, Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
@@ -216,13 +216,6 @@ export default function HealthRecordDetails() {
           }`
         : "No follow-up";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
-  const patientId =
-    patient?.id ||
-    patient?._id ||
-    record.patientId ||
-    record.patient_id ||
-    record.patient?.id ||
-    record.patient?._id;
   const patientName = formatPatientName(
     patient || record.patient,
     record.patientName || record.patient_name || "Unnamed Patient",
@@ -267,43 +260,24 @@ export default function HealthRecordDetails() {
           parentRecordId={
             isGeneralConsultationRecord ? null : parentHealthRecordId
           }
+          parentRecordNavigable={false}
           outcomeRecord={record}
           nextActionLabel={nextActionLabel}
           actions={
-            <>
-              {hasLinkedReferral && (
-                <Link
-                  to={`/bhc/referrals/${linkedReferralTarget}`}
-                  className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
-                >
-                  <ClipboardList size={14} />
-                  View Referral
-                </Link>
-              )}
-              {!hasLinkedReferral && needsRhuReferral && (
-                <Link
-                  to={`/bhc/referrals/create?recordId=${record.id || record._id}&patientId=${patientId || ""}`}
-                  className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
-                >
-                  <FilePlus2 size={14} />
-                  Create Referral
-                </Link>
-              )}
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-              >
-                <Printer size={14} />
-                Print
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+            >
+              <Printer size={14} />
+              Print
+            </button>
           }
         />
 
         {/* ─── Main Content ─── */}
         <div className="space-y-5">
-          {/* ═══ Clinical Record — Tabs ═══ */}
+          {/* ═══ Clinical Record ═══ */}
           <div className="space-y-6">
             <BhcConsultationDetails
               record={record}
@@ -311,7 +285,10 @@ export default function HealthRecordDetails() {
               linkedReferral={linkedReferral}
             />
             {!isGeneralConsultationRecord && (
-              <FollowUpEpisodePanel episode={record.followUpEpisode} />
+              <FollowUpEpisodePanel
+                episode={record.followUpEpisode}
+                hideActions
+              />
             )}
           </div>
 

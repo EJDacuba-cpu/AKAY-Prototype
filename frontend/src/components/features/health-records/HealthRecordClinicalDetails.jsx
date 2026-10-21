@@ -4,14 +4,12 @@ import {
   Baby,
   CalendarClock,
   ClipboardCheck,
-  ClipboardList,
   FlaskConical,
   HeartHandshake,
   Salad,
   Stethoscope,
   Syringe,
 } from "lucide-react";
-import { Link } from "react-router";
 
 import { RecordTabs } from "../../common";
 import PatientDetailItem from "../patients/PatientDetailItem";
@@ -652,6 +650,7 @@ function GenericRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="record"
+      stacked
     />
   );
 }
@@ -805,6 +804,7 @@ function GeneralConsultationRecordDetails({
             sourceRecordId={record.id || record._id}
             showRecordNavigation={false}
             showVisitChain={false}
+            hideActions
           />
         </div>
       ),
@@ -812,12 +812,6 @@ function GeneralConsultationRecordDetails({
   ];
 
   if (needsReferral || linkedReferral) {
-    const referralTarget =
-      linkedReferral?.trackingId ||
-      linkedReferral?.tracking_id ||
-      linkedReferral?.id ||
-      "";
-
     tabs.push({
       id: "referral",
       label: "Referral",
@@ -856,15 +850,6 @@ function GeneralConsultationRecordDetails({
               linkedReferral?.reason_for_referral
             }
           />
-          {referralTarget && (
-            <Link
-              to={`/bhc/referrals/${referralTarget}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              <ClipboardList size={14} />
-              View Referral Details
-            </Link>
-          )}
         </div>
       ),
     });
@@ -875,6 +860,7 @@ function GeneralConsultationRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="consultation"
+      stacked
     />
   );
 }
@@ -988,6 +974,7 @@ function FamilyPlanningRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="client"
+      stacked
     />
   );
 }
@@ -1273,6 +1260,7 @@ function MaternalPrenatalRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="prenatal"
+      stacked
     />
   );
 }
@@ -1436,6 +1424,7 @@ function EpiRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="immunization"
+      stacked
     />
   );
 }

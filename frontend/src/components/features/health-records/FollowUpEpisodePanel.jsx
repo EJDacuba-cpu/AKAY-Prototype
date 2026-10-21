@@ -32,7 +32,7 @@ function assessmentSuffix(record) {
   return assessment ? ` · ${assessment.label}: ${assessment.value}` : "";
 }
 
-export default function FollowUpEpisodePanel({ episode }) {
+export default function FollowUpEpisodePanel({ episode, hideActions = false }) {
   const records = Array.isArray(episode?.records) ? episode.records : [];
   const tasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
 
@@ -55,7 +55,7 @@ export default function FollowUpEpisodePanel({ episode }) {
       </header>
 
       <div className="p-5">
-        <FollowUpEpisodeContent episode={episode} />
+        <FollowUpEpisodeContent episode={episode} hideActions={hideActions} />
       </div>
     </section>
   );
@@ -68,6 +68,7 @@ export function FollowUpEpisodeContent({
   showRecordNavigation = true,
   showVisitChain = true,
   showSchedules = true,
+  hideActions = false,
 }) {
   const records = Array.isArray(episode?.records) ? episode.records : [];
   const episodeTasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
@@ -91,7 +92,7 @@ export function FollowUpEpisodeContent({
     String(parentRecordId) === String(originalRecordId);
 
   const hasVisibleHistory =
-    (showRecordNavigation && isFollowUpVisit) ||
+    (showRecordNavigation && !hideActions && isFollowUpVisit) ||
     (showVisitChain && records.length > 0) ||
     (showSchedules && tasks.length > 0);
 
@@ -107,7 +108,7 @@ export function FollowUpEpisodeContent({
 
   return (
     <div className="space-y-6">
-      {showRecordNavigation && isFollowUpVisit && (
+      {showRecordNavigation && !hideActions && isFollowUpVisit && (
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -169,13 +170,15 @@ export function FollowUpEpisodeContent({
                     </p>
                   </div>
                 </div>
-                <Link
-                  to={`/bhc/health-records/${record.id}`}
-                  className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#B91C1C] hover:underline"
-                >
-                  <FileText size={13} />
-                  View record
-                </Link>
+                {!hideActions && (
+                  <Link
+                    to={`/bhc/health-records/${record.id}`}
+                    className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#B91C1C] hover:underline"
+                  >
+                    <FileText size={13} />
+                    View record
+                  </Link>
+                )}
               </li>
             ))}
           </ol>
@@ -231,56 +234,57 @@ export function FollowUpEpisodeContent({
                       />
                     </dl>
 
-                    {recordScoped ? (
-                      <Link
-                        to={`/bhc/follow-ups/${task.id}`}
-                        title="View follow-up details"
-                        aria-label={`View details for follow-up #${task.id}`}
-                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-red-50 hover:text-[#B91C1C]"
-                      >
-                        <ArrowRight size={17} />
-                      </Link>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
+                    {!hideActions &&
+                      (recordScoped ? (
                         <Link
                           to={`/bhc/follow-ups/${task.id}`}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          title="View follow-up details"
+                          aria-label={`View details for follow-up #${task.id}`}
+                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-red-50 hover:text-[#B91C1C]"
                         >
-                          View Details
+                          <ArrowRight size={17} />
                         </Link>
-                        {active && (
-                          <>
-                            <Link
-                              to={buildRecordFollowUpVisitPath(task)}
-                              className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
-                            >
-                              Record Visit
-                            </Link>
-                            <Link
-                              to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                            >
-                              Reschedule
-                            </Link>
-                            <Link
-                              to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
-                              className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
-                            >
-                              Cancel
-                            </Link>
-                          </>
-                        )}
-                        {task.state === "fulfilled" &&
-                          task.fulfilledByHealthRecordId && (
-                            <Link
-                              to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
-                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                            >
-                              View Health Record
-                            </Link>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            to={`/bhc/follow-ups/${task.id}`}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          >
+                            View Details
+                          </Link>
+                          {active && (
+                            <>
+                              <Link
+                                to={buildRecordFollowUpVisitPath(task)}
+                                className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
+                              >
+                                Record Visit
+                              </Link>
+                              <Link
+                                to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                Reschedule
+                              </Link>
+                              <Link
+                                to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
+                                className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
+                              >
+                                Cancel
+                              </Link>
+                            </>
                           )}
-                      </div>
-                    )}
+                          {task.state === "fulfilled" &&
+                            task.fulfilledByHealthRecordId && (
+                              <Link
+                                to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                View Health Record
+                              </Link>
+                            )}
+                        </div>
+                      ))}
                   </div>
                 </article>
               );
