@@ -81,7 +81,7 @@ export const menuByRole = {
       section: "Coordination",
       items: [
         {
-          label: "Medicine Availability",
+          label: "Health Commodities",
           path: "/bhc/medicine-availability",
           icon: Boxes,
         },
