@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\PersistentSessionException;
+use App\Exceptions\TurnstileVerificationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
+use App\Services\TurnstileVerifier;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
+use App\Services\WorkingFacilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -25,8 +29,21 @@ class AuthController extends Controller
         LoginRequest $request,
         AuditLogger $auditLogger,
         FacilityAccessService $facilityAccess,
-        UserSessionRevocationService $sessions
+        UserSessionRevocationService $sessions,
+        TurnstileVerifier $turnstile
     ) {
+        try {
+            $turnstile->verify(
+                (string) $request->validated('turnstile_token'),
+                $request->ip()
+            );
+        } catch (TurnstileVerificationException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->codeName(),
+            ], $exception->status());
+        }
+
         $user = User::where('email', $request->validated('email'))->first();
 
         $validRole = $user && in_array($user->role, [
@@ -38,7 +55,7 @@ class AuthController extends Controller
             && Hash::check($request->validated('password'), $user->password)
             && $user->isActive()
             && $validRole
-            && ($user->isAdmin() || app(\App\Services\WorkingFacilityService::class)->available($user) !== []);
+            && ($user->isAdmin() || app(WorkingFacilityService::class)->available($user) !== []);
 
         if (! $validAccount) {
             return response()->json([
@@ -209,7 +226,7 @@ class AuthController extends Controller
 
     private function userPayload(User $user): array
     {
-        $choices = app(\App\Services\WorkingFacilityService::class)->available($user);
+        $choices = app(WorkingFacilityService::class)->available($user);
         $user->loadMissing(['barangayHealthCenter:id,name', 'ruralHealthUnit:id,name']);
         $facility = $user->isBhc()
             ? $user->barangayHealthCenter
@@ -229,7 +246,7 @@ class AuthController extends Controller
             'must_change_password' => (bool) $user->must_change_password,
             'staff_role' => $user->staff_role,
             'contact_number' => $user->contact_number,
-            'permissions' => \App\Services\ActionPermissions::home($user),
+            'permissions' => ActionPermissions::home($user),
             'authorized_facilities' => $choices,
             'barangay_health_center_id' => $user->barangay_health_center_id,
             'rural_health_unit_id' => $user->rural_health_unit_id,

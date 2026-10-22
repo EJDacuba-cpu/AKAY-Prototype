@@ -8,11 +8,11 @@ use App\Models\PasswordResetRequest;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Sanctum\PersonalAccessToken;
-use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class AuthenticationSessionSecurityTest extends TestCase
@@ -104,7 +104,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         ];
 
         foreach ($attempts as [$email, $password]) {
-            $this->postJson('/api/auth/login', compact('email', 'password'))
+            $this->postJson('/api/auth/login', $this->withTurnstile(compact('email', 'password')))
                 ->assertUnprocessable()
                 ->assertExactJson([
                     'message' => 'The provided credentials are incorrect.',
@@ -116,16 +116,16 @@ class AuthenticationSessionSecurityTest extends TestCase
     public function test_login_is_throttled_by_normalized_email_and_ip(): void
     {
         for ($attempt = 1; $attempt <= 5; $attempt++) {
-            $this->postJson('/api/auth/login', [
+            $this->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => strtoupper($this->bhw->email),
                 'password' => 'WrongPassword9',
-            ])->assertUnprocessable();
+            ]))->assertUnprocessable();
         }
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'password123',
-        ])->assertTooManyRequests()->assertExactJson([
+        ]))->assertTooManyRequests()->assertExactJson([
             'message' => 'Too many login attempts. Please wait briefly and try again.',
             'code' => 'LOGIN_THROTTLED',
         ]);
@@ -277,10 +277,10 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->assertNull(PersonalAccessToken::findToken($tokenA));
         $this->assertNull(PersonalAccessToken::findToken($tokenB));
         $this->usingToken($tokenA)->getJson('/api/auth/profile')->assertUnauthorized();
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'NewSecurePassword9',
-        ])->assertOk();
+        ]))->assertOk();
     }
 
     public function test_failed_password_reset_does_not_revoke_tokens(): void
@@ -308,10 +308,10 @@ class AuthenticationSessionSecurityTest extends TestCase
             ])->assertUnprocessable()->assertJsonValidationErrors('password');
 
         $this->usingToken($token)->getJson('/api/auth/profile')->assertOk();
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'AdminChangedPassword9',
-        ])->assertUnprocessable();
+        ]))->assertUnprocessable();
     }
 
     public function test_role_and_facility_change_revokes_tokens_and_new_login_uses_new_context(): void
@@ -430,14 +430,15 @@ class AuthenticationSessionSecurityTest extends TestCase
 
         $this->assertStringNotContainsString($plainTextToken, $descriptions);
         $this->assertStringNotContainsString('password123', $descriptions);
+        $this->assertStringNotContainsString(self::TEST_TURNSTILE_TOKEN, $descriptions);
     }
 
     private function login(User $user)
     {
-        return $this->postJson('/api/auth/login', [
+        return $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $user->email,
             'password' => 'password123',
-        ]);
+        ]));
     }
 
     private function token(User $user): string

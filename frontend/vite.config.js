@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { apiOrigin, validateApiBaseUrl } from "./config/environment";
 
 const browserHeaders = (apiBaseUrl, reportOnly = false) => {
-  const connectSources = ["'self'"];
+  const connectSources = ["'self'", "https://challenges.cloudflare.com"];
   const configuredApiOrigin = apiOrigin(apiBaseUrl);
 
   if (configuredApiOrigin) connectSources.push(configuredApiOrigin);
@@ -17,10 +17,11 @@ const browserHeaders = (apiBaseUrl, reportOnly = false) => {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self'",
+    "script-src 'self' https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
+    "frame-src https://challenges.cloudflare.com",
     `connect-src ${[...new Set(connectSources)].join(" ")}`,
     "media-src 'self' blob:",
     "worker-src 'self' blob:",

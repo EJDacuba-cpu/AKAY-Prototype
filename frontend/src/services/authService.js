@@ -67,12 +67,12 @@ export async function logout() {
   return result.value;
 }
 
-export async function loginUser(email, password) {
+export async function loginUser(email, password, turnstileToken) {
   const previousUser = getStoredAuthUser();
   const response = await apiRequest("/auth/login", {
     ...sessionRequestOptions({
       method: "POST",
-      body: { email, password },
+      body: { email, password, turnstile_token: turnstileToken },
     }),
     auth: false,
   });

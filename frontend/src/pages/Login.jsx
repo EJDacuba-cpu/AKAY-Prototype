@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Eye, EyeOff, LockKeyhole, CheckCircle2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { loginUser } from "../utils/auth";
 import { submitPasswordResetRequest } from "../services/passwordResetService";
 import ButtonSpinner from "../components/common/loading/ButtonSpinner";
+import { TurnstileField } from "../components/features/auth/TurnstileField";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import {
+  TURNSTILE_SITE_KEY,
+  loginErrorMessage,
+  shouldResetTurnstile,
+} from "../config/turnstile";
 
-const TEMP_PASSWORD_EXPIRED_MESSAGE = "This temporary password has expired. Ask the MHO for a new one.";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
@@ -29,7 +34,23 @@ export default function Login() {
   const [mode, setMode] = useState("signin");
   const [resetEmail, setResetEmail] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
+  const turnstileRef = useRef(null);
   const isReset = mode === "reset";
+  const captchaReady = Boolean(TURNSTILE_SITE_KEY && turnstileToken);
+
+  function resetTurnstile() {
+    setTurnstileToken("");
+    turnstileRef.current?.reset();
+  }
+
+  function reloadTurnstile() {
+    setTurnstileFailed(false);
+    setTurnstileToken("");
+    setTurnstileNonce((current) => current + 1);
+  }
 
   function clearFieldError(field) {
     setFieldErrors((current) => ({ ...current, [field]: "" }));
@@ -42,6 +63,8 @@ export default function Login() {
     const errors = {};
     if (!EMAIL_PATTERN.test(email.trim())) errors.email = "Enter a valid email address.";
     if (!password) errors.password = "Enter your password.";
+    if (!TURNSTILE_SITE_KEY) errors.turnstile = "Sign-in protection is not configured. Ask an administrator to set the Turnstile site key.";
+    else if (!turnstileToken) errors.turnstile = "Complete the bot check before signing in.";
     setFieldErrors(errors);
     setError("");
     if (Object.keys(errors).length) {
@@ -51,7 +74,7 @@ export default function Login() {
     setIsLoading(true);
     setSessionNotice("");
     try {
-      const user = await loginUser(email.trim(), password);
+      const user = await loginUser(email.trim(), password, turnstileToken);
       if (user.must_change_password) {
         navigate("/change-password", { replace: true });
         return;
@@ -69,11 +92,8 @@ export default function Login() {
       if (user.role === "bhc") navigate("/bhc/dashboard", { replace: true });
       if (user.role === "rhu") navigate("/rhu/dashboard", { replace: true });
     } catch (error) {
-      setError(
-        error.code === "TEMP_PASSWORD_EXPIRED"
-          ? TEMP_PASSWORD_EXPIRED_MESSAGE
-          : error.message || "Unable to sign in. Check your email and password.",
-      );
+      setError(loginErrorMessage(error));
+      if (shouldResetTurnstile(error)) resetTurnstile();
     } finally {
       setIsLoading(false);
     }
@@ -107,6 +127,8 @@ export default function Login() {
     setFieldErrors({});
     setResetSuccess("");
     setShowPassword(false);
+    setTurnstileFailed(false);
+    resetTurnstile();
     if (!isReset) setResetEmail(email);
     setMode(isReset ? "signin" : "reset");
   }
@@ -182,6 +204,52 @@ export default function Login() {
               </div>
             )}
 
+            {!isReset && (
+              <div>
+                <p className="mb-2 text-sm font-medium" id="turnstile-label">Verification</p>
+                {TURNSTILE_SITE_KEY ? (
+                  <TurnstileField
+                    key={turnstileNonce}
+                    ref={turnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onToken={(token) => {
+                      setTurnstileToken(token);
+                      setTurnstileFailed(false);
+                      clearFieldError("turnstile");
+                    }}
+                    onExpire={() => {
+                      setTurnstileToken("");
+                      setFieldErrors((current) => ({
+                        ...current,
+                        turnstile: "The bot check expired. Complete it again to sign in.",
+                      }));
+                    }}
+                    onError={() => {
+                      setTurnstileToken("");
+                      setTurnstileFailed(true);
+                    }}
+                  />
+                ) : (
+                  <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">
+                    Sign-in protection is not configured. Ask an administrator to set the Turnstile site key.
+                  </p>
+                )}
+                {turnstileFailed && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <p role="alert" className="text-xs text-red-700">
+                      Bot check could not load.
+                    </p>
+                    <Button type="button" variant="link" className="h-auto px-0 py-0 text-xs" onClick={reloadTurnstile}>
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                {fieldErrors.turnstile && (
+                  <p id="turnstile-error" role="alert" className="mt-2 text-xs text-red-700">{fieldErrors.turnstile}</p>
+                )}
+              </div>
+            )}
+
             {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">{error}</p>}
             {resetSuccess && (
               <div role="status" className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-5 text-emerald-800">
@@ -189,7 +257,7 @@ export default function Login() {
                 <p>{resetSuccess}</p>
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={isLoading || (isReset && Boolean(resetSuccess))}>
+            <Button type="submit" className="w-full" disabled={isLoading || (isReset ? Boolean(resetSuccess) : !captchaReady)}>
               {isLoading && <ButtonSpinner />}
               {isReset ? (isLoading ? "Submitting request…" : "Submit reset request") : (isLoading ? "Signing in…" : "Sign in")}
             </Button>

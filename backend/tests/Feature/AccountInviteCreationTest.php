@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AccountInviteService;
 use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -83,10 +84,10 @@ class AccountInviteCreationTest extends TestCase
         Mail::fake();
         $this->postJson('/api/users', $this->payload())->assertCreated();
 
-        $this->postJson('/api/auth/login', ['email' => 'joshua@example.test', 'password' => 'password123'])
+        $this->postJson('/api/auth/login', $this->withTurnstile(['email' => 'joshua@example.test', 'password' => 'password123']))
             ->assertUnprocessable()
             ->assertJsonPath('code', 'LOGIN_FAILED');
-        $this->postJson('/api/auth/login', ['email' => 'joshua@example.test', 'password' => ''])
+        $this->postJson('/api/auth/login', $this->withTurnstile(['email' => 'joshua@example.test', 'password' => '']))
             ->assertUnprocessable();
     }
 
@@ -180,7 +181,7 @@ class AccountInviteCreationTest extends TestCase
         $password = app(AccountInviteService::class)->temporaryPassword($invite);
 
         $user = $invite->user->fresh();
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check($password, $user->password));
+        $this->assertTrue(Hash::check($password, $user->password));
         $this->assertTrue($user->must_change_password);
         $this->assertEqualsWithDelta(now()->addHours(72)->timestamp, $user->temp_password_expires_at->timestamp, 60);
         $fresh = $invite->fresh();

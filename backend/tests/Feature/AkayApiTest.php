@@ -37,15 +37,15 @@ class AkayApiTest extends TestCase
             'status' => User::STATUS_INACTIVE,
         ]);
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => 'active@example.test',
             'password' => 'password123',
-        ])->assertOk()->assertJsonStructure(['token', 'user']);
+        ]))->assertOk()->assertJsonStructure(['token', 'user']);
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => 'inactive@example.test',
             'password' => 'password123',
-        ])->assertUnprocessable()
+        ]))->assertUnprocessable()
             ->assertJsonPath('code', 'LOGIN_FAILED');
     }
 

@@ -43,10 +43,10 @@ class BrowserSessionPrivacyTest extends TestCase
     public function test_login_token_response_disables_browser_and_proxy_caching(): void
     {
         $this->assertSensitiveNoStoreHeaders(
-            $this->postJson('/api/auth/login', [
+            $this->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => $this->bhw->email,
                 'password' => 'password123',
-            ])
+            ]))
         );
     }
 

@@ -26,7 +26,9 @@ $connectOrigins = SecurityConfiguration::parseOrigins(
     SecurityConfiguration::originFromUrl(env('APP_URL')),
     env('AKAY_CSP_CONNECT_ORIGINS')
 );
-$connectSources = array_merge(["'self'"], $connectOrigins);
+$connectSources = array_merge(["'self'"], $connectOrigins, [
+    'https://challenges.cloudflare.com',
+]);
 
 if ($isLocal) {
     $connectSources = array_merge($connectSources, ['ws:', 'wss:']);
@@ -38,10 +40,11 @@ $cspPolicy = implode(' ', [
     "object-src 'none';",
     "frame-ancestors 'none';",
     "form-action 'self';",
-    "script-src 'self';",
+    "script-src 'self' https://challenges.cloudflare.com;",
     "style-src 'self' 'unsafe-inline';",
     "img-src 'self' data: blob:;",
     "font-src 'self';",
+    'frame-src https://challenges.cloudflare.com;',
     'connect-src '.implode(' ', array_unique($connectSources)).';',
     "media-src 'self' blob:;",
     "worker-src 'self' blob:;",

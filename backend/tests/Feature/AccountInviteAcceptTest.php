@@ -85,7 +85,7 @@ class AccountInviteAcceptTest extends TestCase
         $audit = AuditLog::where('action', 'account invite completed')->firstOrFail();
         $this->assertStringNotContainsString('joshua@example.test', $audit->description);
 
-        $this->postJson('/api/auth/login', ['email' => 'joshua@example.test', 'password' => 'Newpass123'])
+        $this->postJson('/api/auth/login', $this->withTurnstile(['email' => 'joshua@example.test', 'password' => 'Newpass123']))
             ->assertOk();
     }
 

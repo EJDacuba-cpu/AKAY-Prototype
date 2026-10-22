@@ -6,8 +6,8 @@ import {
 } from "../services/authService";
 import { clearAuthSession, getAuthToken } from "../services/apiClient";
 
-export function loginUser(email, password) {
-  return loginWithApi(email, password);
+export function loginUser(email, password, turnstileToken) {
+  return loginWithApi(email, password, turnstileToken);
 }
 
 export function getCurrentUser() {

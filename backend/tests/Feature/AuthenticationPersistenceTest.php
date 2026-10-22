@@ -263,19 +263,19 @@ class AuthenticationPersistenceTest extends TestCase
     public function test_origin_and_custom_header_protect_cookie_session_actions(): void
     {
         $this->withHeader('Origin', self::ORIGIN)
-            ->postJson('/api/auth/login', [
+            ->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => $this->user->email,
                 'password' => 'password123',
-            ])
+            ]))
             ->assertStatus(419);
 
         $this->withHeaders([
             'Origin' => 'https://malicious.example.test',
             'X-AKAY-Session' => '1',
-        ])->postJson('/api/auth/login', [
+        ])->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => 'password123',
-        ])->assertStatus(419);
+        ]))->assertStatus(419);
 
         $this->login($this->user)->assertOk();
     }
@@ -292,10 +292,10 @@ class AuthenticationPersistenceTest extends TestCase
 
     private function login(User $user)
     {
-        return $this->withHeaders($this->sessionHeaders())->postJson('/api/auth/login', [
+        return $this->withHeaders($this->sessionHeaders())->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $user->email,
             'password' => 'password123',
-        ]);
+        ]));
     }
 
     private function refresh(string $cookie)

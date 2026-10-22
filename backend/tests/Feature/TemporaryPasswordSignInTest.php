@@ -45,10 +45,10 @@ class TemporaryPasswordSignInTest extends TestCase
 
     private function signIn(): array
     {
-        $response = $this->postJson('/api/auth/login', [
+        $response = $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => $this->temporary,
-        ])->assertOk();
+        ]))->assertOk();
 
         $this->app['auth']->forgetGuards();
 
@@ -120,10 +120,10 @@ class TemporaryPasswordSignInTest extends TestCase
     {
         $this->travel(73)->hours();
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => $this->temporary,
-        ])
+        ]))
             ->assertUnprocessable()
             ->assertJsonPath('code', 'TEMP_PASSWORD_EXPIRED')
             ->assertJsonPath('message', 'This temporary password has expired. Ask the MHO for a new one.');
@@ -193,10 +193,10 @@ class TemporaryPasswordSignInTest extends TestCase
     {
         $this->user->forceFill(['temp_password_expires_at' => null])->save();
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => $this->temporary,
-        ])
+        ]))
             ->assertUnprocessable()
             ->assertJsonPath('code', 'TEMP_PASSWORD_EXPIRED');
     }
@@ -215,7 +215,7 @@ class TemporaryPasswordSignInTest extends TestCase
             'requested_at' => now(),
         ]);
 
-        $token = $this->postJson('/api/auth/login', ['email' => $this->user->email, 'password' => 'Ownpass123'])
+        $token = $this->postJson('/api/auth/login', $this->withTurnstile(['email' => $this->user->email, 'password' => 'Ownpass123']))
             ->assertOk()
             ->json('token');
         $this->app['auth']->forgetGuards();
@@ -260,9 +260,9 @@ class TemporaryPasswordSignInTest extends TestCase
 
         $this->travel(73)->hours();
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => 'Resetpass123',
-        ])->assertOk()->assertJsonPath('user.must_change_password', false);
+        ]))->assertOk()->assertJsonPath('user.must_change_password', false);
     }
 }
