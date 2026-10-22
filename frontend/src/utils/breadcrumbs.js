@@ -30,11 +30,11 @@ const PARENT_TRAILS = [
   ["/rhu/patients/:patientId", [{ label: "Patients", path: "/rhu/patients" }]],
   [
     "/rhu/health-records/add",
-    [{ label: "Health Records", path: "/rhu/health-records" }],
+    [{ label: "Patients", path: "/rhu/patients" }],
   ],
   [
     "/rhu/health-records/:recordId",
-    [{ label: "Health Records", path: "/rhu/health-records" }],
+    [{ label: "Patients", path: "/rhu/patients" }],
   ],
   [
     "/rhu/referrals/:trackingId",

@@ -19,7 +19,7 @@ export const ACCESS_MODULES = {
 /** Admins keep their existing read access (navigationAllowed treats them the same way). */
 export function canAccessModule(user, module) {
   if (user?.role === "admin") return true;
-  if (module === "patientDirectory" && user?.role === "bhc" && (user.permissions || []).includes("clinical.history")) return true;
+  if (module === "patientDirectory" && ["bhc", "rhu"].includes(user?.role) && (user.permissions || []).includes("clinical.history")) return true;
   const permission = ACCESS_MODULES[module]?.permission;
   return Boolean(permission) && (user?.permissions || []).includes(permission);
 }

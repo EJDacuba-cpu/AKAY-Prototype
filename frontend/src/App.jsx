@@ -78,7 +78,6 @@ import QRScanner from "./pages/rhu/QRScanner";
 import RHUPatientsModule from "./pages/rhu/RHUPatientsModule";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
-import RHUHealthRecord from "./pages/rhu/RHUHealthRecords";
 import RHUAddHealthRecords from "./pages/rhu/RHUAddHealthRecords";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
@@ -697,7 +696,7 @@ export default function App() {
       <Route
         path="/rhu/patients"
         element={
-          <ProtectedPage allowedRole="rhu" module="patients">
+          <ProtectedPage allowedRole="rhu" module="patientDirectory">
             <RHUPatientsModule />
           </ProtectedPage>
         }
@@ -714,7 +713,7 @@ export default function App() {
       <Route
         path="/rhu/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="rhu" module="patients">
+          <ProtectedPage allowedRole="rhu" module="patientDirectory">
             <RHUPatientDetails />
           </ProtectedPage>
         }
@@ -723,7 +722,7 @@ export default function App() {
         path="/rhu/health-records"
         element={
           <ProtectedPage allowedRole="rhu" module="history">
-            <RHUHealthRecord />
+            <Navigate to="/rhu/patients" replace />
           </ProtectedPage>
         }
       />
@@ -801,7 +800,7 @@ export default function App() {
       />
       <Route
         path="/rhu/rhu-records"
-        element={<Navigate to="/rhu/health-records" replace />}
+        element={<Navigate to="/rhu/patients" replace />}
       />
       <Route
         path="/rhu/rhu-health-records/add"

@@ -124,10 +124,10 @@ export default function RHURecordDetails() {
         <style>{keyframes}</style>
         <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 shadow-sm">
           <Link
-            to="/rhu/health-records"
+            to="/rhu/patients"
             className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
           >
-            <ArrowLeft size={15} /> Back to Health Records
+            <ArrowLeft size={15} /> Back to Patients
           </Link>
           <div className="mt-6 text-sm text-slate-500">
             Health record was not found.
@@ -217,17 +217,14 @@ export default function RHURecordDetails() {
         recordId={getRecordId(record)}
         hasLinkedReferral={hasLinkedReferral}
         isUpdating={detailsUpdating}
+        backLabel="Back to Patient"
         onBack={() => {
           const target = getPatientRecordReturn(
             location,
             patient?.id || record?.patientId || record?.patient_id,
             "/rhu",
           );
-          if (location.state?.patientProfile) {
-            navigate(target.path, { replace: true, state: target.state });
-            return;
-          }
-          navigate("/rhu/health-records");
+          navigate(target.path, { replace: true, state: target.state });
         }}
         patientName={patientName}
         serviceType={recordTypeLabel || recordClassification}

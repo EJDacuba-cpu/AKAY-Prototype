@@ -20,7 +20,12 @@ export async function loadAuthorizedDashboardCollections(user, loaders) {
 export function navigationAllowed(user, path = "") {
   if (user?.role === "admin") return true;
   const permissions = user?.permissions || [];
-  if (user?.role === "bhc" && /^\/bhc\/patients(?:\/[^/]+)?$/.test(path) && path !== "/bhc/patients/add" && permissions.includes("clinical.history")) return true;
+  if (
+    ["bhc", "rhu"].includes(user?.role) &&
+    new RegExp(`^/${user.role}/patients(?:/[^/]+)?$`).test(path) &&
+    path !== `/${user.role}/patients/add` &&
+    permissions.includes("clinical.history")
+  ) return true;
   if (/^\/(bhc|rhu)\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
   const permission = /health-records|follow-ups|referrals|qr-scanner|programs/.test(path)
     ? "clinical.history"

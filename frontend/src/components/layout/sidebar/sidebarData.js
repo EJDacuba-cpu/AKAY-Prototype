@@ -115,11 +115,6 @@ export const menuByRole = {
         { label: "Patients", path: "/rhu/patients", icon: Users },
         { label: "Families", path: "/rhu/families", icon: House },
         {
-          label: "Health Records",
-          path: "/rhu/health-records",
-          icon: FileText,
-        },
-        {
           label: "Doctor Availability",
           path: "/rhu/doctor-availability",
           icon: CalendarDays,

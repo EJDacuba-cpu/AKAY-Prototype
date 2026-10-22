@@ -46,6 +46,7 @@ import {
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { patientRecordsPath } from "../../utils/profileNavigation";
 import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
 import {
   buildConditionConfirmations,
@@ -482,6 +483,8 @@ export default function AddHealthRecord() {
   const [legacyRows, setLegacyRows] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const recordsReturnPath = (patientId = selectedPatientId) =>
+    patientId ? patientRecordsPath(patientId, basePath) : `${basePath}/patients`;
   const [setupComplete, setSetupComplete] = useState(
     Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification),
   );
@@ -539,11 +542,17 @@ export default function AddHealthRecord() {
     setNoticeModal({
       title: "Original Record Required",
       message:
-        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
+        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Patients.",
     });
-    const timer = window.setTimeout(() => navigate(healthRecordsPath), 2200);
+    const timer = window.setTimeout(() => {
+      navigate(
+        preselectedPatientId
+          ? patientRecordsPath(preselectedPatientId, basePath)
+          : `${basePath}/patients`,
+      );
+    }, 2200);
     return () => window.clearTimeout(timer);
-  }, [healthRecordsPath, isOrphanFollowUpRequest, navigate]);
+  }, [basePath, isOrphanFollowUpRequest, navigate, preselectedPatientId]);
 
   useEffect(() => {
     let active = true;
@@ -1799,9 +1808,9 @@ export default function AddHealthRecord() {
                 ]
               : []),
             {
-              label: "Back to Health Records",
+              label: "Back to Patient",
               variant: "secondary",
-              onClick: () => navigate(healthRecordsPath),
+              onClick: () => navigate(recordsReturnPath()),
             },
             {
               label: "Refresh",
@@ -1929,7 +1938,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    navigate(healthRecordsPath);
+    navigate(recordsReturnPath());
   }
 
   return (
@@ -2846,7 +2855,7 @@ export default function AddHealthRecord() {
           {!usesCareDecisionStep && (
             <button
               type="button"
-              onClick={() => navigate(healthRecordsPath)}
+              onClick={() => navigate(recordsReturnPath())}
               className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
             >
               Cancel
@@ -2887,9 +2896,9 @@ export default function AddHealthRecord() {
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : "The record has been added to this patient's history. You can print a copy or return to the record list."
+            : "The record is available in this patient's Health Records tab. You can view it, print it, or open the patient profile."
         }
-        onClose={() => navigate(healthRecordsPath)}
+        onClose={() => navigate(recordsReturnPath())}
         actions={[
           {
             label: "View Health Record",
@@ -2898,7 +2907,7 @@ export default function AddHealthRecord() {
               navigate(
                 saveSuccess?.recordId
                   ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                  : healthRecordsPath,
+                  : recordsReturnPath(),
               ),
           },
           ...(saveSuccess?.recordId
@@ -2913,8 +2922,8 @@ export default function AddHealthRecord() {
               ]
             : []),
           {
-            label: "Back to Health Records",
-            onClick: () => navigate(healthRecordsPath),
+            label: "Back to Patient",
+            onClick: () => navigate(recordsReturnPath()),
           },
         ]}
       />

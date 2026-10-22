@@ -17,6 +17,10 @@ test("BHC lists Families directly below Patients, and RHU keeps its placement", 
   assert.ok(items("rhu").some(item => item.path === "/rhu/families"));
 });
 
+test("RHU sidebar has no standalone Health Records module", () => {
+  assert.ok(!items("rhu").some(item => item.path === "/rhu/health-records" || /health records/i.test(item.label)));
+});
+
 test("view and manage gates are separate and manage depends on view", () => {
   const viewer = { role: "bhc", permissions: ["families.view"] };
   assert.ok(canAccessModule(viewer, "families"));

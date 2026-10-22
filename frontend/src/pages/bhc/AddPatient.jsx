@@ -447,14 +447,16 @@ function handleBirthDateChange(valueOrEvent) {
       setSaving(true);
       const patientData = buildPatientPayload();
       const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement);
-      setCreatedPatientId(saved.id);
+      const savedId = saved?.id ? String(saved.id) : "";
+      setCreatedPatientId(savedId);
       setForm(registrationForm(saved));
       setHouseholdConnection(connectionForPatient(saved));
       setHeadReplacement(null);
       setModals({ ...modals, confirm: false, success: true });
       toast.success(householdEnabled && live ? "Patient and household saved." : live ? "Patient saved." : "Patient saved in this mock session.");
     } catch (error) {
-      setFieldErrors((current) => ({ ...current, ...registrationErrors(error) }));
+      const mapped = registrationErrors(error);
+      setFieldErrors((current) => ({ ...current, ...mapped }));
       setModals((current) => ({ ...current, confirm: false }));
     } finally {
       setSaving(false);

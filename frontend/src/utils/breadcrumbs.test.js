@@ -62,6 +62,26 @@ test("a BHC consultation without a patient returns to Patients", () => {
   );
 });
 
+test("a RHU consultation without a patient returns to Patients", () => {
+  assert.deepEqual(
+    getBreadcrumbs("/rhu/health-records/add", "New Consultation", ""),
+    [
+      { label: "Patients", path: "/rhu/patients" },
+      { label: "New Consultation" },
+    ],
+  );
+});
+
+test("RHU health record details sit under Patients", () => {
+  assert.deepEqual(
+    getBreadcrumbs("/rhu/health-records/15", "Health Record Details"),
+    [
+      { label: "Patients", path: "/rhu/patients" },
+      { label: "Health Record Details" },
+    ],
+  );
+});
+
 test("unknown routes fall back to the current page", () => {
   assert.deepEqual(getBreadcrumbs("/somewhere/else", "Notifications"), [
     { label: "Notifications" },
