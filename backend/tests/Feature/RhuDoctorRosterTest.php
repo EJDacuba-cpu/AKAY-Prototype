@@ -186,9 +186,10 @@ class RhuDoctorRosterTest extends TestCase
         $this->actingAs($this->bhwA, 'sanctum')
             ->getJson('/api/rhu-providers/availability')
             ->assertOk()
-            ->assertJsonPath('data.can_submit_referral', true)
-            ->assertJsonPath('data.total_count', 2)
-            ->assertJsonPath('data.available_count', 1);
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.total_count', 1)
+            ->assertJsonPath('data.available_count', 0)
+            ->assertJsonMissing(['id' => $covering->id]);
     }
 
     public function test_account_name_change_syncs_and_a_second_official_doctor_may_share_a_display_name(): void
@@ -356,7 +357,7 @@ class RhuDoctorRosterTest extends TestCase
         ]);
     }
 
-    public function test_unlinked_covering_doctors_remain_and_rhu_can_still_create_them(): void
+    public function test_covering_rows_stay_in_the_database_and_cannot_open_the_gate_or_be_created(): void
     {
         $covering = RhuProvider::create([
             'rural_health_unit_id' => $this->rhuA->id,
@@ -365,13 +366,32 @@ class RhuDoctorRosterTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.total_count', 0)
+            ->assertJsonPath('data.available_count', 0)
+            ->assertJsonPath('data.can_submit_referral', false);
+
+        Sanctum::actingAs($this->admin, ['*']);
         $this->postJson('/api/users', $this->doctorPayload())->assertCreated();
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. Locum'])
-            ->assertCreated()
-            ->assertJsonPath('data.user_id', null)
-            ->assertJsonPath('data.availability_status', RhuProvider::STATUS_AVAILABLE);
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_CREATE_DISABLED);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$covering->id}", [
+                'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_LOCKED);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->deleteJson("/api/rhu-providers/{$covering->id}")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_LOCKED);
 
         $this->assertDatabaseHas('rhu_providers', [
             'id' => $covering->id,
@@ -379,13 +399,14 @@ class RhuDoctorRosterTest extends TestCase
             'is_active' => true,
             'availability_status' => RhuProvider::STATUS_AVAILABLE,
         ]);
-        $this->assertSame(3, RhuProvider::query()->count());
+        $this->assertSame(2, RhuProvider::query()->count());
         $this->actingAs($this->bhwA, 'sanctum')
             ->getJson('/api/rhu-providers/availability')
             ->assertOk()
-            ->assertJsonPath('data.total_count', 3)
-            ->assertJsonPath('data.available_count', 2)
-            ->assertJsonPath('data.can_submit_referral', true);
+            ->assertJsonPath('data.total_count', 1)
+            ->assertJsonPath('data.available_count', 0)
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonMissing(['id' => $covering->id]);
     }
 
     public function test_promoting_a_nurse_or_updating_a_legacy_doctor_provisions_the_roster(): void

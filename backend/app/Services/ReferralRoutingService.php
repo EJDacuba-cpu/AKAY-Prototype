@@ -61,7 +61,7 @@ class ReferralRoutingService
         $bhc = $this->resolveAssignedBhc($user);
         $ids = $bhc->alternativeRhus()->pluck('rural_health_units.id')->push($bhc->rural_health_unit_id)->filter()->unique();
         return RuralHealthUnit::whereIn('id', $ids)->where('status', 'active')->orderBy('name')->get()->map(function ($rhu) use ($bhc) {
-            $providers = \App\Models\RhuProvider::where('rural_health_unit_id', $rhu->id)->where('is_active', true)->get();
+            $providers = \App\Models\RhuProvider::where('rural_health_unit_id', $rhu->id)->eligibleRoster()->get();
             return [...$rhu->only(['id', 'name', 'status']), 'is_default' => (int) $rhu->id === (int) $bhc->rural_health_unit_id,
                 'availability' => app(ProviderAvailabilityService::class)->summarize($providers, (int) $rhu->id)];
         })->all();

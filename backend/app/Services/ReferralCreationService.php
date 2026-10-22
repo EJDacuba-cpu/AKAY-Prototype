@@ -121,6 +121,7 @@ class ReferralCreationService
         if (! empty($data['resume_hold_id'])) {
             $hold = ReferralHold::query()
                 ->where('id', $data['resume_hold_id'])
+                ->where('created_by', $user->id)
                 ->where('patient_id', $patient->id)
                 ->where('barangay_health_center_id', $route['bhc']->id)
                 ->where('status', ReferralHold::STATUS_WAITING)

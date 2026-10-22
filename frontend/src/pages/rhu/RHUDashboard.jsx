@@ -18,6 +18,7 @@ import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
+import useAccess from "../../hooks/useAccess";
 import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { getReferrals } from "../../services/referrals";
 import { getHealthRecords } from "../../services/healthRecordService";
@@ -588,6 +589,7 @@ function SectionCard({
 /* ─── Sidebar Cards ─── */
 function DoctorScheduleCard({ delay = 0 }) {
   const { providers: doctors } = useRhuProviders();
+  const canManage = useAccess().can("rhu.providers.manage");
 
   return (
     <section
@@ -656,7 +658,7 @@ function DoctorScheduleCard({ delay = 0 }) {
         to="/rhu/doctor-availability"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
       >
-        Manage Availability
+        {canManage ? "Manage availability" : "View availability"}
         <ArrowRight size={13} />
       </Link>
     </section>

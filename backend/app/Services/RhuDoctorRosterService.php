@@ -14,7 +14,8 @@ use Illuminate\Http\Request;
  * existing rhu_providers row. New, moved, and reactivated official rows start
  * Unavailable so the referral gate stays closed until RHU staff confirm duty.
  * Covering/unlinked roster rows are left in place and are never claimed by
- * matching names. Deactivation keeps the last availability on the hidden row.
+ * matching names. They are excluded from the live roster and referral gate.
+ * Deactivation keeps the last availability on the hidden official row.
  */
 class RhuDoctorRosterService
 {
@@ -23,6 +24,10 @@ class RhuDoctorRosterService
     public const NAME_MANAGED = "This doctor's name is managed from the official account.";
 
     public const OFFICIAL_LOCKED = 'Official doctor records stay on the roster until the account is deactivated or reassigned.';
+
+    public const COVERING_CREATE_DISABLED = 'Covering doctors can no longer be added. Official doctors come from Admin Doctor accounts.';
+
+    public const COVERING_LOCKED = 'Legacy covering records are retained for history and cannot be changed.';
 
     public function syncFromAccount(
         User $user,

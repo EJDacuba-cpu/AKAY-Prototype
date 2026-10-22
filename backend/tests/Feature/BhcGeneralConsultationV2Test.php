@@ -96,7 +96,7 @@ class BhcGeneralConsultationV2Test extends TestCase
 
     public function test_shared_condition_referral_creates_one_tracking_record_and_replays_once(): void
     {
-        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Shared Doctor', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->seedAvailableProvider($this->rhu, 'Shared Doctor');
         $payload = [...$this->sharedReferral(), 'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Original visit complaint', 'physical_exam' => 'Original findings', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2];
         $key = (string) Str::uuid();
         $id = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertCreated()->json('data.id');
@@ -131,7 +131,7 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertDatabaseCount('referral_holds', 1);
         $this->assertDatabaseCount('referrals', 0);
         $this->assertSame('Concern one; Concern two', $data['pendingReferral']['initial_diagnosis']);
-        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Returned Doctor', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->seedAvailableProvider($this->rhu, 'Returned Doctor');
         $this->postJson('/api/referrals', ['patient_id' => $this->patient->id, 'health_record_id' => $id, 'resume_hold_id' => $data['referralHoldId'], ...$data['pendingReferral']])->assertCreated();
         $this->assertDatabaseCount('referrals', 1);
         $this->assertDatabaseHas('referrals', ['initial_diagnosis' => 'Concern one; Concern two']);
@@ -221,7 +221,7 @@ class BhcGeneralConsultationV2Test extends TestCase
 
     public function test_condition_referrals_are_created_separately_and_retries_do_not_duplicate(): void
     {
-        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Card Doctor', 'specialization' => 'General Practitioner', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->seedAvailableProvider($this->rhu, 'Card Doctor');
         $cards = [$this->card('c1', 'refer_to_rhu', 'Suspected hypertension'), $this->card('c2', 'refer_to_rhu', 'Persistent cough')];
         $cards[1]['referral']['urgencyLevel'] = 'Priority';
         $key = (string) Str::uuid();
@@ -274,7 +274,7 @@ class BhcGeneralConsultationV2Test extends TestCase
             'diagnoses' => [$this->card('c1', 'refer_to_rhu', 'Concern one'), $this->card('c2', 'refer_to_rhu', 'Concern two')],
         ])->assertCreated()->json('data.id');
         $outcomes = HealthRecord::findOrFail($id)->monitoring_data['conditionReferralOutcomes'];
-        \App\Models\RhuProvider::create(['rural_health_unit_id' => $this->rhu->id, 'name' => 'Available Card Doctor', 'specialization' => 'General Practitioner', 'availability_status' => 'Available', 'is_active' => true]);
+        $this->seedAvailableProvider($this->rhu, 'Available Card Doctor');
         $this->postJson('/api/referrals', ['patient_id' => $this->patient->id, 'health_record_id' => $id, 'resume_hold_id' => $outcomes[1]['holdId'], 'rural_health_unit_id' => $this->rhu->id, 'urgency_level' => 'Routine', 'reason_for_referral' => 'Assessment for Concern two'])->assertCreated();
         $updated = HealthRecord::findOrFail($id)->monitoring_data['conditionReferralOutcomes'];
         $this->assertSame($outcomes[0]['holdId'], $updated[0]['holdId']);

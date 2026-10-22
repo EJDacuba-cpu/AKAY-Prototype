@@ -38,6 +38,7 @@ class ReferralHoldController extends Controller
     {
         $holds = ReferralHold::query()
             ->where('barangay_health_center_id', $request->user()->barangay_health_center_id)
+            ->where('created_by', $request->user()->id)
             ->where('status', ReferralHold::STATUS_WAITING)
             ->with(['patient:id,first_name,last_name', 'ruralHealthUnit:id,name'])
             ->latest()
@@ -50,6 +51,7 @@ class ReferralHoldController extends Controller
     {
         ActionPermissions::ensure($request->user(), 'referrals.submit');
         abort_unless((int) $referralHold->barangay_health_center_id === (int) $request->user()->barangay_health_center_id, 403);
+        abort_unless((int) $referralHold->created_by === (int) $request->user()->id, 403);
         abort_unless($referralHold->status === ReferralHold::STATUS_WAITING, 422, 'This hold is already resolved.');
 
         $holds->discard($referralHold);

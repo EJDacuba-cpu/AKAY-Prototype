@@ -183,30 +183,49 @@ class ReferralSubmissionGateTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $this->patient->id,
                 'category' => 'General Consultation',
+                'chief_complaint' => 'Requires RHU assessment.',
+                'diagnosis' => 'Needs RHU assessment',
                 'needs_referral' => true,
                 'referral' => [
                     'reason_for_referral' => 'Requires RHU assessment.',
                     'urgency_level' => Referral::ATTENTION_ROUTINE,
                 ],
             ])
+            ->assertCreated();
+
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertDatabaseCount('health_records', 1);
+    }
+
+    public function test_available_covering_row_cannot_open_the_gate(): void
+    {
+        RhuProvider::create([
+            'rural_health_unit_id' => $this->rhu->id,
+            'name' => 'Dr. Covering',
+            'availability_status' => RhuProvider::STATUS_AVAILABLE,
+            'is_active' => true,
+        ]);
+        $this->provider('Dr. Official Away', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->postReferral()
             ->assertUnprocessable()
             ->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
 
         $this->assertDatabaseCount('referrals', 0);
-        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseHas('rhu_providers', [
+            'name' => 'Dr. Covering',
+            'user_id' => null,
+            'is_active' => true,
+            'availability_status' => RhuProvider::STATUS_AVAILABLE,
+        ]);
     }
 
     private function provider(
         string $name,
         string $status = RhuProvider::STATUS_AVAILABLE
     ): RhuProvider {
-        return RhuProvider::create([
-            'rural_health_unit_id' => $this->rhu->id,
-            'name' => $name,
-            'specialization' => 'General Practitioner',
-            'availability_status' => $status,
-            'is_active' => true,
-        ]);
+        return $this->seedAvailableProvider($this->rhu, $name, $status);
     }
 
     private function postReferral(array $overrides = [])

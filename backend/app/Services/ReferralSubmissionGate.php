@@ -33,7 +33,7 @@ class ReferralSubmissionGate
     {
         $providers = RhuProvider::query()
             ->where('rural_health_unit_id', $rhu->id)
-            ->where('is_active', true)
+            ->eligibleRoster()
             ->orderBy('name')
             ->when(\Illuminate\Support\Facades\DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
             ->get();

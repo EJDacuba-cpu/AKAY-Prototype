@@ -10,9 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * An RHU-managed provider (DOC-20). Availability is per-provider (DOC-21) and
  * aggregated at read time for the RHU-level view (DOC-19).
  *
- * Official RHU Doctor accounts may own a row through user_id. Identity then
+ * Official RHU Doctor accounts own a row through user_id. Identity then
  * comes from the Admin-managed account; availability remains RHU-managed.
- * Unlinked rows are covering/legacy roster entries and stay valid.
+ * Unlinked covering/legacy rows are retained for history and excluded from
+ * the active roster and referral calculations.
  *
  * DOC-15a-V: no default/fallback/covering attribute exists here by design.
  */
@@ -72,6 +73,14 @@ class RhuProvider extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Live roster and DOC-14: active official accounts only.
+     */
+    public function scopeEligibleRoster(Builder $query): Builder
+    {
+        return $query->where('is_active', true)->whereNotNull('user_id');
     }
 
     public function isAvailable(): bool

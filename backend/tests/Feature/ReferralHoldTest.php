@@ -11,6 +11,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Services\ReferralHoldPruner;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -191,7 +192,7 @@ class ReferralHoldTest extends TestCase
             ->assertOk();
 
         $this->assertSame(
-            2,
+            4,
             UserNotification::where('type', 'referral_hold_available')->count()
         );
         $this->assertNotNull(ReferralHold::query()->first()->last_notified_at);
@@ -237,7 +238,7 @@ class ReferralHoldTest extends TestCase
             ])->assertOk();
 
         $this->assertSame(
-            1,
+            2,
             UserNotification::where('type', 'referral_hold_available')->count(),
             'A second flip inside the cooldown window must not notify again.'
         );
@@ -280,13 +281,7 @@ class ReferralHoldTest extends TestCase
 
     private function provider(string $status = RhuProvider::STATUS_AVAILABLE): RhuProvider
     {
-        return RhuProvider::create([
-            'rural_health_unit_id' => $this->rhu->id,
-            'name' => 'Dr. '.uniqid(),
-            'specialization' => 'General Practitioner',
-            'availability_status' => $status,
-            'is_active' => true,
-        ]);
+        return $this->seedAvailableProvider($this->rhu, 'Dr. '.uniqid(), $status);
     }
 
     private function postReferral(array $overrides = [], ?User $actor = null)
@@ -314,6 +309,7 @@ class ReferralHoldTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
+            'permissions' => $role === User::ROLE_BHC ? StaffRoles::defaults('midwife') : null,
         ]);
     }
 }

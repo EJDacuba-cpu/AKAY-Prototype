@@ -1,4 +1,15 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import {
+  AVAILABILITY_AVAILABLE,
+  AVAILABILITY_STATUSES,
+  AVAILABILITY_UNAVAILABLE,
+  EMPTY_AVAILABILITY,
+  formatDoctorAvailabilityDate,
+  formatDoctorAvailabilitySummary,
+  normalizeAvailability,
+  normalizeAvailabilityStatus,
+  normalizeProvider,
+} from "./doctorAvailabilityModel.js";
 
 /**
  * RHU provider availability - server-backed (DOC-BACKEND, DOC-19, DOC-20).
@@ -16,73 +27,17 @@ import { apiRequest, unwrapData, unwrapList } from "./apiClient";
  * matching how every other AKAY resource is read.
  */
 
-export const AVAILABILITY_AVAILABLE = "Available";
-export const AVAILABILITY_UNAVAILABLE = "Unavailable";
-
-export const AVAILABILITY_STATUSES = [
+export {
   AVAILABILITY_AVAILABLE,
+  AVAILABILITY_STATUSES,
   AVAILABILITY_UNAVAILABLE,
-];
-
-export const EMPTY_AVAILABILITY = {
-  ruralHealthUnitId: null,
-  availableCount: 0,
-  totalCount: 0,
-  status: AVAILABILITY_UNAVAILABLE,
-  canSubmitReferral: false,
-  updatedAt: "",
-  providers: [],
+  EMPTY_AVAILABILITY,
+  formatDoctorAvailabilityDate,
+  formatDoctorAvailabilitySummary,
+  normalizeAvailability,
+  normalizeAvailabilityStatus,
+  normalizeProvider,
 };
-
-export function normalizeAvailabilityStatus(status) {
-  return status === AVAILABILITY_AVAILABLE
-    ? AVAILABILITY_AVAILABLE
-    : AVAILABILITY_UNAVAILABLE;
-}
-
-export function normalizeProvider(provider = {}) {
-  return {
-    id: provider.id ? String(provider.id) : "",
-    name: provider.name || "",
-    specialization: provider.specialization || "",
-    availabilityStatus: normalizeAvailabilityStatus(
-      provider.availability_status ?? provider.availabilityStatus,
-    ),
-    remarks: provider.remarks || "",
-    // Display only - an RHU-supplied estimate, never used to derive
-    // availabilityStatus or canSubmitReferral (see DoctorSchedule.jsx).
-    expectedAvailableAt:
-      provider.expected_available_at || provider.expectedAvailableAt || "",
-    ruralHealthUnitId: provider.rural_health_unit_id
-      ? String(provider.rural_health_unit_id)
-      : "",
-    isActive: provider.is_active ?? provider.isActive ?? true,
-    updatedAt: provider.updated_at || provider.updatedAt || "",
-  };
-}
-
-/**
- * DOC-19 - the aggregate is computed by the server. The counts and
- * canSubmitReferral are read straight through and never re-derived here: the
- * DOC-14 rule has exactly one authority, and it is not the browser.
- */
-export function normalizeAvailability(payload) {
-  if (!payload) return EMPTY_AVAILABILITY;
-
-  return {
-    ruralHealthUnitId: payload.rural_health_unit_id
-      ? String(payload.rural_health_unit_id)
-      : null,
-    availableCount: Number(payload.available_count || 0),
-    totalCount: Number(payload.total_count || 0),
-    status: normalizeAvailabilityStatus(payload.status),
-    canSubmitReferral: Boolean(payload.can_submit_referral),
-    updatedAt: payload.updated_at || "",
-    providers: Array.isArray(payload.providers)
-      ? payload.providers.map(normalizeProvider)
-      : [],
-  };
-}
 
 export async function getDoctorAvailability(rhuId = null) {
   const response = await apiRequest(`/rhu-providers/availability${rhuId ? `?rural_health_unit_id=${encodeURIComponent(rhuId)}` : ""}`);
@@ -133,17 +88,6 @@ function toPayload(provider = {}) {
   }
 
   return payload;
-}
-
-export function formatDoctorAvailabilitySummary(availability) {
-  const { availableCount, totalCount } = availability || EMPTY_AVAILABILITY;
-  return `${availableCount} of ${totalCount} doctors available`;
-}
-
-export function formatDoctorAvailabilityDate(value) {
-  if (!value) return "Not updated yet";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
 
 export default {

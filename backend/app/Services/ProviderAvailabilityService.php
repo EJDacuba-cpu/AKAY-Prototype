@@ -20,7 +20,9 @@ class ProviderAvailabilityService
      */
     public function summarize(Collection $providers, ?int $ruralHealthUnitId): array
     {
-        $active = $providers->where('is_active', true);
+        $active = $providers
+            ->where('is_active', true)
+            ->filter(fn (RhuProvider $provider): bool => $provider->user_id !== null);
         $availableCount = $active
             ->where('availability_status', RhuProvider::STATUS_AVAILABLE)
             ->count();
@@ -58,7 +60,7 @@ class ProviderAvailabilityService
     {
         return RhuProvider::query()
             ->where('rural_health_unit_id', $ruralHealthUnitId)
-            ->where('is_active', true)
+            ->eligibleRoster()
             ->where('availability_status', RhuProvider::STATUS_AVAILABLE)
             ->count();
     }

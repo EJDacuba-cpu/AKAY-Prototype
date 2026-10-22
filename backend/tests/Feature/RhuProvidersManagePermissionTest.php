@@ -103,16 +103,17 @@ class RhuProvidersManagePermissionTest extends TestCase
         $nurse = $this->staff('perm-availability-only@example.test', ['inventory.view', 'rhu.providers.manage']);
         $foreign = $this->provider($this->rhuB, 'Dr. Foreign');
 
+        $home = $this->provider($this->rhuA, 'Dr. Home');
+
         $this->actingAs($nurse, 'sanctum')->getJson('/api/incoming-referrals')->assertForbidden();
         $this->actingAs($nurse, 'sanctum')->getJson('/api/feedback')->assertForbidden();
 
-        $id = $this->actingAs($nurse, 'sanctum')
+        $this->actingAs($nurse, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. Covering'])
-            ->assertCreated()
-            ->json('data.id');
+            ->assertUnprocessable();
 
         $this->actingAs($nurse, 'sanctum')
-            ->patchJson("/api/rhu-providers/{$id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
+            ->patchJson("/api/rhu-providers/{$home->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
             ->assertOk()
             ->assertJsonPath('data.availability_status', RhuProvider::STATUS_UNAVAILABLE);
 
@@ -127,10 +128,14 @@ class RhuProvidersManagePermissionTest extends TestCase
     {
         $doctor = $this->staff('perm-doctor-write@example.test', ['inventory.view', 'rhu.providers.manage'], 'doctor');
         $nurse = $this->staff('perm-nurse-denied@example.test', ['inventory.view', 'rhu.manage']);
+        $provider = $this->provider($this->rhuA, 'Dr. Duty');
 
         $this->actingAs($doctor, 'sanctum')
-            ->postJson('/api/rhu-providers', ['name' => 'Dr. Duty'])
-            ->assertCreated();
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
+            ->assertOk();
+        $this->actingAs($nurse, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_AVAILABLE])
+            ->assertForbidden();
         $this->actingAs($nurse, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. No Duty'])
             ->assertForbidden();
@@ -161,10 +166,11 @@ class RhuProvidersManagePermissionTest extends TestCase
             ->assertCreated()
             ->json('data.id');
         $nurse = User::findOrFail($id);
+        $provider = $this->provider($this->rhuA, 'Dr. Toggle');
 
         $this->actingAs($nurse, 'sanctum')
-            ->postJson('/api/rhu-providers', ['name' => 'Dr. First'])
-            ->assertCreated();
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
+            ->assertOk();
 
         Sanctum::actingAs($this->admin, ['*']);
         $this->patchJson("/api/users/{$id}", [
@@ -173,6 +179,9 @@ class RhuProvidersManagePermissionTest extends TestCase
             'permissions_confirmed' => true,
         ])->assertOk();
 
+        $this->actingAs($nurse->fresh(), 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_AVAILABLE])
+            ->assertForbidden();
         $this->actingAs($nurse->fresh(), 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. After Uncheck'])
             ->assertForbidden();
@@ -185,8 +194,8 @@ class RhuProvidersManagePermissionTest extends TestCase
         ])->assertOk();
 
         $this->actingAs($nurse->fresh(), 'sanctum')
-            ->postJson('/api/rhu-providers', ['name' => 'Dr. After Check'])
-            ->assertCreated();
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_AVAILABLE])
+            ->assertOk();
     }
 
     public function test_migration_grants_the_duty_only_where_rhu_manage_already_exists(): void
@@ -246,12 +255,7 @@ class RhuProvidersManagePermissionTest extends TestCase
 
     private function provider(RuralHealthUnit $rhu, string $name = 'Dr. Listed'): RhuProvider
     {
-        return RhuProvider::create([
-            'rural_health_unit_id' => $rhu->id,
-            'name' => $name,
-            'availability_status' => RhuProvider::STATUS_AVAILABLE,
-            'is_active' => true,
-        ]);
+        return $this->seedAvailableProvider($rhu, $name);
     }
 
     private function user(
