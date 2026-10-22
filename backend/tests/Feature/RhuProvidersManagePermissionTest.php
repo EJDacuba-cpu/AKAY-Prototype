@@ -82,10 +82,11 @@ class RhuProvidersManagePermissionTest extends TestCase
 
     public function test_referral_duty_without_providers_manage_cannot_write_the_roster(): void
     {
-        $nurse = $this->staff('perm-referrals-only@example.test', ['inventory.view', 'rhu.manage']);
+        $nurse = $this->staff('perm-referrals-only@example.test', ['rhu.manage']);
         $provider = $this->provider($this->rhuA);
 
         $this->actingAs($nurse, 'sanctum')->getJson('/api/incoming-referrals')->assertOk();
+        $this->actingAs($nurse, 'sanctum')->getJson('/api/rhu-providers')->assertOk();
         $this->actingAs($nurse, 'sanctum')->postJson('/api/rhu-providers', ['name' => 'Dr. Blocked'])->assertForbidden();
         $this->actingAs($nurse, 'sanctum')
             ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
@@ -100,7 +101,7 @@ class RhuProvidersManagePermissionTest extends TestCase
 
     public function test_providers_manage_without_referral_duty_can_write_home_roster_only(): void
     {
-        $nurse = $this->staff('perm-availability-only@example.test', ['inventory.view', 'rhu.providers.manage']);
+        $nurse = $this->staff('perm-availability-only@example.test', ['rhu.providers.manage']);
         $foreign = $this->provider($this->rhuB, 'Dr. Foreign');
 
         $home = $this->provider($this->rhuA, 'Dr. Home');
@@ -118,16 +119,35 @@ class RhuProvidersManagePermissionTest extends TestCase
             ->assertJsonPath('data.availability_status', RhuProvider::STATUS_UNAVAILABLE);
 
         $this->actingAs($nurse, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $bhw = $this->user(
+            'Perm BHW Gate',
+            'perm-bhw-gate@example.test',
+            User::ROLE_BHC,
+            $this->bhcA->id,
+            permissions: ['patients.register']
+        );
+        $this->actingAs($bhw, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.available_count', 0);
+
+        $this->actingAs($nurse, 'sanctum')
             ->patchJson("/api/rhu-providers/{$foreign->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
             ->assertForbidden();
         $this->actingAs($nurse, 'sanctum')->deleteJson("/api/rhu-providers/{$foreign->id}")->assertForbidden();
         $this->assertSame(RhuProvider::STATUS_AVAILABLE, $foreign->fresh()->availability_status);
     }
 
-    public function test_doctor_with_duty_can_write_and_nurse_without_it_cannot(): void
+    public function test_write_access_follows_the_duty_not_staff_role(): void
     {
-        $doctor = $this->staff('perm-doctor-write@example.test', ['inventory.view', 'rhu.providers.manage'], 'doctor');
-        $nurse = $this->staff('perm-nurse-denied@example.test', ['inventory.view', 'rhu.manage']);
+        $doctor = $this->staff('perm-doctor-write@example.test', ['rhu.providers.manage'], 'doctor');
+        $nurse = $this->staff('perm-nurse-denied@example.test', ['rhu.manage']);
+        $doctorWithoutDuty = $this->staff('perm-doctor-denied@example.test', ['rhu.manage'], 'doctor');
         $provider = $this->provider($this->rhuA, 'Dr. Duty');
 
         $this->actingAs($doctor, 'sanctum')
@@ -136,8 +156,43 @@ class RhuProvidersManagePermissionTest extends TestCase
         $this->actingAs($nurse, 'sanctum')
             ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_AVAILABLE])
             ->assertForbidden();
+        $this->actingAs($doctorWithoutDuty, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_AVAILABLE])
+            ->assertForbidden();
         $this->actingAs($nurse, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. No Duty'])
+            ->assertForbidden();
+        $this->assertSame(RhuProvider::STATUS_UNAVAILABLE, $provider->fresh()->availability_status);
+    }
+
+    public function test_roster_reads_do_not_require_inventory_view(): void
+    {
+        $viewer = $this->staff('perm-view-no-inventory@example.test', ['clinical.history']);
+        $bhw = $this->user(
+            'Perm BHW Viewer',
+            'perm-bhw-view@example.test',
+            User::ROLE_BHC,
+            $this->bhcA->id,
+            permissions: ['patients.register']
+        );
+        $provider = $this->provider($this->rhuA, 'Dr. Visible');
+
+        $this->actingAs($viewer, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $provider->id);
+        $this->actingAs($viewer, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.total_count', 1);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.rural_health_unit_id', $this->rhuA->id)
+            ->assertJsonPath('data.total_count', 1);
+        $this->actingAs($bhw, 'sanctum')
+            ->getJson('/api/rhu-providers')
             ->assertForbidden();
     }
 

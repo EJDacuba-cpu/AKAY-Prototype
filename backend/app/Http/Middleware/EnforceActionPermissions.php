@@ -29,7 +29,9 @@ class EnforceActionPermissions
                 && ActionPermissions::allows($request->user(), 'clinical.history') => null,
             str_contains($path, '/patients') => 'patients.register',
             str_contains($path, '/medicines') => $read ? 'inventory.view' : 'inventory.manage',
-            str_contains($path, '/rhu-providers') => $read ? 'inventory.view' : 'rhu.providers.manage',
+            // Doctor availability reads are facility-scoped, not inventory.
+            // Writes stay on the MHO-controlled rhu.providers.manage checklist.
+            str_contains($path, '/rhu-providers') => $read ? null : 'rhu.providers.manage',
             str_contains($path, '/follow-up-tasks') => $read ? 'clinical.history' : 'followups.manage',
             str_contains($path, '/reports') => 'reports.view',
             str_contains($path, '/referral-routing') => 'consultations.encode',

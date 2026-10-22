@@ -73,7 +73,6 @@ class RhuProviderAvailabilityTest extends TestCase
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->patchJson("/api/rhu-providers/{$provider->id}", [
                 'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
-                'remarks' => 'On duty until 5pm',
             ])
             ->assertOk()
             ->assertJsonPath('data.availability_status', RhuProvider::STATUS_UNAVAILABLE)
@@ -248,12 +247,57 @@ class RhuProviderAvailabilityTest extends TestCase
         );
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->patchJson("/api/rhu-providers/{$provider->id}", ['remarks' => 'Back Monday'])
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['specialization' => 'Pediatrics'])
             ->assertOk();
 
         $this->assertTrue(
             AuditLog::where('action', 'provider_updated')->exists(),
             'A non-availability edit must audit as provider_updated.'
+        );
+    }
+
+    /** Manual Available/Unavailable persists across refreshes and drives the BHC gate. */
+    public function test_manual_status_persists_and_updates_referral_eligibility(): void
+    {
+        $provider = $this->provider($this->rhuA, 'Dr. Persist');
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.available_count', 1);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.available_count', 0)
+            ->assertJsonPath('data.providers.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->assertDatabaseHas('rhu_providers', [
+            'id' => $provider->id,
+            'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+        ]);
+        $this->assertTrue(
+            AuditLog::where('action', 'provider_availability_changed')
+                ->where('module', 'providers')
+                ->exists()
         );
     }
 

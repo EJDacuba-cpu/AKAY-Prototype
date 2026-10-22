@@ -38,6 +38,12 @@ test("sidebar locks restricted modules but keeps assigned modules and admin navi
   assert.equal(navigationAllowed({ role: "admin" }, "/admin/reports"), true);
 });
 
+test("RHU doctor availability is not locked behind inventory", () => {
+  const rhu = { role: "rhu", permissions: ["clinical.history"] };
+  assert.equal(navigationAllowed(rhu, "/rhu/doctor-availability"), true);
+  assert.equal(navigationAllowed(rhu, "/rhu/medicine-management"), false);
+});
+
 test("BHC clinical history can read the directory without gaining patient registration or RHU access", () => {
   const history = { role: "bhc", permissions: ["clinical.history"] };
   assert.equal(navigationAllowed(history, "/bhc/patients"), true);

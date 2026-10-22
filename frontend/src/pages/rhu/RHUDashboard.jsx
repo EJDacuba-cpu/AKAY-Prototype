@@ -636,12 +636,6 @@ function DoctorScheduleCard({ delay = 0 }) {
                     {doctor.specialization || "General Practitioner"}
                   </p>
 
-                  {doctor.remarks && (
-                    <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                      {doctor.remarks}
-                    </p>
-                  )}
-
                   <div className="mt-2">
                     <DoctorBadge
                       status={doctor.availabilityStatus}

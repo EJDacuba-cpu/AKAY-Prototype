@@ -18,7 +18,6 @@ import { errorStateVariant } from "../../utils/errorStateVariant";
 import {
   AVAILABILITY_AVAILABLE,
   AVAILABILITY_STATUSES,
-  AVAILABILITY_UNAVAILABLE,
   normalizeAvailabilityStatus,
 } from "../../services/doctorAvailability";
 import {
@@ -35,18 +34,7 @@ const EMPTY_FORM = {
   name: "",
   specialization: DEFAULT_DESIGNATION,
   availabilityStatus: AVAILABILITY_AVAILABLE,
-  remarks: "",
-  expectedAvailableAt: "",
 };
-
-function toDatetimeLocalValue(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 function formatDateTime(value) {
   if (!value) return "Not updated yet";
@@ -66,8 +54,6 @@ function mapProviderToForm(provider) {
     name: provider?.name || "",
     specialization: provider?.specialization || DEFAULT_DESIGNATION,
     availabilityStatus: normalizeAvailabilityStatus(provider?.availabilityStatus),
-    remarks: provider?.remarks || "",
-    expectedAvailableAt: toDatetimeLocalValue(provider?.expectedAvailableAt),
   };
 }
 
@@ -154,8 +140,6 @@ export default function DoctorSchedule() {
         id: selectedDoctor.id,
         specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
         availabilityStatus: form.availabilityStatus,
-        remarks: form.remarks.trim(),
-        expectedAvailableAt: form.expectedAvailableAt || null,
       });
 
       setForm(mapProviderToForm(updated));
@@ -178,7 +162,7 @@ export default function DoctorSchedule() {
         <div className="min-w-0">
           <h1 className="text-[17px] font-bold leading-tight tracking-tight text-ink-800">Doctor Availability</h1>
           <p className="mt-0.5 text-[13px] text-neutral-600">
-            Official doctors come from Admin accounts. Availability is set here.
+            Official doctors come from Admin accounts. Confirm they are on duty, then set Available or Unavailable. Status stays until it is changed.
           </p>
         </div>
 
@@ -284,7 +268,7 @@ function AvailabilityForm({ form, errors, saving, selectedName, onChange, onSubm
       <div>
         <h2 className="text-sm font-semibold text-ink-800">Official doctor</h2>
         <p className="mt-1 text-[12px] text-neutral-600">
-          Name is managed from the official account. RHU staff set availability here.
+          Name is managed from the official account. Confirm they are on duty before setting Available.
         </p>
       </div>
 
@@ -311,24 +295,6 @@ function AvailabilityForm({ form, errors, saving, selectedName, onChange, onSubm
           <option key={status}>{status}</option>
         ))}
       </FieldSelect>
-
-      <FieldInput
-        label="Remarks"
-        value={form.remarks}
-        onChange={(event) => onChange("remarks", event.target.value)}
-        error={errors.remarks}
-        placeholder="Example: On duty until 5pm"
-      />
-
-      {form.availabilityStatus === AVAILABILITY_UNAVAILABLE && (
-        <FieldInput
-          label="Expected back (optional estimate)"
-          type="datetime-local"
-          value={form.expectedAvailableAt}
-          onChange={(event) => onChange("expectedAvailableAt", event.target.value)}
-          error={errors.expectedAvailableAt}
-        />
-      )}
 
       {errors.form ? <p className="text-[12px] font-medium text-alert-700">{errors.form}</p> : null}
 
@@ -361,9 +327,6 @@ function ReadOnlyPanel({ doctor }) {
           <p className="mt-1 text-[12px] text-neutral-600">
             {doctor.specialization || DEFAULT_DESIGNATION}
           </p>
-          {doctor.remarks ? (
-            <p className="mt-2 text-[12px] text-neutral-600">{doctor.remarks}</p>
-          ) : null}
         </div>
       ) : (
         <p className="text-[12px] text-neutral-500">Select a doctor to see details.</p>
@@ -378,7 +341,7 @@ function IdlePanel({ canManage }) {
       <h2 className="text-sm font-semibold text-ink-800">Availability controls</h2>
       <p className="mt-1 text-[12px] text-neutral-600">
         {canManage
-          ? "Select a doctor to update availability."
+          ? "Select a doctor to set Available or Unavailable after confirming they are on duty."
           : "Select a doctor to see who is on duty."}
       </p>
     </div>
