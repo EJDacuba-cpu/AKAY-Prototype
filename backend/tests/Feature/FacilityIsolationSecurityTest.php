@@ -307,6 +307,17 @@ class FacilityIsolationSecurityTest extends TestCase
         $this->assertFalse($ids->contains($this->patientB->id));
     }
 
+    public function test_rhu_staff_cannot_update_referred_patient_until_owned(): void
+    {
+        $this->assertNull($this->patientA->rural_health_unit_id);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/patients/{$this->patientA->id}", ['first_name' => 'Changed'])
+            ->assertForbidden();
+
+        $this->assertSame('Patient', $this->patientA->fresh()->first_name);
+    }
+
     public function test_bhw_cannot_create_health_record_for_other_bhc_patient(): void
     {
         $this->postHealthRecord($this->bhwA, $this->healthRecordPayload($this->patientB))

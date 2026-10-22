@@ -15,7 +15,7 @@ import { getCurrentUser } from "../../../../utils/auth";
  * It sits above the tab strip on every tab and carries no status badge:
  * follow-ups have their own card.
  */
-export default function PatientProfileHeader({ patient, patientId, backPath, updating = false, carePath = null }) {
+export default function PatientProfileHeader({ patient, patientId, backPath, updating = false, carePath = null, actions = null }) {
   const { consultation, onStart, startModal } = useConsultationActions(patient, patientId);
   const canEncode = (getCurrentUser()?.permissions || []).includes("consultations.encode");
   const name = formatPatientName(patient, "Unnamed Patient");
@@ -68,6 +68,7 @@ export default function PatientProfileHeader({ patient, patientId, backPath, upd
 
           <div className="w-full shrink-0 lg:ml-auto lg:w-auto lg:min-w-[190px]">
             {updating && <RefreshingIndicator label="Updating patient details..." />}
+            {actions}
             {canEncode && <ConsultationButton consultation={consultation} onStart={onStart} />}
           </div>
         </div>

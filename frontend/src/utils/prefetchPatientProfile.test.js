@@ -58,6 +58,26 @@ test("a failing secondary query does not block opening", async () => {
   assert.deepEqual(await prefetchPatientProfile(client, queries), { id: 1 });
 });
 
+test("RHU prefetch loads the patient and skips history queries that are not enabled", async () => {
+  const client = fakeClient({
+    "patient-details": async () => ({ id: 9 }),
+    "health-records": async () => {
+      throw new Error("should skip");
+    },
+  });
+
+  const patient = await prefetchPatientProfile(client, {
+    patient: { queryKey: ["patient-details", "rhu", "9"], queryFn: () => {} },
+    secondary: [
+      { queryKey: ["health-records", "rhu", "patient", "9"], queryFn: () => {}, enabled: false },
+      { queryKey: ["referrals", "rhu", "patient", "9"], queryFn: () => {}, enabled: false },
+    ],
+  });
+
+  assert.deepEqual(patient, { id: 9 });
+  assert.deepEqual(client.calls.map((c) => c.queryKey[0]), ["patient-details"]);
+});
+
 test("a failing patient query rejects so the caller can stay on the directory", async () => {
   const client = fakeClient({
     patient: async () => {

@@ -49,8 +49,9 @@ function uniqueOptions(items, selectors, fallback) {
   return [fallback, ...new Set(values)];
 }
 
-export default function PatientsModule() {
+export default function PatientsModule({ role = "bhc", basePath = "/bhc" } = {}) {
   const canRegister = useAccess().can("patients.register");
+  const addPatientPath = `${basePath}/patients/add`;
   const {
     patients,
     filteredPatients,
@@ -61,7 +62,7 @@ export default function PatientsModule() {
     queryError,
     refetchPatients,
     isRefreshing,
-  } = usePatients();
+  } = usePatients(role);
   const resultsRef = useRef(null);
   // The details panel starts collapsed; a card click selects a patient and opens it.
   const [panel, setPanel] = useState({ selectedId: null, open: false });
@@ -206,7 +207,7 @@ export default function PatientsModule() {
 
   if (error) {
     return (
-      <DashboardLayout role="bhc" title="Patients">
+      <DashboardLayout role={role} title="Patients">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetchPatients()}
@@ -218,7 +219,7 @@ export default function PatientsModule() {
   }
 
   return (
-    <DashboardLayout role="bhc" title="Patients">
+    <DashboardLayout role={role} title="Patients">
       <SoftLoadingArea skeleton="table"
         isLoading={showInitialLoading}
         message="Loading patients..."
@@ -256,7 +257,7 @@ export default function PatientsModule() {
                 onClearFilters={clearFilters}
                 onRemoveFilter={removeFilter}
                 filterDescription="Narrow the patient directory."
-                primaryActionTo={isDesktop && canRegister ? "/bhc/patients/add" : undefined}
+                primaryActionTo={isDesktop && canRegister ? addPatientPath : undefined}
                 primaryActionLabel={isDesktop && canRegister ? "New Patient" : undefined}
                 primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
                 actions={
@@ -295,6 +296,9 @@ export default function PatientsModule() {
                   onLoadMore={loadMorePatients}
                   selectedPatientId={selectedPatientId}
                   onSelectPatient={selectPatient}
+                  role={role}
+                  basePath={basePath}
+                  addPatientPath={addPatientPath}
                 />
               )}
             </div>
@@ -304,7 +308,7 @@ export default function PatientsModule() {
                 over the list's bottom-right corner and cards scroll beneath it. */}
             {!showInitialLoading && !isDesktop && canRegister && (
               <div className="clinical-directory__fab-anchor">
-                <Link to="/bhc/patients/add" className="patients-fab" aria-label="New Patient">
+                <Link to={addPatientPath} className="patients-fab" aria-label="New Patient">
                   <Plus size={24} strokeWidth={2.25} aria-hidden="true" />
                   <span className="patients-fab__tooltip" aria-hidden="true">New Patient</span>
                 </Link>
@@ -325,7 +329,7 @@ export default function PatientsModule() {
               >
                 {panelOpen &&
                   (selectedPatientId ? (
-                    <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} showTitle />
+                    <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} basePath={basePath} showTitle />
                   ) : (
                     <div className="clinical-directory__preview-empty">
                       <p className="clinical-directory__preview-empty-title">Select a patient to preview</p>
@@ -346,7 +350,7 @@ export default function PatientsModule() {
         widthClassName="w-full sm:w-[420px]"
       >
         {!isDesktop && selectedPatientId && (
-          <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} />
+          <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} basePath={basePath} />
         )}
       </Drawer>
     </DashboardLayout>
@@ -361,6 +365,9 @@ function PatientDirectory({
   onLoadMore,
   selectedPatientId,
   onSelectPatient,
+  role,
+  basePath,
+  addPatientPath,
 }) {
   return (
     <section className="anim-fade-up min-w-0">
@@ -377,7 +384,7 @@ function PatientDirectory({
             action={
               !hasAnyFilter && canRegister && (
                 <Link
-                  to="/bhc/patients/add"
+                  to={addPatientPath}
                   className="mt-4 inline-flex items-center gap-2 rounded-none bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-700"
                 >
                   <Plus size={13} />
@@ -393,8 +400,8 @@ function PatientDirectory({
                 <PatientDirectoryCard
                   key={patient.id || patient.patientId}
                   patient={patient}
-                  basePath="/bhc"
-                  role="bhc"
+                  basePath={basePath}
+                  role={role}
                   onSelect={onSelectPatient}
                   selected={getPatientKey(patient) === selectedPatientId}
                 />

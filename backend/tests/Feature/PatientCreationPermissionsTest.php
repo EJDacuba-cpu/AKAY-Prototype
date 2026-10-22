@@ -111,4 +111,21 @@ class PatientCreationPermissionsTest extends TestCase
         $this->deleteJson('/api/patients/'.$patient->id)->assertForbidden();
         $this->assertSame('Local', $patient->fresh()->first_name);
     }
+
+    public function test_rhu_history_only_cannot_list_patients(): void
+    {
+        $rhu = RuralHealthUnit::create(['name' => 'History RHU']);
+        $user = User::create([
+            'name' => 'RHU History', 'email' => 'rhu-history@example.test', 'password' => 'password123',
+            'status' => 'active', 'role' => 'rhu', 'rural_health_unit_id' => $rhu->id,
+            'permissions' => ['clinical.history'],
+        ]);
+        Patient::create(['first_name' => 'Owned', 'last_name' => 'Patient', 'sex' => 'Female', 'rural_health_unit_id' => $rhu->id]);
+        Sanctum::actingAs($user, ['akay:access']);
+
+        $this->getJson('/api/patients')->assertForbidden();
+        $this->postJson('/api/patients', [
+            'first_name' => 'Blocked', 'last_name' => 'Patient', 'sex' => 'Female',
+        ])->assertForbidden();
+    }
 }

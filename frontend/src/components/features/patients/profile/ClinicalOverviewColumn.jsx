@@ -238,7 +238,9 @@ export default function ClinicalOverviewColumn({
         onViewAll={onViewReferrals}
         onView={onViewReferral}
       />
-      <FollowUpsPreview followUps={activeFollowUps} onView={onViewFollowUp} />
+      {typeof onViewFollowUp === "function" && (
+        <FollowUpsPreview followUps={activeFollowUps} onView={onViewFollowUp} />
+      )}
       <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <RecentVisitsPreview records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>

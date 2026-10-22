@@ -1,19 +1,11 @@
 import { getPatientFollowUpTasks } from "./followUpTaskService";
-import { getHealthRecordsByPatient } from "./healthRecordService";
 import {
   getPatientById,
-  getPatientByIdForRole,
   getPatientDetailsListByRole,
   getPatientHealthRecords,
   getPatientReferrals,
-  getPatientsByRole,
 } from "./patientService";
-import { getReferrals } from "./referrals";
 import { queryKeys } from "../utils/queryKeys";
-
-function sameId(a, b) {
-  return String(a ?? "") === String(b ?? "");
-}
 
 /**
  * Query definitions for the patient profile pages. The profile pages and the
@@ -61,50 +53,27 @@ export function getBhcPatientProfileQueries(patientId, { canViewHistory = false 
   };
 }
 
-export function getRhuPatientProfileQueries(patientId) {
-  const enabled = Boolean(patientId);
+export function getRhuPatientProfileQueries(patientId, { canViewHistory = false } = {}) {
+  const historyEnabled = Boolean(patientId) && canViewHistory;
 
   return {
     patient: {
       queryKey: queryKeys.patientDetails("rhu", patientId),
-      queryFn: async () => {
-        const [patientDetailsResult, detailsListResult, patientListResult] =
-          await Promise.allSettled([
-            getPatientByIdForRole(patientId, "rhu"),
-            getPatientDetailsListByRole("rhu"),
-            getPatientsByRole("rhu"),
-          ]);
-
-        const patientDetails =
-          patientDetailsResult.status === "fulfilled"
-            ? patientDetailsResult.value
-            : null;
-        const patientDetailsList =
-          detailsListResult.status === "fulfilled" ? detailsListResult.value : [];
-        const patientList =
-          patientListResult.status === "fulfilled" ? patientListResult.value : [];
-        const allPatients = [
-          ...(Array.isArray(patientDetailsList) ? patientDetailsList : []),
-          ...(Array.isArray(patientList) ? patientList : []),
-        ];
-
-        return (
-          patientDetails ||
-          allPatients.find((item) => sameId(item?.id, patientId)) ||
-          null
-        );
-      },
-      enabled,
+      queryFn: () => getPatientById(patientId),
+      enabled: Boolean(patientId),
+      retry: false,
     },
     records: {
       queryKey: [...queryKeys.healthRecords("rhu"), "patient", patientId],
-      queryFn: () => getHealthRecordsByPatient(patientId),
-      enabled,
+      queryFn: () => getPatientHealthRecords(patientId),
+      enabled: historyEnabled,
+      retry: false,
     },
     referrals: {
       queryKey: [...queryKeys.referrals("rhu"), "patient", patientId],
-      queryFn: getReferrals,
-      enabled,
+      queryFn: () => getPatientReferrals(patientId),
+      enabled: historyEnabled,
+      retry: false,
     },
   };
 }
@@ -112,7 +81,7 @@ export function getRhuPatientProfileQueries(patientId) {
 /** The profile queries for a role, as the `{ patient, secondary }` shape the prefetch takes. */
 export function getPatientProfilePrefetch(role, patientId, options) {
   if (role === "rhu") {
-    const { patient, records, referrals } = getRhuPatientProfileQueries(patientId);
+    const { patient, records, referrals } = getRhuPatientProfileQueries(patientId, options);
     return { patient, secondary: [records, referrals] };
   }
 

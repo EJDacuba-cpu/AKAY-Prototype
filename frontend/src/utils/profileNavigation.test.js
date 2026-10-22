@@ -7,6 +7,7 @@ import {
   getConsultationBackground,
   getProfileReturnPath,
   bhcPatientRecordsPath,
+  patientRecordsPath,
   buildPatientRecordDetailsState,
   getPatientRecordReturn,
 } from "./profileNavigation.js";
@@ -62,7 +63,15 @@ test("record details returns to the exact profile tab and preserves its originat
 test("direct record links return to the patient's records and reject unrelated/external origins", () => {
   assert.equal(bhcPatientRecordsPath(7), "/bhc/patients/7?tab=records");
   assert.equal(bhcPatientRecordsPath(""), "/bhc/patients");
-  for (const path of ["//evil.example/bhc/patients/7", "https://evil.example", "/rhu/patients/7", "/bhc/patients/8"]) {
+  for (const path of ["//evil.example/bhc/patients/7", "https://evil.example", "/bhc/patients/8"]) {
     assert.equal(getPatientRecordReturn({ state: { patientProfile: { path } } }, 7).path, "/bhc/patients/7?tab=records");
   }
+});
+
+test("RHU record details returns to the RHU profile records tab", () => {
+  const profile = { pathname: "/rhu/patients/7", search: "?tab=records", state: { returnTo: "/rhu/patients" } };
+  const target = getPatientRecordReturn({ state: buildPatientRecordDetailsState(profile) }, 7, "/rhu");
+  assert.deepEqual(target, { path: "/rhu/patients/7?tab=records", state: profile.state });
+  assert.equal(patientRecordsPath(7, "/rhu"), "/rhu/patients/7?tab=records");
+  assert.equal(getPatientRecordReturn({ state: { patientProfile: { path: "/bhc/patients/8" } } }, 7, "/rhu").path, "/rhu/patients/7?tab=records");
 });

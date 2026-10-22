@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -23,6 +23,7 @@ import {
   getPatientsByRole,
 } from "../../services/patients";
 import { queryKeys } from "../../utils/queryKeys";
+import { getPatientRecordReturn } from "../../utils/profileNavigation";
 import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { getBmiDisplayValue } from "../../components/features/health-records/recordDetailsHelpers";
 import {
@@ -42,6 +43,7 @@ const keyframes = `
 export default function RHURecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     data: details,
     isLoading,
@@ -215,7 +217,18 @@ export default function RHURecordDetails() {
         recordId={getRecordId(record)}
         hasLinkedReferral={hasLinkedReferral}
         isUpdating={detailsUpdating}
-        onBack={() => navigate("/rhu/health-records")}
+        onBack={() => {
+          const target = getPatientRecordReturn(
+            location,
+            patient?.id || record?.patientId || record?.patient_id,
+            "/rhu",
+          );
+          if (location.state?.patientProfile) {
+            navigate(target.path, { replace: true, state: target.state });
+            return;
+          }
+          navigate("/rhu/health-records");
+        }}
         patientName={patientName}
         serviceType={recordTypeLabel || recordClassification}
         displayDate={displayDate}

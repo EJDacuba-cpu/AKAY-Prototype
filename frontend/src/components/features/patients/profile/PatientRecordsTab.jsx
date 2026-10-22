@@ -31,9 +31,9 @@ function RecordFilter({ label, options, value, onChange }) {
   );
 }
 
-export default function PatientRecordsTab({ patientId, records = [], referrals = [], followUps = [], isLoading, isFetching, isError, onRetry, detailsState }) {
+export default function PatientRecordsTab({ patientId, records = [], referrals = [], followUps = [], isLoading, isFetching, isError, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.patientRecordView("bhc", patientId);
+  const queryKey = queryKeys.patientRecordView(role, patientId);
   // Session memory only: search can contain a complaint, so never put it in the URL or browser storage.
   const { data: view } = useQuery({ queryKey, queryFn: () => DEFAULT_RECORD_VIEW, initialData: DEFAULT_RECORD_VIEW, enabled: false, gcTime: 30 * 60 * 1000 });
   const { filters } = view;
@@ -73,7 +73,7 @@ export default function PatientRecordsTab({ patientId, records = [], referrals =
       ) : (
         <>
           {isFetching && <RefreshingIndicator label="Updating health records..." />}
-          <HealthRecordsTable records={sliceRows(filtered, page)} currentPage={page} totalPages={totalPages} onPageChange={next => queryClient.setQueryData(queryKey, current => ({ ...current, page: next }))} detailsState={detailsState} emptyTitle={records.length ? "No matching records" : "No health records yet"} />
+          <HealthRecordsTable records={sliceRows(filtered, page)} currentPage={page} totalPages={totalPages} onPageChange={next => queryClient.setQueryData(queryKey, current => ({ ...current, page: next }))} detailsState={detailsState} emptyTitle={records.length ? "No matching records" : "No health records yet"} basePath={basePath} />
         </>
       )}
     </section>

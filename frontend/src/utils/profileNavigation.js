@@ -9,6 +9,8 @@ import { matchPath } from "react-router";
 
 export const CONSULTATION_PROFILE_SOURCE = "health-record-consultation";
 export const BHC_PATIENT_PROFILE_PATH = "/bhc/patients/:patientId";
+export const RHU_PATIENT_PROFILE_PATH = "/rhu/patients/:patientId";
+const PATIENT_PROFILE_PATHS = [BHC_PATIENT_PROFILE_PATH, RHU_PATIENT_PROFILE_PATH];
 
 export function locationToPath(location) {
   if (!location) return "";
@@ -17,6 +19,15 @@ export function locationToPath(location) {
 
 function isInternalPath(value) {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//");
+}
+
+function matchPatientProfile(pathname) {
+  if (typeof pathname !== "string") return null;
+  for (const pattern of PATIENT_PROFILE_PATHS) {
+    const match = matchPath(pattern, pathname);
+    if (match) return match;
+  }
+  return null;
 }
 
 /** Where the profile's Back button goes; falls back to the Patients list. */
@@ -30,8 +41,12 @@ export function buildProfileReturnState(location) {
   return { returnTo: locationToPath(location) };
 }
 
+export function patientRecordsPath(patientId, basePath = "/bhc") {
+  return patientId ? `${basePath}/patients/${encodeURIComponent(patientId)}?tab=records` : `${basePath}/patients`;
+}
+
 export function bhcPatientRecordsPath(patientId) {
-  return patientId ? `/bhc/patients/${encodeURIComponent(patientId)}?tab=records` : "/bhc/patients";
+  return patientRecordsPath(patientId, "/bhc");
 }
 
 /** Only navigation metadata crosses the details route; filters stay in session memory. */
@@ -39,14 +54,15 @@ export function buildPatientRecordDetailsState(location) {
   return { patientProfile: { path: locationToPath(location), state: location.state || null } };
 }
 
-export function getPatientRecordReturn(location, patientId) {
+export function getPatientRecordReturn(location, patientId, basePath = "/bhc") {
   const origin = location?.state?.patientProfile;
   const path = origin?.path;
-  const match = typeof path === "string" && matchPath(BHC_PATIENT_PROFILE_PATH, path.split(/[?#]/)[0]);
+  const pathname = typeof path === "string" ? path.split(/[?#]/)[0] : "";
+  const match = matchPatientProfile(pathname);
   if (match && (!patientId || String(match.params.patientId) === String(patientId))) {
     return { path, state: origin.state || null };
   }
-  return { path: bhcPatientRecordsPath(patientId), state: null };
+  return { path: patientRecordsPath(patientId, basePath), state: null };
 }
 
 /**

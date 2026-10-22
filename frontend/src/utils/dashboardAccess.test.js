@@ -54,3 +54,18 @@ test("BHC clinical history can read the directory without gaining patient regist
   assert.equal(canAccessModule({ ...history, role: "rhu" }, "patientDirectory"), false);
   assert.equal(canAccessModule({ role: "bhc", permissions: ["inventory.view"] }, "patientDirectory"), false);
 });
+
+test("RHU registration can open the patient directory and add page", () => {
+  const rhu = { role: "rhu", permissions: ["patients.register", "clinical.history"] };
+  assert.equal(navigationAllowed(rhu, "/rhu/patients"), true);
+  assert.equal(navigationAllowed(rhu, "/rhu/patients/add"), true);
+  assert.equal(canAccessModule(rhu, "patients"), true);
+});
+
+test("RHU history without register cannot open the patient directory", () => {
+  const rhu = { role: "rhu", permissions: ["clinical.history"] };
+  assert.equal(navigationAllowed(rhu, "/rhu/patients"), false);
+  assert.equal(navigationAllowed(rhu, "/rhu/patients/add"), false);
+  assert.equal(canAccessModule(rhu, "patients"), false);
+  assert.equal(canAccessModule(rhu, "patientDirectory"), false);
+});

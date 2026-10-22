@@ -1,87 +1,97 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { PatientRegistrationPage } from "../bhc/AddPatient";
-import {
-  ArrowLeft,
-  ClipboardList,
-  Eye,
-  FileText,
-  MapPin,
-  Phone,
-  Plus,
-  User,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 
+import RestrictedArea from "../../components/common/access/RestrictedArea";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
+  ConfirmationModal,
   ConnectionErrorState,
-  RefreshingIndicator,
-  SideCard,
   SoftLoadingArea,
+  SuccessModal,
 } from "../../components/common";
-import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
+import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
+import CarePath from "../../components/features/patients/profile/CarePath";
+import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
+import VitalsTiles from "../../components/features/patients/profile/VitalsTiles";
+import ClinicalOverviewColumn from "../../components/features/patients/profile/ClinicalOverviewColumn";
+import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
+import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
+import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
+import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
+import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
-import {
-  calculateBmi,
-  formatBmi,
-  getBmiCategory,
-  getLatestBmiRecord,
-} from "../../utils/bmi";
 import { getRhuPatientProfileQueries } from "../../services/patientProfileQueries";
+import { updatePatient } from "../../services/patientService";
+import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
+import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
+import { getCareTracking } from "../../utils/careTracking";
+import { getConditionalProgramTabs } from "../../utils/programApplicability";
+import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
+import { queryKeys } from "../../utils/queryKeys";
+import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
+import { getCurrentUser } from "../../utils/auth";
 import {
-  formatDate,
-  formatDisplayValue,
-  formatFacilityName,
-} from "../../utils/formatters";
-import {
-  formatDisplayTime,
-  getRecordIdLabel,
-  getRecordTimeValue,
-  getServiceTypeLabel,
-  getSpecializedRecordPrograms,
-} from "../../utils/healthRecordPrograms";
+  createPatientForm,
+  getPatientAge,
+  getPatientBirthDate,
+  getSectionErrors,
+  sortByDateDesc,
+  validatePatientForm,
+} from "../../utils/patientProfile";
+import { errorStateVariant } from "../../utils/errorStateVariant";
+import { registrationErrors } from "../../utils/householdData";
+import { canModifyRhuPatient } from "../../utils/rhuPatientAccess";
 
-const keyframes = `
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .anim-fade-up { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
-`;
+const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
+const BASE_PATH = "/rhu";
+
+function ProfileShell({ children }) {
+  return (
+    <DashboardLayout role="rhu" title="Patient Details" contentClassName={PROFILE_CONTENT_CLASS}>
+      {children}
+    </DashboardLayout>
+  );
+}
 
 export default function RHUPatientDetails() {
-  const { patientId } = useParams();
-  if (patientId?.startsWith("mock-patient-")) {
-    return <PatientRegistrationPage key={patientId} patientId={patientId} role="rhu" basePath="/rhu" />;
-  }
   return <LiveRHUPatientDetails />;
 }
 
 function LiveRHUPatientDetails() {
+  const user = getCurrentUser();
+  const canViewHistory = (user?.permissions || []).includes("clinical.history");
   const { patientId } = useParams();
-  const [activeTab, setActiveTab] = useState("patient");
-  const [showAllRecords, setShowAllRecords] = useState(false);
-  const [showAllReferrals, setShowAllReferrals] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const backPath = getProfileReturnPath(location, `${BASE_PATH}/patients`);
+  const queryClient = useQueryClient();
+  const [patientOverride, setPatientOverride] = useState(null);
+  const [editingSection, setEditingSection] = useState(null);
+  const [pendingSaveSection, setPendingSaveSection] = useState(null);
+  const [openSuccess, setOpenSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({});
+  const [fieldErrors, setFieldErrors] = useState({});
+  const editingSectionRef = useRef(null);
 
-  useEffect(() => {
-    setShowAllRecords(false);
-    setShowAllReferrals(false);
-  }, [patientId]);
-
-  const profileQueries = getRhuPatientProfileQueries(patientId);
+  const profileQueries = getRhuPatientProfileQueries(patientId, { canViewHistory });
 
   const {
     data: patientData,
     isLoading: patientLoading,
     isFetching: patientFetching,
-  } = useQuery(profileQueries.patient);
+    error: patientError,
+    refetch: refetchPatient,
+  } = useQuery({ ...profileQueries.patient, enabled: Boolean(patientId) });
 
   const {
     data: recordsData = [],
     isLoading: recordsLoading,
     isFetching: recordsFetching,
-    isError: recordsError,
+    error: recordsError,
     refetch: refetchRecords,
   } = useQuery(profileQueries.records);
 
@@ -89,863 +99,396 @@ function LiveRHUPatientDetails() {
     data: referralsData = [],
     isLoading: referralsLoading,
     isFetching: referralsFetching,
-    isError: referralsError,
+    error: referralsError,
     refetch: refetchReferrals,
   } = useQuery(profileQueries.referrals);
 
-  const rawRecords = useMemo(
-    () => (Array.isArray(recordsData) ? recordsData : []),
-    [recordsData],
-  );
-  const rawReferrals = useMemo(
-    () => (Array.isArray(referralsData) ? referralsData : []),
-    [referralsData],
-  );
-  const patient =
-    patientData || derivePatientFromSources(patientId, rawRecords, rawReferrals);
-  const patientNameForHistory = getPatientName(patient);
-  const records = useMemo(
-    () => [...ensureArray(rawRecords)].sort(sortByDateDesc),
-    [rawRecords],
-  );
-  const referrals = useMemo(
-    () =>
-      ensureArray(rawReferrals)
-        .filter((referral) =>
-          referralBelongsToPatient(referral, patientId, patientNameForHistory),
-        )
-        .sort(sortByDateDesc),
-    [rawReferrals, patientId, patientNameForHistory],
-  );
-  const loading = patientLoading && !patient;
+  const overrideMatchesPatient =
+    patientOverride &&
+    String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
+  const patient = overrideMatchesPatient ? patientOverride : patientData || null;
+  const canRegisterOwned = canModifyRhuPatient(user, patient);
+  const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
+  const loadError =
+    patientError ||
+    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError)) ||
+    null;
+  const retrying = patientFetching || recordsFetching || referralsFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
-  const latestRecord = useMemo(
-    () => (Array.isArray(records) ? records[0] ?? null : null),
-    [records],
+  const records = useMemo(
+    () => [...(Array.isArray(recordsData) ? recordsData : [])].sort(sortByDateDesc),
+    [recordsData],
+  );
+  const referrals = useMemo(
+    () => [...(Array.isArray(referralsData) ? referralsData : [])].sort(sortByDateDesc),
+    [referralsData],
   );
   const specializedRecordPrograms = useMemo(
     () => getSpecializedRecordPrograms(records),
     [records],
   );
-  // Newest visit that measured both weight and height; BMI comes from it.
-  const latestBmiRecord = useMemo(() => getLatestBmiRecord(records), [records]);
-  const specializedProgramKeys = specializedRecordPrograms
-    .map(({ key }) => key)
-    .join("|");
+  const conditionalProgramAreas = useMemo(
+    () => (patient ? getConditionalProgramTabs(patient, records) : []),
+    [patient, records],
+  );
+  const programLabels = useMemo(() => {
+    const claimed = new Set(conditionalProgramAreas.flatMap((area) => area.programs));
+    return [
+      ...conditionalProgramAreas.filter((area) => area.applicable).map((area) => area.label),
+      ...specializedRecordPrograms
+        .filter(({ key }) => !claimed.has(key))
+        .map(({ label }) => label),
+    ];
+  }, [conditionalProgramAreas, specializedRecordPrograms]);
+  const careTracking = useMemo(
+    () => (patient ? getCareTracking(patient, records) : []),
+    [patient, records],
+  );
+
   const tabs = [
-    { key: "patient", label: "Patient Information" },
-    { key: "records", label: "Health Records", count: records.length },
-    ...specializedRecordPrograms.map(({ key, label, count }) => ({
-      key: `specialized:${key}`,
-      label,
-      count,
-      program: key,
-    })),
-    {
-      key: "referrals",
-      label: "Referral History",
-      count: referrals.length,
-    },
+    { key: "overview", label: "Overview" },
+    { key: "patient-info", label: "Patient Information" },
+    ...(canViewHistory
+      ? [
+          { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
+          ...specializedRecordPrograms.map(({ key, label, count }) => ({
+            key: `specialized:${key}`,
+            label,
+            count,
+            program: key,
+          })),
+          { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
+        ]
+      : []),
   ];
-  const activeSpecializedProgram =
-    tabs.find((tab) => tab.key === activeTab)?.program || "";
+
+  const requestedTab = searchParams.get("tab") || "overview";
+  const activeTab = tabs.some((tab) => tab.key === requestedTab) ? requestedTab : "overview";
+  const activeSpecializedProgram = tabs.find((tab) => tab.key === activeTab)?.program || "";
+
+  function setActiveTab(tab) {
+    const next = new URLSearchParams(searchParams);
+    if (tab === "overview") next.delete("tab");
+    else next.set("tab", tab);
+    setSearchParams(next, { replace: true, state: location.state });
+  }
+
+  function retryPatientDetails() {
+    refetchPatient();
+    refetchRecords();
+    refetchReferrals();
+  }
 
   useEffect(() => {
-    if (!activeTab.startsWith("specialized:")) return;
-    const programKey = activeTab.slice("specialized:".length);
-    if (!specializedProgramKeys.split("|").includes(programKey)) {
-      setActiveTab("patient");
-    }
-  }, [activeTab, specializedProgramKeys]);
+    editingSectionRef.current = editingSection;
+  }, [editingSection]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!patientData) return;
+    setPatientOverride(patientData);
+    if (editingSectionRef.current === null) {
+      setForm(createPatientForm(patientData));
+      setFieldErrors({});
+    }
+  }, [patientData]);
+
+  useEffect(() => {
+    setEditingSection(null);
+    setPendingSaveSection(null);
+    setFieldErrors({});
+  }, [patientId]);
+
+  const requestedEdit = searchParams.get("edit");
+  useEffect(() => {
+    if (!requestedEdit || !patientData) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("edit");
+    setSearchParams(next, { replace: true, state: location.state });
+    if (canRegisterOwned && ["demographics", "contact", "family"].includes(requestedEdit) && editingSectionRef.current === null) {
+      setForm(createPatientForm(patientData));
+      setFieldErrors({});
+      setEditingSection(requestedEdit);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedEdit, patientData]);
+
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setFieldErrors((current) => ({
+      ...current,
+      [name]: "",
+      ...(name === "philHealthStatus" ? { philHealthNumber: "" } : {}),
+    }));
+    setForm((current) => {
+      const next = {
+        ...current,
+        [name]: name === "contactNumber" ? normalizePhilippineContact(value) : value,
+      };
+      if (name === "birthDate") next.age = calculateAge(value);
+      if (name === "philHealthStatus" && value !== "With PhilHealth") {
+        next.philHealthNumber = "";
+      }
+      return next;
+    });
+  }
+
+  function handleEditSection(section) {
+    if (!canRegisterOwned) return;
+    setForm(createPatientForm(patient));
+    setFieldErrors({});
+    setPendingSaveSection(null);
+    setEditingSection(section);
+  }
+
+  function handleCancelEdit() {
+    if (saving) return;
+    setForm(createPatientForm(patient));
+    setFieldErrors({});
+    setPendingSaveSection(null);
+    setEditingSection(null);
+  }
+
+  function handleRequestSave(section) {
+    const errors = getSectionErrors(validatePatientForm(form), section);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length === 0) setPendingSaveSection(section);
+  }
+
+  async function handleConfirmSave() {
+    if (!canRegisterOwned) return;
+    const section = pendingSaveSection;
+    const errors = getSectionErrors(validatePatientForm(form), section);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setPendingSaveSection(null);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const savedPatient = await updatePatient(patientId, form);
+      setPatientOverride(savedPatient || { ...patient, ...form });
+      setForm(createPatientForm(savedPatient || { ...patient, ...form }));
+      setPendingSaveSection(null);
+      setOpenSuccess(true);
+      setEditingSection(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.patientDetails("rhu", patientId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.patients("rhu") }),
+      ]);
+    } catch (error) {
+      if (error?.status === 422 && error?.errors) setFieldErrors(registrationErrors(error));
+      setPendingSaveSection(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (patientLoading && !patient) {
     return (
-      <DashboardLayout role="rhu" title="Patient Details">
-        <style>{keyframes}</style>
-        <SoftLoadingArea skeleton="patient-details"
-          isLoading
-          message="Loading patient details..."
-          minHeight="min-h-[520px]"
-        >
+      <ProfileShell>
+        <SoftLoadingArea skeleton="patient-details" isLoading message="Loading patient details..." minHeight="min-h-[520px]">
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
-      </DashboardLayout>
+      </ProfileShell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <ProfileShell>
+        <ConnectionErrorState
+          fullPage
+          onRetry={retryPatientDetails}
+          retrying={retrying}
+          variant={errorStateVariant(loadError)}
+        />
+      </ProfileShell>
     );
   }
 
   if (!patient) {
     return (
-      <DashboardLayout role="rhu" title="Patient Details">
-        <style>{keyframes}</style>
-        <div className="rounded-2xl border border-[#E8ECF0] bg-white p-8 shadow-sm">
+      <ProfileShell>
+        <div className="mx-auto mt-10 max-w-md rounded-xl border border-neutral-200/80 bg-white p-10 text-center shadow-card">
+          <h1 className="text-xl font-semibold text-neutral-900 font-sans!">Patient not found</h1>
           <Link
-            to="/rhu/patients"
-            className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
+            to={`${BASE_PATH}/patients`}
+            className="mt-4 inline-flex rounded-lg bg-ink-700 px-4 py-2.5 text-[13px] font-medium text-white shadow-xs transition hover:bg-ink-600"
           >
-            <ArrowLeft size={15} /> Back to Patients
+            Back to Patients
           </Link>
-          <div className="mt-6 text-sm text-slate-500">
-            Patient record was not found.
-          </div>
         </div>
-      </DashboardLayout>
+      </ProfileShell>
     );
   }
 
-  const patientName = getPatientName(patient);
-  return (
-    <DashboardLayout role="rhu" title="Patient Details">
-      <style>{keyframes}</style>
-      <div className="min-h-[520px]">
-
-      <div className="mb-6">
-        <Link
-          to="/rhu/patients"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 transition hover:text-[#0F172A]"
-        >
-          <ArrowLeft size={15} /> Back to Patients
-        </Link>
-
-        <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-[#0F172A]">{patientName}</h1>
-              {patientUpdating && (
-                <RefreshingIndicator label="Updating patient details..." />
-              )}
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <InfoChip label={patient.id || patientId} />
-              <InfoChip icon={<User size={12} />} label={getAgeSex(patient)} />
-              <InfoChip
-                icon={<Phone size={12} />}
-                label={getPatientContact(patient)}
-              />
-            </div>
-
-            <div className="mt-3">
-              <LatestConsultationSummary
-                record={latestRecord}
-                basePath="/rhu"
-              />
-            </div>
-          </div>
-
-          {activeTab === "records" && (
-            <Link
-              to={`/rhu/health-records/add?patientId=${patient.id || patientId}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              <Plus size={14} />
-              Add Health Record
-            </Link>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-6 flex overflow-x-auto border-b border-slate-200">
-        {tabs.map((tab) => {
-          const count =
-            tab.count === undefined || tab.count === null
-              ? ""
-              : ` (${tab.count})`;
-
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-150 ${
-                activeTab === tab.key
-                  ? "border-[#B91C1C] text-[#B91C1C]"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              {tab.label}
-              {count}
-            </button>
-          );
-        })}
-      </div>
-
-      {activeTab === "patient" && (
-        <PatientInformationTab
-          patient={patient}
-          latestBmiRecord={latestBmiRecord}
-        />
-      )}
-
-      {activeTab === "records" && (
-        <RhuRecordsTab
-          records={records}
-          isLoading={recordsLoading}
-          isFetching={recordsFetching}
-          isError={recordsError}
-          onRetry={() => refetchRecords()}
-          showAll={showAllRecords}
-          onToggleShowAll={() => setShowAllRecords((value) => !value)}
-        />
-      )}
-
-      {activeSpecializedProgram && (
-        <SpecializedRecordsTab
-          records={records}
-          patient={patient}
-          basePath="/rhu"
-          program={activeSpecializedProgram}
-        />
-      )}
-
-      {activeTab === "referrals" && (
-        <ReferralHistoryTab
-          referrals={referrals}
-          isLoading={referralsLoading}
-          isFetching={referralsFetching}
-          isError={referralsError}
-          onRetry={() => refetchReferrals()}
-          showAll={showAllReferrals}
-          onToggleShowAll={() => setShowAllReferrals((value) => !value)}
-        />
-      )}
-      </div>
-    </DashboardLayout>
-  );
-}
-
-function PatientInformationTab({ patient, latestBmiRecord = null }) {
-  const latestBmi = latestBmiRecord
-    ? calculateBmi(latestBmiRecord.weight, latestBmiRecord.height)
-    : null;
-  // WHO adult cut-offs only; child BMI is read against percentile charts.
-  const latestBmiCategory =
-    Number.parseFloat(patient?.age) < 18 ? "" : getBmiCategory(latestBmi);
+  const detailsState = buildPatientRecordDetailsState(location);
+  const viewRecord = (recordId) => navigate(`${BASE_PATH}/health-records/${recordId}`, { state: detailsState });
+  const addRecordPath = `${BASE_PATH}/health-records/add?patientId=${patient.id || patientId}`;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <div>
-        <SideCard
-          title="Patient Demographics"
-          subtitle="Registered RHU patient profile."
-          icon={<User size={14} />}
-        >
-          <div className="mt-6 space-y-8">
-            <div>
-              <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                General Information
-              </h3>
-              <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                <PatientDetailItem
-                  label="First Name"
-                  value={patient.firstName}
+    <>
+      <ProfileShell>
+        <div className="bhc-patient-profile flex h-full min-h-0 flex-col flow:h-auto font-sans [&_h1]:font-sans! [&_h2]:font-sans! [&_h3]:font-sans! [&_h4]:font-sans!">
+          <PatientProfileHeader
+            patient={patient}
+            patientId={patientId}
+            backPath={backPath}
+            updating={patientUpdating}
+            carePath={
+              canViewHistory ? (
+                <CarePath
+                  referrals={referrals}
+                  conditions={conditions}
+                  isLoading={(referralsLoading && referrals.length === 0) || conditions.isLoading}
                 />
-                <PatientDetailItem
-                  label="Middle Name"
-                  value={patient.middleName}
-                />
-                <PatientDetailItem label="Last Name" value={patient.lastName} />
-                <PatientDetailItem
-                  label="Date of Birth"
-                  value={formatDate(patient.birthDate || patient.dateOfBirth, "")}
-                />
-                <PatientDetailItem
-                  label="Age"
-                  value={patient.age ? `${patient.age} years old` : ""}
-                />
-                <PatientDetailItem label="Sex" value={patient.sex} />
-                <PatientDetailItem
-                  label="Date Registered"
-                  value={patient.dateRegistered || patient.createdAt}
-                />
-                <PatientDetailItem
-                  label="Civil Status"
-                  value={patient.civilStatus}
-                />
-              </div>
-            </div>
+              ) : null
+            }
+            actions={
+              canViewHistory && canRegisterOwned ? (
+                <Link
+                  to={addRecordPath}
+                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2"
+                >
+                  <Plus size={15} aria-hidden="true" />
+                  Add Health Record
+                </Link>
+              ) : null
+            }
+          />
 
-            {latestBmiRecord && (
-              <div>
-                <h3 className="mb-4 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-[#0F172A]">
-                  Latest Measurements
-                </h3>
-                <div className="grid gap-x-8 gap-y-1 md:grid-cols-2">
-                  <PatientDetailItem
-                    label="Weight"
-                    value={
-                      latestBmiRecord.weight
-                        ? `${latestBmiRecord.weight} kg`
-                        : ""
-                    }
-                  />
-                  <PatientDetailItem
-                    label="Height"
-                    value={
-                      latestBmiRecord.height
-                        ? `${latestBmiRecord.height} cm`
-                        : ""
-                    }
-                  />
-                  <PatientDetailItem
-                    label="BMI"
-                    value={
-                      latestBmiCategory
-                        ? `${formatBmi(latestBmi)} (${latestBmiCategory})`
-                        : formatBmi(latestBmi)
-                    }
+          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
+            <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
+
+            {activeTab === "overview" &&
+              (canViewHistory ? (
+                <PatientOverviewBoard
+                  left={<VitalsTiles records={records} isLoading={recordsLoading} />}
+                  center={
+                    <AnatomyFindingsPanel
+                      key={patientId}
+                      age={getPatientAge(patient)}
+                      background={patient.medicalBackground}
+                      conditions={conditions}
+                      sex={patient.sex}
+                      birthDate={getPatientBirthDate(patient)}
+                      records={records}
+                      recordsLoading={recordsLoading}
+                      recordsError={Boolean(recordsError)}
+                      onViewRecord={viewRecord}
+                    />
+                  }
+                  right={
+                    <ClinicalOverviewColumn
+                      careTracking={careTracking}
+                      programLabels={programLabels}
+                      referrals={referrals}
+                      referralsLoading={referralsLoading}
+                      referralsError={Boolean(referralsError)}
+                      records={records}
+                      recordsLoading={recordsLoading}
+                      onViewPrograms={() => setActiveTab("records")}
+                      onViewReferrals={() => setActiveTab("referrals")}
+                      onViewReferral={(trackingId) => navigate(`${BASE_PATH}/referrals/${trackingId}`)}
+                      onViewRecords={() => setActiveTab("records")}
+                      onViewRecord={viewRecord}
+                    />
+                  }
+                />
+              ) : (
+                <div
+                  role="tabpanel"
+                  id="profile-panel-overview"
+                  aria-labelledby="profile-tab-overview"
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <RestrictedArea
+                    locked
+                    label="Health Records & History"
+                    className="min-h-0 flex-1 rounded-xl"
+                    placeholder={<LockedOverviewPlaceholder />}
                   />
                 </div>
+              ))}
+
+            {activeTab !== "overview" && (
+              <div
+                role="tabpanel"
+                id={`profile-panel-${activeTab}`}
+                aria-labelledby={`profile-tab-${activeTab}`}
+                className="akay-content-scroll min-h-0 flex-1 overflow-y-auto flow:flex-none flow:overflow-visible"
+              >
+                {activeTab === "patient-info" && (
+                  <RegistrationSections
+                    patient={patient}
+                    form={form}
+                    editingSection={editingSection}
+                    onEdit={canRegisterOwned ? handleEditSection : undefined}
+                    onCancel={handleCancelEdit}
+                    onSave={handleRequestSave}
+                    onChange={handleChange}
+                    fieldErrors={fieldErrors}
+                    saving={saving}
+                  />
+                )}
+
+                {activeTab === "records" && canViewHistory && (
+                  <PatientRecordsTab
+                    patientId={patientId}
+                    records={records}
+                    referrals={referrals}
+                    isLoading={recordsLoading || referralsLoading}
+                    isFetching={recordsFetching || referralsFetching}
+                    isError={Boolean(recordsError || referralsError)}
+                    onRetry={retryPatientDetails}
+                    detailsState={detailsState}
+                    role="rhu"
+                    basePath={BASE_PATH}
+                  />
+                )}
+
+                {activeSpecializedProgram && canViewHistory && (
+                  <SpecializedRecordsTab
+                    records={records}
+                    patient={patient}
+                    basePath={BASE_PATH}
+                    program={activeSpecializedProgram}
+                  />
+                )}
+
+                {activeTab === "referrals" && canViewHistory && (
+                  <ReferralsSection
+                    referrals={referrals}
+                    isLoading={referralsLoading}
+                    isFetching={referralsFetching}
+                    isError={Boolean(referralsError)}
+                    onView={(trackingId) => navigate(`${BASE_PATH}/referrals/${trackingId}`)}
+                  />
+                )}
               </div>
             )}
           </div>
-        </SideCard>
-      </div>
-
-      <aside>
-        <SideCard title="Address & Contact" icon={<MapPin size={14} />}>
-          <div className="mt-6 space-y-1">
-            <PatientDetailItem
-              label="Street Address"
-              value={patient.streetAddress || patient.address}
-            />
-            <PatientDetailItem label="Barangay" value={patient.barangay} />
-            <PatientDetailItem
-              label="Municipality"
-              value={patient.municipality || "Bulakan"}
-            />
-            <PatientDetailItem
-              label="Contact Number"
-              value={getPatientContact(patient)}
-            />
-          </div>
-        </SideCard>
-      </aside>
-    </div>
-  );
-}
-
-function LatestConsultationSummary({ record, basePath }) {
-  if (!record) {
-    return (
-      <div className="border-l-2 border-[#B91C1C]/20 pl-3">
-        <p className="text-sm text-slate-500">
-          <span className="font-semibold text-[#0F172A]">
-            Latest Consultation:
-          </span>{" "}
-          No consultations recorded yet.
-        </p>
-      </div>
-    );
-  }
-
-  const recordId = getActionableRecordId(record);
-  const title = getRecordConcern(record);
-  const titleContent = recordId ? (
-    <Link
-      to={`${basePath}/health-records/${recordId}`}
-      className="font-bold text-[#0F172A] underline-offset-2 transition hover:text-[#B91C1C] hover:underline"
-    >
-      {title}
-    </Link>
-  ) : (
-    <span className="font-bold text-[#0F172A]">{title}</span>
-  );
-
-  return (
-    <div className="max-w-3xl border-l-2 border-[#B91C1C]/20 pl-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm text-slate-500">
-          <span className="font-semibold text-[#0F172A]">
-            Latest Consultation:
-          </span>{" "}
-          {titleContent}
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-          <span>{getRecordDate(record)}</span>
-          <span className="text-slate-300">/</span>
-          <span>{getRecordTime(record)}</span>
-          <span className="text-slate-300">/</span>
-          <span>{getRecordType(record)}</span>
         </div>
-      </div>
-    </div>
+      </ProfileShell>
+
+      <ConfirmationModal
+        open={pendingSaveSection !== null}
+        title="Update Changes to Profile?"
+        description="Please confirm that you want to update the patient information."
+        confirmText="Save Changes"
+        cancelText="Cancel"
+        onConfirm={handleConfirmSave}
+        onCancel={() => setPendingSaveSection(null)}
+        loading={saving}
+      />
+      <SuccessModal
+        open={openSuccess}
+        title="Patient Profile Updated"
+        description="The changes are now reflected across this patient's records."
+        onClose={() => setOpenSuccess(false)}
+      />
+    </>
   );
-}
-
-function RhuRecordsTab({
-  records,
-  isLoading,
-  isFetching,
-  isError,
-  onRetry,
-  showAll,
-  onToggleShowAll,
-}) {
-  const visibleRecords = showAll ? records : records.slice(0, 5);
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <div>
-          <h2 className="text-sm font-bold text-[#0F172A]">Health Record History</h2>
-          <p className="text-xs text-slate-400">
-            Chronological health records linked to this patient.
-          </p>
-        </div>
-        {isFetching && records.length > 0 && (
-          <RefreshingIndicator label="Updating health records..." />
-        )}
-      </div>
-
-      {isLoading && records.length === 0 ? (
-        <SoftLoadingArea skeleton="health-records"
-          isLoading
-          message="Loading health records..."
-          minHeight="min-h-[240px]"
-        >
-          <div className="min-h-[240px]" />
-        </SoftLoadingArea>
-      ) : isError && records.length === 0 ? (
-        <ConnectionErrorState size="compact" variant="error" onRetry={onRetry} />
-      ) : records.length === 0 ? (
-        <div className="p-12 text-center text-sm text-slate-400">
-          <FileText className="mx-auto mb-3 text-slate-300" size={32} />
-          No RHU records found for this patient.
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-6 py-3">Record ID</th>
-                <th className="px-6 py-3">Date of Visit</th>
-                <th className="px-6 py-3">Service Type</th>
-                <th className="px-6 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {visibleRecords.map((record) => {
-                const recordId = getRecordId(record);
-                return (
-                  <tr
-                    key={recordId}
-                    className="transition-colors hover:bg-slate-50/80"
-                  >
-                    <td className="whitespace-nowrap px-6 py-4 font-mono text-xs font-bold text-[#B91C1C]">
-                      {getRecordIdLabel(record)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700">
-                      {getRecordDate(record)}
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-[#0F172A]">
-                      <span className="text-xs font-semibold text-[#0F172A]">
-                        {getServiceTypeLabel(record)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
-                      <Link
-                        to={`/rhu/health-records/${recordId}`}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
-                      >
-                        <Eye size={12} /> View Full Record
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {records.length > 5 && (
-            <div className="border-t border-slate-100 px-6 py-3 text-center">
-              <button
-                type="button"
-                onClick={onToggleShowAll}
-                className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
-              >
-                {showAll ? "Show less" : `Show all ${records.length} records`}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReferralHistoryTab({
-  referrals,
-  isLoading,
-  isFetching,
-  isError,
-  onRetry,
-  showAll,
-  onToggleShowAll,
-}) {
-  const visibleReferrals = showAll ? referrals : referrals.slice(0, 5);
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-6 py-4">
-        <div>
-          <h2 className="text-sm font-bold text-[#0F172A]">Referral History</h2>
-          <p className="text-xs text-slate-400">
-            Referrals from BHC facilities connected to this patient.
-          </p>
-        </div>
-        {isFetching && referrals.length > 0 && (
-          <RefreshingIndicator label="Updating referrals..." />
-        )}
-      </div>
-
-      {isLoading && referrals.length === 0 ? (
-        <SoftLoadingArea skeleton="table"
-          isLoading
-          message="Loading referrals..."
-          minHeight="min-h-[240px]"
-        >
-          <div className="min-h-[240px]" />
-        </SoftLoadingArea>
-      ) : isError && referrals.length === 0 ? (
-        <ConnectionErrorState size="compact" variant="error" onRetry={onRetry} />
-      ) : referrals.length === 0 ? (
-        <div className="p-12 text-center text-sm text-slate-400">
-          <ClipboardList className="mx-auto mb-3 text-slate-300" size={32} />
-          No referral history found for this patient.
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-6 py-3">Tracking ID</th>
-                <th className="px-6 py-3">Date of Referral</th>
-                <th className="px-6 py-3">Destination Facility</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3">RHU Return Slip</th>
-                <th className="px-6 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {visibleReferrals.map((referral) => (
-                <tr
-                  key={referral.trackingId || referral.id}
-                  className="transition-colors hover:bg-slate-50/80"
-                >
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <span className="font-mono text-xs font-bold text-[#0F172A]">
-                      {referral.trackingId || referral.id}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-slate-500">
-                    {getReferralDate(referral)}
-                  </td>
-                  <td className="px-6 py-4 text-slate-500">
-                    {getReferralDestination(referral)}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <WorkflowBadge status={referral.status || "Pending"} />
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <ReturnSlipIndicator referral={referral} />
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right">
-                    <Link
-                      to={`/rhu/referrals/${referral.trackingId || referral.id}`}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-[#0F172A] shadow-sm transition hover:bg-slate-50 hover:text-[#991B1B]"
-                    >
-                      <Eye size={12} /> View Referral
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {referrals.length > 5 && (
-            <div className="border-t border-slate-100 px-6 py-3 text-center">
-              <button
-                type="button"
-                onClick={onToggleShowAll}
-                className="text-xs font-semibold text-[#B91C1C] transition hover:text-[#7F1D1D]"
-              >
-                {showAll
-                  ? "Show less"
-                  : `Show all ${referrals.length} referrals`}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function InfoChip({ icon, label }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-sm">
-      {icon}
-      {label || "N/A"}
-    </span>
-  );
-}
-
-
-function ReturnSlipIndicator({ referral }) {
-  const hasReturnSlip = !!(referral.feedback || referral.returnSlip);
-
-  return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        hasReturnSlip
-          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-          : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
-      }`}
-    >
-      {hasReturnSlip ? "Return Slip Available" : "Awaiting RHU Feedback"}
-    </span>
-  );
-}
-
-function WorkflowBadge({ status }) {
-  const map = {
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "For Monitoring": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    "Not recorded": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-        map[status] || map.Pending
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function sameId(a, b) {
-  return String(a || "") === String(b || "");
-}
-
-function normalizeName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-function getPatientName(patient) {
-  if (!patient) return "";
-
-  const composed = [patient.firstName, patient.middleName, patient.lastName]
-    .filter(Boolean)
-    .join(" ");
-
-  return (
-    patient.name ||
-    patient.patientName ||
-    patient.patient ||
-    composed ||
-    "Unknown Patient"
-  );
-}
-
-function getPatientContact(patient) {
-  return patient?.contactNumber || patient?.contact || "No contact recorded";
-}
-
-function getAgeSex(patient) {
-  if (patient?.ageSex) return patient.ageSex;
-
-  const age = patient?.age ? `${patient.age}` : "N/A";
-  const sex = patient?.sex || "N/A";
-  return `${age} / ${sex}`;
-}
-
-function getRecordId(record) {
-  return record?.id || record?.recordId || record?._id || "unknown-record";
-}
-
-function getActionableRecordId(record) {
-  if (!record) return null;
-
-  const id =
-    record.id ||
-    record.health_record_id ||
-    record.healthRecordId ||
-    record.record_id ||
-    record.recordId ||
-    record._id;
-
-  return id ? String(id) : null;
-}
-
-function getRecordPatientName(record) {
-  if (!record) return "";
-
-  if (typeof record.patient === "string") return record.patient;
-
-  return (
-    record.patientName ||
-    record.patient?.name ||
-    [record.patient?.firstName, record.patient?.lastName]
-      .filter(Boolean)
-      .join(" ")
-  );
-}
-
-function getReferralPatientName(referral) {
-  if (!referral) return "";
-
-  if (typeof referral.patient === "string") return referral.patient;
-
-  return (
-    referral.patientName ||
-    referral.patient?.name ||
-    [referral.patient?.firstName, referral.patient?.lastName]
-      .filter(Boolean)
-      .join(" ")
-  );
-}
-
-function referralBelongsToPatient(referral, patientId, patientName) {
-  const referralPatientId =
-    referral?.patientId || referral?.patientID || referral?.patient?.id;
-
-  if (referralPatientId && sameId(referralPatientId, patientId)) return true;
-
-  const referralName = normalizeName(getReferralPatientName(referral));
-  const targetName = normalizeName(patientName);
-
-  return Boolean(referralName && targetName && referralName === targetName);
-}
-
-function derivePatientFromSources(patientId, records, referrals) {
-  const record = ensureArray(records).find((item) => {
-    const recordPatientId =
-      item?.patientId || item?.patientID || item?.patient?.id;
-    return recordPatientId && sameId(recordPatientId, patientId);
-  });
-
-  const referral = ensureArray(referrals).find((item) => {
-    const referralPatientId =
-      item?.patientId || item?.patientID || item?.patient?.id;
-    return referralPatientId && sameId(referralPatientId, patientId);
-  });
-
-  const source = record || referral;
-  if (!source) return null;
-
-  return {
-    id: patientId,
-    name: getRecordPatientName(record) || getReferralPatientName(referral),
-    ageSex: source.ageSex,
-    age: source.age,
-    sex: source.sex,
-    contact: source.contact || source.contactNumber,
-    patientClassification:
-      source.patientClassification ||
-      source.category ||
-      source.referralCategory,
-    address: source.address,
-    barangay: source.barangay,
-    municipality: source.municipality,
-  };
-}
-
-function getRecordConcern(record) {
-  return (
-    record?.chiefComplaint ||
-    record?.chief_complaint ||
-    record?.concern ||
-    record?.diagnosis ||
-    record?.summaryOfPresentIllness ||
-    "Not recorded"
-  );
-}
-
-function getRecordType(record) {
-  return formatDisplayValue(
-    record?.category ||
-      record?.classification ||
-      record?.recordType ||
-      record?.record_type ||
-      record?.healthRecordType ||
-      record?.health_record_type ||
-      record?.patientClassification,
-    "Not recorded",
-  );
-}
-
-function getRecordTime(record) {
-  return formatDisplayTime(getRecordTimeValue(record), "Not recorded");
-}
-
-function getRecordDate(record) {
-  return formatDate(
-    record?.dateOfVisit ||
-      record?.date_of_visit ||
-      record?.dateRecorded ||
-      record?.date_recorded ||
-      record?.visitDate ||
-      record?.date ||
-      record?.createdAt ||
-      record?.created_at ||
-      record?.dateCreated,
-    "Not recorded",
-  );
-}
-
-function getReferralDate(referral) {
-  return formatDate(
-    referral?.preferredVisitDate ||
-      referral?.dateOfReferral ||
-      referral?.date_of_referral ||
-      referral?.referralDate ||
-      referral?.referral_datetime ||
-      referral?.dateSubmitted ||
-      referral?.date ||
-      referral?.createdAt ||
-      referral?.created_at,
-    "Not recorded",
-  );
-}
-
-function getReferralDestination(referral) {
-  return formatFacilityName(
-    referral?.receivingFacility ||
-      referral?.destinationFacility ||
-      referral?.destination_facility ||
-      referral?.rural_health_unit ||
-      referral?.ruralHealthUnit,
-    "Unassigned RHU",
-  );
-}
-
-function sortByDateDesc(a, b) {
-  return getDateTimeValue(b) - getDateTimeValue(a);
-}
-
-function getDateTimeValue(item) {
-  const raw =
-    item?.dateOfVisit ||
-    item?.visitDate ||
-    item?.preferredVisitDate ||
-    item?.dateOfReferral ||
-    item?.referralDate ||
-    item?.dateSubmitted ||
-    item?.date ||
-    item?.createdAt ||
-    item?.dateCreated;
-
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }

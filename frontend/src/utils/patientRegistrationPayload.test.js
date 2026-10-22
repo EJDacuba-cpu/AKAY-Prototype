@@ -15,6 +15,11 @@ test('structured membership cannot send a contradictory compatibility FSN', () =
 test('legacy callers retain their explicit serial without a structured selection', () => {
   assert.equal(toPayload({familySerialNumber:'PAPER-01'}).family_serial_number,'PAPER-01');
 });
+test('RHU identity save keeps an optional serial and never sends a household command', () => {
+  const payload = toPayload({ firstName: 'Ana', lastName: 'Cruz', familySerialNumber: 'PAPER-01' });
+  assert.equal(Object.hasOwn(payload, 'household'), false);
+  assert.equal(payload.family_serial_number, 'PAPER-01');
+});
 test('a read-only household summary is not mistaken for a membership command', () => {
   const payload=toPayload({familySerialNumber:'FSN-2026-0001',household:{id:4,serial_number:'FSN-2026-0001'}});
   assert.equal(Object.hasOwn(payload,'household'),false);

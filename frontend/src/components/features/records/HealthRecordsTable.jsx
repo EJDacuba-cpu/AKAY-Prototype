@@ -7,12 +7,12 @@ import TablePagination from "../../common/pagination/TablePagination";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
 import { getRecordDateValue, getRecordId, getRecordIdLabel, getRecordVisitTypeLabel } from "../../../utils/healthRecordPrograms";
 
-/** The BHC patient's encounter table; identity is already shown in the profile header. */
-export default function HealthRecordsTable({ records = [], currentPage = 1, totalPages = 1, onPageChange, detailsState, emptyTitle = "No health records yet" }) {
+/** The patient's encounter table; identity is already shown in the profile header. */
+export default function HealthRecordsTable({ records = [], currentPage = 1, totalPages = 1, onPageChange, detailsState, emptyTitle = "No health records yet", basePath = "/bhc" }) {
   function viewLink(record) {
     return (
       <Button asChild variant="ghost" size="icon" className="size-8 rounded-md border border-slate-200 text-slate-900">
-        <Link to={`/bhc/health-records/${getRecordId(record)}`} state={detailsState} aria-label={`View health record ${getRecordIdLabel(record)}`}><ChevronRight size={15} /></Link>
+        <Link to={`${basePath}/health-records/${getRecordId(record)}`} state={detailsState} aria-label={`View health record ${getRecordIdLabel(record)}`}><ChevronRight size={15} /></Link>
       </Button>
     );
   }

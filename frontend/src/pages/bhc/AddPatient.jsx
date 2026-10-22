@@ -145,8 +145,12 @@ function registrationForm(patient) {
 }
 
 const PrototypeRegistration = lazy(() => import("../shared/PrototypeRegistration"));
+const RhuPatientRegistration = lazy(() => import("../rhu/RhuPatientRegistration"));
 
 export function PatientRegistrationPage(props) {
+  if (props.role === "rhu") {
+    return <Suspense fallback={<p role="status">Loading registration…</p>}><RhuPatientRegistration {...props} /></Suspense>;
+  }
   return props.role && props.role !== "bhc"
     ? <Suspense fallback={<p role="status">Loading registration…</p>}><PrototypeRegistration {...props} /></Suspense>
     : <BhcPatientRegistration {...props} />;
@@ -162,7 +166,7 @@ export function RegistrationForm({
   basePath = "/bhc",
   patientId,
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
-  registry, savedPatientOverride, savePatient, live = false, initialConnection,
+  registry, savedPatientOverride, savePatient, live = false, householdEnabled = true, initialConnection,
   onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
 }) {
   const navigate = useNavigate();
@@ -324,15 +328,17 @@ function handleBirthDateChange(valueOrEvent) {
 
     function validateForm() {
     const nextErrors = {};
-    if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
-    const connectionToSave = withFormAddress(householdConnection, form);
-    const allowedLabel = live ? isAcceptedLabel : undefined;
-    const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form, allowedLabel), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement, allowedLabel) };
-    const { relationship, ...allOtherHouseholdErrors } = householdErrors;
-    // The Address Information panel reports its own address errors.
-    const otherHouseholdErrors = Object.fromEntries(Object.entries(allOtherHouseholdErrors).filter(([key]) => !ADDRESS_FIELDS.includes(key)));
-    if (relationship) nextErrors.relationshipToHouseholdHead = relationship;
-    if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
+    if (householdEnabled) {
+      if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
+      const connectionToSave = withFormAddress(householdConnection, form);
+      const allowedLabel = live ? isAcceptedLabel : undefined;
+      const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form, allowedLabel), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement, allowedLabel) };
+      const { relationship, ...allOtherHouseholdErrors } = householdErrors;
+      // The Address Information panel reports its own address errors.
+      const otherHouseholdErrors = Object.fromEntries(Object.entries(allOtherHouseholdErrors).filter(([key]) => !ADDRESS_FIELDS.includes(key)));
+      if (relationship) nextErrors.relationshipToHouseholdHead = relationship;
+      if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
+    }
 
     if (!form.firstName.trim()) nextErrors.firstName = "First name is required.";
     if (!form.lastName.trim()) nextErrors.lastName = "Last name is required.";
@@ -356,7 +362,7 @@ function handleBirthDateChange(valueOrEvent) {
     if (!form.streetAddress.trim()) {
       nextErrors.streetAddress = "Street address is required.";
     }
-    if (householdConnection?.kind === "new" && !form.purokArea.trim()) {
+    if (householdEnabled && householdConnection?.kind === "new" && !form.purokArea.trim()) {
       nextErrors.purokArea = "Purok / Area is required to create a household.";
     }
     if (!form.barangay) nextErrors.barangay = "Barangay is required.";
@@ -446,7 +452,7 @@ function handleBirthDateChange(valueOrEvent) {
       setHouseholdConnection(connectionForPatient(saved));
       setHeadReplacement(null);
       setModals({ ...modals, confirm: false, success: true });
-      toast.success(live ? "Patient and household saved." : "Patient saved in this mock session.");
+      toast.success(householdEnabled && live ? "Patient and household saved." : live ? "Patient saved." : "Patient saved in this mock session.");
     } catch (error) {
       setFieldErrors((current) => ({ ...current, ...registrationErrors(error) }));
       setModals((current) => ({ ...current, confirm: false }));
@@ -632,18 +638,29 @@ function handleBirthDateChange(valueOrEvent) {
                     />
                   </div>
                 )}
-                <FamilyRegistryField
-                  live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
-                  registry={registry}
-                  patient={{ ...form, id: editingPatientId }}
-                  connection={householdConnection}
-                  savedConnection={savedConnection}
-                  headReplacement={headReplacement}
-                  onChange={handleHouseholdChange}
-                  onPendingChange={setHouseholdReviewPending}
-                  error={fieldErrors.familySerialNumber}
-                  relationshipError={fieldErrors.relationshipToHouseholdHead}
-                />
+                {householdEnabled ? (
+                  <FamilyRegistryField
+                    live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
+                    registry={registry}
+                    patient={{ ...form, id: editingPatientId }}
+                    connection={householdConnection}
+                    savedConnection={savedConnection}
+                    headReplacement={headReplacement}
+                    onChange={handleHouseholdChange}
+                    onPendingChange={setHouseholdReviewPending}
+                    error={fieldErrors.familySerialNumber}
+                    relationshipError={fieldErrors.relationshipToHouseholdHead}
+                  />
+                ) : (
+                  <FormInput
+                    label="Family Serial Number"
+                    name="familySerialNumber"
+                    value={form.familySerialNumber}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    error={fieldErrors.familySerialNumber}
+                  />
+                )}
               </FormPanel>
 
               {showHusbandInformation && (
@@ -823,7 +840,7 @@ function handleBirthDateChange(valueOrEvent) {
           <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
           <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>Edit Patient</Button>
         </>}
-      ><p>{live ? "Patient registration and household connection saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
+      ><p>{householdEnabled && live ? "Patient registration and household connection saved." : live ? "Patient registration saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
       {modals.confirm && <ModalShell
         title="Save Patient?" appearance="plain"
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}
@@ -831,7 +848,7 @@ function handleBirthDateChange(valueOrEvent) {
           <Button type="button" variant="ghost" onClick={() => setModals((current) => ({ ...current, confirm: false }))}>Cancel</Button>
           <Button type="button" disabled={saving} onClick={handleSubmit}>Save Patient</Button>
         </>}
-      ><p>Save this patient's details and household connection?</p></ModalShell>}
+      ><p>{householdEnabled ? "Save this patient's details and household connection?" : "Save this patient's details?"}</p></ModalShell>}
     </>
   );
 }
