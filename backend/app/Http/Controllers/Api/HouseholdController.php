@@ -49,15 +49,51 @@ class HouseholdController extends Controller
         if (! ($lookup && ActionPermissions::allows($request->user(), 'patients.register'))) {
             ActionPermissions::ensure($request->user(), 'families.view');
         }
-        $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'purok' => ['nullable', 'string', 'max:255'], 'barangay' => ['nullable', 'string', 'max:255'], 'without_purok' => ['nullable', 'boolean'], 'sort' => ['nullable', 'in:fsn,household,address,members'], 'direction' => ['nullable', 'in:asc,desc'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $query = $owner->scopeHouseholds(Household::query())->whereNull('archived_at');
+        if ($purok = trim($data['purok'] ?? '')) {
+            $query->where('address->purokArea', $purok);
+        }
+        if (! empty($data['without_purok'])) {
+            // Purok is optional (some barangays have none), so a household may store null or an empty string.
+            $query->where(fn ($q) => $q->whereNull('address->purokArea')->orWhere('address->purokArea', ''));
+        }
+        if ($barangay = trim($data['barangay'] ?? '')) {
+            $query->where('address->barangay', $barangay);
+        }
         if ($search = trim($data['search'] ?? '')) {
             $needle = '%'.mb_strtolower($search).'%';
             $query->where(fn ($q) => $q->whereRaw('LOWER(serial_number) LIKE ?', [$needle])->orWhereRaw('LOWER(CAST(address AS TEXT)) LIKE ?', [$needle])->orWhereHas('members', fn ($m) => $m->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(middle_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])));
         }
+        $direction = ($data['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+        match ($data['sort'] ?? null) {
+            'fsn' => $query->orderBy('serial_number', $direction),
+            'members' => $query->withCount('members')->orderBy('members_count', $direction),
+            // A household is named after its head, so sort by the head's surname without joining patients.
+            'household' => $query->orderBy(Patient::query()->select('last_name')->whereColumn('patients.id', 'households.head_patient_id')->limit(1), $direction),
+            'address' => $query->orderBy('address->barangay', $direction)->orderBy('address->purokArea', $direction)->orderBy('address->streetAddress', $direction),
+            default => null,
+        };
         $page = $query->orderBy('id', 'desc')->paginate($data['per_page'] ?? 25);
+        $meta =['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()];
+        if (! $lookup) {
+            $meta['filters'] = $this->filterOptions($owner);
+        }
 
-        return response()->json(['data' => $page->getCollection()->map(fn ($h) => $this->households->response($h, false)), 'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()]]);
+        return response()->json(['data' => $page->getCollection()->map(fn ($h) => $this->households->response($h, false)), 'meta' => $meta]);
+    }
+
+    /** Values the directory can filter by, taken from this facility's active households (not from the current search). */
+    private function filterOptions(HouseholdOwner $owner): array
+    {
+        $addresses = $owner->scopeHouseholds(Household::query())->whereNull('archived_at')->pluck('address');
+        $distinct = fn (string $key) => $addresses->map(fn ($address) => trim((string) ($address[$key] ?? '')))->filter()->unique()->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
+
+        return [
+            'puroks' => $distinct('purokArea'),
+            'barangays' => $distinct('barangay'),
+            'has_without_purok' => $addresses->contains(fn ($address) => trim((string) ($address['purokArea'] ?? '')) === ''),
+        ];
     }
 
     public function show(Request $request, int $id)
@@ -156,7 +192,8 @@ class HouseholdController extends Controller
         $fieldPresence = $prefix !== '' ? 'required_if:household.kind,new' : ($required ? 'required' : 'required_with:address');
         $rules = [$prefix.'address' => [$presence, 'array:streetAddress,purokArea,barangay,municipality', 'required_array_keys:streetAddress,purokArea,barangay,municipality']];
         foreach (['streetAddress', 'purokArea', 'barangay', 'municipality'] as $field) {
-            $rules[$prefix.'address.'.$field] = [$fieldPresence, 'string', 'max:255'];
+            // Purok is optional: some barangays have none. The key must still be present.
+            $rules[$prefix.'address.'.$field] = $field === 'purokArea' ? ['nullable', 'string', 'max:255'] : [$fieldPresence, 'string', 'max:255'];
         }
 
         return $rules;

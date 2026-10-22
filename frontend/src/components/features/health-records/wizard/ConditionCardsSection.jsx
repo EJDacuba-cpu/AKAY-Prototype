@@ -45,7 +45,7 @@ function ConditionModal({ entry, entries, onSave, onClose }) {
       size="2xl" onClose={onClose} initialFocusRef={nameRef}
       panelClassName="rounded-none [&>header]:bg-[#EFF4FF] [&>header]:text-[#0B1C30] [&>header_h2]:text-[#0B1C30] [&>header_p]:text-[#545F73] [&>header_button]:text-[#545F73] [&>footer]:bg-[#EFF4FF]"
       bodyClassName="space-y-5"
-      footer={<><Button type="button" variant="outline" className="rounded-none" onClick={onClose}>Cancel</Button><Button type="button" className="rounded-none bg-[#DC2626] hover:bg-red-700" onClick={save}><Save size={15} />Save Condition</Button></>}
+      footer={<><Button type="button" variant="secondary" className="rounded-none" onClick={onClose}>Cancel</Button><Button type="button" className="rounded-none bg-[#DC2626] hover:bg-red-700" onClick={save}><Save size={15} />Save Condition</Button></>}
     >
       <div>
         <label htmlFor={`${draft.id}-name`} className="mb-2 block text-sm font-semibold text-[#0B1C30]">Reported Health Problem / Suspected Case <span className="text-red-600">*</span></label>

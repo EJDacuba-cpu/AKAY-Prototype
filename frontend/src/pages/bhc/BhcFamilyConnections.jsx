@@ -6,12 +6,13 @@ import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import ModalShell from '../../components/common/modals/ModalShell';
 import { Button } from '../../components/ui/button';
+import { Select } from '../../components/ui/select';
+import { QueryState } from './BhcFamilies';
 import useHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { addRelationship, changeRelationship, getHouseholdById, removeRelationship } from '../../services/householdService';
 import { patientName } from '../../services/familyRegistry';
 import { candidateRelatives, connectionRowsFor, describeConnection } from '../../utils/familyConnections';
 
-const selectClass = 'h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm';
 const TYPES = [['spouse', 'Spouse'], ['sibling', 'Sibling']];
 
 // Explicit spouse/sibling links only. Nothing here is inferred from labels, and parent links stay on each patient's record.
@@ -52,8 +53,8 @@ export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
     },
   });
 
-  const frame = (children) => <DashboardLayout role={role} title="Family Connections" contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10"><div className="mx-auto max-w-3xl space-y-6 text-neutral-900"><Link to={`${base}/${householdId}`} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Family</Link>{children}</div></DashboardLayout>;
-  if (query.isPending || query.error) return frame(<div className="space-y-3 py-8"><p role={query.error ? 'alert' : 'status'}>{query.error ? 'Unable to load household data. Please retry.' : 'Loading household…'}</p>{query.error && <Button variant="outline" onClick={() => query.refetch()}>Retry</Button>}</div>);
+  const frame = (children) => <DashboardLayout role={role} title="Family Connections"><div className="mx-auto max-w-3xl space-y-5 text-neutral-900"><Link to={`${base}/${householdId}`} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Family</Link>{children}</div></DashboardLayout>;
+  if (query.isPending || query.error) return frame(<QueryState query={query} label="Loading household…" skeleton={<div className="h-48 animate-pulse rounded-card bg-neutral-100" />} />);
   if (!member || household.archivedAt) return frame(<p role="status">This family member is not available.</p>);
 
   const rows = connectionRowsFor(household, memberId);
@@ -67,25 +68,25 @@ export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
       : `Remove the ${pending.type} connection between ${patientName(member)} and ${nameOf(pending.relativeId)}? Both patients stay in the household.`;
 
   return frame(<>
-    <header><h1 className="text-3xl font-normal tracking-tight">Connections for {patientName(member)}</h1><p className="mt-2 text-sm text-neutral-500">Only connections you confirm here are saved. Household labels do not create connections.</p></header>
-    {error && <div role="alert" className="space-y-2 text-sm text-red-700"><p>{error}</p>{conflict && <Button type="button" variant="outline" onClick={() => { setConflict(false); setError(''); query.refetch(); }}>Reload saved family</Button>}</div>}
-    <section aria-labelledby="saved-connections" className="space-y-3">
-      <h2 id="saved-connections" className="text-lg font-semibold">Saved connections</h2>
+    <header><h1 className="text-2xl font-bold leading-tight tracking-tight text-ink-800">Connections for {patientName(member)}</h1><p className="mt-1 text-[13px] text-neutral-600">Only connections you confirm here are saved. Household labels do not create connections.</p></header>
+    {error && <div role="alert" className="space-y-2 text-sm text-red-700"><p>{error}</p>{conflict && <Button type="button" variant="secondary" onClick={() => { setConflict(false); setError(''); query.refetch(); }}>Reload saved family</Button>}</div>}
+    <section aria-labelledby="saved-connections" className="space-y-3 rounded-card border border-neutral-200 bg-white p-5 shadow-[var(--shadow-card)]">
+      <h2 id="saved-connections" className="text-sm font-bold text-ink-800">Saved connections</h2>
       {rows.length ? <ul className="divide-y divide-neutral-200 border-y border-neutral-200">{rows.map((row) => <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
         <span>{describeConnection(row.type, nameOf(row.relativeId))}</span>
         <span className="flex items-center gap-2">
-          <select aria-label={`Connection type with ${nameOf(row.relativeId)}`} className={`${selectClass} w-36`} value={row.type} disabled={busy} onChange={(event) => event.target.value !== row.type && setPending({ kind: 'change', id: row.id, relativeId: row.relativeId, type: event.target.value })}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <Select aria-label={`Connection type with ${nameOf(row.relativeId)}`} className="w-36" value={row.type} disabled={busy} onChange={(event) => event.target.value !== row.type && setPending({ kind: 'change', id: row.id, relativeId: row.relativeId, type: event.target.value })}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
           <Button type="button" variant="ghost" disabled={busy} onClick={() => setPending({ kind: 'remove', id: row.id, relativeId: row.relativeId, type: row.type })}>Remove<span className="sr-only"> connection with {nameOf(row.relativeId)}</span></Button>
         </span>
       </li>)}</ul> : <p className="text-sm text-neutral-500" role="status">No spouse or sibling connections saved.</p>}
       {parents.length > 0 && <p className="text-xs text-neutral-500">Parent links from the patient record: {parents.map(([label, id]) => `${label}: ${nameOf(id)}`).join(', ')}. Change them in Patient Information.</p>}
     </section>
-    <section aria-labelledby="add-connection" className="space-y-3 border-t border-neutral-200 pt-6">
-      <h2 id="add-connection" className="text-lg font-semibold">Add a connection</h2>
+    <section aria-labelledby="add-connection" className="space-y-3 rounded-card border border-neutral-200 bg-white p-5 shadow-[var(--shadow-card)]">
+      <h2 id="add-connection" className="text-sm font-bold text-ink-800">Add a connection</h2>
       {candidates.length ? <form className="grid gap-3 sm:grid-cols-[1fr_9rem_auto] sm:items-end" noValidate onSubmit={(event) => { event.preventDefault(); if (add.relativeId && !busy) setPending({ kind: 'add', ...add }); }}>
-        <div className="space-y-1.5"><label htmlFor="relative" className="block text-sm font-medium">Household member</label><select id="relative" className={selectClass} value={add.relativeId} onChange={(event) => setAdd({ ...add, relativeId: event.target.value })}><option value="">Select a member</option>{candidates.map((item) => <option key={item.id} value={item.id}>{patientName(item)}</option>)}</select></div>
-        <div className="space-y-1.5"><label htmlFor="connection-type" className="block text-sm font-medium">Connection</label><select id="connection-type" className={selectClass} value={add.type} onChange={(event) => setAdd({ ...add, type: event.target.value })}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-        <Button type="submit" disabled={!add.relativeId || busy}>Add connection</Button>
+        <div className="space-y-1.5"><label htmlFor="relative" className="block text-sm font-medium">Household member</label><Select id="relative" value={add.relativeId} onChange={(event) => setAdd({ ...add, relativeId: event.target.value })}><option value="">Select a member</option>{candidates.map((item) => <option key={item.id} value={item.id}>{patientName(item)}</option>)}</Select></div>
+        <div className="space-y-1.5"><label htmlFor="connection-type" className="block text-sm font-medium">Connection</label><Select id="connection-type" value={add.type} onChange={(event) => setAdd({ ...add, type: event.target.value })}>{TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
+        <Button type="submit" variant="brand" disabled={!add.relativeId || busy}>Add connection</Button>
       </form> : <p className="text-sm text-neutral-500" role="status">No other household member can be connected.</p>}
     </section>
     {pending && <ModalShell title="Confirm connection" appearance="plain" onClose={() => !busy && setPending(null)} footer={<><Button type="button" variant="ghost" disabled={busy} onClick={() => setPending(null)}>Cancel</Button><Button type="button" disabled={busy} onClick={() => mutation.mutate(pending)}>{busy ? 'Saving…' : 'Confirm'}</Button></>}><p>{confirmText}</p></ModalShell>}

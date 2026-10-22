@@ -9,7 +9,7 @@ test('an explicitly linked sibling pair sits side by side in one row', () => {
   const layout = layoutHouseholdTree(members(4), [{ from: '2', to: '4', type: 'sibling' }], '1');
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   assert.equal(byId.get('2').y, byId.get('4').y);
-  assert.equal(Math.abs(byId.get('2').x - byId.get('4').x), 216 + 88);
+  assert.equal(Math.abs(byId.get('2').x - byId.get('4').x), 184 + 72);
 });
 
 test('members without any edge each appear exactly once', () => {
@@ -43,7 +43,7 @@ test('many members without a saved connection wrap into a grid instead of one ve
   const edges = [{ from: '1', to: '2', type: 'spouse' }, { from: '1', to: '3', type: 'parent' }, { from: '2', to: '3', type: 'parent' }];
   const { nodes, width } = layoutHouseholdTree(people, edges, '1');
   assert.equal(nodes.length, 26);
-  assert.ok(width <= 6 * 216 + 5 * 88 + 64, `canvas too wide: ${width}`);
+  assert.ok(width <= 6 * 184 + 5 * 72 + 64, `canvas too wide: ${width}`);
   const treeBottom = Math.max(...nodes.filter((node) => ['1', '2', '3'].includes(node.id)).map((node) => node.y + node.height));
   assert.ok(nodes.filter((node) => !['1', '2', '3'].includes(node.id)).every((node) => node.y > treeBottom));
   for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) assert.equal(overlaps(nodes[i], nodes[j]), false, `${nodes[i].id} overlaps ${nodes[j].id}`);

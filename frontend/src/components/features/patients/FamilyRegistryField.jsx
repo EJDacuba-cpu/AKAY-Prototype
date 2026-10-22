@@ -80,7 +80,7 @@ export default function FamilyRegistryField({
 
   return (
     <div className="min-w-0 space-y-3">
-      {refreshError && <div className="space-y-2 text-xs text-red-700"><p role="status">Saved household data could not refresh. Your draft is kept.</p><Button type="button" variant="outline" size="sm" onClick={onRefresh}>Retry refresh</Button></div>}
+      {refreshError && <div className="space-y-2 text-xs text-red-700"><p role="status">Saved household data could not refresh. Your draft is kept.</p><Button type="button" variant="secondary" size="sm" onClick={onRefresh}>Retry refresh</Button></div>}
       <div>
         <label htmlFor={searching || !connection ? id : `${id}-serial`} className={labelClass}>Family Serial Number</label>
         {creatingHousehold && <div className="space-y-3">
@@ -90,7 +90,7 @@ export default function FamilyRegistryField({
               aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined}
               onChange={(event) => onChange({ ...connection, household: { ...connection.household, serialNumber: event.target.value } }, null)}
               className="h-9 min-w-28 flex-1 shadow-none" />
-            {live && <Button type="button" variant="outline" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
+            {live && <Button type="button" variant="secondary" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
             <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>
           </div>
           <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{live && connection.household.serialMode === "auto" ? " Format: FSN-YYYY-NNNN. The number is assigned by your facility on save." : ""}</p>

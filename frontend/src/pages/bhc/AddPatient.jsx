@@ -362,9 +362,6 @@ function handleBirthDateChange(valueOrEvent) {
     if (!form.streetAddress.trim()) {
       nextErrors.streetAddress = "Street address is required.";
     }
-    if (householdEnabled && householdConnection?.kind === "new" && !form.purokArea.trim()) {
-      nextErrors.purokArea = "Purok / Area is required to create a household.";
-    }
     if (!form.barangay) nextErrors.barangay = "Barangay is required.";
     if (!form.municipality.trim()) {
   nextErrors.municipality = "Municipality is required.";
@@ -772,9 +769,8 @@ function handleBirthDateChange(valueOrEvent) {
                     readOnly={householdConnection?.kind === "existing"}
                     value={form.purokArea}
                     onChange={handleChange}
-                    placeholder="e.g. Purok 3"
+                    placeholder="Optional, e.g. Purok 3"
                     error={fieldErrors.purokArea}
-                    required={householdConnection?.kind === "new"}
                   />
 
                   <div>

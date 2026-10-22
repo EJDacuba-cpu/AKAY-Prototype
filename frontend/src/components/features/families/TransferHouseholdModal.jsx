@@ -4,6 +4,8 @@ import { ArrowDown, ArrowRight, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import ModalShell from "../../common/modals/ModalShell";
 import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
+import { Select } from "../../ui/select";
 import useHouseholdScope from "../../../hooks/useBhcHouseholdScope";
 import useHouseholdSearch from "../../../hooks/useHouseholdSearch";
 import { changePatientHousehold, getHouseholdById } from "../../../services/householdService";
@@ -14,7 +16,6 @@ import { destinationCandidates } from "../../../utils/householdTransfer";
 import { RELATIONSHIP_LABELS, isAcceptedLabel } from "../../../utils/relationshipLabels";
 import { queryKeys } from "../../../utils/queryKeys";
 
-const field = "h-10 w-full rounded-full border border-neutral-300 bg-white px-4 text-sm text-neutral-900 outline-none focus-visible:border-red-700 focus-visible:ring-2 focus-visible:ring-red-700/15 aria-invalid:border-red-700";
 const panel = "min-w-0 rounded-md border border-neutral-200 bg-white p-4";
 
 const headOf = (household) => household?.members?.find((member) => member.id === household.headPatientId);
@@ -113,11 +114,11 @@ export default function TransferHouseholdModal({ role = "bhc", member, household
   return <ModalShell title="Transfer Household" appearance="plain" onClose={() => !busy && onClose()} closeDisabled={busy} size="wide"
     panelClassName="max-w-[960px]! max-h-[85vh]! sm:max-h-[85vh]!" bodyClassName="p-4"
     footer={<>
-      <Button type="button" variant="ghost" className="rounded-full" disabled={busy} onClick={onClose}>Cancel</Button>
-      {changed && <Button type="button" variant="outline" className="rounded-full" disabled={busy} onClick={() => { setStep("select"); setMessage(""); }}>Back</Button>}
+      <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
+      {changed && <Button type="button" variant="secondary" disabled={busy} onClick={() => { setStep("select"); setMessage(""); }}>Back</Button>}
       {changed
-        ? <Button type="button" className="rounded-full" disabled={busy} onClick={confirm}>{busy ? "Transferring…" : "Confirm Transfer"}</Button>
-        : <Button type="button" className="rounded-full" onClick={review}>Review Transfer</Button>}
+        ? <Button type="button" variant="brand" disabled={busy} onClick={confirm}>{busy ? "Transferring…" : "Confirm Transfer"}</Button>
+        : <Button type="button" variant="brand" onClick={review}>Review Transfer</Button>}
     </>}>
     <div className="space-y-4 text-neutral-900">
       <p className="text-sm text-neutral-600">Move {name} to another household. Birth details, guardian details, parent links, and health records are not changed.</p>
@@ -146,18 +147,18 @@ export default function TransferHouseholdModal({ role = "bhc", member, household
               <label htmlFor="transfer-search" className="mb-1 block text-xs text-neutral-500">Search FSN, household head, or address</label>
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1">
-                  <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-4 top-3 text-neutral-400" />
-                  <input id="transfer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} className={`${field} pl-10`}
+                  <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-3 top-[14px] text-neutral-500" />
+                  <Input id="transfer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} className="pl-10"
                     onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); runSearch(); } }} />
                 </div>
-                <Button type="button" variant="outline" className="rounded-full" onClick={runSearch}>Search</Button>
+                <Button type="button" variant="secondary" className="h-11" onClick={runSearch}>Search</Button>
               </div>
               {lookup.loading && <p role="status" className="mt-2 text-xs text-neutral-600">Searching households…</p>}
               {lookup.error && <p role="alert" className="mt-2 text-xs text-red-700">{lookup.error} Select Search to retry.</p>}
               {searched && !lookup.loading && !lookup.error && (candidates.length
                 ? <ul className="mt-2 max-h-40 divide-y divide-neutral-200 overflow-y-auto rounded-md border border-neutral-200" aria-label="Matching households">
                   {candidates.map((item) => <li key={item.id}><button type="button" aria-pressed={destination?.id === item.id} onClick={() => { setDestination(item); setErrors({}); }}
-                    className={`block w-full px-3 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600 ${destination?.id === item.id ? "bg-red-50 text-red-900" : "hover:bg-neutral-50"}`}>
+                    className={`block w-full px-3 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${destination?.id === item.id ? "bg-neutral-100 text-ink-800 ring-1 ring-inset ring-ink-400" : "hover:bg-neutral-50"}`}>
                     <span className="font-medium">{item.serialNumber}</span> <span className="text-neutral-600">{patientName(headOf(item))}</span>
                     <span className="block text-xs text-neutral-500">{addressText(item.address)}</span></button></li>)}
                 </ul>
@@ -173,11 +174,11 @@ export default function TransferHouseholdModal({ role = "bhc", member, household
 
             <div>
               <label htmlFor="transfer-relationship" className="mb-1 block text-xs text-neutral-500">New relationship to head <span className="text-red-700">*</span></label>
-              <select id="transfer-relationship" value={relationship} aria-invalid={Boolean(errors.relationship)} className={field}
+              <Select id="transfer-relationship" value={relationship} aria-invalid={Boolean(errors.relationship)}
                 onChange={(event) => { setRelationship(event.target.value); setErrors((previous) => ({ ...previous, relationship: "" })); }}>
                 <option value="">Select relationship</option>
                 {RELATIONSHIP_LABELS.map((label) => <option key={label} value={label}>{label}</option>)}
-              </select>
+              </Select>
               {errors.relationship && <p role="alert" className="mt-2 text-xs text-red-700">{errors.relationship}</p>}
             </div>
           </div>

@@ -215,7 +215,12 @@ export default function ActionMenu({
                   : "text-[#334155] hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
               }`}
             >
-              {action.label}
+              <span className="block">
+                {action.label}
+                {action.disabled && action.reason && (
+                  <span className="mt-0.5 block text-[11px] font-normal leading-snug text-neutral-600">{action.reason}</span>
+                )}
+              </span>
             </button>
           ),
         )}

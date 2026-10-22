@@ -53,12 +53,15 @@ test("missing relationship or invalid household prevents save without partial wr
   assert.deepEqual(registry, before);
 });
 
-test("new household requires unique trimmed case-insensitive serial and every address field", () => {
+test("new household requires unique trimmed case-insensitive serial and every address field except the optional purok", () => {
   const registry = createMockRegistry();
   const duplicate = newHousehold();
   duplicate.household.serialNumber = " fsn-001 ";
   assert.ok(validateConnection(registry, duplicate).serialNumber);
-  for (const field of ADDRESS_FIELDS) {
+  const withoutPurok = newHousehold();
+  withoutPurok.household.address.purokArea = "";
+  assert.equal(validateConnection(registry, withoutPurok).purokArea, undefined);
+  for (const field of ADDRESS_FIELDS.filter((key) => key !== "purokArea")) {
     const draft = newHousehold();
     draft.household.address[field] = "  ";
     assert.ok(validateConnection(registry, draft)[field]);

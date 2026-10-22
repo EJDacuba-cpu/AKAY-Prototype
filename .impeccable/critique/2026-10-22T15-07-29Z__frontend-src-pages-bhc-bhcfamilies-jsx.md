@@ -10,6 +10,7 @@ target_fingerprint: "sha256:64240e870426b54c980d15132887123c832fb520bcdc969a0e6e
 target_path: "D:\\Projects\\AKAY-Prototype\\frontend\\src\\pages\\bhc\\BhcFamilies.jsx"
 timestamp: 2026-10-22T15-07-29Z
 slug: frontend-src-pages-bhc-bhcfamilies-jsx
+closed: true
 ---
 Method: dual-agent (A: design review ad43f23 · B: detector + browser evidence a4fb0ce)
 Note: neither assessment saw the live UI (BHC login unavailable; admin has no Families access). Visual claims are source-inferred; the P0 was verified in button.jsx.

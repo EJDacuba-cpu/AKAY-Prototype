@@ -3,11 +3,16 @@ import { normalizeHousehold, normalizeHouseholdPatient } from '../utils/househol
 
 const prefix = (role = 'bhc') => `/${role === 'rhu' ? 'rhu' : 'bhc'}/households`;
 
-export async function getHouseholds({role='bhc', lookup=false,search='',page=1,per_page=20} = {}) {
+export async function getHouseholds({role='bhc', lookup=false,search='',purok='',barangay='',withoutPurok=false,sort='',direction='asc',page=1,per_page=20} = {}) {
   const params=new URLSearchParams({search,page:String(page),per_page:String(per_page)});
+  if(sort) {params.set('sort',sort);params.set('direction',direction);}
+  if(purok) params.set('purok',purok);
+  if(barangay) params.set('barangay',barangay);
+  if(withoutPurok) params.set('without_purok','1');
   const response=await apiRequest(`${prefix(role)}${lookup ? '/lookup' : ''}?${params}`);
   const data=unwrapData(response);
-  return {items:(Array.isArray(data) ? data : data?.data || []).map(normalizeHousehold),meta:response.meta || {current_page:data?.current_page || 1,last_page:data?.last_page || 1,total:data?.total || 0}};
+  const meta=response.meta || {current_page:data?.current_page || 1,last_page:data?.last_page || 1,total:data?.total || 0};
+  return {items:(Array.isArray(data) ? data : data?.data || []).map(normalizeHousehold),meta:{...meta,filters:{puroks:meta.filters?.puroks || [],barangays:meta.filters?.barangays || [],hasWithoutPurok:Boolean(meta.filters?.has_without_purok)}}};
 }
 export async function getHouseholdById(id, role='bhc') {
   return normalizeHousehold(unwrapData(await apiRequest(`${prefix(role)}/${id}`)));

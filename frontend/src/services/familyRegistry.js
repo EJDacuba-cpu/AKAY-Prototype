@@ -6,6 +6,8 @@ export const RELATIONSHIPS = [
   "Aunt / Uncle", "Cousin", "Other relative", "Non-relative",
 ];
 export const HEAD_RELATIONSHIP = "Household head";
+// Directory filter value for households saved without a purok (it is optional).
+export const NO_PUROK_FILTER = "__none__";
 export const NO_HOUSEHOLD_MESSAGE = "Search for a household or create a new one.";
 export const MINOR_HEAD_MESSAGE = "A patient under 18 can't be a household head. Register the parent or guardian first, then add this child to their household.";
 export const MISSING_BIRTH_DATE_MESSAGE = "Enter the date of birth first.";
@@ -102,8 +104,9 @@ export function validateConnection(registry, connection, patientId, patient, isA
     else if (household.serialMode !== "auto" && registry.households.some((item) => normalize(item.serialNumber) === normalize(household.serialNumber))) {
       errors.serialNumber = "This Family Serial Number already exists.";
     }
-    const labels = { streetAddress: "House / Street", purokArea: "Purok", barangay: "Barangay", municipality: "Municipality" };
-    ADDRESS_FIELDS.forEach((key) => {
+    // Purok is optional: some barangays have none.
+    const labels = { streetAddress: "House / Street", barangay: "Barangay", municipality: "Municipality" };
+    ADDRESS_FIELDS.filter((key) => key !== "purokArea").forEach((key) => {
       if (!normalize(household.address?.[key])) errors[key] = `${labels[key]} is required.`;
     });
     if (connection.headPatientId === "self") {

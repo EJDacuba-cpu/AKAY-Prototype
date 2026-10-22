@@ -1,6 +1,6 @@
 // Layout only: relationships must already be explicit. No surname, civil-status
 // or relationship-to-head inference belongs here.
-const CARD = { width: 216, height: 112, gap: 88, rowGap: 100, padding: 32 };
+const CARD = { width: 184, height: 76, gap: 72, rowGap: 88, padding: 32 };
 
 function layoutGroups(members, edges, headId, groupTypes) {
   const { width, height, gap, rowGap, padding } = CARD;
@@ -43,7 +43,7 @@ function layoutGroups(members, edges, headId, groupTypes) {
       x += width + gap;
     }
   });
-  return { nodes, width: canvasWidth, height: Math.max(240, ...nodes.map(node => node.y + height + padding)) };
+  return { nodes, width: canvasWidth, height: Math.max(140, ...nodes.map(node => node.y + height + padding)) };
 }
 
 export const layoutFamilyTree = (members, edges, headId) => layoutGroups(members, edges, headId, ["spouse"]);

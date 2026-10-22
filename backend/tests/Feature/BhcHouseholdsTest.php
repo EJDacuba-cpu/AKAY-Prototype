@@ -183,6 +183,48 @@ class BhcHouseholdsTest extends TestCase
         $this->assertDatabaseCount('patients', 0);
     }
 
+    public function test_purok_is_optional_for_a_household_address(): void
+    {
+        $this->staff();
+        $created = $this->register(['kind' => 'new', 'serial_mode' => 'auto', 'address' => [...$this->address(), 'purokArea' => '']])->assertCreated();
+        $household = $this->getJson('/api/bhc/households/'.$created->json('data.household_id'))->assertOk()->json('data');
+        $this->assertNull($household['address']['purokArea']);
+        $this->patchJson('/api/bhc/households/'.$household['id'], ['version' => $household['version'], 'address' => [...$this->address(), 'purokArea' => 'Zone 4']])->assertOk()->assertJsonPath('data.address.purokArea', 'Zone 4');
+        $this->patchJson('/api/bhc/households/'.$household['id'], ['version' => $household['version'] + 1, 'address' => [...$this->address(), 'purokArea' => '']])->assertOk()->assertJsonPath('data.address.purokArea', null);
+        $this->assertNull(Patient::find($created->json('data.id'))->purok_area);
+    }
+
+    public function test_directory_filters_by_purok_and_barangay_within_the_facility_and_lists_options(): void
+    {
+        $this->staff();
+        $this->register(['kind' => 'new', 'serial_mode' => 'auto', 'address' => [...$this->address(), 'purokArea' => 'Zone 2']])->assertCreated();
+        $this->register(['kind' => 'new', 'serial_mode' => 'auto', 'address' => [...$this->address(), 'purokArea' => '', 'barangay' => 'Other']])->assertCreated();
+        $this->register()->assertCreated();
+        $this->getJson('/api/bhc/households?purok=Zone 2')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.total', 1);
+        $this->getJson('/api/bhc/households?without_purok=1')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.address.barangay', 'Other');
+        $this->getJson('/api/bhc/households?barangay=Other&purok=Zone 1')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/bhc/households?purok=Zone 1&search=zzz')->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.filters.puroks', ['Zone 1', 'Zone 2'])->assertJsonPath('meta.filters.barangays', ['Local', 'Other'])->assertJsonPath('meta.filters.has_without_purok', true);
+        $this->staff();
+        $this->getJson('/api/bhc/households')->assertOk()->assertJsonPath('meta.filters.puroks', [])->assertJsonPath('meta.filters.has_without_purok', false);
+    }
+
+    public function test_directory_sorts_by_fsn_household_members_and_address(): void
+    {
+        $this->staff();
+        $zed = $this->register(['kind' => 'new', 'serial_mode' => 'auto', 'address' => [...$this->address(), 'barangay' => 'Beta']], ['last_name' => 'Zed'])->assertCreated()->json('data');
+        $this->register(['kind' => 'existing', 'household_id' => $zed['household_id'], 'relationship' => 'Wife'])->assertCreated();
+        $abel = $this->register(['kind' => 'new', 'serial_mode' => 'auto', 'address' => [...$this->address(), 'barangay' => 'Alpha']], ['last_name' => 'Abel'])->assertCreated()->json('data');
+        $names = fn (string $query) => collect($this->getJson('/api/bhc/households?'.$query)->assertOk()->json('data'))->pluck('id')->all();
+        $this->assertSame([$zed['household_id'], $abel['household_id']], $names('sort=fsn&direction=asc'));
+        $this->assertSame([$abel['household_id'], $zed['household_id']], $names('sort=fsn&direction=desc'));
+        $this->assertSame([$abel['household_id'], $zed['household_id']], $names('sort=household&direction=asc'));
+        $this->assertSame([$zed['household_id'], $abel['household_id']], $names('sort=members&direction=desc'));
+        $this->assertSame([$abel['household_id'], $zed['household_id']], $names('sort=address&direction=asc'));
+        $this->assertSame([$abel['household_id'], $zed['household_id']], $names(''), 'newest first by default');
+        $this->getJson('/api/bhc/households?sort=nonsense')->assertUnprocessable()->assertJsonValidationErrors('sort');
+    }
+
     public function test_identity_dates_are_calendar_dates_in_manila(): void
     {
         config(['app.timezone' => 'Asia/Manila']);
