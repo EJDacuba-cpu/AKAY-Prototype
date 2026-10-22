@@ -1,10 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  createProviderUnavailability,
   createRhuProvider,
   deactivateRhuProvider,
+  deleteProviderUnavailability,
+  updateProviderUnavailability,
   EMPTY_AVAILABILITY,
   getDoctorAvailability,
+  getProviderUnavailability,
   getRhuProviders,
   updateRhuProvider,
 } from "../services/doctorAvailability";
@@ -54,6 +58,9 @@ export function useProviderMutations() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.providerAvailability(),
       }),
+      queryClient.invalidateQueries({
+        queryKey: ["rhu-provider-unavailability"],
+      }),
     ]);
 
   const create = useMutation({
@@ -71,5 +78,72 @@ export function useProviderMutations() {
     onSuccess: invalidate,
   });
 
-  return { create, update, deactivate, invalidate };
+  const createUnavailability = useMutation({
+    mutationFn: ({ providerId, ...payload }) =>
+      createProviderUnavailability(providerId, payload),
+    onSuccess: invalidate,
+  });
+
+  const updateUnavailability = useMutation({
+    mutationFn: ({ providerId, id, ...payload }) =>
+      updateProviderUnavailability(providerId, id, payload),
+    onSuccess: invalidate,
+  });
+
+  const removeUnavailability = useMutation({
+    mutationFn: ({ providerId, id }) =>
+      deleteProviderUnavailability(providerId, id),
+    onSuccess: invalidate,
+  });
+
+  return {
+    create,
+    update,
+    deactivate,
+    createUnavailability,
+    updateUnavailability,
+    removeUnavailability,
+    invalidate,
+  };
+}
+
+/**
+ * The unavailability API is per provider, so the all-doctors calendar fans out
+ * one month query per doctor. It reuses providerUnavailability() keys, so a
+ * mutation's invalidation refreshes it and a single-doctor view reads the same
+ * cache entries.
+ */
+export function useAllProviderUnavailability(providers = [], range = {}) {
+  const { from, to } = range;
+  return useQueries({
+    queries: providers.map((provider) => ({
+      queryKey: queryKeys.providerUnavailability(provider.id, from, to),
+      queryFn: () => getProviderUnavailability(provider.id, { from, to }),
+      enabled: Boolean(provider.id && from && to),
+      staleTime: AVAILABILITY_STALE_TIME,
+    })),
+    combine: (results) => ({
+      rows: results.flatMap((result, index) =>
+        (result.data || []).map((row) => ({
+          ...row,
+          doctorName: providers[index]?.name || "",
+        })),
+      ),
+      isLoading: results.some((result) => result.isLoading),
+      isError: results.some((result) => result.isError),
+    }),
+  });
+}
+
+export function useProviderUnavailability(providerId, range = {}, options = {}) {
+  const { from, to } = range;
+  const query = useQuery({
+    queryKey: queryKeys.providerUnavailability(providerId, from, to),
+    queryFn: () => getProviderUnavailability(providerId, { from, to }),
+    enabled: Boolean(providerId && from && to),
+    staleTime: AVAILABILITY_STALE_TIME,
+    ...options,
+  });
+
+  return { ...query, rows: query.data || [] };
 }

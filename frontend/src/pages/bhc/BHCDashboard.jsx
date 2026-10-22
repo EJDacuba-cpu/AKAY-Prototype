@@ -42,8 +42,10 @@ import {
 } from "../../services/dashboardService";
 import {
   formatDoctorAvailabilityDate,
+  bhcCoordinationText,
   formatDoctorAvailabilitySummary,
 } from "../../services/doctorAvailability";
+import { displayedAvailabilityStatus } from "../../utils/doctorRoster";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
@@ -618,9 +620,8 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
           ) : (
             doctors.map((doctor) => {
               const unavailable =
-                doctor.availabilityStatus === "Unavailable";
-              // DOC-22: remarks is the only note field on the roster.
-              const remarks = doctor.remarks;
+                displayedAvailabilityStatus(doctor) === "Unavailable";
+              const coordination = bhcCoordinationText(doctor);
 
               return (
                 <div
@@ -646,11 +647,11 @@ function RHUReadinessCard({ availability, medicineAlerts, loading }) {
                       {unavailable ? "Unavailable" : "Available"}
                     </span>
                   </div>
-                  {unavailable && remarks && (
+                  {unavailable && coordination ? (
                     <p className="mt-1 text-[10.5px] font-semibold text-[#B45309]">
-                      {remarks}
+                      {coordination}
                     </p>
-                  )}
+                  ) : null}
                 </div>
               );
             })

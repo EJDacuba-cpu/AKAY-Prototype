@@ -9,6 +9,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\RhuDoctorRosterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -319,6 +320,107 @@ class RhuProviderAvailabilityTest extends TestCase
                 "DOC-15a-V: rhu_providers must not carry a '{$column}' column."
             );
         }
+    }
+
+    public function test_expected_return_does_not_open_or_close_the_gate(): void
+    {
+        $provider = $this->provider($this->rhuA, 'Dr. Estimate');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'expected_available_at' => now()->addDay()->toDateTimeString(),
+                'remarks' => 'Shared for BHC',
+                'internal_notes' => 'Keep in RHU',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.providers.0.remarks', 'Shared for BHC')
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false);
+
+        $this->assertArrayNotHasKey(
+            'internal_notes',
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0')
+        );
+        $this->assertSame(
+            RhuProvider::STATUS_AVAILABLE,
+            $provider->fresh()->availability_status
+        );
+    }
+
+    public function test_rhu_can_record_expected_return_and_split_notes_without_opening_the_gate(): void
+    {
+        config(['app.timezone' => 'Asia/Manila']);
+        date_default_timezone_set('Asia/Manila');
+        Carbon::setTestNow(Carbon::parse('2026-10-22 08:00:00', 'Asia/Manila'));
+
+        $provider = $this->provider($this->rhuA, 'Dr. Notes');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+                'expected_available_at' => '2026-10-23 14:00:00',
+                'remarks' => 'AM clinic only until Friday.',
+                'internal_notes' => 'Locum covering OR; do not share.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.internal_notes', 'Locum covering OR; do not share.')
+            ->assertJsonPath('data.remarks', 'AM clinic only until Friday.');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.internal_notes', 'Locum covering OR; do not share.');
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.providers.0.remarks', 'AM clinic only until Friday.')
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false)
+            ->assertJsonMissingPath('data.providers.0.internal_notes');
+
+        $this->assertNotNull(
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0.expected_available_at')
+        );
+
+        Carbon::setTestNow(Carbon::parse('2026-10-23 15:00:00', 'Asia/Manila'));
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', true)
+            ->assertJsonPath('data.providers.0.expected_available_at', null)
+            ->assertJsonPath('data.providers.0.remarks', 'AM clinic only until Friday.');
+
+        $this->assertArrayNotHasKey(
+            'internal_notes',
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0')
+        );
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_AVAILABLE,
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false);
+
+        Carbon::setTestNow();
     }
 
     /** Covering create is rejected at every RHU. */

@@ -34,13 +34,13 @@ class ReferralSubmissionGate
         $providers = RhuProvider::query()
             ->where('rural_health_unit_id', $rhu->id)
             ->eligibleRoster()
+            ->with('unavailability')
             ->orderBy('name')
             ->when(\Illuminate\Support\Facades\DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
             ->get();
 
-        $available = $providers->where(
-            'availability_status',
-            RhuProvider::STATUS_AVAILABLE
+        $available = $providers->filter(
+            fn (RhuProvider $provider): bool => $provider->isEffectivelyAvailable()
         );
 
         if ($available->isEmpty()) {

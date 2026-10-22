@@ -33,8 +33,10 @@ class RhuProviderController extends Controller
         $providers = $this->facilityAccess
             ->scopeRhuProviders(RhuProvider::query(), $request->user())
             ->eligibleRoster()
+            ->with('unavailability')
             ->orderBy('name')
             ->get();
+        $providers->each(fn (RhuProvider $provider) => $provider->makeVisible(['internal_notes']));
 
         return response()->json(['data' => $providers]);
     }
@@ -48,7 +50,7 @@ class RhuProviderController extends Controller
         if ($request->user()->isBhc() && $request->filled('rural_health_unit_id')) {
             $validated = $request->validate(['rural_health_unit_id' => ['required', 'integer']]);
             $route = app(\App\Services\ReferralRoutingService::class)->resolveForBhc($request->user(), (int) $validated['rural_health_unit_id']);
-            $providers = RhuProvider::where('rural_health_unit_id', $route['rhu']->id)->eligibleRoster()->get();
+            $providers = RhuProvider::where('rural_health_unit_id', $route['rhu']->id)->eligibleRoster()->with('unavailability')->get();
             return response()->json(['data' => $this->availability->summarize($providers, (int) $route['rhu']->id)]);
         }
         $ruralHealthUnitId = $this->facilityAccess
@@ -64,6 +66,7 @@ class RhuProviderController extends Controller
         $providers = $this->facilityAccess
             ->scopeRhuProviders(RhuProvider::query(), $request->user())
             ->eligibleRoster()
+            ->with('unavailability')
             ->orderBy('name')
             ->get();
 
@@ -107,14 +110,19 @@ class RhuProviderController extends Controller
             }
 
             $previousStatus = $provider->availability_status;
+            $wasEffective = $provider->isEffectivelyAvailable();
+            if (array_key_exists('availability_status', $data)) {
+                $data['availability_status_set_at'] = now();
+            }
             $provider->update([...$data, 'updated_by' => $user->id]);
+            $provider->load('unavailability');
 
             // SCR-06 - an availability flip is its own audited event, because it
             // is the change that can block referral submission under DOC-14.
             $statusChanged = array_key_exists('availability_status', $data)
                 && $data['availability_status'] !== $previousStatus;
 
-            if ($statusChanged && $provider->availability_status === RhuProvider::STATUS_AVAILABLE) {
+            if (! $wasEffective && $provider->isEffectivelyAvailable()) {
                 app(ReferralHoldService::class)->notifyWaitingHolds($provider->ruralHealthUnit);
             }
 
@@ -130,7 +138,7 @@ class RhuProviderController extends Controller
             return $provider;
         });
 
-        return response()->json(['data' => $provider]);
+        return response()->json(['data' => $provider->makeVisible(['internal_notes'])]);
     }
 
     /**

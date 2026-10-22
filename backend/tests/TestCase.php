@@ -40,6 +40,7 @@ abstract class TestCase extends BaseTestCase
             'name' => $name,
             'specialization' => 'General Practitioner',
             'availability_status' => $status,
+            'availability_status_set_at' => now(),
             'is_active' => true,
         ]);
     }

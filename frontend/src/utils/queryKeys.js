@@ -63,6 +63,12 @@ export const queryKeys = {
   staffRoles: () => ["staff-roles"],
   providers: () => ["rhu-providers"],
   providerAvailability: () => ["rhu-provider-availability"],
+  providerUnavailability: (providerId, from, to) => [
+    "rhu-provider-unavailability",
+    String(providerId || ""),
+    from || "",
+    to || "",
+  ],
   referralHolds: () => ["referral-holds"],
   clinicalRegistry: () => ["clinical-registry"],
   careOverview: (patientId) => ["care-overview", String(patientId)],

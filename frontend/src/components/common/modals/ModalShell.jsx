@@ -7,6 +7,7 @@ const sizeClasses = {
   lg: "max-w-xl",
   xl: "max-w-2xl",
   "2xl": "max-w-3xl",
+  "3xl": "max-w-4xl",
   wide: "max-w-6xl",
 };
 
@@ -150,7 +151,11 @@ export default function ModalShell({
       >
         <header className={`flex shrink-0 items-start gap-3 px-5 py-3.5 ${appearance === "plain" ? "border-b border-gray-200 bg-white text-gray-950" : "bg-[#B91C1C] text-white"}`}>
           {icon && (
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/15 text-white">
+            <span
+              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                appearance === "plain" ? "bg-brand-50 text-brand-700" : "bg-white/15 text-white"
+              }`}
+            >
               {icon}
             </span>
           )}

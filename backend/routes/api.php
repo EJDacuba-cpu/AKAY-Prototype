@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\ReferralHoldController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RhuProviderController;
+use App\Http\Controllers\Api\RhuProviderUnavailabilityController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
 use App\Http\Controllers\Api\TrackingController;
@@ -119,6 +120,14 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::patch('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'update'])
             ->middleware('role:rhu');
         Route::delete('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'destroy'])
+            ->middleware('role:rhu');
+        Route::get('/rhu-providers/{rhuProvider}/unavailability', [RhuProviderUnavailabilityController::class, 'index'])
+            ->middleware('role:rhu,admin');
+        Route::post('/rhu-providers/{rhuProvider}/unavailability', [RhuProviderUnavailabilityController::class, 'store'])
+            ->middleware('role:rhu');
+        Route::patch('/rhu-providers/{rhuProvider}/unavailability/{unavailability}', [RhuProviderUnavailabilityController::class, 'update'])
+            ->middleware('role:rhu');
+        Route::delete('/rhu-providers/{rhuProvider}/unavailability/{unavailability}', [RhuProviderUnavailabilityController::class, 'destroy'])
             ->middleware('role:rhu');
 
         Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);

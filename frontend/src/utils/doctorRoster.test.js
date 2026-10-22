@@ -34,6 +34,21 @@ test("official identity is the linked account, not the display name", () => {
   assert.equal(isOfficialProvider(covering), false);
 });
 
+test("roster counts and filters use effective status when present", () => {
+  const overlay = {
+    ...official,
+    availabilityStatus: "Available",
+    effectiveAvailabilityStatus: "Unavailable",
+  };
+  assert.deepEqual(rosterCounts([overlay, secondOfficial]), {
+    all: 2,
+    available: 0,
+    unavailable: 2,
+  });
+  assert.equal(filterDoctorRoster([overlay], { status: ROSTER_STATUS.AVAILABLE }).length, 0);
+  assert.equal(filterDoctorRoster([overlay], { status: ROSTER_STATUS.UNAVAILABLE }).length, 1);
+});
+
 test("filters split availability and search without treating covering as eligible", () => {
   const roster = [official, secondOfficial];
   assert.equal(filterDoctorRoster(roster, { status: ROSTER_STATUS.AVAILABLE }).length, 1);

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 use App\Services\StaffRoles;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -196,6 +197,51 @@ class ReferralSubmissionGateTest extends TestCase
         $this->assertDatabaseCount('referrals', 0);
         $this->assertDatabaseCount('referral_holds', 1);
         $this->assertDatabaseCount('health_records', 1);
+    }
+
+    public function test_calendar_absence_blocks_after_it_starts_until_reconfirm(): void
+    {
+        config(['app.timezone' => 'Asia/Manila']);
+        date_default_timezone_set('Asia/Manila');
+        Carbon::setTestNow(Carbon::parse('2026-10-22 08:00:00', 'Asia/Manila'));
+
+        $provider = $this->provider('Dr. Calendar Gate');
+        $staff = User::create([
+            'name' => 'Gate RHU Staff',
+            'email' => 'gate-rhu@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_RHU,
+            'status' => User::STATUS_ACTIVE,
+            'rural_health_unit_id' => $this->rhu->id,
+        ]);
+        $this->actingAs($staff, 'sanctum')
+            ->postJson("/api/rhu-providers/{$provider->id}/unavailability", [
+                'local_date' => '2026-10-22',
+                'all_day' => false,
+                'start_time' => '09:00',
+                'end_time' => '12:00',
+            ])
+            ->assertCreated();
+
+        $this->postReferral()->assertCreated();
+        $this->assertDatabaseCount('referrals', 1);
+
+        Carbon::setTestNow(Carbon::parse('2026-10-22 10:00:00', 'Asia/Manila'));
+        $this->postReferral()->assertUnprocessable()->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
+
+        Carbon::setTestNow(Carbon::parse('2026-10-22 13:00:00', 'Asia/Manila'));
+        $this->postReferral()->assertUnprocessable()->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
+
+        $this->actingAs($staff, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_AVAILABLE,
+            ])
+            ->assertOk();
+
+        $this->postReferral()->assertCreated();
+        $this->assertDatabaseCount('referrals', 2);
+
+        Carbon::setTestNow();
     }
 
     public function test_available_covering_row_cannot_open_the_gate(): void

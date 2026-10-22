@@ -84,6 +84,7 @@ class RhuDoctorRosterService
             'user_id' => $user->id,
             'name' => $user->name,
             'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+            'availability_status_set_at' => now(),
             'is_active' => true,
             'created_by' => $actor->id,
             'updated_by' => $actor->id,
@@ -123,6 +124,7 @@ class RhuDoctorRosterService
 
         if ($moved || $returning) {
             $attributes['availability_status'] = RhuProvider::STATUS_UNAVAILABLE;
+            $attributes['availability_status_set_at'] = now();
         }
 
         if ($attributes === []) {

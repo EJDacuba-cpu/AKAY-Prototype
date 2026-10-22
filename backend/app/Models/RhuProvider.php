@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * An RHU-managed provider (DOC-20). Availability is per-provider (DOC-21) and
@@ -33,7 +35,9 @@ class RhuProvider extends Model
         'name',
         'specialization',
         'availability_status',
+        'availability_status_set_at',
         'remarks',
+        'internal_notes',
         'expected_available_at',
         'is_active',
         'created_by',
@@ -43,6 +47,16 @@ class RhuProvider extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'expected_available_at' => 'datetime',
+        'availability_status_set_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'unavailability',
+        'internal_notes',
+    ];
+
+    protected $appends = [
+        'effective_availability_status',
     ];
 
     public function ruralHealthUnit(): BelongsTo
@@ -53,6 +67,11 @@ class RhuProvider extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function unavailability(): HasMany
+    {
+        return $this->hasMany(RhuProviderUnavailability::class);
     }
 
     public function isOfficial(): bool
@@ -86,5 +105,79 @@ class RhuProvider extends Model
     public function isAvailable(): bool
     {
         return $this->availability_status === self::STATUS_AVAILABLE;
+    }
+
+    public function isEffectivelyAvailable(?Carbon $now = null): bool
+    {
+        if (! $this->isOfficial() || ! $this->is_active) {
+            return false;
+        }
+        if ($this->availability_status !== self::STATUS_AVAILABLE) {
+            return false;
+        }
+
+        $now = $now
+            ? Carbon::parse($now)->timezone(RhuProviderUnavailability::TIMEZONE)
+            : now(RhuProviderUnavailability::TIMEZONE);
+        $confirmedAt = $this->availability_status_set_at
+            ? Carbon::parse($this->availability_status_set_at)->timezone(RhuProviderUnavailability::TIMEZONE)
+            : null;
+
+        foreach ($this->unavailability as $exception) {
+            if ($exception->windowStart()->gt($now)) {
+                continue;
+            }
+            if ($confirmedAt === null || $exception->windowEnd()->gt($confirmedAt)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public function getEffectiveAvailabilityStatusAttribute(): string
+    {
+        return $this->isEffectivelyAvailable()
+            ? self::STATUS_AVAILABLE
+            : self::STATUS_UNAVAILABLE;
+    }
+
+    /**
+     * Display-only: a passed estimate never restores eligibility.
+     */
+    public function isExpectedReturnOverdue(?Carbon $now = null): bool
+    {
+        if ($this->expected_available_at === null || $this->isEffectivelyAvailable($now)) {
+            return false;
+        }
+
+        $now = $now
+            ? Carbon::parse($now)->timezone(RhuProviderUnavailability::TIMEZONE)
+            : now(RhuProviderUnavailability::TIMEZONE);
+
+        return Carbon::parse($this->expected_available_at)
+            ->timezone(RhuProviderUnavailability::TIMEZONE)
+            ->lte($now);
+    }
+
+    /**
+     * BHC/referral snapshot fields. Internal notes are never included.
+     */
+    public function toPublicAvailabilityArray(): array
+    {
+        $overdue = $this->isExpectedReturnOverdue();
+
+        return [
+            'id' => $this->id,
+            'user_id' => $this->user_id,
+            'name' => $this->name,
+            'specialization' => $this->specialization,
+            'availability_status' => $this->availability_status,
+            'effective_availability_status' => $this->effective_availability_status,
+            'remarks' => $this->remarks,
+            'expected_available_at' => $overdue ? null : $this->expected_available_at,
+            'awaiting_rhu_update' => $overdue,
+            'updated_at' => $this->updated_at,
+        ];
     }
 }

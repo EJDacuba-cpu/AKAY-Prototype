@@ -92,6 +92,12 @@ class RhuProvidersManagePermissionTest extends TestCase
             ->patchJson("/api/rhu-providers/{$provider->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])
             ->assertForbidden();
         $this->actingAs($nurse, 'sanctum')->deleteJson("/api/rhu-providers/{$provider->id}")->assertForbidden();
+        $this->actingAs($nurse, 'sanctum')
+            ->postJson("/api/rhu-providers/{$provider->id}/unavailability", [
+                'local_date' => now('Asia/Manila')->toDateString(),
+                'all_day' => true,
+            ])
+            ->assertForbidden();
         $this->assertDatabaseHas('rhu_providers', [
             'id' => $provider->id,
             'is_active' => true,
@@ -112,6 +118,13 @@ class RhuProvidersManagePermissionTest extends TestCase
         $this->actingAs($nurse, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. Covering'])
             ->assertUnprocessable();
+
+        $this->actingAs($nurse, 'sanctum')
+            ->postJson("/api/rhu-providers/{$home->id}/unavailability", [
+                'local_date' => now('Asia/Manila')->addDay()->toDateString(),
+                'all_day' => true,
+            ])
+            ->assertCreated();
 
         $this->actingAs($nurse, 'sanctum')
             ->patchJson("/api/rhu-providers/{$home->id}", ['availability_status' => RhuProvider::STATUS_UNAVAILABLE])

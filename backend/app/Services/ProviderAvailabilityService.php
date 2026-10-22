@@ -20,11 +20,15 @@ class ProviderAvailabilityService
      */
     public function summarize(Collection $providers, ?int $ruralHealthUnitId): array
     {
+        if ($providers->isNotEmpty() && ! $providers->first()->relationLoaded('unavailability')) {
+            $providers->load('unavailability');
+        }
+
         $active = $providers
             ->where('is_active', true)
             ->filter(fn (RhuProvider $provider): bool => $provider->user_id !== null);
         $availableCount = $active
-            ->where('availability_status', RhuProvider::STATUS_AVAILABLE)
+            ->filter(fn (RhuProvider $provider): bool => $provider->isEffectivelyAvailable())
             ->count();
         $totalCount = $active->count();
 
@@ -40,16 +44,9 @@ class ProviderAvailabilityService
             // availability is live and a form may be minutes stale.
             'can_submit_referral' => $availableCount > 0,
             'updated_at' => $active->max('updated_at'),
-            'providers' => $active->values()->map(fn (RhuProvider $provider): array => [
-                'id' => $provider->id,
-                'user_id' => $provider->user_id,
-                'name' => $provider->name,
-                'specialization' => $provider->specialization,
-                'availability_status' => $provider->availability_status,
-                'remarks' => $provider->remarks,
-                'expected_available_at' => $provider->expected_available_at,
-                'updated_at' => $provider->updated_at,
-            ])->all(),
+            'providers' => $active->values()
+                ->map(fn (RhuProvider $provider): array => $provider->toPublicAvailabilityArray())
+                ->all(),
         ];
     }
 
@@ -61,7 +58,9 @@ class ProviderAvailabilityService
         return RhuProvider::query()
             ->where('rural_health_unit_id', $ruralHealthUnitId)
             ->eligibleRoster()
-            ->where('availability_status', RhuProvider::STATUS_AVAILABLE)
+            ->with('unavailability')
+            ->get()
+            ->filter(fn (RhuProvider $provider): bool => $provider->isEffectivelyAvailable())
             ->count();
     }
 }

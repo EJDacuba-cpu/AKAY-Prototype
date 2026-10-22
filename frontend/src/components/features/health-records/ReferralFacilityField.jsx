@@ -9,6 +9,10 @@ import { ModalButton, ModalShell } from "../../common";
 import { Button } from "../../ui/button";
 import { Card, CardHeader, CardTitle } from "../../ui/card";
 import { FieldError, FieldLabel } from "./fields/ClinicalFields";
+import {
+  bhcCoordinationText,
+  bhcExpectedReturnLabel,
+} from "../../../services/doctorAvailabilityModel";
 
 const STATUS_AVAILABLE = "Available";
 const REFERENCE_NOTE = "For reference only — the RHU assigns the practitioner.";
@@ -26,7 +30,8 @@ function formatStamp(value) {
 }
 
 function isAvailable(provider) {
-  return provider.availability_status === STATUS_AVAILABLE;
+  const status = provider.effective_availability_status ?? provider.availability_status;
+  return status === STATUS_AVAILABLE;
 }
 
 function sortProviders(providers) {
@@ -37,13 +42,8 @@ function sortProviders(providers) {
   );
 }
 
-// The roster has no working-hours data yet; remarks and the expected return
-// time are what the RHU records about when a doctor can be seen.
 function scheduleText(provider) {
-  const expected = !isAvailable(provider) && formatStamp(provider.expected_available_at);
-  return [provider.remarks, expected ? `Expected available: ${expected}` : ""]
-    .filter(Boolean)
-    .join(" · ");
+  return bhcCoordinationText(provider);
 }
 
 // Rendered into <body>: the consultation form sits inside animated
@@ -107,7 +107,6 @@ function DetailItem({ label, children }) {
 
 function DoctorDetailsModal({ provider, onClose }) {
   if (!provider) return null;
-  const schedule = scheduleText(provider);
   const updated = formatStamp(provider.updated_at);
 
   return (
@@ -131,8 +130,11 @@ function DoctorDetailsModal({ provider, onClose }) {
           <DetailItem label="Current Status">
             <StatusBadge provider={provider} />
           </DetailItem>
-          <DetailItem label="Schedule">
-            {schedule || "No schedule notes recorded."}
+          <DetailItem label="Coordination notes">
+            {provider.remarks || "No shared notes recorded."}
+          </DetailItem>
+          <DetailItem label="Expected return">
+            {bhcExpectedReturnLabel(provider) || "Not recorded"}
           </DetailItem>
         </dl>
         {updated && (
