@@ -145,17 +145,23 @@ class BhcHouseholdsTest extends TestCase
         $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2026-10000');
     }
 
-    public function test_rhu_cannot_submit_bhc_household_payload_and_client_facility_does_not_choose_namespace(): void
+    public function test_rhu_cannot_use_bhc_household_namespace_and_client_facility_does_not_choose_it(): void
     {
         $user = $this->staff();
         $foreign = BarangayHealthCenter::create(['name' => 'Spoofed BHC']);
-        $this->register([], ['barangay_health_center_id' => $foreign->id])->assertCreated()->assertJsonPath('data.barangay_health_center_id', $user->barangay_health_center_id);
+        $created = $this->register([], ['barangay_health_center_id' => $foreign->id])->assertCreated();
+        $created->assertJsonPath('data.barangay_health_center_id', $user->barangay_health_center_id);
+        $id = $created->json('data.household_id');
         $rhu = RuralHealthUnit::create(['name' => 'RHU']);
-        $rhuUser = User::create(['name' => 'RHU registrar', 'email' => 'rhu@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => ['patients.register']]);
+        $rhuUser = User::create(['name' => 'RHU registrar', 'email' => 'rhu@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'permissions' => ['patients.register', 'families.view', 'families.manage']]);
         Sanctum::actingAs($rhuUser, ['akay:access']);
-        $this->register()->assertForbidden();
         $this->getJson('/api/bhc/households/lookup')->assertForbidden();
+        $this->getJson('/api/bhc/households/'.$id)->assertForbidden();
+        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])->assertNotFound();
         $this->assertDatabaseCount('patients', 1);
+        $this->register()->assertCreated()->assertJsonPath('data.rural_health_unit_id', $rhu->id)->assertJsonPath('data.barangay_health_center_id', null);
+        $this->getJson('/api/rhu/households')->assertOk()->assertJsonCount(1, 'data');
+        $this->getJson('/api/bhc/households')->assertForbidden();
     }
 
     public function test_fsn_only_edit_preserves_relationships_and_address_changes_sync_all_members(): void

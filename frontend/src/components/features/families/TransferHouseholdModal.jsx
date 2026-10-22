@@ -4,7 +4,7 @@ import { ArrowDown, ArrowRight, Search } from "lucide-react";
 import toast from "react-hot-toast";
 import ModalShell from "../../common/modals/ModalShell";
 import { Button } from "../../ui/button";
-import useBhcHouseholdScope from "../../../hooks/useBhcHouseholdScope";
+import useHouseholdScope from "../../../hooks/useBhcHouseholdScope";
 import useHouseholdSearch from "../../../hooks/useHouseholdSearch";
 import { changePatientHousehold, getHouseholdById } from "../../../services/householdService";
 import { addressText, patientName, validateConnection } from "../../../services/familyRegistry";
@@ -26,8 +26,8 @@ function Detail({ label, value }) {
 // Moves one member to another existing household. It sends only the existing household command, so the patient's
 // identity, birth and guardian details, parent links and records are untouched; the address changes on the server
 // only after the explicit review and confirmation below.
-export default function TransferHouseholdModal({ member, household, onClose }) {
-  const scope = useBhcHouseholdScope();
+export default function TransferHouseholdModal({ role = "bhc", member, household, onClose }) {
+  const scope = useHouseholdScope(role);
   const client = useQueryClient();
   const lookup = useHouseholdSearch(scope);
   const [query, setQuery] = useState("");
@@ -51,8 +51,8 @@ export default function TransferHouseholdModal({ member, household, onClose }) {
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: scope.key }),
-        client.invalidateQueries({ queryKey: queryKeys.patients("bhc") }),
-        client.invalidateQueries({ queryKey: queryKeys.patientDetails("bhc", member.id) }),
+        client.invalidateQueries({ queryKey: queryKeys.patients(role) }),
+        client.invalidateQueries({ queryKey: queryKeys.patientDetails(role, member.id) }),
       ]);
       toast.success(`${name} moved to ${destination.serialNumber}.`);
       onClose();
@@ -92,7 +92,7 @@ export default function TransferHouseholdModal({ member, household, onClose }) {
     setChecking(true);
     setMessage("");
     try {
-      const latest = await getHouseholdById(household.id);
+      const latest = await getHouseholdById(household.id, role);
       if (!latest.members.some((item) => item.id === member.id) || latest.version !== household.version) {
         await client.invalidateQueries({ queryKey: scope.key });
         setMessage("This household changed since you opened it. Close this window, review the Members List, and try again.");

@@ -7,8 +7,11 @@ const subscribe = callback => {
   window.addEventListener('akay:facility-changed',callback);
   return () => {window.removeEventListener('akay:auth-changed',callback);window.removeEventListener('akay:facility-changed',callback);};
 };
-const snapshot = () => JSON.stringify(householdKeys(getCurrentUser() || {}));
-export default function useBhcHouseholdScope() {
+export default function useHouseholdScope(role = 'bhc') {
+  const snapshot = () => JSON.stringify([...householdKeys(getCurrentUser() || {}, role), role]);
   const identity=useSyncExternalStore(subscribe,snapshot,snapshot);
-  return { user:getCurrentUser(), key:JSON.parse(identity), identity };
+  return { user:getCurrentUser(), key:JSON.parse(identity).slice(0,-1), identity, role };
+}
+export function useBhcHouseholdScope() {
+  return useHouseholdScope('bhc');
 }

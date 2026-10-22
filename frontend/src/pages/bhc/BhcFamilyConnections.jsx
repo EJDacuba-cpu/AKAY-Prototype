@@ -6,22 +6,22 @@ import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import ModalShell from '../../components/common/modals/ModalShell';
 import { Button } from '../../components/ui/button';
-import useBhcHouseholdScope from '../../hooks/useBhcHouseholdScope';
+import useHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { addRelationship, changeRelationship, getHouseholdById, removeRelationship } from '../../services/householdService';
 import { patientName } from '../../services/familyRegistry';
 import { candidateRelatives, connectionRowsFor, describeConnection } from '../../utils/familyConnections';
 
-const base = '/bhc/families';
 const selectClass = 'h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm';
 const TYPES = [['spouse', 'Spouse'], ['sibling', 'Sibling']];
 
 // Explicit spouse/sibling links only. Nothing here is inferred from labels, and parent links stay on each patient's record.
-export default function BhcFamilyConnections() {
+export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
   const { householdId, memberId } = useParams();
-  const scope = useBhcHouseholdScope();
+  const scope = useHouseholdScope(role);
   const client = useQueryClient();
+  const base = `/${role}/families`;
   const key = [...scope.key, 'detail', householdId];
-  const query = useQuery({ queryKey: key, queryFn: () => getHouseholdById(householdId), retry: false });
+  const query = useQuery({ queryKey: key, queryFn: () => getHouseholdById(householdId, role), retry: false });
   const household = query.data;
   const member = household?.members.find((item) => item.id === memberId);
   const [add, setAdd] = useState({ relativeId: '', type: 'spouse' });
@@ -33,13 +33,13 @@ export default function BhcFamilyConnections() {
   const mutation = useMutation({
     mutationFn: (action) => {
       const { version } = household;
-      if (action.kind === 'add') return addRelationship(householdId, { version, patientId: memberId, relativeId: action.relativeId, type: action.type });
-      if (action.kind === 'change') return changeRelationship(householdId, action.id, { version, type: action.type });
-      return removeRelationship(householdId, action.id, { version });
+      if (action.kind === 'add') return addRelationship(householdId, { version, patientId: memberId, relativeId: action.relativeId, type: action.type }, role);
+      if (action.kind === 'change') return changeRelationship(householdId, action.id, { version, type: action.type }, role);
+      return removeRelationship(householdId, action.id, { version }, role);
     },
     onSuccess: async (saved, action) => {
       client.setQueryData(key, saved);
-      await Promise.all([client.invalidateQueries({ queryKey: scope.key }), client.invalidateQueries({ queryKey: ['patient-details', 'bhc'] })]);
+      await Promise.all([client.invalidateQueries({ queryKey: scope.key }), client.invalidateQueries({ queryKey: ['patient-details', role] })]);
       toast.success(action.kind === 'add' ? 'Connection added.' : action.kind === 'change' ? 'Connection updated.' : 'Connection removed.');
       setPending(null);
       setError('');
@@ -52,7 +52,7 @@ export default function BhcFamilyConnections() {
     },
   });
 
-  const frame = (children) => <DashboardLayout role="bhc" title="Family Connections" contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10"><div className="mx-auto max-w-3xl space-y-6 text-neutral-900"><Link to={`${base}/${householdId}`} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Family</Link>{children}</div></DashboardLayout>;
+  const frame = (children) => <DashboardLayout role={role} title="Family Connections" contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10"><div className="mx-auto max-w-3xl space-y-6 text-neutral-900"><Link to={`${base}/${householdId}`} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Family</Link>{children}</div></DashboardLayout>;
   if (query.isPending || query.error) return frame(<div className="space-y-3 py-8"><p role={query.error ? 'alert' : 'status'}>{query.error ? 'Unable to load household data. Please retry.' : 'Loading household…'}</p>{query.error && <Button variant="outline" onClick={() => query.refetch()}>Retry</Button>}</div>);
   if (!member || household.archivedAt) return frame(<p role="status">This family member is not available.</p>);
 

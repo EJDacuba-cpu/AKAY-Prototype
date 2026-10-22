@@ -4,14 +4,14 @@ import { formatLongDate } from "../../../utils/formatters";
 import { HEAD_TRANSFER_MESSAGE } from "../../../utils/householdTransfer";
 
 // Compact horizontal rows with one Actions menu per member. Members arrive already ordered (head first).
-export default function FamilyMembersList({ members, headId, canManage, canTransfer, onTransfer, familyPath }) {
+export default function FamilyMembersList({ members, headId, canManage, canTransfer, onTransfer, familyPath, patientPath = "/bhc/patients" }) {
   if (!members.length) return <p className="py-8 text-sm text-neutral-500" role="status">No members registered in this household.</p>;
   return <ul className="divide-y divide-neutral-200 border-y border-neutral-200" aria-label="Household members">
     {members.map((member) => {
       const name = patientName(member);
       const isHead = member.id === headId;
       const actions = [
-        { label: "View Patient Details", to: `/bhc/patients/${member.id}?tab=patient-info` },
+        { label: "View Patient Details", to: `${patientPath}/${member.id}?tab=patient-info` },
         ...(canManage ? [{ label: "Edit Connections", to: `${familyPath}/members/${member.id}/edit` }] : []),
         ...(canTransfer ? [{
           label: "Transfer Household", onClick: () => onTransfer(member), disabled: isHead,

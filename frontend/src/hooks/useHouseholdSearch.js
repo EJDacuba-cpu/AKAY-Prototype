@@ -12,7 +12,7 @@ export default function useHouseholdSearch(scope) {
     const seq=++request.current;
     setState({loading:true,error:''});setResults([]);
     try {
-      const page=await client.fetchQuery({queryKey:[...scope.key,'lookup',value],queryFn:()=>getHouseholds({lookup:true,search:value,per_page:100}),staleTime:0});
+      const page=await client.fetchQuery({queryKey:[...scope.key,'lookup',value],queryFn:()=>getHouseholds({role:scope.role,lookup:true,search:value,per_page:100}),staleTime:0});
       if(seq !== request.current) return;
       setResults(page.items);setState({loading:false,error:''});
     } catch(error) {if(seq === request.current) setState({loading:false,error:error.message || 'Unable to search households.'});}

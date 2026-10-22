@@ -1,28 +1,37 @@
 <?php
 
+use App\Http\Controllers\Api\AccountInviteController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
+use App\Http\Controllers\Api\CareOverviewController;
+use App\Http\Controllers\Api\ClinicalRegistryController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\FollowUpTaskController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\HealthRecordDraftController;
+use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\AccountInviteController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
+use App\Http\Controllers\Api\PatientBackgroundController;
+use App\Http\Controllers\Api\PatientBackgroundHistoryController;
+use App\Http\Controllers\Api\PatientConditionController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\RecordCorrectionController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReferralHoldController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RhuProviderController;
 use App\Http\Controllers\Api\RhuProviderUnavailabilityController;
-use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
+use App\Http\Controllers\Api\StaffAssignmentController;
+use App\Http\Controllers\Api\StaffRoleController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -50,39 +59,43 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         ->middleware('throttle:10,1');
 
     Route::middleware('facility.assigned')->group(function () {
-    Route::get('/clinical-registry', [\App\Http\Controllers\Api\ClinicalRegistryController::class, 'index']);
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::get('/notifications/counts', [NotificationController::class, 'counts']);
-    Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
-    Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
-    Route::delete('/notifications', [NotificationController::class, 'clearAll']);
-    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
-    Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
-    Route::post('/notifications/{notification}/trash', [NotificationController::class, 'trash']);
-    Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
-    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
+        Route::get('/clinical-registry', [ClinicalRegistryController::class, 'index']);
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::get('/notifications/counts', [NotificationController::class, 'counts']);
+        Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
+        Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::delete('/notifications', [NotificationController::class, 'clearAll']);
+        Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+        Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
+        Route::post('/notifications/{notification}/trash', [NotificationController::class, 'trash']);
+        Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
+        Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
 
     });
 
     Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
-        Route::get('bhc/households/lookup', [\App\Http\Controllers\Api\HouseholdController::class, 'lookup']);
-        Route::get('bhc/households/candidates', [\App\Http\Controllers\Api\HouseholdController::class, 'candidates']);
-        Route::get('bhc/households', [\App\Http\Controllers\Api\HouseholdController::class, 'index']);
-        Route::get('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'show'])->whereNumber('id');
-        Route::post('bhc/households', [\App\Http\Controllers\Api\HouseholdController::class, 'store']);
-        Route::patch('bhc/households/{id}', [\App\Http\Controllers\Api\HouseholdController::class, 'update'])->whereNumber('id');
-        Route::post('bhc/households/{id}/relationships', [\App\Http\Controllers\Api\HouseholdController::class, 'storeRelationship'])->whereNumber('id');
-        Route::patch('bhc/households/{id}/relationships/{relationshipId}', [\App\Http\Controllers\Api\HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId']);
-        Route::delete('bhc/households/{id}/relationships/{relationshipId}', [\App\Http\Controllers\Api\HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId']);
+        foreach (['bhc', 'rhu'] as $householdNamespace) {
+            Route::prefix($householdNamespace)->group(function () use ($householdNamespace) {
+                Route::get('households/lookup', [HouseholdController::class, 'lookup'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households/candidates', [HouseholdController::class, 'candidates'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households', [HouseholdController::class, 'index'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households/{id}', [HouseholdController::class, 'show'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::post('households', [HouseholdController::class, 'store'])->defaults('householdNamespace', $householdNamespace);
+                Route::patch('households/{id}', [HouseholdController::class, 'update'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::post('households/{id}/relationships', [HouseholdController::class, 'storeRelationship'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::patch('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+                Route::delete('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+            });
+        }
         Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
-        Route::get('patients/{patient}/care-overview', [\App\Http\Controllers\Api\CareOverviewController::class, 'show']);
-        Route::get('patients/{patient}/background-history', \App\Http\Controllers\Api\PatientBackgroundHistoryController::class);
-        Route::patch('patients/{patient}/background', \App\Http\Controllers\Api\PatientBackgroundController::class);
-        Route::get('patients/{patient}/conditions', [\App\Http\Controllers\Api\PatientConditionController::class, 'index']);
-        Route::get('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'index']);
-        Route::post('health-records/{healthRecord}/corrections', [\App\Http\Controllers\Api\RecordCorrectionController::class, 'store']);
+        Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
+        Route::get('patients/{patient}/background-history', PatientBackgroundHistoryController::class);
+        Route::patch('patients/{patient}/background', PatientBackgroundController::class);
+        Route::get('patients/{patient}/conditions', [PatientConditionController::class, 'index']);
+        Route::get('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'index']);
+        Route::post('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
         Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
         Route::post('/referrals/qr/resolve', [ReferralQrController::class, 'resolve'])
@@ -165,11 +178,11 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
 
     Route::middleware('role:admin')->group(function () {
         Route::get('/admin/dashboard', [AdminDashboardController::class, 'show']);
-        Route::get('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'index']);
-        Route::get('/staff-assignments/eligible-nurses', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'eligible']);
-        Route::post('/staff-assignments', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'store']);
-        Route::post('/staff-assignments/{staffAssignment}/revoke', [\App\Http\Controllers\Api\StaffAssignmentController::class, 'revoke']);
-        Route::get('/staff-roles', [\App\Http\Controllers\Api\StaffRoleController::class, 'index']);
+        Route::get('/staff-assignments', [StaffAssignmentController::class, 'index']);
+        Route::get('/staff-assignments/eligible-nurses', [StaffAssignmentController::class, 'eligible']);
+        Route::post('/staff-assignments', [StaffAssignmentController::class, 'store']);
+        Route::post('/staff-assignments/{staffAssignment}/revoke', [StaffAssignmentController::class, 'revoke']);
+        Route::get('/staff-roles', [StaffRoleController::class, 'index']);
         // Registered before the resource so "email-available" is not read as a user id.
         Route::get('/users/email-available', [UserController::class, 'emailAvailable']);
         Route::apiResource('users', UserController::class);

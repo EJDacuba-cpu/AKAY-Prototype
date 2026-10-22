@@ -19,10 +19,11 @@ test('household responses normalize numeric IDs and safe member demographics', (
   const registry=householdRegistry([item,item],{id:'9',firstName:'Updated'});
   assert.equal(registry.households.length,1); assert.equal(registry.patients.length,1); assert.equal(registry.patients[0].firstName,'Updated');
 });
-test('household query identity separates account and active facility', () => {
+test('household query identity separates account, active facility, and BHC/RHU namespace', () => {
   const a={id:'1',role:'bhc',facilityId:4,working_facility_key:'home'};
   assert.notDeepEqual(householdKeys(a), householdKeys({...a,facilityId:5}));
   assert.notDeepEqual(householdKeys(a), householdKeys({...a,id:'2'}));
+  assert.notDeepEqual(householdKeys(a, 'bhc'), householdKeys({...a, ruralHealthUnitId: 9}, 'rhu'));
 });
 test('backend field errors map to registration inputs without losing general errors', () => {
   assert.deepEqual(registrationErrors({errors:{first_name:['Required'],'household.serial_number':['Already used'],'household.relationship':['Choose relationship']}}),

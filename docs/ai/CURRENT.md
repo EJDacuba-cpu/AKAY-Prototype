@@ -2,6 +2,17 @@
 
 **Status date:** 2026-10-23
 
+## RHU Families and FSN persistence (2026-10-23)
+
+RHU Patient Registration and Families now use the same persisted household/FSN architecture as BHC, with a separate RHU ownership namespace. Operational RHU screens no longer fall back to the mock family registry.
+
+- Households may be owned by exactly one facility: `barangay_health_center_id` (BHC) or `rural_health_unit_id` (RHU). FSN uniqueness and counters stay per facility. The same serial may exist in a BHC and an RHU.
+- `/api/bhc/households*` remains BHC-only. `/api/rhu/households*` is the RHU namespace. Working facility assignment, not client facility fields, chooses the namespace.
+- Registration save still writes the patient and household in one transaction. Register Member from RHU Families opens `/rhu/patients/add?household={id}`. Related-family graph editing stays deferred for both BHC and RHU.
+- Migration `2026_10_23_000001_add_rhu_ownership_to_households.php` is required on PostgreSQL/Supabase before this backend is deployed. It was not run against live Supabase from this session. Isolated PHPUnit uses SQLite in memory.
+
+Verification: 122 focused household/relationship/permission tests (855 assertions) pass on SQLite, including existing BHC household tests. 46 focused frontend household tests pass. Authenticated browser visual QA is unverified. PostgreSQL concurrent RHU allocation was not run (`AKAY_TEST_PG_URL` unset); the BHC allocator function is unchanged.
+
 ## RHU Health Records sidebar retirement (2026-10-23)
 
 The RHU standalone Health Records list is retired the same way BHC already was. The sidebar entry is gone; `/rhu/health-records` and legacy `/rhu/rhu-records` redirect to Patients. Record add (`/rhu/health-records/add`) and details (`/rhu/health-records/:id`) stay, reached from the Patient Details Health Records tab. Back/success navigation and breadcrumbs return to the patient records tab or Patients, not the old list. RHU `clinical.history` can now read the facility-scoped patient directory and profile (owned ∪ referred) without `patients.register`; create/edit/delete still require `patients.register`, and registration controls stay hidden for history-only staff.

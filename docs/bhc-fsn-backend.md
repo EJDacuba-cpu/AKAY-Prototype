@@ -13,9 +13,12 @@
 - Families is not an Admin/MHO module (no sidebar item; `/admin/families` is refused).
   `families.view`/`families.manage` are server-stored for BHC and RHU accounts
   through the Role & Access checklist; browser (localStorage) grants are gone.
-  The RHU Families pages still run on the prototype registry until RHU conversion.
-- RHU conversion, cross-barangay search, related-family graph editing and legacy
-  group reconciliation remain outside this phase.
+  RHU Families and registration now use the same persisted household API under
+  `/api/rhu/households*`, with RHU facility ownership kept separate from BHC.
+- Cross-barangay search, related-family graph editing and legacy group
+  reconciliation remain outside this phase. RHU persistence requires migration
+  `2026_10_23_000001_add_rhu_ownership_to_households.php` (not applied to live
+  Supabase from the implementation session).
 
 ## Activate in the intended development/deployment database
 
@@ -27,10 +30,10 @@ cd backend
 php artisan migrate
 ```
 
-Migration: `2026_10_16_090000_create_bhc_households.php`. It adds household identity,
-membership columns, constraints, durable counters and the PostgreSQL allocation
-function. Existing patients and FSNs are preserved; seeded browser mock families
-are not imported into the database.
+Migrations: `2026_10_16_090000_create_bhc_households.php` (BHC household identity)
+and `2026_10_23_000001_add_rhu_ownership_to_households.php` (RHU ownership on the
+same tables, plus `akay_allocate_rhu_household_fsn`). Existing patients and FSNs
+are preserved; seeded browser mock families are not imported into the database.
 
 Use the admin's existing account/assignment editor to grant Families access to
 the intended BHC staff. `families.manage` requires `families.view`. Old browser

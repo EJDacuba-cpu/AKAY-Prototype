@@ -30,7 +30,7 @@ class PatientRelationships
         $this->authorize($request, $household, $patient, $relative, $field);
         $this->assertPairFree($patient, $relative, null, $field);
         [$low, $high] = $this->canonical($patient, $relative);
-        $link = PatientRelationship::create(['barangay_health_center_id' => $household->barangay_health_center_id, 'patient_id' => $low, 'relative_id' => $high, 'type' => $type, 'created_by' => $request->user()?->id]);
+        $link = PatientRelationship::create([...HouseholdOwner::fromHousehold($household)->attributes(), 'patient_id' => $low, 'relative_id' => $high, 'type' => $type, 'created_by' => $request->user()?->id]);
         $this->audit->log($request, 'relationship_created', 'households', "Patients {$low} and {$high}: {$type} link created in household {$household->id}.");
 
         return $link;
@@ -90,7 +90,7 @@ class PatientRelationships
     {
         $ids = $household->members()->pluck('id');
 
-        return PatientRelationship::where('barangay_health_center_id', $household->barangay_health_center_id)
+        return HouseholdOwner::fromHousehold($household)->scopeRelationships(PatientRelationship::query())
             ->whereIn('patient_id', $ids)->whereIn('relative_id', $ids)->orderBy('id')->get();
     }
 
@@ -104,8 +104,8 @@ class PatientRelationships
     private function authorize(Request $request, Household $household, Patient $patient, Patient $relative, string $field): void
     {
         $this->access->authorizePatientModification($request->user(), $patient);
-        $facility = (int) $household->barangay_health_center_id;
-        abort_unless((int) $patient->barangay_health_center_id === $facility && (int) $relative->barangay_health_center_id === $facility && $relative->rural_health_unit_id === null, 404);
+        $owner = HouseholdOwner::fromHousehold($household);
+        abort_unless($owner->ownsPatient($patient) && $owner->ownsPatient($relative), 404);
         foreach ([$patient, $relative] as $person) {
             if ($person->status === 'inactive') {
                 $this->fail($field, 'An inactive patient cannot be connected.');
@@ -121,7 +121,11 @@ class PatientRelationships
     {
         $patient = Patient::find($link->patient_id);
         $relative = Patient::find($link->relative_id);
-        abort_unless($patient && $relative && (int) $link->barangay_health_center_id === (int) $household->barangay_health_center_id
+        $owner = HouseholdOwner::fromHousehold($household);
+        abort_unless($patient && $relative
+            && (int) $link->barangay_health_center_id === (int) $household->barangay_health_center_id
+            && (int) $link->rural_health_unit_id === (int) $household->rural_health_unit_id
+            && $owner->ownsPatient($patient) && $owner->ownsPatient($relative)
             && (int) $patient->household_id === (int) $household->id && (int) $relative->household_id === (int) $household->id, 404);
 
         return [$patient, $relative];

@@ -4,16 +4,17 @@ import { useSearchParams } from 'react-router';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/button';
 import { RegistrationForm } from './AddPatient';
-import useBhcHouseholdScope from '../../hooks/useBhcHouseholdScope';
+import useHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { getHouseholdById, getHouseholds } from '../../services/householdService';
 import { createPatient, updatePatient, getPatientById } from '../../services/patientService';
 import { householdPayload, householdRegistry, normalizeHousehold, normalizeHouseholdPatient } from '../../utils/householdData';
+import { queryKeys } from '../../utils/queryKeys';
 
-export default function BhcPatientRegistration(props) {
-  const scope=useBhcHouseholdScope();
-  return <RegistrationSource key={`${scope.identity}:${props.patientId || 'new'}`} {...props} scope={scope} />;
+export default function BhcPatientRegistration({ role = 'bhc', ...props }) {
+  const scope=useHouseholdScope(role);
+  return <RegistrationSource key={`${scope.identity}:${props.patientId || 'new'}`} {...props} scope={scope} role={role} />;
 }
-function RegistrationSource({patientId,scope,...props}) {
+function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const client=useQueryClient();
   const [params]=useSearchParams();
   const initialHouseholdId=params.get('household');
@@ -24,14 +25,14 @@ function RegistrationSource({patientId,scope,...props}) {
   const patient=useQuery({queryKey:[...scope.key,'registration',patientId],queryFn:()=>getPatientById(patientId),enabled:Boolean(patientId),retry:false,refetchOnWindowFocus:false,refetchOnReconnect:false});
   const saved=patient.data ? normalizeHouseholdPatient(patient.data) : undefined;
   const selectedId=saved?.householdId || initialHouseholdId;
-  const selected=useQuery({queryKey:[...scope.key,'detail',selectedId],queryFn:()=>getHouseholdById(selectedId),enabled:Boolean(selectedId),retry:false,refetchOnWindowFocus:false,refetchOnReconnect:false});
+  const selected=useQuery({queryKey:[...scope.key,'detail',selectedId],queryFn:()=>getHouseholdById(selectedId, role),enabled:Boolean(selectedId),retry:false,refetchOnWindowFocus:false,refetchOnReconnect:false});
   const registry=householdRegistry([...known,selected.data],saved);
   const mutation=useMutation({mutationFn:({id,data})=>id ? updatePatient(id,data):createPatient(data)});
   async function search(value) {
     const seq=++request.current;
     setSearchState({loading:true,error:''}); setResults([]);
     try {
-      const page=await client.fetchQuery({queryKey:[...scope.key,'lookup',value],queryFn:()=>getHouseholds({lookup:true,search:value,per_page:100}),staleTime:0});
+      const page=await client.fetchQuery({queryKey:[...scope.key,'lookup',value],queryFn:()=>getHouseholds({role,lookup:true,search:value,per_page:100}),staleTime:0});
       if(seq !== request.current) return;
       setResults(page.items);
       setKnown(previous=>householdRegistry([...previous,...page.items]).households);
@@ -50,13 +51,13 @@ function RegistrationSource({patientId,scope,...props}) {
         return householdRegistry([...previous.filter(item=>item.id !== household.id),household]).households;
       });
     }
-    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:['patients','bhc']}),client.invalidateQueries({queryKey:['patient-details','bhc']})]);
+    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:queryKeys.patients(role)}),client.invalidateQueries({queryKey:queryKeys.patientDetails(role, response?.id || id)})]);
     return response;
   }
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending);
   const error=(!patient.data && patient.error) || (!selected.data && selected.error);
-  if(waiting || error) return <DashboardLayout role="bhc" title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
-  return <RegistrationForm {...props} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} live
+  if(waiting || error) return <DashboardLayout role={role} title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
+  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} live
     initialConnection={!patientId && selected.data ? {kind:'existing',householdId:selected.data.id,relationship:''} : undefined}
     onSearch={search} searchResults={results} searchLoading={searchState.loading} searchError={searchState.error}
     refreshError={Boolean(patient.error || selected.error)} onRefresh={()=>{if(patientId)patient.refetch();if(selectedId)selected.refetch();}} />;

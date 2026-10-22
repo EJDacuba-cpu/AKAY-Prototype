@@ -14,7 +14,7 @@ class PatientRelationship extends Model
 
     public const TYPES = [self::TYPE_SPOUSE, self::TYPE_SIBLING];
 
-    protected $fillable = ['barangay_health_center_id', 'patient_id', 'relative_id', 'type', 'created_by'];
+    protected $fillable = ['barangay_health_center_id', 'rural_health_unit_id', 'patient_id', 'relative_id', 'type', 'created_by'];
 
     public function patient(): BelongsTo
     {

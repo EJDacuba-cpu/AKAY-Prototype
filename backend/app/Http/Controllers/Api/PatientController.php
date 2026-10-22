@@ -138,14 +138,15 @@ class PatientController extends Controller
         $householdInput = $data['household'] ?? null;
         unset($data['household'], $data['head_replacement']);
         $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger) {
-            if ($request->user()->isBhc()) {
+            $user = $request->user();
+            if ($user->isBhc() || $user->isRhu()) {
                 $households = app(Households::class);
-                $bhc = $households->bhc($request->user());
-                $households->lock($bhc);
-                $households->validateLegacySerial($bhc, $data);
+                $owner = $households->owner($user);
+                $households->lock($owner);
+                $households->validateLegacySerial($owner, $data);
             }
             if ($householdInput) {
-                app(Households::class)->bhc($request->user());
+                app(Households::class)->owner($request->user());
                 ActionPermissions::ensure($request->user(), 'patients.register');
                 if (! empty($data['family_serial_number'])) {
                     throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
@@ -218,17 +219,20 @@ class PatientController extends Controller
         }
         $this->authorizeParentLinks($request, $data);
         DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $auditLogger) {
-            if ($request->user()->isBhc()) {
+            $user = $request->user();
+            if ($user->isBhc() || $user->isRhu()) {
                 // Acquire the same facility lock before any patient row write;
                 // FSN corrections lock in this order too, avoiding deadlocks.
-                app(Households::class)->lock((int) $request->user()->barangay_health_center_id);
+                $households = app(Households::class);
+                $owner = $households->owner($user);
+                $households->lock($owner);
                 $patient->refresh();
                 if (! $patient->household_id) {
-                    app(Households::class)->validateLegacySerial((int) $request->user()->barangay_health_center_id, $data, $patient);
+                    $households->validateLegacySerial($owner, $data, $patient);
                 }
             }
             if ($householdInput) {
-                app(Households::class)->bhc($request->user());
+                app(Households::class)->owner($request->user());
                 ActionPermissions::ensure($request->user(), 'patients.register');
             }
             if ($patient->household_id && array_key_exists('family_serial_number', $data) && $data['family_serial_number'] !== $patient->family_serial_number) {

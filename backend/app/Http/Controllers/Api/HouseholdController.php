@@ -7,6 +7,7 @@ use App\Models\Household;
 use App\Models\Patient;
 use App\Models\PatientRelationship;
 use App\Services\ActionPermissions;
+use App\Services\HouseholdOwner;
 use App\Services\Households;
 use App\Services\PatientIdentity;
 use App\Services\PatientRelationships;
@@ -29,10 +30,10 @@ class HouseholdController extends Controller
 
     public function candidates(Request $request)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         ActionPermissions::ensure($request->user(), 'families.manage');
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $query = Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->with(['household' => fn ($q) => $q->withCount('members')])->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'inactive'));
+        $query = $owner->scopePatients(Patient::query())->with(['household' => fn ($q) => $q->withCount('members')])->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'inactive'));
         if ($search = trim($data['search'] ?? '')) {
             $needle = '%'.mb_strtolower($search).'%';
             $query->where(fn ($q) => $q->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])->orWhereRaw('LOWER(family_serial_number) LIKE ?', [$needle]));
@@ -44,12 +45,12 @@ class HouseholdController extends Controller
 
     private function listing(Request $request, bool $lookup)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         if (! ($lookup && ActionPermissions::allows($request->user(), 'patients.register'))) {
             ActionPermissions::ensure($request->user(), 'families.view');
         }
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $query = Household::where('barangay_health_center_id', $bhc)->whereNull('archived_at');
+        $query = $owner->scopeHouseholds(Household::query())->whereNull('archived_at');
         if ($search = trim($data['search'] ?? '')) {
             $needle = '%'.mb_strtolower($search).'%';
             $query->where(fn ($q) => $q->whereRaw('LOWER(serial_number) LIKE ?', [$needle])->orWhereRaw('LOWER(CAST(address AS TEXT)) LIKE ?', [$needle])->orWhereHas('members', fn ($m) => $m->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(middle_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])));
@@ -61,15 +62,15 @@ class HouseholdController extends Controller
 
     public function show(Request $request, int $id)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         abort_unless(ActionPermissions::allows($request->user(), 'families.view') || ActionPermissions::allows($request->user(), 'patients.register'), 403);
 
-        return response()->json(['data' => $this->households->response($this->households->find($bhc, $id))]);
+        return response()->json(['data' => $this->households->response($this->households->find($owner, $id))]);
     }
 
     public function store(Request $request)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         ActionPermissions::ensure($request->user(), 'families.manage');
         $data = $request->validate([
             'head_patient_id' => ['required', 'integer'],
@@ -83,9 +84,9 @@ class HouseholdController extends Controller
             'head_replacement.relationships' => ['present_with:head_replacement', 'array'],
             'head_replacement.relationships.*' => ['required', 'string', 'max:100'],
         ]);
-        $household = DB::transaction(function () use ($request, $bhc, $data) {
-            $this->households->lock($bhc);
-            $patient = Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->findOrFail($data['head_patient_id']);
+        $household = DB::transaction(function () use ($request, $owner, $data) {
+            $this->households->lock($owner);
+            $patient = $owner->scopePatients(Patient::query())->findOrFail($data['head_patient_id']);
 
             return $this->households->attach($request, $patient, ['kind' => 'new', ...$data], $data['head_replacement'] ?? null);
         });
@@ -95,10 +96,10 @@ class HouseholdController extends Controller
 
     public function update(Request $request, int $id)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         ActionPermissions::ensure($request->user(), 'families.manage');
         $data = $request->validate(['version' => ['required', 'integer', 'min:1'], 'serial_number' => ['sometimes', 'required', 'string', 'max:100'], 'head_patient_id' => ['sometimes', 'required', 'integer'], 'relationships' => ['sometimes', 'array'], 'relationships.*' => ['required', 'string', 'max:100'], ...self::addressRules()]);
-        $household = DB::transaction(fn () => $this->households->update($request, $this->households->find($bhc, $id), $data));
+        $household = DB::transaction(fn () => $this->households->update($request, $this->households->find($owner, $id), $data));
 
         return response()->json(['data' => $this->households->response($household)]);
     }
@@ -106,8 +107,8 @@ class HouseholdController extends Controller
     public function storeRelationship(Request $request, int $id, PatientRelationships $relationships)
     {
         return $this->relationshipMutation($request, $id, ['patient_id' => ['required', 'integer'], 'relative_id' => ['required', 'integer'], 'type' => ['required', 'string']], 201,
-            function (Household $household, array $data, int $bhc) use ($request, $relationships) {
-                $people = fn (int $patientId) => Patient::where('barangay_health_center_id', $bhc)->whereNull('rural_health_unit_id')->findOrFail($patientId);
+            function (Household $household, array $data, HouseholdOwner $owner) use ($request, $relationships) {
+                $people = fn (int $patientId) => $owner->scopePatients(Patient::query())->findOrFail($patientId);
                 $relationships->create($request, $household, $people($data['patient_id']), $people($data['relative_id']), $data['type']);
             });
     }
@@ -115,31 +116,31 @@ class HouseholdController extends Controller
     public function updateRelationship(Request $request, int $id, int $relationshipId, PatientRelationships $relationships)
     {
         return $this->relationshipMutation($request, $id, ['type' => ['required', 'string']], 200,
-            function (Household $household, array $data, int $bhc) use ($request, $relationships, $relationshipId) {
-                $relationships->change($request, $household, PatientRelationship::where('barangay_health_center_id', $bhc)->findOrFail($relationshipId), $data['type']);
+            function (Household $household, array $data, HouseholdOwner $owner) use ($request, $relationships, $relationshipId) {
+                $relationships->change($request, $household, $owner->scopeRelationships(PatientRelationship::query())->findOrFail($relationshipId), $data['type']);
             });
     }
 
     public function destroyRelationship(Request $request, int $id, int $relationshipId, PatientRelationships $relationships)
     {
         return $this->relationshipMutation($request, $id, [], 200,
-            function (Household $household, array $data, int $bhc) use ($request, $relationships, $relationshipId) {
-                $relationships->remove($request, $household, PatientRelationship::where('barangay_health_center_id', $bhc)->findOrFail($relationshipId));
+            function (Household $household, array $data, HouseholdOwner $owner) use ($request, $relationships, $relationshipId) {
+                $relationships->remove($request, $household, $owner->scopeRelationships(PatientRelationship::query())->findOrFail($relationshipId));
             });
     }
 
     /** Explicit spouse/sibling changes: families.manage, facility scoped, version checked, one transaction. */
     private function relationshipMutation(Request $request, int $id, array $rules, int $status, callable $mutate)
     {
-        $bhc = $this->households->bhc($request->user());
+        $owner = $this->owner($request);
         ActionPermissions::ensure($request->user(), 'families.manage');
         $data = $request->validate(['version' => ['required', 'integer', 'min:1'], ...$rules]);
-        $household = DB::transaction(function () use ($bhc, $id, $data, $mutate) {
-            $this->households->lock($bhc);
-            $household = $this->households->find($bhc, $id);
+        $household = DB::transaction(function () use ($owner, $id, $data, $mutate) {
+            $this->households->lock($owner);
+            $household = $this->households->find($owner, $id);
             $this->households->checkVersion($household, $data['version']);
             abort_if($household->archived_at !== null, 404);
-            $mutate($household, $data, $bhc);
+            $mutate($household, $data, $owner);
             $household->version++;
             $household->save();
 
@@ -159,5 +160,16 @@ class HouseholdController extends Controller
         }
 
         return $rules;
+    }
+
+    private function owner(Request $request): HouseholdOwner
+    {
+        $expected = $request->route('householdNamespace');
+        $owner = $this->households->owner($request->user());
+        abort_unless(! is_string($expected) || $expected === '' || $owner->kind === $expected, 403, $expected === HouseholdOwner::RHU
+            ? 'An active RHU assignment is required.'
+            : 'An active BHC assignment is required.');
+
+        return $owner;
     }
 }

@@ -12,28 +12,33 @@ class Households
 {
     public function __construct(private HouseholdSerialAllocator $serials, private FacilityAccessService $access) {}
 
+    public function owner(User $user): HouseholdOwner
+    {
+        return HouseholdOwner::for($user, $this->access);
+    }
+
     public function bhc(User $user): int
     {
-        abort_unless($user->isBhc(), 403, 'An active BHC assignment is required.');
-        $this->access->ensureValidFacilityAssignment($user);
+        $owner = $this->owner($user);
+        abort_unless($owner->isBhc(), 403, 'An active BHC assignment is required.');
 
-        return (int) $user->barangay_health_center_id;
+        return $owner->id;
     }
 
-    public function find(int $bhc, int $id): Household
+    public function find(HouseholdOwner $owner, int $id): Household
     {
-        return Household::where('barangay_health_center_id', $bhc)->findOrFail($id);
+        return $owner->scopeHouseholds(Household::query())->findOrFail($id);
     }
 
-    public function lock(int $bhc): void
+    public function lock(HouseholdOwner $owner): void
     {
-        $this->serials->lock($bhc);
+        $this->serials->lock($owner);
     }
 
     /** Relationships are only included where callers need the graph (not in directory listings). */
     public function response(Household $household, bool $withRelationships = true): array
     {
-        $data = [...$household->only(['id', 'barangay_health_center_id', 'serial_number', 'address', 'head_patient_id', 'archived_at', 'version']),
+        $data = [...$household->only(['id', 'barangay_health_center_id', 'rural_health_unit_id', 'serial_number', 'address', 'head_patient_id', 'archived_at', 'version']),
             'members' => $household->members()->orderBy('id')->get()->map(fn (Patient $p) => PatientIdentity::householdResponse($p))->all()];
         if ($withRelationships) {
             $data['relationships'] = app(PatientRelationships::class)->forHousehold($household)
@@ -62,7 +67,7 @@ class Households
         }
     }
 
-    public function validateLegacySerial(int $bhc, array $data, ?Patient $patient = null): void
+    public function validateLegacySerial(HouseholdOwner $owner, array $data, ?Patient $patient = null): void
     {
         if (! array_key_exists('family_serial_number', $data) || $data['family_serial_number'] === null) {
             return;
@@ -71,30 +76,30 @@ class Households
         if ($patient && $serial === mb_strtoupper(trim((string) $patient->family_serial_number))) {
             return;
         }
-        if ($serial !== '' && Household::where('barangay_health_center_id', $bhc)->where('serial_number', $serial)->exists()) {
+        if ($serial !== '' && $owner->scopeHouseholds(Household::query())->where('serial_number', $serial)->exists()) {
             throw ValidationException::withMessages(['family_serial_number' => 'This FSN belongs to a registered household. Select that household to join it.']);
         }
     }
 
-    public function create(int $bhc, array $input, string $prefix = ''): Household
+    public function create(HouseholdOwner $owner, array $input, string $prefix = ''): Household
     {
-        $this->serials->lock($bhc);
+        $this->serials->lock($owner);
         $serial = ($input['serial_mode'] ?? 'auto') === 'manual'
-            ? $this->serials->manual($bhc, (string) ($input['serial_number'] ?? ''), $prefix.'serial_number')
-            : $this->serials->allocate($bhc);
+            ? $this->serials->manual($owner, (string) ($input['serial_number'] ?? ''), $prefix.'serial_number')
+            : $this->serials->allocate($owner);
 
-        return Household::create(['barangay_health_center_id' => $bhc, 'serial_number' => $serial, 'address' => $input['address'] ?? [], 'version' => 1]);
+        return Household::create([...$owner->attributes(), 'serial_number' => $serial, 'address' => $input['address'] ?? [], 'version' => 1]);
     }
 
     public function attach(Request $request, Patient $patient, array $input, ?array $replacement = null): Household
     {
-        $bhc = $this->bhc($request->user());
-        abort_unless((int) $patient->barangay_health_center_id === $bhc && $patient->rural_health_unit_id === null, 404);
-        $this->serials->lock($bhc);
+        $owner = $this->owner($request->user());
+        abort_unless($owner->ownsPatient($patient), 404);
+        $this->serials->lock($owner);
         // Another request may already have moved this person while we waited.
         $patient->refresh();
-        $source = $patient->household_id ? $this->find($bhc, $patient->household_id) : null;
-        $target = $input['kind'] === 'existing' ? $this->find($bhc, (int) $input['household_id']) : null;
+        $source = $patient->household_id ? $this->find($owner, $patient->household_id) : null;
+        $target = $input['kind'] === 'existing' ? $this->find($owner, (int) $input['household_id']) : null;
         if ($target?->archived_at) {
             throw ValidationException::withMessages(['household.household_id' => 'This household is archived. Select an active household.']);
         }
@@ -106,7 +111,7 @@ class Households
         }
         if (! $target) {
             $this->adult($patient, 'household');
-            $target = $this->create($bhc, $input, 'household.');
+            $target = $this->create($owner, $input, 'household.');
             $target->head_patient_id = $patient->id;
         }
         $relationship = $target->head_patient_id === $patient->id ? 'Household head' : trim((string) ($input['relationship'] ?? ''));
@@ -196,12 +201,13 @@ class Households
 
     public function update(Request $request, Household $household, array $data): Household
     {
-        $this->serials->lock($household->barangay_health_center_id);
+        $owner = HouseholdOwner::fromHousehold($household);
+        $this->serials->lock($owner);
         $household->refresh();
         $this->checkVersion($household, $data['version']);
         $old = $household->serial_number;
         if (array_key_exists('serial_number', $data)) {
-            $household->serial_number = $this->serials->manual($household->barangay_health_center_id, $data['serial_number'], 'serial_number', $household->id);
+            $household->serial_number = $this->serials->manual($owner, $data['serial_number'], 'serial_number', $household->id);
             $household->members()->update(['family_serial_number' => $household->serial_number]);
         }
         if (isset($data['address'])) {

@@ -93,7 +93,7 @@ export default function FamilyRegistryField({
             {live && <Button type="button" variant="outline" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
             <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>
           </div>
-          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{live && connection.household.serialMode === "auto" ? " Format: FSN-YYYY-NNNN. The number is assigned by your BHC on save." : ""}</p>
+          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{live && connection.household.serialMode === "auto" ? " Format: FSN-YYYY-NNNN. The number is assigned by your facility on save." : ""}</p>
         </div>}
         {household && !creatingHousehold && <div className="space-y-3">
           <div className="flex flex-wrap gap-2">

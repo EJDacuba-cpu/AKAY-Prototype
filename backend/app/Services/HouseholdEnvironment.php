@@ -9,7 +9,7 @@ use Illuminate\Support\Collection;
  * The household environment suggestion for the ITR Patient History social
  * section (decision D8 in docs/superpowers/specs/2026-10-16-itr-patient-history-design.md).
  *
- * Linked BHC patients share a permanent household ID within their BHC. Legacy
+ * Linked patients share a permanent household ID within their BHC or RHU. Legacy
  * unlinked patients retain the serial-based lookup. The caller supplies only
  * patients authorized in the current facility.
  */
@@ -34,7 +34,9 @@ class HouseholdEnvironment
         $best = $others
             ->filter(fn (Patient $other) => $other->id !== $patient->id
                 && ($patient->household_id
-                    ? $other->household_id === $patient->household_id && $other->barangay_health_center_id === $patient->barangay_health_center_id
+                    ? $other->household_id === $patient->household_id
+                        && $other->barangay_health_center_id === $patient->barangay_health_center_id
+                        && $other->rural_health_unit_id === $patient->rural_health_unit_id
                     : ! $other->household_id && trim((string) $other->family_serial_number) === $serial)
                 && self::environmentOf($other) !== null)
             // Newest social update first; an undated record sorts last, and

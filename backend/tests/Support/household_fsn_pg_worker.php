@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\HouseholdOwner;
 use App\Services\HouseholdSerialAllocator;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +20,10 @@ $db = DB::connection('fsn_test');
 $allocator = $app->make(HouseholdSerialAllocator::class);
 try {
     $serial = $db->transaction(function () use ($db, $allocator, $argv) {
+        $owner = new HouseholdOwner(HouseholdOwner::BHC, 1);
         $serial = ($argv[2] ?? '') === 'manual'
-            ? $allocator->manual(1, 'FSN-'.now('Asia/Manila')->year.'-0050', 'serial_number')
-            : $allocator->allocate(1);
+            ? $allocator->manual($owner, 'FSN-'.now('Asia/Manila')->year.'-0050', 'serial_number')
+            : $allocator->allocate($owner);
         $db->table('households')->insert(['barangay_health_center_id' => 1, 'serial_number' => $serial]);
         // Hold the transaction briefly so independent writers actually overlap.
         $db->select('SELECT pg_sleep(0.05)');

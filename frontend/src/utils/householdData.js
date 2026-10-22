@@ -30,8 +30,11 @@ export function householdPayload(connection, registry = {households:[]}) {
   return {kind:'new',serial_mode:household.serialMode || 'auto',address:household.address,
     ...(household.serialMode === 'manual' ? {serial_number:household.serialNumber} : {})};
 }
-export function householdKeys(user = {}) {
-  return ['bhc-households',id(user.id),id(user.backendRole || user.role),id(user.barangayHealthCenterId || user.facilityId),id(user.working_facility_key)];
+export function householdKeys(user = {}, role = 'bhc') {
+  const facility = role === 'rhu'
+    ? id(user.ruralHealthUnitId || user.rural_health_unit_id || user.facilityId)
+    : id(user.barangayHealthCenterId || user.facilityId);
+  return [`${role}-households`,id(user.id),id(user.backendRole || user.role),facility,id(user.working_facility_key)];
 }
 const fields={first_name:'firstName',middle_name:'middleName',last_name:'lastName',birthdate:'birthDate',street_address:'streetAddress',purok_area:'purokArea',civil_status:'civilStatus',contact_number:'contactNumber',philhealth_number:'philHealthNumber',mother_name:'motherName',mother_birth_date:'motherBirthDate',father_birth_date:'fatherBirthDate',family_serial_number:'familySerialNumber',education_level:'educationLevel',education_completed:'educationCompleted'};
 export function registrationErrors(error = {}) {
