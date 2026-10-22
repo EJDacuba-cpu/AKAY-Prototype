@@ -2,7 +2,6 @@ import { useLocation, useParams, useNavigate, useSearchParams } from "react-rout
 import { getPatientRecordReturn } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 
@@ -21,10 +20,10 @@ import {
   NEXT_ACTION_SCHEDULE,
   deriveNextAction,
 } from "../../utils/nextAction";
-import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
-import BhcConsultationDetails from "../../components/features/health-records/BhcConsultationDetails";
 import BhcHealthRecordWorkspace from "../../components/features/health-records/BhcHealthRecordWorkspace";
-import FollowUpEpisodePanel from "../../components/features/health-records/FollowUpEpisodePanel";
+import BhcHealthRecordPrintDocument, {
+  BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
+} from "../../components/features/health-records/BhcHealthRecordPrintDocument";
 import { Button } from "../../components/ui/button";
 
 import {
@@ -235,39 +234,10 @@ export default function HealthRecordDetails() {
   const parentRecordId = isGeneralConsultationRecord
     ? null
     : parentHealthRecordId;
-  const printHeader = (
-    <RecordHeaderCard
-      title={pageTitle}
-      recordId={recordId}
-      hasLinkedReferral={hasLinkedReferral}
-      referralStatus={linkedReferral?.status}
-      isUpdating={detailsUpdating}
-      onBack={returnToProfile}
-      patientName={patientName}
-      serviceType={serviceType}
-      displayDate={displayDate}
-      displayTime={displayTime}
-      practitioner={getRecordPractitioner(record)}
-      isFollowUpVisit={isFollowUpVisitRecord}
-      parentRecordId={parentRecordId}
-      parentRecordNavigable={false}
-      outcomeRecord={record}
-      nextActionLabel={nextActionLabel}
-      actions={
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-        >
-          <Printer size={14} />
-          Print
-        </button>
-      }
-    />
-  );
 
   return (
     <DashboardLayout role="bhc" title="Health Record Details">
+      <style>{BHC_HEALTH_RECORD_PRINT_PAGE_STYLES}</style>
       <div className="min-h-[520px]">
         <div className="print:hidden">
           <BhcHealthRecordWorkspace
@@ -294,20 +264,21 @@ export default function HealthRecordDetails() {
         </div>
 
         <div className="hidden print:block">
-          {printHeader}
-          <div className="space-y-6">
-            <BhcConsultationDetails
-              record={record}
-              patient={patient}
-              linkedReferral={linkedReferral}
-            />
-            {!isGeneralConsultationRecord && (
-              <FollowUpEpisodePanel
-                episode={record.followUpEpisode}
-                hideActions
-              />
-            )}
-          </div>
+          <BhcHealthRecordPrintDocument
+            record={record}
+            patient={patient}
+            linkedReferral={linkedReferral}
+            title={pageTitle}
+            recordId={recordId}
+            patientName={patientName}
+            serviceType={serviceType}
+            displayDate={displayDate}
+            displayTime={displayTime}
+            practitioner={getRecordPractitioner(record)}
+            isFollowUpVisit={isFollowUpVisitRecord}
+            parentRecordId={parentRecordId}
+            nextActionLabel={nextActionLabel}
+          />
         </div>
       </div>
     </DashboardLayout>
