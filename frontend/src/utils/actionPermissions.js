@@ -1,5 +1,5 @@
 // Same order as backend ActionPermissions::ALL. Role rules (defaults, availability) come from GET /staff-roles.
-export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
+export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "rhu.providers.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
 
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
@@ -29,7 +29,8 @@ export const PERMISSION_CATALOG = {
   "inventory.manage": { group: "inventory", label: "Manage stock", requires: ["inventory.view"], note: "Can add, restock and adjust medicines and supplies." },
   "items.dispense": { group: "inventory", label: "Confirm dispensing", note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
   "reports.view": { group: "reports", label: "View reports", note: "Can view and export facility reports." },
-  "rhu.manage": { group: "rhu", label: "RHU referrals & doctor availability", note: "Can receive referrals, manage doctor availability and send feedback." },
+  "rhu.manage": { group: "rhu", label: "Manage RHU referrals", note: "Can receive incoming referrals and send feedback. Does not grant doctor availability management." },
+  "rhu.providers.manage": { group: "rhu", label: "Manage doctor availability", note: "Can add covering doctors and update availability for this RHU. Does not grant referral management." },
   "conditions.confirm": { group: "rhu", label: "Confirm conditions", note: "Can confirm patient conditions on RHU feedback." },
 };
 

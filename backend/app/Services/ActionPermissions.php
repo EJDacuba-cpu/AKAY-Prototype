@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ActionPermissions
 {
-    public const ALL = ['patients.register', 'consultations.encode', 'clinical.history', 'clinical.background.update', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'rhu.manage', 'conditions.confirm', 'reports.view', 'families.view', 'families.manage'];
+    public const ALL = ['patients.register', 'consultations.encode', 'clinical.history', 'clinical.background.update', 'consultations.finalize', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'rhu.manage', 'rhu.providers.manage', 'conditions.confirm', 'reports.view', 'families.view', 'families.manage'];
 
     /** A write duty is unusable without the read duty for the same records (EnforceActionPermissions). */
     public const REQUIRES = [

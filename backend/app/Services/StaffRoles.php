@@ -12,7 +12,7 @@ class StaffRoles
 {
     private const MIDWIFE_DEFAULTS = ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'items.dispense', 'reports.view'];
 
-    private const RHU_DEFAULTS = ['patients.register', 'clinical.history', 'rhu.manage', 'conditions.confirm', 'inventory.view', 'reports.view'];
+    private const RHU_DEFAULTS = ['patients.register', 'clinical.history', 'rhu.manage', 'rhu.providers.manage', 'conditions.confirm', 'inventory.view', 'reports.view'];
 
     public const ROLES = [
         'midwife' => ['label' => 'Midwife', 'tier' => User::ROLE_BHC, 'licensed' => true, 'defaults' => self::MIDWIFE_DEFAULTS],
@@ -25,7 +25,7 @@ class StaffRoles
     /** Duties that work at each facility tier; the rest have no screen there. */
     public const AVAILABLE = [
         User::ROLE_BHC => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'clinical.background.update', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'reports.view', 'families.view', 'families.manage'],
-        User::ROLE_RHU => ['patients.register', 'clinical.history', 'inventory.view', 'reports.view', 'rhu.manage', 'conditions.confirm', 'families.view', 'families.manage'],
+        User::ROLE_RHU => ['patients.register', 'clinical.history', 'inventory.view', 'reports.view', 'rhu.manage', 'rhu.providers.manage', 'conditions.confirm', 'families.view', 'families.manage'],
     ];
 
     public static function keys(): array

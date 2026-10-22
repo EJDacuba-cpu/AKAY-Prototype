@@ -29,6 +29,8 @@ test("defaults and available duties come from the API data", () => {
   assert.deepEqual(roleDefaults(rolesData, ""), []);
   assert.equal(availableDuties(rolesData, "bhc").length, 12);
   assert.ok(!availableDuties(rolesData, "bhc").includes("rhu.manage"));
+  assert.ok(!availableDuties(rolesData, "bhc").includes("rhu.providers.manage"));
+  assert.ok(availableDuties(rolesData, "rhu").includes("rhu.providers.manage"));
   assert.deepEqual(availableDuties(rolesData, "admin"), []);
 });
 
