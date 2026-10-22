@@ -5,15 +5,15 @@ import { Card } from "../../../ui/card";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 const STATUS_TONE_STYLES = {
-  info: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-  success: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]",
-  warning: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
-  neutral: "border-neutral-200 bg-neutral-50 text-[#475569]",
+  info: "border-ink-400 bg-white text-ink-700",
+  success: "border-neutral-200 bg-neutral-100 text-ink-700",
+  warning: "border-brand-200 bg-brand-50 text-brand-700",
+  neutral: "border-neutral-200 bg-neutral-50 text-neutral-600",
 };
 
 const FLAG_TONE_STYLES = {
   warning: "border-alert-100 bg-alert-50 text-alert-700",
-  neutral: "border-neutral-200 bg-neutral-50 text-[#475569]",
+  neutral: "border-neutral-200 bg-neutral-50 text-neutral-600",
 };
 
 function StatusBadge({ status, tone = "neutral" }) {

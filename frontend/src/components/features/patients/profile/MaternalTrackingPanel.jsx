@@ -59,8 +59,8 @@ export default function MaternalTrackingPanel({ summary, status, onViewRecords }
               <h4 className="mt-2 text-xs font-bold text-[#111827]">Tetanus TT / Td</h4>
               {row.tt || row.td ? (
                 <div className="mt-2 space-y-1 text-[11px] text-[#475569]">
-                  {row.tt && <p><span className="font-semibold text-[#15803D]">TT given</span> · {formatShortDate(row.tt)}</p>}
-                  {row.td && <p><span className="font-semibold text-[#15803D]">Td given</span> · {formatShortDate(row.td)}</p>}
+                  {row.tt && <p><span className="font-semibold text-ink-800">TT given</span> · {formatShortDate(row.tt)}</p>}
+                  {row.td && <p><span className="font-semibold text-ink-800">Td given</span> · {formatShortDate(row.td)}</p>}
                 </div>
               ) : <p className="mt-2 text-[11px] italic text-neutral-500">Not recorded</p>}
             </div>

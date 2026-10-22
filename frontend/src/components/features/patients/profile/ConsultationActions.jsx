@@ -18,7 +18,7 @@ export function ConsultationButton({ consultation, onStart }) {
   const { isPending, isError, discarding, opening, primaryLabel, startPath, open } = consultation;
   const disabled = isPending || isError || discarding || opening;
   const className =
-    "inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:shadow-none";
+    "inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-brand-600 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-brand-700 active:bg-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:shadow-none";
 
   if (disabled) {
     return (
@@ -87,11 +87,11 @@ export function ConsultationNotice({ consultation }) {
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-xs text-warning-700">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
         <span className="min-w-0 truncate">
           <span className="font-semibold">Unfinished consultation</span>
           {draft.lastSavedAt ? (
-            <span className="text-warning-700/80"> · saved {formatDate(draft.lastSavedAt, "")}</span>
+            <span className="text-brand-700/80"> · saved {formatDate(draft.lastSavedAt, "")}</span>
           ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-3">

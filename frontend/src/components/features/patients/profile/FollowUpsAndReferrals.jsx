@@ -1,22 +1,19 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 
-import { RefreshingIndicator, SoftLoadingArea, StatusBadge } from "../../../common";
+import { RefreshingIndicator, SoftLoadingArea } from "../../../common";
+import { ProfileChip, ProfileStatusChip, followUpTone } from "./ProfileChip";
 import { getStateConfig } from "../../followups/followUpStatusStyles.jsx";
 import { EmptyNote, ProfileSection, TextAction } from "./ProfileSection";
 import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
 
 const INITIAL_VISIBLE = 3;
 
-/** Flat status chip; colours come from the shared follow-up state palette. */
+/** Status chip in the profile palette: red is due or missed, outlined ink is upcoming, gray is settled. */
 export function FollowUpStateBadge({ state, date }) {
   const config = getStateConfig(state);
   const dateText = date ? formatDate(date, "") : "";
-  return (
-    <span className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
-      {dateText ? `${config.label} · ${dateText}` : config.label}
-    </span>
-  );
+  return <ProfileChip tone={followUpTone(state)} dot>{dateText ? `${config.label} · ${dateText}` : config.label}</ProfileChip>;
 }
 
 export function getReferralDate(referral = {}) {
@@ -111,7 +108,7 @@ export function ReferralsSection({
                     </span>
                   </span>
                   <span className="flex items-center gap-3">
-                    <StatusBadge status={referral.status} />
+                    <ProfileStatusChip status={referral.status} />
                     <ChevronRight size={14} className="text-neutral-300 transition group-hover:text-neutral-600" aria-hidden="true" />
                   </span>
                 </button>

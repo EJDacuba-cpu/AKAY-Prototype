@@ -1,6 +1,6 @@
 import { CalendarClock, ChevronRight } from "lucide-react";
 
-import { StatusBadge } from "../../../common";
+import { ProfileChip, ProfileStatusChip } from "./ProfileChip";
 import { FollowUpStateBadge, getReferralDate, getReferralDestination } from "./FollowUpsAndReferrals";
 import { OverviewCard, OverviewNote } from "./OverviewCard";
 import { TextAction } from "./ProfileSection";
@@ -11,20 +11,11 @@ import { getRecordDateValue, getRecordOutcome } from "../../../../utils/healthRe
 
 const PREVIEW_COUNT = 3;
 
-const CARE_STATUS_TONE = {
-  info: "bg-info-50 text-info-700 ring-info-100",
-  success: "bg-success-50 text-success-700 ring-success-100",
-  warning: "bg-warning-50 text-warning-700 ring-warning-100",
-  neutral: "bg-neutral-100 text-neutral-600 ring-neutral-200",
-};
+// Care program statuses use the profile palette: red needs attention, outlined ink is in progress.
+const CARE_STATUS_TONE = { info: "active", success: "quiet", warning: "attention", neutral: "quiet" };
 
-const OUTCOME_TEXT = {
-  Referred: "text-warning-700",
-  "Follow-up": "text-info-700",
-  Routine: "text-neutral-500",
-};
+const OUTCOME_TONE = { Referred: "attention", "Follow-up": "active", Routine: "quiet" };
 
-const CHIP = "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset";
 const ROW_BUTTON =
   "group -mx-1.5 grid w-[calc(100%+0.75rem)] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50";
 
@@ -61,9 +52,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
                       : "No record yet"}
                 </span>
               </span>
-              <span className={`${CHIP} ${CARE_STATUS_TONE[entry.statusTone] || CARE_STATUS_TONE.neutral}`}>
-                {entry.status}
-              </span>
+              <ProfileChip tone={CARE_STATUS_TONE[entry.statusTone] || "quiet"}>{entry.status}</ProfileChip>
             </li>
           ))}
         </ul>
@@ -108,7 +97,7 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
                     </span>
                   </span>
                   <span className="flex items-center gap-2">
-                    <StatusBadge status={referral.status} />
+                    <ProfileStatusChip status={referral.status} />
                     <ChevronRight size={14} className="text-neutral-300 transition-colors group-hover:text-neutral-600" aria-hidden="true" />
                   </span>
                 </button>
@@ -193,7 +182,7 @@ function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
                     </span>
                   </span>
                   <span className="flex items-center gap-2 text-xs font-medium">
-                    {outcome && <span className={OUTCOME_TEXT[outcome] || "text-neutral-500"}>{outcome}</span>}
+                    {outcome && <ProfileChip tone={OUTCOME_TONE[outcome] || "quiet"}>{outcome}</ProfileChip>}
                     <ChevronRight size={14} className="text-neutral-300 transition-colors group-hover:text-neutral-600" aria-hidden="true" />
                   </span>
                 </button>
