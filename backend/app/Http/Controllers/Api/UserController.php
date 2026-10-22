@@ -9,6 +9,7 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
+use App\Services\RhuDoctorRosterService;
 use App\Services\StaffRoles;
 use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
@@ -56,7 +57,7 @@ class UserController extends Controller
         return response()->json(['available' => ! $taken]);
     }
 
-    public function store(UserRequest $request, AuditLogger $auditLogger, UserNotificationService $notifications, AccountInviteService $invites)
+    public function store(UserRequest $request, AuditLogger $auditLogger, UserNotificationService $notifications, AccountInviteService $invites, RhuDoctorRosterService $roster)
     {
         $data = $request->validated();
         $data['created_by'] = $request->user()->id;
@@ -65,7 +66,12 @@ class UserController extends Controller
         unset($data['facility_assignments'], $data['permissions_confirmed'], $data['password_confirmation']);
         // Nobody knows this password; the person sets their own through the invite link.
         $data['password'] = Str::random(64);
-        $user = User::create($data);
+        $user = DB::transaction(function () use ($data, $request, $auditLogger, $roster): User {
+            $user = User::create($data);
+            $roster->syncFromAccount($user, $request->user(), $request, $auditLogger);
+
+            return $user;
+        });
 
         $notifications->notifyUser($user, 'Account created', 'Your AKAY account has been created.', 'account_created');
         $auditLogger->log($request, 'created', 'users', "Created user {$user->email}.".$this->accessAudit($user, []));
@@ -90,7 +96,8 @@ class UserController extends Controller
         AuditLogger $auditLogger,
         UserNotificationService $notifications,
         UserSessionRevocationService $sessions,
-        AccountInviteService $invites
+        AccountInviteService $invites,
+        RhuDoctorRosterService $roster
     ) {
         $data = $request->validated();
 
@@ -112,10 +119,12 @@ class UserController extends Controller
             $auditLogger,
             $notifications,
             $sessions,
-            $previousPermissions
+            $previousPermissions,
+            $roster
         ): void {
             $previousStatus = $user->status;
             $user->update($data);
+            $roster->syncFromAccount($user, $request->user(), $request, $auditLogger);
 
             if ($securityContextChanged) {
                 $sessions->revokeAllTokens($user, 'account-security-context-changed');
@@ -137,10 +146,12 @@ class UserController extends Controller
         Request $request,
         User $user,
         AuditLogger $auditLogger,
-        UserSessionRevocationService $sessions
+        UserSessionRevocationService $sessions,
+        RhuDoctorRosterService $roster
     ) {
-        DB::transaction(function () use ($request, $user, $auditLogger, $sessions): void {
+        DB::transaction(function () use ($request, $user, $auditLogger, $sessions, $roster): void {
             $user->update(['status' => User::STATUS_INACTIVE]);
+            $roster->syncFromAccount($user, $request->user(), $request, $auditLogger);
             $sessions->revokeAllTokens($user, 'account-deactivated');
             $auditLogger->log($request, 'deactivated', 'users', "Deactivated user {$user->email}.");
         });

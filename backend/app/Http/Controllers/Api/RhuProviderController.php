@@ -9,6 +9,7 @@ use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\ProviderAvailabilityService;
 use App\Services\ReferralHoldService;
+use App\Services\RhuDoctorRosterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -78,6 +79,18 @@ class RhuProviderController extends Controller
         $data = $request->validated();
 
         $provider = DB::transaction(function () use ($data, $user, $request, $auditLogger): RhuProvider {
+            abort_if(
+                RhuProvider::query()
+                    ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                    ->where('name', $data['name'])
+                    ->where('is_active', true)
+                    ->whereNull('user_id')
+                    ->lockForUpdate()
+                    ->exists(),
+                422,
+                RhuDoctorRosterService::NAME_TAKEN
+            );
+
             $provider = RhuProvider::create([
                 ...$data,
                 'rural_health_unit_id' => $user->rural_health_unit_id,
@@ -124,6 +137,21 @@ class RhuProviderController extends Controller
             $this->facilityAccess->authorizeProviderManagement($user, $provider);
             abort_unless($provider->is_active, 422, 'This provider record is no longer active.');
 
+            if (array_key_exists('name', $data) && $data['name'] !== $provider->name) {
+                abort_if($provider->isOfficial(), 422, RhuDoctorRosterService::NAME_MANAGED);
+                abort_if(
+                    RhuProvider::query()
+                        ->where('rural_health_unit_id', $provider->rural_health_unit_id)
+                        ->where('name', $data['name'])
+                        ->where('is_active', true)
+                        ->whereNull('user_id')
+                        ->whereKeyNot($provider->id)
+                        ->exists(),
+                    422,
+                    RhuDoctorRosterService::NAME_TAKEN
+                );
+            }
+
             $previousStatus = $provider->availability_status;
             $provider->update([...$data, 'updated_by' => $user->id]);
 
@@ -169,6 +197,7 @@ class RhuProviderController extends Controller
                 ->firstOrFail();
 
             $this->facilityAccess->authorizeProviderManagement($user, $provider);
+            abort_if($provider->isOfficial(), 422, RhuDoctorRosterService::OFFICIAL_LOCKED);
             $provider->update(['is_active' => false, 'updated_by' => $user->id]);
 
             $auditLogger->log(

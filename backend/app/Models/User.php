@@ -148,4 +148,9 @@ class User extends Authenticatable
     {
         return $this->hasOne(AccountInvite::class);
     }
+
+    public function rhuProvider(): HasOne
+    {
+        return $this->hasOne(RhuProvider::class);
+    }
 }

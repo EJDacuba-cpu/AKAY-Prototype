@@ -272,6 +272,10 @@ class RhuProviderAvailabilityTest extends TestCase
             ->assertCreated();
 
         $this->assertSame(2, RhuProvider::query()->count());
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->postJson('/api/rhu-providers', ['name' => 'Dr. Twin'])
+            ->assertUnprocessable();
     }
 
     /** Availability rejects an invalid status rather than storing it. */

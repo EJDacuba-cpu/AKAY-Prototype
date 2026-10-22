@@ -10,6 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * An RHU-managed provider (DOC-20). Availability is per-provider (DOC-21) and
  * aggregated at read time for the RHU-level view (DOC-19).
  *
+ * Official RHU Doctor accounts may own a row through user_id. Identity then
+ * comes from the Admin-managed account; availability remains RHU-managed.
+ * Unlinked rows are covering/legacy roster entries and stay valid.
+ *
  * DOC-15a-V: no default/fallback/covering attribute exists here by design.
  */
 class RhuProvider extends Model
@@ -24,6 +28,7 @@ class RhuProvider extends Model
 
     protected $fillable = [
         'rural_health_unit_id',
+        'user_id',
         'name',
         'specialization',
         'availability_status',
@@ -42,6 +47,16 @@ class RhuProvider extends Model
     public function ruralHealthUnit(): BelongsTo
     {
         return $this->belongsTo(RuralHealthUnit::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function isOfficial(): bool
+    {
+        return $this->user_id !== null;
     }
 
     public function creator(): BelongsTo

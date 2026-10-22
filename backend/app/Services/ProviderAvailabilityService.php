@@ -40,6 +40,7 @@ class ProviderAvailabilityService
             'updated_at' => $active->max('updated_at'),
             'providers' => $active->values()->map(fn (RhuProvider $provider): array => [
                 'id' => $provider->id,
+                'user_id' => $provider->user_id,
                 'name' => $provider->name,
                 'specialization' => $provider->specialization,
                 'availability_status' => $provider->availability_status,
