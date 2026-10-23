@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { addressText, patientName } from "../../../services/familyRegistry";
 
@@ -18,9 +18,7 @@ function SortHeader({ column, label, sort, onSort, className = "" }) {
 }
 
 // One ledger row per household. The whole row opens the household; the name is the real link for keyboard and screen readers.
-export default function FamilyDirectoryTable({ items, base, footer, dimmed = false, sort, onSort }) {
-  const navigate = useNavigate();
-
+export default function FamilyDirectoryTable({ items, base, footer, dimmed = false, sort, onSort, selectedId = null, onSelect }) {
   return (
     <div className={`min-h-[324px] overflow-hidden rounded-card border border-neutral-200 bg-white shadow-[var(--shadow-card)] transition-opacity ${dimmed ? "opacity-60" : ""}`}>
       <table className="w-full border-separate border-spacing-0 text-left">
@@ -43,8 +41,11 @@ export default function FamilyDirectoryTable({ items, base, footer, dimmed = fal
             return (
               <tr
                 key={item.id}
-                onClick={(event) => { if (!event.target.closest("a")) navigate(to); }}
-                className="group h-14 cursor-pointer transition-colors hover:bg-neutral-100 has-[:focus-visible]:bg-neutral-100"
+                onClick={(event) => { if (!event.target.closest("a")) onSelect(item.id); }}
+                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(item.id); } }}
+                tabIndex={0}
+                aria-current={selectedId === item.id ? "true" : undefined}
+                className={`group h-14 cursor-pointer outline-none transition-colors hover:bg-neutral-50 focus-visible:bg-neutral-50 has-[a:focus-visible]:bg-neutral-50 ${selectedId === item.id ? "bg-neutral-100 hover:bg-neutral-100" : ""}`}
               >
                 <td className="hidden border-t border-neutral-200 px-4 align-middle font-mono text-xs text-neutral-600 sm:table-cell">{item.serialNumber}</td>
                 <td className="max-w-0 border-t border-neutral-200 px-4 py-2 align-middle">
