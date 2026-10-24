@@ -1,0 +1,61 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * One RHU patient visit in the daily queue. Independent of referral status
+ * and of the clinical record: closed_at IS NULL means the visit is active.
+ */
+class RhuVisitQueueEntry extends Model
+{
+    public const SOURCE_REFERRAL = 'referral';
+    public const SOURCE_WALK_IN = 'walk_in';
+
+    public const STATUS_WAITING = 'waiting';
+
+    protected $fillable = [
+        'rural_health_unit_id',
+        'patient_id',
+        'referral_id',
+        'source',
+        'status',
+        'checked_in_at',
+        'closed_at',
+        'checked_in_by',
+        'check_in_key',
+    ];
+
+    protected $casts = [
+        'checked_in_at' => 'datetime',
+        'closed_at' => 'datetime',
+    ];
+
+    public function patient(): BelongsTo
+    {
+        return $this->belongsTo(Patient::class);
+    }
+
+    public function referral(): BelongsTo
+    {
+        return $this->belongsTo(Referral::class);
+    }
+
+    public function ruralHealthUnit(): BelongsTo
+    {
+        return $this->belongsTo(RuralHealthUnit::class);
+    }
+
+    public function checkedInBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'checked_in_by');
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('closed_at');
+    }
+}
