@@ -504,7 +504,7 @@ function isDateOutOfRange(date) {
         createPortal(
         <div
           ref={popoverRef}
-          className="anim-drop-in fixed z-[9999] rounded-2xl border border-[#E8ECF0] bg-white p-2.5 shadow-xl shadow-slate-900/10"
+          className="anim-drop-in fixed z-[10001] rounded-2xl border border-[#E8ECF0] bg-white p-2.5 shadow-xl shadow-slate-900/10"
           style={{
             top: position.top,
             left: position.left,
@@ -829,7 +829,7 @@ export function TimePickerField({
         createPortal(
         <div
           ref={popoverRef}
-          className="anim-drop-in fixed z-[9999] rounded-xl border border-[#E8ECF0] bg-white p-2 shadow-xl shadow-slate-900/10"
+          className="anim-drop-in fixed z-[10001] rounded-xl border border-[#E8ECF0] bg-white p-2 shadow-xl shadow-slate-900/10"
           style={{
             top: position.top,
             left: position.left,

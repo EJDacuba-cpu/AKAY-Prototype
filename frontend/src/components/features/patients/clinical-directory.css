@@ -1,6 +1,7 @@
 /* Opt-in clinical tokens: the existing BHC primary red remains the anchor.
-   Square-cornered per the clinical design system (no radius), with a soft
-   card elevation (--clinical-shadow) matching the rest of the app's cards. */
+   Corners follow the app-wide rule: sheets and cards use --radius-card (12px),
+   controls and chips are pills. Soft card elevation (--clinical-shadow) matches
+   the rest of the app's cards. */
 .clinical-directory {
   --clinical-red-dark: #b91c1c;
   --clinical-red: #dc2626;
@@ -10,10 +11,11 @@
   --clinical-ink: #111827;
   --clinical-muted: #4b5563;
   --clinical-label: #6b7280;
-  --clinical-border: #e5e7eb;
+  --clinical-border: #e4e7ec;
   --clinical-border-strong: #d1d5db;
-  --clinical-radius: 0;
-  --clinical-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.03);
+  --clinical-radius: var(--radius-card, 12px);
+  --clinical-radius-pill: var(--radius-pill, 999px);
+  --clinical-shadow: 0 4px 16px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.03);
   --clinical-gap: 12px;
   --fab-size: 52px;
   --fab-inset: 24px;
@@ -23,11 +25,6 @@
   display: block;
   background: transparent;
   color: var(--clinical-ink);
-}
-
-/* Keep the BHC directory canvas clean and neutral. */
-.akay-content-scroll:has(.clinical-directory) {
-  background: #ffffff;
 }
 
 /* Title + count on the left, search / filters / New Patient on the right.
@@ -59,10 +56,69 @@
 .clinical-directory .module-toolbar__row { flex-wrap: wrap; }
 .clinical-directory .module-toolbar__controls > div,
 .clinical-directory .module-toolbar__row :is(button, a, input) {
-  border-radius: var(--clinical-radius);
+  border-radius: var(--clinical-radius-pill);
   box-shadow: none;
 }
 .clinical-directory .module-toolbar__row input { font-size: 14px; }
+
+/* Permanent medium-width search (400px, shrinks when the row is tight) beside
+   the filter and action buttons. It filters on submit (Enter or the Search button), so no expand
+   animation and no half-typed results. */
+.clinical-directory .module-toolbar__controls { flex: 1 1 auto; }
+.clinical-search {
+  display: flex;
+  flex: 0 1 400px;
+  align-items: center;
+  gap: 4px;
+  min-width: min(100%, 240px);
+  height: 40px;
+  padding: 0 4px 0 14px;
+  border: 1px solid var(--clinical-border-strong);
+  border-radius: var(--clinical-radius-pill);
+  background: var(--clinical-surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.clinical-search:focus-within {
+  border-color: var(--clinical-red);
+  box-shadow: var(--clinical-focus);
+}
+.clinical-search__icon { flex: none; color: var(--clinical-label); }
+.clinical-directory .clinical-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--clinical-ink);
+}
+.clinical-directory .clinical-search__input::placeholder { color: var(--clinical-label); }
+.clinical-directory .clinical-search__input:focus-visible { outline: none; box-shadow: none; }
+.clinical-directory .clinical-search__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--clinical-label);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.clinical-directory .clinical-search__clear:hover { background: #f1f3f6; color: var(--clinical-ink); }
+.clinical-directory .clinical-search__submit {
+  flex: none;
+  height: 32px;
+  padding: 0 16px;
+  background: #1b2638;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 120ms ease;
+}
+.clinical-directory .clinical-search__submit:hover { background: #2c3a52; }
+.clinical-directory .clinical-search__submit:active { background: #101828; }
+.clinical-directory .clinical-search :is(button):focus-visible { outline-offset: 1px; }
+.clinical-directory .clinical-search :disabled { opacity: 0.6; cursor: not-allowed; }
 .clinical-directory .module-toolbar__row > div:last-child > a {
   background: var(--clinical-red);
 }
@@ -164,6 +220,7 @@
   gap: 8px;
   padding: 0 14px;
   border: 1px solid var(--clinical-border-strong);
+  border-radius: var(--clinical-radius-pill);
   background: var(--clinical-surface);
   color: var(--clinical-muted);
   font-size: 12px;
@@ -246,16 +303,17 @@
   flex-direction: column;
   padding: 12px 16px;
   border: 1px solid var(--clinical-border);
-  border-radius: 0;
+  border-radius: var(--clinical-radius);
   background: var(--clinical-surface);
   box-shadow: var(--clinical-shadow);
-  transition: border-color 160ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 .clinical-patient:hover { border-color: var(--clinical-border-strong); }
 .clinical-patient[role="button"] { cursor: pointer; }
 .clinical-patient[data-selected="true"] {
-  border-color: var(--clinical-red);
-  box-shadow: inset 4px 0 0 var(--clinical-red), var(--clinical-shadow);
+  border-color: #fca5a5;
+  background: var(--clinical-red-pale);
+  box-shadow: var(--clinical-shadow);
 }
 .clinical-patient[role="button"]:focus-visible {
   outline: 2px solid var(--clinical-red);
@@ -284,8 +342,8 @@
 .clinical-patient__barangay > span { min-width: 0; overflow-wrap: anywhere; }
 .clinical-patient__badge {
   flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 2px;
+  padding: 2px 10px;
+  border-radius: var(--clinical-radius-pill);
   background: #f3f4f6;
   color: #374151;
   font-size: 11px;
@@ -358,6 +416,7 @@
   justify-content: center;
   min-height: 32px;
   padding-inline: 16px;
+  border-radius: var(--clinical-radius-pill);
   background: var(--clinical-red);
   color: #ffffff;
   font-size: 12px;
@@ -388,11 +447,14 @@
   .clinical-directory .module-toolbar__row > div:last-child { width: 100%; }
   .clinical-directory .module-toolbar__row > div:last-child > * { flex: 1 1 0; }
   .clinical-directory .module-toolbar__controls > div { width: 100%; }
+  .clinical-directory .module-toolbar__controls .clinical-search { width: 100%; }
   .clinical-directory .module-toolbar__row input { width: 100%; opacity: 1; font-size: 16px; }
 }
 @media (pointer: coarse) {
   .clinical-directory .module-toolbar__row :is(button, a),
   .clinical-patient__open { min-height: 44px; }
+  .clinical-search { height: 44px; }
+  .clinical-directory .clinical-search__submit { height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .clinical-directory *, .clinical-directory .anim-fade-up { animation: none; transition: none; }

@@ -33,7 +33,7 @@ const STATUS_BADGE = {
 function StatusBadge({ status }) {
   const key = String(status || "active").toLowerCase();
   return (
-    <span className={`inline-flex shrink-0 items-center rounded-sm px-2 py-0.5 text-[11px] font-semibold capitalize ${STATUS_BADGE[key] || "bg-amber-100 text-amber-800"}`}>
+    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${STATUS_BADGE[key] || "bg-amber-100 text-amber-800"}`}>
       {key}
     </span>
   );
@@ -57,7 +57,7 @@ function VitalsGrid({ records }) {
   ] : [];
 
   return (
-    <section className="mt-4 border border-gray-200 border-l-4 border-l-red-600 bg-white" aria-labelledby="summary-vitals-title">
+    <section className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white" aria-labelledby="summary-vitals-title">
       <h3 id="summary-vitals-title" className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
         Current Vital Signs
       </h3>
@@ -148,13 +148,13 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
           compact
           className="mt-4"
           placeholder={
-            <section className="border border-gray-200 bg-white">
+            <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
               <h3 className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">Alerts</h3>
               <div className="flex gap-2 px-3 py-2"><span className="h-5 w-20 rounded bg-gray-100" /><span className="h-5 w-16 rounded bg-gray-100" /></div>
             </section>
           }
         >
-          <section aria-labelledby="summary-alerts-title" className="mt-4 border border-gray-200 bg-white">
+          <section aria-labelledby="summary-alerts-title" className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
             <h3 id="summary-alerts-title" className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
               Alerts
             </h3>
@@ -196,7 +196,7 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
       <footer className="patient-summary__footer">
         <Link
           to={`${basePath}/patients/${patientId}`}
-          className="flex h-9 w-full items-center justify-center rounded-none bg-red-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
+          className="flex h-9 w-full items-center justify-center rounded-full bg-red-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
         >
           View Full Profile
         </Link>

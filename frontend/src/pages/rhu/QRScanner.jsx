@@ -7,16 +7,12 @@ import {
   Camera,
   CheckCircle2,
   ChevronDown,
-  ClipboardList,
   ExternalLink,
   Loader2,
-  MonitorPlay,
   QrCode,
   RefreshCcw,
-  ScanLine,
   Search,
   ShieldCheck,
-  Trash2,
   UserCheck,
   X,
 } from "lucide-react";
@@ -40,11 +36,6 @@ import { queryKeys } from "../../utils/queryKeys";
 import { getReferralAttention } from "../../utils/referralAttention";
 
 const keyframes = `
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -55,11 +46,6 @@ const keyframes = `
   10% { opacity: 1; }
   90% { opacity: 1; }
   100% { top: 88%; opacity: 0; }
-}
-
-.anim-fade-up {
-  opacity: 0;
-  animation: fadeUp .55s cubic-bezier(.22,1,.36,1) both;
 }
 
 .anim-fade-in {
@@ -79,8 +65,6 @@ const SCANNER_TABS = [
 const SCAN_COOLDOWN_MS = 3500;
 const CHECKED_IN_STATUSES = ["Received", "Completed"];
 const QR_READER_ELEMENT_ID = "rhu-qr-reader";
-
-const stagger = (index) => ({ animationDelay: `${index * 80}ms` });
 
 export default function QRScanner() {
   const navigate = useNavigate();
@@ -369,74 +353,92 @@ export default function QRScanner() {
     <DashboardLayout role="rhu" title="QR Scanner">
       <style>{keyframes}</style>
 
-      <div
-        className="anim-fade-up mb-5 flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1"
-        style={stagger(1)}
-      >
-        {SCANNER_TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => {
-                setActiveTab(tab.key);
-                if (tab.key !== "camera") stopCamera();
-              }}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
-                isActive
-                  ? "bg-white text-[#0F172A] shadow-sm"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              <Icon size={14} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <div className="mx-auto max-w-[1440px] space-y-4">
+        <div
+          role="tablist"
+          aria-label="Verification method"
+          className="inline-flex max-w-full items-center gap-1 rounded-full bg-neutral-100 p-1"
+        >
+          {SCANNER_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  if (tab.key !== "camera") stopCamera();
+                }}
+                className={`inline-flex h-8 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
+                  isActive
+                    ? "bg-white text-ink-800 shadow-xs"
+                    : "text-neutral-600 hover:text-ink-800"
+                }`}
+              >
+                <Icon size={14} aria-hidden="true" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
-      <div
-        className="anim-fade-up grid gap-5 xl:grid-cols-2"
-        style={stagger(2)}
-      >
-        <ScannerPanel
-          activeTab={activeTab}
-          cameras={cameras}
-          selectedDeviceId={selectedDeviceId}
-          setSelectedDeviceId={setSelectedDeviceId}
-          cameraOpen={cameraOpen}
-          cameraMessage={cameraMessage}
-          trackingInput={trackingInput}
-          setTrackingInput={setTrackingInput}
-          pendingReferrals={pendingReferrals}
-          verifying={verifying}
-          onStartCamera={startCamera}
-          onStopCamera={stopCamera}
-          onRetryScan={scanAgain}
-          onManualVerify={() => verifyReferral(trackingInput, "manual")}
-        />
+        <div className="overflow-hidden rounded-card border border-neutral-200 bg-white shadow-[var(--shadow-card)] xl:grid xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <ScannerPanel
+            activeTab={activeTab}
+            cameras={cameras}
+            selectedDeviceId={selectedDeviceId}
+            setSelectedDeviceId={setSelectedDeviceId}
+            cameraOpen={cameraOpen}
+            cameraMessage={cameraMessage}
+            trackingInput={trackingInput}
+            setTrackingInput={setTrackingInput}
+            pendingReferrals={pendingReferrals}
+            verifying={verifying}
+            hasResult={Boolean(selectedReferral)}
+            onStartCamera={startCamera}
+            onStopCamera={stopCamera}
+            onRetryScan={scanAgain}
+            onManualVerify={() => verifyReferral(trackingInput, "manual")}
+          />
 
-        <ResultsPanel
-          referral={selectedReferral}
-          result={result}
-          status={selectedStatus}
-          verifying={verifying}
-          checkInBusy={checkInBusy}
-          alreadyCheckedIn={alreadyCheckedIn}
-          onCheckIn={handleCheckIn}
-          onScanAgain={scanAgain}
-          onClear={clearResults}
-          onOpenDetails={() =>
-            selectedReferral?.trackingId &&
-            navigate(`/rhu/referrals/${selectedReferral.trackingId}`)
-          }
-        />
+          <ResultsPanel
+            referral={selectedReferral}
+            result={result}
+            status={selectedStatus}
+            verifying={verifying}
+            checkInBusy={checkInBusy}
+            alreadyCheckedIn={alreadyCheckedIn}
+            onCheckIn={handleCheckIn}
+            onScanAgain={scanAgain}
+            onClear={clearResults}
+            onOpenDetails={() =>
+              selectedReferral?.trackingId &&
+              navigate(`/rhu/referrals/${selectedReferral.trackingId}`)
+            }
+          />
+        </div>
       </div>
     </DashboardLayout>
   );
 }
+
+// One red action per screen: the main button is red until a referral is on screen,
+// then the result's Check-in takes over and the scan controls step back.
+const PILL =
+  "inline-flex h-10 items-center justify-center gap-2 rounded-full px-5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 disabled:cursor-not-allowed";
+const PILL_PRIMARY = `${PILL} bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-60`;
+const PILL_SECONDARY = `${PILL} border border-neutral-200 bg-white text-ink-800 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-60`;
+const PILL_GHOST = `${PILL} text-neutral-600 hover:bg-neutral-100 hover:text-ink-800`;
+
+const SCAN_CORNERS = [
+  "left-5 top-5 rounded-tl-md border-l-[3px] border-t-[3px]",
+  "right-5 top-5 rounded-tr-md border-r-[3px] border-t-[3px]",
+  "bottom-5 left-5 rounded-bl-md border-b-[3px] border-l-[3px]",
+  "bottom-5 right-5 rounded-br-md border-b-[3px] border-r-[3px]",
+];
 
 function ScannerPanel({
   activeTab,
@@ -449,135 +451,130 @@ function ScannerPanel({
   setTrackingInput,
   pendingReferrals,
   verifying,
+  hasResult,
   onStartCamera,
   onStopCamera,
   onRetryScan,
   onManualVerify,
 }) {
+  const isCamera = activeTab === "camera";
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-      <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-          {activeTab === "camera" ? <MonitorPlay size={15} /> : <Search size={15} />}
-        </div>
-        <h2 className="text-[13px] font-bold text-slate-800">
-          {activeTab === "camera" ? "Webcam Scanner" : "Manual Input"}
+    <section aria-labelledby="scanner-heading" className="min-w-0 p-5">
+      <div className="mb-4 flex min-h-8 items-center gap-3">
+        <h2 id="scanner-heading" className="text-sm font-bold text-ink-800">
+          {isCamera ? "Scan referral QR" : "Enter tracking ID"}
         </h2>
         {cameraOpen && (
-          <span className="ml-auto rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#B91C1C]">
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-ink-50 px-2.5 py-1 text-[11px] font-semibold text-ink-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
             Scanning
           </span>
         )}
       </div>
 
-      <div className="p-5">
-        {activeTab === "camera" ? (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <select
-                  value={selectedDeviceId}
-                  onChange={(event) => setSelectedDeviceId(event.target.value)}
-                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-8 text-[12px] text-slate-600 outline-none transition-colors focus:border-[#B91C1C]/40 focus:bg-white"
-                >
-                  {cameras.length === 0 ? (
-                    <option value="">Camera list (permission needed)</option>
-                  ) : (
-                    cameras.map((camera, index) => (
-                      <option key={camera.id || index} value={camera.id}>
-                        {camera.label || `Camera ${index + 1}`}
-                      </option>
-                    ))
-                  )}
-                </select>
-                <ChevronDown
-                  size={14}
-                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={cameraOpen ? onStopCamera : onStartCamera}
-                className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[12px] font-semibold transition-all duration-200 ${
-                  cameraOpen
-                    ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                    : "bg-[#B91C1C] text-white hover:bg-[#991B1B]"
-                }`}
+      {isCamera ? (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <select
+                value={selectedDeviceId}
+                aria-label="Camera"
+                onChange={(event) => setSelectedDeviceId(event.target.value)}
+                className="h-10 w-full appearance-none rounded-full border border-neutral-200 bg-white pl-4 pr-10 text-[13px] text-ink-800 outline-none transition-colors hover:border-neutral-300 focus-visible:ring-2 focus-visible:ring-ink-400/50"
               >
-                {cameraOpen ? (
-                  <>
-                    <X size={14} /> Close Camera
-                  </>
+                {cameras.length === 0 ? (
+                  <option value="">Camera list (permission needed)</option>
                 ) : (
-                  <>
-                    <Camera size={14} /> Start Camera
-                  </>
+                  cameras.map((camera, index) => (
+                    <option key={camera.id || index} value={camera.id}>
+                      {camera.label || `Camera ${index + 1}`}
+                    </option>
+                  ))
                 )}
-              </button>
-            </div>
-
-            {cameraMessage && (
-              <Notice tone="error" icon={<AlertCircle size={14} />}>
-                {cameraMessage}
-              </Notice>
-            )}
-
-            <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-950">
-              <div className="relative h-[320px] w-full">
-                <div
-                  id={QR_READER_ELEMENT_ID}
-                  className={`h-full w-full overflow-hidden bg-slate-950 [&_video]:h-full [&_video]:w-full [&_video]:object-cover ${
-                    cameraOpen ? "opacity-100" : "opacity-0"
-                  }`}
-                />
-
-                <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute left-5 top-5 h-7 w-7 rounded-tl-md border-l-[3px] border-t-[3px] border-[#B91C1C]" />
-                  <div className="absolute right-5 top-5 h-7 w-7 rounded-tr-md border-r-[3px] border-t-[3px] border-[#B91C1C]" />
-                  <div className="absolute bottom-5 left-5 h-7 w-7 rounded-bl-md border-b-[3px] border-l-[3px] border-[#B91C1C]" />
-                  <div className="absolute bottom-5 right-5 h-7 w-7 rounded-br-md border-b-[3px] border-r-[3px] border-[#B91C1C]" />
-                  {cameraOpen && (
-                    <div className="scan-beam absolute left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-[#B91C1C] to-transparent shadow-lg shadow-[#B91C1C]/40" />
-                  )}
-                </div>
-
-                {!cameraOpen && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 text-center">
-                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-200 shadow-sm">
-                      <Camera size={28} />
-                    </div>
-                    <p className="text-[12px] font-semibold text-slate-500">
-                      Camera not active
-                    </p>
-                    <p className="mt-1 max-w-[240px] text-[11px] leading-relaxed text-slate-400">
-                      Start the camera and point it at an AKAY referral slip QR code.
-                    </p>
-                  </div>
-                )}
-              </div>
+              </select>
+              <ChevronDown
+                size={14}
+                aria-hidden="true"
+                className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500"
+              />
             </div>
 
             <button
               type="button"
-              onClick={onRetryScan}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-50"
+              onClick={cameraOpen ? onStopCamera : onStartCamera}
+              className={!cameraOpen && !hasResult ? PILL_PRIMARY : PILL_SECONDARY}
             >
-              <RefreshCcw size={14} />
+              {cameraOpen ? (
+                <>
+                  <X size={14} aria-hidden="true" /> Close Camera
+                </>
+              ) : (
+                <>
+                  <Camera size={14} aria-hidden="true" /> Start Camera
+                </>
+              )}
+            </button>
+          </div>
+
+          {cameraMessage && (
+            <Notice tone="error" icon={<AlertCircle size={14} />}>
+              {cameraMessage}
+            </Notice>
+          )}
+
+          <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-ink-900">
+            <div
+              id={QR_READER_ELEMENT_ID}
+              className={`absolute inset-0 h-full w-full overflow-hidden [&_video]:h-full [&_video]:w-full [&_video]:object-cover ${
+                cameraOpen ? "opacity-100" : "opacity-0"
+              }`}
+            />
+
+            <div className="pointer-events-none absolute inset-0">
+              {SCAN_CORNERS.map((corner) => (
+                <div
+                  key={corner}
+                  className={`absolute h-7 w-7 transition-colors ${corner} ${
+                    cameraOpen ? "border-white/90" : "border-white/25"
+                  }`}
+                />
+              ))}
+              {cameraOpen && (
+                <div className="scan-beam absolute left-6 right-6 h-0.5 rounded-full bg-gradient-to-r from-transparent via-white to-transparent motion-reduce:hidden" />
+              )}
+            </div>
+
+            {!cameraOpen && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                <Camera size={26} aria-hidden="true" className="mb-3 text-white/70" />
+                <p className="text-[13px] font-semibold text-white">Camera is off</p>
+                <p className="mt-1 max-w-[260px] text-xs leading-relaxed text-neutral-300">
+                  Start the camera and point it at the QR code on an AKAY referral slip.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-neutral-600">Hold the code steady inside the frame.</p>
+            <button type="button" onClick={onRetryScan} className={`${PILL_GHOST} h-9 px-4`}>
+              <RefreshCcw size={14} aria-hidden="true" />
               Retry Scan
             </button>
           </div>
-        ) : (
-          <ManualVerification
-            trackingInput={trackingInput}
-            setTrackingInput={setTrackingInput}
-            pendingReferrals={pendingReferrals}
-            verifying={verifying}
-            onManualVerify={onManualVerify}
-          />
-        )}
-      </div>
-    </div>
+        </div>
+      ) : (
+        <ManualVerification
+          trackingInput={trackingInput}
+          setTrackingInput={setTrackingInput}
+          pendingReferrals={pendingReferrals}
+          verifying={verifying}
+          hasResult={hasResult}
+          onManualVerify={onManualVerify}
+        />
+      )}
+    </section>
   );
 }
 
@@ -586,28 +583,31 @@ function ManualVerification({
   setTrackingInput,
   pendingReferrals,
   verifying,
+  hasResult,
   onManualVerify,
 }) {
   return (
     <div className="space-y-4">
-      <div className="relative flex items-center rounded-lg border border-slate-200 bg-slate-50/50 px-3 transition-all duration-200 focus-within:border-[#B91C1C]/40 focus-within:bg-white">
-        <Search size={15} className="text-slate-300" />
+      <div className="flex h-11 items-center rounded-full border border-neutral-200 bg-white pl-4 pr-2 transition-colors focus-within:border-ink-400 focus-within:ring-2 focus-within:ring-ink-400/30">
+        <Search size={15} aria-hidden="true" className="shrink-0 text-neutral-500" />
         <input
           value={trackingInput}
+          aria-label="Tracking ID"
           onChange={(event) => setTrackingInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") onManualVerify();
           }}
           placeholder="Enter Tracking ID, referral URL, or AKAY QR value"
-          className="h-12 flex-1 border-0 bg-transparent px-3 text-[13px] font-medium text-slate-700 outline-none placeholder:text-slate-300 placeholder:font-normal"
+          className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-sm font-medium text-ink-800 outline-none placeholder:font-normal placeholder:text-neutral-500"
         />
         {trackingInput && (
           <button
             type="button"
+            aria-label="Clear tracking ID"
             onClick={() => setTrackingInput("")}
-            className="rounded-md p-1 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-neutral-500 outline-none transition-colors hover:bg-neutral-100 hover:text-ink-800 focus-visible:ring-2 focus-visible:ring-ink-400/50"
           >
-            <X size={14} />
+            <X size={14} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -616,35 +616,39 @@ function ManualVerification({
         type="button"
         onClick={onManualVerify}
         disabled={verifying}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+        className={`${hasResult ? PILL_SECONDARY : PILL_PRIMARY} w-full`}
       >
-        {verifying ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+        {verifying ? (
+          <Loader2 size={14} aria-hidden="true" className="animate-spin" />
+        ) : (
+          <Search size={14} aria-hidden="true" />
+        )}
         Verify Tracking ID
       </button>
 
-      <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
-        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+      <div className="pt-1">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-600">
           Pending incoming referrals
         </p>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {pendingReferrals.map((referral) => (
             <button
               key={referral.trackingId || referral.id}
               type="button"
               onClick={() => setTrackingInput(referral.trackingId)}
-              className="flex w-full items-center gap-2.5 rounded-md border border-slate-100 bg-white px-3 py-2 text-left transition-colors hover:border-[#B91C1C]/20 hover:bg-[#B91C1C]/[0.02]"
+              className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-left outline-none transition-colors hover:border-neutral-300 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-ink-400/50"
             >
-              <QrCode size={12} className="shrink-0 text-slate-300" />
-              <span className="flex-1 truncate font-mono text-[11px] font-semibold text-slate-600">
+              <QrCode size={14} aria-hidden="true" className="shrink-0 text-neutral-500" />
+              <span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-ink-800">
                 {referral.trackingId}
               </span>
-              <span className="truncate text-[10px] text-slate-400">
+              <span className="truncate text-xs text-neutral-600">
                 {getReferralPatientName(referral)}
               </span>
             </button>
           ))}
           {pendingReferrals.length === 0 && (
-            <p className="py-2 text-center text-[11px] text-slate-300">
+            <p className="rounded-xl border border-dashed border-neutral-200 py-4 text-center text-xs text-neutral-600">
               No pending referrals
             </p>
           )}
@@ -667,148 +671,119 @@ function ResultsPanel({
   onOpenDetails,
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-      <div className="flex items-center gap-2.5 border-b border-slate-100 px-5 py-3.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-          <ClipboardList size={15} />
-        </div>
-        <h2 className="text-[13px] font-bold text-slate-800">Results</h2>
+    <section
+      aria-labelledby="result-heading"
+      aria-live="polite"
+      className="min-w-0 border-t border-neutral-200 p-5 xl:border-l xl:border-t-0"
+    >
+      <div className="mb-4 flex min-h-8 items-center gap-3">
+        <h2 id="result-heading" className="text-sm font-bold text-ink-800">
+          Result
+        </h2>
+        {referral && (
+          <button type="button" onClick={onClear} className={`${PILL_GHOST} ml-auto h-8 px-3`}>
+            <X size={13} aria-hidden="true" />
+            Clear
+          </button>
+        )}
       </div>
 
-      <div className="p-5">
-        {!referral ? (
-          <EmptyResults result={result} verifying={verifying} />
-        ) : (
-          <div className="space-y-4">
-            <ResultNotice result={result} />
+      {!referral ? (
+        <EmptyResults result={result} verifying={verifying} />
+      ) : (
+        <div className="space-y-4">
+          <ResultNotice result={result} />
 
-            <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-bold text-slate-800">
-                    {getReferralPatientName(referral)}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    {formatDisplayValue(referral.ageSex, "Age / Sex not recorded")}
-                  </p>
-                </div>
-                <StatusBadge status={status} />
-              </div>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-lg font-bold leading-tight text-ink-800">
+                {getReferralPatientName(referral)}
+              </p>
+              <p className="mt-1 text-[13px] text-neutral-600">
+                {formatDisplayValue(referral.ageSex, "Age / Sex not recorded")}
+              </p>
             </div>
+            <StatusBadge status={status} />
+          </div>
 
-            <div className="space-y-2">
-              <ResultRow label="Tracking ID" value={referral.trackingId} mono />
-              <ResultRow label="Referring BHC/HCI" value={getReferringHci(referral)} />
-              <ResultRow label="Destination RHU" value={getDestinationFacility(referral)} />
-              <ResultRow label="Referral Category" value={getReferralCategory(referral)} />
-              <ResultRow
-                label="Chief Complaint"
-                value={referral.chiefComplaint || referral.concern}
-              />
-              <ResultRow label="Referral Date/Time" value={formatReferralDateTime(referral)} />
-              <ResultRow label="Urgency" value={getUrgency(referral)} />
-            </div>
+          <dl className="divide-y divide-neutral-100 border-y border-neutral-100">
+            <ResultRow label="Tracking ID" value={referral.trackingId} mono />
+            <ResultRow label="Referring BHC/HCI" value={getReferringHci(referral)} />
+            <ResultRow label="Destination RHU" value={getDestinationFacility(referral)} />
+            <ResultRow label="Referral Category" value={getReferralCategory(referral)} />
+            <ResultRow
+              label="Chief Complaint"
+              value={referral.chiefComplaint || referral.concern}
+            />
+            <ResultRow label="Referral Date/Time" value={formatReferralDateTime(referral)} />
+            <ResultRow label="Urgency" value={getUrgency(referral)} />
+          </dl>
 
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={onCheckIn}
-                disabled={checkInBusy || alreadyCheckedIn}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-[12px] font-semibold text-white transition-all duration-200 hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
-              >
-                {checkInBusy ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <UserCheck size={14} />
-                )}
-                {alreadyCheckedIn ? "Already Checked In" : "Check-in Patient"}
-              </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={onCheckIn}
+              disabled={checkInBusy || alreadyCheckedIn}
+              className={`${PILL_PRIMARY} w-full disabled:bg-neutral-200 disabled:text-neutral-600 disabled:opacity-100`}
+            >
+              {checkInBusy ? (
+                <Loader2 size={14} aria-hidden="true" className="animate-spin" />
+              ) : (
+                <UserCheck size={14} aria-hidden="true" />
+              )}
+              {alreadyCheckedIn ? "Already Checked In" : "Check-in Patient"}
+            </button>
 
-              <button
-                type="button"
-                onClick={onOpenDetails}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-600 transition-all duration-200 hover:bg-slate-50"
-              >
-                <ExternalLink size={14} />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={onOpenDetails} className={PILL_SECONDARY}>
+                <ExternalLink size={14} aria-hidden="true" />
                 View Referral Details
               </button>
-
-              <button
-                type="button"
-                onClick={onScanAgain}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-[12px] font-semibold text-slate-500 transition-all duration-200 hover:bg-slate-50"
-              >
-                <RefreshCcw size={14} />
+              <button type="button" onClick={onScanAgain} className={PILL_SECONDARY}>
+                <RefreshCcw size={14} aria-hidden="true" />
                 Scan Again
               </button>
             </div>
           </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-3">
-        <button
-          type="button"
-          onClick={onOpenDetails}
-          disabled={!referral}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ExternalLink size={12} />
-          Open Details
-        </button>
-
-        <button
-          type="button"
-          onClick={onClear}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 size={12} />
-          Clear
-        </button>
-      </div>
-    </div>
+        </div>
+      )}
+    </section>
   );
 }
 
 function EmptyResults({ result, verifying }) {
   if (result.type === "error") {
     return (
-      <div className="flex min-h-[340px] flex-col items-center justify-center text-center">
-        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-red-50 text-red-400">
-          <AlertCircle size={34} />
+      <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-red-700">
+          <AlertCircle size={26} aria-hidden="true" />
         </div>
-        <h3 className="text-[14px] font-bold text-slate-700">
-          Unable to Open Referral
-        </h3>
-        <p className="mt-2 max-w-[280px] text-[12px] leading-relaxed text-slate-400">
+        <h3 className="text-sm font-semibold text-ink-800">Unable to open referral</h3>
+        <p className="mt-1.5 max-w-[300px] text-[13px] leading-relaxed text-neutral-600">
           {result.message}
         </p>
       </div>
     );
   }
 
+  const loading = verifying || result.type === "loading";
+
   return (
-    <div className="flex min-h-[340px] flex-col items-center justify-center text-center">
-      <div className="relative mb-5">
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-50 text-slate-200">
-          {verifying || result.type === "loading" ? (
-            <Loader2 size={34} className="animate-spin" />
-          ) : (
-            <QrCode size={34} />
-          )}
-        </div>
-        <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-lg border-2 border-white bg-slate-100 text-slate-400 shadow-sm">
-          <ScanLine size={12} />
-        </div>
+    <div className="flex min-h-[280px] flex-col items-center justify-center text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100 text-ink-500">
+        {loading ? (
+          <Loader2 size={26} aria-hidden="true" className="animate-spin" />
+        ) : (
+          <QrCode size={26} aria-hidden="true" />
+        )}
       </div>
 
-      <h3 className="text-[14px] font-bold text-slate-600">
-        {result.type === "loading" ? "Verifying referral..." : "Scan a QR code to view results."}
+      <h3 className="text-sm font-semibold text-ink-800">
+        {loading ? "Verifying referral..." : "Scan a QR code to view the referral"}
       </h3>
 
-      <p className="mt-2 max-w-[260px] text-[11.5px] leading-relaxed text-slate-300">
-        Use the camera scanner or manually enter a tracking ID to retrieve
-        authorized referral information.
+      <p className="mt-1.5 max-w-[280px] text-[13px] leading-relaxed text-neutral-600">
+        Use the camera or enter a tracking ID. The referral appears here for you to check in.
       </p>
     </div>
   );
@@ -835,16 +810,16 @@ function ResultNotice({ result }) {
 
 function Notice({ tone = "success", icon, children }) {
   const styles = {
-    success: "border-emerald-100 bg-emerald-50/80 text-emerald-700",
-    warning: "border-amber-100 bg-amber-50/80 text-amber-700",
-    error: "border-red-100 bg-red-50/80 text-red-700",
+    success: "border-emerald-100 bg-emerald-50/80 text-emerald-800",
+    warning: "border-amber-100 bg-amber-50/80 text-amber-800",
+    error: "border-red-100 bg-red-50/80 text-red-800",
   };
 
   return (
     <div
-      className={`anim-fade-in flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-[11.5px] font-medium ${styles[tone]}`}
+      className={`anim-fade-in flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs font-medium ${styles[tone]}`}
     >
-      <span className="shrink-0">{icon}</span>
+      <span aria-hidden="true" className="shrink-0">{icon}</span>
       <p>{children}</p>
     </div>
   );
@@ -852,17 +827,11 @@ function Notice({ tone = "success", icon, children }) {
 
 function ResultRow({ label, value, mono = false }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-3.5 py-2.5">
-      <p className="w-32 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <p
-        className={`flex-1 text-[12px] font-semibold text-slate-700 ${
-          mono ? "font-mono" : ""
-        }`}
-      >
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-3 py-2.5">
+      <dt className="text-xs text-neutral-500">{label}</dt>
+      <dd className={`break-words text-[13px] font-medium text-ink-800 ${mono ? "font-mono" : ""}`}>
         {formatDisplayValue(value, "Not recorded")}
-      </p>
+      </dd>
     </div>
   );
 }
@@ -899,7 +868,7 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide"
       style={{
         backgroundColor: style.bg,
         color: style.text,

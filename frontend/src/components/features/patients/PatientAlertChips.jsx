@@ -4,7 +4,7 @@ import { summarizeAllergies } from "../../../utils/patientHistory";
 const MAX_DISEASE_CHIPS = 3;
 
 const CHIP_BASE =
-  "inline-flex max-w-full items-center break-words rounded-sm border px-2 py-0.5 text-left text-xs font-medium";
+  "inline-flex max-w-full items-center break-words rounded-full border px-2 py-0.5 text-left text-xs font-medium";
 
 const TONES = {
   alert: "border-red-200 bg-red-50 text-red-800",

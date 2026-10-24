@@ -41,7 +41,7 @@ const TITLE='text-2xl font-bold leading-tight tracking-tight text-ink-800';
 const HEADING='text-sm font-bold text-ink-800';
 const pulse='animate-pulse rounded-card bg-neutral-100';
 const SHEET='rounded-card border border-neutral-200 bg-white shadow-[var(--shadow-card)]';
-const DirectorySkeleton=<div className={`${SHEET} min-h-[324px] overflow-hidden`}><div className="h-11 bg-neutral-100"/>{[0,1,2,3,4].map(key=><div key={key} className="flex h-14 items-center gap-6 border-t border-neutral-200 px-4"><div className="h-3 w-24 animate-pulse rounded bg-neutral-100"/><div className="h-3 w-48 animate-pulse rounded bg-neutral-100"/><div className="hidden h-3 w-64 animate-pulse rounded bg-neutral-100 md:block"/></div>)}</div>;
+const DirectorySkeleton=<div className={`${SHEET} min-h-[324px] overflow-hidden`}><div className="h-12 bg-white"/>{[0,1,2,3,4].map(key=><div key={key} className="flex h-16 items-center gap-6 border-t border-neutral-100 px-4"><div className="h-3 w-24 animate-pulse rounded bg-neutral-100"/><div className="h-3 w-48 animate-pulse rounded bg-neutral-100"/><div className="hidden h-3 w-64 animate-pulse rounded bg-neutral-100 md:block"/></div>)}</div>;
 const DetailsSkeleton=<div className="space-y-5"><div className={`${pulse} h-16`}/><div className={`${pulse} h-64`}/></div>;
 const FormSkeleton=<div className="w-full max-w-7xl space-y-5"><div className={`${pulse} h-48`}/><div className={`${pulse} h-24`}/></div>;
 export function QueryState({query,label='Loading households…',skeleton}) {
@@ -69,7 +69,7 @@ function Directory({scope,role}) {
   const [selectedId,setSelectedId]=useState(null);
   const isDesktop=useMediaQuery(DESKTOP_QUERY);
   const canManage=access.can('families.manage');
-  // Search applies as the user types; Enter applies it at once.
+  // ModuleToolbar clinical search submits on Enter; this still applies a short delay if the draft changes.
   useEffect(()=>{const timer=setTimeout(()=>setSearch(draft.trim()),300);return ()=>clearTimeout(timer);},[draft]);
   const noPurok=filters.purok === NO_PUROK_FILTER;
   const query=useInfiniteQuery({
