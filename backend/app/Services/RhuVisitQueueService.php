@@ -146,9 +146,13 @@ class RhuVisitQueueService
             ->first();
 
         if ($sameKey !== null) {
+            // A walk-in visit may gain a referral link after check-in (D4), so its
+            // referral_id is not part of what the original request sent.
+            $sameReferral = $source === RhuVisitQueueEntry::SOURCE_WALK_IN
+                || (int) $sameKey->referral_id === $referralId;
             $samePayload = (int) $sameKey->patient_id === $patientId
-                && ($sameKey->referral_id === null ? null : (int) $sameKey->referral_id) === $referralId
-                && $sameKey->source === $source;
+                && $sameKey->source === $source
+                && $sameReferral;
 
             if (! $samePayload) {
                 throw new RhuVisitCheckInKeyConflictException();

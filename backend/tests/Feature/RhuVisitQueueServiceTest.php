@@ -274,6 +274,21 @@ class RhuVisitQueueServiceTest extends TestCase
         $this->assertSame(1, RhuVisitQueueEntry::count());
     }
 
+    public function test_walk_in_retry_still_replays_after_a_referral_is_linked(): void
+    {
+        $rhu = $this->rhu();
+        $user = $this->rhuUser($rhu);
+        $patient = $this->patient(['rural_health_unit_id' => $rhu->id]);
+        $first = $this->service()->checkIn($user, $patient->id, null, 'key-1')['entry'];
+        // D4: a referral arriving later is linked to the existing walk-in visit.
+        $first->update(['referral_id' => $this->referral($patient, $rhu)->id]);
+
+        $retry = $this->service()->checkIn($user, $patient->id, null, 'key-1');
+
+        $this->assertFalse($retry['created']);
+        $this->assertSame($first->id, $retry['entry']->id);
+    }
+
     public function test_same_key_with_different_payload_conflicts(): void
     {
         $rhu = $this->rhu();
