@@ -27,6 +27,8 @@ class RhuVisitQueueService
     /** One referral arrives once, so its arrival key is derived from the referral. */
     public const ARRIVAL_KEY_PREFIX = 'referral-';
 
+    private const SEARCH_MAX_TOKENS = 5;
+
     public function __construct(private readonly FacilityAccessService $facilityAccess)
     {
     }
@@ -191,7 +193,8 @@ class RhuVisitQueueService
     public function searchPatients(User $user, string $query): array
     {
         $rhuId = $this->authorizeRhuUser($user);
-        $tokens = preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        // A handful of tokens is plenty for a name; each one adds a group of OR conditions.
+        $tokens = array_slice(preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, self::SEARCH_MAX_TOKENS);
         if ($tokens === []) {
             return [];
         }
@@ -199,10 +202,12 @@ class RhuVisitQueueService
         $patients = $this->facilityAccess->scopePatients(Patient::query(), $user)
             ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'));
         foreach ($tokens as $token) {
-            $like = '%'.addcslashes($token, '\\%_').'%';
+            // Lower-cased on both sides: PostgreSQL LIKE is case-sensitive, SQLite's is not.
+            // '!' is the escape character because it needs no quoting on any driver.
+            $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($token)).'%';
             $patients->where(function ($match) use ($like): void {
                 foreach (['first_name', 'middle_name', 'last_name', 'philhealth_number', 'contact_number'] as $column) {
-                    $match->orWhereRaw("{$column} LIKE ? ESCAPE '\\'", [$like]);
+                    $match->orWhereRaw("LOWER({$column}) LIKE ? ESCAPE '!'", [$like]);
                 }
             });
         }

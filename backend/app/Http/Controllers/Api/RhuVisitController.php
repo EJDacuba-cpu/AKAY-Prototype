@@ -42,7 +42,8 @@ class RhuVisitController extends Controller
 
     public function patientSearch(Request $request)
     {
-        $results = $this->visits->searchPatients($request->user(), (string) $request->query('q', ''));
+        $query = $request->validate(['q' => ['nullable', 'string', 'max:100']])['q'] ?? '';
+        $results = $this->visits->searchPatients($request->user(), $query);
 
         return response()->json(['data' => array_map(fn (array $row): array => [
             ...PatientIdentity::response($row['patient'], false),

@@ -101,6 +101,13 @@ class RhuWalkInRegistrationTest extends TestCase
         $this->assertSame(0, RhuVisitQueueEntry::count());
     }
 
+    public function test_empty_check_in_command_is_422(): void
+    {
+        $this->register(['check_in' => []])->assertUnprocessable()->assertJsonValidationErrors('check_in');
+
+        $this->assertSame(0, Patient::count());
+    }
+
     public function test_reserved_prefix_key_is_422_and_creates_no_patient(): void
     {
         $this->register(['check_in' => ['key' => 'referral-9']])->assertUnprocessable();

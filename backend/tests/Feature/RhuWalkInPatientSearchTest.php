@@ -85,6 +85,33 @@ class RhuWalkInPatientSearchTest extends TestCase
         $this->search('%')->assertJsonCount(0, 'data');
     }
 
+    public function test_search_ignores_case_including_accented_letters(): void
+    {
+        $nino = $this->patient('Niño', 'Reyes');
+
+        // PostgreSQL LIKE is case-sensitive, so the match must not depend on the driver.
+        $this->search('NIÑO REYES')->assertOk()->assertJsonPath('data.*.id', [$nino->id]);
+        $this->search('niño')->assertJsonPath('data.*.id', [$nino->id]);
+    }
+
+    public function test_escape_characters_in_the_query_match_literally(): void
+    {
+        $bang = $this->patient('Wow!', 'Wow');
+        $this->patient('Wowza', 'Wow');
+
+        $this->search('Wow!')->assertJsonPath('data.*.id', [$bang->id]);
+        $this->search('\\')->assertOk()->assertJsonCount(0, 'data');
+        $this->search('!')->assertJsonPath('data.*.id', [$bang->id]);
+    }
+
+    public function test_invalid_or_oversized_query_is_a_validation_error(): void
+    {
+        Sanctum::actingAs($this->nurse, ['akay:access']);
+
+        $this->getJson('/api/rhu-visits/patient-search?q[]=x')->assertUnprocessable()->assertJsonValidationErrors('q');
+        $this->getJson('/api/rhu-visits/patient-search?q='.str_repeat('a', 101))->assertUnprocessable()->assertJsonValidationErrors('q');
+    }
+
     public function test_scope_and_status(): void
     {
         $own = $this->patient('Scope', 'Own');
