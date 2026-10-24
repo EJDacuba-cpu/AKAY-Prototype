@@ -35,12 +35,26 @@ class RhuVisitQueueService
      */
     public function checkIn(User $user, int $patientId, ?int $referralId, string $checkInKey): array
     {
+        return $this->performCheckIn($user, $patientId, $referralId, $checkInKey, false);
+    }
+
+    /**
+     * @return array{entry: RhuVisitQueueEntry, created: bool}
+     */
+    private function performCheckIn(User $user, int $patientId, ?int $referralId, string $checkInKey, bool $allowReservedKey): array
+    {
         $rhuId = $this->authorizeRhuUser($user);
 
         $key = trim($checkInKey);
         if ($key === '' || mb_strlen($key) > self::KEY_MAX_LENGTH) {
             throw ValidationException::withMessages([
                 'check_in_key' => ['A check-in key of at most '.self::KEY_MAX_LENGTH.' characters is required.'],
+            ]);
+        }
+        // Arrival keys are derived from the referral; clients may not claim that namespace.
+        if (! $allowReservedKey && str_starts_with($key, self::ARRIVAL_KEY_PREFIX)) {
+            throw ValidationException::withMessages([
+                'check_in_key' => ['This check-in key is reserved.'],
             ]);
         }
 
@@ -129,11 +143,12 @@ class RhuVisitQueueService
         }
 
         try {
-            return $this->checkIn(
+            return $this->performCheckIn(
                 $user,
                 (int) $referral->patient_id,
                 (int) $referral->id,
-                self::ARRIVAL_KEY_PREFIX.$referral->id
+                self::ARRIVAL_KEY_PREFIX.$referral->id,
+                true
             )['entry'];
         } catch (RhuVisitDuplicateActiveException $exception) {
             // A concurrent check-in committed after our lookup; link the winner instead.

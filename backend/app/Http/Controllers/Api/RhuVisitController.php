@@ -26,6 +26,20 @@ class RhuVisitController extends Controller
         return response()->json(['data' => $entries->map(fn (RhuVisitQueueEntry $entry): array => $this->present($entry))->values()]);
     }
 
+    /** Walk-in check-in of an existing patient; a referral is never accepted here. */
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'patient_id' => ['required', 'integer'],
+            'check_in_key' => ['required', 'string', 'max:100'],
+        ]);
+
+        $result = $this->visits->checkIn($request->user(), $data['patient_id'], null, $data['check_in_key']);
+        $entry = $result['entry']->load(['patient', 'referral.barangayHealthCenter']);
+
+        return response()->json(['data' => $this->present($entry)], $result['created'] ? 201 : 200);
+    }
+
     public function show(Request $request, int $visit)
     {
         $entry = $this->visits->find($request->user(), $visit)->load(['patient', 'referral.barangayHealthCenter']);

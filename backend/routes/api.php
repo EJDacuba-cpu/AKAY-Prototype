@@ -150,6 +150,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::middleware('role:rhu')->group(function () {
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
             Route::get('/rhu-visits', [RhuVisitController::class, 'index']);
+            Route::post('/rhu-visits', [RhuVisitController::class, 'store']);
             Route::get('/rhu-visits/{visit}', [RhuVisitController::class, 'show'])->whereNumber('visit');
             Route::get('/reports/rhu', [ReportController::class, 'rhu']);
         });
