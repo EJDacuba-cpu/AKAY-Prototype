@@ -4,6 +4,7 @@ import {
   duplicatePrompt,
   isCheckInFlow,
   newCheckInKey,
+  newWalkIn,
   postSaveDestination,
   withCheckIn,
 } from './walkInRegistration.js';
@@ -57,4 +58,24 @@ test('other errors are not duplicate prompts', () => {
 test('after saving, the walk-in flow returns to the patients list and others open the profile', () => {
   assert.equal(postSaveDestination({ checkIn: true, patientsPath: '/rhu/patients', patientId: '9' }), '/rhu/patients');
   assert.equal(postSaveDestination({ checkIn: false, patientsPath: '/rhu/patients', patientId: '9' }), '/rhu/patients/9');
+});
+
+test('each walk-in registration gets its own key, so Register Another never reuses one', () => {
+  let counter = 0;
+  const makeId = () => `id-${++counter}`;
+  const first = newWalkIn(makeId);
+  const second = newWalkIn(makeId);
+  assert.deepEqual(first, { key: 'id-1' });
+  assert.deepEqual(second, { key: 'id-2' });
+});
+
+test('the default key source still works where randomUUID is unavailable', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', { value: { getRandomValues: (bytes) => bytes.fill(7) }, configurable: true });
+  try {
+    const key = newCheckInKey();
+    assert.match(key, /^[0-9a-f-]{20,}$/);
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', original);
+  }
 });

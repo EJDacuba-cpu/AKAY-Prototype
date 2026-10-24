@@ -9,7 +9,7 @@ import { getHouseholdById, getHouseholds } from '../../services/householdService
 import { createPatient, updatePatient, getPatientById } from '../../services/patientService';
 import { householdPayload, householdRegistry, normalizeHousehold, normalizeHouseholdPatient } from '../../utils/householdData';
 import { queryKeys } from '../../utils/queryKeys';
-import { isCheckInFlow, newCheckInKey, withCheckIn } from '../../utils/walkInRegistration';
+import { isCheckInFlow, newWalkIn, withCheckIn } from '../../utils/walkInRegistration';
 
 export default function BhcPatientRegistration({ role = 'bhc', ...props }) {
   const scope=useHouseholdScope(role);
@@ -20,7 +20,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const [params]=useSearchParams();
   const initialHouseholdId=params.get('household');
   // Walk-in flow: one key per registration page, so a re-sent save is recognised by the server.
-  const [walkIn]=useState(() => role === 'rhu' && !patientId && isCheckInFlow(params.toString()) ? {key:newCheckInKey()} : null);
+  const [walkIn,setWalkIn]=useState(() => role === 'rhu' && !patientId && isCheckInFlow(params.toString()) ? newWalkIn() : null);
   const [known,setKnown]=useState([]);
   const [results,setResults]=useState([]);
   const [searchState,setSearchState]=useState({loading:false,error:''});
@@ -61,7 +61,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending);
   const error=(!patient.data && patient.error) || (!selected.data && selected.error);
   if(waiting || error) return <DashboardLayout role={role} title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
-  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} live
+  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} onNewWalkIn={()=>setWalkIn(newWalkIn())} live
     initialConnection={!patientId && selected.data ? {kind:'existing',householdId:selected.data.id,relationship:''} : undefined}
     onSearch={search} searchResults={results} searchLoading={searchState.loading} searchError={searchState.error}
     refreshError={Boolean(patient.error || selected.error)} onRefresh={()=>{if(patientId)patient.refetch();if(selectedId)selected.refetch();}} />;

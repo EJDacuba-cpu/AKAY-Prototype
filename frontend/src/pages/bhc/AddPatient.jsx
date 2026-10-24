@@ -170,7 +170,7 @@ export function RegistrationForm({
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
   registry, savedPatientOverride, savePatient, live = false, householdEnabled = true, initialConnection,
   onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
-  walkIn,
+  walkIn, onNewWalkIn,
 }) {
   const navigate = useNavigate();
   const [createdPatientId, setCreatedPatientId] = useState("");
@@ -462,6 +462,11 @@ function handleBirthDateChange(valueOrEvent) {
         setModals((current) => ({ ...current, confirm: false }));
         return;
       }
+      if (walkIn && error?.code === "VISIT_CHECK_IN_KEY_CONFLICT") {
+        toast.error("This walk-in was already registered and checked in. Check the patient list before registering again.");
+        setModals((current) => ({ ...current, confirm: false }));
+        return;
+      }
       const mapped = registrationErrors(error);
       setFieldErrors((current) => ({ ...current, ...mapped }));
       setModals((current) => ({ ...current, confirm: false }));
@@ -477,6 +482,8 @@ function handleBirthDateChange(valueOrEvent) {
     setCreatedPatientId("");
     setFieldErrors({});
     setModals({ confirm: false, success: false });
+    // A new registration is a new visit: it must not reuse the previous check-in key.
+    if (walkIn) onNewWalkIn?.();
     navigate(walkIn ? `${patientsPath}/add?check_in=1` : `${patientsPath}/add`);
   }
 
@@ -487,7 +494,13 @@ function handleBirthDateChange(valueOrEvent) {
       setDuplicates(null);
       navigate(patientsPath);
     } catch (error) {
-      toast.error(error.message || "Unable to check this patient in.");
+      if (error?.code === "VISIT_ALREADY_ACTIVE") {
+        // Another desk checked this patient in first; the outcome is the same as ours.
+        setDuplicates(null);
+        navigate(patientsPath);
+      } else {
+        toast.error(error.message || "Unable to check this patient in.");
+      }
     } finally {
       setSaving(false);
     }
