@@ -124,6 +124,25 @@ class RhuVisitQueueService
      */
     public function recordReferralArrival(User $user, Referral $referral): RhuVisitQueueEntry
     {
+        if ($active = $this->linkActiveVisit($referral)) {
+            return $active;
+        }
+
+        try {
+            return $this->checkIn(
+                $user,
+                (int) $referral->patient_id,
+                (int) $referral->id,
+                self::ARRIVAL_KEY_PREFIX.$referral->id
+            )['entry'];
+        } catch (RhuVisitDuplicateActiveException $exception) {
+            // A concurrent check-in committed after our lookup; link the winner instead.
+            return $this->linkActiveVisit($referral) ?? throw $exception;
+        }
+    }
+
+    private function linkActiveVisit(Referral $referral): ?RhuVisitQueueEntry
+    {
         $active = RhuVisitQueueEntry::query()
             ->active()
             ->where('rural_health_unit_id', $referral->rural_health_unit_id)
@@ -131,20 +150,11 @@ class RhuVisitQueueService
             ->lockForUpdate()
             ->first();
 
-        if ($active !== null) {
-            if ($active->referral_id === null) {
-                $active->update(['referral_id' => $referral->id]);
-            }
-
-            return $active;
+        if ($active !== null && $active->referral_id === null) {
+            $active->update(['referral_id' => $referral->id]);
         }
 
-        return $this->checkIn(
-            $user,
-            (int) $referral->patient_id,
-            (int) $referral->id,
-            self::ARRIVAL_KEY_PREFIX.$referral->id
-        )['entry'];
+        return $active;
     }
 
     /**

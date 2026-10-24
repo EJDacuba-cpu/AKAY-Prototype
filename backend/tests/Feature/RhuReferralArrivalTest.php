@@ -10,8 +10,11 @@ use App\Models\RhuVisitQueueEntry;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\FacilityAccessService;
 use App\Services\ReferralService;
+use App\Services\RhuVisitQueueService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -169,6 +172,33 @@ class RhuReferralArrivalTest extends TestCase
         $this->receive($this->referral($patient))->assertOk();
 
         $this->assertSame($this->rhu->id, $patient->fresh()->rural_health_unit_id);
+    }
+
+    public function test_arrival_that_loses_a_race_links_the_winning_walk_in_visit(): void
+    {
+        $patient = $this->patient();
+        $referral = $this->referral($patient);
+        // A concurrent walk-in check-in commits between our lookup and our insert.
+        $service = new class(app(FacilityAccessService::class), $this->rhu->id, $patient->id) extends RhuVisitQueueService
+        {
+            public function __construct(FacilityAccessService $facilityAccess, private readonly int $rhuId, private readonly int $patientId)
+            {
+                parent::__construct($facilityAccess);
+            }
+
+            protected function insert(array $attributes): RhuVisitQueueEntry
+            {
+                DB::table('rhu_visit_queue_entries')->insert(['rural_health_unit_id' => $this->rhuId, 'patient_id' => $this->patientId, 'source' => 'walk_in', 'status' => 'waiting', 'checked_in_at' => now(), 'check_in_key' => 'winner', 'created_at' => now(), 'updated_at' => now()]);
+
+                return parent::insert($attributes);
+            }
+        };
+
+        $entry = DB::transaction(fn () => $service->recordReferralArrival($this->nurse, $referral));
+
+        $this->assertSame('winner', $entry->check_in_key);
+        $this->assertSame($referral->id, $entry->fresh()->referral_id);
+        $this->assertSame(1, RhuVisitQueueEntry::count());
     }
 
     public function test_inactive_patient_arrival_is_refused_and_rolled_back(): void
