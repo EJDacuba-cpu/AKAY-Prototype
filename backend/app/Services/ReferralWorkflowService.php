@@ -21,7 +21,8 @@ class ReferralWorkflowService
         private readonly AuditLogger $auditLogger,
         private readonly AkayCacheService $cache,
         private readonly PatientConditions $patientConditions,
-        private readonly LegacyMonitoringReview $legacyMonitoringReview
+        private readonly LegacyMonitoringReview $legacyMonitoringReview,
+        private readonly RhuVisitQueueService $visitQueue
     ) {
     }
 
@@ -79,6 +80,8 @@ class ReferralWorkflowService
 
             if ($requested === Referral::STATUS_RECEIVED) {
                 $this->linkPatientToReceivingRhu($referral);
+                // D3: arrival enters today's queue in this same transaction.
+                $this->visitQueue->recordReferralArrival($request->user(), $referral);
                 $this->notifyReceived($referral, $lateArrival);
             }
 
@@ -297,6 +300,12 @@ class ReferralWorkflowService
     private function linkPatientToReceivingRhu(Referral $referral): void
     {
         $referral->loadMissing('patient');
+
+        // A BHC household member must keep exactly one owning facility
+        // (patients_household_facility_exclusive); RHU access comes from the referral.
+        if ($referral->patient?->household_id !== null && $referral->patient?->barangay_health_center_id !== null) {
+            return;
+        }
 
         if ($referral->patient
             && (int) $referral->patient->rural_health_unit_id !== (int) $referral->rural_health_unit_id) {

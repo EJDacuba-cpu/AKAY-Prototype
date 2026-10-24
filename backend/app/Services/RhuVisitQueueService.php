@@ -23,6 +23,9 @@ class RhuVisitQueueService
 
     private const KEY_MAX_LENGTH = 100;
 
+    /** One referral arrives once, so its arrival key is derived from the referral. */
+    public const ARRIVAL_KEY_PREFIX = 'referral-';
+
     public function __construct(private readonly FacilityAccessService $facilityAccess)
     {
     }
@@ -112,6 +115,36 @@ class RhuVisitQueueService
             ->orderBy('checked_in_at')
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * D3/D4: called inside ReferralWorkflowService::transition() when a referral
+     * becomes Received. An active visit already in the queue gains the referral
+     * link when it has none, and is otherwise left as it is.
+     */
+    public function recordReferralArrival(User $user, Referral $referral): RhuVisitQueueEntry
+    {
+        $active = RhuVisitQueueEntry::query()
+            ->active()
+            ->where('rural_health_unit_id', $referral->rural_health_unit_id)
+            ->where('patient_id', $referral->patient_id)
+            ->lockForUpdate()
+            ->first();
+
+        if ($active !== null) {
+            if ($active->referral_id === null) {
+                $active->update(['referral_id' => $referral->id]);
+            }
+
+            return $active;
+        }
+
+        return $this->checkIn(
+            $user,
+            (int) $referral->patient_id,
+            (int) $referral->id,
+            self::ARRIVAL_KEY_PREFIX.$referral->id
+        )['entry'];
     }
 
     /**
