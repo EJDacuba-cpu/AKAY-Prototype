@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,12 +32,7 @@ class RhuVisitQueueService
      */
     public function checkIn(User $user, int $patientId, ?int $referralId, string $checkInKey): array
     {
-        abort_unless(
-            $user->isRhu() && $this->facilityAccess->hasValidFacilityAssignment($user),
-            403,
-            self::DENIED_MESSAGE
-        );
-        $rhuId = (int) $user->rural_health_unit_id;
+        $rhuId = $this->authorizeRhuUser($user);
 
         $key = trim($checkInKey);
         if ($key === '' || mb_strlen($key) > self::KEY_MAX_LENGTH) {
@@ -91,6 +87,33 @@ class RhuVisitQueueService
         return ['entry' => $entry, 'created' => true];
     }
 
+    /** Another RHU's visit is reported as not found. */
+    public function find(User $user, int $entryId): RhuVisitQueueEntry
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+
+        return RhuVisitQueueEntry::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->whereKey($entryId)
+            ->firstOrFail();
+    }
+
+    /**
+     * @return Collection<int, RhuVisitQueueEntry>
+     */
+    public function list(User $user, bool $activeOnly = true): Collection
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+
+        return RhuVisitQueueEntry::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->when($activeOnly, fn ($query) => $query->active())
+            ->with('patient')
+            ->orderBy('checked_in_at')
+            ->orderBy('id')
+            ->get();
+    }
+
     /**
      * The only write. Its own transaction becomes a savepoint inside a caller's
      * transaction, so a unique violation on PostgreSQL does not abort the caller.
@@ -98,6 +121,18 @@ class RhuVisitQueueService
     protected function insert(array $attributes): RhuVisitQueueEntry
     {
         return DB::transaction(fn (): RhuVisitQueueEntry => RhuVisitQueueEntry::create($attributes));
+    }
+
+    /** Only RHU staff with an active facility assignment; returns their RHU id. */
+    private function authorizeRhuUser(User $user): int
+    {
+        abort_unless(
+            $user->isRhu() && $this->facilityAccess->hasValidFacilityAssignment($user),
+            403,
+            self::DENIED_MESSAGE
+        );
+
+        return (int) $user->rural_health_unit_id;
     }
 
     /**

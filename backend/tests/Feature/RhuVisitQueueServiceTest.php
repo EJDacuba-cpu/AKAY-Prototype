@@ -348,4 +348,98 @@ class RhuVisitQueueServiceTest extends TestCase
         $this->assertNotSame($first->id, $second['entry']->id);
         $this->assertSame(2, RhuVisitQueueEntry::where('patient_id', $patient->id)->count());
     }
+
+    private function entry(RuralHealthUnit $rhu, Patient $patient, array $attributes = []): RhuVisitQueueEntry
+    {
+        return RhuVisitQueueEntry::create([
+            'rural_health_unit_id' => $rhu->id,
+            'patient_id' => $patient->id,
+            'source' => RhuVisitQueueEntry::SOURCE_WALK_IN,
+            'status' => RhuVisitQueueEntry::STATUS_WAITING,
+            'checked_in_at' => now(),
+            'check_in_key' => uniqid('key-', true),
+            ...$attributes,
+        ]);
+    }
+
+    public function test_find_returns_own_rhu_entry(): void
+    {
+        $rhu = $this->rhu();
+        $patient = $this->patient(['rural_health_unit_id' => $rhu->id]);
+        $entry = $this->entry($rhu, $patient);
+
+        $found = $this->service()->find($this->rhuUser($rhu), $entry->id);
+
+        $this->assertSame($entry->id, $found->id);
+        $this->assertSame($patient->id, $found->patient->id);
+    }
+
+    public function test_find_hides_other_rhu_entry(): void
+    {
+        $otherRhu = $this->rhu();
+        $entry = $this->entry($otherRhu, $this->patient(['rural_health_unit_id' => $otherRhu->id]));
+
+        $this->expectException(ModelNotFoundException::class);
+        $this->service()->find($this->rhuUser($this->rhu()), $entry->id);
+    }
+
+    public function test_find_and_list_deny_bhc_admin_and_inactive_facility(): void
+    {
+        $rhu = $this->rhu();
+        $entry = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]));
+
+        foreach ([$this->bhcUser(), $this->adminUser(), $this->rhuUser($this->rhu('inactive'))] as $user) {
+            $this->assertForbidden(fn () => $this->service()->find($user, $entry->id));
+            $this->assertForbidden(fn () => $this->service()->list($user));
+        }
+    }
+
+    public function test_list_returns_only_own_active_entries_oldest_first(): void
+    {
+        $rhu = $this->rhu();
+        $otherRhu = $this->rhu();
+        $nine = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]), ['checked_in_at' => now()->setTime(1, 0)]);
+        $eight = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]), ['checked_in_at' => now()->setTime(0, 0)]);
+        $this->entry($otherRhu, $this->patient(['rural_health_unit_id' => $otherRhu->id]), ['checked_in_at' => now()->setTime(0, 30)]);
+        $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]), ['checked_in_at' => now()->setTime(0, 15), 'closed_at' => now()]);
+
+        $list = $this->service()->list($this->rhuUser($rhu));
+
+        $this->assertSame([$eight->id, $nine->id], $list->pluck('id')->all());
+        $this->assertTrue($list->first()->relationLoaded('patient'));
+    }
+
+    public function test_list_with_active_only_false_includes_closed_entries(): void
+    {
+        $rhu = $this->rhu();
+        $otherRhu = $this->rhu();
+        $open = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]));
+        $closed = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]), ['closed_at' => now()]);
+        $this->entry($otherRhu, $this->patient(['rural_health_unit_id' => $otherRhu->id]), ['closed_at' => now()]);
+
+        $ids = $this->service()->list($this->rhuUser($rhu), false)->pluck('id')->all();
+
+        $this->assertEqualsCanonicalizing([$open->id, $closed->id], $ids);
+    }
+
+    public function test_list_breaks_checked_in_at_ties_by_id(): void
+    {
+        $rhu = $this->rhu();
+        $first = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]));
+        $second = $this->entry($rhu, $this->patient(['rural_health_unit_id' => $rhu->id]));
+
+        $this->assertSame([$first->id, $second->id], $this->service()->list($this->rhuUser($rhu))->pluck('id')->all());
+    }
+
+    public function test_repeat_visits_both_listed_when_including_closed(): void
+    {
+        $rhu = $this->rhu();
+        $patient = $this->patient(['rural_health_unit_id' => $rhu->id]);
+        $earlier = $this->entry($rhu, $patient, ['checked_in_at' => now()->subHour(), 'closed_at' => now()->subMinutes(30)]);
+        $later = $this->entry($rhu, $patient);
+        $user = $this->rhuUser($rhu);
+
+        $this->assertSame([$earlier->id, $later->id], $this->service()->list($user, false)->pluck('id')->all());
+        $this->assertSame([$later->id], $this->service()->list($user)->pluck('id')->all());
+    }
 }
