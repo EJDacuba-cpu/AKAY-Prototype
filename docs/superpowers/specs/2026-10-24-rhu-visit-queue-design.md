@@ -104,6 +104,7 @@ Walk-in (existing / new) ──► rhu_visit_queue_entries ── Start ──�
 | O3 | Locking submitted intake and audited corrections at RHU. Provisional; needs its own design review. May reuse `health_record_corrections`. | 6 |
 | O4 | A disposable PostgreSQL for concurrency verification. Without it, PostgreSQL-specific behaviour is reported as unverified. | 8 |
 | O5 | Name of the intake permission key (proposed `rhu.intake`) and which existing routes move from `rhu.manage` to it. | 5 |
+| O6 | `DELETE /referrals/{id}` hard-deletes, but `rhu_visit_queue_entries.referral_id` is `restrictOnDelete`: once a visit links a referral, that delete fails with an uncaught foreign-key error (500). Phase 1 review recommends keeping restrict and making `ReferralController::destroy` refuse with 409 when a visit links the referral (`nullOnDelete` would break the source rule for `referral` rows). Must be resolved in the Phase 2 spec. Phase 2 should also add an index on `referral_id`. | 2 |
 
 ---
 
