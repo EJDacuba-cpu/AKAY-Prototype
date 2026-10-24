@@ -808,14 +808,18 @@ class MedicineInventoryWorkflowTest extends TestCase
             'rural_health_unit_id' => $this->rhu->id,
         ]);
         $medicine = $this->medicine('RHU Inventory Item', 9, null, $this->rhu->id);
+        // Even an RHU account that may finalize and dispense reaches the BHC-only dispensing guard.
+        $this->rhuStaff->update(['permissions' => [...$this->rhuStaff->permissions, 'clinical.history', 'consultations.finalize']]);
 
         $this->actingAs($this->rhuStaff, 'sanctum')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
             ->postJson('/api/health-records', [
                 'patient_id' => $patient->id,
                 'category' => 'General Consultation',
+                'chief_complaint' => 'RHU dispensing guard check',
                 'dispensed_medicines' => [[
                     'medicine_id' => $medicine->id,
+                    'confirmed_given' => true,
                     'quantity' => 2,
                 ]],
             ])

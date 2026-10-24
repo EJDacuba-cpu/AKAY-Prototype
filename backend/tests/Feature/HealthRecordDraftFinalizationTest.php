@@ -295,7 +295,8 @@ class HealthRecordDraftFinalizationTest extends TestCase
                 // chief_complaint is required on POST (HealthRecordRequest.php:281).
                 'chief_complaint' => 'Atomic finalization visit.',
             ])
-            ->assertNotFound();
+            // A shared BHC encounter: the colleague finds it but does not hold its edit lease.
+            ->assertConflict();
 
         $otherFacilityDraft = $this->createDraft();
         $this->actingAs($this->otherBhcUser, 'sanctum')

@@ -141,6 +141,7 @@ class HealthRecordIdempotencyTest extends TestCase
         $payload = $this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 4,
             ]],
         ]);
@@ -152,14 +153,17 @@ class HealthRecordIdempotencyTest extends TestCase
         $this->assertSame(6, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_record_medicines', 1);
 
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $expired = $this->medicine(10);
+        $expired->update(['expiration_date' => now()->subDay()->toDateString()]);
         $this->postRecord($this->payload([
-            'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
-                'quantity' => 99,
-            ]],
+            'dispensed_medicines' => [
+                ['medicine_id' => $medicine->id, 'confirmed_given' => true, 'quantity' => 1],
+                ['medicine_id' => $expired->id, 'confirmed_given' => true, 'quantity' => 1],
+            ],
         ]), (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(6, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 1);
@@ -231,7 +235,10 @@ class HealthRecordIdempotencyTest extends TestCase
 
         $this->assertDatabaseCount('referrals', 1);
         $this->assertDatabaseCount('referral_updates', 1);
-        $this->assertSame(2, UserNotification::where('related_referral_id', $referralId)->count());
+        // Recipients: both RHU accounts (the seeded available doctor included) and the submitting BHW.
+        $notifications = UserNotification::where('related_referral_id', $referralId)->get();
+        $this->assertCount(3, $notifications);
+        $this->assertCount(3, $notifications->unique(fn ($notification) => $notification->user_id.'|'.$notification->type));
         $this->assertSame(1, AuditLog::where('module', 'referrals')->count());
         $this->assertSame(1, AuditLog::where('module', 'health_records')->count());
     }
@@ -278,6 +285,7 @@ class HealthRecordIdempotencyTest extends TestCase
             'monitoring_data' => ['followUpTaskId' => 999999],
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ]);

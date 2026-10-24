@@ -28,6 +28,7 @@ class BrowserSessionPrivacyTest extends TestCase
             'email' => 'privacy-bhw@example.test',
             'password' => bcrypt('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);

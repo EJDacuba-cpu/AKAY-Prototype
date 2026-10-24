@@ -54,6 +54,7 @@ class ClinicalFlowEndToEndTest extends TestCase
             'email' => 'flow-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
         ]);
@@ -222,6 +223,7 @@ class ClinicalFlowEndToEndTest extends TestCase
                 'date_recorded' => '2026-09-19 09:00:00',
                 'category' => 'General Consultation',
                 'chief_complaint' => 'Cough and colds',
+                'diagnosis' => 'Assessed at BHC',
                 ...$overrides,
             ]);
     }

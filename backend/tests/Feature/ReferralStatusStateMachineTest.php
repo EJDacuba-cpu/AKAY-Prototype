@@ -440,6 +440,7 @@ class ReferralStatusStateMachineTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

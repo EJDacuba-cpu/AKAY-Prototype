@@ -33,6 +33,7 @@ class ConsultationProgramsTest extends TestCase
         $response = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'Maternal',
+            'chief_complaint' => 'Prenatal visit',
             'monitoring_data' => ['selectedPrograms' => ['Maternal', 'Family Planning'], 'primaryProgram' => 'Maternal'],
             'maternal_data' => ['lmp' => '2026-08-01'],
             'family_planning_data' => ['methodUsed' => 'Condom'],
@@ -353,6 +354,7 @@ class ConsultationProgramsTest extends TestCase
         $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'General Consultation',
+            'chief_complaint' => 'Follow-up visit',
             'history_of_present_illness' => 'New visit HPI',
         ])->assertCreated();
 

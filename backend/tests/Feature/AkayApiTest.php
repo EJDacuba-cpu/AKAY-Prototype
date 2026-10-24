@@ -98,6 +98,7 @@ class AkayApiTest extends TestCase
             'email' => 'medicine-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'permissions' => ['inventory.view', 'inventory.manage'],
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -414,6 +415,7 @@ class AkayApiTest extends TestCase
             'email' => 'referral-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -547,6 +549,7 @@ class AkayApiTest extends TestCase
             'email' => 'idempotent-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -591,7 +594,8 @@ class AkayApiTest extends TestCase
         $this->assertDatabaseCount('referral_updates', 1);
         $this->assertDatabaseHas('notifications', ['type' => 'incoming_referral']);
         $this->assertDatabaseHas('notifications', ['type' => 'referral_submitted']);
-        $this->assertDatabaseCount('notifications', 2);
+        // One each: the seeded available doctor and the RHU staff (incoming), and the BHW (submitted).
+        $this->assertDatabaseCount('notifications', 3);
         $this->assertDatabaseCount('audit_logs', 1);
     }
 
@@ -666,6 +670,7 @@ class AkayApiTest extends TestCase
             'email' => 'family-planning-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -724,6 +729,7 @@ class AkayApiTest extends TestCase
             'email' => 'empty-report@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);

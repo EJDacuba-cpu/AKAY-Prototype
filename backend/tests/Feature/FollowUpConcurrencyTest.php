@@ -250,9 +250,12 @@ class FollowUpConcurrencyTest extends TestCase
     {
         [$parent, $task] = $this->scheduledFollowUp();
         $medicine = $this->medicine(2);
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $medicine->update(['expiration_date' => now()->subDay()->toDateString()]);
         $payload = $this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 3,
             ]],
             'monitoring_data' => [
@@ -264,8 +267,8 @@ class FollowUpConcurrencyTest extends TestCase
         ]);
 
         $this->postRecord($this->bhw, $payload, (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
         $this->assertNull($task->fresh()->fulfilled_at);
@@ -362,6 +365,7 @@ class FollowUpConcurrencyTest extends TestCase
             'parent_health_record_id' => $parent->id,
             'category' => $parent->category,
             'chief_complaint' => 'Scheduled return visit',
+            'diagnosis' => 'Assessed at BHC',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Routine Monitoring',

@@ -123,6 +123,7 @@ class ReferralQrSecurityTest extends TestCase
             'email' => 'unassigned-qr-rhu@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_RHU,
+            'staff_role' => 'nurse',
             'status' => User::STATUS_ACTIVE,
         ]);
         $this->actingAs($unassigned, 'sanctum')
@@ -282,8 +283,8 @@ class ReferralQrSecurityTest extends TestCase
             ->assertForbidden();
         $this->actingAs($admin, 'sanctum')
             ->postJson('/api/referrals/qr/resolve', ['token' => $token])
-            ->assertNotFound()
-            ->assertJsonPath('code', 'QR_LOOKUP_FAILED');
+            // Denied by duty (rhu.manage) before any token lookup, so token validity is never revealed.
+            ->assertForbidden();
     }
 
     public function test_qr_resolution_rate_limit_allows_normal_use_and_hides_token_validity_when_exceeded(): void
@@ -394,6 +395,7 @@ class ReferralQrSecurityTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => $status,
             'barangay_health_center_id' => $role === User::ROLE_BHC ? $facilityId : null,
             'rural_health_unit_id' => $role === User::ROLE_RHU ? $facilityId : null,

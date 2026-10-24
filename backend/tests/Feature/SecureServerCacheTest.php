@@ -9,6 +9,7 @@ use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\AkayCacheService;
+use App\Services\StaffRoles;
 use App\Services\ReferralWorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -116,6 +117,7 @@ class SecureServerCacheTest extends TestCase
             'category',
             'description',
             'quantity',
+            'reconciliation_required',
             'low_stock_threshold',
             'unit',
             'availability_status',
@@ -261,8 +263,10 @@ class SecureServerCacheTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $patient->id,
                 'category' => 'General Consultation',
+                'chief_complaint' => 'Cache invalidation check',
                 'dispensed_medicines' => [[
                     'medicine_id' => $medicine->id,
+                    'confirmed_given' => true,
                     'quantity' => 2,
                 ]],
             ])
@@ -402,10 +406,11 @@ class SecureServerCacheTest extends TestCase
                 'patient_id' => $patient->id,
                 'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Overdue cache invalidation test.',
-                'referral_datetime' => now()->subDay()->toISOString(),
             ])
             ->assertCreated()
             ->json('data.id');
+        // The server stamps referral_datetime at submission; age it to make the referral overdue.
+        Referral::whereKey($noShowId)->update(['referral_datetime' => now()->subDay()]);
         $this->primeReportCache($this->bhwA, '/api/reports/bhc');
         $this->assertTrue(app(ReferralWorkflowService::class)->markNoShow((int) $noShowId));
         $this->actingAs($this->bhwA, 'sanctum')
@@ -547,6 +552,9 @@ class SecureServerCacheTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
+            // These tests mutate inventory, which is a separate duty from the clinical defaults.
+            'permissions' => $this->staffRoleFor($role) ? [...StaffRoles::defaults($this->staffRoleFor($role)), 'inventory.manage'] : null,
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

@@ -146,13 +146,14 @@ class HealthRecordDraftTest extends TestCase
         );
     }
 
-    public function test_other_users_roles_and_invalid_facility_assignments_cannot_access_draft(): void
+    public function test_other_facilities_roles_and_invalid_facility_assignments_cannot_access_draft(): void
     {
         $publicId = $this->createDraft();
 
+        // A same-BHC colleague may open the shared encounter; edit leases govern writes.
         $this->actingAs($this->bhwSameBhc, 'sanctum')
             ->getJson("/api/health-record-drafts/{$publicId}")
-            ->assertNotFound();
+            ->assertOk();
         $this->actingAs($this->bhwB, 'sanctum')
             ->getJson("/api/health-record-drafts/{$publicId}")
             ->assertNotFound();
@@ -386,7 +387,8 @@ class HealthRecordDraftTest extends TestCase
 
     public function test_official_failure_keeps_draft_active_and_successful_commit_consumes_it(): void
     {
-        $this->medicineA->update(['quantity' => 1, 'availability_status' => 'Low Stock']);
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $this->medicineA->update(['quantity' => 3, 'expiration_date' => now()->subDay()->toDateString()]);
         $publicId = $this->createDraft($this->draftPayload('Official draft', 2));
         $idempotencyKey = (string) Str::uuid();
         $official = [
@@ -395,28 +397,33 @@ class HealthRecordDraftTest extends TestCase
             'chief_complaint' => 'Official save from draft.',
             'dispensed_medicines' => [[
                 'medicine_id' => $this->medicineA->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ];
+        $version = fn (): string => (string) HealthRecordDraft::where('public_id', $publicId)->value('version');
 
         $this->actingAs($this->bhwA, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $idempotencyKey,
                 'X-Health-Record-Draft-ID' => $publicId,
+                'X-Draft-Version' => $version(),
             ])
             ->postJson('/api/health-records', $official)
-            ->assertConflict();
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
         $this->assertDatabaseHas('health_record_drafts', [
             'public_id' => $publicId,
             'status' => HealthRecordDraft::STATUS_ACTIVE,
         ]);
         $this->assertDatabaseCount('health_records', 0);
 
-        $this->medicineA->update(['quantity' => 3, 'availability_status' => 'Available']);
+        $this->medicineA->update(['expiration_date' => null]);
         $this->actingAs($this->bhwA, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $idempotencyKey,
                 'X-Health-Record-Draft-ID' => $publicId,
+                'X-Draft-Version' => $version(),
             ])
             ->postJson('/api/health-records', $official)
             ->assertCreated();
@@ -676,6 +683,7 @@ class HealthRecordDraftTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

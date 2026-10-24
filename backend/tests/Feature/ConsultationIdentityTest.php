@@ -176,23 +176,21 @@ class ConsultationIdentityTest extends TestCase
             ->count());
     }
 
-    public function test_consultation_uuid_is_never_an_authorization_key(): void
+    public function test_same_bhc_colleague_with_the_consultation_uuid_is_pointed_to_the_shared_draft(): void
     {
         $uuid = (string) Str::uuid();
-        $this->createDraft($uuid)->assertCreated();
+        $ownerDraft = $this->createDraft($uuid)->assertCreated()->json('data.id');
 
-        // Another user presenting the same uuid is neither told about the
-        // owner's draft nor able to touch it; it simply gets its own.
-        $peer = $this->actingAs($this->sameBhcUser, 'sanctum')
+        // One consultation is one shared BHC encounter (edit leases decide who
+        // may write), so a colleague presenting its uuid is pointed to it
+        // instead of splitting it into a second draft.
+        $this->actingAs($this->sameBhcUser, 'sanctum')
             ->postJson('/api/health-record-drafts', $this->draftRequest($uuid))
-            ->assertCreated()
-            ->assertJsonMissingPath('draft_id');
+            ->assertConflict()
+            ->assertJsonPath('code', 'DRAFT_CONSULTATION_EXISTS')
+            ->assertJsonPath('draft_id', $ownerDraft);
 
-        $this->assertSame(2, HealthRecordDraft::where('consultation_uuid', $uuid)->count());
-        $this->assertSame(
-            $this->sameBhcUser->id,
-            HealthRecordDraft::where('public_id', $peer->json('data.id'))->value('owner_user_id')
-        );
+        $this->assertSame(1, HealthRecordDraft::where('consultation_uuid', $uuid)->count());
     }
 
     public function test_invalid_consultation_uuid_is_rejected_on_column_and_payload(): void
@@ -462,10 +460,14 @@ class ConsultationIdentityTest extends TestCase
 
     private function finalize(string $key, ?string $draftId, array $payload)
     {
+        // Finalizing from a draft requires the draft's current version (HealthRecordDraftService::lockForOfficialSave).
+        $version = $draftId === null ? null : HealthRecordDraft::where('public_id', $draftId)->value('version');
+
         return $this->actingAs($this->owner, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $key,
                 ...($draftId !== null ? ['X-Health-Record-Draft-ID' => $draftId] : []),
+                ...($version !== null ? ['X-Draft-Version' => (string) $version] : []),
             ])
             ->postJson('/api/health-records', $payload);
     }
@@ -478,6 +480,7 @@ class ConsultationIdentityTest extends TestCase
             'chief_complaint' => 'Identity finalization visit.',
             'dispensed_medicines' => [[
                 'medicine_id' => $this->medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ];
@@ -490,6 +493,7 @@ class ConsultationIdentityTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
         ]);

@@ -41,7 +41,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         $this->patient = $this->patient('Scheduling', 'Patient', $this->bhc, $this->bhw);
     }
 
-    public function test_general_consultation_follow_up_required_needs_a_date_and_time(): void
+    public function test_general_consultation_follow_up_required_needs_a_date(): void
     {
         $this->postHealthRecord([
             'monitoring_data' => [
@@ -51,17 +51,6 @@ class FollowUpTaskSchedulingTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
                 'monitoring_data.followUpDate',
-            ]);
-
-        $this->postHealthRecord([
-            'monitoring_data' => [
-                'followUpStatus' => 'Follow-up Required',
-                'followUpDate' => '2026-08-07',
-            ],
-        ])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'monitoring_data.followUpTime',
             ]);
 
         $response = $this->postHealthRecord([
@@ -111,7 +100,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         );
     }
 
-    public function test_follow_up_visit_requires_time_when_scheduling_another_visit(): void
+    public function test_follow_up_visit_schedules_another_visit_at_its_time(): void
     {
         $task = $this->schedule($this->patient, $this->bhw, $this->bhc);
 
@@ -125,12 +114,6 @@ class FollowUpTaskSchedulingTest extends TestCase
             ],
         ];
 
-        $this->postHealthRecord($payload)
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'monitoring_data.followUpTime',
-            ]);
-
         $payload['monitoring_data']['followUpTime'] = '10:30';
         $response = $this->postHealthRecord($payload)->assertCreated();
 
@@ -139,6 +122,24 @@ class FollowUpTaskSchedulingTest extends TestCase
             'due_date' => '2026-08-14 00:00:00',
             'due_time' => '10:30',
             'state' => FollowUpTask::STATE_PENDING,
+        ]);
+    }
+
+    /** Follow-up date is required at finalization; the time is optional (docs/consultation-workflow-revision.md). */
+    public function test_follow_up_time_is_optional(): void
+    {
+        $this->postHealthRecord([
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => '2026-08-07',
+                'followUpReason' => 'Recheck blood pressure.',
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('follow_up_tasks', [
+            'patient_id' => $this->patient->id,
+            'due_date' => '2026-08-07 00:00:00',
+            'due_time' => null,
         ]);
     }
 
@@ -316,6 +317,7 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'patient_id' => $this->patient->id,
                 'category' => 'General Consultation',
                 'chief_complaint' => 'Routine consultation',
+                'diagnosis' => 'Assessed at BHC',
                 ...$overrides,
             ]);
     }
@@ -368,6 +370,7 @@ class FollowUpTaskSchedulingTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
         ]);

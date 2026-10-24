@@ -78,6 +78,22 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * The staff role for a fixture user that stands for full clinical staff at its tier.
+     *
+     * An account with no staff_role and no permissions gets only the most limited
+     * defaults (ActionPermissions::home), so fixtures that exercise clinical
+     * workflows must name the role they represent.
+     */
+    protected function staffRoleFor(string $role): ?string
+    {
+        return match ($role) {
+            User::ROLE_BHC => 'midwife',
+            User::ROLE_RHU => 'nurse',
+            default => null,
+        };
+    }
+
+    /**
      * Seed one official available provider for a receiving RHU.
      *
      * DOC-14 blocks referral submission whenever the receiving RHU has zero

@@ -344,8 +344,8 @@ class FacilityIsolationSecurityTest extends TestCase
             ->patchJson("/api/health-records/{$this->recordA->id}", [
                 'patient_id' => $this->patientB->id,
             ])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('patient_id');
+            // Finalized records are immutable; corrections are separate addenda.
+            ->assertConflict();
 
         $this->assertSame($this->patientA->id, $this->recordA->fresh()->patient_id);
     }
@@ -518,6 +518,7 @@ class FacilityIsolationSecurityTest extends TestCase
         $payload['dispensed_medicines'] = [[
             'medicine_id' => $this->medicineB->id,
             'quantity' => 2,
+            'confirmed_given' => true,
         ]];
 
         $this->postHealthRecord($this->bhwA, $payload)
@@ -549,6 +550,7 @@ class FacilityIsolationSecurityTest extends TestCase
             ->postJson("/api/health-records/{$this->recordA->id}/dispensed-medicines", [
                 'dispensed_medicines' => [[
                     'medicine_id' => $this->medicineB->id,
+                    'confirmed_given' => true,
                     'quantity' => 1,
                 ]],
             ])

@@ -18,14 +18,14 @@ class ApprovedFacilityPermissionsTest extends TestCase
 
     private function account(array $attributes = []): User
     {
-        return User::create([...['name' => 'Personal Account', 'email' => uniqid().'@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => BarangayHealthCenter::create(['name' => 'Home'])->id], ...$attributes]);
+        return User::create([...['name' => 'Personal Account', 'email' => uniqid().'@example.test', 'password' => 'password123', 'role' => 'bhc', 'status' => 'active', 'barangay_health_center_id' => BarangayHealthCenter::create(['name' => 'Home '.uniqid('', true)])->id], ...$attributes]);
     }
 
     public function test_encoder_cannot_browse_clinical_history_or_finalize_via_direct_api(): void
     {
         $user = $this->account();
         $patient = Patient::create(['first_name' => 'Ana', 'last_name' => 'Test', 'sex' => 'Female', 'barangay_health_center_id' => $user->barangay_health_center_id, 'medical_background' => ['allergies' => ['items' => [['allergen' => 'Private history']]]], 'created_by' => $user->id]);
-        Sanctum::actingAs($user, ['access']);
+        Sanctum::actingAs($user, ['akay:access']);
         $this->getJson('/api/patients/'.$patient->id)->assertOk()->assertJsonPath('data.first_name', 'Ana')->assertJsonMissingPath('data.medical_background')->assertJsonMissingPath('data.health_records');
         $this->getJson('/api/health-records')->assertForbidden();
         $this->getJson('/api/reports/bhc')->assertForbidden();
@@ -41,11 +41,11 @@ class ApprovedFacilityPermissionsTest extends TestCase
         $user = $this->account(['role' => 'rhu', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $home->id, 'staff_role' => 'nurse']);
         $assignment = $user->facilityAssignments()->create(['barangay_health_center_id' => $bhc->id, 'permissions' => StaffRoles::defaults('midwife'), 'starts_on' => today(), 'ends_on' => today()]);
         $patient = Patient::create(['first_name' => 'Duty', 'last_name' => 'Patient', 'sex' => 'Female', 'barangay_health_center_id' => $bhc->id, 'created_by' => $user->id]);
-        Sanctum::actingAs($user, ['access']);
+        Sanctum::actingAs($user, ['akay:access']);
         $this->getJson('/api/patients')->assertForbidden();
         $this->withHeader('X-Working-Facility', (string) $assignment->id)->getJson('/api/patients/'.$patient->id)->assertOk();
         $this->assertDatabaseHas('users', ['id' => $user->id, 'rural_health_unit_id' => $home->id, 'barangay_health_center_id' => null]);
-        $assignment->update(['ends_on' => yesterday()]);
+        $assignment->update(['ends_on' => today()->subDay()]);
         $this->getJson('/api/patients/'.$patient->id)->assertForbidden();
     }
 
@@ -54,13 +54,13 @@ class ApprovedFacilityPermissionsTest extends TestCase
         $user = $this->account();
         $other = $this->account();
         $assignment = $other->facilityAssignments()->create(['barangay_health_center_id' => $user->barangay_health_center_id, 'permissions' => StaffRoles::defaults('midwife')]);
-        Sanctum::actingAs($user, ['access']);
+        Sanctum::actingAs($user, ['akay:access']);
         $this->withHeader('X-Working-Facility', (string) $assignment->id)->getJson('/api/patients')->assertForbidden();
     }
 
     public function test_admin_has_no_automatic_clinical_finalization(): void
     {
-        Sanctum::actingAs($this->account(['role' => 'admin', 'barangay_health_center_id' => null]), ['access']);
+        Sanctum::actingAs($this->account(['role' => 'admin', 'barangay_health_center_id' => null]), ['akay:access']);
         $this->postJson('/api/health-records', [])->assertForbidden();
     }
 }
