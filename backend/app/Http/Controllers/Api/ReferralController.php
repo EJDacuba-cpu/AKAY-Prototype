@@ -10,6 +10,7 @@ use App\Http\Requests\RescheduleReferralRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\RhuVisitQueueEntry;
 use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
 use App\Services\ReferralCreationService;
@@ -222,6 +223,12 @@ class ReferralController extends Controller
     public function destroy(Request $request, Referral $referral)
     {
         $this->facilityAccess->authorizeReferral($request->user(), $referral);
+        if (RhuVisitQueueEntry::where('referral_id', $referral->id)->exists()) {
+            return response()->json([
+                'message' => 'This referral has a recorded RHU visit and cannot be deleted.',
+                'code' => 'REFERRAL_HAS_VISIT',
+            ], 409);
+        }
         $referral->delete();
         $this->cache->invalidateReferralReports($referral);
 
