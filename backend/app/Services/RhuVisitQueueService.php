@@ -181,6 +181,53 @@ class RhuVisitQueueService
         return DB::transaction(fn (): RhuVisitQueueEntry => RhuVisitQueueEntry::create($attributes));
     }
 
+    /**
+     * Patients the RHU may check in, found by every whitespace-separated token
+     * of a name, PhilHealth number or contact number. An empty query finds nothing.
+     *
+     * @return list<array{patient: Patient, active_visit_id: int|null}>
+     */
+    public function searchPatients(User $user, string $query): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $tokens = preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($tokens === []) {
+            return [];
+        }
+
+        $patients = $this->facilityAccess->scopePatients(Patient::query(), $user)
+            ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'));
+        foreach ($tokens as $token) {
+            $like = '%'.addcslashes($token, '\\%_').'%';
+            $patients->where(function ($match) use ($like): void {
+                foreach (['first_name', 'middle_name', 'last_name', 'philhealth_number', 'contact_number'] as $column) {
+                    $match->orWhereRaw("{$column} LIKE ? ESCAPE '\\'", [$like]);
+                }
+            });
+        }
+
+        return $this->withActiveVisitIds($rhuId, $patients->orderBy('id')->limit(10)->get());
+    }
+
+    /**
+     * @param  iterable<Patient>  $patients
+     * @return list<array{patient: Patient, active_visit_id: int|null}>
+     */
+    private function withActiveVisitIds(int $rhuId, iterable $patients): array
+    {
+        $patients = collect($patients);
+        $visits = RhuVisitQueueEntry::query()
+            ->active()
+            ->where('rural_health_unit_id', $rhuId)
+            ->whereIn('patient_id', $patients->pluck('id'))
+            ->pluck('id', 'patient_id');
+
+        return $patients
+            ->map(fn (Patient $patient): array => ['patient' => $patient, 'active_visit_id' => $visits[$patient->id] ?? null])
+            ->values()
+            ->all();
+    }
+
     /** Only RHU staff with an active facility assignment; returns their RHU id. */
     private function authorizeRhuUser(User $user): int
     {

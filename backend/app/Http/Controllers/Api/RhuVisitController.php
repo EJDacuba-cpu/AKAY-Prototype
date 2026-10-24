@@ -40,6 +40,16 @@ class RhuVisitController extends Controller
         return response()->json(['data' => $this->present($entry)], $result['created'] ? 201 : 200);
     }
 
+    public function patientSearch(Request $request)
+    {
+        $results = $this->visits->searchPatients($request->user(), (string) $request->query('q', ''));
+
+        return response()->json(['data' => array_map(fn (array $row): array => [
+            ...PatientIdentity::response($row['patient'], false),
+            'active_visit_id' => $row['active_visit_id'],
+        ], $results)]);
+    }
+
     public function show(Request $request, int $visit)
     {
         $entry = $this->visits->find($request->user(), $visit)->load(['patient', 'referral.barangayHealthCenter']);

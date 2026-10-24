@@ -36,6 +36,7 @@ class EnforceActionPermissions
             str_contains($path, '/follow-up-tasks') => $read ? 'clinical.history' : 'followups.manage',
             str_contains($path, '/reports') => 'reports.view',
             str_contains($path, '/referral-routing') => 'consultations.encode',
+            str_ends_with($path, '/rhu-visits/patient-search') => 'patients.register',
             // Reading the queue is clinical history; walk-in intake is the registration duty.
             str_contains($path, '/rhu-visits') => $read ? 'clinical.history' : 'patients.register',
             str_contains($path, '/referrals') => $read ? 'clinical.history' : ($request->user()->isBhc() ? 'referrals.submit' : 'rhu.manage'),
