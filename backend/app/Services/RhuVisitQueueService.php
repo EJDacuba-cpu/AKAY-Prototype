@@ -10,6 +10,7 @@ use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -207,6 +208,32 @@ class RhuVisitQueueService
         }
 
         return $this->withActiveVisitIds($rhuId, $patients->orderBy('id')->limit(10)->get());
+    }
+
+    /**
+     * Active patients this RHU can see with the same first name, last name
+     * (trimmed, case-insensitive) and birthdate. Without a birthdate nothing is
+     * matched: a name alone is not enough to call someone a duplicate.
+     *
+     * @return list<array{patient: Patient, active_visit_id: int|null}>
+     */
+    public function findPossibleDuplicates(User $user, string $firstName, string $lastName, ?string $birthdate): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        if ($birthdate === null || trim($birthdate) === '') {
+            return [];
+        }
+
+        $matches = $this->facilityAccess->scopePatients(Patient::query(), $user)
+            ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
+            ->whereRaw('lower(trim(first_name)) = ?', [mb_strtolower(trim($firstName))])
+            ->whereRaw('lower(trim(last_name)) = ?', [mb_strtolower(trim($lastName))])
+            ->whereDate('birthdate', Carbon::parse($birthdate)->toDateString())
+            ->orderBy('id')
+            ->limit(5)
+            ->get();
+
+        return $this->withActiveVisitIds($rhuId, $matches);
     }
 
     /**

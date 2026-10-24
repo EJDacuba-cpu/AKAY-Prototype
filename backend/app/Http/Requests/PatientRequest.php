@@ -66,6 +66,10 @@ class PatientRequest extends FormRequest
             'head_replacement.relationships' => ['present_with:head_replacement', 'array'],
             'head_replacement.relationships.*' => ['required', 'string', 'max:100'],
             'head_replacement.version' => ['required_with:head_replacement', 'integer', 'min:1'],
+            // RHU walk-in check-in: the patient and the visit are created together (Phase 3).
+            'check_in' => ['sometimes', 'array:key'],
+            'check_in.key' => ['required_with:check_in', 'string', 'max:100'],
+            'confirm_possible_duplicate' => ['sometimes', 'boolean'],
             'first_name' => [$required, 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
