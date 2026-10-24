@@ -12,6 +12,14 @@ test('structured membership cannot send a contradictory compatibility FSN', () =
   assert.deepEqual(payload.household,selection);
   assert.equal(Object.hasOwn(payload,'family_serial_number'),false);
 });
+test('walk-in check-in fields pass through only when present', () => {
+  const sent = toPayload({ firstName: 'Ana', lastName: 'Cruz', check_in: { key: 'k1' }, confirm_possible_duplicate: true });
+  assert.deepEqual(sent.check_in, { key: 'k1' });
+  assert.equal(sent.confirm_possible_duplicate, true);
+  const plain = toPayload({ firstName: 'Ana', lastName: 'Cruz' });
+  assert.equal(Object.hasOwn(plain, 'check_in'), false);
+  assert.equal(Object.hasOwn(plain, 'confirm_possible_duplicate'), false);
+});
 test('legacy callers retain their explicit serial without a structured selection', () => {
   assert.equal(toPayload({familySerialNumber:'PAPER-01'}).family_serial_number,'PAPER-01');
 });

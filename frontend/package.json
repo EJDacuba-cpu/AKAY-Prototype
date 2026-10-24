@@ -13,6 +13,7 @@
     "test:errors": "node --test src/services/apiErrorMessages.test.js src/utils/errorStateVariant.test.js",
     "test:skeleton": "node --test src/components/common/loading/skeletonVariant.test.js",
     "test:accounts": "node --test src/utils/accountAccess.test.js src/utils/accountForm.test.js",
+    "test:walk-in": "node --test src/utils/walkInRegistration.test.js src/utils/patientRegistrationPayload.test.js",
     "test:patient-tabs": "node --test src/utils/healthRecordPrograms.test.js",
     "preview": "vite preview",
     "test:referral-gate": "node --test src/utils/referralGateErrors.test.js",

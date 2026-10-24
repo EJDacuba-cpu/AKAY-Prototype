@@ -9,6 +9,7 @@ import { getHouseholdById, getHouseholds } from '../../services/householdService
 import { createPatient, updatePatient, getPatientById } from '../../services/patientService';
 import { householdPayload, householdRegistry, normalizeHousehold, normalizeHouseholdPatient } from '../../utils/householdData';
 import { queryKeys } from '../../utils/queryKeys';
+import { isCheckInFlow, newCheckInKey, withCheckIn } from '../../utils/walkInRegistration';
 
 export default function BhcPatientRegistration({ role = 'bhc', ...props }) {
   const scope=useHouseholdScope(role);
@@ -18,6 +19,8 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const client=useQueryClient();
   const [params]=useSearchParams();
   const initialHouseholdId=params.get('household');
+  // Walk-in flow: one key per registration page, so a re-sent save is recognised by the server.
+  const [walkIn]=useState(() => role === 'rhu' && !patientId && isCheckInFlow(params.toString()) ? {key:newCheckInKey()} : null);
   const [known,setKnown]=useState([]);
   const [results,setResults]=useState([]);
   const [searchState,setSearchState]=useState({loading:false,error:''});
@@ -39,9 +42,10 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
       setSearchState({loading:false,error:''});
     } catch(error) {if(seq === request.current) setSearchState({loading:false,error:error.message || 'Unable to search households.'});}
   }
-  async function save(data,connection,id,replacement) {
-    const payload={...data,household:householdPayload(connection,registry),
+  async function save(data,connection,id,replacement,options={}) {
+    const base={...data,household:householdPayload(connection,registry),
       ...(replacement ? {head_replacement:{household_id:replacement.householdId,head_patient_id:replacement.headPatientId,relationships:replacement.relationships,version:registry.households.find(item=>item.id === replacement.householdId)?.version}} : {})};
+    const payload=walkIn && !id ? withCheckIn(base,{key:walkIn.key,confirmDuplicate:options.confirmDuplicate}) : base;
     const response=normalizeHouseholdPatient(await mutation.mutateAsync({id,data:payload}));
     if(response.household) {
       // Use the committed response: a failed follow-up read must not turn a save into an error.
@@ -57,7 +61,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending);
   const error=(!patient.data && patient.error) || (!selected.data && selected.error);
   if(waiting || error) return <DashboardLayout role={role} title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
-  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} live
+  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} live
     initialConnection={!patientId && selected.data ? {kind:'existing',householdId:selected.data.id,relationship:''} : undefined}
     onSearch={search} searchResults={results} searchLoading={searchState.loading} searchError={searchState.error}
     refreshError={Boolean(patient.error || selected.error)} onRefresh={()=>{if(patientId)patient.refetch();if(selectedId)selected.refetch();}} />;

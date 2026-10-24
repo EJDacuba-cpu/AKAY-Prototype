@@ -44,6 +44,8 @@ import {
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
+import { checkInExistingPatient } from "../../services/rhuVisitService";
+import { duplicatePrompt, postSaveDestination } from "../../utils/walkInRegistration";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
 
@@ -168,6 +170,7 @@ export function RegistrationForm({
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
   registry, savedPatientOverride, savePatient, live = false, householdEnabled = true, initialConnection,
   onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
+  walkIn,
 }) {
   const navigate = useNavigate();
   const [createdPatientId, setCreatedPatientId] = useState("");
@@ -190,6 +193,7 @@ export function RegistrationForm({
     success: false,
   });
   const [saving, setSaving] = useState(false);
+  const [duplicates, setDuplicates] = useState(null);
   const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection) : registrationForm(savedPatient));
   const [fieldErrors, setFieldErrors] = useState({});
   const ageDisplay = formatAgeDisplay(form.birthDate);
@@ -434,7 +438,7 @@ function handleBirthDateChange(valueOrEvent) {
     };
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (options = {}) => {
     if (saving || !validateForm()) {
       setModals((current) => ({ ...current, confirm: false }));
       return;
@@ -443,7 +447,7 @@ function handleBirthDateChange(valueOrEvent) {
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement);
+      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement, options);
       const savedId = saved?.id ? String(saved.id) : "";
       setCreatedPatientId(savedId);
       setForm(registrationForm(saved));
@@ -452,6 +456,12 @@ function handleBirthDateChange(valueOrEvent) {
       setModals({ ...modals, confirm: false, success: true });
       toast.success(householdEnabled && live ? "Patient and household saved." : live ? "Patient saved." : "Patient saved in this mock session.");
     } catch (error) {
+      const prompt = walkIn ? duplicatePrompt(error) : null;
+      if (prompt) {
+        setDuplicates(prompt);
+        setModals((current) => ({ ...current, confirm: false }));
+        return;
+      }
       const mapped = registrationErrors(error);
       setFieldErrors((current) => ({ ...current, ...mapped }));
       setModals((current) => ({ ...current, confirm: false }));
@@ -467,7 +477,20 @@ function handleBirthDateChange(valueOrEvent) {
     setCreatedPatientId("");
     setFieldErrors({});
     setModals({ confirm: false, success: false });
-    navigate(`${patientsPath}/add`);
+    navigate(walkIn ? `${patientsPath}/add?check_in=1` : `${patientsPath}/add`);
+  }
+
+  async function checkInMatch(match) {
+    try {
+      setSaving(true);
+      if (!match.activeVisitId) await checkInExistingPatient(match.id, walkIn.key);
+      setDuplicates(null);
+      navigate(patientsPath);
+    } catch (error) {
+      toast.error(error.message || "Unable to check this patient in.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (patientId && !savedPatient) return (
@@ -833,10 +856,10 @@ function handleBirthDateChange(valueOrEvent) {
       {/* Modals */}
       {modals.success && <ModalShell
         title="Patient Saved" appearance="plain"
-        onClose={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}`); }}
+        onClose={() => { setModals({ confirm: false, success: false }); navigate(postSaveDestination({ checkIn: Boolean(walkIn), patientsPath, patientId: createdPatientId })); }}
         footer={<>
           <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
-          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>Edit Patient</Button>
+          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(walkIn ? patientsPath : `${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>{walkIn ? "Back to queue" : "Edit Patient"}</Button>
         </>}
       ><p>{householdEnabled && live ? "Patient registration and household connection saved." : live ? "Patient registration saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
       {modals.confirm && <ModalShell
@@ -844,9 +867,24 @@ function handleBirthDateChange(valueOrEvent) {
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}
         footer={<>
           <Button type="button" variant="ghost" onClick={() => setModals((current) => ({ ...current, confirm: false }))}>Cancel</Button>
-          <Button type="button" disabled={saving} onClick={handleSubmit}>Save Patient</Button>
+          <Button type="button" disabled={saving} onClick={() => handleSubmit()}>Save Patient</Button>
         </>}
       ><p>{householdEnabled ? "Save this patient's details and household connection?" : "Save this patient's details?"}</p></ModalShell>}
+      {duplicates && <ModalShell
+        title="Possible duplicate patient" appearance="plain"
+        onClose={() => setDuplicates(null)}
+        footer={<>
+          <Button type="button" variant="ghost" onClick={() => setDuplicates(null)}>Cancel</Button>
+          <Button type="button" disabled={saving} onClick={() => { setDuplicates(null); handleSubmit({ confirmDuplicate: true }); }}>Register anyway</Button>
+        </>}
+      >
+        <p>This RHU already has a patient with the same name and birthdate. Use the existing record to avoid a duplicate.</p>
+        <ul>{duplicates.matches.map((match) => <li key={match.id}>
+          {match.fullName}{match.birthdate ? `, born ${match.birthdate}` : ""}
+          {match.activeVisitId ? " — already in today's queue" : ""}
+          {" "}<Button type="button" variant="ghost" disabled={saving} onClick={() => checkInMatch(match)}>{match.activeVisitId ? "Back to queue" : "Use this patient"}</Button>
+        </li>)}</ul>
+      </ModalShell>}
     </>
   );
 }

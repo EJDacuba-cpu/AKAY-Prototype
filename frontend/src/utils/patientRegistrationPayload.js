@@ -44,6 +44,8 @@ export function toPayload(patient = {}) {
   const payload = {
     ...(hasHouseholdCommand ? {household:patient.household} : {}),
     ...(patient.head_replacement ? {head_replacement:patient.head_replacement} : {}),
+    ...(patient.check_in ? {check_in:patient.check_in} : {}),
+    ...(patient.confirm_possible_duplicate ? {confirm_possible_duplicate:true} : {}),
     first_name: read('firstName', 'first_name') ?? parts.firstName,
     middle_name: optional('middleName', 'middle_name') ?? (Object.hasOwn(patient,'middleName') ? null : parts.middleName || null),
     last_name: read('lastName', 'last_name') ?? (parts.lastName || patient.firstName || 'Patient'),
