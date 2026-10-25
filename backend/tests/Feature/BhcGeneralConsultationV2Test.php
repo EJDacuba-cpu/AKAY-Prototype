@@ -425,11 +425,23 @@ class BhcGeneralConsultationV2Test extends TestCase
 
     public function test_v2_service_only_follow_up_reason_exempt_but_date_required(): void
     {
-        $maternal = ['selectedPrograms' => ['Maternal'], 'primaryProgram' => 'Maternal'];
-        $this->v2(['category' => 'Maternal', 'care_plan' => ['bhc_follow_up' => true], 'monitoring_data' => [...$maternal, 'followUpDate' => $this->nextWeek()]])
-            ->assertCreated();
-        $this->v2(['category' => 'Maternal', 'care_plan' => ['bhc_follow_up' => true], 'monitoring_data' => $maternal])
-            ->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpDate']);
+        $maternal = [
+            'selectedPrograms' => ['Maternal'],
+            'primaryProgram' => 'Maternal',
+            'prenatalIntent' => 'enroll',
+        ];
+        $this->v2([
+            'category' => 'Maternal',
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'care_plan' => ['bhc_follow_up' => true],
+            'monitoring_data' => [...$maternal, 'followUpDate' => $this->nextWeek()],
+        ])->assertCreated();
+        $this->v2([
+            'category' => 'Maternal',
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'care_plan' => ['bhc_follow_up' => true],
+            'monitoring_data' => $maternal,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpDate']);
     }
 
     public function test_v2_refer_requires_referral(): void

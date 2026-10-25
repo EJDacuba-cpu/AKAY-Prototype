@@ -27,17 +27,20 @@ import ActionMenu from "../../components/common/tables/ActionMenu";
 import {
   StateBadge,
   buildRecordFollowUpVisitPath,
-  buildTaskActions,
   formatDate,
   formatFollowUpId,
   formatTimeLabel,
   getCalendarEffectiveState,
   getEffectiveState,
   getTaskClassification,
-  getTaskNavigationTarget,
   getTaskServiceTypeLabel,
   normalizeFilterState,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
+import {
+  buildTaskActions,
+  getCompletedFollowUpRecordId,
+  getTaskNavigationTarget,
+} from "../../components/features/followups/followUpActions";
 import {
   addDays,
   addMonths,
@@ -227,6 +230,15 @@ export default function FollowUps({ role = "bhc" }) {
   const requestedTaskId = searchParams.get("task") || "";
   const requestedOpen = searchParams.get("open") || "";
 
+  function cleanTaskQuery() {
+    if (!requestedTaskId && !requestedOpen) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("task");
+    nextParams.delete("open");
+    setSearchParams(nextParams, { replace: true });
+  }
+
   useEffect(() => {
     if (!requestedTaskId) {
       setRouteNotice("");
@@ -246,10 +258,16 @@ export default function FollowUps({ role = "bhc" }) {
     setRouteNotice("");
     if (requestedOpen === "reschedule" || requestedOpen === "cancel") {
       setModal({ type: requestedOpen, task: requestedTask });
-    } else {
-      navigate(`${basePath}/follow-ups/${requestedTask.id}`, { replace: true });
+      return;
     }
-  }, [basePath, isLoading, navigate, requestedOpen, requestedTaskId, tasks]);
+    // RHU still has Follow-up Details. BHC notifications and ?task= links
+    // stay on this list instead of opening the retired details page.
+    if (role === "rhu") {
+      navigate(`${basePath}/follow-ups/${requestedTask.id}`, { replace: true });
+      return;
+    }
+    cleanTaskQuery();
+  }, [basePath, isLoading, navigate, requestedOpen, requestedTaskId, role, tasks]);
 
   const dropdownFilters = [
     {
@@ -311,15 +329,6 @@ export default function FollowUps({ role = "bhc" }) {
     });
   }
 
-  function cleanTaskQuery() {
-    if (!requestedTaskId && !requestedOpen) return;
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("task");
-    nextParams.delete("open");
-    setSearchParams(nextParams, { replace: true });
-  }
-
   function closeModal() {
     setModal(null);
     cleanTaskQuery();
@@ -339,10 +348,7 @@ export default function FollowUps({ role = "bhc" }) {
   }
 
   function viewCompletedHealthRecord(task) {
-    const recordId =
-      task.fulfilledByHealthRecordId ||
-      task.latestHealthRecordId ||
-      task.healthRecordId;
+    const recordId = getCompletedFollowUpRecordId(task);
     if (recordId) navigate(`${basePath}/health-records/${recordId}`);
   }
 
@@ -657,11 +663,15 @@ function FollowUpList({ tasks, resetKey, handlers, basePath = "/bhc" }) {
                   )}
                 </td>
                 <td className="px-3 py-3.5 text-right">
-                  <ActionMenu
-                    title={patientName}
-                    subtitle={formatFollowUpId(task)}
-                    actions={actions}
-                  />
+                  {actions.length > 0 ? (
+                    <ActionMenu
+                      title={patientName}
+                      subtitle={formatFollowUpId(task)}
+                      actions={actions}
+                    />
+                  ) : (
+                    <span className="text-[#94A3B8]">—</span>
+                  )}
                 </td>
               </tr>
             );

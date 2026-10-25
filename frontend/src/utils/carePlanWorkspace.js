@@ -41,7 +41,7 @@ export function followUpPlan(disposition = {}, followUpDate = "", { hasService =
 
 /**
  * What the visit's single BHC follow-up and single RHU referral cover, for the
- * "Covers:" lines of BHC Follow-up Details and RHU Referral Details. Display
+ * "Covers:" lines of BHC follow-up scheduling and RHU Referral Details. Display
  * and acknowledgment only: both stay one consultation-level record each.
  * `followUpConcernCount` is how many concerns schedule the follow-up - the
  * count its acknowledgment uses (monitoring and the service visit are listed

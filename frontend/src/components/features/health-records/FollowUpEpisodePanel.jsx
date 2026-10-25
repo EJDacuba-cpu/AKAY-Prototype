@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { ArrowRight, CalendarClock, FileText } from "lucide-react";
+import { CalendarClock, FileText } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
 import { visitAssessmentDisplay } from "../../../utils/consultationWorkflow";
@@ -234,57 +234,41 @@ export function FollowUpEpisodeContent({
                       />
                     </dl>
 
-                    {!hideActions &&
-                      (recordScoped ? (
-                        <Link
-                          to={`/bhc/follow-ups/${task.id}`}
-                          title="View follow-up details"
-                          aria-label={`View details for follow-up #${task.id}`}
-                          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-red-50 hover:text-[#B91C1C]"
-                        >
-                          <ArrowRight size={17} />
-                        </Link>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          <Link
-                            to={`/bhc/follow-ups/${task.id}`}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                          >
-                            View Details
-                          </Link>
-                          {active && (
-                            <>
-                              <Link
-                                to={buildRecordFollowUpVisitPath(task)}
-                                className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
-                              >
-                                Record Visit
-                              </Link>
-                              <Link
-                                to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
-                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                              >
-                                Reschedule
-                              </Link>
-                              <Link
-                                to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
-                                className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
-                              >
-                                Cancel
-                              </Link>
-                            </>
+                    {!hideActions && !recordScoped && (
+                      <div className="flex flex-wrap gap-2">
+                        {active && (
+                          <>
+                            <Link
+                              to={buildRecordFollowUpVisitPath(task)}
+                              className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
+                            >
+                              Record Visit
+                            </Link>
+                            <Link
+                              to={`/bhc/follow-ups?task=${task.id}&open=reschedule`}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Reschedule
+                            </Link>
+                            <Link
+                              to={`/bhc/follow-ups?task=${task.id}&open=cancel`}
+                              className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-[#B91C1C] hover:bg-red-50"
+                            >
+                              Cancel
+                            </Link>
+                          </>
+                        )}
+                        {task.state === "fulfilled" &&
+                          task.fulfilledByHealthRecordId && (
+                            <Link
+                              to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              View Health Record
+                            </Link>
                           )}
-                          {task.state === "fulfilled" &&
-                            task.fulfilledByHealthRecordId && (
-                              <Link
-                                to={`/bhc/health-records/${task.fulfilledByHealthRecordId}`}
-                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                              >
-                                View Health Record
-                              </Link>
-                            )}
-                        </div>
-                      ))}
+                      </div>
+                    )}
                   </div>
                 </article>
               );

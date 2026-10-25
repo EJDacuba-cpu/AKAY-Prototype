@@ -11,6 +11,7 @@ import {
   applyRiskFactorChange,
   computeAogFromLmp,
   computeEddFromLmp,
+  continueBhcPrenatalPrefill,
   continuePrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
@@ -181,6 +182,25 @@ test("continue prefill keeps pregnancy facts and clears this-visit findings", ()
   assert.equal(next.fht, "");
   assert.equal(next.immunizationThisVisit.type, "");
   assert.equal(next.tetanusToxoidStatus.tt1, "2026-04-01");
+});
+
+test("BHC continue prefill keeps pregnancy facts and clears obstetric risk checkboxes", () => {
+  const next = continueBhcPrenatalPrefill({
+    maternalData: {
+      lmp: "2026-03-01",
+      gravida: "2",
+      fht: "140 bpm",
+      tetanusToxoidStatus: { tt1: "2026-04-01" },
+      riskAssessment: { previousCs: true, previousPregnancyComplications: true },
+    },
+    expectedDeliveryDate: "2026-12-08",
+  });
+  assert.equal(next.lmp, "2026-03-01");
+  assert.equal(next.gravida, "2");
+  assert.equal(next.tetanusToxoidStatus.tt1, "2026-04-01");
+  assert.equal(next.fht, "");
+  assert.equal(next.riskAssessment.previousCs, false);
+  assert.equal(next.riskAssessment.previousPregnancyComplications, false);
 });
 
 test("mergeMaternalData drops retired risk keys", () => {

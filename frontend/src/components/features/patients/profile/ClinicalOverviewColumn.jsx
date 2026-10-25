@@ -128,7 +128,7 @@ function FollowUpsPreview({ followUps, onView }) {
               <button
                 type="button"
                 onClick={() => onView(task.id)}
-                aria-label={`View follow-up ${task.id}`}
+                aria-label={`Open follow-ups for ${formatDate(task.dueDate, "scheduled visit")}`}
                 className={ROW_BUTTON}
               >
                 <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-neutral-900">

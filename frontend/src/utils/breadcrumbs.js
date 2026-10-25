@@ -19,7 +19,6 @@ const PARENT_TRAILS = [
     "/bhc/health-records/:recordId",
     [{ label: "Patients", path: "/bhc/patients" }],
   ],
-  ["/bhc/follow-ups/:taskId", [{ label: "Follow-ups", path: "/bhc/follow-ups" }]],
   ["/bhc/programs/:programId", [{ label: "Programs", path: "/bhc/programs" }]],
   ["/bhc/referrals/create", [{ label: "Referrals", path: "/bhc/referrals" }]],
   ["/bhc/referrals/:trackingId", [{ label: "Referrals", path: "/bhc/referrals" }]],

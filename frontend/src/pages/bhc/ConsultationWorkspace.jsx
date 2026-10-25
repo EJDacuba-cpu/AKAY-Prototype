@@ -18,6 +18,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import {
+  ConfirmationModal,
   ConnectionIssueModal,
   NoticeModal,
   SuccessModal,
@@ -76,10 +77,16 @@ import {
   applyRiskFactorChange,
   computeAogFromLmp,
   computeEddFromLmp,
+  continueBhcPrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
+import {
+  getPrenatalEnrollment,
+  prenatalEnrollmentModalCopy,
+  prenatalProgramCopy,
+} from "../../utils/prenatalEnrollment";
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
   localConsultationKey,
@@ -652,6 +659,7 @@ export default function ConsultationWorkspace() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [noticeModal, setNoticeModal] = useState(null);
+  const [prenatalEnrollmentModal, setPrenatalEnrollmentModal] = useState(null);
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
   const officialSubmissionRef = useRef(null);
@@ -1082,6 +1090,14 @@ export default function ConsultationWorkspace() {
     () => getLatestRecordedHeight(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
     [patientRecordsForHeight],
   );
+  const prenatalEnrollment = useMemo(
+    () => getPrenatalEnrollment(
+      selectedPatient || {},
+      Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : [],
+    ),
+    [selectedPatient, patientRecordsForHeight],
+  );
+  const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
   const riskFlags = useMemo(
     () => getMaternalRiskFlags({
       birthdate: getEffectivePatientBirthdate(selectedPatient),
@@ -1305,6 +1321,7 @@ export default function ConsultationWorkspace() {
       ...(consultationUuid ? { consultationUuid } : {}),
       selectedPrograms,
       primaryProgram,
+      prenatalIntent,
       consultationMode,
       // Review & Save has no phase of its own in a draft; it resumes on Next Step.
       wizardPhase,
@@ -2372,6 +2389,15 @@ export default function ConsultationWorkspace() {
       errors.chiefComplaint = "Chief complaint is required.";
     }
 
+    if (
+      finalizing &&
+      isMaternal &&
+      prenatalIntent === "enroll" &&
+      !String(maternalData.lmp || "").trim()
+    ) {
+      errors["maternalData.lmp"] = "Record the last menstrual period to enroll in prenatal care.";
+    }
+
     return errors;
   }
 
@@ -3215,8 +3241,10 @@ export default function ConsultationWorkspace() {
         shared_condition_referral: true,
       },
       ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
+      ...(isMaternal ? { prenatalIntent } : {}),
       monitoringData: {
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
+        ...(isMaternal ? { prenatalIntent } : {}),
       },
       createdByRole: userRole,
       linkedTrackingId: "",
@@ -3640,8 +3668,29 @@ export default function ConsultationWorkspace() {
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
       : { eligible: true, message: "" };
-    return { key, title: key === "Maternal" ? "Maternal Care" : key, description: key === "EPI" ? "Immunization and child vaccination services." : RECORD_TYPE_DETAILS[classification]?.description,
-      icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope, disabled: !eligibility.eligible, disabledReason: eligibility.message };
+    const maternalCopy = key === "Maternal"
+      ? prenatalProgramCopy({
+          enrolled: prenatalEnrollment.enrolled,
+          included: selectedPrograms.includes("Maternal"),
+        })
+      : null;
+    return {
+      key,
+      title: key === "Maternal" ? "Prenatal Care" : key,
+      description: key === "Maternal"
+        ? prenatalEnrollment.enrolled
+          ? "Active prenatal care from a finalized consultation. Continue this visit without starting a second enrollment."
+          : "Optional. Enrollment becomes Active only after this consultation is finalized."
+        : key === "EPI"
+          ? "Immunization and child vaccination services."
+          : RECORD_TYPE_DETAILS[classification]?.description,
+      icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
+      disabled: !eligibility.eligible,
+      disabledReason: eligibility.message,
+      enrollLabel: maternalCopy?.enrollLabel,
+      statusLabel: maternalCopy?.statusLabel,
+      statusTone: maternalCopy?.statusTone,
+    };
   }), selectedPatientLoading);
 
   function closeDraftDecision() {
@@ -3676,8 +3725,15 @@ export default function ConsultationWorkspace() {
     await handleResumeDraft(draftId);
   }
 
-  function handleProgramSelect(option) {
-    if (wizardPrograms.find(program => program.key === option)?.disabled) return;
+  function applyBhcPrenatalPrefill() {
+    if (!prenatalEnrollment.enrolled || !prenatalEnrollment.latestRecord) return;
+    const prefill = continueBhcPrenatalPrefill(prenatalEnrollment.latestRecord);
+    setMaternalData((current) => (current.lmp ? current : prefill));
+    if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
+    if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function applyProgramSelect(option) {
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, option);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
@@ -3686,6 +3742,23 @@ export default function ConsultationWorkspace() {
     // draft payload and the saved record read it exactly as before.
     setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
+    if (option === "Maternal" && next.selectedPrograms.includes("Maternal")) {
+      applyBhcPrenatalPrefill();
+    }
+  }
+
+  function handleProgramSelect(option) {
+    if (wizardPrograms.find(program => program.key === option)?.disabled) return;
+    if (option === "Maternal" && !selectedPrograms.includes("Maternal")) {
+      setPrenatalEnrollmentModal(prenatalEnrollment.enrolled ? "continue" : "enroll");
+      return;
+    }
+    applyProgramSelect(option);
+  }
+
+  function confirmPrenatalEnrollment() {
+    setPrenatalEnrollmentModal(null);
+    applyProgramSelect("Maternal");
   }
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
@@ -4716,6 +4789,16 @@ export default function ConsultationWorkspace() {
             : []
         }
         onClose={() => setNoticeModal(null)}
+      />
+      <ConfirmationModal
+        open={Boolean(prenatalEnrollmentModal)}
+        title={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).title}
+        description={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).description}
+        confirmText={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).confirmText}
+        cancelText="Cancel"
+        tone="plain"
+        onConfirm={confirmPrenatalEnrollment}
+        onCancel={() => setPrenatalEnrollmentModal(null)}
       />
       {/* Prenatal age / height risk: states the fact only, no advice. */}
       <NoticeModal

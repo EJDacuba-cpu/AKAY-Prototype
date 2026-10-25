@@ -54,6 +54,7 @@ import AddPatient from "./pages/bhc/AddPatient";
 import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
 import BhcFamilyConnections from "./pages/bhc/BhcFamilyConnections";
 import FollowUps from "./pages/bhc/FollowUps";
+import BhcFollowUpRedirect from "./pages/bhc/BhcFollowUpRedirect";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
@@ -590,7 +591,7 @@ export default function App() {
         path="/bhc/follow-ups/:taskId"
         element={
           <ProtectedPage allowedRole="bhc" module="history">
-            <FollowUpDetails />
+            <BhcFollowUpRedirect />
           </ProtectedPage>
         }
       />

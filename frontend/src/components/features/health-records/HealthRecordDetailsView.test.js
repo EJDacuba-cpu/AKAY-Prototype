@@ -83,6 +83,21 @@ test("stacked record tabs show every clinical section and hide the tablist", () 
   assert.match(stacked, /Return on Friday/);
 });
 
+test("follow-up schedules keep visit actions and no longer open Follow-up Details", () => {
+  const html = wrap(
+    createElement(FollowUpEpisodeContent, {
+      episode,
+      currentRecord: { id: 10 },
+    }),
+  );
+
+  assert.match(html, /Record Visit/);
+  assert.match(html, /Reschedule/);
+  assert.match(html, /Cancel/);
+  assert.doesNotMatch(html, /View Details/);
+  assert.doesNotMatch(html, /\/bhc\/follow-ups\/44(?!\?)/);
+});
+
 test("read-only follow-up history keeps visit facts and drops action links", () => {
   const html = wrap(
     createElement(FollowUpEpisodeContent, {

@@ -555,7 +555,7 @@ class HealthRecordRequest extends FormRequest
                 'monitoring_data',
                 $this->input('category', $this->route('health_record')?->category)
             );
-            if ($this->isRhuItrV1() && $this->isMethod('post')) {
+            if (($this->isRhuItrV1() || $this->isBhcGeneralV2()) && $this->isMethod('post')) {
                 $programs = $this->input('monitoring_data.selectedPrograms', []);
                 if (is_array($programs) && in_array('Maternal', $programs, true)) {
                     PrenatalEnrollment::validateRhuIntent(

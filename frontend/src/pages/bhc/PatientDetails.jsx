@@ -451,7 +451,7 @@ function LivePatientDetails() {
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
-                      onViewFollowUp={(taskId) => navigate(`/bhc/follow-ups/${taskId}`)}
+                      onViewFollowUp={() => navigate("/bhc/follow-ups")}
                       onViewRecords={() => setActiveTab("records")}
                       onViewRecord={viewRecord}
                     />

@@ -92,6 +92,12 @@ test("RHU follow-up details sit under Follow-ups", () => {
   );
 });
 
+test("retired BHC follow-up details URLs do not form a details trail", () => {
+  assert.deepEqual(getBreadcrumbs("/bhc/follow-ups/12", "Follow-ups"), [
+    { label: "Follow-ups" },
+  ]);
+});
+
 test("unknown routes fall back to the current page", () => {
   assert.deepEqual(getBreadcrumbs("/somewhere/else", "Notifications"), [
     { label: "Notifications" },

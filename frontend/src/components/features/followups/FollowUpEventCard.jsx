@@ -1,7 +1,7 @@
 import ActionMenu from "../../common/tables/ActionMenu";
 import { formatDisplayValue } from "../../../utils/formatters";
+import { buildTaskActions } from "./followUpActions.js";
 import {
-  buildTaskActions,
   formatStateLabel,
   formatTimeLabel,
   getStateConfig,
@@ -43,7 +43,9 @@ export default function FollowUpEventCard({
         type="button"
         onClick={() => onClick?.(task)}
         title={`${patientName} · ${getTaskServiceTypeLabel(task)}`}
-        className={`w-full rounded-md border-l-4 px-2 py-1.5 pr-7 text-left transition-colors hover:brightness-[0.98] ${config.event}`}
+        className={`w-full rounded-md border-l-4 px-2 py-1.5 text-left transition-colors hover:brightness-[0.98] ${
+          actions.length > 0 ? "pr-7" : ""
+        } ${config.event}`}
       >
         <span className="block truncate text-[9.5px] font-bold uppercase tracking-wide opacity-80">
           {headline}
@@ -58,14 +60,16 @@ export default function FollowUpEventCard({
         )}
       </button>
 
-      <div className="absolute right-0.5 top-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        <ActionMenu
-          title={patientName}
-          subtitle={task.healthRecordId ? `#${task.healthRecordId}` : ""}
-          actions={actions}
-          triggerVariant="calendar"
-        />
-      </div>
+      {actions.length > 0 && (
+        <div className="absolute right-0.5 top-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+          <ActionMenu
+            title={patientName}
+            subtitle={task.healthRecordId ? `#${task.healthRecordId}` : ""}
+            actions={actions}
+            triggerVariant="calendar"
+          />
+        </div>
+      )}
     </div>
   );
 }

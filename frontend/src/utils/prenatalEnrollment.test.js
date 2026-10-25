@@ -5,6 +5,7 @@ import {
   PRENATAL_INTENT_CONTINUE,
   PRENATAL_INTENT_ENROLL,
   getPrenatalEnrollment,
+  prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
 } from "./prenatalEnrollment.js";
 
@@ -70,6 +71,17 @@ test("a mixed ITR with general findings and prenatal data still enrolls once", (
   assert.equal(enrollment.enrolled, true);
   assert.equal(enrollment.intent, PRENATAL_INTENT_CONTINUE);
   assert.equal(enrollment.visitCount, 1);
+});
+
+test("enrollment modal copy is confirm-only and differs for enroll vs continue", () => {
+  const enroll = prenatalEnrollmentModalCopy({ enrolled: false });
+  assert.equal(enroll.title, "Enroll in Prenatal Care");
+  assert.equal(enroll.confirmText, "Include in This Visit");
+  assert.match(enroll.description, /becomes Active only after this consultation is finalized/i);
+  const cont = prenatalEnrollmentModalCopy({ enrolled: true });
+  assert.equal(cont.title, "Continue Prenatal Care");
+  assert.equal(cont.confirmText, "Continue This Visit");
+  assert.match(cont.description, /does not start a second enrollment/i);
 });
 
 test("a completed maternal episode can be enrolled again", () => {

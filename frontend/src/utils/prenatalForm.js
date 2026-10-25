@@ -338,3 +338,16 @@ export function continuePrenatalPrefill(record = {}) {
     immunizationThisVisit: { ...EMPTY_MATERNAL_DATA.immunizationThisVisit },
   };
 }
+
+/**
+ * BHC continue visits keep pregnancy identity (LMP, G/P, TT/Td dates) and
+ * leave the four obstetric risk checkboxes blank. Age/height flags are
+ * computed again at finalize. RHU continue still uses continuePrenatalPrefill.
+ */
+export function continueBhcPrenatalPrefill(record = {}) {
+  const data = continuePrenatalPrefill(record);
+  return {
+    ...data,
+    riskAssessment: { ...EMPTY_MATERNAL_DATA.riskAssessment },
+  };
+}

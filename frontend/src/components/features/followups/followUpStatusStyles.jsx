@@ -87,60 +87,16 @@ export function getCalendarEffectiveState(task) {
   return getEffectiveState(task);
 }
 
-/**
- * The one follow-up action menu, shared by the List rows and every Calendar
- * event so the two views can never offer different actions for the same
- * task. Optional handlers are only listed when the caller supplies them.
- */
-export function buildTaskActions(task, handlers) {
-  const basePath = handlers.basePath || "/bhc";
-  const actions = [];
-
-  if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "Record Visit",
-      onClick: handlers.onRecordVisit,
-    });
-    actions.push({
-      label: "Reschedule",
-      onClick: handlers.onReschedule,
-    });
-    if (handlers.onCancel) {
-      actions.push({
-        label: "Cancel Follow-up",
-        onClick: handlers.onCancel,
-      });
-    }
-  }
-
-  if (task.effectiveState === "fulfilled" && handlers.onViewRecord) {
-    actions.push({
-      label: "View Health Record",
-      onClick: handlers.onViewRecord,
-    });
-  }
-
-  actions.push({
-    label: "View Follow-up Details",
-    to: `${basePath}/follow-ups/${task.id}`,
-  });
-  return actions;
-}
-
 export function formatFollowUpId(task) {
   return task?.id ? `FU-${task.id}` : "—";
 }
 
-export function getTaskNavigationTarget(task, basePath = "/bhc") {
-  return task.id ? `${basePath}/follow-ups/${task.id}` : "";
-}
-
 /**
  * Where "Record Visit" goes for a follow-up. Shared by every surface that
- * offers it (the Follow-ups list/calendar, follow-up details and the Patient
- * Profile) so they cannot drift apart: the standard step-flow consultation
- * with this follow-up continued, exactly as if it were ticked in the Start
- * Consultation modal.
+ * offers it (the Follow-ups list/calendar and remaining follow-up actions)
+ * so they cannot drift apart: the standard step-flow consultation with this
+ * follow-up continued, exactly as if it were ticked in the Start Consultation
+ * modal.
  */
 export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
   if (basePath === "/rhu") {

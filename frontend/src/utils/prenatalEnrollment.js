@@ -47,3 +47,23 @@ export function prenatalProgramCopy({ enrolled, included } = {}) {
     statusTone: enrolled ? "active" : included ? "included" : "neutral",
   };
 }
+
+/**
+ * Confirm-only enrollment modal. No pregnancy fields are collected here.
+ */
+export function prenatalEnrollmentModalCopy({ enrolled } = {}) {
+  if (enrolled) {
+    return {
+      title: "Continue Prenatal Care",
+      description:
+        "This patient already has active prenatal care. This visit adds the next assessment and does not start a second enrollment.",
+      confirmText: "Continue This Visit",
+    };
+  }
+  return {
+    title: "Enroll in Prenatal Care",
+    description:
+      "Prenatal Care will be included in this consultation. It becomes Active only after this consultation is finalized. Registration and Patient Background stay on the existing steps. Pregnancy details are recorded on the prenatal assessment.",
+    confirmText: "Include in This Visit",
+  };
+}
