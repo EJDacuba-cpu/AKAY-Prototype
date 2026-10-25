@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\ReferralArrivalSummary;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
@@ -45,6 +46,7 @@ class TrackingController extends Controller
             'tracking_id' => $referral->tracking_id,
             'status' => $referral->status,
             'display_url' => "/{$rolePath}/referrals/{$referral->tracking_id}",
+            ...(ReferralArrivalSummary::appliesTo($user) ? ['arrival' => ReferralArrivalSummary::for($referral)] : []),
         ]]);
     }
 

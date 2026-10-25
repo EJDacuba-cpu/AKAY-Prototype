@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Referral;
 use App\Services\ActionPermissions;
 use Closure;
 use Illuminate\Http\Request;
@@ -48,6 +49,11 @@ class EnforceActionPermissions
             ) ? null : 'consultations.encode',
             // Reading the queue is clinical history; walk-in intake and close are the registration duty.
             str_contains($path, '/rhu-visits') => $read ? 'clinical.history' : 'patients.register',
+            // RHU intake identifies an arrival and marks it Received; every other referral write stays rhu.manage.
+            $request->user()->isRhu() && $this->isIntakeAction($request, $path) => (
+                ActionPermissions::allows($request->user(), 'rhu.intake')
+                || ActionPermissions::allows($request->user(), 'rhu.manage')
+            ) ? null : 'rhu.intake',
             str_contains($path, '/referrals') => $read ? 'clinical.history' : ($request->user()->isBhc() ? 'referrals.submit' : 'rhu.manage'),
             str_contains($path, '/referral-holds') => 'referrals.submit',
             str_contains($path, '/feedback'), str_contains($path, '/incoming-referrals'), str_contains($path, '/rhu-patient-volumes') => 'rhu.manage',
@@ -61,5 +67,16 @@ class EnforceActionPermissions
         }
 
         return $next($request);
+    }
+
+    private function isIntakeAction(Request $request, string $path): bool
+    {
+        if (str_ends_with($path, 'referrals/qr/resolve') || str_ends_with($path, 'referrals/tracking/resolve')) {
+            return true;
+        }
+
+        return $request->isMethod('patch')
+            && preg_match('#referrals/\d+/status$#', $path) === 1
+            && Referral::normalizeWorkflowStatus((string) $request->input('status')) === Referral::STATUS_RECEIVED;
     }
 }

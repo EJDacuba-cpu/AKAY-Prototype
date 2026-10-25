@@ -25,6 +25,7 @@ import {
   resolveReferralTrackingId,
   refreshReferralWorkflowData,
   updateReferralByTrackingId,
+  updateReferralStatus,
 } from "../../services/referrals";
 import {
   formatDisplayValue,
@@ -34,6 +35,7 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { getReferralAttention } from "../../utils/referralAttention";
+import { arrivalToReferral } from "../../utils/referralArrival";
 
 const keyframes = `
 @keyframes fadeIn {
@@ -175,7 +177,10 @@ export default function QRScanner() {
           source === "camera"
             ? await resolveReferralQrToken(lookupValue)
             : await resolveReferralTrackingId(lookupValue);
-        const referral = await getReferralById(resolution.referralId);
+        // Intake without Health Records is sent only who arrived; the full referral would be a 403.
+        const referral = resolution.arrival
+          ? arrivalToReferral(resolution.arrival)
+          : await getReferralById(resolution.referralId);
         setSelectedReferral(referral);
         setResult({
           type: isCheckedIn(referral) ? "warning" : "success",
@@ -294,10 +299,13 @@ export default function QRScanner() {
     setResult({ type: "loading", message: "Checking in patient..." });
 
     try {
-      const updated = await updateReferralByTrackingId(selectedReferral.trackingId, {
+      const checkIn = {
         status: "Received",
         remarks: "Patient checked in at RHU via QR scanner.",
-      });
+      };
+      const updated = selectedReferral.summaryOnly
+        ? await updateReferralStatus(selectedReferral.id, checkIn.status, checkIn)
+        : await updateReferralByTrackingId(selectedReferral.trackingId, checkIn);
 
       setSelectedReferral(updated);
       setResult({
@@ -307,7 +315,7 @@ export default function QRScanner() {
 
       await refreshReferralWorkflowData(queryClient, selectedReferral.trackingId);
     } catch (error) {
-      if (error.status === 409 && selectedReferral.id) {
+      if (error.status === 409 && selectedReferral.id && !selectedReferral.summaryOnly) {
         const latest = await getReferralById(selectedReferral.id).catch(() => null);
         if (latest) setSelectedReferral(latest);
       }
@@ -710,14 +718,23 @@ function ResultsPanel({
             <ResultRow label="Tracking ID" value={referral.trackingId} mono />
             <ResultRow label="Referring BHC/HCI" value={getReferringHci(referral)} />
             <ResultRow label="Destination RHU" value={getDestinationFacility(referral)} />
-            <ResultRow label="Referral Category" value={getReferralCategory(referral)} />
-            <ResultRow
-              label="Chief Complaint"
-              value={referral.chiefComplaint || referral.concern}
-            />
+            {!referral.summaryOnly && (
+              <>
+                <ResultRow label="Referral Category" value={getReferralCategory(referral)} />
+                <ResultRow
+                  label="Chief Complaint"
+                  value={referral.chiefComplaint || referral.concern}
+                />
+              </>
+            )}
             <ResultRow label="Referral Date/Time" value={formatReferralDateTime(referral)} />
-            <ResultRow label="Urgency" value={getUrgency(referral)} />
+            {!referral.summaryOnly && <ResultRow label="Urgency" value={getUrgency(referral)} />}
           </dl>
+          {referral.summaryOnly && (
+            <p className="text-xs text-neutral-500">
+              Clinical details are hidden: your account has no Health Records access.
+            </p>
+          )}
 
           <div className="space-y-2">
             <button
@@ -735,11 +752,13 @@ function ResultsPanel({
             </button>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button type="button" onClick={onOpenDetails} className={PILL_SECONDARY}>
-                <ExternalLink size={14} aria-hidden="true" />
-                View Referral Details
-              </button>
-              <button type="button" onClick={onScanAgain} className={PILL_SECONDARY}>
+              {!referral.summaryOnly && (
+                <button type="button" onClick={onOpenDetails} className={PILL_SECONDARY}>
+                  <ExternalLink size={14} aria-hidden="true" />
+                  View Referral Details
+                </button>
+              )}
+              <button type="button" onClick={onScanAgain} className={`${PILL_SECONDARY}${referral.summaryOnly ? " sm:col-span-2" : ""}`}>
                 <RefreshCcw size={14} aria-hidden="true" />
                 Scan Again
               </button>

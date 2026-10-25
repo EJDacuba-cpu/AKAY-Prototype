@@ -20,6 +20,9 @@ class StaffRoles
         'encoder' => ['label' => 'Encoder', 'tier' => User::ROLE_BHC, 'licensed' => false, 'defaults' => ['patients.register', 'consultations.encode', 'inventory.view']],
         'nurse' => ['label' => 'Nurse', 'tier' => User::ROLE_RHU, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
         'doctor' => ['label' => 'Doctor', 'tier' => User::ROLE_RHU, 'licensed' => true, 'defaults' => self::RHU_DEFAULTS],
+        // Front desk: scans arrivals, checks in walk-ins, sees medicines. No clinical history by default.
+        // Not "rhu_staff": that was the legacy users.role value the bhc/rhu rename migration rewrites.
+        'intake_staff' => ['label' => 'RHU Staff', 'tier' => User::ROLE_RHU, 'licensed' => false, 'defaults' => ['patients.register', 'rhu.intake', 'inventory.view']],
     ];
 
     /** Duties that work at each facility tier; the rest have no screen there. */

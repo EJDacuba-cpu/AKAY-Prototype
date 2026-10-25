@@ -6,6 +6,7 @@ import {
 } from "../utils/referralAttention";
 import { refreshNotifications } from "./notificationService";
 import { queryKeys } from "../utils/queryKeys";
+import { arrivalToReferral } from "../utils/referralArrival";
 // Re-exported so existing call sites keep importing gate helpers from the
 // referral service, while the contract itself stays dependency-free.
 export { isNoProviderAvailableError } from "../utils/referralGateErrors";
@@ -249,6 +250,7 @@ export async function resolveReferralTrackingId(trackingId) {
     trackingId: data.tracking_id || data.trackingId || "",
     status: data.status || "",
     displayUrl: data.display_url || data.displayUrl || "",
+    arrival: data.arrival || null,
   };
 }
 
@@ -264,6 +266,7 @@ export async function resolveReferralQrToken(token) {
     trackingId: data.tracking_id || data.trackingId || "",
     status: data.status || "",
     displayUrl: data.display_url || data.displayUrl || "",
+    arrival: data.arrival || null,
   };
 }
 
@@ -323,7 +326,9 @@ export async function updateReferralStatus(referralId, status, changes = {}) {
     method: "PATCH",
     body: { status: normalizeReferralStatus(status), remarks: changes.remarks || null },
   });
-  return normalizeReferral(unwrapData(response));
+  const data = unwrapData(response);
+  // Intake without Health Records is sent who arrived, not the referral.
+  return data?.arrival ? arrivalToReferral(data.arrival) : normalizeReferral(data);
 }
 
 /**

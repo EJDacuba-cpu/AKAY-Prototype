@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { Check, HandHeart, Hospital, House, Keyboard, Lock, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
+import { Check, HandHeart, Hospital, House, Keyboard, Lock, ScanLine, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
 import { Button } from "../../components/ui/button";
@@ -25,7 +25,7 @@ const FACILITY_TYPES = [
   { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital, description: "Municipal clinic staff who receive referrals, confirm conditions and manage doctor availability." },
   { tier: TIERS.admin, label: "Municipal Health Officer", icon: ShieldCheck, description: "Administrator. Manages facilities, accounts and reports. Not tied to a facility." },
 ];
-const ROLE_ICONS = { midwife: Stethoscope, bhw: HandHeart, encoder: Keyboard, nurse: Syringe, doctor: UserRound };
+const ROLE_ICONS = { midwife: Stethoscope, bhw: HandHeart, encoder: Keyboard, nurse: Syringe, doctor: UserRound, intake_staff: ScanLine };
 const HEADINGS = {
   [STEPS.facility]: ["Where will this account work?", "Choose the facility type, then the facility."],
   [STEPS.personal]: ["Personal details", "How this person can be reached."],

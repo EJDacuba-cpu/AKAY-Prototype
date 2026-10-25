@@ -46,8 +46,8 @@ class StaffRolesTest extends TestCase
         $api = StaffRoles::forApi();
 
         $this->assertSame(['roles', 'available'], array_keys($api));
-        $this->assertCount(5, $api['roles']);
-        $this->assertSame(['midwife', 'bhw', 'encoder', 'nurse', 'doctor'], array_column($api['roles'], 'key'));
+        $this->assertCount(6, $api['roles']);
+        $this->assertSame(['midwife', 'bhw', 'encoder', 'nurse', 'doctor', 'intake_staff'], array_column($api['roles'], 'key'));
         $midwife = $api['roles'][0];
         $this->assertSame(['key' => 'midwife', 'label' => 'Midwife', 'tier' => 'bhc', 'licensed' => true], array_intersect_key($midwife, array_flip(['key', 'label', 'tier', 'licensed'])));
         $this->assertCount(10, $midwife['defaults']);

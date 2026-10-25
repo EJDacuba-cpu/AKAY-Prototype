@@ -18,7 +18,7 @@ const [, , { defaults: encoder }] = rolesData.roles;
 
 test("roles are grouped by facility tier", () => {
   assert.deepEqual(rolesForTier(rolesData, "bhc").map(r => r.key), ["midwife", "bhw", "encoder"]);
-  assert.deepEqual(rolesForTier(rolesData, "rhu").map(r => r.key), ["nurse", "doctor"]);
+  assert.deepEqual(rolesForTier(rolesData, "rhu").map(r => r.key), ["nurse", "doctor", "intake_staff"]);
   assert.deepEqual(rolesForTier(rolesData, "admin"), []);
   assert.equal(roleFor(rolesData, "encoder").label, "Encoder");
   assert.equal(roleFor(rolesData, ""), undefined);

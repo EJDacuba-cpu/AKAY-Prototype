@@ -9,6 +9,7 @@ export const rolesData = {
     { key: "encoder", label: "Encoder", tier: "bhc", licensed: false, defaults: encoder },
     { key: "nurse", label: "Nurse", tier: "rhu", licensed: true, defaults: rhu },
     { key: "doctor", label: "Doctor", tier: "rhu", licensed: true, defaults: rhu },
+    { key: "intake_staff", label: "RHU Staff", tier: "rhu", licensed: false, defaults: ["patients.register", "rhu.intake", "inventory.view"] },
   ],
   available: {
     bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "clinical.background.update", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"],

@@ -13,6 +13,7 @@ use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
 use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
+use App\Services\ReferralArrivalSummary;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRescheduleService;
@@ -194,8 +195,19 @@ class ReferralController extends Controller
             $data['remarks'] ?? null
         );
 
+        $referralData = $result['referral'];
+        if (ReferralArrivalSummary::appliesTo($request->user())) {
+            // Intake marked it Received without Health Records access: send back who arrived, not the referral.
+            $referralData = [
+                'id' => $referral->getKey(),
+                'tracking_id' => $result['referral']->tracking_id,
+                'status' => $result['referral']->status,
+                'arrival' => ReferralArrivalSummary::for($result['referral']),
+            ];
+        }
+
         return response()->json([
-            'data' => $result['referral'],
+            'data' => $referralData,
             'status_unchanged' => $result['status_unchanged'],
             'status' => $result['status'],
         ]);

@@ -30,7 +30,7 @@ export const PERMISSION_CATALOG = {
   "items.dispense": { group: "inventory", label: "Confirm dispensing", note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
   "reports.view": { group: "reports", label: "View reports", note: "Can view and export facility reports." },
   "rhu.manage": { group: "rhu", label: "Manage RHU referrals", note: "Can receive incoming referrals and send feedback. Does not grant doctor availability management." },
-  "rhu.intake": { group: "rhu", label: "RHU intake", note: "Can open Incoming Referrals and the QR Scanner. Referral write APIs still require Manage RHU referrals until that split is confirmed." },
+  "rhu.intake": { group: "rhu", label: "RHU intake", note: "Can open the QR Scanner and Incoming Referrals, identify an arrival and mark it Received. Sees only who arrived; clinical details need Health Records." },
   "rhu.providers.manage": { group: "rhu", label: "Manage doctor availability", note: "Can set official doctors Available or Unavailable for this RHU after confirming they are on duty. Does not grant referral management." },
   "conditions.confirm": { group: "rhu", label: "Confirm conditions", note: "Can confirm patient conditions on RHU feedback." },
 };
