@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRows, statusChip, walkInKeyFor } from './rhuQueueView.js';
+import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRowActions, queueRows, statusChip, walkInKeyFor } from './rhuQueueView.js';
 
 // 9:30 AM on Oct 25, 2026 in Manila.
 const NOW = new Date('2026-10-25T01:30:00Z');
@@ -32,9 +32,33 @@ test('waiting time reads as minutes, then hours', () => {
 
 test('a known status is an info chip; anything else is a neutral chip with its own text', () => {
   assert.deepEqual(statusChip('waiting'), { label: 'Waiting', tone: 'info' });
-  assert.deepEqual(statusChip('in_consultation'), { label: 'In Consultation', tone: 'neutral' });
+  assert.deepEqual(statusChip('in_consultation'), { label: 'In Consultation', tone: 'info' });
+  assert.deepEqual(statusChip('closed'), { label: 'Closed', tone: 'neutral' });
   assert.deepEqual(statusChip(''), { label: 'Unknown', tone: 'neutral' });
   assert.deepEqual(statusChip(undefined), { label: 'Unknown', tone: 'neutral' });
+});
+
+test('the row menu follows visit progress and duties', () => {
+  const waiting = queueRows([visit()], NOW)[0];
+  const inConsult = queueRows([visit({ status: 'in_consultation' })], NOW)[0];
+  assert.deepEqual(queueRowActions(waiting, { canEncode: true, canClose: true }).map((item) => item.label), [
+    'Start consultation',
+    'Open patient record',
+    'Close visit',
+  ]);
+  assert.deepEqual(queueRowActions(inConsult, { canEncode: true, canClose: true }).map((item) => item.label), [
+    'Resume consultation',
+    'Open patient record',
+  ]);
+  assert.deepEqual(queueRowActions(waiting, { canEncode: false, canClose: true }).map((item) => item.label), [
+    'Open patient record',
+    'Close visit',
+  ]);
+  assert.deepEqual(queueRowActions(waiting, { canEncode: true, canClose: false }).map((item) => item.label), [
+    'Start consultation',
+    'Open patient record',
+  ]);
+  assert.equal(queueRowActions(waiting, { canEncode: true, canClose: true }).find((item) => item.action === 'start').to, undefined);
 });
 
 test('a referred visit becomes a display row', () => {

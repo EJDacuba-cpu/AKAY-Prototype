@@ -63,7 +63,8 @@ class RhuVisitQueueMigrationTest extends TestCase
     {
         $this->assertTrue(Schema::hasColumns('rhu_visit_queue_entries', [
             'id', 'rural_health_unit_id', 'patient_id', 'referral_id', 'source', 'status',
-            'checked_in_at', 'closed_at', 'checked_in_by', 'check_in_key', 'created_at', 'updated_at',
+            'checked_in_at', 'closed_at', 'checked_in_by', 'closed_by', 'close_reason', 'close_note',
+            'consultation_uuid', 'check_in_key', 'created_at', 'updated_at',
         ]));
     }
 
@@ -140,6 +141,24 @@ class RhuVisitQueueMigrationTest extends TestCase
 
         $migration->up();
         $this->assertTrue(Schema::hasTable('rhu_visit_queue_entries'));
+    }
+
+    public function test_consultation_uuid_is_unique_when_present(): void
+    {
+        ['rhu' => $rhu, 'patient' => $patient, 'otherRhu' => $otherRhu] = $this->fixtures();
+        $otherPatient = Patient::create(['first_name' => 'Other', 'last_name' => 'Uuid', 'sex' => 'Male', 'status' => 'active', 'rural_health_unit_id' => $otherRhu->id]);
+        $this->insert([
+            'rural_health_unit_id' => $rhu->id,
+            'patient_id' => $patient->id,
+            'consultation_uuid' => '11111111-1111-1111-1111-111111111111',
+        ]);
+
+        $this->expectException(UniqueConstraintViolationException::class);
+        $this->insert([
+            'rural_health_unit_id' => $otherRhu->id,
+            'patient_id' => $otherPatient->id,
+            'consultation_uuid' => '11111111-1111-1111-1111-111111111111',
+        ]);
     }
 
     public function test_model_active_scope_excludes_closed_entries(): void

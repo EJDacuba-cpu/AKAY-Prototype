@@ -14,12 +14,18 @@ export const ACCESS_MODULES = {
   dispensing: { label: "Dispensing", permission: "items.dispense", skeleton: "module" },
   reports: { label: "Reports", permission: "reports.view", skeleton: "reports" },
   rhu: { label: "RHU Operations", permission: "rhu.manage", skeleton: "table" },
+  rhuIntake: { label: "Intake", permission: "rhu.intake", skeleton: "table" },
 };
 
 /** Admins keep their existing read access (navigationAllowed treats them the same way). */
 export function canAccessModule(user, module) {
   if (user?.role === "admin") return true;
   if (module === "patientDirectory" && ["bhc", "rhu"].includes(user?.role) && (user.permissions || []).includes("clinical.history")) return true;
+  // Bridge until O5 moves intake APIs off rhu.manage: default desk staff keep Incoming Referrals / QR Scanner.
+  if (module === "rhuIntake" && user?.role === "rhu") {
+    const permissions = user.permissions || [];
+    return permissions.includes("rhu.intake") || permissions.includes("rhu.manage");
+  }
   const permission = ACCESS_MODULES[module]?.permission;
   return Boolean(permission) && (user?.permissions || []).includes(permission);
 }

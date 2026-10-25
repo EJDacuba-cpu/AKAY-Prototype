@@ -667,7 +667,7 @@ export default function App() {
       <Route
         path="/rhu/incoming-referrals"
         element={
-          <ProtectedPage allowedRole="rhu" module="history">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <IncomingReferrals />
           </ProtectedPage>
         }
@@ -683,7 +683,7 @@ export default function App() {
       <Route
         path="/rhu/qr-scanner"
         element={
-          <ProtectedPage allowedRole="rhu" module="history">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <QRScanner />
           </ProtectedPage>
         }

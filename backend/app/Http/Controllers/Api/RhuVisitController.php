@@ -7,10 +7,11 @@ use App\Models\RhuVisitQueueEntry;
 use App\Services\PatientIdentity;
 use App\Services\RhuVisitQueueService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
- * Read-only RHU visit queue. Referral tracking and QR values never leave the
- * server here (D7); the sending BHC name is enough for the queue.
+ * RHU visit queue. Referral tracking and QR values never leave the server here
+ * (D7); the sending BHC name is enough for the queue.
  */
 class RhuVisitController extends Controller
 {
@@ -58,6 +59,33 @@ class RhuVisitController extends Controller
         return response()->json(['data' => $this->present($entry)]);
     }
 
+    public function close(Request $request, int $visit)
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', Rule::in(RhuVisitQueueEntry::CLOSE_REASONS)],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+        $entry = $this->visits
+            ->close($request->user(), $visit, $data['reason'], $data['note'] ?? null)
+            ->load(['patient', 'referral.barangayHealthCenter']);
+
+        return response()->json(['data' => $this->present($entry)]);
+    }
+
+    public function start(Request $request, int $visit)
+    {
+        $entry = $this->visits->start($request->user(), $visit)->load(['patient', 'referral.barangayHealthCenter']);
+
+        return response()->json(['data' => $this->present($entry)]);
+    }
+
+    public function resume(Request $request, int $visit)
+    {
+        $entry = $this->visits->resume($request->user(), $visit)->load(['patient', 'referral.barangayHealthCenter']);
+
+        return response()->json(['data' => $this->present($entry)]);
+    }
+
     private function present(RhuVisitQueueEntry $entry): array
     {
         return [
@@ -66,6 +94,9 @@ class RhuVisitController extends Controller
             'status' => $entry->status,
             'checked_in_at' => $entry->checked_in_at?->toISOString(),
             'closed_at' => $entry->closed_at?->toISOString(),
+            'consultation_uuid' => $entry->consultation_uuid,
+            'close_reason' => $entry->close_reason,
+            'close_note' => $entry->close_note,
             'waiting_minutes' => (int) $entry->checked_in_at->diffInMinutes($entry->closed_at ?? now()),
             'referral' => $entry->referral === null ? null : [
                 'id' => $entry->referral->id,

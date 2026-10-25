@@ -20,3 +20,23 @@ export async function checkInExistingPatient(patientId, checkInKey) {
   });
   return response?.data ?? null;
 }
+
+/** Close a waiting visit with an audited reason. Never opens a clinical editor. */
+export async function closeRhuVisit(visitId, { reason, note } = {}) {
+  const response = await apiRequest(`/rhu-visits/${visitId}/close`, {
+    method: "POST",
+    body: { reason, note: note || undefined },
+  });
+  return response?.data ?? null;
+}
+
+/** Start or resume the visit's consultation identity. Does not create a draft. */
+export async function startRhuVisit(visitId) {
+  const response = await apiRequest(`/rhu-visits/${visitId}/start`, { method: "POST" });
+  return response?.data ?? null;
+}
+
+export async function resumeRhuVisit(visitId) {
+  const response = await apiRequest(`/rhu-visits/${visitId}/resume`, { method: "POST" });
+  return response?.data ?? null;
+}

@@ -17,6 +17,22 @@ class RhuVisitQueueEntry extends Model
 
     public const STATUS_WAITING = 'waiting';
 
+    public const STATUS_IN_CONSULTATION = 'in_consultation';
+
+    public const STATUS_CLOSED = 'closed';
+
+    public const CLOSE_REASON_LEFT = 'left_before_consultation';
+
+    public const CLOSE_REASON_MISTAKE = 'checked_in_by_mistake';
+
+    public const CLOSE_REASON_OTHER = 'other';
+
+    public const CLOSE_REASONS = [
+        self::CLOSE_REASON_LEFT,
+        self::CLOSE_REASON_MISTAKE,
+        self::CLOSE_REASON_OTHER,
+    ];
+
     protected $fillable = [
         'rural_health_unit_id',
         'patient_id',
@@ -26,6 +42,10 @@ class RhuVisitQueueEntry extends Model
         'checked_in_at',
         'closed_at',
         'checked_in_by',
+        'closed_by',
+        'close_reason',
+        'close_note',
+        'consultation_uuid',
         'check_in_key',
     ];
 
@@ -52,6 +72,11 @@ class RhuVisitQueueEntry extends Model
     public function checkedInBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'checked_in_by');
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
     }
 
     public function scopeActive(Builder $query): Builder

@@ -14,7 +14,7 @@ import {
 } from "../../common";
 import { Button } from "../../ui/button";
 import usePagedRows from "../../../hooks/usePagedRows";
-import { filterQueueRows } from "../../../utils/rhuQueueView";
+import { filterQueueRows, queueRowActions } from "../../../utils/rhuQueueView";
 import { errorStateVariant } from "../../../utils/errorStateVariant";
 
 const SOURCE_OPTIONS = [
@@ -32,8 +32,8 @@ const DEFAULT_FILTERS = { search: "", source: "all" };
 
 /**
  * Today's Queue for the RHU: who is waiting, where they came from and since when.
- * `rows` are display rows from `queueRows()`. Start / Resume / Close arrive with Phase 5; until then the
- * row menu only opens the patient record.
+ * `rows` are display rows from `queueRows()`. Start / Resume / Close are queue-state actions;
+ * they never open the legacy RHU health-record editor.
  */
 export default function RhuQueueTable({
   rows,
@@ -44,7 +44,11 @@ export default function RhuQueueTable({
   isRefreshing = false,
   canViewQueue = true,
   canCheckIn = false,
+  canEncode = false,
   onCheckIn,
+  onStart,
+  onResume,
+  onCloseVisit,
 }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const visibleRows = filterQueueRows(rows, filters);
@@ -124,7 +128,17 @@ export default function RhuQueueTable({
                     </td>
                   </tr>
                 ) : (
-                  pageRows.map((row) => <QueueRowView key={row.id} row={row} />)
+                  pageRows.map((row) => (
+                    <QueueRowView
+                      key={row.id}
+                      row={row}
+                      canEncode={canEncode}
+                      canClose={canCheckIn}
+                      onStart={onStart}
+                      onResume={onResume}
+                      onCloseVisit={onCloseVisit}
+                    />
+                  ))
                 )}
               </tbody>
             </FixedTable>
@@ -141,8 +155,14 @@ export default function RhuQueueTable({
   );
 }
 
-function QueueRowView({ row }) {
+function QueueRowView({ row, canEncode, canClose, onStart, onResume, onCloseVisit }) {
   const tone = CHIP_TONES[row.status.tone] ?? CHIP_TONES.neutral;
+  const actions = queueRowActions(row, { canEncode, canClose }).map((item) => {
+    if (item.action === "start") return { ...item, onClick: () => onStart?.(row) };
+    if (item.action === "resume") return { ...item, onClick: () => onResume?.(row) };
+    if (item.action === "close") return { ...item, onClick: () => onCloseVisit?.(row) };
+    return item;
+  });
   return (
     <tr className="transition-colors hover:bg-neutral-50">
       <td className="px-4 tabular-nums text-neutral-500">{row.number}</td>
@@ -194,7 +214,7 @@ function QueueRowView({ row }) {
           showHeader={false}
           title={row.name}
           triggerLabel={`Actions for ${row.name}`}
-          actions={[{ label: "Open patient record", to: `/rhu/patients/${row.patientId}` }]}
+          actions={actions}
         />
       </td>
     </tr>

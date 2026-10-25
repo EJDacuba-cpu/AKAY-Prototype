@@ -1,5 +1,5 @@
 // Same order as backend ActionPermissions::ALL. Role rules (defaults, availability) come from GET /staff-roles.
-export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "rhu.providers.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
+export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "rhu.manage", "rhu.intake", "rhu.providers.manage", "conditions.confirm", "reports.view", "families.view", "families.manage"];
 
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
@@ -30,6 +30,7 @@ export const PERMISSION_CATALOG = {
   "items.dispense": { group: "inventory", label: "Confirm dispensing", note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
   "reports.view": { group: "reports", label: "View reports", note: "Can view and export facility reports." },
   "rhu.manage": { group: "rhu", label: "Manage RHU referrals", note: "Can receive incoming referrals and send feedback. Does not grant doctor availability management." },
+  "rhu.intake": { group: "rhu", label: "RHU intake", note: "Can open Incoming Referrals and the QR Scanner. Referral write APIs still require Manage RHU referrals until that split is confirmed." },
   "rhu.providers.manage": { group: "rhu", label: "Manage doctor availability", note: "Can set official doctors Available or Unavailable for this RHU after confirming they are on duty. Does not grant referral management." },
   "conditions.confirm": { group: "rhu", label: "Confirm conditions", note: "Can confirm patient conditions on RHU feedback." },
 };

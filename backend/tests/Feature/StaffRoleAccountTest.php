@@ -91,8 +91,23 @@ class StaffRoleAccountTest extends TestCase
     {
         $this->postJson('/api/users', $this->payload(['permissions' => [...StaffRoles::defaults('encoder'), 'rhu.manage']]))
             ->assertUnprocessable()->assertJsonFragment(['rhu.manage is not available to BHC accounts.']);
-        $this->postJson('/api/users', $this->rhuPayload('nurse', ['permissions' => [...StaffRoles::defaults('nurse'), 'consultations.encode']]))
-            ->assertUnprocessable()->assertJsonFragment(['consultations.encode is not available to RHU accounts.']);
+        $this->postJson('/api/users', $this->rhuPayload('nurse', ['permissions' => [...StaffRoles::defaults('nurse'), 'items.dispense']]))
+            ->assertUnprocessable()->assertJsonFragment(['items.dispense is not available to RHU accounts.']);
+    }
+
+    public function test_rhu_clinical_duties_are_grantable_and_not_default(): void
+    {
+        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake'] as $duty) {
+            $this->assertContains($duty, StaffRoles::available('rhu'));
+            $this->assertNotContains($duty, StaffRoles::defaults('nurse'));
+            $this->assertNotContains($duty, StaffRoles::defaults('doctor'));
+        }
+        $this->assertNotContains('items.dispense', StaffRoles::available('rhu'));
+
+        $this->postJson('/api/users', $this->rhuPayload('nurse', [
+            'email' => 'encode-nurse@example.test',
+            'permissions' => [...StaffRoles::defaults('nurse'), 'consultations.encode'],
+        ]))->assertCreated();
     }
 
     public function test_licensed_duty_on_encoder_needs_no_acknowledgement_and_is_audited(): void

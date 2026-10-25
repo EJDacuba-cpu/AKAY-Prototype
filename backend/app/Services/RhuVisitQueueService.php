@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Exceptions\RhuVisitCheckInKeyConflictException;
 use App\Exceptions\RhuVisitDuplicateActiveException;
+use App\Exceptions\RhuVisitStateException;
+use App\Models\AuditLog;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
@@ -12,6 +14,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -28,6 +31,8 @@ class RhuVisitQueueService
     public const ARRIVAL_KEY_PREFIX = 'referral-';
 
     private const SEARCH_MAX_TOKENS = 5;
+
+    private const CLOSE_NOTE_MAX_LENGTH = 500;
 
     public function __construct(private readonly FacilityAccessService $facilityAccess)
     {
@@ -116,6 +121,130 @@ class RhuVisitQueueService
             ->where('rural_health_unit_id', $rhuId)
             ->whereKey($entryId)
             ->firstOrFail();
+    }
+
+    /**
+     * Close a waiting visit with an audited reason. Referral status is not changed (D13).
+     */
+    public function close(User $user, int $entryId, string $reason, ?string $note): RhuVisitQueueEntry
+    {
+        $this->authorizeRhuUser($user);
+        ActionPermissions::ensure($user, 'patients.register');
+        $reason = trim($reason);
+        if (! in_array($reason, RhuVisitQueueEntry::CLOSE_REASONS, true)) {
+            throw ValidationException::withMessages([
+                'reason' => ['Choose why this visit is being closed.'],
+            ]);
+        }
+        $note = $note === null ? null : trim($note);
+        if ($note === '') {
+            $note = null;
+        }
+        if ($reason === RhuVisitQueueEntry::CLOSE_REASON_OTHER && $note === null) {
+            throw ValidationException::withMessages([
+                'note' => ['A note is required when the reason is Other.'],
+            ]);
+        }
+        if ($note !== null && mb_strlen($note) > self::CLOSE_NOTE_MAX_LENGTH) {
+            throw ValidationException::withMessages([
+                'note' => ['The note may not be longer than '.self::CLOSE_NOTE_MAX_LENGTH.' characters.'],
+            ]);
+        }
+
+        $closed = null;
+        $conflictId = null;
+        DB::transaction(function () use ($user, $entryId, $reason, $note, &$closed, &$conflictId): void {
+            $entry = $this->lockedVisit($user, $entryId);
+            if ($entry->closed_at !== null || $entry->status !== RhuVisitQueueEntry::STATUS_WAITING) {
+                $conflictId = $entry->id;
+                return;
+            }
+
+            $entry->update([
+                'status' => RhuVisitQueueEntry::STATUS_CLOSED,
+                'closed_at' => now(),
+                'closed_by' => $user->id,
+                'close_reason' => $reason,
+                'close_note' => $note,
+            ]);
+
+            AuditLog::create([
+                'user_id' => $user->id,
+                'action' => 'visit_closed',
+                'module' => 'rhu_visit_queue',
+                'description' => implode('; ', array_filter([
+                    "visit_id={$entry->id}",
+                    "reason={$reason}",
+                    $note !== null ? 'note_present=1' : null,
+                ])).'.',
+            ]);
+
+            $closed = $entry->fresh();
+        });
+        if ($conflictId !== null) {
+            throw new RhuVisitStateException('VISIT_NOT_WAITING', 'Only a waiting visit can be closed.', $conflictId);
+        }
+
+        return $closed ?? throw new \LogicException('Close did not persist the visit.');
+    }
+
+    /**
+     * Mint one consultation identity for a waiting visit, or return the existing
+     * one. No doctor is assigned and no draft is created.
+     */
+    public function start(User $user, int $entryId): RhuVisitQueueEntry
+    {
+        $this->authorizeRhuUser($user);
+        ActionPermissions::ensure($user, 'consultations.encode');
+
+        $started = null;
+        $conflict = null;
+        DB::transaction(function () use ($user, $entryId, &$started, &$conflict): void {
+            $entry = $this->lockedVisit($user, $entryId);
+            if ($entry->closed_at !== null || $entry->status === RhuVisitQueueEntry::STATUS_CLOSED) {
+                $conflict = ['errorCode' => 'VISIT_CLOSED', 'message' => 'A closed visit cannot be started.', 'id' => $entry->id];
+                return;
+            }
+            if ($entry->status === RhuVisitQueueEntry::STATUS_IN_CONSULTATION
+                && filled($entry->consultation_uuid)) {
+                $started = $entry;
+                return;
+            }
+            if ($entry->status !== RhuVisitQueueEntry::STATUS_WAITING || filled($entry->consultation_uuid)) {
+                $conflict = ['errorCode' => 'VISIT_NOT_WAITING', 'message' => 'Only a waiting visit can start a consultation.', 'id' => $entry->id];
+                return;
+            }
+
+            $entry->update([
+                'status' => RhuVisitQueueEntry::STATUS_IN_CONSULTATION,
+                'consultation_uuid' => (string) Str::uuid(),
+            ]);
+            $started = $entry->fresh();
+        });
+        if ($conflict !== null) {
+            throw new RhuVisitStateException($conflict['errorCode'], $conflict['message'], $conflict['id']);
+        }
+
+        return $started ?? throw new \LogicException('Start did not persist the consultation identity.');
+    }
+
+    /** Return the visit's existing consultation identity. */
+    public function resume(User $user, int $entryId): RhuVisitQueueEntry
+    {
+        $this->authorizeRhuUser($user);
+        ActionPermissions::ensure($user, 'consultations.encode');
+        $entry = $this->find($user, $entryId);
+        if ($entry->status !== RhuVisitQueueEntry::STATUS_IN_CONSULTATION
+            || ! filled($entry->consultation_uuid)
+            || $entry->closed_at !== null) {
+            throw new RhuVisitStateException(
+                'VISIT_NOT_IN_CONSULTATION',
+                'This visit is not in consultation.',
+                $entry->id
+            );
+        }
+
+        return $entry;
     }
 
     /**
@@ -258,6 +387,17 @@ class RhuVisitQueueService
             ->map(fn (Patient $patient): array => ['patient' => $patient, 'active_visit_id' => $visits[$patient->id] ?? null])
             ->values()
             ->all();
+    }
+
+    private function lockedVisit(User $user, int $entryId): RhuVisitQueueEntry
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+
+        return RhuVisitQueueEntry::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->whereKey($entryId)
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 
     /** Only RHU staff with an active facility assignment; returns their RHU id. */

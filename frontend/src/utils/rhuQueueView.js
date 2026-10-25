@@ -40,11 +40,40 @@ export function walkInKeyFor(current, patientId, makeId) {
   return current && current.patientId === patientId ? current : { patientId, key: newCheckInKey(makeId) };
 }
 
-/** Waiting is the one status Phase 4 knows; later phases add theirs and fall back to a neutral chip until then. */
+/** Waiting and in-consultation are the chips Phase 5 knows; anything else stays a neutral fallback. */
 export function statusChip(status) {
   const raw = String(status ?? '').trim();
   if (raw === 'waiting') return { label: 'Waiting', tone: 'info' };
+  if (raw === 'in_consultation') return { label: 'In Consultation', tone: 'info' };
+  if (raw === 'closed') return { label: 'Closed', tone: 'neutral' };
   return { label: raw === '' ? 'Unknown' : titleCase(raw), tone: 'neutral' };
+}
+
+export const CLOSE_REASONS = [
+  { value: 'left_before_consultation', label: 'Left before consultation' },
+  { value: 'checked_in_by_mistake', label: 'Checked in by mistake' },
+  { value: 'other', label: 'Other' },
+];
+
+/**
+ * ⋯ menu items for one queue row (D8). Discard is Phase 6. Hidden duties are omitted, not disabled.
+ * `onClick` is attached by the table; this only decides labels and which action they fire.
+ */
+export function queueRowActions(row, { canEncode = false, canClose = false } = {}) {
+  const actions = [];
+  if (row?.statusKey === 'waiting' && canEncode) {
+    actions.push({ label: 'Start consultation', action: 'start' });
+  }
+  if (row?.statusKey === 'in_consultation' && canEncode) {
+    actions.push({ label: 'Resume consultation', action: 'resume' });
+  }
+  if (row?.patientId) {
+    actions.push({ label: 'Open patient record', to: `/rhu/patients/${row.patientId}` });
+  }
+  if (row?.statusKey === 'waiting' && canClose) {
+    actions.push({ label: 'Close visit', action: 'close' });
+  }
+  return actions;
 }
 
 /** "61 · M", "F" or "" — the same wording in the queue and in the check-in results. */
@@ -87,6 +116,7 @@ export function queueRows(visits, now = new Date()) {
       arrivalNote: carriedOver
         ? `From ${DAY_LABEL.format(arrived)} · still open`
         : waitingNote(visit.waiting_minutes),
+      statusKey: visit.status ?? '',
       status: statusChip(visit.status),
     };
   });

@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 
 import { SegmentedFilter } from "../../components/common";
+import CloseVisitModal from "../../components/features/rhu-queue/CloseVisitModal";
 import RhuQueueTable from "../../components/features/rhu-queue/RhuQueueTable";
 import WalkInCheckInModal from "../../components/features/rhu-queue/WalkInCheckInModal";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import useAccess from "../../hooks/useAccess";
 import useRhuVisits from "../../hooks/useRhuVisits";
+import { closeRhuVisit, resumeRhuVisit, startRhuVisit } from "../../services/rhuVisitService";
+import { queryKeys } from "../../utils/queryKeys";
 import { queueRows } from "../../utils/rhuQueueView";
 import PatientsModule from "../bhc/PatientsModule";
 
@@ -20,8 +25,12 @@ export default function RhuPatientsWorkspace() {
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "all" ? "all" : "queue";
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const [closingRow, setClosingRow] = useState(null);
+  const [closeState, setCloseState] = useState({ saving: false, error: "" });
+  const client = useQueryClient();
   const access = useAccess();
   const canCheckIn = access.can("patients.register");
+  const canEncode = access.can("consultations.encode");
   // The queue endpoint needs Health Records access; check-in alone is the registration duty.
   const canViewQueue = access.can("clinical.history");
   const { visits, loading, error, queryError, refetch, isRefreshing } = useRhuVisits({
@@ -39,6 +48,44 @@ export default function RhuPatientsWorkspace() {
   function switchView(next) {
     // Replace, so Back leaves the page instead of stepping through tab switches.
     setParams(next === "queue" ? {} : { view: next }, { replace: true });
+  }
+
+  async function refreshQueue() {
+    await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
+  }
+
+  async function startVisit(row) {
+    try {
+      await startRhuVisit(row.id);
+      toast.success(`Consultation started for ${row.name}.`);
+      await refreshQueue();
+    } catch (error) {
+      toast.error(error?.message || "Unable to start this consultation.");
+    }
+  }
+
+  async function resumeVisit(row) {
+    try {
+      await resumeRhuVisit(row.id);
+      toast.success(`Consultation is already open for ${row.name}.`);
+      await refreshQueue();
+    } catch (error) {
+      toast.error(error?.message || "Unable to resume this consultation.");
+    }
+  }
+
+  async function confirmClose({ reason, note }) {
+    if (!closingRow) return;
+    setCloseState({ saving: true, error: "" });
+    try {
+      await closeRhuVisit(closingRow.id, { reason, note });
+      toast.success(`${closingRow.name} removed from today's queue.`);
+      setClosingRow(null);
+      setCloseState({ saving: false, error: "" });
+      await refreshQueue();
+    } catch (error) {
+      setCloseState({ saving: false, error: error?.message || "Unable to close this visit." });
+    }
   }
 
   return (
@@ -65,7 +112,11 @@ export default function RhuPatientsWorkspace() {
             isRefreshing={isRefreshing}
             canViewQueue={canViewQueue}
             canCheckIn={canCheckIn}
+            canEncode={canEncode}
             onCheckIn={() => setCheckInOpen(true)}
+            onStart={startVisit}
+            onResume={resumeVisit}
+            onCloseVisit={setClosingRow}
           />
         ) : (
           <PatientsModule role="rhu" basePath="/rhu" embedded />
@@ -74,6 +125,19 @@ export default function RhuPatientsWorkspace() {
 
       {checkInOpen && (
         <WalkInCheckInModal registerPath={REGISTER_FOR_CHECK_IN} onClose={() => setCheckInOpen(false)} />
+      )}
+      {closingRow && (
+        <CloseVisitModal
+          row={closingRow}
+          saving={closeState.saving}
+          error={closeState.error}
+          onClose={() => {
+            if (closeState.saving) return;
+            setClosingRow(null);
+            setCloseState({ saving: false, error: "" });
+          }}
+          onConfirm={confirmClose}
+        />
       )}
     </DashboardLayout>
   );
