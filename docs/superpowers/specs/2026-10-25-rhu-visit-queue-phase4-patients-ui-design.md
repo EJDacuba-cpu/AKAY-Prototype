@@ -34,7 +34,7 @@ check a walk-in in without leaving the page. BHC Patients is unchanged.
 |---|---|
 | P4-1 | New page `src/pages/rhu/RhuPatientsWorkspace.jsx` replaces the `RHUPatientsModule` element at `/rhu/patients`. It renders `DashboardLayout`, the page heading, the pill tab control and the active view. The view is kept in the URL (`?view=queue` default, `?view=all`) so refresh and Back behave. |
 | P4-2 | `PatientsModule` gains an optional `embedded` prop (default `false`). When `true` it skips its own `DashboardLayout` and its own title; the toolbar's "New Patient" stays (registration without check-in, D5). With `embedded` false the rendered output is unchanged. |
-| P4-3 | **Today's Queue** is a fixed-frame table following DESIGN.md (44px header, 56px rows, hairline sheet, pill chips). Columns: `#`, Patient (name link to the profile, age · sex), Source, Arrived, Visit progress, Actions. No pagination; the sheet scrolls inside a fixed frame. Empty and error states fill the same frame. |
+| P4-3 | **Today's Queue** is a fixed-frame table following DESIGN.md (44px header, 56px rows, hairline sheet, pill chips). Columns: `#`, Patient (name link to the profile, age · sex), Source, Arrived, Visit progress, Actions. Built from the existing `FixedTable`, `SearchField`, `SegmentedFilter`, `TablePagination` and `usePagedRows` (10 rows per page, as every AKAY list); empty and error states fill the same frame. |
 | P4-4 | Source cell: Referred badge (info/blue) with "From {sending BHC}", or Walk-in badge (neutral). No tracking or QR value (D7). |
 | P4-5 | Arrived cell: arrival time and "Waiting N min" from `waiting_minutes`. A visit whose arrival date (Asia/Manila) is before today shows "From {date} · still open" in the caution colour instead of the minutes (D9). |
 | P4-6 | Visit progress cell: a status chip mapped from `status` (`waiting` → Waiting, info). Unknown statuses render their raw text in a neutral chip so later phases cannot break the table. |
@@ -67,4 +67,4 @@ BHC); redesigning Incoming Referrals or QR Scanner; changing BHC pages.
   of the BHC page.
 - Wall-clock "today" uses the browser clock converted to Asia/Manila; a clinic PC with a wrong clock
   mislabels carried-over visits (the server's `waiting_minutes` is unaffected).
-- A long queue without pagination is acceptable for one RHU day; revisit if real queues exceed ~100.
+- The whole active queue is loaded and paged on the client (10 per page); fine for one RHU day, revisit if real queues exceed ~200.
