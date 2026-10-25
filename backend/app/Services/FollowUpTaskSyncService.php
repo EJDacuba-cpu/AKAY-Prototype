@@ -141,41 +141,45 @@ class FollowUpTaskSyncService
             && CarePlan::keepsFollowUpWithReferral($record->diagnoses ?? [], $record->monitoring_data ?? []);
 
         if ($record->needs_referral && ! $keptWithReferral) {
-            $this->cancelUnfulfilledTask($record, $user);
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
         $status = $this->healthRecordStatus($record);
-        $dueDate = $this->followUpDate($record);
+        $schedules = FollowUpSchedules::fromMonitoringData($record->monitoring_data ?? []);
 
-        if ((! $keptWithReferral && $status !== 'follow up required') || ! $dueDate) {
-            $this->cancelUnfulfilledTask($record, $user);
+        if ((! $keptWithReferral && $status !== 'follow up required') || $schedules === []) {
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
-        $this->upsertTask(
-            $record,
-            $dueDate,
-            $this->followUpTime($record),
-            $user
-        );
+        $this->syncSchedules($record, $schedules, $user);
     }
 
     /**
-     * Create or refresh the task a record schedules, without clobbering state the
-     * task owns. A record only knows the date the clinician typed into the form;
-     * reschedules, no-shows and notes live on the task and must survive a re-sync.
+     * Create or refresh each independent schedule without clobbering state the
+     * task owns. A record only knows the dates typed into the form; reschedules,
+     * no-shows and notes live on the task and must survive a re-sync.
+     *
+     * @param  array<int, array{purpose_key: string, purpose: string, date: string, time: ?string, predecessor_task_id: ?int, source_entry_id: ?string}>  $schedules
      */
-    private function upsertTask(
-        HealthRecord $record,
-        string $dueDate,
-        ?string $dueTime,
-        ?User $user
-    ): void {
-        // Once a reschedule has run, health_record_id alone no longer
-        // identifies a single row - the superseded row and its replacement
-        // both carry it. rescheduled_to_id IS NULL is what "current" means.
+    private function syncSchedules(HealthRecord $record, array $schedules, ?User $user): void
+    {
+        $keys = [];
+        foreach ($schedules as $schedule) {
+            $keys[] = $schedule['purpose_key'];
+            $this->upsertSchedule($record, $schedule, $user);
+        }
+        $this->cancelUnfulfilledTasks($record, $user, $keys);
+    }
+
+    /**
+     * @param  array{purpose_key: string, purpose: string, date: string, time: ?string, predecessor_task_id: ?int, source_entry_id: ?string}  $schedule
+     */
+    private function upsertSchedule(HealthRecord $record, array $schedule, ?User $user): void
+    {
         $existingTask = FollowUpTask::where('health_record_id', $record->id)
+            ->where('purpose_key', $schedule['purpose_key'])
             ->whereNull('rescheduled_to_id')
             ->first();
 
@@ -190,21 +194,26 @@ class FollowUpTaskSyncService
             'patient_id' => $record->patient_id,
             'barangay_health_center_id' => $record->barangay_health_center_id,
             'rural_health_unit_id' => $record->rural_health_unit_id,
+            'purpose' => $schedule['purpose'],
+            'purpose_key' => $schedule['purpose_key'],
+            'source_entry_id' => $schedule['source_entry_id'],
+            'predecessor_task_id' => $schedule['predecessor_task_id'] ?? $existingTask?->predecessor_task_id,
             'state' => $existingTask?->state ?? FollowUpTask::STATE_PENDING,
             'created_by' => $record->created_by,
             'updated_by' => $user?->id,
         ];
 
-        // A rescheduled task carries a date chosen in the Follow-ups module that the
-        // record never learns about. Re-deriving it from the record would silently
-        // undo the reschedule on the next list load.
         if ($existingTask === null || $existingTask->rescheduled_at === null) {
-            $attributes['due_date'] = $dueDate;
-            $attributes['due_time'] = $dueTime;
+            $attributes['due_date'] = $schedule['date'];
+            $attributes['due_time'] = $schedule['time'];
         }
 
         FollowUpTask::updateOrCreate(
-            ['health_record_id' => $record->id, 'rescheduled_to_id' => null],
+            [
+                'health_record_id' => $record->id,
+                'purpose_key' => $schedule['purpose_key'],
+                'rescheduled_to_id' => null,
+            ],
             $attributes
         );
     }
@@ -253,40 +262,43 @@ class FollowUpTaskSyncService
         // chain task this record owns.
         $task = $lockedTask
             ?? $this->linkedFollowUpTask($record, $user)
-            ?? $this->matchingParentTask($record, $user);
-        $dueDate = $this->followUpDate($record);
+            ?? ($this->followUpTaskId($record->monitoring_data ?? []) ? null : $this->matchingParentTask($record, $user));
+        $schedules = FollowUpSchedules::fromMonitoringData($record->monitoring_data ?? []);
 
         if ($task) {
             $this->fulfillTask($task, $record, $user);
         }
 
-        if (! $dueDate) {
-            $this->cancelUnfulfilledTask($record, $user);
+        if ($schedules === []) {
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
-        $this->upsertTask(
-            $record,
-            $dueDate,
-            $this->followUpTime($record),
-            $user
-        );
+        $this->syncSchedules($record, $schedules, $user);
     }
 
-    private function cancelUnfulfilledTask(
+    /**
+     * @param  array<int, string>  $keepPurposeKeys
+     */
+    private function cancelUnfulfilledTasks(
         HealthRecord $record,
-        ?User $user
+        ?User $user,
+        array $keepPurposeKeys = []
     ): void
     {
-        FollowUpTask::where('health_record_id', $record->id)
+        $query = FollowUpTask::where('health_record_id', $record->id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
-            ->update([
-                'state' => FollowUpTask::STATE_CANCELLED,
-                'cancelled_at' => now(),
-                'updated_by' => $user?->id,
-                'updated_at' => now(),
-            ]);
+            ->whereNull('rescheduled_to_id');
+        if ($keepPurposeKeys !== []) {
+            $query->whereNotIn('purpose_key', $keepPurposeKeys);
+        }
+        $query->update([
+            'state' => FollowUpTask::STATE_CANCELLED,
+            'cancelled_at' => now(),
+            'updated_by' => $user?->id,
+            'updated_at' => now(),
+        ]);
     }
 
     private function linkedFollowUpTask(
@@ -353,18 +365,21 @@ class FollowUpTaskSyncService
             ->where('health_record_id', $record->parent_health_record_id)
             ->where('patient_id', $record->patient_id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
-            ->whereNull('fulfilled_at');
+            ->whereNull('fulfilled_at')
+            ->whereNull('rescheduled_to_id');
         if ($record->rural_health_unit_id) {
             $taskQuery->where('rural_health_unit_id', $record->rural_health_unit_id);
         } else {
             $taskQuery->where('barangay_health_center_id', $record->barangay_health_center_id);
         }
-        $task = $taskQuery->first();
-
-        if (! $task) {
+        $tasks = $taskQuery->orderBy('id')->get();
+        // Legacy records have one current task per source consultation. With
+        // independent schedules, guessing among siblings would fulfill the
+        // wrong appointment.
+        if ($tasks->count() !== 1) {
             return null;
         }
-
+        $task = $tasks->first();
         $this->facilityAccess->authorizeFollowUpTask($user, $task);
 
         return $task;

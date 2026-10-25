@@ -7,12 +7,11 @@ import { conditionStatusLabel, monitoringRecommendationOptions } from "../../../
 import {
   legacyMonitoringOptions,
   monitoredConditionOptions,
-  scheduledFollowUpOptions,
+  pendingFollowUpOptions,
 } from "../../../../utils/startConsultation";
 
-const GENERAL = "general";
-const MONITORING = "monitoring";
-const MONITORING_HINT = "Tick at least one monitored condition.";
+const NEW_VISIT = "new";
+const CONTINUE = "continue";
 
 function toggle(list, id) {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
@@ -58,14 +57,16 @@ function RecommendationRow({ option, ...props }) {
 }
 
 function FollowUpRow({ option, ...props }) {
-  const { followUpId, reason, dueDate, isOverdue, sourceDate } = option;
+  const { followUpId, reason, purpose, dueDate, isOverdue, sourceDate, sourceChiefComplaint, sourceAssessment } = option;
   const due = formatDate(dueDate, "");
   const from = formatDate(sourceDate, "");
   const lines = [
     [`FU-${followUpId}`, due && `due ${due}`, isOverdue && "Overdue"].filter(Boolean).join(" · "),
     from && `From ${from} visit`,
+    sourceChiefComplaint && `Previous complaint: ${sourceChiefComplaint}`,
+    sourceAssessment && `Previous findings: ${sourceAssessment}`,
   ].filter(Boolean);
-  return <CheckRow {...props} title={reason || "No reason recorded"} lines={lines} />;
+  return <CheckRow {...props} title={purpose || reason || "No reason recorded"} lines={lines} />;
 }
 
 function SectionHeading({ id, children }) {
@@ -79,19 +80,12 @@ function SectionHeading({ id, children }) {
 /**
  * Shown by Start Consultation when the patient has verified monitoring,
  * conditions the RHU recommends BHC start monitoring, scheduled follow-ups, or
- * legacy monitoring waiting on RHU verification. The visit type is General
- * Consultation (the default, always present) or Follow-up Existing Monitoring
- * (offered only with verified monitoring, and it needs at least one ticked
- * condition). Scheduled follow-ups and RHU recommendations are optional
- * context under either type: nothing is preselected, and opening never
- * completes a follow-up (only a successful save does). Legacy monitoring is
- * listed read-only and can never be ticked. `onStart` (async) always loads
- * the patient first; with anything ticked it also reads the records fresh. The
- * modal stays open on a spinner until the workspace can open already populated; if a record is no longer
- * active, a follow-up was fulfilled, a recommendation was withdrawn, or they
- * cannot be read, the modal says so instead of opening half loaded. It does
- * not pick a service - Barangay Health Services stays in the workspace. Mount
- * it only while open so each opening starts empty.
+ * legacy monitoring waiting on RHU verification. The two entry paths are New
+ * Consultation (default; never attaches pending follow-ups) and Continue
+ * Scheduled Follow-up (one selected by default, more only if explicitly
+ * added). Opening never completes a follow-up. Legacy monitoring is listed
+ * read-only. `onStart` (async) always loads the patient first. Mount it only
+ * while open so each opening starts empty.
  */
 export default function StartConsultationModal({ overview, onStart, onCancel }) {
   const visitTypeId = useId();
@@ -100,38 +94,38 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   const recommendedHeadingId = useId();
   const legacyHeadingId = useId();
   const hintId = useId();
-  const [visitType, setVisitType] = useState(GENERAL);
+  const [visitType, setVisitType] = useState(NEW_VISIT);
   const [monitoringIds, setMonitoringIds] = useState([]);
   const [followUpIds, setFollowUpIds] = useState([]);
   const [startConditionIds, setStartConditionIds] = useState([]);
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState("");
   const options = monitoredConditionOptions(overview);
-  const followUps = scheduledFollowUpOptions(overview);
+  const followUps = pendingFollowUpOptions(overview);
   const recommendations = monitoringRecommendationOptions(overview);
   const legacy = legacyMonitoringOptions(overview);
-  const monitoringMode = options.length > 0 && visitType === MONITORING;
-  // Ticks only count in Monitoring Visit mode; a hidden tick is never sent.
-  const effectiveMonitoringIds = monitoringMode ? monitoringIds : [];
-  const needsMonitoringTick = monitoringMode && monitoringIds.length === 0;
-  const hasPendingFollowUp = options.some((o) => o.followUp && effectiveMonitoringIds.includes(o.monitoringId));
+  const continueMode = followUps.length > 0 && visitType === CONTINUE;
+  const effectiveFollowUpIds = continueMode ? followUpIds : [];
+  const needsFollowUpTick = continueMode && followUpIds.length === 0;
   const nothingTicked =
-    effectiveMonitoringIds.length === 0 && startConditionIds.length === 0 && followUpIds.length === 0;
+    monitoringIds.length === 0 && startConditionIds.length === 0 && effectiveFollowUpIds.length === 0;
 
   function chooseVisitType(next) {
     setVisitType(next);
-    // General Consultation never carries monitoring ticks from the other type.
-    if (next === GENERAL) setMonitoringIds([]);
+    if (next === NEW_VISIT) setFollowUpIds([]);
+    if (next === CONTINUE && followUpIds.length === 0 && followUps[0]) {
+      setFollowUpIds([followUps[0].followUpId]);
+    }
   }
 
   async function handleStart() {
     setProblem("");
-    if (needsMonitoringTick) return;
+    if (needsFollowUpTick) return;
     const names = new Map(options.map((option) => [option.monitoringId, option.conditionName]));
     const recommendedNames = new Map(recommendations.map((option) => [Number(option.conditionId), option.conditionName]));
     setStarting(true);
     try {
-      await onStart({ monitoringIds: effectiveMonitoringIds, startConditionIds, followUpIds });
+      await onStart({ monitoringIds, startConditionIds, followUpIds: effectiveFollowUpIds });
       // Navigation takes over; the modal unmounts with the page.
     } catch (error) {
       if (error?.kind === "inactive") {
@@ -173,16 +167,16 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
       closeDisabled={starting}
       dismissOnBackdrop={!starting}
       dismissOnEscape={!starting}
-      footerLeading={needsMonitoringTick ? <span id={hintId}>{MONITORING_HINT}</span> : null}
+      footerLeading={needsFollowUpTick ? <span id={hintId}>Select the scheduled follow-up this visit continues.</span> : null}
       footer={
         <>
           <ModalButton onClick={onCancel} disabled={starting}>Cancel</ModalButton>
           <ModalButton
             variant="primary"
             primary
-            disabled={starting || needsMonitoringTick}
+            disabled={starting || needsFollowUpTick}
             aria-busy={starting}
-            aria-describedby={needsMonitoringTick ? hintId : undefined}
+            aria-describedby={needsFollowUpTick ? hintId : undefined}
             onClick={handleStart}
           >
             {starting ? (
@@ -200,60 +194,43 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
       <div className="space-y-4 text-[13px] text-neutral-600">
         <fieldset disabled={starting}>
           <legend id={visitTypeId} className="text-[13px] font-semibold text-neutral-900">
-            Visit type
+            How is this visit starting?
           </legend>
           <div role="radiogroup" aria-labelledby={visitTypeId} className="mt-1.5 flex flex-wrap gap-x-6 gap-y-1.5">
             <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-neutral-900">
               <input
                 type="radio"
                 name={visitTypeId}
-                checked={!monitoringMode}
-                onChange={() => chooseVisitType(GENERAL)}
+                checked={!continueMode}
+                onChange={() => chooseVisitType(NEW_VISIT)}
                 className="h-4 w-4 accent-ink-700"
               />
-              New / General Consultation
+              New Consultation
             </label>
-            {options.length > 0 && (
+            {followUps.length > 0 && (
               <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-neutral-900">
                 <input
                   type="radio"
                   name={visitTypeId}
-                  checked={monitoringMode}
-                  onChange={() => chooseVisitType(MONITORING)}
+                  checked={continueMode}
+                  onChange={() => chooseVisitType(CONTINUE)}
                   className="h-4 w-4 accent-ink-700"
                 />
-                Follow-up Existing Monitoring
+                Continue Scheduled Follow-up
               </label>
             )}
           </div>
         </fieldset>
-        {monitoringMode && (
-          <section>
-            <SectionHeading id={monitoringHeadingId}>Existing monitoring addressed in this visit</SectionHeading>
-            <p className="mt-0.5 text-xs text-neutral-500">Tick the monitored conditions this visit follows up.</p>
-            <div role="group" aria-labelledby={monitoringHeadingId} className="mt-1">
-              {options.map((option) => (
-                <ConditionRow
-                  key={option.monitoringId}
-                  option={option}
-                  disabled={starting}
-                  checked={monitoringIds.includes(option.monitoringId)}
-                  onChange={() => setMonitoringIds((current) => toggle(current, option.monitoringId))}
-                />
-              ))}
-            </div>
-            {hasPendingFollowUp && (
-              <p className="mt-1 text-xs text-neutral-500">
-                Pending follow-ups for the selected conditions are recorded as attended when this consultation is saved.
-              </p>
-            )}
-          </section>
+        {!continueMode && (
+          <p className="text-xs text-neutral-500">
+            Opens a new clinical encounter. Pending follow-ups stay pending unless you switch to Continue Scheduled Follow-up.
+          </p>
         )}
-        {followUps.length > 0 && (
+        {continueMode && (
           <section>
-            <SectionHeading id={followUpHeadingId}>Scheduled follow-ups (optional)</SectionHeading>
+            <SectionHeading id={followUpHeadingId}>Scheduled follow-up for this visit</SectionHeading>
             <p className="mt-0.5 text-xs text-neutral-500">
-              Tick one to attend it in this visit. It is marked attended only when the consultation is saved.
+              One follow-up is selected by default. Add another only if it is genuinely addressed in this same encounter. Nothing is marked attended until the consultation is saved.
             </p>
             <div role="group" aria-labelledby={followUpHeadingId} className="mt-1">
               {followUps.map((option) => (
@@ -263,6 +240,25 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
                   disabled={starting}
                   checked={followUpIds.includes(option.followUpId)}
                   onChange={() => setFollowUpIds((current) => toggle(current, option.followUpId))}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+        {options.length > 0 && (
+          <section>
+            <SectionHeading id={monitoringHeadingId}>Condition monitoring addressed today</SectionHeading>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              Optional read-only context until ticked. Ticking a condition does not complete its follow-up appointment.
+            </p>
+            <div role="group" aria-labelledby={monitoringHeadingId} className="mt-1">
+              {options.map((option) => (
+                <ConditionRow
+                  key={option.monitoringId}
+                  option={option}
+                  disabled={starting}
+                  checked={monitoringIds.includes(option.monitoringId)}
+                  onChange={() => setMonitoringIds((current) => toggle(current, option.monitoringId))}
                 />
               ))}
             </div>

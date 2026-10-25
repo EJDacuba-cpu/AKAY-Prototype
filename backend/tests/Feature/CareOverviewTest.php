@@ -71,7 +71,7 @@ class CareOverviewTest extends TestCase
             ->assertJsonPath('data.monitoring_without_follow_up.0.last_health_record_id', $source->id);
         $this->assertSame(['pending_follow_ups', 'monitoring_without_follow_up', 'monitoring_recommendations'], array_keys($response->json('data')));
         $this->assertSame(
-            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'reason', 'source_health_record_id', 'source_date', 'conditions'],
+            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'purpose', 'purpose_key', 'predecessor_task_id', 'reason', 'source_health_record_id', 'source_date', 'source_chief_complaint', 'source_assessment', 'conditions'],
             array_keys($response->json('data.pending_follow_ups.0'))
         );
         $this->assertSame(

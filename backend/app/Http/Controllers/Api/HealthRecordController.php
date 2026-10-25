@@ -227,7 +227,10 @@ class HealthRecordController extends Controller
             // The visit-level follow-up first: normalizeReferralDisposition
             // reads the bhcFollowUp it stores (CarePlan::keepsFollowUpWithReferral).
             $this->applyV2NextActions($data, $carePlan);
-            if ($this->isReferralDisposition($data, $referralData)) {
+            if (! $this->isReferralDisposition($data, $referralData, true)) {
+                $referralData = null;
+            }
+            if ($this->isReferralDisposition($data, $referralData, true)) {
                 $this->normalizeReferralDisposition($data);
             }
         } elseif (! $rhuItr) {
@@ -831,8 +834,13 @@ class HealthRecordController extends Controller
 
     private function isReferralDisposition(
         array $data,
-        mixed $referralData
+        mixed $referralData,
+        bool $v2 = false
     ): bool {
+        if ($v2) {
+            return filter_var($data['needs_referral'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        }
+
         return ($data['needs_referral'] ?? false) === true
             || is_array($referralData);
     }
@@ -926,21 +934,30 @@ class HealthRecordController extends Controller
     private function applyV2NextActions(array &$data, array $carePlan): void
     {
         $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
-        $followUp = filter_var($carePlan['bhc_follow_up'] ?? false, FILTER_VALIDATE_BOOLEAN)
-            || collect($data['diagnoses'] ?? [])->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'managed_at_bhc');
+        $schedules = \App\Services\FollowUpSchedules::forV2Save($monitoringData, $carePlan);
+        $followUp = $schedules !== [];
 
+        $first = $schedules[0] ?? null;
         $data['monitoring_data'] = $followUp
             ? [
                 ...$monitoringData,
                 'bhcFollowUp' => true,
                 'followUpStatus' => 'Follow-up Required',
                 'follow_up_status' => 'Follow-up Required',
+                'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),
+                'followUpDate' => $first['date'],
+                'follow_up_date' => $first['date'],
+                'followUpTime' => $first['time'],
+                'follow_up_time' => $first['time'],
+                'followUpReason' => $first['purpose'],
+                'follow_up_reason' => $first['purpose'],
             ]
             : [
                 ...$monitoringData,
                 'bhcFollowUp' => false,
                 'followUpStatus' => 'Completed',
                 'follow_up_status' => 'Completed',
+                'followUpSchedules' => [],
                 'followUpDate' => null,
                 'follow_up_date' => null,
                 'followUpTime' => null,

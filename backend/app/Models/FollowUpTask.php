@@ -26,6 +26,9 @@ class FollowUpTask extends Model
         'rural_health_unit_id',
         'due_date',
         'due_time',
+        'purpose',
+        'purpose_key',
+        'source_entry_id',
         'state',
         'notes',
         'practitioner_id',
@@ -35,6 +38,7 @@ class FollowUpTask extends Model
         'fulfilled_at',
         'fulfilled_by_health_record_id',
         'rescheduled_to_id',
+        'predecessor_task_id',
         'created_by',
         'updated_by',
     ];
@@ -57,16 +61,23 @@ class FollowUpTask extends Model
     }
 
     /**
-     * A follow-up chain re-keys `health_record_id` to the newest visit each time
-     * another follow-up is scheduled, so `health_record_id` alone does not identify
-     * the original consultation. Walk `parentRecord` (eager-loaded by the caller;
-     * see FollowUpTaskController::index) back to the root.
+     * Identity of the consultation that originally scheduled this concern.
+     * Prefer the predecessor-task chain (independent returns). Fall back to
+     * walking `parentRecord` for legacy rows that re-keyed health_record_id.
      */
     public function getOriginalHealthRecordIdAttribute(): ?int
     {
-        $record = $this->healthRecord;
+        $task = $this;
         $guard = 0;
+        while ($task !== null && $task->relationLoaded('predecessor') && $task->predecessor !== null) {
+            $task = $task->predecessor;
+            if (++$guard > 10) {
+                break;
+            }
+        }
 
+        $record = $task?->healthRecord ?? $this->healthRecord;
+        $guard = 0;
         while ($record !== null && $record->relationLoaded('parentRecord') && $record->parentRecord !== null) {
             $record = $record->parentRecord;
             if (++$guard > 10) {
@@ -105,6 +116,11 @@ class FollowUpTask extends Model
     public function rescheduledTo(): BelongsTo
     {
         return $this->belongsTo(self::class, 'rescheduled_to_id');
+    }
+
+    public function predecessor(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'predecessor_task_id');
     }
 
     public function conditionMonitorings(): \Illuminate\Database\Eloquent\Relations\BelongsToMany

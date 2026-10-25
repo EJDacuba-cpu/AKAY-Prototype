@@ -35,9 +35,9 @@ export function restoreSharedReferralDraft(payload = {}) {
   };
 }
 
-export function conditionCardErrors(entries = [], { referralDetails = false } = {}) {
+export function conditionCardErrors(entries = [], { referralDetails = false, allowEmpty = true } = {}) {
   const errors = reportingEntryErrors(entries);
-  if (entries.length === 0) {
+  if (!allowEmpty && entries.length === 0) {
     errors.diagnoses = "Add at least one condition before continuing.";
   }
   for (const entry of entries) {

@@ -115,7 +115,8 @@ class BhcGeneralConsultationV2Test extends TestCase
     {
         $payload = $this->sharedReferral();
         $payload['diagnoses'][] = $this->card('local', 'managed_at_bhc', 'Local follow-up concern');
-        $payload['monitoring_data'] = ['followUpDate' => $this->nextWeek(), 'followUpTime' => '10:30'];
+        $payload['care_plan']['bhc_follow_up'] = true;
+        $payload['monitoring_data'] = ['followUpDate' => $this->nextWeek(), 'followUpTime' => '10:30', 'followUpReason' => 'Local follow-up concern'];
         $id = $this->v2($payload)->assertCreated()->json('data.id');
         $record = HealthRecord::findOrFail($id);
         $this->assertTrue($record->monitoring_data['bhcFollowUp']);
@@ -177,17 +178,76 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertDatabaseCount('referral_holds', 0);
     }
 
-    public function test_condition_card_workflow_rejects_missing_null_or_empty_conditions(): void
+    public function test_condition_card_workflow_allows_service_only_visits_without_conditions(): void
     {
         foreach ([[], ['diagnoses' => null], ['diagnoses' => []]] as $extra) {
-            $this->v2(['care_plan' => ['condition_cards' => true], ...$extra])
-                ->assertUnprocessable()
-                ->assertJsonValidationErrors(['diagnoses'])
-                ->assertJsonPath('errors.diagnoses.0', 'Add at least one condition before continuing.');
+            $this->v2(['care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true], ...$extra])
+                ->assertCreated();
         }
-        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('health_records', 3);
         $this->assertDatabaseCount('referrals', 0);
         $this->assertDatabaseCount('follow_up_tasks', 0);
+    }
+
+    public function test_service_only_prenatal_visit_finalizes_without_a_condition_card(): void
+    {
+        $id = $this->v2([
+            'category' => 'Maternal',
+            'chief_complaint' => 'Routine prenatal checkup',
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true],
+            'diagnoses' => [],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+            'maternal_data' => [
+                'lmp' => '2026-03-01',
+                'expectedDeliveryDate' => '2026-12-08',
+                'gravida' => '1',
+                'para' => '0',
+            ],
+        ])->assertCreated()->json('data.id');
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame([], $record->diagnoses ?? []);
+        $this->assertFalse((bool) $record->needs_referral);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame(0, Referral::where('health_record_id', $id)->count());
+    }
+
+    public function test_stale_referral_payload_does_not_create_a_referral_without_a_decision(): void
+    {
+        $this->seedAvailableProvider($this->rhu, 'Stale Doctor');
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true],
+            'needs_referral' => false,
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'urgency_level' => 'Routine',
+                'reason_for_referral' => 'Leftover form data',
+            ],
+        ])->assertCreated()->json('data.id');
+        $this->assertSame(0, Referral::where('health_record_id', $id)->count());
+        $this->assertFalse((bool) HealthRecord::findOrFail($id)->needs_referral);
+    }
+
+    public function test_changing_a_card_to_managed_local_care_does_not_keep_the_referral(): void
+    {
+        $this->seedAvailableProvider($this->rhu, 'Managed After Refer Doctor');
+        $card = $this->card('c1', 'managed_at_bhc', 'Wound');
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true, 'refer_to_rhu' => false],
+            'needs_referral' => false,
+            'diagnoses' => [$card],
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'urgency_level' => 'Priority',
+                'reason_for_referral' => 'Was referred, then managed at BHC',
+            ],
+        ])->assertCreated()->json('data.id');
+        $this->assertSame('managed_at_bhc', HealthRecord::findOrFail($id)->diagnoses[0]['clinicalOutcome']);
+        $this->assertSame(0, Referral::where('health_record_id', $id)->count());
     }
 
     public function test_condition_cards_require_an_explicit_outcome(): void
@@ -205,18 +265,74 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertArrayNotHasKey('conditionReferralOutcomes', HealthRecord::findOrFail($id)->monitoring_data);
     }
 
-    public function test_managed_cards_share_one_return_schedule_with_optional_notes(): void
+    public function test_managed_cards_do_not_require_a_return_schedule(): void
     {
         $payload = ['care_plan' => ['condition_cards' => true],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Headache'), $this->card('c2', 'managed_at_bhc', 'Wound')],
-            'monitoring_data' => ['followUpDate' => $this->nextWeek()],
         ];
-        $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['monitoring_data.followUpTime']);
-        $payload['monitoring_data']['followUpTime'] = '09:30';
         $id = $this->v2($payload)->assertCreated()->json('data.id');
-        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
-        $this->assertTrue(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertFalse(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
+        $this->assertSame('Completed', HealthRecord::findOrFail($id)->monitoring_data['followUpStatus']);
         $this->assertDatabaseCount('patient_conditions', 0);
+    }
+
+    public function test_managed_card_schedules_a_return_only_when_follow_up_is_requested(): void
+    {
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true, 'bhc_follow_up' => true],
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
+            'monitoring_data' => ['followUpDate' => $this->nextWeek(), 'followUpReason' => 'Wound reassessment'],
+        ])->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame($this->nextWeek(), $task->due_date->toDateString());
+        $this->assertNull($task->due_time);
+        $this->assertTrue(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
+    }
+
+    public function test_new_managed_consultation_does_not_fulfill_an_unrelated_pending_follow_up(): void
+    {
+        $parent = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->bhc->id,
+        ]);
+        $pending = FollowUpTask::create([
+            'health_record_id' => $parent->id,
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'due_date' => now()->addDays(3)->toDateString(),
+            'state' => FollowUpTask::STATE_PENDING,
+            'purpose' => 'Prenatal follow-up',
+            'purpose_key' => 'service:maternal',
+        ]);
+
+        $this->v2([
+            'care_plan' => ['condition_cards' => true],
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
+        ])->assertCreated();
+
+        $this->assertSame(FollowUpTask::STATE_PENDING, $pending->fresh()->state);
+        $this->assertNull($pending->fresh()->fulfilled_at);
+        $this->assertSame(1, FollowUpTask::where('state', FollowUpTask::STATE_PENDING)->count());
+    }
+
+    public function test_one_consultation_can_schedule_independent_returns(): void
+    {
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true],
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Headache'), $this->card('c2', 'managed_at_bhc', 'Wound')],
+            'monitoring_data' => ['followUpSchedules' => [
+                ['purposeKey' => 'entry:c1', 'purpose' => 'Headache review', 'date' => $this->nextWeek(), 'sourceEntryId' => 'c1'],
+                ['purposeKey' => 'entry:c2', 'purpose' => 'Wound reassessment', 'date' => now()->addDays(4)->toDateString(), 'time' => '09:30', 'sourceEntryId' => 'c2'],
+            ]],
+        ])->assertCreated()->json('data.id');
+        $tasks = FollowUpTask::where('health_record_id', $id)->whereNull('rescheduled_to_id')->orderBy('due_date')->get();
+        $this->assertCount(2, $tasks);
+        $this->assertSame('Wound reassessment', $tasks[0]->purpose);
+        $this->assertSame('entry:c2', $tasks[0]->purpose_key);
+        $this->assertSame('Headache review', $tasks[1]->purpose);
+        $this->assertTrue(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
     }
 
     public function test_condition_referrals_are_created_separately_and_retries_do_not_duplicate(): void
@@ -257,15 +373,30 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
-    public function test_mixed_condition_outcomes_keep_the_shared_return_schedule_after_referral(): void
+    public function test_managed_and_referred_cards_do_not_force_a_follow_up(): void
     {
         $id = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true,
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound'), $this->card('c2', 'refer_to_rhu', 'Suspected hypertension')],
-            'monitoring_data' => ['followUpDate' => $this->nextWeek(), 'followUpTime' => '10:00'],
+        ])->assertCreated()->json('data.id');
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertFalse(HealthRecord::findOrFail($id)->monitoring_data['bhcFollowUp']);
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertDatabaseCount('patient_conditions', 0);
+    }
+
+    public function test_mixed_condition_outcomes_keep_independent_return_and_referral(): void
+    {
+        $id = $this->v2(['care_plan' => ['condition_cards' => true], 'needs_referral' => true,
+            'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound'), $this->card('c2', 'refer_to_rhu', 'Suspected hypertension')],
+            'monitoring_data' => ['followUpSchedules' => [
+                ['purposeKey' => 'entry:c1', 'purpose' => 'Wound reassessment', 'date' => $this->nextWeek(), 'time' => '10:00', 'sourceEntryId' => 'c1'],
+            ]],
         ])->assertCreated()->json('data.id');
         $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame('Wound reassessment', FollowUpTask::where('health_record_id', $id)->value('purpose'));
         $this->assertSame($this->nextWeek(), HealthRecord::findOrFail($id)->monitoring_data['followUpDate']);
         $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertDatabaseCount('patient_conditions', 0);
     }
 
     public function test_resuming_one_condition_hold_preserves_the_other_pending_condition(): void

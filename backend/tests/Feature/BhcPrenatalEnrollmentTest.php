@@ -113,8 +113,10 @@ class BhcPrenatalEnrollmentTest extends TestCase
         $patient = $this->patient();
         $clinician = $this->clinician();
 
-        $this->postRecord($clinician, $patient, $this->prenatalPayload())
-            ->assertCreated();
+        $this->postRecord($clinician, $patient, $this->prenatalPayload([
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true],
+            'diagnoses' => [],
+        ]))->assertCreated();
 
         $this->assertSame(1, HealthRecord::query()->where('patient_id', $patient->id)->count());
         $state = PrenatalEnrollment::stateFor($patient->id);

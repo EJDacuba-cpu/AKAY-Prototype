@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   followUpDateWarnings,
   followUpReasonExempt,
+  hasReferralDecision,
   initialNextActions,
   nextActionErrors,
   nextActionsDraft,
@@ -121,6 +122,32 @@ test("unticked sections raise no errors", () => {
   );
 });
 
+test("local care sends no follow-up date or time unless the follow-up is ticked", () => {
+  const payload = nextActionsPayload(initialNextActions(), {
+    followUp: { date: "", time: "", reason: "" },
+    followUpSchedules: [],
+  });
+  assert.equal(payload.care_plan.bhc_follow_up, false);
+  assert.equal(payload.monitoring_data.followUpDate, "");
+  assert.equal(payload.monitoring_data.followUpTime, "");
+  assert.equal("followUpSchedules" in payload.monitoring_data, false);
+});
+
+test("an explicit follow-up requires a date and leaves time optional", () => {
+  const errors = nextActionErrors({
+    state: followUpOn,
+    followUp: { date: "2026-10-29", time: "", reason: "Wound reassessment" },
+    referral: {},
+    reasonExempt: false,
+    acknowledged: false,
+    count: 0,
+    multipleIssues: false,
+  });
+  assert.equal("followUpDate" in errors, false);
+  assert.equal("followUpTime" in errors, false);
+  assert.deepEqual(errors, {});
+});
+
 test("a ticked referral needs a reason and, when it covers 2+ items, the acknowledgment", () => {
   const errors = nextActionErrors({
     state: referOn,
@@ -202,6 +229,18 @@ test("Refer unticked sends no referral even though the state keeps the history",
   assert.equal(payload.care_plan.refer_to_rhu, false);
   assert.equal(payload.care_plan.referral_multiple_issues, false);
   assert.equal(state.referToRhu, true);
+});
+
+test("a referral decision comes from the visit action, a referred card, or monitoring", () => {
+  assert.equal(hasReferralDecision({}), false);
+  assert.equal(hasReferralDecision({ referToRhu: true }), true);
+  assert.equal(hasReferralDecision({ conditionReferred: true }), true);
+  assert.equal(hasReferralDecision({ monitoringReferralIds: [4] }), true);
+  const fromCard = nextActionsPayload(initialNextActions(), { followUp: {}, conditionReferred: true });
+  assert.equal(fromCard.needs_referral, true);
+  assert.equal(fromCard.care_plan.refer_to_rhu, false);
+  const leftover = nextActionsPayload(initialNextActions(), { followUp: {}, monitoringReferralIds: [] });
+  assert.equal(leftover.needs_referral, false);
 });
 
 test("monitoring referrals alone make needs_referral true while refer_to_rhu stays false", () => {

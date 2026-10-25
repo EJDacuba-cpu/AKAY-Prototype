@@ -43,15 +43,14 @@ test("compatible old condition referral drafts inherit their one RHU and priorit
   assert.deepEqual(restoreSharedReferralDraft(legacy), legacy);
 });
 
-test("empty conditions block continuing and final submission on the conditions screen", () => {
-  const errors = conditionCardErrors([]);
-  assert.deepEqual(errors, { diagnoses: "Add at least one condition before continuing." });
-  assert.deepEqual(conditionCardErrors([], { referralDetails: true }), errors);
+test("empty conditions are allowed for service-only visits; added conditions are still validated", () => {
+  assert.deepEqual(conditionCardErrors([]), {});
+  assert.deepEqual(conditionCardErrors([], { referralDetails: true }), {});
+  assert.deepEqual(conditionCardErrors([], { allowEmpty: false }), { diagnoses: "Add at least one condition before continuing." });
   assert.equal(getErrorOwnerStepKey("diagnoses"), NEXT_STEP);
-  assert.deepEqual(remapServerErrorKeys(errors), errors);
-  // Adding a valid card clears the collection error; removing it restores it.
   assert.deepEqual(conditionCardErrors([entry]), {});
-  assert.deepEqual(conditionCardErrors([entry].filter((item) => item.id !== entry.id)), errors);
+  const blank = { ...entry, clinicalOutcome: "" };
+  assert.equal(conditionCardErrors([blank])["reportingEntry.case-a.clinicalOutcome"], "Choose a clinical outcome.");
 });
 
 test("condition referral details survive draft restore and the official record serializer", () => {

@@ -67,7 +67,7 @@ function ConditionModal({ entry, entries, onSave, onClose }) {
           {Object.entries(CONDITION_OUTCOMES).map(([value, label]) => {
             const selected = draft.clinicalOutcome === value;
             const Icon = value === "refer_to_rhu" ? Hospital : Building2;
-            return <label key={value} className={`cursor-pointer border p-3 ${selected ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}><span className="flex items-center gap-2 text-sm font-bold text-[#0B1C30]"><Icon size={16} />{label}<input type="radio" name={`${draft.id}-outcome`} value={value} checked={selected} onChange={() => setDraft((current) => ({ ...current, clinicalOutcome: value }))} className="ml-auto h-4 w-4 accent-[#B70011]" /></span><span className="mt-2 block text-xs leading-5 text-[#545F73]">{value === "refer_to_rhu" ? "Uses the shared RHU referral on Care and Outcome." : "Uses the shared BHC return schedule on Care and Outcome."}</span></label>;
+            return <label key={value} className={`cursor-pointer border p-3 ${selected ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}><span className="flex items-center gap-2 text-sm font-bold text-[#0B1C30]"><Icon size={16} />{label}<input type="radio" name={`${draft.id}-outcome`} value={value} checked={selected} onChange={() => setDraft((current) => ({ ...current, clinicalOutcome: value }))} className="ml-auto h-4 w-4 accent-[#B70011]" /></span><span className="mt-2 block text-xs leading-5 text-[#545F73]">{value === "refer_to_rhu" ? "Uses the RHU referral on Care and Outcome. Does not confirm a diagnosis." : "Local BHC care. A return visit is scheduled separately only if another appointment is needed."}</span></label>;
           })}
         </div>
         <FieldError error={errors[`${key}.clinicalOutcome`]} />
@@ -123,8 +123,8 @@ export default function ConditionCardsSection({ entries = [], errors = {}, disab
     {entries.length === 0 ? (
       <div className="flex min-h-64 flex-col items-center justify-center px-4 py-12 text-center">
         <ClipboardList size={32} className="mb-3 text-slate-400" aria-hidden="true" />
-        <p role="status" className="text-sm font-semibold text-[#0B1C30]">No conditions added yet</p>
-        <p className="mt-1 max-w-sm text-xs leading-5 text-[#708095]">Select Add Condition to record a health problem or suspected case.</p>
+        <p role="status" className="text-sm font-semibold text-[#0B1C30]">No additional conditions in this consultation</p>
+        <p className="mt-1 max-w-sm text-xs leading-5 text-[#708095]">Service-only visits, including routine prenatal care, can continue without adding a condition. Select Add Condition only for a health problem or suspected case.</p>
       </div>
     ) : (
       <div className="grid items-start gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">

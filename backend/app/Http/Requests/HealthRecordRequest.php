@@ -95,13 +95,17 @@ class HealthRecordRequest extends FormRequest
                 $rules["diagnoses.*.$key"] = ['prohibited'];
             }
             $rules['care_plan.bhc_follow_up'] = ['nullable', 'boolean'];
+            $rules['monitoring_data.followUpSchedules'] = ['nullable', 'array', 'max:20'];
+            $rules['monitoring_data.followUpSchedules.*.purposeKey'] = ['required', 'string', 'max:64', 'distinct'];
+            $rules['monitoring_data.followUpSchedules.*.purpose'] = ['required', 'string', 'max:150'];
+            $rules['monitoring_data.followUpSchedules.*.date'] = ['required', 'date'];
+            $rules['monitoring_data.followUpSchedules.*.time'] = ['nullable', 'date_format:H:i'];
+            $rules['monitoring_data.followUpSchedules.*.predecessorTaskId'] = ['nullable', 'integer', 'exists:follow_up_tasks,id'];
+            $rules['monitoring_data.followUpSchedules.*.sourceEntryId'] = ['nullable', 'string', 'max:64'];
             $rules['care_plan.refer_to_rhu'] = ['nullable', 'boolean'];
             $rules['care_plan.referral_multiple_issues'] = ['nullable', 'boolean'];
             $rules['care_plan.condition_cards'] = ['nullable', 'boolean'];
             $rules['care_plan.shared_condition_referral'] = ['nullable', 'boolean', Rule::prohibitedIf(! $this->boolean('care_plan.condition_cards'))];
-            if ($this->boolean('care_plan.condition_cards')) {
-                $rules['diagnoses'] = ['required', 'array', 'min:1', 'max:20'];
-            }
             $rules['diagnoses.*.id'] = [$this->boolean('care_plan.condition_cards') ? 'required' : 'nullable', 'string', 'max:64', 'distinct'];
             $rules['diagnoses.*.clinicalOutcome'] = [$this->boolean('care_plan.condition_cards') ? 'required' : 'nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])];
             $rules['diagnoses.*.referral'] = ['nullable', 'array:urgencyLevel,receivingRhuId,reasonForReferral'];
@@ -111,9 +115,14 @@ class HealthRecordRequest extends FormRequest
             if ($this->boolean('care_plan.shared_condition_referral')) {
                 $rules['diagnoses.*.referral'] = ['prohibited'];
                 $hasReferredCards = collect($this->diagnosesInput())->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'refer_to_rhu');
-                $rules['referral'] = [$hasReferredCards ? 'required' : 'nullable', 'array'];
-                $rules['referral.rural_health_unit_id'] = [$hasReferredCards ? 'required' : 'nullable', 'integer', 'exists:rural_health_units,id'];
-                $rules['referral.reason_for_referral'] = ['required_with:referral', 'string', 'max:5000'];
+                $hasMonitoringReferrals = ($this->input('care_plan.monitoring_referrals', []) ?: []) !== [];
+                $requiresReferral = $hasReferredCards
+                    || $hasMonitoringReferrals
+                    || $this->boolean('care_plan.refer_to_rhu')
+                    || $this->boolean('needs_referral');
+                $rules['referral'] = [$requiresReferral ? 'required' : 'nullable', 'array'];
+                $rules['referral.rural_health_unit_id'] = [$requiresReferral ? 'required' : 'nullable', 'integer', 'exists:rural_health_units,id'];
+                $rules['referral.reason_for_referral'] = [$requiresReferral ? 'required' : 'nullable', 'string', 'max:5000'];
             }
         } elseif ($rhuItr) {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
@@ -579,7 +588,10 @@ class HealthRecordRequest extends FormRequest
             $needsReferral = filter_var(
                 $this->input('needs_referral', false),
                 FILTER_VALIDATE_BOOLEAN
-            ) || is_array($this->input('referral'));
+            );
+            if (! $this->isBhcGeneralV2()) {
+                $needsReferral = $needsReferral || is_array($this->input('referral'));
+            }
 
             $normalizedStatus = str_replace(
                 ['_', '-'],
@@ -775,9 +787,7 @@ class HealthRecordRequest extends FormRequest
         $shared = $this->boolean('care_plan.shared_condition_referral');
         $cardReferralCount = 0;
         $hasCardReferrals = false;
-        $hasManagedCards = false;
         foreach ($this->diagnosesInput() as $index => $entry) {
-            $hasManagedCards = $hasManagedCards || ($entry['clinicalOutcome'] ?? null) === 'managed_at_bhc';
             if (($entry['clinicalOutcome'] ?? null) !== 'refer_to_rhu') {
                 continue;
             }
@@ -800,21 +810,34 @@ class HealthRecordRequest extends FormRequest
             $validator->errors()->add('care_plan.refer_to_rhu', 'Select Refer to RHU or refer a monitored condition.');
         }
 
-        if ($this->boolean('care_plan.bhc_follow_up') || $hasManagedCards) {
+        // Managed at BHC is a clinical outcome, not a schedule. A date/time is
+        // required only when the worker asked for a return (bhc_follow_up or
+        // followUpSchedules). Time stays optional on an explicit return.
+        $schedules = is_array($monitoringData)
+            ? \App\Services\FollowUpSchedules::normalizeList($monitoringData['followUpSchedules'] ?? $monitoringData['follow_up_schedules'] ?? [])
+            : [];
+        $followUpRequested = $this->boolean('care_plan.bhc_follow_up') || $schedules !== [];
+        if ($followUpRequested && $schedules === []) {
             if (! $date) {
                 $validator->errors()->add('monitoring_data.followUpDate', 'Set the follow-up date.');
             }
-            // A service visit (a program is selected) or one that keeps
-            // monitoring a condition is exempt from stating a reason.
-            $exempt = $hasManagedCards || ! empty($this->input('monitoring_data.selectedPrograms')) || $keepsMonitoring;
+            $exempt = ! empty($this->input('monitoring_data.selectedPrograms')) || $keepsMonitoring;
             $reason = is_array($monitoringData)
                 ? trim((string) ($monitoringData['followUpReason'] ?? $monitoringData['follow_up_reason'] ?? ''))
                 : '';
             if ($reason === '' && ! $exempt) {
                 $validator->errors()->add('monitoring_data.followUpReason', 'Follow-up reason is required.');
             }
-            if ($hasManagedCards && blank($this->input('monitoring_data.followUpTime'))) {
-                $validator->errors()->add('monitoring_data.followUpTime', 'Set the shared BHC return time.');
+        }
+        $continuedIds = collect($this->input('care_plan.continued_follow_up_task_ids', []))->map(fn ($id) => (int) $id);
+        $primaryTaskId = (int) ($this->input('monitoring_data.followUpTaskId') ?? $this->input('monitoring_data.follow_up_task_id') ?? 0);
+        foreach ($schedules as $index => $schedule) {
+            $predecessor = $schedule['predecessor_task_id'];
+            if ($predecessor && $predecessor !== $primaryTaskId && ! $continuedIds->contains($predecessor)) {
+                $validator->errors()->add(
+                    "monitoring_data.followUpSchedules.$index.predecessorTaskId",
+                    'A successor follow-up must continue a task selected for this visit.'
+                );
             }
         }
 

@@ -53,18 +53,38 @@ export function legacyMonitoringOptions(overview) {
  * A task linked to verified monitoring stays with that monitoring - ticking
  * the monitoring continues it. Earliest due first.
  */
+function mapFollowUpOption(task) {
+  return {
+    followUpId: Number(task.id),
+    reason: task.purpose || task.reason || "",
+    purpose: task.purpose || task.reason || "",
+    purposeKey: task.purposeKey || "",
+    dueDate: task.dueDate || "",
+    isOverdue: task.isOverdue === true,
+    sourceDate: task.sourceDate || "",
+    sourceChiefComplaint: task.sourceChiefComplaint || "",
+    sourceAssessment: task.sourceAssessment || "",
+  };
+}
+
+/** Every pending follow-up the Continue path may select, earliest due first. */
+export function pendingFollowUpOptions(overview) {
+  return (overview?.pendingFollowUps || [])
+    .map(mapFollowUpOption)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.followUpId - b.followUpId);
+}
+
+/**
+ * Pending follow-up tasks without a verified monitored condition. Monitoring-
+ * linked appointments appear with that monitoring; the Continue path uses
+ * pendingFollowUpOptions so those appointments can still be selected directly.
+ */
 export function scheduledFollowUpOptions(overview) {
   return (overview?.pendingFollowUps || [])
     .filter((task) =>
       !(task.conditions || []).some((condition) => Number(condition.monitoringId) > 0 && condition.legacy !== true),
     )
-    .map((task) => ({
-      followUpId: Number(task.id),
-      reason: task.reason || "",
-      dueDate: task.dueDate || "",
-      isOverdue: task.isOverdue === true,
-      sourceDate: task.sourceDate || "",
-    }))
+    .map(mapFollowUpOption)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.followUpId - b.followUpId);
 }
 
@@ -79,7 +99,7 @@ export function hasStartChoices(overview) {
   return (
     monitoredConditionOptions(overview).length > 0 ||
     monitoringRecommendationOptions(overview).length > 0 ||
-    scheduledFollowUpOptions(overview).length > 0 ||
+    pendingFollowUpOptions(overview).length > 0 ||
     legacyMonitoringOptions(overview).length > 0
   );
 }
@@ -138,7 +158,7 @@ export function checkContinuedStart(overview, monitoringIds = [], startCondition
     followUpIds,
     monitoringIds,
     startConditionIds,
-    includeLinkedFollowUps: true,
+    includeLinkedFollowUps: false,
   });
   return {
     ok: droppedMonitoringIds.length === 0 && droppedConditionIds.length === 0 && droppedFollowUpIds.length === 0,

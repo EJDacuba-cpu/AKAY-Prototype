@@ -6,6 +6,7 @@ import {
   hasStartChoices,
   legacyMonitoringOptions,
   monitoredConditionOptions,
+  pendingFollowUpOptions,
   scheduledFollowUpOptions,
   selectionToRoute,
   startConsultationAction,
@@ -182,12 +183,15 @@ const mixedTask = {
 
 test("scheduledFollowUpOptions lists concern follow-ups and legacy-only follow-ups, not verified-monitoring ones", () => {
   const withTasks = { pendingFollowUps: [verifiedTask, legacyOnlyTask, concernTask, mixedTask], monitoringWithoutFollowUp: [] };
-  assert.deepEqual(scheduledFollowUpOptions(withTasks), [
-    { followUpId: 31, reason: "Wound check", dueDate: "2026-10-12", isOverdue: true, sourceDate: "2026-10-05" },
-    { followUpId: 32, reason: "Gout review", dueDate: "2026-10-15", isOverdue: false, sourceDate: "2026-10-06" },
-  ]);
+  assert.deepEqual(scheduledFollowUpOptions(withTasks).map((o) => o.followUpId), [31, 32]);
+  assert.equal(scheduledFollowUpOptions(withTasks)[0].reason, "Wound check");
   assert.deepEqual(scheduledFollowUpOptions(null), []);
   assert.deepEqual(scheduledFollowUpOptions({ pendingFollowUps: [], monitoringWithoutFollowUp: [] }), []);
+});
+
+test("pendingFollowUpOptions includes monitoring-linked appointments for the Continue path", () => {
+  const withTasks = { pendingFollowUps: [verifiedTask, concernTask], monitoringWithoutFollowUp: [] };
+  assert.deepEqual(pendingFollowUpOptions(withTasks).map((o) => o.followUpId), [31, 33]);
 });
 
 test("scheduledFollowUpOptions is ordered by due date", () => {

@@ -555,6 +555,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     followUpTime: record.followUpTime || null,
     follow_up_time: record.followUpTime || null,
     followUpReason: record.followUpReason || null,
+    followUpSchedules: record.followUpSchedules || sourceMonitoringData.followUpSchedules || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
     attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,

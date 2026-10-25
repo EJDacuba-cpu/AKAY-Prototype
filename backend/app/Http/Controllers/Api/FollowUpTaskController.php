@@ -52,6 +52,7 @@ class FollowUpTaskController extends Controller
                 // FollowUpTask::getOriginalHealthRecordIdAttribute() can walk back
                 // to the original consultation without N+1 queries.
                 'healthRecord.patient',
+                'predecessor.predecessor.predecessor.predecessor',
                 'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
                 'fulfilledByHealthRecord',
                 'practitioner',
@@ -109,6 +110,7 @@ class FollowUpTaskController extends Controller
             ->with([
                 'patient',
                 'healthRecord.patient',
+                'predecessor.predecessor.predecessor.predecessor',
                 'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
                 'fulfilledByHealthRecord',
                 'practitioner',
@@ -196,10 +198,10 @@ class FollowUpTaskController extends Controller
         ): FollowUpTask {
             $oldTask = $followUpTasks->lockTaskForManagement($followUpTask, $request->user());
 
-            // The partial unique index keys on (health_record_id) WHERE
-            // rescheduled_to_id IS NULL. Until $oldTask is pointed at the new
-            // row, both rows would momentarily satisfy that condition for the
-            // same health_record_id, so point it at itself first - a
+            // The partial unique index keys on (health_record_id, purpose_key)
+            // WHERE rescheduled_to_id IS NULL. Until $oldTask is pointed at the
+            // new row, both rows would momentarily satisfy that condition for
+            // the same source and purpose, so point it at itself first - a
             // trivially valid self-reference - to free the slot before
             // inserting. Corrected to the real new task id below; this
             // placeholder never persists outside the transaction.
@@ -212,6 +214,10 @@ class FollowUpTaskController extends Controller
                 'rural_health_unit_id' => $oldTask->rural_health_unit_id,
                 'due_date' => $data['due_date'],
                 'due_time' => $data['due_time'] ?? null,
+                'purpose' => $oldTask->purpose,
+                'purpose_key' => $oldTask->purpose_key ?: 'visit',
+                'source_entry_id' => $oldTask->source_entry_id,
+                'predecessor_task_id' => $oldTask->predecessor_task_id,
                 'state' => FollowUpTask::STATE_RESCHEDULED,
                 'notes' => $data['notes'] ?? null,
                 'practitioner_id' => $oldTask->practitioner_id,
@@ -294,6 +300,7 @@ class FollowUpTaskController extends Controller
         return [
             'patient',
             'healthRecord.patient',
+            'predecessor.predecessor.predecessor.predecessor',
             'healthRecord.parentRecord.parentRecord.parentRecord.parentRecord',
             'fulfilledByHealthRecord',
             'practitioner',

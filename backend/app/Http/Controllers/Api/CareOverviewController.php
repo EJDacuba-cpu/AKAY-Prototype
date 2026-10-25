@@ -32,7 +32,7 @@ class CareOverviewController extends Controller
         $this->facilityAccess->authorizePatient($user, $patient);
 
         $tasks = FollowUpTask::query()
-            ->with(['healthRecord:id,date_recorded,monitoring_data', 'conditionMonitorings' => fn ($q) => $q->with('patientCondition:id,status')->where('status', ConditionMonitoring::STATUS_ACTIVE)])
+            ->with(['healthRecord:id,date_recorded,monitoring_data,chief_complaint,assessment_notes,physical_exam,diagnosis', 'conditionMonitorings' => fn ($q) => $q->with('patientCondition:id,status')->where('status', ConditionMonitoring::STATUS_ACTIVE)])
             ->where('patient_id', $patient->id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
@@ -70,11 +70,18 @@ class CareOverviewController extends Controller
                 'due_time' => $task->due_time,
                 'state' => $task->state,
                 'is_overdue' => $task->due_date !== null && $task->due_date->lt(today()),
-                'reason' => $task->healthRecord?->monitoring_data['followUpReason']
-                    ?? $task->healthRecord?->monitoring_data['follow_up_reason']
-                    ?? null,
+                'purpose' => $task->purpose,
+                'purpose_key' => $task->purpose_key ?: 'visit',
+                'predecessor_task_id' => $task->predecessor_task_id,
+                'reason' => \App\Services\FollowUpSchedules::purposeForTask(
+                    $task->purpose,
+                    $task->healthRecord?->monitoring_data ?? [],
+                    $task->purpose_key
+                ) ?: null,
                 'source_health_record_id' => $task->health_record_id,
                 'source_date' => $task->healthRecord?->date_recorded?->toDateString(),
+                'source_chief_complaint' => $task->healthRecord?->chief_complaint,
+                'source_assessment' => $this->sourceAssessment($task->healthRecord),
                 'conditions' => $task->conditionMonitorings->map(fn (ConditionMonitoring $m) => [
                     'monitoring_id' => $m->id,
                     'condition_name' => $m->condition_name,
@@ -108,5 +115,20 @@ class CareOverviewController extends Controller
                 'recommended_at' => $c->bhc_monitoring_recommended_at?->toISOString(),
             ])->values(),
         ]]);
+    }
+
+    private function sourceAssessment(?\App\Models\HealthRecord $record): ?string
+    {
+        if ($record === null) {
+            return null;
+        }
+        foreach ([$record->assessment_notes, $record->physical_exam, $record->diagnosis] as $text) {
+            $value = trim((string) $text);
+            if ($value !== '') {
+                return mb_strlen($value) > 240 ? mb_substr($value, 0, 237).'...' : $value;
+            }
+        }
+
+        return null;
     }
 }

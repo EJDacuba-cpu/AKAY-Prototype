@@ -170,18 +170,39 @@ class ConditionMonitoringService
         return $activeAfter->values();
     }
 
-    /** Links the visit's one follow-up task (if it scheduled one) to every monitored condition. */
+    /**
+     * Link scheduled returns to the monitored conditions they actually address.
+     * A visit-level legacy task still links every addressed monitoring; independent
+     * purpose keys only attach a monitoring when the key names it.
+     */
     public function linkFollowUpTask(HealthRecord $record, Collection $monitorings): void
     {
         if ($monitorings->isEmpty()) {
             return;
         }
-        $task = FollowUpTask::query()
+        $tasks = FollowUpTask::query()
             ->where('health_record_id', $record->id)
             ->whereNull('rescheduled_to_id')
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
-            ->first();
-        $task?->conditionMonitorings()->syncWithoutDetaching($monitorings->pluck('id')->all());
+            ->get();
+        if ($tasks->isEmpty()) {
+            return;
+        }
+        $ids = $monitorings->pluck('id');
+        if ($tasks->count() === 1 && ($tasks->first()->purpose_key ?: 'visit') === 'visit') {
+            $tasks->first()->conditionMonitorings()->syncWithoutDetaching($ids->all());
+            return;
+        }
+        foreach ($tasks as $task) {
+            $key = (string) $task->purpose_key;
+            if (! str_starts_with($key, 'monitoring:')) {
+                continue;
+            }
+            $monitoringId = (int) substr($key, strlen('monitoring:'));
+            if ($ids->contains($monitoringId)) {
+                $task->conditionMonitorings()->syncWithoutDetaching([$monitoringId]);
+            }
+        }
     }
 
     private function history(ConditionMonitoring $monitoring, HealthRecord $record, string $action, bool $referred): void

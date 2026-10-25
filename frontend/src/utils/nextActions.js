@@ -1,10 +1,10 @@
 /**
  * Step 3 of the BHC General Consultation ("Medication, Treatment & Next Steps"):
- * two independent choices, Schedule BHC Follow-up and Refer to RHU.
+ * Scheduled Returns (independent dates) and Refer to RHU.
  *
  * Pure state and validation helpers (no React). Return dates are suggestions
- * only: nothing here ticks the follow-up. Only setFollowUpChecked (the worker)
- * and restoreNextActions (a saved draft) can set bhcFollowUp.
+ * only: using one creates or fills a scheduled return. Referral details are
+ * required only after an actual referral decision.
  */
 import { SHARED_ACKNOWLEDGMENT_MESSAGE } from "./carePlanWorkspace.js";
 import { formatEntryDestinations } from "./reportingEntries.js";
@@ -55,6 +55,11 @@ export function followUpDateWarnings(enteredDate, suggestions = []) {
     .map((suggestion) => `The follow-up date differs from the ${suggestion.source} (${suggestion.date}).`);
 }
 
+/** True when a condition card, visit action, or monitoring decision asked to refer. */
+export function hasReferralDecision({ referToRhu = false, conditionReferred = false, monitoringReferralIds = [] } = {}) {
+  return referToRhu === true || conditionReferred === true || (monitoringReferralIds || []).length > 0;
+}
+
 /** Referred items the server counts: this referral plus the distinct monitoring referrals. */
 export function referralItemCount({ referToRhu = false, monitoringReferralIds = [] } = {}) {
   return (referToRhu === true ? 1 : 0) + new Set(monitoringReferralIds || []).size;
@@ -94,22 +99,25 @@ export function nextActionErrors({
  * "" (the server clears them too). The caller never sends `referral` when
  * needs_referral is false.
  */
-export function nextActionsPayload(state, { followUp = {}, monitoringReferralIds = [] } = {}) {
-  const followUpOn = state?.bhcFollowUp === true;
+export function nextActionsPayload(state, { followUp = {}, monitoringReferralIds = [], followUpSchedules = [], conditionReferred = false } = {}) {
+  const schedules = Array.isArray(followUpSchedules) ? followUpSchedules.filter((item) => item?.date && item?.purpose) : [];
+  const followUpOn = state?.bhcFollowUp === true || schedules.length > 0;
   const referOn = state?.referToRhu === true;
-  const field = (value) => (followUpOn ? String(value ?? "") : "");
+  const field = (value) => (followUpOn && schedules.length === 0 ? String(value ?? "") : "");
+  const first = schedules[0];
   return {
-    needs_referral: referOn || (monitoringReferralIds || []).length > 0,
+    needs_referral: hasReferralDecision({ referToRhu: referOn, conditionReferred, monitoringReferralIds }),
     care_plan: {
       bhc_follow_up: followUpOn,
       refer_to_rhu: referOn,
       referral_multiple_issues: referOn && state?.referralMultipleIssues === true,
     },
     monitoring_data: {
-      followUpStatus: field(followUp?.status),
-      followUpDate: field(followUp?.date),
-      followUpTime: field(followUp?.time),
-      followUpReason: field(followUp?.reason),
+      followUpStatus: first ? String(followUp?.status || "Follow-up Required") : field(followUp?.status),
+      followUpDate: first ? first.date : field(followUp?.date),
+      followUpTime: first ? (first.time || "") : field(followUp?.time),
+      followUpReason: first ? first.purpose : field(followUp?.reason),
+      ...(schedules.length ? { followUpSchedules: schedules } : {}),
     },
   };
 }
@@ -169,6 +177,7 @@ function coverageName(item) {
 export function nextStepsReviewRows({
   state = initialNextActions(),
   followUp = {},
+  followUpSchedules = [],
   referral = {},
   coverage = [],
   entries = [],
@@ -177,7 +186,13 @@ export function nextStepsReviewRows({
   earlierDraftContinued = "",
 } = {}) {
   const rows = [];
-  if (state.bhcFollowUp === true) {
+  const scheduleRows = Array.isArray(followUpSchedules) ? followUpSchedules : [];
+  if (scheduleRows.length > 0) {
+    for (const item of scheduleRows) {
+      const when = [text(item?.date), text(item?.time)].filter(Boolean).join(" · ");
+      rows.push({ label: text(item?.purpose) || "BHC Follow-up", value: when || "Not scheduled" });
+    }
+  } else if (state.bhcFollowUp === true) {
     const when = [text(followUp?.date), text(followUp?.time)].filter(Boolean).join(" · ");
     const value = [when, text(followUp?.reason)].filter(Boolean).join(" · ");
     rows.push({ label: "BHC Follow-up", value: value || "Not scheduled" });

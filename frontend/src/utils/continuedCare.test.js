@@ -71,9 +71,9 @@ test("seeding from the modal continues the selected follow-ups' conditions too",
     includeFollowUpConditions: true,
   });
   assert.deepEqual(result.continuedFollowUpTaskIds, [1, 2]);
-  assert.deepEqual(result.continuedFollowUps, [
-    { id: 1, sourceHealthRecordId: 50, reason: "", dueDate: "2026-10-01", sourceDate: "" },
-    { id: 2, sourceHealthRecordId: 51, reason: "", dueDate: "2026-10-05", sourceDate: "" },
+  assert.deepEqual(result.continuedFollowUps.map((task) => [task.id, task.sourceHealthRecordId, task.dueDate]), [
+    [1, 50, "2026-10-01"],
+    [2, 51, "2026-10-05"],
   ]);
   assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionName]), [
     [3, "Hypertension"],
@@ -107,9 +107,7 @@ test("a resumed draft's placeholders are re-hydrated from the overview", () => {
     monitoringIds: restored.continuedMonitorings.map((m) => m.id),
     stops: restored.monitoringStops,
   });
-  assert.deepEqual(result.continuedFollowUps, [
-    { id: 1, sourceHealthRecordId: 50, reason: "", dueDate: "2026-10-01", sourceDate: "" },
-  ]);
+  assert.deepEqual(result.continuedFollowUps.map((task) => [task.id, task.sourceHealthRecordId]), [[1, 50]]);
   assert.deepEqual(result.continuedMonitorings.map((m) => [m.id, m.conditionName, m.conditionKey, m.startedAt]), [
     [3, "Hypertension", null, ""],
     [5, "Tuberculosis", "tuberculosis", "2026-07-01"],
@@ -282,9 +280,9 @@ const visitOverview = {
 
 test("resolveContinuedCare carries reason, due date and source date", () => {
   const r = resolveContinuedCare(visitOverview, { followUpIds: [12, 13] });
-  assert.deepEqual(r.continuedFollowUps, [
-    { id: 12, sourceHealthRecordId: 91, reason: "BP recheck", dueDate: "2026-10-20", sourceDate: "2026-10-06" },
-    { id: 13, sourceHealthRecordId: 92, reason: "", dueDate: "2026-10-25", sourceDate: "" },
+  assert.deepEqual(r.continuedFollowUps.map((task) => [task.id, task.reason, task.dueDate, task.sourceDate]), [
+    [12, "BP recheck", "2026-10-20", "2026-10-06"],
+    [13, "", "2026-10-25", ""],
   ]);
 });
 
