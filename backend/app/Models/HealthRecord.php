@@ -80,6 +80,13 @@ class HealthRecord extends Model
      */
     public const WORKFLOW_BHC_GENERAL_V2 = 'bhc_general_v2';
 
+    /**
+     * monitoring_data.consultationWorkflow value of the RHU ITR consultation.
+     * Nurse/encode fills assessment; doctor/finalize diagnoses, activates
+     * conditions, prescribes and schedules RHU follow-up.
+     */
+    public const WORKFLOW_RHU_ITR_V1 = 'rhu_itr_v1';
+
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',
@@ -115,6 +122,11 @@ class HealthRecord extends Model
     public function isBhcGeneralV2(): bool
     {
         return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_BHC_GENERAL_V2;
+    }
+
+    public function isRhuItrV1(): bool
+    {
+        return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_RHU_ITR_V1;
     }
 
     public function patient(): BelongsTo

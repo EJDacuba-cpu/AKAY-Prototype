@@ -14,6 +14,7 @@ export default function FollowUpWeekCalendar({
   onReschedule,
   onCancel,
   onViewRecord,
+  basePath = "/bhc",
 }) {
   const weekDays = getWeekDays(weekStart);
   const cardHandlers = {
@@ -22,6 +23,7 @@ export default function FollowUpWeekCalendar({
     onReschedule,
     onCancel,
     onViewRecord,
+    basePath,
   };
 
   // Seven columns stay seven columns on every screen: narrow viewports scroll

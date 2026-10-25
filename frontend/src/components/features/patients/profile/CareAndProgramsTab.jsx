@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import CareTrackingCard from "./CareTrackingCard";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import MaternalTrackingPanel from "./MaternalTrackingPanel";
+import TbTrackingChart from "../../health-records/TbTrackingChart";
 import { EmptyNote, FieldList } from "./ProfileSection";
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
@@ -126,6 +127,18 @@ export default function CareAndProgramsTab({
         <div ref={detailRef} className="mt-5">
           {isError ? null : selectedEntry?.key === "maternal" ? (
             <MaternalTrackingPanel summary={maternalSummary} status={selectedEntry.status} onViewRecords={() => onViewProgramRecords?.("maternal")} />
+          ) : selectedEntry?.key === "tb" ? (
+            <Card className="rounded-lg border-neutral-200 p-5 shadow-none">
+              <h3 className="text-sm font-bold text-[#111827]">TB DOTS Tracking</h3>
+              <p className="mt-1 text-xs text-neutral-500">{selectedEntry.status} · read-only adherence from the treatment calendar</p>
+              <div className="mt-4">
+                <TbTrackingChart
+                  tbData={(selectedEntry.records || []).at(-1)?.tbData || (selectedEntry.records || []).at(-1)?.tb_data}
+                  caseNumber={selectedEntry.facts?.find((fact) => fact.label === "Case No.")?.value || ""}
+                />
+              </div>
+              <Button type="button" variant="link" size="sm" onClick={() => onViewProgramRecords?.("tb")} className="mt-4 h-auto rounded-lg p-0 text-xs">View health records</Button>
+            </Card>
           ) : selectedEntry ? (
             <Card className="rounded-lg border-neutral-200 p-5 shadow-none">
               <h3 className="text-sm font-bold text-[#111827]">{selectedEntry.label} Tracking</h3>

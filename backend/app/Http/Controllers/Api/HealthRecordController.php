@@ -11,6 +11,7 @@ use App\Models\HealthRecord;
 use App\Models\HealthRecordDraft;
 use App\Models\Patient;
 use App\Models\PatientCondition;
+use App\Models\User;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
 use App\Services\ClinicalRegistry;
@@ -29,6 +30,7 @@ use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
 use App\Services\ReportingEntries;
+use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
@@ -102,7 +104,18 @@ class HealthRecordController extends Controller
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
-        $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        $rhuItr = $request->isRhuItrV1();
+        $visit = null;
+        if ($rhuItr) {
+            $visit = app(RhuVisitQueueService::class)->authorizeInConsultation(
+                $request->user(),
+                (int) $data['rhu_visit_id'],
+                (int) $patient->id,
+                $data['consultation_uuid'] ?? null
+            );
+        } else {
+            $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        }
         // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
         // A request without the discriminator runs every legacy step below unchanged.
         $v2 = $request->isBhcGeneralV2();
@@ -119,6 +132,26 @@ class HealthRecordController extends Controller
                 ...(is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : []),
                 'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             ];
+        } elseif ($rhuItr) {
+            $prescribedMedicines = $data['prescribed_medicines'] ?? [];
+            unset($data['prescribed_medicines'], $data['rhu_visit_id']);
+            $this->assertRhuPrescribedMedicines($request->user(), $prescribedMedicines);
+            $data['monitoring_data'] = [
+                ...(is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : []),
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'prescribedMedicines' => $prescribedMedicines,
+                'rhuFollowUp' => (bool) (($data['care_plan']['rhu_follow_up'] ?? false)),
+                'manageToBhc' => (bool) (($data['care_plan']['manage_to_bhc'] ?? false)),
+            ];
+            if (($data['care_plan']['rhu_follow_up'] ?? false) || filled($data['monitoring_data']['followUpDate'] ?? null)) {
+                $data['monitoring_data']['followUpStatus'] = 'Follow-up Required';
+            }
+            $data['needs_referral'] = false;
+            $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
+            $data['consultation_uuid'] = $visit->consultation_uuid;
+            $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
+                array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+            );
         } else {
             // conditionKey is always server-resolved from the diagnosis name here -
             // any client-sent conditionKey is discarded and replaced, never trusted.
@@ -141,6 +174,9 @@ class HealthRecordController extends Controller
         }
         $conditionConfirmations = $data['condition_confirmations'] ?? [];
         unset($data['condition_confirmations']);
+        if ($rhuItr && $conditionConfirmations === []) {
+            $conditionConfirmations = $this->confirmationsFromRhuDiagnoses($data['diagnoses'] ?? [], $carePlan);
+        }
         if ($conditionConfirmations !== [] && ! PatientConditions::canConfirm($request->user())) {
             abort(403, 'Only RHU staff can confirm a condition.');
         }
@@ -194,7 +230,7 @@ class HealthRecordController extends Controller
             if ($this->isReferralDisposition($data, $referralData)) {
                 $this->normalizeReferralDisposition($data);
             }
-        } else {
+        } elseif (! $rhuItr) {
             $this->castBhcFollowUpFlags($data);
             if ($this->isReferralDisposition($data, $referralData)) {
                 $this->normalizeReferralDisposition($data);
@@ -208,7 +244,7 @@ class HealthRecordController extends Controller
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
         $this->normalizeDiagnosisReporting($data, $v2);
-        if (! $v2) {
+        if (! $v2 && ! $rhuItr) {
             $this->applyRecheckReason($data);
             $this->normalizeConcernActions($data);
         }
@@ -223,7 +259,9 @@ class HealthRecordController extends Controller
         $data['idempotency_key'] = $idempotencyKey;
         $data['idempotency_hash'] = $idempotencyHash;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
-        $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
+        if (! $rhuItr) {
+            $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
+        }
         $data['date_recorded'] ??= now();
 
         try {
@@ -248,7 +286,8 @@ class HealthRecordController extends Controller
                 $legacyDiscontinuations,
                 $legacyReview,
                 $patientConditions,
-                $v2
+                $v2,
+                $visit
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -403,6 +442,13 @@ class HealthRecordController extends Controller
                         $request,
                         $auditLogger,
                         $lockedDraft
+                    );
+                }
+                if ($visit !== null && filled($record->consultation_uuid)) {
+                    app(RhuVisitQueueService::class)->completeConsultation(
+                        $request->user(),
+                        $visit,
+                        (string) $record->consultation_uuid
                     );
                 }
 
@@ -1101,6 +1147,54 @@ class HealthRecordController extends Controller
             'referrals',
             "Shared referral acknowledged for health record {$record->id}: {$count} {$items} (".implode('; ', array_filter($names)).").{$note} Not a clinical compatibility check."
         );
+    }
+
+    /** @param  array<int, array<string, mixed>>  $medicines */
+    private function assertRhuPrescribedMedicines(User $user, array $medicines): void
+    {
+        $ids = collect($medicines)->pluck('medicine_id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+        $count = \App\Models\Medicine::query()
+            ->whereIn('id', $ids)
+            ->where('rural_health_unit_id', $user->rural_health_unit_id)
+            ->count();
+        if ($count !== $ids->count()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prescribed_medicines' => ['One or more selected medicines are not available at this RHU.'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $diagnoses
+     * @param  array<string, mixed>  $carePlan
+     * @return array<int, array<string, mixed>>
+     */
+    private function confirmationsFromRhuDiagnoses(array $diagnoses, array $carePlan): array
+    {
+        $visitManage = filter_var($carePlan['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $confirmations = [];
+        foreach ($diagnoses as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $name = trim((string) ($entry['name'] ?? ''));
+            $activate = filter_var($entry['activate'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $manage = filter_var($entry['manageToBhc'] ?? $entry['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || $visitManage;
+            if ($name === '' || (! $activate && ! $manage)) {
+                continue;
+            }
+            $confirmations[] = [
+                'name' => $name,
+                'status' => \App\Models\PatientCondition::STATUS_ACTIVE,
+                'recommend_bhc_monitoring' => $manage,
+            ];
+        }
+
+        return $confirmations;
     }
 
     private function auditDraftConsumed(

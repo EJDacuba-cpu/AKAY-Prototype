@@ -159,27 +159,28 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::get('/reports/rhu', [ReportController::class, 'rhu']);
         });
 
+        Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
+        Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
+        Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
+        Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
+        Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
+            ->middleware('throttle:health-record-drafts');
+        Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
+            ->middleware('throttle:health-record-drafts');
+        Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+        // Must be registered before the {followUpTask} route below, or
+        // Laravel's implicit model binding tries to resolve "calendar" as an id.
+        Route::get('/follow-up-tasks/calendar', [FollowUpTaskController::class, 'calendar']);
+        Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
+        Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
+        Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
+        Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
+
         Route::middleware('role:bhc')->group(function () {
-            Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
-            Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
-            Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
-            Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
-            Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
-                ->middleware('throttle:health-record-drafts');
-            Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
-                ->middleware('throttle:health-record-drafts');
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
             Route::post('/referral-holds', [ReferralHoldController::class, 'store']);
             Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
-            Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
-            // Must be registered before the {followUpTask} route below, or
-            // Laravel's implicit model binding tries to resolve "calendar" as an id.
-            Route::get('/follow-up-tasks/calendar', [FollowUpTaskController::class, 'calendar']);
-            Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
-            Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
-            Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
-            Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
             Route::get('/reports/bhc', [ReportController::class, 'bhc']);
         });
     });

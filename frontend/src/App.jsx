@@ -73,7 +73,7 @@ import QRScanner from "./pages/rhu/QRScanner";
 import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
-import RHUAddHealthRecords from "./pages/rhu/RHUAddHealthRecords";
+import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
@@ -725,7 +725,7 @@ export default function App() {
         path="/rhu/health-records/add"
         element={
           <ProtectedPage allowedRole="rhu">
-            <RHUAddHealthRecords />
+            <RhuConsultationWorkspace />
           </ProtectedPage>
         }
       />
@@ -734,6 +734,22 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="rhu" module="history">
             <RHURecordDetails />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/follow-ups"
+        element={
+          <ProtectedPage allowedRole="rhu" module="followups">
+            <FollowUps role="rhu" />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/follow-ups/:taskId"
+        element={
+          <ProtectedPage allowedRole="rhu" module="followups">
+            <FollowUpDetails role="rhu" />
           </ProtectedPage>
         }
       />

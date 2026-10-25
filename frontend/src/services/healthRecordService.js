@@ -4,7 +4,7 @@ import {
   unwrapData,
   unwrapList,
 } from "./apiClient";
-import { getConsultationPrograms } from "../utils/consultationPrograms";
+import { getConsultationPrograms, getPrimaryProgram } from "../utils/consultationPrograms";
 import { normalizeBodyFindings, serializeBodyFindings } from "../utils/bodyFindings";
 import { normalizeDiagnoses } from "../utils/diagnoses";
 import { getMorbidityReportingStatus } from "../utils/diagnosisReporting";
@@ -547,6 +547,8 @@ function toPayload(record = {}, { partial = false } = {}) {
   }));
   const monitoringData = {
     ...sourceMonitoringData,
+    selectedPrograms: programs,
+    primaryProgram: getPrimaryProgram(record) || sourceMonitoringData.primaryProgram || "",
     followUpStatus: record.followUpStatus || record.status || null,
     followUpDate: record.followUpDate || null,
     followUpTime: record.followUpTime || null,
@@ -844,6 +846,17 @@ function toPayload(record = {}, { partial = false } = {}) {
           remarks: item.remarks || null,
         }))
       : [],
+    prescribed_medicines: Array.isArray(record.prescribedMedicines)
+      ? record.prescribedMedicines.map((item) => ({
+          medicine_id: item.medicineId || item.medicine_id,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          instructions: item.instructions || item.remarks || null,
+          category: item.category || null,
+          name: item.name || item.medicineName || null,
+        }))
+      : undefined,
+    rhu_visit_id: record.rhuVisitId || record.rhu_visit_id || undefined,
     referral: record.referral
       ? {
           rural_health_unit_id: record.referral.ruralHealthUnitId || record.referral.rural_health_unit_id || null,

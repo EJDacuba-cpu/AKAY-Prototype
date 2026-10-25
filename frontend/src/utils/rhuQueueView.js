@@ -59,12 +59,12 @@ export const CLOSE_REASONS = [
  * ⋯ menu items for one queue row (D8). Discard is Phase 6. Hidden duties are omitted, not disabled.
  * `onClick` is attached by the table; this only decides labels and which action they fire.
  */
-export function queueRowActions(row, { canEncode = false, canClose = false } = {}) {
+export function queueRowActions(row, { canEncode = false, canFinalize = false, canClose = false } = {}) {
   const actions = [];
   if (row?.statusKey === 'waiting' && canEncode) {
     actions.push({ label: 'Start consultation', action: 'start' });
   }
-  if (row?.statusKey === 'in_consultation' && canEncode) {
+  if (row?.statusKey === 'in_consultation' && (canEncode || canFinalize)) {
     actions.push({ label: 'Resume consultation', action: 'resume' });
   }
   if (row?.patientId) {

@@ -18,7 +18,17 @@ class HealthRecordDraftRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user()?->isBhc() && \App\Services\ActionPermissions::allows($this->user(), 'consultations.encode');
+        $user = $this->user();
+
+        if (! ($user?->isBhc() || $user?->isRhu())) {
+            return false;
+        }
+        if (\App\Services\ActionPermissions::allows($user, 'consultations.encode')) {
+            return true;
+        }
+
+        return $user->isRhu()
+            && \App\Services\ActionPermissions::allows($user, 'consultations.finalize');
     }
 
     public function rules(): array
@@ -31,6 +41,7 @@ class HealthRecordDraftRequest extends FormRequest
             // never an authorization input - owner and BHC checks still decide
             // what may be read or written.
             'consultation_uuid' => ['nullable', 'uuid'],
+            'rhu_visit_id' => ['nullable', 'integer', 'exists:rhu_visit_queue_entries,id'],
             'payload' => ['required', 'array'],
             'version' => $this->isMethod('put')
                 ? ['required', 'integer', 'min:1']
@@ -41,7 +52,7 @@ class HealthRecordDraftRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator): void {
-            $allowed = ['patient_id', 'classification', 'consultation_uuid', 'payload'];
+            $allowed = ['patient_id', 'classification', 'consultation_uuid', 'rhu_visit_id', 'payload'];
             if ($this->isMethod('put')) {
                 $allowed[] = 'version';
             }
@@ -51,6 +62,12 @@ class HealthRecordDraftRequest extends FormRequest
                 $validator->errors()->add(
                     'payload',
                     'The draft contains unsupported request fields.'
+                );
+            }
+            if ($this->user()?->isRhu() && ! $this->filled('rhu_visit_id')) {
+                $validator->errors()->add(
+                    'rhu_visit_id',
+                    'An in-consultation visit is required to save this RHU consultation.'
                 );
             }
         });

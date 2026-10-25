@@ -21,7 +21,11 @@ class EnforceActionPermissions
             str_contains($path, '/conditions') => 'clinical.history',
             str_contains($path, '/corrections') => $read ? 'clinical.history' : 'records.correct',
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
-            str_contains($path, '/health-record-drafts') => 'consultations.encode',
+            str_contains($path, '/health-record-drafts') => $request->user()->isRhu()
+                && (ActionPermissions::allows($request->user(), 'consultations.encode')
+                    || ActionPermissions::allows($request->user(), 'consultations.finalize'))
+                    ? null
+                    : 'consultations.encode',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
             // BHC and RHU history now opens through the patient directory/profile.
             // Reading these does not confer registration/update authority; facility scopes still apply.
@@ -38,7 +42,10 @@ class EnforceActionPermissions
             str_contains($path, '/referral-routing') => 'consultations.encode',
             str_ends_with($path, '/rhu-visits/patient-search') => 'patients.register',
             str_contains($path, '/rhu-visits') && str_ends_with($path, '/start') => 'consultations.encode',
-            str_contains($path, '/rhu-visits') && str_ends_with($path, '/resume') => 'consultations.encode',
+            str_contains($path, '/rhu-visits') && str_ends_with($path, '/resume') => (
+                ActionPermissions::allows($request->user(), 'consultations.encode')
+                || ActionPermissions::allows($request->user(), 'consultations.finalize')
+            ) ? null : 'consultations.encode',
             // Reading the queue is clinical history; walk-in intake and close are the registration duty.
             str_contains($path, '/rhu-visits') => $read ? 'clinical.history' : 'patients.register',
             str_contains($path, '/referrals') => $read ? 'clinical.history' : ($request->user()->isBhc() ? 'referrals.submit' : 'rhu.manage'),

@@ -30,6 +30,9 @@ export function navigationAllowed(user, path = "") {
   if (user?.role === "rhu" && /^\/rhu\/(incoming-referrals|qr-scanner)(?:\/|$)/.test(path)) {
     return permissions.includes("rhu.intake") || permissions.includes("rhu.manage");
   }
+  if (user?.role === "rhu" && /^\/rhu\/follow-ups(?:\/|$)/.test(path)) {
+    return permissions.includes("followups.manage");
+  }
   const permission = /health-records|follow-ups|referrals|qr-scanner|programs/.test(path)
     ? "clinical.history"
     : /patients/.test(path) ? "patients.register"

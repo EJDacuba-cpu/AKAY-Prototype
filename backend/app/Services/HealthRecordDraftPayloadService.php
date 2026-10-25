@@ -56,6 +56,8 @@ class HealthRecordDraftPayloadService
             // v2: destinations this diagnosis is reported in (ReportingEntries::DESTINATIONS).
             'reportIn' => ['*' => self::SCALAR],
             'clinicalOutcome' => self::SCALAR,
+            'activate' => self::SCALAR,
+            'manageToBhc' => self::SCALAR,
             'referral' => [
                 'urgencyLevel' => self::SCALAR,
                 'receivingRhuId' => self::SCALAR,
@@ -417,6 +419,18 @@ class HealthRecordDraftPayloadService
             // draft silently lost them.
             'remarks' => self::SCALAR,
         ]],
+        'prescribedMedicines' => ['*' => [
+            'medicineId' => self::SCALAR,
+            'quantity' => self::SCALAR,
+            'unit' => self::SCALAR,
+            'instructions' => self::SCALAR,
+            'category' => self::SCALAR,
+            'name' => self::SCALAR,
+        ]],
+        'includeTb' => self::SCALAR,
+        'rhuFollowUp' => self::SCALAR,
+        'manageToBhc' => self::SCALAR,
+        'rhuVisitId' => self::SCALAR,
     ];
 
     /**
@@ -593,7 +607,7 @@ class HealthRecordDraftPayloadService
             'payload.similarIllness.who' => ['nullable', 'string', 'max:150'],
             'payload.similarIllness.note' => ['nullable', 'string', 'max:500'],
             'payload.consultationUuid' => ['nullable', 'uuid'],
-            'payload.consultationWorkflow' => ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2])],
+            'payload.consultationWorkflow' => ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2, HealthRecord::WORKFLOW_RHU_ITR_V1])],
             'payload.consultationMode' => ['nullable', 'in:general,program'],
             'payload.wizardPhase' => ['nullable', 'in:program,form,next,review'],
             'payload.formStep' => ['nullable', 'string', 'max:100'],
@@ -613,6 +627,8 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.reportIn' => ['nullable', 'array'],
             'payload.diagnoses.*.reportIn.*' => ['string', Rule::in(ReportingEntries::DESTINATIONS)],
             'payload.diagnoses.*.clinicalOutcome' => ['nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])],
+            'payload.diagnoses.*.activate' => ['nullable', 'boolean'],
+            'payload.diagnoses.*.manageToBhc' => ['nullable', 'boolean'],
             'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(\App\Models\Referral::ATTENTION_LEVELS)],
             'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
             'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],
@@ -640,6 +656,17 @@ class HealthRecordDraftPayloadService
                 'min:1',
                 'max:2147483647',
             ],
+            'payload.prescribedMedicines' => ['nullable', 'array', 'max:50'],
+            'payload.prescribedMedicines.*.medicineId' => ['required', 'integer'],
+            'payload.prescribedMedicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'payload.prescribedMedicines.*.unit' => ['nullable', 'string', 'max:50'],
+            'payload.prescribedMedicines.*.instructions' => ['nullable', 'string', 'max:1000'],
+            'payload.prescribedMedicines.*.category' => ['nullable', 'string', 'max:100'],
+            'payload.prescribedMedicines.*.name' => ['nullable', 'string', 'max:200'],
+            'payload.includeTb' => ['nullable', 'boolean'],
+            'payload.rhuFollowUp' => ['nullable', 'boolean'],
+            'payload.manageToBhc' => ['nullable', 'boolean'],
+            'payload.rhuVisitId' => ['nullable', 'integer'],
             'payload.maternalData.previousPregnancyHistory' => ['nullable', 'array', 'max:30'],
             'payload.maternalData.immunizationThisVisit.type' => [
                 'nullable',

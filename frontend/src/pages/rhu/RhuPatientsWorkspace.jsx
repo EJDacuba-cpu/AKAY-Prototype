@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -22,6 +22,7 @@ const REGISTER_FOR_CHECK_IN = "/rhu/patients/add?check_in=1";
  * patient records (D6); the directory below is the existing patient list.
  */
 export default function RhuPatientsWorkspace() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "all" ? "all" : "queue";
   const [checkInOpen, setCheckInOpen] = useState(false);
@@ -31,6 +32,7 @@ export default function RhuPatientsWorkspace() {
   const access = useAccess();
   const canCheckIn = access.can("patients.register");
   const canEncode = access.can("consultations.encode");
+  const canFinalize = access.can("consultations.finalize");
   // The queue endpoint needs Health Records access; check-in alone is the registration duty.
   const canViewQueue = access.can("clinical.history");
   const { visits, loading, error, queryError, refetch, isRefreshing } = useRhuVisits({
@@ -54,11 +56,16 @@ export default function RhuPatientsWorkspace() {
     await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
   }
 
+  function openWorkspace(visit, row) {
+    const patientId = row.patientId || visit?.patient?.id;
+    navigate(`/rhu/health-records/add?visitId=${visit?.id || row.id}&patientId=${patientId}&mode=continue`);
+  }
+
   async function startVisit(row) {
     try {
-      await startRhuVisit(row.id);
+      const visit = await startRhuVisit(row.id);
       toast.success(`Consultation started for ${row.name}.`);
-      await refreshQueue();
+      openWorkspace(visit, row);
     } catch (error) {
       toast.error(error?.message || "Unable to start this consultation.");
     }
@@ -66,9 +73,8 @@ export default function RhuPatientsWorkspace() {
 
   async function resumeVisit(row) {
     try {
-      await resumeRhuVisit(row.id);
-      toast.success(`Consultation is already open for ${row.name}.`);
-      await refreshQueue();
+      const visit = await resumeRhuVisit(row.id);
+      openWorkspace(visit, row);
     } catch (error) {
       toast.error(error?.message || "Unable to resume this consultation.");
     }
@@ -113,6 +119,7 @@ export default function RhuPatientsWorkspace() {
             canViewQueue={canViewQueue}
             canCheckIn={canCheckIn}
             canEncode={canEncode}
+            canFinalize={canFinalize}
             onCheckIn={() => setCheckInOpen(true)}
             onStart={startVisit}
             onResume={resumeVisit}

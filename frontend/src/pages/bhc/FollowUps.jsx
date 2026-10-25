@@ -65,8 +65,9 @@ const DEFAULT_FILTERS = {
 
 const VIEW_MODES = ["list", "day", "week", "month"];
 
-export default function FollowUps() {
+export default function FollowUps({ role = "bhc" }) {
   const navigate = useNavigate();
+  const basePath = `/${role}`;
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -83,7 +84,7 @@ export default function FollowUps() {
     error: loadError,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.followUpTasks("bhc"),
+    queryKey: queryKeys.followUpTasks(role),
     queryFn: () => getFollowUpTasks(),
     staleTime: 30_000,
     retry: false,
@@ -164,7 +165,7 @@ export default function FollowUps() {
 
   const { data: calendarTasksData = [] } = useQuery({
     queryKey: queryKeys.followUpTasksCalendar(
-      "bhc",
+      role,
       calendarRange.start,
       calendarRange.end,
     ),
@@ -246,9 +247,9 @@ export default function FollowUps() {
     if (requestedOpen === "reschedule" || requestedOpen === "cancel") {
       setModal({ type: requestedOpen, task: requestedTask });
     } else {
-      navigate(`/bhc/follow-ups/${requestedTask.id}`, { replace: true });
+      navigate(`${basePath}/follow-ups/${requestedTask.id}`, { replace: true });
     }
-  }, [isLoading, navigate, requestedOpen, requestedTaskId, tasks]);
+  }, [basePath, isLoading, navigate, requestedOpen, requestedTaskId, tasks]);
 
   const dropdownFilters = [
     {
@@ -300,13 +301,13 @@ export default function FollowUps() {
 
   async function refreshTasks() {
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.followUpTasks("bhc"),
+      queryKey: queryKeys.followUpTasks(role),
     });
     await queryClient.invalidateQueries({
-      queryKey: ["follow-up-tasks-calendar", "bhc"],
+      queryKey: ["follow-up-tasks-calendar", role],
     });
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.healthRecords("bhc"),
+      queryKey: queryKeys.healthRecords(role),
     });
   }
 
@@ -325,7 +326,7 @@ export default function FollowUps() {
   }
 
   function recordFollowUpVisit(task) {
-    navigate(buildRecordFollowUpVisitPath(task));
+    navigate(buildRecordFollowUpVisitPath(task, basePath));
   }
 
   function openRescheduleModal(task) {
@@ -333,7 +334,7 @@ export default function FollowUps() {
   }
 
   function handleTaskClick(task) {
-    const target = getTaskNavigationTarget(task);
+    const target = getTaskNavigationTarget(task, basePath);
     if (target) navigate(target);
   }
 
@@ -342,7 +343,7 @@ export default function FollowUps() {
       task.fulfilledByHealthRecordId ||
       task.latestHealthRecordId ||
       task.healthRecordId;
-    if (recordId) navigate(`/bhc/health-records/${recordId}`);
+    if (recordId) navigate(`${basePath}/health-records/${recordId}`);
   }
 
   async function handleReschedule(task, payload) {
@@ -402,7 +403,7 @@ export default function FollowUps() {
 
   if (hasLoadError) {
     return (
-      <DashboardLayout role="bhc" title="Follow-ups">
+      <DashboardLayout role={role} title="Follow-ups">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetch()}
@@ -431,10 +432,11 @@ export default function FollowUps() {
     onReschedule: openRescheduleModal,
     onCancel: openCancelModal,
     onViewRecord: viewCompletedHealthRecord,
+    basePath,
   };
 
   return (
-    <DashboardLayout role="bhc" title="Follow-ups">
+    <DashboardLayout role={role} title="Follow-ups">
       <FollowUpActionModal
         modal={modal}
         saving={savingAction}
@@ -544,6 +546,7 @@ export default function FollowUps() {
                   tasks={filteredTasks}
                   resetKey={filters}
                   handlers={taskHandlers}
+                  basePath={basePath}
                 />
               )}
               {viewMode === "week" && (
@@ -578,7 +581,7 @@ export default function FollowUps() {
   );
 }
 
-function FollowUpList({ tasks, resetKey, handlers }) {
+function FollowUpList({ tasks, resetKey, handlers, basePath = "/bhc" }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(tasks, resetKey);
 
   if (tasks.length === 0) {
@@ -615,6 +618,7 @@ function FollowUpList({ tasks, resetKey, handlers }) {
               onReschedule: () => handlers.onReschedule(task),
               onCancel: () => handlers.onCancel(task),
               onViewRecord: () => handlers.onViewRecord(task),
+              basePath,
             });
 
             return (
@@ -643,7 +647,7 @@ function FollowUpList({ tasks, resetKey, handlers }) {
                 <td className="whitespace-nowrap px-3 py-3.5">
                   {task.healthRecordId ? (
                     <Link
-                      to={`/bhc/health-records/${task.healthRecordId}`}
+                      to={`${basePath}/health-records/${task.healthRecordId}`}
                       className="font-semibold text-[#B91C1C] hover:underline"
                     >
                       Record #{task.healthRecordId}

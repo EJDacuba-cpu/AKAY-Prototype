@@ -32,8 +32,7 @@ const DEFAULT_FILTERS = { search: "", source: "all" };
 
 /**
  * Today's Queue for the RHU: who is waiting, where they came from and since when.
- * `rows` are display rows from `queueRows()`. Start / Resume / Close are queue-state actions;
- * they never open the legacy RHU health-record editor.
+ * `rows` are display rows from `queueRows()`. Start / Resume navigate to the RHU ITR workspace.
  */
 export default function RhuQueueTable({
   rows,
@@ -45,6 +44,7 @@ export default function RhuQueueTable({
   canViewQueue = true,
   canCheckIn = false,
   canEncode = false,
+  canFinalize = false,
   onCheckIn,
   onStart,
   onResume,
@@ -133,6 +133,7 @@ export default function RhuQueueTable({
                       key={row.id}
                       row={row}
                       canEncode={canEncode}
+                      canFinalize={canFinalize}
                       canClose={canCheckIn}
                       onStart={onStart}
                       onResume={onResume}
@@ -155,9 +156,9 @@ export default function RhuQueueTable({
   );
 }
 
-function QueueRowView({ row, canEncode, canClose, onStart, onResume, onCloseVisit }) {
+function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume, onCloseVisit }) {
   const tone = CHIP_TONES[row.status.tone] ?? CHIP_TONES.neutral;
-  const actions = queueRowActions(row, { canEncode, canClose }).map((item) => {
+  const actions = queueRowActions(row, { canEncode, canFinalize, canClose }).map((item) => {
     if (item.action === "start") return { ...item, onClick: () => onStart?.(row) };
     if (item.action === "resume") return { ...item, onClick: () => onResume?.(row) };
     if (item.action === "close") return { ...item, onClick: () => onCloseVisit?.(row) };

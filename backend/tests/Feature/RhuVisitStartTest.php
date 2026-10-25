@@ -121,13 +121,31 @@ class RhuVisitStartTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_bhc_cannot_start_and_rhu_still_cannot_list_drafts(): void
+    public function test_bhc_cannot_start_and_rhu_encoder_can_list_drafts(): void
     {
         $visit = $this->visit();
         $bhcUser = User::create(['name' => 'BHC', 'email' => 'start-bhc@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'bhc', 'staff_role' => 'midwife', 'barangay_health_center_id' => $this->bhc->id]);
 
         $this->as($bhcUser)->postJson("/api/rhu-visits/{$visit->id}/start")->assertForbidden();
-        $this->as($this->encoder())->getJson('/api/health-record-drafts')->assertForbidden();
+        $this->as($this->encoder())->getJson('/api/health-record-drafts')->assertOk();
+    }
+
+    public function test_finalize_only_can_resume_but_cannot_start(): void
+    {
+        $visit = $this->visit();
+        $this->as($this->encoder())->postJson("/api/rhu-visits/{$visit->id}/start")->assertOk();
+
+        $finalizer = $this->rhuUser([
+            'email' => uniqid('finalizer-', true).'@example.test',
+            'permissions' => [...StaffRoles::defaults('doctor'), 'consultations.finalize'],
+        ]);
+
+        $this->as($finalizer)->postJson("/api/rhu-visits/{$visit->id}/resume")
+            ->assertOk()
+            ->assertJsonPath('data.status', RhuVisitQueueEntry::STATUS_IN_CONSULTATION);
+
+        $waiting = $this->visit();
+        $this->as($finalizer)->postJson("/api/rhu-visits/{$waiting->id}/start")->assertForbidden();
     }
 
     public function test_other_rhu_visit_cannot_be_started(): void

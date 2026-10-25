@@ -48,6 +48,7 @@ export async function createHealthRecordDraft({
   patientId,
   classification,
   consultationUuid,
+  rhuVisitId,
   payload,
 }) {
   const response = await apiRequest("/health-record-drafts", {
@@ -56,6 +57,7 @@ export async function createHealthRecordDraft({
       patient_id: patientId,
       classification,
       consultation_uuid: consultationUuid || null,
+      ...(rhuVisitId ? { rhu_visit_id: Number(rhuVisitId) } : {}),
       payload,
     },
   });

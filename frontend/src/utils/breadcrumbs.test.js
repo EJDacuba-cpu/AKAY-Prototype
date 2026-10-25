@@ -82,6 +82,16 @@ test("RHU health record details sit under Patients", () => {
   );
 });
 
+test("RHU follow-up details sit under Follow-ups", () => {
+  assert.deepEqual(
+    getBreadcrumbs("/rhu/follow-ups/12", "Follow-up Details"),
+    [
+      { label: "Follow-ups", path: "/rhu/follow-ups" },
+      { label: "Follow-up Details" },
+    ],
+  );
+});
+
 test("unknown routes fall back to the current page", () => {
   assert.deepEqual(getBreadcrumbs("/somewhere/else", "Notifications"), [
     { label: "Notifications" },

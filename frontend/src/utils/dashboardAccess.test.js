@@ -42,6 +42,8 @@ test("RHU doctor availability is not locked behind inventory", () => {
   const rhu = { role: "rhu", permissions: ["clinical.history"] };
   assert.equal(navigationAllowed(rhu, "/rhu/doctor-availability"), true);
   assert.equal(navigationAllowed(rhu, "/rhu/medicine-management"), false);
+  assert.equal(navigationAllowed(rhu, "/rhu/follow-ups"), false);
+  assert.equal(navigationAllowed({ role: "rhu", permissions: ["followups.manage"] }, "/rhu/follow-ups"), true);
 });
 
 test("BHC clinical history can read the directory without gaining patient registration or RHU access", () => {

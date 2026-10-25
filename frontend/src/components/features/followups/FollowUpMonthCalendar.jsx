@@ -17,6 +17,7 @@ export default function FollowUpMonthCalendar({
   onReschedule,
   onCancel,
   onViewRecord,
+  basePath = "/bhc",
 }) {
   const gridDays = getMonthGridDays(monthDate);
   const cardHandlers = {
@@ -25,6 +26,7 @@ export default function FollowUpMonthCalendar({
     onReschedule,
     onCancel,
     onViewRecord,
+    basePath,
   };
 
   return (

@@ -57,9 +57,10 @@ import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const ACTIVE_STATES = ["due_today", "no_show", "upcoming", "rescheduled"];
 
-export default function FollowUpDetails() {
+export default function FollowUpDetails({ role = "bhc" }) {
   const { taskId } = useParams();
   const navigate = useNavigate();
+  const basePath = `/${role}`;
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
@@ -72,7 +73,7 @@ export default function FollowUpDetails() {
     isFetching,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
+    queryKey: queryKeys.followUpTaskDetails(role, taskId),
     queryFn: () => getFollowUpTask(taskId),
     enabled: Boolean(taskId),
     retry: false,
@@ -99,8 +100,8 @@ export default function FollowUpDetails() {
     isLoading: relatedRecordLoading,
     refetch: refetchRelatedRecord,
   } = useQuery({
-    queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
-    queryFn: () => getHealthRecordById(relatedRecordId, "bhc"),
+    queryKey: queryKeys.healthRecordData(role, relatedRecordId),
+    queryFn: () => getHealthRecordById(relatedRecordId, role),
     enabled: Boolean(relatedRecordId),
     retry: false,
   });
@@ -114,17 +115,17 @@ export default function FollowUpDetails() {
   async function refreshTaskData() {
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
+        queryKey: queryKeys.followUpTaskDetails(role, taskId),
       }),
       queryClient.invalidateQueries({
-        queryKey: queryKeys.followUpTasks("bhc"),
+        queryKey: queryKeys.followUpTasks(role),
       }),
       queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords("bhc"),
+        queryKey: queryKeys.healthRecords(role),
       }),
       relatedRecordId
         ? queryClient.invalidateQueries({
-            queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
+            queryKey: queryKeys.healthRecordData(role, relatedRecordId),
           })
         : Promise.resolve(),
     ]);
@@ -132,7 +133,7 @@ export default function FollowUpDetails() {
 
   function recordFollowUpVisit() {
     if (!task) return;
-    navigate(buildRecordFollowUpVisitPath(task));
+    navigate(buildRecordFollowUpVisitPath(task, basePath));
   }
 
   async function handleReschedule(selectedTask, payload) {
@@ -146,7 +147,7 @@ export default function FollowUpDetails() {
       setModal(null);
       await refreshTaskData();
       if (replacement?.id && String(replacement.id) !== String(selectedTask.id)) {
-        navigate(`/bhc/follow-ups/${replacement.id}`, { replace: true });
+        navigate(`${basePath}/follow-ups/${replacement.id}`, { replace: true });
       }
     } catch (requestError) {
       notify.error(
@@ -165,7 +166,7 @@ export default function FollowUpDetails() {
 
   if (loading) {
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
+      <DashboardLayout role={role} title="Follow-up Details">
         <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading follow-up details..."
@@ -180,7 +181,7 @@ export default function FollowUpDetails() {
   if (notFound || error?.status === 403) {
     const forbidden = error?.status === 403;
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
+      <DashboardLayout role={role} title="Follow-up Details">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-[#B91C1C]">
             <XCircle size={26} />
@@ -194,7 +195,7 @@ export default function FollowUpDetails() {
               : "This follow-up schedule does not exist or is no longer available."}
           </p>
           <Link
-            to="/bhc/follow-ups"
+            to={`${basePath}/follow-ups`}
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
           >
             <ArrowLeft size={14} />
@@ -207,7 +208,7 @@ export default function FollowUpDetails() {
 
   if (hasConnectionError) {
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
+      <DashboardLayout role={role} title="Follow-up Details">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetch()}
@@ -262,7 +263,7 @@ export default function FollowUpDetails() {
   ];
 
   return (
-    <DashboardLayout role="bhc" title="Follow-up Details">
+    <DashboardLayout role={role} title="Follow-up Details">
       <FollowUpActionModal
         modal={modal}
         saving={savingAction}
@@ -302,7 +303,7 @@ export default function FollowUpDetails() {
                 <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600">
                   Rescheduled - this entry was replaced.
                   <Link
-                    to={`/bhc/follow-ups/${task.rescheduledToId}`}
+                    to={`${basePath}/follow-ups/${task.rescheduledToId}`}
                     className="font-bold text-[#B91C1C] underline-offset-2 hover:underline"
                   >
                     View current follow-up #{task.rescheduledToId}
@@ -314,7 +315,7 @@ export default function FollowUpDetails() {
             <div className="flex shrink-0 flex-wrap gap-2">
               {task.effectiveState === "fulfilled" && completedRecordId && (
                 <Link
-                  to={`/bhc/health-records/${completedRecordId}`}
+                  to={`${basePath}/health-records/${completedRecordId}`}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                 >
                   <History size={14} />

@@ -228,11 +228,88 @@ class RhuVisitQueueService
         return $started ?? throw new \LogicException('Start did not persist the consultation identity.');
     }
 
+    /**
+     * The visit that owns this RHU ITR: in consultation, same patient and uuid.
+     */
+    public function authorizeInConsultation(User $user, int $entryId, int $patientId, ?string $consultationUuid): RhuVisitQueueEntry
+    {
+        $this->authorizeRhuUser($user);
+        $entry = $this->find($user, $entryId);
+        if ((int) $entry->patient_id !== $patientId
+            || $entry->status !== RhuVisitQueueEntry::STATUS_IN_CONSULTATION
+            || $entry->closed_at !== null
+            || ! filled($entry->consultation_uuid)) {
+            throw new RhuVisitStateException(
+                'VISIT_NOT_IN_CONSULTATION',
+                'This visit is not in consultation.',
+                $entry->id
+            );
+        }
+        if ($consultationUuid && strcasecmp((string) $entry->consultation_uuid, $consultationUuid) !== 0) {
+            throw ValidationException::withMessages([
+                'consultation_uuid' => ['This consultation does not match the started visit.'],
+            ]);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * D11: finalizing the health record closes the visit as completed.
+     * Safe to call again on an already-completed visit of the same uuid.
+     */
+    public function completeConsultation(User $user, RhuVisitQueueEntry $entry, string $consultationUuid): RhuVisitQueueEntry
+    {
+        $entry = RhuVisitQueueEntry::query()->whereKey($entry->id)->lockForUpdate()->firstOrFail();
+        if ($entry->closed_at !== null
+            && $entry->close_reason === RhuVisitQueueEntry::CLOSE_REASON_COMPLETED
+            && strcasecmp((string) $entry->consultation_uuid, $consultationUuid) === 0) {
+            return $entry;
+        }
+        if ($entry->closed_at !== null || $entry->status === RhuVisitQueueEntry::STATUS_CLOSED) {
+            throw new RhuVisitStateException(
+                'VISIT_CLOSED',
+                'A closed visit cannot be completed.',
+                $entry->id
+            );
+        }
+        if ($entry->status !== RhuVisitQueueEntry::STATUS_IN_CONSULTATION
+            || strcasecmp((string) $entry->consultation_uuid, $consultationUuid) !== 0) {
+            throw new RhuVisitStateException(
+                'VISIT_NOT_IN_CONSULTATION',
+                'This visit is not in consultation.',
+                $entry->id
+            );
+        }
+
+        $entry->update([
+            'status' => RhuVisitQueueEntry::STATUS_CLOSED,
+            'closed_at' => now(),
+            'closed_by' => $user->id,
+            'close_reason' => RhuVisitQueueEntry::CLOSE_REASON_COMPLETED,
+            'close_note' => null,
+        ]);
+
+        AuditLog::create([
+            'user_id' => $user->id,
+            'action' => 'visit_completed',
+            'module' => 'rhu_visit_queue',
+            'description' => "Completed visit {$entry->id} by finalizing the consultation.",
+        ]);
+
+        return $entry->fresh();
+    }
+
     /** Return the visit's existing consultation identity. */
     public function resume(User $user, int $entryId): RhuVisitQueueEntry
     {
         $this->authorizeRhuUser($user);
-        ActionPermissions::ensure($user, 'consultations.encode');
+        abort_unless(
+            ActionPermissions::allows($user, 'consultations.encode')
+            || ActionPermissions::allows($user, 'consultations.finalize'),
+            403,
+            'This action is not allowed for your role.'
+        );
         $entry = $this->find($user, $entryId);
         if ($entry->status !== RhuVisitQueueEntry::STATUS_IN_CONSULTATION
             || ! filled($entry->consultation_uuid)

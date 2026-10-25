@@ -50,11 +50,27 @@ export const NEXT_STEP = "next";
 export const OUTCOME_STEP = "outcome";
 export const REVIEW_STEP = "review";
 export const MONITORING_STEP = "monitoring";
+export const TB_INTAKE_STEP = "tb-intake";
+export const PRESCRIPTION_STEP = "prescription";
 
 const PROGRAM_PREFIX = "program:";
 
 /** The BHC consultation: no Patient History step. */
 export const BHC_STEP_OPTIONS = Object.freeze({ includeHistory: false });
+
+/** RHU ITR consultation: History I–V, diagnosis, prescription, walk-in outcome. */
+export const RHU_ITR_STEP_OPTIONS = Object.freeze({
+  includeHistory: true,
+  workflow: "rhu_itr_v1",
+});
+
+function isRhuItr(options = {}) {
+  return options.workflow === "rhu_itr_v1";
+}
+
+function tbIntakeKeys(options = {}) {
+  return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
+}
 
 function historySteps(includeHistory) {
   return includeHistory === false ? [] : [HISTORY_STEP];
@@ -133,7 +149,14 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
  * share the one Service Details step, which is listed only when there is at
  * least one.
  */
-export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys = [], includeHistory = true } = {}) {
+export function buildConsultationSteps({
+  programSteps = [],
+  monitoringDetailKeys = [],
+  includeHistory = true,
+  workflow = null,
+  includeTb = false,
+} = {}) {
+  const rhuItr = workflow === "rhu_itr_v1";
   return [
     { key: INTERVIEW_STEP, phase: "form", label: "Patient Interview" },
     ...historySteps(includeHistory).map((key) => ({ key, phase: "form", label: "Patient History" })),
@@ -141,10 +164,14 @@ export function buildConsultationSteps({ programSteps = [], monitoringDetailKeys
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
-    { key: NEXT_STEP, phase: "next", label: "Clinical Conditions & Reporting" },
+    ...(rhuItr && includeTb
+      ? [{ key: TB_INTAKE_STEP, phase: "form", label: "TB Intake" }]
+      : []),
+    { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis" : "Clinical Conditions & Reporting" },
+    ...(rhuItr ? [{ key: PRESCRIPTION_STEP, phase: "next", label: "Prescription" }] : []),
     { key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" },
     // Only when a monitored condition needs data the ITR does not hold (TB today).
-    ...(monitoringDetailKeys.length > 0
+    ...(!rhuItr && monitoringDetailKeys.length > 0
       ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
       : []),
     { key: REVIEW_STEP, phase: "review", label: "Review & Finalize" },
@@ -191,25 +218,31 @@ export function resolveStepHeading({
  * The screens Next / Previous walk through in the form phase: Interview,
  * Physical Examination, then each selected service's form in program order.
  */
-export function getFormSequence(programSteps = [], { includeHistory = true } = {}) {
+export function getFormSequence(programSteps = [], options = {}) {
+  const { includeHistory = true } = options;
   return [
     INTERVIEW_STEP,
     ...historySteps(includeHistory),
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
+    ...tbIntakeKeys(options),
   ];
 }
 
 /** Every screen in order, used to rank validation errors. */
-export function getStepOrder(programSteps = [], monitoringDetailKeys = [], { includeHistory = true } = {}) {
+export function getStepOrder(programSteps = [], monitoringDetailKeys = [], options = {}) {
+  const { includeHistory = true } = options;
+  const rhuItr = isRhuItr(options);
   return [
     INTERVIEW_STEP,
     ...historySteps(includeHistory),
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
+    ...tbIntakeKeys(options),
     NEXT_STEP,
+    ...(rhuItr ? [PRESCRIPTION_STEP] : []),
     OUTCOME_STEP,
-    ...(monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
+    ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
   ];
 }
@@ -326,7 +359,23 @@ export function resolveFormStep(current, formSequence, programSteps = []) {
  * Which screen shows the field behind a validation error. Null means the error
  * is not tied to a specific screen (the caller decides what to do with it).
  */
-export function getErrorOwnerStepKey(errorKey, { includeHistory = true } = {}) {
+const RHU_TB_FINALIZE_PREFIXES = [
+  "tbData.diagnosis",
+  "tbData.classification",
+  "tbData.regimen",
+  "tbData.phases",
+  "tbData.outcome",
+  "tbData.comorbidities.art",
+  "tbData.comorbidities.cpt",
+  "tbData.comorbidities.otherComorbidities",
+];
+
+function isRhuTbFinalizeError(key) {
+  return RHU_TB_FINALIZE_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix));
+}
+
+export function getErrorOwnerStepKey(errorKey, options = {}) {
+  const { includeHistory = true, workflow } = options;
   const key = String(errorKey || "");
 
   if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
@@ -342,7 +391,12 @@ export function getErrorOwnerStepKey(errorKey, { includeHistory = true } = {}) {
   if (["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) || key === "vital_signs.fbs") {
     return ASSESSMENT_STEP;
   }
-  if (key.startsWith("tbData.")) return MONITORING_STEP;
+  if (key.startsWith("tbData.")) {
+    if (workflow === "rhu_itr_v1") {
+      return isRhuTbFinalizeError(key) ? NEXT_STEP : TB_INTAKE_STEP;
+    }
+    return MONITORING_STEP;
+  }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
   }
@@ -353,6 +407,7 @@ export function getErrorOwnerStepKey(errorKey, { includeHistory = true } = {}) {
   if (key === "diagnosis" || key === "diagnoses" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
   // Actions Taken (and the medicines dispensed) sit on step 3 too.
   if (key === "dispensedMedicines") return OUTCOME_STEP;
+  if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) return PRESCRIPTION_STEP;
   if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return OUTCOME_STEP;
   if (key === "followUpAcknowledged" || key === "referralAcknowledged") return OUTCOME_STEP;
   // Server-only v2 next-action keys.

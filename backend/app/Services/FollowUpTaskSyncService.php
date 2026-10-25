@@ -96,9 +96,11 @@ class FollowUpTaskSyncService
                 continue;
             }
             $task = FollowUpTask::query()->whereKey((int) $taskId)->lockForUpdate()->first();
-            if ($task === null
-                || (int) $task->patient_id !== (int) $patient->id
-                || (int) $task->barangay_health_center_id !== (int) $patient->barangay_health_center_id) {
+            $samePatient = $task !== null && (int) $task->patient_id === (int) $patient->id;
+            $sameFacility = $user->isRhu()
+                ? (int) $task?->rural_health_unit_id === (int) $user->rural_health_unit_id
+                : (int) $task?->barangay_health_center_id === (int) $patient->barangay_health_center_id;
+            if (! $samePatient || ! $sameFacility) {
                 throw ValidationException::withMessages([
                     "care_plan.continued_follow_up_task_ids.$index" => 'This follow-up does not belong to this patient.',
                 ]);
@@ -187,6 +189,7 @@ class FollowUpTaskSyncService
         $attributes = [
             'patient_id' => $record->patient_id,
             'barangay_health_center_id' => $record->barangay_health_center_id,
+            'rural_health_unit_id' => $record->rural_health_unit_id,
             'state' => $existingTask?->state ?? FollowUpTask::STATE_PENDING,
             'created_by' => $record->created_by,
             'updated_by' => $user?->id,
@@ -325,12 +328,9 @@ class FollowUpTaskSyncService
         $isValid = ($isActive || $isExistingFulfillment)
             && (int) $task->patient_id === (int) $record->patient_id
             && (int) $task->health_record_id === (int) $record->parent_health_record_id
-            && (int) $task->barangay_health_center_id
-                === (int) $record->barangay_health_center_id
+            && $this->sameFacility($task, $record)
             && $task->healthRecord !== null
-            && (int) $task->healthRecord->patient_id === (int) $record->patient_id
-            && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id;
+            && (int) $task->healthRecord->patient_id === (int) $record->patient_id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -348,14 +348,18 @@ class FollowUpTaskSyncService
             return null;
         }
 
-        $task = FollowUpTask::query()
+        $taskQuery = FollowUpTask::query()
             ->with('healthRecord')
             ->where('health_record_id', $record->parent_health_record_id)
             ->where('patient_id', $record->patient_id)
-            ->where('barangay_health_center_id', $record->barangay_health_center_id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
-            ->whereNull('fulfilled_at')
-            ->first();
+            ->whereNull('fulfilled_at');
+        if ($record->rural_health_unit_id) {
+            $taskQuery->where('rural_health_unit_id', $record->rural_health_unit_id);
+        } else {
+            $taskQuery->where('barangay_health_center_id', $record->barangay_health_center_id);
+        }
+        $task = $taskQuery->first();
 
         if (! $task) {
             return null;
@@ -392,15 +396,17 @@ class FollowUpTaskSyncService
         array $recordData,
         Patient $patient
     ): void {
+        $sameFacility = $task->rural_health_unit_id
+            ? (int) $task->rural_health_unit_id === (int) $patient->rural_health_unit_id
+                && (int) $task->healthRecord?->rural_health_unit_id === (int) $task->rural_health_unit_id
+            : (int) $task->barangay_health_center_id === (int) $patient->barangay_health_center_id
+                && (int) $task->healthRecord?->barangay_health_center_id === (int) $task->barangay_health_center_id;
         $isValid = (int) $task->patient_id === (int) $patient->id
             && (int) $task->health_record_id
                 === (int) $recordData['parent_health_record_id']
-            && (int) $task->barangay_health_center_id
-                === (int) $patient->barangay_health_center_id
+            && $sameFacility
             && $task->healthRecord !== null
-            && (int) $task->healthRecord->patient_id === (int) $patient->id
-            && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id;
+            && (int) $task->healthRecord->patient_id === (int) $patient->id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -416,6 +422,17 @@ class FollowUpTaskSyncService
             // something still actionable, even though its state
             // ('rescheduled') is itself one of the active states.
             && $task->rescheduled_to_id === null;
+    }
+
+    private function sameFacility(FollowUpTask $task, HealthRecord $record): bool
+    {
+        if ($record->rural_health_unit_id) {
+            return (int) $task->rural_health_unit_id === (int) $record->rural_health_unit_id
+                && (int) $task->healthRecord?->rural_health_unit_id === (int) $task->rural_health_unit_id;
+        }
+
+        return (int) $task->barangay_health_center_id === (int) $record->barangay_health_center_id
+            && (int) $task->healthRecord?->barangay_health_center_id === (int) $task->barangay_health_center_id;
     }
 
     private function followUpTaskId(array $monitoringData): mixed

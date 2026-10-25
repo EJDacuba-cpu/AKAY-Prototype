@@ -6,3 +6,9 @@
  * Set to true to bring drafts back.
  */
 export const DRAFTS_ENABLED = false;
+
+/**
+ * RHU ITR drafts are independent of the BHC draft flag. Queue Start/Resume
+ * opens the RHU workspace on the visit consultation_uuid and autosaves there.
+ */
+export const RHU_DRAFTS_ENABLED = true;

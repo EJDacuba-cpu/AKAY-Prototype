@@ -20,7 +20,7 @@ class FollowUpTaskController extends Controller
 
     public function index(Request $request)
     {
-        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isRhu() || $request->user()->isAdmin(), 403);
         $data = $request->validate([
             'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
             'active' => ['nullable', 'boolean'],
@@ -97,7 +97,7 @@ class FollowUpTaskController extends Controller
      */
     public function calendar(Request $request)
     {
-        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isRhu() || $request->user()->isAdmin(), 403);
         $data = $request->validate([
             'start' => ['required', 'date'],
             'end' => ['required', 'date', 'after_or_equal:start'],
@@ -126,7 +126,7 @@ class FollowUpTaskController extends Controller
 
     public function show(Request $request, FollowUpTask $followUpTask)
     {
-        abort_unless($request->user()->isBhc() || $request->user()->isAdmin(), 403);
+        abort_unless($request->user()->isBhc() || $request->user()->isRhu() || $request->user()->isAdmin(), 403);
         $this->facilityAccess->authorizeFollowUpTask($request->user(), $followUpTask);
 
         return response()->json([
@@ -209,6 +209,7 @@ class FollowUpTaskController extends Controller
                 'health_record_id' => $oldTask->health_record_id,
                 'patient_id' => $oldTask->patient_id,
                 'barangay_health_center_id' => $oldTask->barangay_health_center_id,
+                'rural_health_unit_id' => $oldTask->rural_health_unit_id,
                 'due_date' => $data['due_date'],
                 'due_time' => $data['due_time'] ?? null,
                 'state' => FollowUpTask::STATE_RESCHEDULED,

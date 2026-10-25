@@ -25,7 +25,7 @@ class StaffRoles
     /** Duties that work at each facility tier; the rest have no screen there. */
     public const AVAILABLE = [
         User::ROLE_BHC => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'clinical.background.update', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'reports.view', 'families.view', 'families.manage'],
-        User::ROLE_RHU => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'inventory.view', 'reports.view', 'rhu.manage', 'rhu.intake', 'rhu.providers.manage', 'conditions.confirm', 'families.view', 'families.manage'],
+        User::ROLE_RHU => ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'inventory.view', 'reports.view', 'rhu.manage', 'rhu.intake', 'rhu.providers.manage', 'conditions.confirm', 'families.view', 'families.manage'],
     ];
 
     public static function keys(): array

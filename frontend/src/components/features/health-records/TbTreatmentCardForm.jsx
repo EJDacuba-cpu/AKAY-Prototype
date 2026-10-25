@@ -255,7 +255,7 @@ function FieldLabel({ label, required }) {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
-function TextField({ label, value, onChange, required, placeholder }) {
+function TextField({ label, value, onChange, required, placeholder, disabled = false }) {
   return (
     <div className="min-w-0">
       <FieldLabel label={label} required={required} />
@@ -263,21 +263,23 @@ function TextField({ label, value, onChange, required, placeholder }) {
         type="text"
         value={value ?? ""}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className={inputClass}
+        className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
       />
     </div>
   );
 }
 
-function SelectField({ label, value, onChange, options, required, placeholder }) {
+function SelectField({ label, value, onChange, options, required, placeholder, disabled = false }) {
   return (
     <div className="min-w-0">
       <FieldLabel label={label} required={required} />
       <select
         value={value ?? ""}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className={`${inputClass} cursor-pointer`}
+        className={`${inputClass} cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
       >
         <option value="">{placeholder || "Select…"}</option>
         {options.map((opt) => (
@@ -327,6 +329,7 @@ export default function TbTreatmentCardForm({
   onChange,
   readOnly = false,
   recordId = null,
+  mode = "full",
 }) {
   const data = value || EMPTY_TB_DATA;
   const [downloading, setDownloading] = useState(false);
@@ -409,8 +412,15 @@ export default function TbTreatmentCardForm({
     onChange({ ...data, doseCalendar: nextCalendar });
   };
 
+  const showEncode = mode === "full" || mode === "encode";
+  const showFinalize = mode === "full" || mode === "finalize";
+  const showDots = mode === "full" || mode === "dots";
+  const showChart = mode === "chart" || mode === "dots";
+  const fieldsLocked = readOnly || mode === "chart";
+
   return (
     <div className="space-y-4">
+      <fieldset disabled={fieldsLocked} className="space-y-4">
       {recordId && (
         <div className="flex justify-end">
           <button
@@ -426,6 +436,7 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* I. Case Finding / Notification */}
+      {showEncode && (
       <SectionCard
         title="I. Case Finding / Notification"
         subtitle="Diagnosing facility and screening details."
@@ -470,8 +481,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* Laboratory Tests */}
+      {showEncode && (
       <SectionCard
         title="Laboratory Tests"
         subtitle="Collection / examination dates and results."
@@ -526,8 +539,10 @@ export default function TbTreatmentCardForm({
           </div>
         </div>
       </SectionCard>
+      )}
 
       {/* Diagnosis */}
+      {showFinalize && (
       <SectionCard title="Diagnosis">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -564,8 +579,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* TB Disease Classification */}
+      {showFinalize && (
       <SectionCard title="TB Disease Classification">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -605,9 +622,11 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
-      {/* HIV/PLHIV, ART & CPT, Comorbidity Screening (DOH Form 8) */}
-      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Screening">
+      {/* Encode: HIV baseline. Finalize: ART/CPT and comorbidity treatment. */}
+      {showEncode && (
+      <SectionCard title="HIV/PLHIV Baseline">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
             label="HIV Test Result"
@@ -620,6 +639,27 @@ export default function TbTreatmentCardForm({
             value={data.comorbidities.hivTestDate}
             onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
           />
+        </div>
+      </SectionCard>
+      )}
+      {showFinalize && (
+      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Treatment">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {mode === "full" ? (
+            <>
+              <SelectField
+                label="HIV Test Result"
+                value={data.comorbidities.hivStatus}
+                onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+                options={TB_HIV_STATUS_OPTIONS}
+              />
+              <DatePickerField
+                label="Date of HIV Test"
+                value={data.comorbidities.hivTestDate}
+                onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+              />
+            </>
+          ) : null}
           <SelectField
             label="ART Status"
             value={data.comorbidities.artStatus}
@@ -653,8 +693,10 @@ export default function TbTreatmentCardForm({
           </div>
         </div>
       </SectionCard>
+      )}
 
       {/* Drug Regimen */}
+      {showFinalize && (
       <SectionCard
         title="Drug Regimen"
         subtitle="Encircle a regimen change on the paper card. Add a row per date-start."
@@ -746,8 +788,10 @@ export default function TbTreatmentCardForm({
           </button>
         )}
       </SectionCard>
+      )}
 
-      {/* Treatment Supporter + Phases */}
+      {/* Encode: supporter / location / DAT. Finalize: phase dates. */}
+      {showEncode && (
       <SectionCard title="Administration of Drugs">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -805,7 +849,11 @@ export default function TbTreatmentCardForm({
             DAT-supported
           </label>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      </SectionCard>
+      )}
+      {showFinalize && (
+      <SectionCard title="Treatment Phases">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <DateField
             label="Intensive Phase Start"
             value={data.phases.intensiveStart}
@@ -829,8 +877,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* Treatment Outcome */}
+      {showFinalize && (
       <SectionCard
         title="Treatment Outcome"
         subtitle="Optional - set once treatment closes. Until recorded, the patient's Care & Programs tab shows the latest treatment phase instead."
@@ -850,8 +900,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* Dose Calendar */}
+      {(showDots || showChart) && (
       <SectionCard
         title="Administration of Drugs — Dose Calendar"
         subtitle="Mark each supervised dose with the Tx supporter's initials. Totals and adherence auto-compute."
@@ -859,11 +911,13 @@ export default function TbTreatmentCardForm({
         <TbDoseCalendar
           value={data.doseCalendar}
           onChange={setCalendar}
-          readOnly={readOnly}
+          readOnly={readOnly || mode === "chart"}
         />
       </SectionCard>
+      )}
 
       {/* Adverse Events */}
+      {showDots && (
       <SectionCard
         title="Serious Adverse Events / AEs of Special Interest"
         subtitle="Record any adverse event and its FDA report date."
@@ -920,6 +974,8 @@ export default function TbTreatmentCardForm({
           </button>
         )}
       </SectionCard>
+      )}
+      </fieldset>
     </div>
   );
 }

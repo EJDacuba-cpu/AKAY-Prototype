@@ -59,6 +59,14 @@ test('the row menu follows visit progress and duties', () => {
     'Open patient record',
   ]);
   assert.equal(queueRowActions(waiting, { canEncode: true, canClose: true }).find((item) => item.action === 'start').to, undefined);
+  assert.equal(
+    queueRowActions(inConsult, { canEncode: false, canFinalize: true }).some((item) => item.action === 'resume'),
+    true,
+  );
+  assert.equal(
+    queueRowActions(inConsult, { canEncode: false, canFinalize: false }).some((item) => item.action === 'resume'),
+    false,
+  );
 });
 
 test('a referred visit becomes a display row', () => {

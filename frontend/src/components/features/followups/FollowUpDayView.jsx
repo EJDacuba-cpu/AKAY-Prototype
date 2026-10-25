@@ -22,6 +22,7 @@ export default function FollowUpDayView({
   onReschedule,
   onCancel,
   onViewRecord,
+  basePath = "/bhc",
   showHeader = true,
 }) {
   const cardHandlers = {
@@ -30,6 +31,7 @@ export default function FollowUpDayView({
     onReschedule,
     onCancel,
     onViewRecord,
+    basePath,
   };
   const isToday = isSameDay(date, new Date());
   const timedHours = tasksForDay.timed

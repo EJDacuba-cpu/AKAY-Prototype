@@ -23,7 +23,7 @@ export const PERMISSION_CATALOG = {
   "clinical.history": { group: "history", label: "View health records & patient history", note: "Can open full patient histories, previous diagnoses and completed records." },
   "clinical.background.update": { group: "history", label: "Update patient background", requires: ["clinical.history"], note: "Can edit Patient Background (medical, family, lifestyle and obstetric history) outside a consultation. BHC only; never granted by a role automatically." },
   "records.correct": { group: "history", label: "Correct finalized records", requires: ["clinical.history"], note: "Can add documented corrections to finalized records." },
-  "followups.manage": { group: "followups", label: "Manage follow-ups", requires: ["clinical.history"], note: "Can schedule, reschedule and close patient follow-ups." },
+  "followups.manage": { group: "followups", label: "Manage follow-ups", requires: ["clinical.history"], note: "Can schedule, reschedule and close patient follow-ups at the assigned BHC or RHU." },
   "referrals.submit": { group: "referrals", label: "Submit referrals", requires: ["clinical.history"], note: "Can submit patient referrals to the RHU." },
   "inventory.view": { group: "inventory", label: "View medicines & supplies", note: "Can see medicine and supply availability." },
   "inventory.manage": { group: "inventory", label: "Manage stock", requires: ["inventory.view"], note: "Can add, restock and adjust medicines and supplies." },

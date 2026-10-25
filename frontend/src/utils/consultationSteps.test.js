@@ -11,6 +11,9 @@ import {
   PROGRAMS_STEP,
   REVIEW_STEP,
   EXIT_STEP,
+  PRESCRIPTION_STEP,
+  TB_INTAKE_STEP,
+  RHU_ITR_STEP_OPTIONS,
   buildConsultationSteps,
   deferUntilProgramDecision,
   findFirstErrorStepKey,
@@ -115,6 +118,39 @@ test("with services, Next from Physical Examination opens the first form and the
 });
 
 /* ── Global steps ────────────────────────────────────────────────────── */
+
+test("RHU ITR steps include History, Diagnosis, Prescription and Care and Outcome", () => {
+  const steps = buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS });
+  assert.deepEqual(
+    steps.map((step) => step.label),
+    [
+      "Patient Interview",
+      "Patient History",
+      "Physical Examination",
+      "Diagnosis",
+      "Prescription",
+      "Care and Outcome",
+      "Review & Finalize",
+    ],
+  );
+  assert.deepEqual(getStepOrder([], [], RHU_ITR_STEP_OPTIONS), [
+    INTERVIEW_STEP,
+    HISTORY_STEP,
+    ASSESSMENT_STEP,
+    NEXT_STEP,
+    PRESCRIPTION_STEP,
+    OUTCOME_STEP,
+    REVIEW_STEP,
+  ]);
+});
+
+test("RHU ITR TB intake sits after Physical Examination", () => {
+  const options = { ...RHU_ITR_STEP_OPTIONS, includeTb: true };
+  const steps = buildConsultationSteps(options);
+  const keys = keysOf(steps);
+  assert.equal(keys[keys.indexOf(ASSESSMENT_STEP) + 1], TB_INTAKE_STEP);
+  assert.equal(getFormSequence([], options).at(-1), TB_INTAKE_STEP);
+});
 
 test("the global steps read in the new order with the new names", () => {
   const steps = buildConsultationSteps({
@@ -294,6 +330,22 @@ test("each validation error is owned by the screen that shows its field", () => 
   }
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
   assert.equal(getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber"), MONITORING_STEP);
+  assert.equal(
+    getErrorOwnerStepKey("tbData.caseFinding.diagnosingFacility", RHU_ITR_STEP_OPTIONS),
+    TB_INTAKE_STEP,
+  );
+  assert.equal(
+    getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber", RHU_ITR_STEP_OPTIONS),
+    NEXT_STEP,
+  );
+  assert.equal(
+    getErrorOwnerStepKey("tbData.comorbidities.hivStatus", RHU_ITR_STEP_OPTIONS),
+    TB_INTAKE_STEP,
+  );
+  assert.equal(
+    getErrorOwnerStepKey("tbData.comorbidities.artStatus", RHU_ITR_STEP_OPTIONS),
+    NEXT_STEP,
+  );
   // Reporting entries (and any server diagnoses error) live on step 3.
   assert.equal(getErrorOwnerStepKey("diagnosis"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("reportingEntry.r1.name"), NEXT_STEP);

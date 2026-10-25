@@ -15,6 +15,7 @@ export default function FollowUpEventCard({
   onReschedule,
   onCancel,
   onViewRecord,
+  basePath = "/bhc",
   dense = false,
 }) {
   const config = getStateConfig(task.effectiveState);
@@ -33,6 +34,7 @@ export default function FollowUpEventCard({
     onReschedule: () => onReschedule?.(task),
     onCancel: onCancel ? () => onCancel(task) : undefined,
     onViewRecord: onViewRecord ? () => onViewRecord(task) : undefined,
+    basePath,
   });
 
   return (

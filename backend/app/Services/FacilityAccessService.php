@@ -8,6 +8,7 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RhuProvider;
+use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -156,7 +157,20 @@ class FacilityAccessService
             return $query;
         }
 
-        if (! $user->isBhc() || ! $this->hasValidFacilityAssignment($user)) {
+        if (! $this->hasValidFacilityAssignment($user)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if ($user->isRhu()) {
+            return $query
+                ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                ->whereHas('patient')
+                ->whereHas('healthRecord', fn (Builder $records) => $records
+                    ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                    ->whereColumn('health_records.patient_id', 'follow_up_tasks.patient_id'));
+        }
+
+        if (! $user->isBhc()) {
             return $query->whereRaw('1 = 0');
         }
 
@@ -268,7 +282,12 @@ class FacilityAccessService
             $user->rural_health_unit_id
         ) || $patient->referrals()
             ->where('rural_health_unit_id', $user->rural_health_unit_id)
-            ->exists();
+            ->exists()
+            || RhuVisitQueueEntry::query()
+                ->active()
+                ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                ->where('patient_id', $patient->id)
+                ->exists();
     }
 
     public function canModifyPatient(User $user, Patient $patient): bool
@@ -388,23 +407,18 @@ class FacilityAccessService
         }
 
         $task->loadMissing(['patient', 'healthRecord']);
-        $allowed = $user->isBhc()
-            && $this->hasValidFacilityAssignment($user)
-            && $task->patient !== null
+        $samePatient = $task->patient !== null
             && $task->healthRecord !== null
-            && (int) $task->patient_id === (int) $task->healthRecord->patient_id
-            && $this->sameAssignedId(
-                $task->barangay_health_center_id,
-                $user->barangay_health_center_id
-            )
-            && $this->sameAssignedId(
-                $task->patient->barangay_health_center_id,
-                $user->barangay_health_center_id
-            )
-            && $this->sameAssignedId(
-                $task->healthRecord->barangay_health_center_id,
-                $user->barangay_health_center_id
-            );
+            && (int) $task->patient_id === (int) $task->healthRecord->patient_id;
+        $allowed = $this->hasValidFacilityAssignment($user) && $samePatient && (
+            ($user->isBhc()
+                && $this->sameAssignedId($task->barangay_health_center_id, $user->barangay_health_center_id)
+                && $this->sameAssignedId($task->patient->barangay_health_center_id, $user->barangay_health_center_id)
+                && $this->sameAssignedId($task->healthRecord->barangay_health_center_id, $user->barangay_health_center_id))
+            || ($user->isRhu()
+                && $this->sameAssignedId($task->rural_health_unit_id, $user->rural_health_unit_id)
+                && $this->sameAssignedId($task->healthRecord->rural_health_unit_id, $user->rural_health_unit_id))
+        );
 
         abort_unless($allowed, 403, self::DENIED_MESSAGE);
     }

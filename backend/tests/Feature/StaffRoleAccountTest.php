@@ -97,7 +97,7 @@ class StaffRoleAccountTest extends TestCase
 
     public function test_rhu_clinical_duties_are_grantable_and_not_default(): void
     {
-        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake'] as $duty) {
+        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake', 'followups.manage'] as $duty) {
             $this->assertContains($duty, StaffRoles::available('rhu'));
             $this->assertNotContains($duty, StaffRoles::defaults('nurse'));
             $this->assertNotContains($duty, StaffRoles::defaults('doctor'));

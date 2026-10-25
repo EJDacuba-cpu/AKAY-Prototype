@@ -1,0 +1,286 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\BarangayHealthCenter;
+use App\Models\FollowUpTask;
+use App\Models\HealthRecord;
+use App\Models\Medicine;
+use App\Models\Patient;
+use App\Models\PatientCondition;
+use App\Models\Referral;
+use App\Models\RhuVisitQueueEntry;
+use App\Models\RuralHealthUnit;
+use App\Models\User;
+use App\Services\ReferralService;
+use App\Services\StaffRoles;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class RhuItrConsultationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private RuralHealthUnit $rhu;
+
+    private BarangayHealthCenter $bhc;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->rhu = RuralHealthUnit::create(['name' => 'ITR RHU', 'status' => 'active']);
+        $this->bhc = BarangayHealthCenter::create(['name' => 'ITR BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
+    }
+
+    private function rhuUser(array $permissions, array $attributes = []): User
+    {
+        return User::create([
+            'name' => 'ITR Staff',
+            'email' => uniqid('', true).'@example.test',
+            'password' => 'password123',
+            'status' => 'active',
+            'role' => 'rhu',
+            'staff_role' => 'nurse',
+            'rural_health_unit_id' => $this->rhu->id,
+            'permissions' => $permissions,
+            ...$attributes,
+        ]);
+    }
+
+    private function encoder(): User
+    {
+        return $this->rhuUser([...StaffRoles::defaults('nurse'), 'consultations.encode']);
+    }
+
+    private function clinician(): User
+    {
+        return $this->rhuUser([
+            ...StaffRoles::defaults('doctor'),
+            'consultations.encode',
+            'consultations.finalize',
+            'followups.manage',
+        ]);
+    }
+
+    private function patient(array $attributes = []): Patient
+    {
+        return Patient::create([
+            'first_name' => 'ITR',
+            'last_name' => uniqid(),
+            'sex' => 'Female',
+            'status' => 'active',
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            ...$attributes,
+        ]);
+    }
+
+    private function visit(Patient $patient, array $attributes = []): RhuVisitQueueEntry
+    {
+        return RhuVisitQueueEntry::create([
+            'rural_health_unit_id' => $this->rhu->id,
+            'patient_id' => $patient->id,
+            'source' => RhuVisitQueueEntry::SOURCE_WALK_IN,
+            'status' => RhuVisitQueueEntry::STATUS_WAITING,
+            'checked_in_at' => now(),
+            'check_in_key' => uniqid('itr-', true),
+            ...$attributes,
+        ]);
+    }
+
+    private function as(User $user): static
+    {
+        Sanctum::actingAs($user, ['akay:access']);
+
+        return $this;
+    }
+
+    private function startVisit(User $user, RhuVisitQueueEntry $visit): string
+    {
+        $uuid = $this->as($user)->postJson("/api/rhu-visits/{$visit->id}/start")
+            ->assertOk()
+            ->json('data.consultation_uuid');
+        $this->assertNotEmpty($uuid);
+
+        return $uuid;
+    }
+
+    private function postRecord(User $user, Patient $patient, RhuVisitQueueEntry $visit, string $uuid, array $overrides = [])
+    {
+        return $this->as($user)
+            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $uuid,
+                'rhu_visit_id' => $visit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Cough and fever',
+                ...$overrides,
+            ]);
+    }
+
+    public function test_encoder_can_save_a_draft_but_cannot_finalize(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $encoder = $this->encoder();
+        $uuid = $this->startVisit($encoder, $visit);
+
+        $this->as($encoder)->postJson('/api/health-record-drafts', [
+            'patient_id' => $patient->id,
+            'classification' => 'General Consultation',
+            'consultation_uuid' => $uuid,
+            'rhu_visit_id' => $visit->id,
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'chiefComplaint' => 'Cough',
+            ],
+        ])->assertCreated();
+
+        $this->postRecord($encoder, $patient, $visit, $uuid)->assertForbidden();
+        $this->assertSame(RhuVisitQueueEntry::STATUS_IN_CONSULTATION, $visit->fresh()->status);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_walk_in_finalize_activates_condition_prescribes_without_stock_change_and_schedules_rhu_follow_up(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+        $medicine = Medicine::create([
+            'name' => 'Losartan 50mg',
+            'category' => 'Cardiovascular',
+            'quantity' => 40,
+            'unit' => 'tablets',
+            'availability_status' => 'Available',
+            'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $clinician->id,
+        ]);
+
+        $response = $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Hypertension',
+                'activate' => true,
+                'manageToBhc' => true,
+            ]],
+            'prescribed_medicines' => [[
+                'medicine_id' => $medicine->id,
+                'quantity' => 14,
+                'unit' => 'tablets',
+                'instructions' => 'Once daily after breakfast',
+            ]],
+            'care_plan' => [
+                'rhu_follow_up' => true,
+                'manage_to_bhc' => true,
+            ],
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => now()->addDays(7)->toDateString(),
+                'followUpTime' => '09:00',
+                'followUpReason' => 'Recheck blood pressure.',
+            ],
+        ])->assertCreated();
+
+        $record = HealthRecord::findOrFail($response->json('data.id'));
+        $this->assertTrue($record->isRhuItrV1());
+        $this->assertSame($this->rhu->id, $record->rural_health_unit_id);
+        $this->assertSame($uuid, $record->consultation_uuid);
+        $this->assertSame('Once daily after breakfast', $record->monitoring_data['prescribedMedicines'][0]['instructions'] ?? null);
+        $this->assertSame(40, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
+        $this->assertDatabaseCount('health_record_medicines', 0);
+
+        $condition = PatientCondition::where('patient_id', $patient->id)->sole();
+        $this->assertSame('Hypertension', $condition->condition_name);
+        $this->assertSame(PatientCondition::STATUS_ACTIVE, $condition->status);
+        $this->assertNotNull($condition->bhc_monitoring_recommended_at);
+
+        $visit->refresh();
+        $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $visit->status);
+        $this->assertSame(RhuVisitQueueEntry::CLOSE_REASON_COMPLETED, $visit->close_reason);
+
+        $task = FollowUpTask::where('rural_health_unit_id', $this->rhu->id)->whereNull('rescheduled_to_id')->sole();
+        $this->assertSame($patient->id, $task->patient_id);
+        $this->assertSame(FollowUpTask::STATE_PENDING, $task->state);
+        $this->as($clinician)
+            ->getJson("/api/follow-up-tasks?patient_id={$patient->id}&active=1")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $task->id);
+
+        $replacement = $this->as($clinician)
+            ->patchJson("/api/follow-up-tasks/{$task->id}/reschedule", [
+                'due_date' => now()->addDays(14)->toDateString(),
+            ])
+            ->assertOk()
+            ->json('data');
+        $this->assertSame(FollowUpTask::STATE_RESCHEDULED, $replacement['state']);
+        $this->assertNotSame($task->id, $replacement['id']);
+        $this->assertSame($replacement['id'], $task->fresh()->rescheduled_to_id);
+        $this->assertSame($this->rhu->id, FollowUpTask::findOrFail($replacement['id'])->rural_health_unit_id);
+    }
+
+    public function test_referral_consult_finalize_closes_the_visit_and_leaves_the_referral_received(): void
+    {
+        $patient = $this->patient();
+        $referral = Referral::create([
+            'tracking_id' => 'AKY-ITR-'.Str::upper(Str::random(6)),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Evaluate cough.',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+        $visit = $this->visit($patient, [
+            'source' => RhuVisitQueueEntry::SOURCE_REFERRAL,
+            'referral_id' => $referral->id,
+        ]);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [['name' => 'Tuberculosis', 'activate' => true]],
+        ])->assertCreated();
+
+        $this->assertSame(Referral::STATUS_RECEIVED, $referral->fresh()->status);
+        $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $visit->fresh()->status);
+        $this->assertDatabaseCount('follow_up_tasks', 0);
+    }
+
+    public function test_later_rhu_consult_fulfills_the_pending_follow_up_task(): void
+    {
+        $patient = $this->patient();
+        $firstVisit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $firstUuid = $this->startVisit($clinician, $firstVisit);
+
+        $created = $this->postRecord($clinician, $patient, $firstVisit, $firstUuid, [
+            'care_plan' => ['rhu_follow_up' => true],
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => now()->addDays(3)->toDateString(),
+                'followUpReason' => 'Return for review.',
+            ],
+        ])->assertCreated();
+
+        $parentId = $created->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->whereNull('rescheduled_to_id')->sole();
+
+        $returnVisit = $this->visit($patient);
+        $returnUuid = $this->startVisit($clinician, $returnVisit);
+        $this->postRecord($clinician, $patient, $returnVisit, $returnUuid, [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'monitoring_data' => [
+                'followUpTaskId' => $task->id,
+            ],
+        ])->assertCreated();
+
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $returnVisit->fresh()->status);
+    }
+}

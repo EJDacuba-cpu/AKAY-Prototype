@@ -53,15 +53,25 @@ class HealthRecordRequest extends FormRequest
             && $this->input('consultation_workflow') === HealthRecord::WORKFLOW_BHC_GENERAL_V2;
     }
 
+    public function isRhuItrV1(): bool
+    {
+        return $this->isMethod('post')
+            && $this->input('consultation_workflow') === HealthRecord::WORKFLOW_RHU_ITR_V1;
+    }
+
     public function rules(): array
     {
         $rules = $this->baseRules();
         $v2 = $this->isBhcGeneralV2();
+        $rhuItr = $this->isRhuItrV1();
 
         $rules['consultation_workflow'] = $this->isMethod('post')
-            ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2]), function (string $attribute, mixed $value, \Closure $fail): void {
-                if ($value !== null && ! $this->user()?->isBhc()) {
+            ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2, HealthRecord::WORKFLOW_RHU_ITR_V1]), function (string $attribute, mixed $value, \Closure $fail): void {
+                if ($value === HealthRecord::WORKFLOW_BHC_GENERAL_V2 && ! $this->user()?->isBhc()) {
                     $fail('This consultation workflow is for BHC consultations only.');
+                }
+                if ($value === HealthRecord::WORKFLOW_RHU_ITR_V1 && ! $this->user()?->isRhu()) {
+                    $fail('This consultation workflow is for RHU consultations only.');
                 }
             }]
             : ['prohibited'];
@@ -104,6 +114,28 @@ class HealthRecordRequest extends FormRequest
                 $rules['referral.rural_health_unit_id'] = [$hasReferredCards ? 'required' : 'nullable', 'integer', 'exists:rural_health_units,id'];
                 $rules['referral.reason_for_referral'] = ['required_with:referral', 'string', 'max:5000'];
             }
+        } elseif ($rhuItr) {
+            $rules['diagnoses.*.reportIn'] = ['prohibited'];
+            $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
+            $rules['diagnoses.*.referral'] = ['prohibited'];
+            $rules['diagnoses.*.activate'] = ['nullable', 'boolean'];
+            $rules['diagnoses.*.manageToBhc'] = ['nullable', 'boolean'];
+            $rules['care_plan.condition_cards'] = ['prohibited'];
+            $rules['care_plan.shared_condition_referral'] = ['prohibited'];
+            $rules['care_plan.bhc_follow_up'] = ['prohibited'];
+            $rules['care_plan.refer_to_rhu'] = ['prohibited'];
+            $rules['care_plan.referral_multiple_issues'] = ['prohibited'];
+            $rules['care_plan.rhu_follow_up'] = ['nullable', 'boolean'];
+            $rules['care_plan.manage_to_bhc'] = ['nullable', 'boolean'];
+            $rules['rhu_visit_id'] = ['required', 'integer', 'exists:rhu_visit_queue_entries,id'];
+            $rules['consultation_uuid'] = ['required', 'uuid'];
+            $rules['prescribed_medicines'] = ['nullable', 'array', 'max:50'];
+            $rules['prescribed_medicines.*.medicine_id'] = ['required', 'integer', 'exists:medicines,id'];
+            $rules['prescribed_medicines.*.quantity'] = ['required', 'integer', 'min:1', 'max:2147483647'];
+            $rules['prescribed_medicines.*.unit'] = ['nullable', 'string', 'max:50'];
+            $rules['prescribed_medicines.*.instructions'] = ['nullable', 'string', 'max:2000'];
+            $rules['referral'] = ['prohibited'];
+            $rules['dispensed_medicines'] = ['prohibited'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
@@ -555,13 +587,18 @@ class HealthRecordRequest extends FormRequest
             $followUpOfMonitoring = $keepsMonitoring && (! $needsReferral || $referredIds !== []);
 
             $v2 = $this->isBhcGeneralV2();
-            if (! $v2 && ($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
+            $rhuItr = $this->isRhuItrV1();
+            if ($rhuItr && $this->boolean('care_plan.rhu_follow_up') && ! $date) {
+                $validator->errors()->add('monitoring_data.followUpDate', 'Set the RHU follow-up date.');
+            }
+            if (! $v2 && ! $rhuItr && ($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {
                 $validator->errors()->add('diagnosis', 'BHC Assessment is required for follow-up or referral.');
             }
             // A diagnosis set to Refer to RHU is a referral: the ITR would
             // otherwise say "Refer to RHU" with none.
             if (
                 ! $v2
+                && ! $rhuItr
                 && $this->isMethod('post')
                 && ! $needsReferral
                 && \App\Services\CarePlan::refersAny($this->diagnosesInput())
@@ -611,6 +648,7 @@ class HealthRecordRequest extends FormRequest
             // to RHU with its follow-up flag) needs the visit's date - referral
             // or not.
             $needsConcernDate = ! $v2
+                && ! $rhuItr
                 && $this->isMethod('post')
                 && collect($this->diagnosesInput())->contains(
                     fn ($diagnosis) => \App\Services\CarePlan::schedulesBhcFollowUp($diagnosis)

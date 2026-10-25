@@ -93,6 +93,7 @@ export function getCalendarEffectiveState(task) {
  * task. Optional handlers are only listed when the caller supplies them.
  */
 export function buildTaskActions(task, handlers) {
+  const basePath = handlers.basePath || "/bhc";
   const actions = [];
 
   if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
@@ -121,7 +122,7 @@ export function buildTaskActions(task, handlers) {
 
   actions.push({
     label: "View Follow-up Details",
-    to: `/bhc/follow-ups/${task.id}`,
+    to: `${basePath}/follow-ups/${task.id}`,
   });
   return actions;
 }
@@ -130,8 +131,8 @@ export function formatFollowUpId(task) {
   return task?.id ? `FU-${task.id}` : "—";
 }
 
-export function getTaskNavigationTarget(task) {
-  return task.id ? `/bhc/follow-ups/${task.id}` : "";
+export function getTaskNavigationTarget(task, basePath = "/bhc") {
+  return task.id ? `${basePath}/follow-ups/${task.id}` : "";
 }
 
 /**
@@ -142,6 +143,14 @@ export function getTaskNavigationTarget(task) {
  * Consultation modal.
  */
 export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
+  if (basePath === "/rhu") {
+    const params = new URLSearchParams({
+      patientId: String(task.patientId || ""),
+      followUpTaskId: String(task.id),
+      mode: "continue",
+    });
+    return `/rhu/health-records/add?${params.toString()}`;
+  }
   return selectionToRoute({ patientId: task.patientId, followUpIds: [task.id] }, basePath);
 }
 

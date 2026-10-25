@@ -27,6 +27,9 @@ class RhuVisitQueueEntry extends Model
 
     public const CLOSE_REASON_OTHER = 'other';
 
+    /** Written only when a consultation is finalized (D11). Not a Close-visit modal reason. */
+    public const CLOSE_REASON_COMPLETED = 'consultation_completed';
+
     public const CLOSE_REASONS = [
         self::CLOSE_REASON_LEFT,
         self::CLOSE_REASON_MISTAKE,

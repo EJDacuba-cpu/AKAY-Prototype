@@ -100,6 +100,7 @@ export default function useDraftAutosave({
   createDraft = defaultCreateDraft,
   updateDraft = defaultUpdateDraft,
   consultationUuid = "",
+  rhuVisitId = null,
   localDraft = null,
   buildLocalRecord = null,
   unsyncedRecovery = false,
@@ -399,6 +400,7 @@ export default function useDraftAutosave({
         patientId: Number(params.patientId),
         classification: params.classification,
         payload: payloadToSave,
+        ...(params.rhuVisitId ? { rhuVisitId: Number(params.rhuVisitId) } : {}),
       };
 
       try {
@@ -464,6 +466,7 @@ export default function useDraftAutosave({
       patientId,
       classification,
       consultationUuid,
+      rhuVisitId,
       onDraftSaved,
       createDraft,
       updateDraft,

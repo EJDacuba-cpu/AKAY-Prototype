@@ -23,6 +23,7 @@ class FollowUpTask extends Model
         'health_record_id',
         'patient_id',
         'barangay_health_center_id',
+        'rural_health_unit_id',
         'due_date',
         'due_time',
         'state',

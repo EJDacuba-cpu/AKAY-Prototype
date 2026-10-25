@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\HealthRecordDraft;
 use App\Models\Medicine;
 use App\Models\Patient;
+use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -29,11 +30,11 @@ class HealthRecordDraftService
 
     public function listFor(User $user, int $perPage): LengthAwarePaginator
     {
-        $this->ensureBhc($user);
+        $this->ensureEncoder($user);
         $this->expireOwnedDrafts($user);
 
         return HealthRecordDraft::query()
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
             ->with('patient:id,first_name,middle_name,last_name')
@@ -56,7 +57,7 @@ class HealthRecordDraftService
         }
 
         return HealthRecordDraft::query()
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('consultation_uuid', $consultationUuid)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
@@ -65,8 +66,8 @@ class HealthRecordDraftService
 
     public function create(User $user, array $data): HealthRecordDraft
     {
-        $this->ensureBhc($user);
-        $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
+        $this->ensureEncoder($user);
+        $patient = $this->authorizedPatient($user, (int) $data['patient_id'], $data['rhu_visit_id'] ?? null);
         $consultationUuid = $this->normalizeConsultationUuid(
             $data['consultation_uuid'] ?? null
         );
@@ -127,15 +128,21 @@ class HealthRecordDraftService
                 ]);
             }
 
+            $visit = $user->isRhu()
+                ? $this->authorizedRhuVisit($user, $patient, $data['rhu_visit_id'] ?? null, $consultationUuid)
+                : null;
+
             return HealthRecordDraft::create([
                 'public_id' => (string) Str::uuid(),
-                'consultation_uuid' => $consultationUuid,
+                'consultation_uuid' => $consultationUuid ?? $visit?->consultation_uuid,
                 'owner_user_id' => $user->id,
                 'editor_user_id' => $user->id,
                 'last_editor_user_id' => $user->id,
                 'editor_expires_at' => now()->addMinutes(15),
                 'review_state' => 'encoding',
-                'barangay_health_center_id' => $user->barangay_health_center_id,
+                'barangay_health_center_id' => $user->isRhu() ? null : $user->barangay_health_center_id,
+                'rural_health_unit_id' => $user->isRhu() ? $user->rural_health_unit_id : null,
+                'rhu_visit_id' => $visit?->id,
                 'patient_id' => $patient->id,
                 'classification' => $data['classification'],
                 'encrypted_payload' => $ciphertext,
@@ -149,12 +156,12 @@ class HealthRecordDraftService
 
     public function loadOwnedActive(User $user, string $publicId): HealthRecordDraft
     {
-        $this->ensureBhc($user);
+        $this->ensureEncoder($user);
         $this->expireOwnedDrafts($user, $publicId);
 
         $draft = HealthRecordDraft::query()
             ->where('public_id', $publicId)
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '>', now())
             ->with('patient:id,first_name,middle_name,last_name,barangay_health_center_id')
@@ -176,7 +183,7 @@ class HealthRecordDraftService
             $before = $this->payload($draft);
             abort_unless((int) $draft->patient_id === (int) $data['patient_id'], 422, 'A consultation cannot be reassigned to another patient.');
             $this->assertEditor($user, $draft);
-            $patient = $this->authorizedPatient($user, (int) $data['patient_id']);
+            $patient = $this->authorizedPatient($user, (int) $data['patient_id'], $draft->rhu_visit_id);
             $payload = $this->payloads->sanitize($data['payload']);
             $this->authorizeBackgroundUpdate($user, $payload);
             if (! PatientBackground::canAccess($user) && isset($before['backgroundUpdate'])) {
@@ -207,7 +214,7 @@ class HealthRecordDraftService
 
             $updated = HealthRecordDraft::query()
                 ->whereKey($draft->id)
-                ->where('barangay_health_center_id', $user->barangay_health_center_id)
+                ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
                 ->where('status', HealthRecordDraft::STATUS_ACTIVE)
                 ->where('expires_at', '>', now())
                 ->where('version', $expectedVersion)
@@ -286,8 +293,11 @@ class HealthRecordDraftService
 
     public function medicineSelections(User $user, array $payload): array
     {
-        $selections = $payload['dispensedMedicines'] ?? [];
-        $ids = collect($selections)
+        $selections = collect($payload['dispensedMedicines'] ?? [])
+            ->merge($payload['prescribedMedicines'] ?? [])
+            ->filter(fn (mixed $row): bool => is_array($row))
+            ->values();
+        $ids = $selections
             ->pluck('medicineId')
             ->map(fn (mixed $id): int => (int) $id)
             ->filter()
@@ -295,13 +305,15 @@ class HealthRecordDraftService
             ->values();
         $medicines = Medicine::query()->whereIn('id', $ids)->get()->keyBy('id');
 
-        return collect($selections)->map(function (array $selection) use ($user, $medicines): array {
+        return $selections->map(function (array $selection) use ($user, $medicines): array {
             $medicineId = (int) $selection['medicineId'];
             $medicine = $medicines->get($medicineId);
-            $authorized = $medicine !== null
-                && $medicine->rural_health_unit_id === null
-                && (int) $medicine->barangay_health_center_id
-                    === (int) $user->barangay_health_center_id;
+            $authorized = $medicine !== null && (
+                $user->isRhu()
+                    ? (int) $medicine->rural_health_unit_id === (int) $user->rural_health_unit_id
+                    : $medicine->rural_health_unit_id === null
+                        && (int) $medicine->barangay_health_center_id === (int) $user->barangay_health_center_id
+            );
             $warning = $authorized ? $this->medicineWarning($medicine) : 'Medicine is no longer available to this facility.';
 
             return [
@@ -337,10 +349,10 @@ class HealthRecordDraftService
             );
         }
 
-        $this->ensureBhc($user);
+        $this->ensureDraftAccess($user);
         $draft = HealthRecordDraft::query()
             ->where('public_id', $publicId)
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->lockForUpdate()
             ->first();
 
@@ -388,10 +400,10 @@ class HealthRecordDraftService
             );
         }
 
-        $this->ensureBhc($user);
+        $this->ensureDraftAccess($user);
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->whereNull('consumed_health_record_id')
             ->update([
@@ -499,20 +511,58 @@ class HealthRecordDraftService
         ];
     }
 
-    private function authorizedPatient(User $user, int $patientId): Patient
+    private function authorizedPatient(User $user, int $patientId, mixed $rhuVisitId = null): Patient
     {
-        $patient = Patient::query()
-            ->whereKey($patientId)
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
-            ->first();
-
+        $patient = Patient::query()->whereKey($patientId)->first();
         if ($patient === null || ! $this->facilityAccess->canAccessPatient($user, $patient)) {
             throw ValidationException::withMessages([
                 'patient_id' => ['The selected patient is not available to your facility.'],
             ]);
         }
+        if ($user->isRhu() && $rhuVisitId) {
+            $this->authorizedRhuVisit($user, $patient, $rhuVisitId, null);
+        }
 
         return $patient;
+    }
+
+    private function authorizedRhuVisit(User $user, Patient $patient, mixed $visitId, ?string $consultationUuid): RhuVisitQueueEntry
+    {
+        if (! filter_var($visitId, FILTER_VALIDATE_INT) || (int) $visitId <= 0) {
+            throw ValidationException::withMessages([
+                'rhu_visit_id' => ['An in-consultation visit is required to save this RHU consultation.'],
+            ]);
+        }
+
+        $visit = RhuVisitQueueEntry::query()
+            ->whereKey((int) $visitId)
+            ->where('rural_health_unit_id', $user->rural_health_unit_id)
+            ->where('patient_id', $patient->id)
+            ->where('status', RhuVisitQueueEntry::STATUS_IN_CONSULTATION)
+            ->whereNull('closed_at')
+            ->first();
+
+        if ($visit === null) {
+            throw ValidationException::withMessages([
+                'rhu_visit_id' => ['This visit is not in consultation at your RHU.'],
+            ]);
+        }
+        if ($consultationUuid && strcasecmp((string) $visit->consultation_uuid, $consultationUuid) !== 0) {
+            throw ValidationException::withMessages([
+                'consultation_uuid' => ['This consultation does not match the started visit.'],
+            ]);
+        }
+
+        return $visit;
+    }
+
+    private function applyFacilityScope($query, User $user)
+    {
+        if ($user->isRhu()) {
+            return $query->where('rural_health_unit_id', $user->rural_health_unit_id);
+        }
+
+        return $query->where('barangay_health_center_id', $user->barangay_health_center_id);
     }
 
     /** The draft payload as this user may see it: staged background edits are clinical history. */
@@ -537,6 +587,7 @@ class HealthRecordDraftService
     private function authorizeMedicineSelections(User $user, array $payload): void
     {
         $ids = collect($payload['dispensedMedicines'] ?? [])
+            ->merge($payload['prescribedMedicines'] ?? [])
             ->pluck('medicineId')
             ->map(fn (mixed $id): int => (int) $id)
             ->filter()
@@ -547,11 +598,14 @@ class HealthRecordDraftService
             return;
         }
 
-        $authorizedCount = Medicine::query()
-            ->whereIn('id', $ids)
-            ->whereNull('rural_health_unit_id')
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
-            ->count();
+        $medicines = Medicine::query()->whereIn('id', $ids);
+        if ($user->isRhu()) {
+            $medicines->where('rural_health_unit_id', $user->rural_health_unit_id);
+        } else {
+            $medicines->whereNull('rural_health_unit_id')
+                ->where('barangay_health_center_id', $user->barangay_health_center_id);
+        }
+        $authorizedCount = $medicines->count();
 
         if ($authorizedCount !== $ids->count()) {
             throw ValidationException::withMessages([
@@ -576,17 +630,32 @@ class HealthRecordDraftService
         }
     }
 
-    private function ensureBhc(User $user): void
+    private function ensureEncoder(User $user): void
     {
-        abort_unless($user->isBhc(), 403, 'This action is not allowed for your role.');
+        $this->ensureDraftAccess($user, true);
+    }
+
+    private function ensureDraftAccess(User $user, bool $mustEncode = false): void
+    {
+        abort_unless($user->isBhc() || $user->isRhu(), 403, 'This action is not allowed for your role.');
         $this->facilityAccess->ensureValidFacilityAssignment($user);
-        ActionPermissions::ensure($user, 'consultations.encode');
+        if ($mustEncode && ! ($user->isRhu() && ActionPermissions::allows($user, 'consultations.finalize'))) {
+            ActionPermissions::ensure($user, 'consultations.encode');
+
+            return;
+        }
+        abort_unless(
+            ActionPermissions::allows($user, 'consultations.encode')
+            || ActionPermissions::allows($user, 'consultations.finalize'),
+            403,
+            'This action is not allowed for your role.'
+        );
     }
 
     private function expireOwnedDrafts(User $user, ?string $publicId = null): void
     {
         HealthRecordDraft::query()
-            ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '<=', now())
             ->when($publicId, fn ($query) => $query->where('public_id', $publicId))
