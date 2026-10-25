@@ -49,7 +49,12 @@ function uniqueOptions(items, selectors, fallback) {
   return [fallback, ...new Set(values)];
 }
 
-export default function PatientsModule({ role = "bhc", basePath = "/bhc" } = {}) {
+// `embedded` lets a parent page (the RHU workspace) own the layout and the page title.
+function Shell({ embedded, children, ...layoutProps }) {
+  return embedded ? <>{children}</> : <DashboardLayout {...layoutProps}>{children}</DashboardLayout>;
+}
+
+export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false } = {}) {
   const canRegister = useAccess().can("patients.register");
   const addPatientPath = `${basePath}/patients/add`;
   const {
@@ -207,19 +212,19 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc" } = {})
 
   if (error) {
     return (
-      <DashboardLayout role={role} title="Patients">
+      <Shell embedded={embedded} role={role} title="Patients">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetchPatients()}
           retrying={isRefreshing}
           variant={errorStateVariant(queryError)}
         />
-      </DashboardLayout>
+      </Shell>
     );
   }
 
   return (
-    <DashboardLayout role={role} title="Patients">
+    <Shell embedded={embedded} role={role} title="Patients">
       <SoftLoadingArea skeleton="table"
         isLoading={showInitialLoading}
         message="Loading patients..."
@@ -241,7 +246,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc" } = {})
                 variant="clinical"
                 heading={
                   <div className="clinical-directory__heading min-w-0">
-                    <h1 className="clinical-directory__title">Patients</h1>
+                    {!embedded && <h1 className="clinical-directory__title">Patients</h1>}
                     <p className="clinical-directory__count">{patientCountLabel}</p>
                   </div>
                 }
@@ -353,7 +358,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc" } = {})
           <PatientSummaryPanel key={selectedPatientId} patientId={selectedPatientId} basePath={basePath} />
         )}
       </Drawer>
-    </DashboardLayout>
+    </Shell>
   );
 }
 

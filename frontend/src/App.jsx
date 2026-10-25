@@ -70,7 +70,7 @@ import RHUDashboard from "./pages/rhu/RHUDashboard";
 import IncomingReferrals from "./pages/rhu/IncomingReferrals";
 import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
-import RHUPatientsModule from "./pages/rhu/RHUPatientsModule";
+import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
 import RHUAddHealthRecords from "./pages/rhu/RHUAddHealthRecords";
@@ -692,7 +692,7 @@ export default function App() {
         path="/rhu/patients"
         element={
           <ProtectedPage allowedRole="rhu" module="patientDirectory">
-            <RHUPatientsModule />
+            <RhuPatientsWorkspace />
           </ProtectedPage>
         }
       />
