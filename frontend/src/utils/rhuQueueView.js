@@ -31,13 +31,21 @@ export function statusChip(status) {
   return { label: raw === '' ? 'Unknown' : titleCase(raw), tone: 'neutral' };
 }
 
-function ageSex(patient) {
+/** "61 · M", "F" or "" — the same wording in the queue and in the check-in results. */
+export function formatAgeSex(patient) {
   const sex = SEX_LETTER[String(patient?.sex ?? '').toLowerCase()] ?? '';
   const age = patient?.age;
   const hasAge = age !== undefined && age !== null && age !== '';
   if (hasAge && sex) return `${age} · ${sex}`;
   if (hasAge) return String(age);
   return sex;
+}
+
+const MIN_SEARCH_LENGTH = 2;
+
+/** A check-in search below two visible characters would list half the directory. */
+export function isSearchable(query) {
+  return String(query ?? '').trim().length >= MIN_SEARCH_LENGTH;
 }
 
 /** API visits (server order) to display rows. `now` fixes "today" for the carried-over marker. */
@@ -52,7 +60,7 @@ export function queueRows(visits, now = new Date()) {
       number: index + 1,
       patientId: visit.patient?.id,
       name: visit.patient?.full_name ?? '',
-      ageSex: ageSex(visit.patient),
+      ageSex: formatAgeSex(visit.patient),
       source: visit.source,
       sourceLabel: visit.source === 'referral' ? 'Referred' : 'Walk-in',
       fromLabel: visit.source === 'referral' && bhc ? `From ${bhc}` : null,

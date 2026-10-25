@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterQueueRows, formatWaiting, queueRows, statusChip } from './rhuQueueView.js';
+import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRows, statusChip } from './rhuQueueView.js';
 
 // 9:30 AM on Oct 25, 2026 in Manila.
 const NOW = new Date('2026-10-25T01:30:00Z');
@@ -100,4 +100,20 @@ test('search needs every token in the name; the source switch narrows further', 
   assert.deepEqual(filterQueueRows(rows, { search: '  ', source: 'all' }).map((row) => row.id), [1, 2, 3]);
   assert.deepEqual(filterQueueRows(rows, { search: '', source: 'referral' }).map((row) => row.id), [2]);
   assert.deepEqual(filterQueueRows(rows, { search: 'jose', source: 'walk_in' }).map((row) => row.id), [1]);
+});
+
+test('a check-in search needs at least two visible characters', () => {
+  assert.equal(isSearchable(''), false);
+  assert.equal(isSearchable('a'), false);
+  assert.equal(isSearchable('  a  '), false);
+  assert.equal(isSearchable('ab'), true);
+  assert.equal(isSearchable(' jo '), true);
+  assert.equal(isSearchable(undefined), false);
+});
+
+test('age and sex read the same in the queue and in the check-in results', () => {
+  assert.equal(formatAgeSex({ age: 61, sex: 'Male' }), '61 · M');
+  assert.equal(formatAgeSex({ sex: 'Other' }), 'O');
+  assert.equal(formatAgeSex({}), '');
+  assert.equal(formatAgeSex(null), '');
 });
