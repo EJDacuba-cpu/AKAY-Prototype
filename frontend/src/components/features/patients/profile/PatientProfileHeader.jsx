@@ -14,10 +14,31 @@ import { getCurrentUser } from "../../../../utils/auth";
  * history) in the middle; the Start / Resume Consultation action on the right.
  * It sits above the tab strip on every tab and carries no status badge:
  * follow-ups have their own card.
+ *
+ * `consultation={false}` drops the Start / Resume action and its draft and care-overview
+ * queries: the RHU starts a consultation from Today's Queue, never from a profile.
  */
-export default function PatientProfileHeader({ patient, patientId, backPath, updating = false, carePath = null, actions = null }) {
+export default function PatientProfileHeader({ consultation = true, ...props }) {
+  return consultation ? <WithConsultation {...props} /> : <HeaderCard {...props} />;
+}
+
+function WithConsultation({ patient, patientId, ...props }) {
   const { consultation, onStart, startModal } = useConsultationActions(patient, patientId);
   const canEncode = (getCurrentUser()?.permissions || []).includes("consultations.encode");
+
+  return (
+    <HeaderCard
+      patient={patient}
+      patientId={patientId}
+      {...props}
+      action={canEncode && <ConsultationButton consultation={consultation} onStart={onStart} />}
+      notice={canEncode && <ConsultationNotice consultation={consultation} />}
+      modal={canEncode && startModal}
+    />
+  );
+}
+
+function HeaderCard({ patient, patientId, backPath, updating = false, carePath = null, actions = null, action = null, notice = null, modal = null }) {
   const name = formatPatientName(patient, "Unnamed Patient");
   const age = getPatientAge(patient);
   const ageSex = [age !== "" ? `${age} yrs` : "", patient.sex].filter(Boolean).join(" · ");
@@ -69,13 +90,13 @@ export default function PatientProfileHeader({ patient, patientId, backPath, upd
           <div className="w-full shrink-0 lg:ml-auto lg:w-auto lg:min-w-[190px]">
             {updating && <RefreshingIndicator label="Updating patient details..." />}
             {actions}
-            {canEncode && <ConsultationButton consultation={consultation} onStart={onStart} />}
+            {action}
           </div>
         </div>
 
-        {canEncode && <ConsultationNotice consultation={consultation} />}
+        {notice}
       </div>
-      {canEncode && startModal}
+      {modal}
     </header>
   );
 }

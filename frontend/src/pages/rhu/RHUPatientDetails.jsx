@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
 
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -12,6 +11,8 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
+import ProfileQueueAction from "../../components/features/rhu-queue/ProfileQueueAction";
+import { formatPatientName } from "../../utils/formatters";
 import CarePath from "../../components/features/patients/profile/CarePath";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
 import VitalsTiles from "../../components/features/patients/profile/VitalsTiles";
@@ -326,7 +327,6 @@ function LiveRHUPatientDetails() {
 
   const detailsState = buildPatientRecordDetailsState(location);
   const viewRecord = (recordId) => navigate(`${BASE_PATH}/health-records/${recordId}`, { state: detailsState });
-  const addRecordPath = `${BASE_PATH}/health-records/add?patientId=${patient.id || patientId}`;
 
   return (
     <>
@@ -337,6 +337,8 @@ function LiveRHUPatientDetails() {
             patientId={patientId}
             backPath={backPath}
             updating={patientUpdating}
+            consultation={false}
+            actions={<ProfileQueueAction patientId={patient.id || patientId} patientName={formatPatientName(patient, "")} />}
             carePath={
               canViewHistory ? (
                 <CarePath
@@ -344,17 +346,6 @@ function LiveRHUPatientDetails() {
                   conditions={conditions}
                   isLoading={(referralsLoading && referrals.length === 0) || conditions.isLoading}
                 />
-              ) : null
-            }
-            actions={
-              canViewHistory && canRegisterOwned ? (
-                <Link
-                  to={addRecordPath}
-                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2"
-                >
-                  <Plus size={15} aria-hidden="true" />
-                  Add Health Record
-                </Link>
               ) : null
             }
           />

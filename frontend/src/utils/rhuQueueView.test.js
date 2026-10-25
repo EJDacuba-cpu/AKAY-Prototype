@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRowActions, queueRows, statusChip, walkInKeyFor } from './rhuQueueView.js';
+import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, profileQueueAction, queueRowActions, queueRows, statusChip, walkInKeyFor } from './rhuQueueView.js';
 
 // 9:30 AM on Oct 25, 2026 in Manila.
 const NOW = new Date('2026-10-25T01:30:00Z');
@@ -170,4 +170,27 @@ test('a check-in key follows the patient: same patient keeps it, another patient
   assert.deepEqual(first, { patientId: 7, key: 'k1' });
   assert.equal(walkInKeyFor(first, 7, makeId), first);
   assert.deepEqual(walkInKeyFor(first, 8, makeId), { patientId: 8, key: 'k2' });
+});
+
+test('the profile offers check-in only when the patient is not already in the queue', () => {
+  const base = { patientId: 9, visits: [], loading: false, canCheckIn: true, canViewQueue: true };
+  assert.deepEqual(profileQueueAction(base), { kind: 'check_in' });
+  assert.deepEqual(profileQueueAction({ ...base, visits: [visit({ patient: { id: 3 } })] }), { kind: 'check_in' });
+});
+
+test('the profile shows the queue status instead of a button when the patient is already queued', () => {
+  const base = { patientId: '9', loading: false, canCheckIn: false, canViewQueue: true };
+  assert.deepEqual(profileQueueAction({ ...base, visits: [visit()] }), { kind: 'in_queue', label: 'Waiting' });
+  assert.deepEqual(
+    profileQueueAction({ ...base, visits: [visit({ status: 'in_consultation' })] }),
+    { kind: 'in_queue', label: 'In consultation' },
+  );
+});
+
+test('the profile waits for the queue, hides without the duty, and never blocks check-in on a failed read', () => {
+  const base = { patientId: 9, visits: [], loading: false, canCheckIn: true, canViewQueue: true };
+  assert.deepEqual(profileQueueAction({ ...base, loading: true }), { kind: 'checking' });
+  assert.deepEqual(profileQueueAction({ ...base, canCheckIn: false }), { kind: 'hidden' });
+  // Not allowed to read the queue: the 409 from the server is the duplicate guard, not a spinner.
+  assert.deepEqual(profileQueueAction({ ...base, canViewQueue: false, loading: true }), { kind: 'check_in' });
 });

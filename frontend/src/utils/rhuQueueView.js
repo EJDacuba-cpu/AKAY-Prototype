@@ -76,6 +76,20 @@ export function queueRowActions(row, { canEncode = false, canFinalize = false, c
   return actions;
 }
 
+/**
+ * What the RHU patient profile shows in place of a consultation button: every consultation starts from
+ * Today's Queue, so the profile only checks the patient in or reports where they already are.
+ * `visits` are the active ones; a failed or forbidden queue read falls through to check-in because the
+ * server's 409 is the duplicate guard.
+ */
+export function profileQueueAction({ patientId, visits, loading, canCheckIn, canViewQueue }) {
+  const visit = (visits ?? []).find((entry) => String(entry.patient?.id) === String(patientId));
+  if (visit) return { kind: 'in_queue', label: visit.status === 'in_consultation' ? 'In consultation' : 'Waiting' };
+  if (!canCheckIn) return { kind: 'hidden' };
+  if (canViewQueue && loading) return { kind: 'checking' };
+  return { kind: 'check_in' };
+}
+
 /** "61 · M", "F" or "" — the same wording in the queue and in the check-in results. */
 export function formatAgeSex(patient) {
   const sex = SEX_LETTER[String(patient?.sex ?? '').toLowerCase()] ?? '';
