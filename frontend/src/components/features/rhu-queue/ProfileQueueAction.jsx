@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
@@ -10,14 +10,14 @@ import useRhuVisits from "../../../hooks/useRhuVisits";
 import { checkInExistingPatient } from "../../../services/rhuVisitService";
 import { queryKeys } from "../../../utils/queryKeys";
 import { profileQueueAction, walkInKeyFor } from "../../../utils/rhuQueueView";
+import { startOrResumeRhuConsultation } from "../../../utils/rhuVisitConsultation";
 
-const QUEUE_PATH = "/rhu/patients";
 const BUTTON_CLASS =
   "inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:shadow-none";
 
 /**
- * The RHU patient profile never starts a consultation: that happens from Today's Queue. This puts the
- * patient there (check-in) or says where they already are.
+ * Check-in when the patient is not in today's queue. Start or resume the
+ * existing visit through the same APIs as Today's Queue when they already are.
  */
 export default function ProfileQueueAction({ patientId, patientName }) {
   const navigate = useNavigate();
@@ -25,24 +25,75 @@ export default function ProfileQueueAction({ patientId, patientName }) {
   const access = useAccess();
   const canViewQueue = access.can("clinical.history");
   const canCheckIn = access.can("patients.register");
+  const canEncode = access.can("consultations.encode");
+  const canFinalize = access.can("consultations.finalize");
   const { visits, loading } = useRhuVisits({ enabled: canViewQueue, poll: false });
   const [saving, setSaving] = useState(false);
   // Kept across a failed attempt so a retry for this patient is recognised by the server.
   const walkIn = useRef(null);
 
-  const state = profileQueueAction({ patientId, visits, loading, canCheckIn, canViewQueue });
+  const state = profileQueueAction({
+    patientId,
+    visits,
+    loading,
+    canCheckIn,
+    canViewQueue,
+    canEncode,
+    canFinalize,
+  });
   if (state.kind === "hidden") return null;
 
-  if (state.kind === "in_queue") {
+  async function refreshVisits() {
+    await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
+  }
+
+  async function openConsultation(mode) {
+    setSaving(true);
+    try {
+      const { path } = await startOrResumeRhuConsultation({
+        mode,
+        visitId: state.visitId,
+        patientId,
+      });
+      if (mode === "start") toast.success(`Consultation started for ${patientName || "this patient"}.`);
+      await refreshVisits();
+      navigate(path);
+    } catch (error) {
+      toast.error(error?.message || (mode === "resume" ? "Unable to resume this consultation." : "Unable to start this consultation."));
+      await refreshVisits();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (state.kind === "start" || state.kind === "resume") {
+    const starting = state.kind === "start";
     return (
-      <div className="flex flex-col items-center gap-1 text-[13px]">
+      <div className="flex flex-col items-center gap-1.5 text-[13px]">
         <p className="font-medium text-neutral-800">
           In today&apos;s queue <span aria-hidden="true">·</span> <span className="text-neutral-600">{state.label}</span>
         </p>
-        <Link to={QUEUE_PATH} className="rounded-md font-semibold text-ink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50">
-          Go to Today&apos;s Queue →
-        </Link>
+        <button type="button" disabled={saving} onClick={() => openConsultation(starting ? "start" : "resume")} className={BUTTON_CLASS}>
+          {saving ? (
+            <>
+              <ButtonSpinner />
+              {starting ? "Starting consultation..." : "Opening consultation..."}
+            </>
+          ) : starting ? (
+            "Start Consultation"
+          ) : (
+            "Resume Consultation"
+          )}
+        </button>
       </div>
+    );
+  }
+
+  if (state.kind === "in_queue") {
+    return (
+      <p className="text-center text-[13px] font-medium text-neutral-800">
+        In today&apos;s queue <span aria-hidden="true">·</span> <span className="text-neutral-600">{state.label}</span>
+      </p>
     );
   }
 
@@ -53,13 +104,13 @@ export default function ProfileQueueAction({ patientId, patientName }) {
       await checkInExistingPatient(patientId, walkIn.current.key);
       toast.success(`${patientName || "Patient"} added to today's queue.`);
       walkIn.current = null;
-      await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
-      navigate(QUEUE_PATH);
+      await refreshVisits();
+      navigate("/rhu/patients");
     } catch (error) {
       if (error?.code === "VISIT_ALREADY_ACTIVE") {
         // Another desk was faster; the outcome is the one we wanted, so show the real status.
         toast(`${patientName || "Patient"} is already in today's queue.`);
-        await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
+        await refreshVisits();
       } else {
         toast.error(error?.message || "Unable to check this patient in.");
       }

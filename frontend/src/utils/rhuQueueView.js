@@ -1,5 +1,6 @@
 // Display logic for the RHU Today's Queue. Pure: the table and the page stay thin.
 
+import { reviewReferralSlipPath } from './rhuVisitRoutes.js';
 import { newCheckInKey } from './walkInRegistration.js';
 
 const ZONE = 'Asia/Manila';
@@ -67,6 +68,12 @@ export function queueRowActions(row, { canEncode = false, canFinalize = false, c
   if (row?.statusKey === 'in_consultation' && (canEncode || canFinalize)) {
     actions.push({ label: 'Resume consultation', action: 'resume' });
   }
+  if (row?.referralId && row?.patientId) {
+    actions.push({
+      label: 'Review Referral Slip',
+      to: reviewReferralSlipPath(row.patientId, row.referralId),
+    });
+  }
   if (row?.patientId) {
     actions.push({ label: 'Open patient record', to: `/rhu/patients/${row.patientId}` });
   }
@@ -77,14 +84,32 @@ export function queueRowActions(row, { canEncode = false, canFinalize = false, c
 }
 
 /**
- * What the RHU patient profile shows in place of a consultation button: every consultation starts from
- * Today's Queue, so the profile only checks the patient in or reports where they already are.
- * `visits` are the active ones; a failed or forbidden queue read falls through to check-in because the
- * server's 409 is the duplicate guard.
+ * What the RHU patient profile shows in place of a consultation button.
+ * An active visit starts or resumes through the same APIs as Today's Queue when
+ * the viewer has that duty; otherwise the profile only reports where they are
+ * or offers check-in. `visits` are the active ones; a failed or forbidden queue
+ * read falls through to check-in because the server's 409 is the duplicate guard.
  */
-export function profileQueueAction({ patientId, visits, loading, canCheckIn, canViewQueue }) {
+export function profileQueueAction({
+  patientId,
+  visits,
+  loading,
+  canCheckIn,
+  canViewQueue,
+  canEncode = false,
+  canFinalize = false,
+}) {
   const visit = (visits ?? []).find((entry) => String(entry.patient?.id) === String(patientId));
-  if (visit) return { kind: 'in_queue', label: visit.status === 'in_consultation' ? 'In consultation' : 'Waiting' };
+  if (visit) {
+    const label = visit.status === 'in_consultation' ? 'In consultation' : 'Waiting';
+    if (visit.status === 'waiting' && canEncode) {
+      return { kind: 'start', visitId: visit.id, label };
+    }
+    if (visit.status === 'in_consultation' && (canEncode || canFinalize)) {
+      return { kind: 'resume', visitId: visit.id, label };
+    }
+    return { kind: 'in_queue', visitId: visit.id, label };
+  }
   if (!canCheckIn) return { kind: 'hidden' };
   if (canViewQueue && loading) return { kind: 'checking' };
   return { kind: 'check_in' };
@@ -116,6 +141,7 @@ export function queueRows(visits, now = new Date()) {
     const hasArrival = visit.checked_in_at != null && !Number.isNaN(arrived.getTime());
     const carriedOver = hasArrival && DAY_KEY.format(arrived) < today;
     const bhc = visit.referral?.sending_bhc;
+    const referralId = visit.referral?.id ?? null;
     return {
       id: visit.id,
       number: index + 1,
@@ -124,6 +150,7 @@ export function queueRows(visits, now = new Date()) {
       ageSex: formatAgeSex(visit.patient),
       source: visit.source,
       sourceLabel: visit.source === 'referral' ? 'Referred' : 'Walk-in',
+      referralId,
       fromLabel: visit.source === 'referral' && bhc ? `From ${bhc}` : null,
       arrivedTime: hasArrival ? TIME.format(arrived) : '—',
       carriedOver,

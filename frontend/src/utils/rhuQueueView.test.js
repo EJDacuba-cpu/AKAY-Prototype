@@ -67,6 +67,17 @@ test('the row menu follows visit progress and duties', () => {
     queueRowActions(inConsult, { canEncode: false, canFinalize: false }).some((item) => item.action === 'resume'),
     false,
   );
+  const referred = queueRows([visit({ source: 'referral', referral: { id: 5, sending_bhc: 'BHC Poblacion' } })], NOW)[0];
+  assert.deepEqual(queueRowActions(referred, { canEncode: true, canClose: true }).map((item) => item.label), [
+    'Start consultation',
+    'Review Referral Slip',
+    'Open patient record',
+    'Close visit',
+  ]);
+  assert.equal(
+    queueRowActions(referred, { canEncode: false, canClose: false }).find((item) => item.label === 'Review Referral Slip').to,
+    '/rhu/patients/9?tab=referrals&referral=5',
+  );
 });
 
 test('a referred visit becomes a display row', () => {
@@ -78,6 +89,7 @@ test('a referred visit becomes a display row', () => {
   assert.equal(row.ageSex, '34 · F');
   assert.equal(row.source, 'referral');
   assert.equal(row.sourceLabel, 'Referred');
+  assert.equal(row.referralId, 5);
   assert.equal(row.fromLabel, 'From BHC Poblacion');
   assert.equal(row.arrivedTime, '8:12 AM');
   assert.equal(row.carriedOver, false);
@@ -88,7 +100,23 @@ test('a referred visit becomes a display row', () => {
 test('a walk-in has no sending facility', () => {
   const [row] = queueRows([visit()], NOW);
   assert.equal(row.sourceLabel, 'Walk-in');
+  assert.equal(row.referralId, null);
   assert.equal(row.fromLabel, null);
+});
+
+test('a walk-in later linked to a referral keeps walk-in labelling and exposes the slip', () => {
+  const [row] = queueRows([visit({ referral: { id: 8, sending_bhc: 'BHC Poblacion' } })], NOW);
+  assert.equal(row.sourceLabel, 'Walk-in');
+  assert.equal(row.referralId, 8);
+  assert.equal(row.fromLabel, null);
+  assert.deepEqual(
+    queueRowActions(row, { canEncode: true, canClose: true }).map((item) => item.label),
+    ['Start consultation', 'Review Referral Slip', 'Open patient record', 'Close visit'],
+  );
+  assert.equal(
+    queueRowActions(row, { canEncode: true, canClose: true }).find((item) => item.label === 'Review Referral Slip').to,
+    '/rhu/patients/9?tab=referrals&referral=8',
+  );
 });
 
 test('a visit still open from before midnight in Manila is marked, one after midnight is not', () => {
@@ -180,10 +208,30 @@ test('the profile offers check-in only when the patient is not already in the qu
 
 test('the profile shows the queue status instead of a button when the patient is already queued', () => {
   const base = { patientId: '9', loading: false, canCheckIn: false, canViewQueue: true };
-  assert.deepEqual(profileQueueAction({ ...base, visits: [visit()] }), { kind: 'in_queue', label: 'Waiting' });
+  assert.deepEqual(profileQueueAction({ ...base, visits: [visit()] }), { kind: 'in_queue', visitId: 1, label: 'Waiting' });
   assert.deepEqual(
     profileQueueAction({ ...base, visits: [visit({ status: 'in_consultation' })] }),
-    { kind: 'in_queue', label: 'In consultation' },
+    { kind: 'in_queue', visitId: 1, label: 'In consultation' },
+  );
+});
+
+test('the profile starts or resumes the same visit the queue would', () => {
+  const base = { patientId: '9', loading: false, canCheckIn: false, canViewQueue: true };
+  assert.deepEqual(
+    profileQueueAction({ ...base, visits: [visit()], canEncode: true }),
+    { kind: 'start', visitId: 1, label: 'Waiting' },
+  );
+  assert.deepEqual(
+    profileQueueAction({ ...base, visits: [visit({ status: 'in_consultation' })], canEncode: true }),
+    { kind: 'resume', visitId: 1, label: 'In consultation' },
+  );
+  assert.deepEqual(
+    profileQueueAction({ ...base, visits: [visit({ status: 'in_consultation' })], canFinalize: true }),
+    { kind: 'resume', visitId: 1, label: 'In consultation' },
+  );
+  assert.deepEqual(
+    profileQueueAction({ ...base, visits: [visit()], canFinalize: true }),
+    { kind: 'in_queue', visitId: 1, label: 'Waiting' },
   );
 });
 

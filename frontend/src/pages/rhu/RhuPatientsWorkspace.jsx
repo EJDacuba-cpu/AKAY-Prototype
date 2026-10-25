@@ -10,9 +10,10 @@ import WalkInCheckInModal from "../../components/features/rhu-queue/WalkInCheckI
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import useAccess from "../../hooks/useAccess";
 import useRhuVisits from "../../hooks/useRhuVisits";
-import { closeRhuVisit, resumeRhuVisit, startRhuVisit } from "../../services/rhuVisitService";
+import { closeRhuVisit } from "../../services/rhuVisitService";
 import { queryKeys } from "../../utils/queryKeys";
 import { queueRows } from "../../utils/rhuQueueView";
+import { startOrResumeRhuConsultation } from "../../utils/rhuVisitConsultation";
 import PatientsModule from "../bhc/PatientsModule";
 
 const REGISTER_FOR_CHECK_IN = "/rhu/patients/add?check_in=1";
@@ -56,16 +57,15 @@ export default function RhuPatientsWorkspace() {
     await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
   }
 
-  function openWorkspace(visit, row) {
-    const patientId = row.patientId || visit?.patient?.id;
-    navigate(`/rhu/health-records/add?visitId=${visit?.id || row.id}&patientId=${patientId}&mode=continue`);
-  }
-
   async function startVisit(row) {
     try {
-      const visit = await startRhuVisit(row.id);
+      const { path } = await startOrResumeRhuConsultation({
+        mode: "start",
+        visitId: row.id,
+        patientId: row.patientId,
+      });
       toast.success(`Consultation started for ${row.name}.`);
-      openWorkspace(visit, row);
+      navigate(path);
     } catch (error) {
       toast.error(error?.message || "Unable to start this consultation.");
     }
@@ -73,8 +73,12 @@ export default function RhuPatientsWorkspace() {
 
   async function resumeVisit(row) {
     try {
-      const visit = await resumeRhuVisit(row.id);
-      openWorkspace(visit, row);
+      const { path } = await startOrResumeRhuConsultation({
+        mode: "resume",
+        visitId: row.id,
+        patientId: row.patientId,
+      });
+      navigate(path);
     } catch (error) {
       toast.error(error?.message || "Unable to resume this consultation.");
     }

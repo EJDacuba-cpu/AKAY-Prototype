@@ -15,8 +15,9 @@ import { getCurrentUser } from "../../../../utils/auth";
  * It sits above the tab strip on every tab and carries no status badge:
  * follow-ups have their own card.
  *
- * `consultation={false}` drops the Start / Resume action and its draft and care-overview
- * queries: the RHU starts a consultation from Today's Queue, never from a profile.
+ * `consultation={false}` drops the BHC Start / Resume action and its draft and
+ * care-overview queries. The RHU header uses `actions` for check-in or for
+ * starting / resuming the patient's existing queue visit.
  */
 export default function PatientProfileHeader({ consultation = true, ...props }) {
   return consultation ? <WithConsultation {...props} /> : <HeaderCard {...props} />;

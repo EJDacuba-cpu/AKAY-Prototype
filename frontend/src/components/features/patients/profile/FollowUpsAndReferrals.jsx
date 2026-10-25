@@ -6,6 +6,7 @@ import { ProfileChip, ProfileStatusChip, followUpTone } from "./ProfileChip";
 import { getStateConfig } from "../../followups/followUpStatusStyles.jsx";
 import { EmptyNote, ProfileSection, TextAction } from "./ProfileSection";
 import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
+import { referralListKey, referralMatches } from "../../../../utils/referralSlipView";
 
 const INITIAL_VISIBLE = 3;
 
@@ -41,15 +42,17 @@ export function getReferralDestination(referral = {}) {
   );
 }
 
-function ExpandableList({ items, noun, children }) {
+function ExpandableList({ items, noun, selectedKey, children }) {
   const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? items : items.slice(0, INITIAL_VISIBLE);
+  const selectedIndex = items.findIndex((item) => referralMatches(item, selectedKey));
+  const expanded = showAll || selectedIndex >= INITIAL_VISIBLE;
+  const visible = expanded ? items : items.slice(0, INITIAL_VISIBLE);
   return (
     <>
       <ul className="divide-y divide-neutral-100 border-y border-neutral-100">
         {visible.map(children)}
       </ul>
-      {items.length > INITIAL_VISIBLE && (
+      {items.length > INITIAL_VISIBLE && selectedIndex < INITIAL_VISIBLE && (
         <div className="pt-3">
           <TextAction onClick={() => setShowAll((value) => !value)}>
             {showAll ? "Show less" : `Show all ${items.length} ${noun}`}
@@ -65,7 +68,9 @@ export function ReferralsSection({
   isLoading = false,
   isFetching = false,
   isError = false,
+  selectedKey = "",
   onView,
+  onSelect,
 }) {
   return (
     <ProfileSection
@@ -83,22 +88,31 @@ export function ReferralsSection({
       ) : referrals.length === 0 ? (
         <EmptyNote>No referral history found for this patient.</EmptyNote>
       ) : (
-        <ExpandableList items={referrals} noun="referrals">
+        <ExpandableList items={referrals} noun="referrals" selectedKey={selectedKey}>
           {(referral) => {
             const trackingId = referral.trackingId || referral.id;
+            const key = referralListKey(referral);
+            const selected = Boolean(selectedKey) && referralMatches(referral, selectedKey);
             const hasReturnSlip = Boolean(referral.feedback || referral.returnSlip);
+            const title = onSelect
+              ? formatDisplayValue(
+                  referral.referringHci || getReferralDestination(referral),
+                  "Referring facility not recorded",
+                )
+              : formatDisplayValue(getReferralDestination(referral), "Destination not recorded");
             return (
-              <li key={trackingId}>
+              <li key={key || trackingId}>
                 <button
                   type="button"
-                  onClick={() => onView(trackingId)}
-                  aria-label={`View referral ${trackingId}`}
-                  className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50"
+                  onClick={() => (onSelect ? onSelect(referral) : onView?.(trackingId))}
+                  aria-label={onSelect ? `Review BHC referral slip ${trackingId}` : `View referral ${trackingId}`}
+                  aria-current={selected ? "true" : undefined}
+                  className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50 ${
+                    selected ? "bg-neutral-50" : "hover:bg-neutral-50"
+                  }`}
                 >
                   <span className="min-w-0">
-                    <span className="block text-sm text-neutral-900">
-                      {formatDisplayValue(getReferralDestination(referral), "Destination not recorded")}
-                    </span>
+                    <span className="block text-sm text-neutral-900">{title}</span>
                     <span className="mt-0.5 block truncate text-xs text-neutral-500">
                       <span className="tabular-nums">{getReferralDate(referral)}</span>
                       {" · "}
