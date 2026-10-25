@@ -676,7 +676,7 @@ export default function App() {
       <Route
         path="/rhu/referrals/:trackingId"
         element={
-          <ProtectedPage allowedRole="rhu" module="history">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <RHUReferralDetails />
           </ProtectedPage>
         }

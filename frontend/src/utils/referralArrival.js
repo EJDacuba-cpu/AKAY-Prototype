@@ -6,12 +6,18 @@ import { formatAgeSex } from './rhuQueueView.js';
  */
 export function arrivalToReferral(arrival) {
   if (!arrival) return null;
+  const patient = arrival.patient || {};
   return {
     id: String(arrival.referral_id),
     trackingId: arrival.tracking_id,
     status: arrival.status,
-    patientName: arrival.patient?.full_name ?? '',
-    ageSex: formatAgeSex(arrival.patient),
+    patientName: patient.full_name ?? '',
+    birthDate: patient.birthdate ?? '',
+    age: patient.age ?? '',
+    sex: patient.sex ?? '',
+    ageSex: formatAgeSex(patient),
+    address: patient.address ?? '',
+    contactNumber: patient.contact_number ?? '',
     referringHci: arrival.sending_bhc ?? '',
     destinationFacility: arrival.receiving_rhu ?? '',
     referralDateTime: arrival.referred_at ?? '',

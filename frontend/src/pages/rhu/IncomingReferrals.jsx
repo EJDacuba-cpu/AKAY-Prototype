@@ -242,9 +242,6 @@ function ActionMenu({ referral }) {
               <p className="mt-0.5 truncate text-[10px] text-slate-400">
                 {getReferralPatientName(referral)} /{" "}
                 {formatDisplayValue(referral.ageSex, "Age / Sex not recorded")}
-                {/*
-                {referral.patientName || referral.patient} · {referral.ageSex}
-                */}
               </p>
             </div>
 
@@ -353,30 +350,11 @@ function getReferralUrgency(referral) {
   return getReferralAttention(referral);
 }
 
-function getReferralCategory(referral) {
-  return formatDisplayValue(
-    referral?.referralCategory || referral?.category || referral?.classification,
-    "Uncategorized",
-  );
-}
-
 function getReferralPatientName(referral) {
   return formatPatientName(
     referral?.patientName || referral?.patient || referral,
     "Unknown Patient",
   );
-}
-
-function isReferralCategory(value) {
-  return /^(A1|A2|B1|B2|C1|C2|Unclassified)$/i.test(String(value || ""));
-}
-
-function getCategoryColumnLabel(referrals) {
-  return referrals.some((referral) =>
-    isReferralCategory(getReferralCategory(referral)),
-  )
-    ? "Referral Category"
-    : "Patient Classification";
 }
 
 function isRhuFacility(value = "") {
@@ -469,7 +447,7 @@ function compareReferralQueueOrder(a, b) {
 }
 
 function getReferralRouteTarget(referral = {}) {
-  return String(referral.id || referral.trackingId || "").trim();
+  return String(referral.trackingId || referral.id || "").trim();
 }
 
 function getReferralDetailsPath(referral = {}) {
@@ -524,16 +502,6 @@ function matchesDateFilter(referral, filter) {
   return true;
 }
 
-function CategoryBadge({ category }) {
-  const displayCategory = formatDisplayValue(category, "Uncategorized");
-
-  return (
-    <span className="inline-flex items-center rounded-md border border-red-100 bg-red-50/70 px-2 py-0.5 font-mono text-[10px] font-bold text-[#B91C1C]">
-      {displayCategory}
-    </span>
-  );
-}
-
 export default function IncomingReferrals() {
   const navigate = useNavigate();
   const [animatedIds] = useState(new Set());
@@ -541,7 +509,6 @@ export default function IncomingReferrals() {
   const [filters, setFilters] = useState({
     search: "",
     status: "All Status",
-    category: "All Categories",
     urgency: ATTENTION_FILTER_ALL,
     date: "All Dates",
     referringBhc: "All Referring BHCs",
@@ -576,7 +543,6 @@ export default function IncomingReferrals() {
     setFilters({
       search: "",
       status: "All Status",
-      category: "All Categories",
       urgency: ATTENTION_FILTER_ALL,
       date: "All Dates",
       referringBhc: "All Referring BHCs",
@@ -588,10 +554,6 @@ export default function IncomingReferrals() {
       key: "status",
       label:
         filters.status,
-    },
-    filters.category !== "All Categories" && {
-      key: "category",
-      label: filters.category,
     },
     filters.urgency !== ATTENTION_FILTER_ALL && {
       key: "urgency",
@@ -606,7 +568,6 @@ export default function IncomingReferrals() {
 
   function removeFilter(key) {
     if (key === "status") handleFilterChange("status", "All Status");
-    if (key === "category") handleFilterChange("category", "All Categories");
     if (key === "urgency") handleFilterChange("urgency", ATTENTION_FILTER_ALL);
     if (key === "date") handleFilterChange("date", "All Dates");
     if (key === "referringBhc") {
@@ -614,24 +575,12 @@ export default function IncomingReferrals() {
     }
   }
 
-  const categoryOptions = useMemo(() => {
-    return [
-      "All Categories",
-      ...new Set(referrals.map(getReferralCategory).filter(Boolean)),
-    ];
-  }, [referrals]);
-
   const referringBhcOptions = useMemo(() => {
     return [
       "All Referring BHCs",
       ...new Set(referrals.map(getReferringHci).filter(Boolean)),
     ];
   }, [referrals]);
-
-  const categoryColumnLabel = useMemo(
-    () => getCategoryColumnLabel(referrals),
-    [referrals],
-  );
 
   const baseFiltered = useMemo(() => {
     return referrals.filter((referral) => {
@@ -643,14 +592,8 @@ export default function IncomingReferrals() {
         !filters.search ||
         patientName.toLowerCase().includes(q) ||
         (referral.trackingId || "").toLowerCase().includes(q) ||
-        (referral.chiefComplaint || referral.concern || "")
-          .toLowerCase()
-          .includes(q) ||
         getReferringHci(referral).toLowerCase().includes(q);
 
-      const matchCategory =
-        filters.category === "All Categories" ||
-        getReferralCategory(referral) === filters.category;
       const matchUrgency =
         filters.urgency === ATTENTION_FILTER_ALL ||
         getReferralUrgency(referral) === filters.urgency;
@@ -659,13 +602,7 @@ export default function IncomingReferrals() {
         filters.referringBhc === "All Referring BHCs" ||
         getReferringHci(referral) === filters.referringBhc;
 
-      return (
-        matchSearch &&
-        matchCategory &&
-        matchUrgency &&
-        matchDate &&
-        matchReferringBhc
-      );
+      return matchSearch && matchUrgency && matchDate && matchReferringBhc;
     });
   }, [referrals, filters]);
 
@@ -693,12 +630,6 @@ export default function IncomingReferrals() {
       label: "Status",
       value: filters.status,
       options: REFERRAL_STATUS_OPTIONS.map((option) => option.key),
-    },
-    {
-      key: "category",
-      label: categoryColumnLabel,
-      value: filters.category,
-      options: categoryOptions,
     },
     {
       key: "urgency",
@@ -738,7 +669,7 @@ export default function IncomingReferrals() {
           <ListToolbar
             searchValue={filters.search}
             onSearchChange={(value) => handleFilterChange("search", value)}
-            searchPlaceholder="Search by patient name, BHC, referral ID, or chief complaint..."
+            searchPlaceholder="Search by patient name, BHC, or tracking ID..."
             filters={toolbarFilters}
             activeFilterCount={activeFilters.length}
             activeFilters={activeFilters}
@@ -764,7 +695,7 @@ export default function IncomingReferrals() {
           title="Referral Tracking"
           count={filtered.length}
           subtitle="BHC-RHU referral records and tracking status."
-          minWidth="min-w-[1360px]"
+          minWidth="min-w-[1120px]"
           fixedRows
           refreshing={isBackgroundRefreshing}
           refreshingLabel="Updating referrals..."
@@ -780,12 +711,10 @@ export default function IncomingReferrals() {
                 <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                   <th className="whitespace-nowrap px-4 py-3">Queue No.</th>
                   <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
-                <th className="whitespace-nowrap px-4 py-3">Date / Time</th>
+                  <th className="whitespace-nowrap px-4 py-3">Date/Time</th>
                   <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                  <th className="whitespace-nowrap px-4 py-3">Name of Referring HCI</th>
-                  <th className="whitespace-nowrap px-4 py-3">{categoryColumnLabel}</th>
+                  <th className="whitespace-nowrap px-4 py-3">Referring BHC</th>
                   <th className="whitespace-nowrap px-4 py-3">Urgency</th>
-                  <th className="whitespace-nowrap px-4 py-3">Chief Complaint</th>
                   <th className="whitespace-nowrap px-4 py-3">Status</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -794,7 +723,7 @@ export default function IncomingReferrals() {
               <tbody className="divide-y divide-[#F8FAFC]">
                 {filtered.length === 0 ? (
                   <DataTableEmptyState
-                    colSpan={10}
+                    colSpan={8}
                     icon={<Search size={20} className="text-[#94A3B8]" />}
                     title="No referrals match your filters"
                     description="Try adjusting your search or filters."
@@ -807,10 +736,6 @@ export default function IncomingReferrals() {
                     const ageSex = formatDisplayValue(
                       referral.ageSex,
                       "Age / Sex not recorded",
-                    );
-                    const chiefComplaint = formatDisplayValue(
-                      referral.chiefComplaint || referral.concern,
-                      "Not recorded",
                     );
 
                     return (
@@ -853,19 +778,9 @@ export default function IncomingReferrals() {
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-3.5">
-                          <CategoryBadge
-                            category={getReferralCategory(referral)}
-                          />
-                        </td>
-
-                        <td className="whitespace-nowrap px-4 py-3.5">
                           <UrgencyBadge
                             urgency={getReferralUrgency(referral)}
                           />
-                        </td>
-
-                        <td className="max-w-[180px] truncate px-4 py-3.5 text-[13px] text-[#6B7280]">
-                          {chiefComplaint}
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-3.5">

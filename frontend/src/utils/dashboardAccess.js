@@ -27,7 +27,7 @@ export function navigationAllowed(user, path = "") {
     permissions.includes("clinical.history")
   ) return true;
   if (/^\/(bhc|rhu)\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
-  if (user?.role === "rhu" && /^\/rhu\/(incoming-referrals|qr-scanner)(?:\/|$)/.test(path)) {
+  if (user?.role === "rhu" && /^\/rhu\/(incoming-referrals|qr-scanner|referrals\/[^/]+)(?:\/|$)/.test(path)) {
     return permissions.includes("rhu.intake") || permissions.includes("rhu.manage");
   }
   if (user?.role === "rhu" && /^\/rhu\/follow-ups(?:\/|$)/.test(path)) {

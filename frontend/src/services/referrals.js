@@ -34,6 +34,7 @@ export async function refreshReferralWorkflowData(queryClient, trackingId = "") 
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("bhc") }),
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("rhu") }),
     queryClient.invalidateQueries({ queryKey: queryKeys.patients("rhu") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.rhuVisits() }),
   ];
 
   if (trackingId) {
@@ -106,6 +107,7 @@ function normalizeReferral(referral = {}) {
       referral.birth_date ||
       patient.birthDate ||
       patient.birth_date ||
+      patient.birthdate ||
       "",
     address:
       referral.patientAddress ||
@@ -295,6 +297,26 @@ export async function getReferralByRouteParam(routeParam) {
   return getReferralByTrackingId(decoded);
 }
 
+/**
+ * RHU receiving desk: intake staff get the arrival summary; clinical staff
+ * still resolve the referral but the page only renders identity fields.
+ */
+export async function getReferralArrivalWorkspace(routeParam) {
+  const decoded = decodeURIComponent(String(routeParam || "").trim());
+  if (!decoded) return null;
+
+  if (/^\d+$/.test(decoded)) {
+    return getReferralById(decoded);
+  }
+
+  const resolution = await resolveReferralTrackingId(decoded);
+  if (resolution.arrival) {
+    return arrivalToReferral(resolution.arrival);
+  }
+  if (!resolution.referralId) return null;
+  return getReferralById(resolution.referralId);
+}
+
 export async function getReferralsByPatient(patient) {
   const patientId = patient?.id || patient?.patientId || patient;
   const referrals = await listReferrals();
@@ -400,6 +422,7 @@ export default {
   getReferralById,
   getReferralByTrackingId,
   getReferralByRouteParam,
+  getReferralArrivalWorkspace,
   resolveReferralTrackingId,
   resolveReferralQrToken,
   getReferralQrPayload,

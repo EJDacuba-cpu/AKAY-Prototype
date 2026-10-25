@@ -32,7 +32,17 @@ class RhuIntakeScanTest extends TestCase
 
         $this->rhu = RuralHealthUnit::create(['name' => 'Intake RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Intake BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
-        $patient = Patient::create(['first_name' => 'Rosa', 'last_name' => 'Intake', 'sex' => 'Female', 'birthdate' => '1990-05-01', 'barangay_health_center_id' => $this->bhc->id]);
+        $patient = Patient::create([
+            'first_name' => 'Rosa',
+            'last_name' => 'Intake',
+            'sex' => 'Female',
+            'birthdate' => '1990-05-01',
+            'contact_number' => '09171234567',
+            'street_address' => '12 Rizal St',
+            'barangay' => 'Pitpitan',
+            'municipality' => 'Bulakan',
+            'barangay_health_center_id' => $this->bhc->id,
+        ]);
         $this->referral = Referral::create([
             'tracking_id' => 'AKY-20261025-'.Str::upper(Str::random(6)),
             'qr_code_value' => 'AKAY:REFERRAL:LEGACY-'.Str::uuid(),
@@ -70,6 +80,40 @@ class RhuIntakeScanTest extends TestCase
             ->assertJsonPath('data.arrival.receiving_rhu', 'Intake RHU');
 
         $this->assertStringNotContainsString('Confidential clinical reason', $response->getContent());
+        $response
+            ->assertJsonPath('data.arrival.patient.birthdate', '1990-05-01')
+            ->assertJsonPath('data.arrival.patient.sex', 'Female')
+            ->assertJsonPath('data.arrival.patient.contact_number', '09171234567')
+            ->assertJsonPath('data.arrival.patient.address', '12 Rizal St, Pitpitan, Bulakan');
+        $this->assertArrayNotHasKey('reason_for_referral', $response->json('data.arrival'));
+        $this->assertArrayNotHasKey('philhealth_number', $response->json('data.arrival.patient') ?? []);
+    }
+
+    public function test_arrival_summary_keeps_missing_demographics_blank(): void
+    {
+        $patient = Patient::create([
+            'first_name' => 'No',
+            'last_name' => 'Contact',
+            'sex' => 'Male',
+            'barangay_health_center_id' => $this->bhc->id,
+        ]);
+        $referral = Referral::create([
+            'tracking_id' => 'AKY-20261025-'.Str::upper(Str::random(6)),
+            'qr_code_value' => 'AKAY:REFERRAL:LEGACY-'.Str::uuid(),
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'status' => Referral::STATUS_PENDING,
+            'reason_for_referral' => 'Confidential clinical reason.',
+        ]);
+
+        $this->actingAs($this->staff(['rhu.intake']), 'sanctum')
+            ->postJson('/api/referrals/tracking/resolve', ['tracking_id' => $referral->tracking_id])
+            ->assertOk()
+            ->assertJsonPath('data.arrival.patient.full_name', 'No Contact')
+            ->assertJsonPath('data.arrival.patient.birthdate', null)
+            ->assertJsonPath('data.arrival.patient.contact_number', null)
+            ->assertJsonPath('data.arrival.patient.address', null);
     }
 
     public function test_intake_resolves_a_tracking_id(): void
