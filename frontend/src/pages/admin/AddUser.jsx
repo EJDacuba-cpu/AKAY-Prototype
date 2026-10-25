@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { HandHeart, Hospital, House, Keyboard, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
+import { Check, HandHeart, Hospital, House, Keyboard, Lock, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Input from "../../components/common/atoms/Input";
+import { Button } from "../../components/ui/button";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
 import NoticeModal from "../../components/common/modals/NoticeModal";
 import SuccessModal from "../../components/common/modals/SuccessModal";
-import AccountStepper, { STEPPER_HEIGHT } from "../../components/features/access/AccountStepper";
 import Field, { FieldMessage } from "../../components/features/access/FieldError";
 import FacilityPickerModal from "../../components/features/access/FacilityPickerModal";
 import PermissionMatrix from "../../components/features/access/PermissionMatrix";
@@ -33,7 +33,6 @@ const HEADINGS = {
   [STEPS.review]: ["Review", "Check everything before saving."],
 };
 const card = selected => `flex min-h-24 items-center gap-3 rounded-xl border p-4 text-left text-sm font-semibold transition ${selected ? "border-red-600 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"}`;
-const facilityCard = selected => `flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border p-6 text-center text-sm font-semibold transition md:min-h-[260px] ${selected ? "border-red-600 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"}`;
 const EMAIL_TAKEN = "Email is already taken.";
 const pulse = "animate-pulse rounded bg-slate-200 motion-reduce:animate-none";
 
@@ -251,63 +250,77 @@ export default function AddUser() {
   ];
   const [title, subtitle] = HEADINGS[current];
   const centered = current === STEPS.facility && !editLoading;
+  const stepList = labels.map((label, i) => ({ label, i, hint: HEADINGS[keys[i]][1], done: i < step, locked: i > reached, here: i === step }));
+  // The Facility step draws its own choices; every other step (and the edit-mode skeleton) shares this body.
+  const formSteps = <>
+    {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
+
+    {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2">
+      <Field className="md:col-span-2" label="Full name" error={fieldError("name")} state={stateOf("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
+      <Field label="Email" error={fieldError("email")} state={stateOf("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
+      <Field label="Contact number" error={fieldError("contact_number")} state={stateOf("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
+    </div>}
+
+    {!editLoading && current === STEPS.access && <>
+      {rolesData
+        ? <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
+          const Icon = ROLE_ICONS[r.key] || UserRound;
+          return <button key={r.key} type="button" aria-pressed={form.staff_role === r.key} onClick={() => chooseRole(r.key)} className={card(form.staff_role === r.key)}><Icon size={18} aria-hidden="true" className="text-red-700" />{r.label}</button>;
+        })}</div>
+        : <div aria-busy="true" aria-label="Loading roles" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map(i => <span key={i} className={`block h-24 ${pulse}`} />)}</div>}
+      <FieldMessage>{errors.staff_role || errors.permissions}</FieldMessage>
+      {form.staff_role
+        ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); setErrors(e => ({ ...e, permissions: undefined })); }} />
+        : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
+    </>}
+
+    {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
+  </>;
 
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
     <form onSubmit={next} noValidate className="flex min-h-full w-full flex-col">
-      <div className="w-full flex-1 px-3 py-3 sm:p-4 lg:p-5"><div className="mx-auto w-full max-w-[1500px]">
-        <div className="md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-x-6">
-        <AccountStepper steps={labels} current={step} reached={reached} onSelect={goTo} />
-        <div className={`mt-4 min-w-0 md:mt-0 ${centered ? `md:flex md:flex-col md:justify-center ${STEPPER_HEIGHT}` : ""}`}>
-        <header className={centered ? "text-center" : undefined}>
-          <h1 className="text-xl font-bold text-slate-900">{title}</h1>
-          <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-        </header>
-        <div className={`relative mt-5 ${centered ? "" : "mb-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"}`}>
-          {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
+      <div className="w-full flex-1 px-3 py-4 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <div className="mx-auto w-full max-w-5xl rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm sm:p-6 lg:p-8">
+          <nav aria-label="Account setup progress">
+            <ol className="flex gap-1 rounded-full bg-slate-100 p-1">
+              {stepList.map(({ label, i, done, locked, here }) => <li key={label} className={here ? "flex-[2.2_1_0%] sm:flex-1" : "flex-1"}>
+                <button type="button" disabled={locked || here} aria-current={here ? "step" : undefined} aria-label={here ? undefined : label} onClick={() => goTo(i)} className={`flex h-10 w-full items-center justify-center gap-2 rounded-full px-3 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 disabled:cursor-default ${here ? "bg-ink-700 text-white shadow-sm" : locked ? "text-slate-400" : "text-red-700 hover:bg-white"}`}>
+                  <span className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${here ? "bg-red-600 text-white" : ""}`}>{done ? <Check size={14} aria-hidden="true" /> : locked ? <Lock size={12} aria-hidden="true" /> : i + 1}</span>
+                  <span className={`${here ? "inline" : "hidden sm:inline"} truncate`}>{label}</span>
+                </button>
+              </li>)}
+            </ol>
+          </nav>
 
-          {!editLoading && current === STEPS.facility && <>
-            <div className="grid gap-3 sm:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon, description }) => {
-              const selected = form.role === tier;
-              return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={facilityCard(selected)}>
-                <Icon size={32} aria-hidden="true" className="text-red-700" />
-                <span className="text-base">{label}</span>
-                <span className="max-w-xs text-xs font-normal text-slate-600">{description}</span>
-                {selected && tier !== TIERS.admin && <span className="text-xs font-normal text-slate-600">{homeName || "Facility selected"} · <span className="font-semibold text-red-700 underline">Change</span></span>}
-                {selected && tier === TIERS.admin && <span className="text-xs font-normal text-slate-600">Not tied to a facility</span>}
-              </button>;
-            })}</div>
-            <div className="absolute inset-x-0 top-full"><FieldMessage>{errors.role || errors.facility}</FieldMessage></div>
-          </>}
+          <header className="mt-7 px-1 sm:mt-9 sm:px-2">
+            <h1 className="text-balance text-2xl font-bold tracking-tight text-slate-900 sm:text-[1.75rem]">{title}</h1>
+            <p className="mt-1.5 text-sm text-slate-600">{subtitle}</p>
+          </header>
 
-          {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-y-1">
-        <Field label="Full name" error={fieldError("name")} state={stateOf("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
-        <Field label="Email" error={fieldError("email")} state={stateOf("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
-        <Field label="Contact number" error={fieldError("contact_number")} state={stateOf("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
-      </div>}
-
-          {!editLoading && current === STEPS.access && <>
-            {rolesData
-              ? <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
-                const Icon = ROLE_ICONS[r.key] || UserRound;
-                return <button key={r.key} type="button" aria-pressed={form.staff_role === r.key} onClick={() => chooseRole(r.key)} className={card(form.staff_role === r.key)}><Icon size={18} aria-hidden="true" className="text-red-700" />{r.label}</button>;
+          {centered
+            ? <div className="mt-6 px-0 sm:px-1">
+              <div role="group" aria-label="Facility type" className="grid gap-3 md:grid-cols-3">{FACILITY_TYPES.map(({ tier, label, icon: Icon, description }) => {
+                const selected = form.role === tier;
+                return <button key={tier} type="button" aria-pressed={selected} onClick={() => chooseTier(tier)} className={`flex min-h-40 flex-col justify-between gap-6 border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 sm:p-5 md:min-h-72 rounded-[20px] ${selected ? "border-ink-700 bg-ink-700 text-white" : "border-slate-200 bg-slate-50 text-slate-900 hover:border-ink-300 hover:bg-white"}`}>
+                  <span className={`flex size-11 items-center justify-center rounded-full transition-colors ${selected ? "bg-red-600 text-white" : "bg-white text-ink-700 ring-1 ring-slate-200"}`}><Icon size={22} aria-hidden="true" /></span>
+                  <span className="block">
+                    <span className="block text-base font-semibold">{label}</span>
+                    <span className={`mt-1 block text-sm ${selected ? "text-ink-100" : "text-slate-600"}`}>{description}</span>
+                    {selected && tier !== TIERS.admin && <span className="akay-check-in mt-3 inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20"><Check size={12} aria-hidden="true" /><span className="truncate">{homeName || "Facility selected"}</span><span aria-hidden="true">·</span><span className="shrink-0 font-semibold underline underline-offset-2">Change</span></span>}
+                    {selected && tier === TIERS.admin && <span className="akay-check-in mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/20"><Check size={12} aria-hidden="true" />Not tied to a facility</span>}
+                  </span>
+                </button>;
               })}</div>
-              : <div aria-busy="true" aria-label="Loading roles" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map(i => <span key={i} className={`block h-24 ${pulse}`} />)}</div>}
-            <FieldMessage>{errors.staff_role || errors.permissions}</FieldMessage>
-            {form.staff_role
-              ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); setErrors(e => ({ ...e, permissions: undefined })); }} />
-              : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
-          </>}
-
-          {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
+              <FieldMessage>{errors.role || errors.facility}</FieldMessage>
+            </div>
+            : <div className="mt-6 space-y-4 px-0 sm:px-2">{formSteps}</div>}
         </div>
-        </div>
-        </div>
-      </div></div>
+      </div>
 
       <div className="sticky bottom-0 border-t border-slate-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-4 lg:px-5">
         <div className="mx-auto flex w-full max-w-[1500px] justify-between gap-3">
-          <button type="button" disabled={!step || busy} onClick={() => goTo(step - 1)} className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm disabled:opacity-40">Back</button>
-          <button type="submit" disabled={busy || !loaded} className="rounded-lg bg-red-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</button>
+          <Button type="button" variant="secondary" disabled={!step || busy} onClick={() => goTo(step - 1)} className="px-6">Back</Button>
+          <Button type="submit" variant="brand" disabled={busy || !loaded} className="px-6">{busy ? "Saving…" : last ? id ? "Save Changes" : "Create Account" : "Continue"}</Button>
         </div>
       </div>
     </form>

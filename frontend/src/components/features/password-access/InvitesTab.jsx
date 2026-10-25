@@ -18,7 +18,7 @@ import useAccessRows from "./useAccessRows";
  * Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). Each row's ⋯ menu lists
  * the controls its status allows; choosing one opens a confirmation modal. The email is changed in Users.
  */
-export default function InvitesTab({ rolesData }) {
+export default function InvitesTab({ rolesData, toolbarLead = null }) {
   const notify = useNotification();
   const list = useAccessRows(getAccountInvites, notify.error);
   const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
@@ -85,7 +85,8 @@ export default function InvitesTab({ rolesData }) {
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email"
-        searchLabel="Search invites"
+        toolbarLead={toolbarLead}
+        panelLabelledBy="access-tab-invites"
       />
 
       <ConfirmationModal

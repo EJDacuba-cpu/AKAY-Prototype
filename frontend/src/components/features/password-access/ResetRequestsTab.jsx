@@ -19,7 +19,7 @@ import useAccessRows from "./useAccessRows";
  * Reset requests tab: rows from the reset request API, statuses from `resetRequestStatus` (spec F2). Each row's ⋯
  * menu lists the controls its status allows; choosing one opens a confirmation modal.
  */
-export default function ResetRequestsTab({ rolesData }) {
+export default function ResetRequestsTab({ rolesData, toolbarLead = null }) {
   const notify = useNotification();
   const list = useAccessRows(getPasswordResetRequests, notify.error);
   const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
@@ -91,7 +91,8 @@ export default function ResetRequestsTab({ rolesData }) {
         filters={list.filters}
         onFiltersChange={list.updateFilters}
         searchPlaceholder="Search by account or email"
-        searchLabel="Search reset requests"
+        toolbarLead={toolbarLead}
+        panelLabelledBy="access-tab-resets"
       />
 
       <ConfirmationModal

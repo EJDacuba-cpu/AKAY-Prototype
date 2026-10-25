@@ -2,8 +2,7 @@ import {
   ActionMenu,
   ConnectionErrorState,
   FixedTable,
-  SearchField,
-  SegmentedFilter,
+  ModuleToolbar,
   SoftLoadingArea,
   TablePagination,
 } from "../../common";
@@ -17,10 +16,14 @@ export const DEFAULT_FILTERS = { search: "", status: "all" };
 
 const STATUS_SEGMENTS = [{ value: "all", label: "All" }, ...STATUS_OPTIONS];
 
+// A denser table than the shared 56px rows: the account is two short lines and the status reason sits beside its chip.
+const COMPACT_ROW = 44;
+const COMPACT_HEAD = 36;
+
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
 
 /**
- * The shared list for both Password & Invites tabs: a toolbar (search and a status switch), then one card holding the
+ * The shared list for both Password & Invites tabs: one toolbar row (`toolbarLead`, search, and a Filters pop-up for status), then one card holding the
  * desktop table or the mobile rows. Statuses come from `statusOf` (accessRequestStatus.js) and the row's reason is
  * printed under the status chip, since it says what the admin can do next. Each row's single ⋯ menu is
  * `menuFor(row)`, a list of `ActionMenu` entries (every row has the menu; unavailable controls are greyed). A list
@@ -39,7 +42,8 @@ export default function AccessRequestTable({
   filters,
   onFiltersChange,
   searchPlaceholder,
-  searchLabel,
+  toolbarLead = null,
+  panelLabelledBy,
 }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
   const narrowed = Boolean(filters.search) || filters.status !== "all";
@@ -48,12 +52,14 @@ export default function AccessRequestTable({
     <div className="space-y-4">
       {/* Outside the loading area, so search and the status switch stay usable while a tab loads. */}
       <AccessToolbar
+        lead={toolbarLead}
         filters={filters}
         onFiltersChange={onFiltersChange}
         searchPlaceholder={searchPlaceholder}
-        searchLabel={searchLabel}
       />
 
+      {/* The panel the page's tabs control: the tabs sit in the toolbar above it, not inside it. */}
+      <div role={panelLabelledBy ? "tabpanel" : undefined} id={panelLabelledBy ? "access-tabpanel" : undefined} aria-labelledby={panelLabelledBy}>
       <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading..." scope="area">
         {!loading && (
           <div>
@@ -62,8 +68,8 @@ export default function AccessRequestTable({
               <ConnectionErrorState variant="error" onRetry={onRetry} />
             ) : (
               <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-                <div className="hidden md:block">
-                  <FixedTable minWidth="min-w-[920px]">
+                <div className="hidden lg:block">
+                  <FixedTable minWidth="min-w-[880px]" rowHeight={COMPACT_ROW} headHeight={COMPACT_HEAD}>
                     <TableHead columns={columns} />
                     <tbody className="divide-y divide-neutral-100">
                       {rows.length === 0 ? (
@@ -87,7 +93,7 @@ export default function AccessRequestTable({
                               </td>
                             ))}
                             <td className="px-4">
-                              <StatusCell status={statusOf(row)} />
+                              <StatusCell status={statusOf(row)} inline />
                             </td>
                             <td className="px-4 text-right">
                               <RowActions row={row} menuFor={menuFor} />
@@ -99,10 +105,10 @@ export default function AccessRequestTable({
                   </FixedTable>
                 </div>
 
-                <div className="divide-y divide-neutral-100 md:hidden">
+                <div className="grid divide-y divide-neutral-100 md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-neutral-100 md:[&>*:last-child:nth-child(odd)]:col-span-2 lg:hidden">
                   {rows.length === 0 ? (
                     <EmptyBody
-                      className="min-h-[240px] px-6 py-10"
+                      className="min-h-[240px] bg-white px-6 py-10 md:col-span-2"
                       message={emptyMessage}
                       hint={emptyHint}
                       narrowed={narrowed}
@@ -125,6 +131,7 @@ export default function AccessRequestTable({
           </div>
         )}
       </SoftLoadingArea>
+      </div>
     </div>
   );
 }
@@ -202,24 +209,29 @@ function titleCase(key) {
     .join(" ");
 }
 
-/** Search on the left, the status switch beside it. Both write to the same filters the table already reads. */
-function AccessToolbar({ filters, onFiltersChange, searchPlaceholder, searchLabel = "Search" }) {
+/**
+ * One horizontal row: the page's tab pills (`lead`), then the search and a Filters pop-up. The pop-up holds the status
+ * choice (All, Pending, In progress, Complete, Cancelled); both write to the same filters the table already reads.
+ */
+function AccessToolbar({ lead, filters, onFiltersChange, searchPlaceholder }) {
+  const statusLabel = STATUS_SEGMENTS.find((option) => option.value === filters.status)?.label;
+  const activeFilters = filters.status === "all" ? [] : [{ key: "status", label: statusLabel }];
+  const clearStatus = () => onFiltersChange({ status: "all" });
+
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <SearchField
-        value={filters.search}
-        onChange={(value) => onFiltersChange({ search: value })}
-        placeholder={searchPlaceholder}
-        label={searchLabel}
-        className="sm:max-w-[340px]"
-      />
-      <SegmentedFilter
-        label="Filter by status"
-        options={STATUS_SEGMENTS}
-        value={filters.status}
-        onChange={(value) => onFiltersChange({ status: value })}
-      />
-    </div>
+    <ModuleToolbar
+      heading={lead}
+      searchValue={filters.search}
+      onSearchChange={(value) => onFiltersChange({ search: value })}
+      searchPlaceholder={searchPlaceholder}
+      filters={[{ key: "status", type: "select", label: "Status", value: filters.status, resetValue: "all", options: STATUS_SEGMENTS }]}
+      activeFilterCount={activeFilters.length}
+      activeFilters={activeFilters}
+      onApplyFilters={(next) => onFiltersChange({ status: next.status })}
+      onClearFilters={clearStatus}
+      onRemoveFilter={clearStatus}
+      filterDescription="Show only requests with one status."
+    />
   );
 }
 
@@ -238,7 +250,15 @@ function TableHead({ columns }) {
 }
 
 /** The chip, with the reason (what happens next, or when it expires) quietly beneath it. */
-function StatusCell({ status }) {
+function StatusCell({ status, inline = false }) {
+  if (inline) {
+    return (
+      <div className="flex min-w-0 items-center gap-2.5">
+        <AccessStatusBadge {...status} />
+        {status.reason && <span className="min-w-0 truncate text-[12px] text-neutral-500">{status.reason}</span>}
+      </div>
+    );
+  }
   return (
     <div className="leading-tight">
       <AccessStatusBadge {...status} />
@@ -260,7 +280,7 @@ function EmptyBody({ message, hint, narrowed, onClear, className = "" }) {
         <button
           type="button"
           onClick={onClear}
-          className={`mt-4 h-8 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-800 shadow-xs transition-colors hover:border-neutral-300 hover:bg-neutral-50 ${FOCUS_RING}`}
+          className={`mt-4 h-8 rounded-full border border-neutral-200 bg-white px-4 text-[13px] font-medium text-neutral-800 shadow-xs transition-colors hover:border-neutral-300 hover:bg-neutral-50 ${FOCUS_RING}`}
         >
           Clear search and status
         </button>
@@ -273,13 +293,13 @@ function RowCard({ row, columns, statusOf, menuFor }) {
   const [account, ...rest] = columns;
   const status = statusOf(row);
   return (
-    <div className="space-y-3 px-4 py-4">
+    <div className="space-y-3 bg-white px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">{account.render(row)}</div>
         <RowActions row={row} menuFor={menuFor} />
       </div>
       <StatusCell status={status} />
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-neutral-50 px-3 py-2.5 text-[12px]">
         {rest.map((column) => (
           <div key={column.key} className="contents">
             <dt className="text-neutral-500">{column.label}</dt>
