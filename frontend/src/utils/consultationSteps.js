@@ -400,6 +400,16 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
   }
+  if (
+    key.startsWith("maternalData.") ||
+    key.startsWith("maternal_data.") ||
+    key === "expectedDeliveryDate" ||
+    key === "aog" ||
+    key === "prenatalIntent" ||
+    key === "monitoring_data.prenatalIntent"
+  ) {
+    return programStepKey("Maternal");
+  }
   if (key === "vaccineEntries") return programStepKey("Immunization");
   // The Reporting entries (and any server error on diagnoses) live on step 3.
   if (key.startsWith("reportingEntry.") && key.includes(".referral.")) return OUTCOME_STEP;
@@ -424,6 +434,8 @@ const SERVER_ERROR_KEYS = {
   "monitoring_data.followUpReason": "followUpReason",
   "monitoring_data.followUpDate": "followUpDate",
   "monitoring_data.followUpTime": "followUpTime",
+  "monitoring_data.prenatalIntent": "prenatalIntent",
+  "maternal_data.lmp": "maternalData.lmp",
   "referral.reason_for_referral": "reasonForReferral",
   "referral.rural_health_unit_id": "receivingRhuId",
   "referral.urgency_level": "urgencyLevel",

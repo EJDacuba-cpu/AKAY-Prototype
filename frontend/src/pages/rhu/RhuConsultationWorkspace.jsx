@@ -10,6 +10,7 @@ import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
+import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
   ConsultationActionBar,
   ConsultationStepHeading,
@@ -28,9 +29,23 @@ import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
   lockProgramsWhilePatientLoads,
+  programEnrollLabel,
   restoredClassification,
   toggleConsultationProgram,
 } from "../../utils/consultationPrograms";
+import {
+  EMPTY_MATERNAL_DATA,
+  applyRiskFactorChange,
+  computeAogFromLmp,
+  computeEddFromLmp,
+  mergeMaternalData,
+  sanitizeRiskAssessment,
+  thisVisitDoseEntry,
+} from "../../utils/prenatalForm";
+import { getPrenatalEnrollment, prenatalProgramCopy } from "../../utils/prenatalEnrollment";
+import { applyRiskFlags, getMaternalRiskFlags } from "../../utils/maternalRisk";
+import { isPatientMale } from "../../utils/programApplicability";
+import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   ASSESSMENT_STEP,
   EXIT_STEP,
@@ -78,7 +93,7 @@ import useDraftAutosave from "../../hooks/useDraftAutosave";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import { getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { listHealthRecordDrafts, getHealthRecordDraft } from "../../services/healthRecordDraftService";
-import { createRhuHealthRecord } from "../../services/healthRecordService";
+import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { getRhuMedicines, loadMedicineAvailability } from "../../services/medicineService";
 import { listRhuVisits } from "../../services/rhuVisitService";
@@ -87,6 +102,7 @@ import useAccess from "../../hooks/useAccess";
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
 const WIZARD_REVIEW = "review";
+const EMPTY_HEALTH_RECORDS = [];
 const CHILD_VACCINE_OPTIONS = [
   "BCG",
   "Hepatitis B",
@@ -135,7 +151,9 @@ export default function RhuConsultationWorkspace() {
   const [primaryProgram, setPrimaryProgram] = useState("");
   const [includeTb, setIncludeTb] = useState(false);
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
-  const [maternalData, setMaternalData] = useState({ lmp: "", expectedDeliveryDate: "", aog: "", fht: "", gravida: "", para: "", term: "", preterm: "", abortion: "", living: "" });
+  const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  const [aog, setAog] = useState("");
   const [familyPlanningData, setFamilyPlanningData] = useState({ clientType: "", methodUsed: "", actionTaken: "" });
   const [immunizationEntries, setImmunizationEntries] = useState([]);
   const [diagnoses, setDiagnoses] = useState([]);
@@ -163,6 +181,17 @@ export default function RhuConsultationWorkspace() {
     enabled: Boolean(patientId),
   });
   const patient = patientQuery.data || null;
+  const recordsQuery = useQuery({
+    queryKey: ["rhu-consultation-records", patientId],
+    queryFn: () => getHealthRecordsByPatient(patientId),
+    enabled: Boolean(patientId) && canViewBackground,
+  });
+  const patientRecords = recordsQuery.data ?? EMPTY_HEALTH_RECORDS;
+  const prenatalEnrollment = useMemo(
+    () => getPrenatalEnrollment(patient || {}, patientRecords),
+    [patient, patientRecords],
+  );
+  const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +237,31 @@ export default function RhuConsultationWorkspace() {
     if (informant || !patient) return;
     setInformant(defaultInformant(patient, new Date()));
   }, [patient, informant]);
+
+  useEffect(() => {
+    if (!maternalData.lmp) {
+      setExpectedDeliveryDate("");
+      setAog("");
+      return;
+    }
+    setExpectedDeliveryDate(computeEddFromLmp(maternalData.lmp));
+    setAog(computeAogFromLmp(maternalData.lmp, new Date()));
+  }, [maternalData.lmp]);
+
+  useEffect(() => {
+    if (selectedPrograms.includes("Maternal")) applyPrenatalPrefill();
+  }, [prenatalEnrollment.prefill, selectedPrograms]);
+
+  useEffect(() => {
+    if (!selectedPrograms.includes("Maternal") || !weight || !height) return;
+    const parsedWeight = Number(weight);
+    const parsedHeight = Number(height);
+    if (!Number.isFinite(parsedWeight) || !Number.isFinite(parsedHeight)) return;
+    if (parsedWeight <= 0 || parsedHeight <= 0) return;
+    const heightInMeters = parsedHeight / 100;
+    const nextBmi = (parsedWeight / (heightInMeters * heightInMeters)).toFixed(1);
+    setMaternalData((prev) => (prev.bmi === nextBmi ? prev : { ...prev, bmi: nextBmi }));
+  }, [height, selectedPrograms, weight]);
 
   useEffect(() => {
     if (!followUpTaskId && !patientId) return;
@@ -275,6 +329,9 @@ export default function RhuConsultationWorkspace() {
       includeTb,
       tbData: includeTb ? tbData : null,
       maternalData,
+      expectedDeliveryDate,
+      aog,
+      prenatalIntent,
       familyPlanningData,
       immunizationData: { vaccineEntries: immunizationEntries },
       diagnoses,
@@ -312,6 +369,9 @@ export default function RhuConsultationWorkspace() {
       includeTb,
       tbData,
       maternalData,
+      expectedDeliveryDate,
+      aog,
+      prenatalIntent,
       familyPlanningData,
       immunizationEntries,
       diagnoses,
@@ -377,7 +437,9 @@ export default function RhuConsultationWorkspace() {
     setPrimaryProgram(payload.primaryProgram || programs[0] || "");
     setIncludeTb(Boolean(payload.includeTb || payload.tbData));
     if (payload.tbData) setTbData(normalizeTbData(payload.tbData));
-    if (payload.maternalData) setMaternalData((current) => ({ ...current, ...payload.maternalData }));
+    if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
+    if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
+    if (payload.aog) setAog(payload.aog);
     if (payload.familyPlanningData) setFamilyPlanningData((current) => ({ ...current, ...payload.familyPlanningData }));
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
     setDiagnoses(Array.isArray(payload.diagnoses) ? payload.diagnoses : []);
@@ -422,6 +484,11 @@ export default function RhuConsultationWorkspace() {
     const errors = {};
     if (currentStepKey === INTERVIEW_STEP && !String(chiefComplaint).trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
+    }
+    if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
+      if (prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()) {
+        errors["maternalData.lmp"] = "Record the last menstrual period to enroll in prenatal care.";
+      }
     }
     if (includeTb && currentStepKey === NEXT_STEP && canFinalize) {
       if (!String(tbData.diagnosis?.tbCaseNumber || "").trim()) {
@@ -514,10 +581,92 @@ export default function RhuConsultationWorkspace() {
     setFormStep(next);
   }
 
+  function handleMaternalChange(field, value) {
+    clearError(`maternalData.${field}`);
+    setMaternalData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleNestedMaternalChange(group, field, value) {
+    setMaternalData((prev) => ({
+      ...prev,
+      [group]: {
+        ...(prev[group] || EMPTY_MATERNAL_DATA[group] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  function handleRiskAssessmentChange(key, checked) {
+    setMaternalData((previous) => ({
+      ...previous,
+      riskAssessment: applyRiskFactorChange(previous.riskAssessment, key, checked),
+    }));
+  }
+
+  function applyPrenatalPrefill() {
+    if (!prenatalEnrollment.enrolled || !prenatalEnrollment.prefill) return;
+    setMaternalData((current) => (current.lmp ? current : prenatalEnrollment.prefill));
+    const prefill = prenatalEnrollment.prefill;
+    if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
+    if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function handleProgramSelect(key) {
+    if (key === "Maternal" && isPatientMale(patient)) return;
+    const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
+    setSelectedPrograms(next.selectedPrograms);
+    setPrimaryProgram(next.primaryProgram);
+    if (key === "Maternal" && next.selectedPrograms.includes("Maternal")) {
+      applyPrenatalPrefill();
+    }
+  }
+
+  function buildRhuMaternalPayload() {
+    const thisVisitImmunization = {
+      ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
+      ...(maternalData.immunizationThisVisit || {}),
+    };
+    const riskFlags = getMaternalRiskFlags({
+      birthdate: patient?.birthdate || patient?.birthDate || patient?.dateOfBirth,
+      visitHeight: height,
+      recordedHeight: getLatestRecordedHeight(patientRecords),
+      referenceDate: new Date(),
+    });
+    return {
+      ...mergeMaternalData(maternalData),
+      expectedDeliveryDate,
+      aog,
+      previous_fp_method_used: maternalData.previousFpMethodUsed || "",
+      previous_fp_method_other: maternalData.previousFpMethodOther || "",
+      riskAssessment: applyRiskFlags(
+        {
+          ...EMPTY_MATERNAL_DATA.riskAssessment,
+          ...sanitizeRiskAssessment(maternalData.riskAssessment),
+        },
+        riskFlags,
+      ),
+      immunizationThisVisit: thisVisitImmunization,
+      tetanusToxoidStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+        ...(maternalData.tetanusToxoidStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusToxoidStatus"),
+      },
+      tetanusDiphtheriaStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
+        ...(maternalData.tetanusDiphtheriaStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusDiphtheriaStatus"),
+      },
+      tpal: [maternalData.term || 0, maternalData.preterm || 0, maternalData.abortion || 0, maternalData.living || 0].join("-"),
+    };
+  }
+
   async function saveRecord() {
     const errors = {
       ...validateCurrent(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
+      ...(selectedPrograms.includes("Maternal") && prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()
+        ? { "maternalData.lmp": "Record the last menstrual period to enroll in prenatal care." }
+        : {}),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
@@ -532,6 +681,7 @@ export default function RhuConsultationWorkspace() {
         {
           patientId: Number(patientId),
           consultationWorkflow: "rhu_itr_v1",
+          category: primaryProgram ? PROGRAM_CLASSIFICATIONS[primaryProgram] : "General Consultation",
           rhuVisitId: visit.id,
           chiefComplaint,
           summaryOfPresentIllness,
@@ -555,7 +705,10 @@ export default function RhuConsultationWorkspace() {
           })),
           prescribedMedicines,
           tbData: includeTb ? tbData : null,
-          maternalData: selectedPrograms.includes("Maternal") ? maternalData : null,
+          maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
+          expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
+          aog: selectedPrograms.includes("Maternal") ? aog : undefined,
+          prenatalIntent: selectedPrograms.includes("Maternal") ? prenatalIntent : undefined,
           familyPlanningData: selectedPrograms.includes("Family Planning") ? familyPlanningData : null,
           immunizationData: selectedPrograms.includes("EPI") ? { vaccineEntries: immunizationEntries } : null,
           selectedPrograms,
@@ -593,11 +746,30 @@ export default function RhuConsultationWorkspace() {
   }
 
   const wizardPrograms = lockProgramsWhilePatientLoads(
-    Object.entries(PROGRAM_CLASSIFICATIONS).map(([key]) => ({
-      key,
-      title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? "Prenatal" : key,
-      description: "",
-    })),
+    Object.entries(PROGRAM_CLASSIFICATIONS).map(([key]) => {
+      const maternalCopy = key === "Maternal"
+        ? prenatalProgramCopy({
+            enrolled: prenatalEnrollment.enrolled,
+            included: selectedPrograms.includes("Maternal"),
+          })
+        : null;
+      const male = key === "Maternal" && isPatientMale(patient);
+      return {
+        key,
+        title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? "Prenatal Care" : key,
+        description: key === "Maternal"
+          ? prenatalEnrollment.enrolled
+            ? "Active prenatal care from a finalized consultation. Continue this visit without starting a second enrollment."
+            : "Optional. Enrollment becomes Active only after this consultation is finalized."
+          : "",
+        enrollLabel: maternalCopy?.enrollLabel || programEnrollLabel(key),
+        statusLabel: maternalCopy?.statusLabel,
+        statusTone: maternalCopy?.statusTone,
+        disabled: male,
+        disabledReason: male ? "Prenatal Care records are for pregnant clients. This patient is recorded as male." : "",
+        disabledNote: male ? "Not applicable to this patient" : "",
+      };
+    }),
     !patient,
   );
   const stepHeading = resolveStepHeading({
@@ -645,7 +817,7 @@ export default function RhuConsultationWorkspace() {
       title: step.label,
       stepKey: step.key,
       rows: programReviewRows({
-        Maternal: maternalData,
+        Maternal: { ...maternalData, expectedDeliveryDate, aog },
         "Family Planning": familyPlanningData,
         Immunization: { vaccineEntries: immunizationEntries },
       }[step.classification]),
@@ -819,19 +991,27 @@ export default function RhuConsultationWorkspace() {
                 </fieldset>
               )}
               {programFormSteps.some((step) => step.key === currentStepKey) && currentStepKey === programStepKey("Maternal") && (
-                <fieldset disabled={assessmentLocked} className="border border-[#E5E7EB] bg-white p-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <DatePickerField label="LMP" value={maternalData.lmp} onChange={(value) => setMaternalData((current) => ({ ...current, lmp: value }))} />
-                    <DatePickerField label="EDC" value={maternalData.expectedDeliveryDate} onChange={(value) => setMaternalData((current) => ({ ...current, expectedDeliveryDate: value }))} />
-                    <label className="block text-xs">
-                      <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">AOG</span>
-                      <input value={maternalData.aog} onChange={(event) => setMaternalData((current) => ({ ...current, aog: event.target.value }))} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
-                    </label>
-                    <label className="block text-xs">
-                      <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">FHT</span>
-                      <input value={maternalData.fht} onChange={(event) => setMaternalData((current) => ({ ...current, fht: event.target.value }))} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
-                    </label>
-                  </div>
+                <fieldset disabled={assessmentLocked}>
+                  <PrenatalAssessmentForm
+                    maternalData={maternalData}
+                    expectedDeliveryDate={expectedDeliveryDate}
+                    aog={aog}
+                    onMaternalChange={handleMaternalChange}
+                    onNestedChange={handleNestedMaternalChange}
+                    onRiskChange={handleRiskAssessmentChange}
+                    onExpectedDeliveryDateChange={setExpectedDeliveryDate}
+                    onAogChange={setAog}
+                    locked={assessmentLocked}
+                    errors={validationErrors}
+                    history={{
+                      background: canViewBackground ? patient?.medicalBackground : null,
+                      update: canViewBackground ? backgroundUpdate : null,
+                      locked: !canViewBackground,
+                      canReview: !isPatientMale(patient),
+                      editLink: patientId ? `/rhu/patients/${patientId}` : undefined,
+                      onReview: () => goToStepKey(HISTORY_STEP),
+                    }}
+                  />
                 </fieldset>
               )}
               {programFormSteps.some((step) => step.key === currentStepKey) && currentStepKey === programStepKey("Family Planning") && (
@@ -956,14 +1136,12 @@ export default function RhuConsultationWorkspace() {
             <div className="min-w-0">
               {currentStepKey === INTERVIEW_STEP && (
                 <ConsultationProgramPanel
+                  heading="Health Services"
+                  description="Prenatal enrollment is optional. Clicking Enroll adds prenatal fields to this consultation. Prenatal becomes Active only after a clinician finalizes the visit."
                   programs={wizardPrograms}
                   selected={selectedPrograms}
                   primary={primaryProgram}
-                  onSelect={(key) => {
-                    const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
-                    setSelectedPrograms(next.selectedPrograms);
-                    setPrimaryProgram(next.primaryProgram);
-                  }}
+                  onSelect={handleProgramSelect}
                   onPrimaryChange={setPrimaryProgram}
                 />
               )}

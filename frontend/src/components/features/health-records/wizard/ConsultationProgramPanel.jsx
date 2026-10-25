@@ -17,7 +17,7 @@ import { Button } from "../../../ui/button";
  */
 
 /**
- * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote }]
+ * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone }]
  * @param selected  Active program keys
  * @param primary   the primary program key
  * @param onSelect  enrolls the service, or removes it when it is Active
@@ -29,22 +29,24 @@ export default function ConsultationProgramPanel({
   onSelect,
   onPrimaryChange,
   error,
+  heading = "Barangay Health Services",
+  description = "Choose services provided during this visit. They save with the consultation. Leave all unselected for a general consultation.",
 }) {
   const multiple = selected.length >= 2;
 
   return (
     <aside
-      aria-label="Barangay Health Services"
+      aria-label={heading}
       data-field="healthRecordType"
       className="min-w-0 rounded-none border border-[#E5E7EB] bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
     >
       <div className="flex items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
         <div className="min-w-0">
           <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
-            Barangay Health Services
+            {heading}
           </h2>
           <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            Choose services provided during this visit. They save with the consultation. Leave all unselected for a general consultation.
+            {description}
           </p>
         </div>
         <span className="mt-0.5 inline-flex min-w-[20px] flex-none items-center justify-center rounded-sm bg-[#F3F4F6] px-1.5 py-0.5 text-[11px] font-semibold text-[#374151]">
@@ -55,6 +57,14 @@ export default function ConsultationProgramPanel({
       <div>
         {programs.map((program) => {
           const active = selected.includes(program.key);
+          const statusLabel = program.statusLabel || (active ? "Included" : "Not included");
+          const statusTone = program.statusTone || (active ? "active" : "neutral");
+          const badgeClass =
+            statusTone === "active"
+              ? "bg-[#DCFCE7] text-[#166534]"
+              : statusTone === "included"
+                ? "bg-[#E0F2FE] text-[#075985]"
+                : "bg-[#F3F4F6] text-[#374151]";
           return (
             <div
               key={program.key}
@@ -67,11 +77,9 @@ export default function ConsultationProgramPanel({
                   {program.title}
                 </p>
                 <span
-                  className={`inline-flex flex-none items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold transition-colors duration-300 motion-reduce:transition-none ${
-                    active ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#F3F4F6] text-[#374151]"
-                  }`}
+                  className={`inline-flex flex-none items-center rounded-sm px-1.5 py-0.5 text-[11px] font-semibold transition-colors duration-300 motion-reduce:transition-none ${badgeClass}`}
                 >
-                  {active ? "Included" : "Not included"}
+                  {statusLabel}
                 </span>
               </div>
               {program.description && (
@@ -121,7 +129,7 @@ export default function ConsultationProgramPanel({
                     : "border-[#DC2626] text-[#DC2626] hover:bg-red-50"
                 }`}
               >
-                {active ? "Remove" : programEnrollLabel(program.key)}
+                {active ? "Remove" : program.enrollLabel || programEnrollLabel(program.key)}
               </Button>
             </div>
           );

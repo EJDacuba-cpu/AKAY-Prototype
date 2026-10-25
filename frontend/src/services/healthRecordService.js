@@ -549,6 +549,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     ...sourceMonitoringData,
     selectedPrograms: programs,
     primaryProgram: getPrimaryProgram(record) || sourceMonitoringData.primaryProgram || "",
+    prenatalIntent: record.prenatalIntent || sourceMonitoringData.prenatalIntent || null,
     followUpStatus: record.followUpStatus || record.status || null,
     followUpDate: record.followUpDate || null,
     followUpTime: record.followUpTime || null,

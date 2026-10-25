@@ -352,6 +352,8 @@ test("each validation error is owned by the screen that shows its field", () => 
   assert.equal(getErrorOwnerStepKey("reportingEntry.r1.reportIn"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("diagnoses.0.name"), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("familyPlanningMethodUsed"), FP);
+  assert.equal(getErrorOwnerStepKey("maternalData.lmp"), programStepKey("Maternal"));
+  assert.equal(getErrorOwnerStepKey("monitoring_data.prenatalIntent"), programStepKey("Maternal"));
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
   // Actions Taken (and the medicines dispensed) sit on Medication, Treatment & Next Steps.
   assert.equal(getErrorOwnerStepKey("dispensedMedicines"), OUTCOME_STEP);

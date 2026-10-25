@@ -56,6 +56,8 @@ const PROGRAM_ENROLL_LABELS = Object.freeze({
 });
 
 /** The label of the button that enrolls the patient in a service for this visit. */
-export function programEnrollLabel(programKey) {
+export function programEnrollLabel(programKey, { enrolled } = {}) {
+  if (programKey === "Maternal" && enrolled === true) return "Continue Prenatal Care";
+  if (programKey === "Maternal" && enrolled === false) return "Enroll in Prenatal Care";
   return PROGRAM_ENROLL_LABELS[programKey] || "Enroll";
 }

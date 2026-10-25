@@ -218,7 +218,13 @@ function buildMaternalEntry(patient, records, today) {
     statusTone,
     facts,
     lastVisit: getRecordDateValue(latest),
-    nextVisit: "",
+    nextVisit:
+      latest.followUpDate ||
+      latest.follow_up_date ||
+      latest.monitoringData?.followUpDate ||
+      latest.monitoring_data?.followUpDate ||
+      latestData.nextAppointmentDate ||
+      "",
     flags,
     action,
     records: maternalRecords,

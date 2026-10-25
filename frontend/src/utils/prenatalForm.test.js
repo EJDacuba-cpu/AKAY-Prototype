@@ -9,6 +9,10 @@ import {
   MATERNAL_RISK_PARENTS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyRiskFactorChange,
+  computeAogFromLmp,
+  computeEddFromLmp,
+  continuePrenatalPrefill,
+  mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "./prenatalForm.js";
@@ -149,4 +153,39 @@ test("filing the dose keeps earlier doses on the record", () => {
     ...thisVisitDoseEntry({ type: "tt2", dateGiven: "2026-09-22" }, "tetanusToxoidStatus"),
   };
   assert.deepEqual(merged, { tt1: "2026-05-01", tt2: "2026-09-22", tt3: "" });
+});
+
+test("Naegele's rule fills EDC from LMP", () => {
+  assert.equal(computeEddFromLmp("2026-03-01"), "2026-12-08");
+  assert.equal(computeEddFromLmp(""), "");
+});
+
+test("AOG is counted from LMP to the visit date", () => {
+  assert.equal(computeAogFromLmp("2026-03-01", "2026-06-07"), "14 weeks");
+});
+
+test("continue prefill keeps pregnancy facts and clears this-visit findings", () => {
+  const next = continuePrenatalPrefill({
+    maternalData: {
+      lmp: "2026-03-01",
+      gravida: "2",
+      fht: "140 bpm",
+      immunizationThisVisit: { type: "tt1", dateGiven: "2026-04-01" },
+      tetanusToxoidStatus: { tt1: "2026-04-01" },
+    },
+    expectedDeliveryDate: "2026-12-08",
+  });
+  assert.equal(next.lmp, "2026-03-01");
+  assert.equal(next.gravida, "2");
+  assert.equal(next.expectedDeliveryDate, "2026-12-08");
+  assert.equal(next.fht, "");
+  assert.equal(next.immunizationThisVisit.type, "");
+  assert.equal(next.tetanusToxoidStatus.tt1, "2026-04-01");
+});
+
+test("mergeMaternalData drops retired risk keys", () => {
+  const merged = mergeMaternalData({ lmp: "2026-03-01", riskAssessment: { diabetes: true, previousCs: true } });
+  assert.equal(merged.lmp, "2026-03-01");
+  assert.equal(merged.riskAssessment.previousCs, true);
+  assert.equal("diabetes" in merged.riskAssessment, false);
 });

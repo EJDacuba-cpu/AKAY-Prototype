@@ -28,11 +28,13 @@ test("maternal stays Prenatal on EDD alone, with no delivery date or postpartum 
       selectedPrograms: ["Maternal"],
       maternalData: { gravida: "2", para: "1" },
       expectedDeliveryDate: "2026-12-01",
+      followUpDate: "2026-07-15",
     },
   ];
   const maternal = entry(getCareTracking(woman(), records, new Date("2026-09-01")), "maternal");
   assert.equal(maternal.status, "Prenatal");
   assert.ok(maternal.facts.some((f) => f.label === "EDD" && f.value === "2026-12-01"));
+  assert.equal(maternal.nextVisit, "2026-07-15");
 });
 
 test("maternal switches to Postpartum only once an actual delivery date is recorded", () => {

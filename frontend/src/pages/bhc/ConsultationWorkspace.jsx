@@ -70,15 +70,17 @@ import {
 } from "../../utils/profileNavigation";
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
+  EMPTY_MATERNAL_DATA,
   MATERNAL_LAB_TEST_KEYS,
-  MATERNAL_LAB_TESTS,
-  MATERNAL_RISK_GROUPS,
   MATERNAL_RISK_KEYS,
-  PRENATAL_IMMUNIZATION_OPTIONS,
   applyRiskFactorChange,
+  computeAogFromLmp,
+  computeEddFromLmp,
+  mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
+import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
   localConsultationKey,
 } from "../../utils/savedDrafts";
@@ -93,7 +95,6 @@ import BackgroundConflictPanel from "../../components/features/health-records/wi
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import LegacyBackgroundRecoveryPanel from "../../components/features/health-records/wizard/LegacyBackgroundRecoveryPanel";
 import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
-import PrenatalHistorySummary from "../../components/features/patients/history/PrenatalHistorySummary";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
 import { canUpdateBackground } from "../../utils/backgroundEditing";
 import { saveDraftBeforeNavigation } from "../../utils/backgroundNavigation";
@@ -363,116 +364,6 @@ const EMPTY_FAMILY_PLANNING_DATA = {
   medicinesSupplies: "",
 };
 
-const EMPTY_MATERNAL_DATA = {
-  lmp: "",
-  pmp: "",
-  cycleDuration: "",
-  // Actual date of delivery, recorded on a Postpartum visit. Drives the
-  // Care & Programs "Postpartum" -> "Completed" transition; EDD alone never
-  // does. Optional - a Postpartum visit without it stays "Postpartum" with a
-  // "Delivery date not recorded" flag on the patient's Care & Programs tab.
-  deliveryDate: "",
-  gravida: "",
-  para: "",
-  term: "",
-  preterm: "",
-  abortion: "",
-  living: "",
-  bmi: "",
-  // Fetal heart tone, e.g. "140 bpm".
-  fht: "",
-  treatment: "",
-  previousFpMethodUsed: "",
-  previousFpMethodOther: "",
-  previousPregnancyHistory: [],
-  // Risk Code D is the parent of the three previous-pregnancy items. Age and
-  // height risk are computed when the record is saved, never ticked.
-  riskAssessment: {
-    ageRisk: false,
-    heightRisk: false,
-    grandMultipara: false,
-    previousPregnancyComplications: false,
-    previousCs: false,
-    recurrentMiscarriageOrStillbirth: false,
-    postpartumHemorrhage: false,
-  },
-  laboratoryResults: {
-    hemoglobin: "",
-    cbc: "",
-    hbsag: "",
-    bloodType: "",
-    hiv: "",
-    syphilis: "",
-    urinalysis: "",
-  },
-  // The date each laboratory result above was taken. Kept beside
-  // laboratoryResults rather than inside it, so records that stored a plain
-  // result string for each test keep reading exactly as before.
-  laboratoryResultDates: {
-    hemoglobin: "",
-    cbc: "",
-    hbsag: "",
-    bloodType: "",
-    hiv: "",
-    syphilis: "",
-    urinalysis: "",
-  },
-  // The TT/Td dose given AT THIS VISIT. On save its date is also written into
-  // tetanusToxoidStatus / tetanusDiphtheriaStatus under that dose, so the
-  // existing TT/Td history and its readers keep working unchanged.
-  immunizationThisVisit: {
-    type: "",
-    doseStatus: "",
-    dateGiven: "",
-  },
-  tetanusToxoidStatus: {
-    tt1: "",
-    tt2: "",
-    tt3: "",
-    tt4: "",
-    tt5: "",
-  },
-  // TT and Td are two distinct, separate 5-dose schedules, not a
-  // rename/replacement of one another - both are tracked independently.
-  tetanusDiphtheriaStatus: {
-    td1: "",
-    td2: "",
-    td3: "",
-    td4: "",
-    td5: "",
-  },
-  ultrasound: {
-    result: "",
-    dateDone: "",
-  },
-};
-
-// The red sub-heading the prenatal form uses inside a section.
-const MATERNAL_EYEBROW_CLASS =
-  "mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#DC2626]";
-// FieldInput's own input style, for a table cell whose column header labels it.
-const MATERNAL_TABLE_INPUT_CLASS =
-  "h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
-
-/**
- * OB score components, recorded as separate counts rather than one string.
- *
- * These bind to the maternalData fields the record already stored, so the
- * `tpal` value sent with the record ("term-preterm-abortion-living") keeps
- * being derived from them and no new payload key is introduced.
- */
-const OB_SCORE_TPAL_FIELDS = [
-  { key: "term", label: "Term" },
-  { key: "preterm", label: "Preterm" },
-  { key: "abortion", label: "Abortion" },
-  { key: "living", label: "Living" },
-];
-
-const OB_SCORE_GP_FIELDS = [
-  { key: "gravida", label: "Gravida (G)", placeholder: "e.g. 2" },
-  { key: "para", label: "Para (P)", placeholder: "e.g. 1" },
-];
-
 function toDateInputValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
     2,
@@ -486,76 +377,6 @@ function toTimeInputValue(date = new Date()) {
   ).padStart(2, "0")}`;
 }
 
-function mergeMaternalData(data = {}, fallback = {}) {
-  const source = data || {};
-  const legacyRiskAssessment = source.riskAssessment || source.medicalHistory || {};
-  const previousPregnancyHistory = Array.isArray(
-    source.previousPregnancyHistory,
-  )
-    ? source.previousPregnancyHistory
-    : Array.isArray(source.previous_pregnancy_history)
-      ? source.previous_pregnancy_history
-      : [];
-  return {
-    ...EMPTY_MATERNAL_DATA,
-    ...source,
-    lmp: source.lmp || fallback.lmp || "",
-    pmp: source.pmp || fallback.pmp || "",
-    cycleDuration: source.cycleDuration || fallback.cycleDuration || "",
-    gravida: source.gravida || fallback.gravida || "",
-    para: source.para || fallback.para || "",
-    term: source.term || fallback.term || "",
-    preterm: source.preterm || fallback.preterm || "",
-    abortion: source.abortion || fallback.abortion || "",
-    living: source.living || fallback.living || "",
-    bmi: source.bmi || fallback.bmi || "",
-    fht: source.fht || fallback.fht || "",
-    treatment: source.treatment || fallback.treatment || "",
-    previousFpMethodUsed:
-      source.previousFpMethodUsed ||
-      source.previous_fp_method_used ||
-      fallback.previousFpMethodUsed ||
-      "",
-    previousFpMethodOther:
-      source.previousFpMethodOther ||
-      source.previous_fp_method_other ||
-      fallback.previousFpMethodOther ||
-      "",
-    previousPregnancyHistory,
-    // Keys the form no longer records (diabetes, smoker, ...) are dropped so a
-    // resumed draft or an earlier record never carries them into a new record.
-    riskAssessment: {
-      ...EMPTY_MATERNAL_DATA.riskAssessment,
-      ...sanitizeRiskAssessment(legacyRiskAssessment),
-    },
-    laboratoryResults: {
-      ...EMPTY_MATERNAL_DATA.laboratoryResults,
-      ...(source.laboratoryResults || {}),
-    },
-    laboratoryResultDates: {
-      ...EMPTY_MATERNAL_DATA.laboratoryResultDates,
-      ...(source.laboratoryResultDates || {}),
-    },
-    immunizationThisVisit: {
-      ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
-      ...(source.immunizationThisVisit || {}),
-    },
-    tetanusToxoidStatus: {
-      ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
-      ...(source.tetanus_toxoid_status || {}),
-      ...(source.tetanusToxoidStatus || {}),
-    },
-    tetanusDiphtheriaStatus: {
-      ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
-      ...(source.tetanus_diphtheria_status || {}),
-      ...(source.tetanusDiphtheriaStatus || {}),
-    },
-    ultrasound: {
-      ...EMPTY_MATERNAL_DATA.ultrasound,
-      ...(source.ultrasound || {}),
-    },
-  };
-}
 
 const EMPTY_IMMUNIZATION_DATA = {
   bcg_vaccine: false,
@@ -2569,39 +2390,8 @@ export default function ConsultationWorkspace() {
       return;
     }
 
-    const lmpDate = new Date(recordLmp);
-    const visitDate = dateOfVisit ? new Date(dateOfVisit) : new Date();
-
-    if (Number.isNaN(lmpDate.getTime())) {
-      setExpectedDeliveryDate("Invalid Date");
-      setAog("Invalid Date");
-      return;
-    }
-
-    const edd = new Date(lmpDate);
-    edd.setDate(edd.getDate() + 7);
-    edd.setMonth(edd.getMonth() - 3);
-    edd.setFullYear(edd.getFullYear() + 1);
-    setExpectedDeliveryDate(edd.toISOString().split("T")[0]);
-
-    const timeDiff = visitDate.getTime() - lmpDate.getTime();
-    if (timeDiff < 0) {
-      setAog("Invalid (LMP is ahead of visit)");
-      return;
-    }
-
-    const totalDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-    const weeks = Math.floor(totalDays / 7);
-    const days = totalDays % 7;
-
-    if (weeks > 42) {
-      setAog("Post-term (>42 Weeks)");
-      return;
-    }
-
-    const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
-    const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
-    setAog(`${weekStr}${dayStr}`);
+    setExpectedDeliveryDate(computeEddFromLmp(recordLmp));
+    setAog(computeAogFromLmp(recordLmp, dateOfVisit ? new Date(dateOfVisit) : new Date()));
   }, [maternalData.lmp, dateOfVisit]);
 
   useEffect(() => {
@@ -4612,315 +4402,27 @@ export default function ConsultationWorkspace() {
         {!patientGateLocked && isMaternal && !selectedPatientIsMale && showProgramBlock("Maternal") && (
           <>
             {showMaternalPatientWarning && <MaternalClassificationWarning />}
-
-            <FormSection title="Patient History" subtitle="Review the shared history before completing this prenatal assessment.">
-              {/* Read-only here; edited in Patient Background (save draft, then go). */}
-              <PrenatalHistorySummary
-                background={canViewBackground ? selectedPatient?.medicalBackground : null}
-                update={canViewBackground ? backgroundUpdate : null}
-                locked={!canViewBackground}
-                canReview={historySections.includes("obstetric")}
-                editLink={selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined}
-                backgroundEditing
-                onEditBackground={editBackground}
-                editBusy={leavingConsultation}
-              />
-            </FormSection>
-
-            <FormSection
-              title="Pregnancy / Obstetric Information"
-              subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment. Previous pregnancies use the shared history above."
-              delay={3}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="space-y-5">
-                  <div>
-                    <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
-                    <div className="grid gap-4 @xl:grid-cols-2">
-                      <DatePickerField
-                        label="LMP"
-                        value={maternalData.lmp}
-                        onChange={(value) => handleMaternalChange("lmp", value)}
-                      />
-                      {/* Filled from LMP (Naegele's rule), and still editable. */}
-                      <DatePickerField
-                        label="EDC"
-                        value={expectedDeliveryDate}
-                        onChange={setExpectedDeliveryDate}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 @xl:grid-cols-2">
-                    {OB_SCORE_GP_FIELDS.map((field) => (
-                      <FieldInput
-                        key={field.key}
-                        label={field.label}
-                        type="number"
-                        min="0"
-                        placeholder={field.placeholder}
-                        value={maternalData[field.key]}
-                        onChange={(event) =>
-                          handleMaternalChange(field.key, event.target.value)
-                        }
-                      />
-                    ))}
-                  </div>
-
-                  <div>
-                    <p className={MATERNAL_EYEBROW_CLASS}>OB Score (TPAL)</p>
-                    <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
-                      {OB_SCORE_TPAL_FIELDS.map((field) => (
-                        <FieldInput
-                          key={field.key}
-                          label={field.label}
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={maternalData[field.key]}
-                          onChange={(event) =>
-                            handleMaternalChange(field.key, event.target.value)
-                          }
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
-                    <div className="grid gap-4 @xl:grid-cols-2">
-                      {/* Calculated from LMP and the visit date, and still editable. */}
-                      <FieldInput
-                        label="AOG (Age of Gestation)"
-                        placeholder="e.g. 28 weeks"
-                        value={aog}
-                        onChange={(event) => setAog(event.target.value)}
-                      />
-                      <FieldInput
-                        label="FHT (Fetal Heart Tone)"
-                        placeholder="e.g. 140 bpm"
-                        value={maternalData.fht}
-                        onChange={(event) =>
-                          handleMaternalChange("fht", event.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Obstetric Risk Factors"
-              subtitle="Mark any obstetric risk factors relevant to this pregnancy."
-              delay={4}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-6">
-                  {MATERNAL_RISK_GROUPS.map((group) => (
-                    <RiskCodeChecklist
-                      key={group.key}
-                      eyebrow={group.eyebrow}
-                      options={group.options}
-                      values={maternalData.riskAssessment}
-                      onChange={handleRiskAssessmentChange}
-                    />
-                  ))}
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Laboratory Results"
-              subtitle="Record laboratory test results taken for this pregnancy."
-              delay={5}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="overflow-x-auto rounded-none border border-[#E8ECF0]">
-                  <table className="w-full min-w-[520px] border-collapse text-left">
-                    <thead>
-                      <tr className="border-b border-[#EEF2F6] bg-gray-50">
-                        {["Test", "Result", "Date"].map((heading) => (
-                          <th
-                            key={heading}
-                            scope="col"
-                            className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#374151]"
-                          >
-                            {heading}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {MATERNAL_LAB_TESTS.map((test) => (
-                        <tr
-                          key={test.key}
-                          className="border-b border-[#EEF2F6] last:border-b-0"
-                        >
-                          <th
-                            scope="row"
-                            className="w-1/3 px-4 py-2 text-sm font-medium text-[#1F2937]"
-                          >
-                            {test.label}
-                          </th>
-                          <td className="px-2 py-2">
-                            <input
-                              type="text"
-                              aria-label={`${test.label} result`}
-                              placeholder="Enter result..."
-                              value={maternalData.laboratoryResults?.[test.key] || ""}
-                              onChange={(event) =>
-                                handleNestedMaternalChange(
-                                  "laboratoryResults",
-                                  test.key,
-                                  event.target.value,
-                                )
-                              }
-                              className={MATERNAL_TABLE_INPUT_CLASS}
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <DatePickerField
-                              hideLabel
-                              label={`${test.label} date`}
-                              value={maternalData.laboratoryResultDates?.[test.key] || ""}
-                              onChange={(value) =>
-                                handleNestedMaternalChange(
-                                  "laboratoryResultDates",
-                                  test.key,
-                                  value,
-                                )
-                              }
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="OB History"
-              subtitle="Record the client's prior family planning method use."
-              delay={6}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 @xl:grid-cols-2">
-                  <FieldSelect
-                    label="Previous FP Method Used"
-                    value={maternalData.previousFpMethodUsed}
-                    onChange={(event) =>
-                      handleMaternalChange(
-                        "previousFpMethodUsed",
-                        event.target.value,
-                      )
-                    }
-                  >
-                    <option value="">Select method...</option>
-                    {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
-                      <option key={method} value={method}>
-                        {method}
-                      </option>
-                    ))}
-                  </FieldSelect>
-                  {maternalData.previousFpMethodUsed === "Other" && (
-                    <FieldInput
-                      label="Specify FP Method"
-                      value={maternalData.previousFpMethodOther}
-                      onChange={(event) =>
-                        handleMaternalChange(
-                          "previousFpMethodOther",
-                          event.target.value,
-                        )
-                      }
-                    />
-                  )}
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Immunization This Visit"
-              subtitle="Record any immunization given during this prenatal visit."
-              delay={7}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 @xl:grid-cols-3">
-                  <FieldSelect
-                    label="Immunization Type"
-                    value={maternalData.immunizationThisVisit?.type || ""}
-                    onChange={(event) =>
-                      handleNestedMaternalChange(
-                        "immunizationThisVisit",
-                        "type",
-                        event.target.value,
-                      )
-                    }
-                  >
-                    <option value="">Select vaccine...</option>
-                    {PRENATAL_IMMUNIZATION_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </FieldSelect>
-                  <FieldInput
-                    label="Dose / Status"
-                    placeholder="Enter dose or status..."
-                    value={maternalData.immunizationThisVisit?.doseStatus || ""}
-                    onChange={(event) =>
-                      handleNestedMaternalChange(
-                        "immunizationThisVisit",
-                        "doseStatus",
-                        event.target.value,
-                      )
-                    }
-                  />
-                  <DatePickerField
-                    label="Date Given"
-                    value={maternalData.immunizationThisVisit?.dateGiven || ""}
-                    onChange={(value) =>
-                      handleNestedMaternalChange(
-                        "immunizationThisVisit",
-                        "dateGiven",
-                        value,
-                      )
-                    }
-                  />
-                </div>
-              </LockedFormContent>
-            </FormSection>
-
-            <FormSection
-              title="Ultrasound"
-              subtitle="Record the latest ultrasound result and date for this pregnancy."
-              delay={8}
-            >
-              <LockedFormContent locked={patientGateLocked}>
-                <div className="grid gap-4 @xl:grid-cols-2">
-                  <FieldInput
-                    label="Ultrasound Result"
-                    value={maternalData.ultrasound?.result || ""}
-                    onChange={(event) =>
-                      handleNestedMaternalChange(
-                        "ultrasound",
-                        "result",
-                        event.target.value,
-                      )
-                    }
-                  />
-                  <DatePickerField
-                    label="Date of Ultrasound"
-                    value={maternalData.ultrasound?.dateDone || ""}
-                    onChange={(value) =>
-                      handleNestedMaternalChange("ultrasound", "dateDone", value)
-                    }
-                  />
-                </div>
-              </LockedFormContent>
-            </FormSection>
+            <PrenatalAssessmentForm
+              maternalData={maternalData}
+              expectedDeliveryDate={expectedDeliveryDate}
+              aog={aog}
+              onMaternalChange={handleMaternalChange}
+              onNestedChange={handleNestedMaternalChange}
+              onRiskChange={handleRiskAssessmentChange}
+              onExpectedDeliveryDateChange={setExpectedDeliveryDate}
+              onAogChange={setAog}
+              locked={patientGateLocked}
+              history={{
+                background: canViewBackground ? selectedPatient?.medicalBackground : null,
+                update: canViewBackground ? backgroundUpdate : null,
+                locked: !canViewBackground,
+                canReview: historySections.includes("obstetric"),
+                editLink: selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined,
+                backgroundEditing: true,
+                onEditBackground: editBackground,
+                editBusy: leavingConsultation,
+              }}
+            />
           </>
         )}
 
@@ -5499,40 +5001,6 @@ function BpInputGroup({
  * the assembled shorthand shown beneath so the clinician can read back what
  * they entered without re-parsing the boxes.
  */
-/**
- * One column of prenatal risk factors: a red sub-heading over a flat list of
- * checkboxes. Grouping into Risk Codes happens in the change handler, not on
- * screen.
- */
-function RiskCodeChecklist({ eyebrow, options, values = {}, onChange }) {
-  return (
-    <div>
-      <p className={MATERNAL_EYEBROW_CLASS}>{eyebrow}</p>
-      <div className="flex flex-col gap-3">
-        {options.map((option) => {
-          const checked = Boolean(values[option.key]);
-          return (
-            <label
-              key={option.key}
-              className="flex cursor-pointer items-start gap-2.5 text-sm font-medium"
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={(event) => onChange(option.key, event.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-[#D1D5DB] accent-[#DC2626]"
-              />
-              <span className={checked ? "font-semibold text-[#DC2626]" : "text-gray-600"}>
-                {option.label}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function BmiOutputField({ weight, height }) {
   const bmi = calculateBmi(weight, height);
   const category = getBmiCategory(bmi);

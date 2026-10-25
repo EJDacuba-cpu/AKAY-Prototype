@@ -24,6 +24,7 @@ class HealthRecordDraftPayloadService
         'sharedConditionReferral' => self::SCALAR,
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
+        'prenatalIntent' => self::SCALAR,
         'consultationMode' => self::SCALAR,
         'wizardPhase' => self::SCALAR,
         // Which screen of the step-based consultation the user was on (a program
@@ -98,6 +99,9 @@ class HealthRecordDraftPayloadService
             'lmp' => self::SCALAR,
             'pmp' => self::SCALAR,
             'cycleDuration' => self::SCALAR,
+            'deliveryDate' => self::SCALAR,
+            'expectedDeliveryDate' => self::SCALAR,
+            'aog' => self::SCALAR,
             'gravida' => self::SCALAR,
             'para' => self::SCALAR,
             'term' => self::SCALAR,
