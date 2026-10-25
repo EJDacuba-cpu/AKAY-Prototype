@@ -136,6 +136,7 @@ export const formatTpal = (term, preterm, abortion, living) => {
  * what made the patient list's sex filter return nothing.
  */
 export const getPatientSex = (patient = {}) => {
+  if (!patient) return "";
   if (patient.sex) return String(patient.sex).trim();
 
   const ageSex = String(patient.ageSex || "").toLowerCase();

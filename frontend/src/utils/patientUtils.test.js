@@ -23,4 +23,5 @@ test("returns an empty string when sex cannot be determined", () => {
   assert.equal(getPatientSex({}), "");
   assert.equal(getPatientSex({ ageSex: "34 yrs" }), "");
   assert.equal(getPatientSex(), "");
+  assert.equal(getPatientSex(null), "");
 });

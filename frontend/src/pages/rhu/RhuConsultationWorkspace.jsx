@@ -612,7 +612,7 @@ export default function RhuConsultationWorkspace() {
   }
 
   function handleProgramSelect(key) {
-    if (key === "Maternal" && isPatientMale(patient)) return;
+    if (key === "Maternal" && (!patient || isPatientMale(patient))) return;
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
@@ -753,7 +753,7 @@ export default function RhuConsultationWorkspace() {
             included: selectedPrograms.includes("Maternal"),
           })
         : null;
-      const male = key === "Maternal" && isPatientMale(patient);
+      const male = Boolean(patient) && key === "Maternal" && isPatientMale(patient);
       return {
         key,
         title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? "Prenatal Care" : key,
@@ -1007,7 +1007,7 @@ export default function RhuConsultationWorkspace() {
                       background: canViewBackground ? patient?.medicalBackground : null,
                       update: canViewBackground ? backgroundUpdate : null,
                       locked: !canViewBackground,
-                      canReview: !isPatientMale(patient),
+                      canReview: Boolean(patient) && !isPatientMale(patient),
                       editLink: patientId ? `/rhu/patients/${patientId}` : undefined,
                       onReview: () => goToStepKey(HISTORY_STEP),
                     }}
