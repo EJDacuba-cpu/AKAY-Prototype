@@ -42,6 +42,7 @@ export default function RhuQueueTable({
   queryError,
   onRetry,
   isRefreshing = false,
+  canViewQueue = true,
   canCheckIn = false,
   onCheckIn,
 }) {
@@ -50,14 +51,13 @@ export default function RhuQueueTable({
   const { page, setPage, totalPages, pageRows } = usePagedRows(visibleRows, filters);
   const narrowed = filters.search.trim() !== "" || filters.source !== "all";
 
-  if (error && rows.length === 0) {
-    return <ConnectionErrorState onRetry={onRetry} retrying={isRefreshing} variant={errorStateVariant(queryError)} />;
-  }
+  const loadFailed = error && rows.length === 0;
+  const refreshFailed = error && rows.length > 0;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className={`flex flex-col gap-3 sm:flex-row sm:items-center ${canViewQueue ? "" : "invisible"}`} aria-hidden={!canViewQueue}>
           <SearchField
             value={filters.search}
             onChange={(search) => setFilters((current) => ({ ...current, search }))}
@@ -83,6 +83,25 @@ export default function RhuQueueTable({
         </div>
       </div>
 
+      {refreshFailed && (
+        <p role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-warning-100 bg-warning-50 px-3 py-2 text-[13px] text-warning-700">
+          Couldn't refresh the queue. Showing the last list that loaded; other desks' check-ins may be missing.
+          <button type="button" onClick={onRetry} className="font-semibold underline underline-offset-2">Retry</button>
+        </p>
+      )}
+
+      {!canViewQueue ? (
+        <div className="flex min-h-[var(--akay-empty-h,260px)] flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white px-6 text-center shadow-card">
+          <p className="text-[14px] font-semibold text-neutral-900">Viewing today's queue needs Health Records access</p>
+          <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
+            {canCheckIn ? "You can still check patients in." : "Ask your administrator if you should see it."}
+          </p>
+        </div>
+      ) : loadFailed ? (
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
+          <ConnectionErrorState onRetry={onRetry} retrying={isRefreshing} variant={errorStateVariant(queryError)} />
+        </div>
+      ) : (
       <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading today's queue..." scope="area">
         {!loading && (
           <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
@@ -117,6 +136,7 @@ export default function RhuQueueTable({
           </div>
         )}
       </SoftLoadingArea>
+      )}
     </div>
   );
 }

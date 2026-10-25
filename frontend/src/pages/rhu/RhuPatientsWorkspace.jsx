@@ -20,12 +20,19 @@ export default function RhuPatientsWorkspace() {
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "all" ? "all" : "queue";
   const [checkInOpen, setCheckInOpen] = useState(false);
-  const canCheckIn = useAccess().can("patients.register");
-  const { visits, loading, error, queryError, refetch, isRefreshing } = useRhuVisits();
+  const access = useAccess();
+  const canCheckIn = access.can("patients.register");
+  // The queue endpoint needs Health Records access; check-in alone is the registration duty.
+  const canViewQueue = access.can("clinical.history");
+  const { visits, loading, error, queryError, refetch, isRefreshing } = useRhuVisits({
+    enabled: canViewQueue,
+    poll: view === "queue",
+  });
   const rows = queueRows(visits);
+  const showCount = canViewQueue && !loading && !error;
 
   const views = [
-    { value: "queue", label: loading ? "Today's Queue" : `Today's Queue (${rows.length})` },
+    { value: "queue", label: showCount ? `Today's Queue (${rows.length})` : "Today's Queue" },
     { value: "all", label: "All Patients" },
   ];
 
@@ -36,8 +43,9 @@ export default function RhuPatientsWorkspace() {
 
   return (
     <DashboardLayout role="rhu" title="Patients">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      {/* h-full + min-h-0 keep the directory's pinned height chain intact (clinical-directory.css), so All Patients still scrolls. */}
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-[24px] font-bold leading-tight text-neutral-900">Patients</h1>
             <p className="mt-0.5 text-[13px] text-neutral-600">
@@ -55,6 +63,7 @@ export default function RhuPatientsWorkspace() {
             queryError={queryError}
             onRetry={refetch}
             isRefreshing={isRefreshing}
+            canViewQueue={canViewQueue}
             canCheckIn={canCheckIn}
             onCheckIn={() => setCheckInOpen(true)}
           />

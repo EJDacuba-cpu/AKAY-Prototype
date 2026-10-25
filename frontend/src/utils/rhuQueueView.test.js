@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRows, statusChip } from './rhuQueueView.js';
+import { filterQueueRows, formatAgeSex, formatWaiting, isSearchable, queueRows, statusChip, walkInKeyFor } from './rhuQueueView.js';
 
 // 9:30 AM on Oct 25, 2026 in Manila.
 const NOW = new Date('2026-10-25T01:30:00Z');
@@ -82,7 +82,7 @@ test('missing pieces never produce "undefined" or "null" text', () => {
   assert.equal(noReferral.fromLabel, null);
   assert.equal(noAge.ageSex, 'F');
   assert.equal(noAgeSex.ageSex, '');
-  assert.equal(noMinutes.arrivalNote, 'Waiting Just arrived');
+  assert.equal(noMinutes.arrivalNote, 'Just arrived');
 });
 
 test('rows keep the server order and are numbered from one', () => {
@@ -116,4 +116,26 @@ test('age and sex read the same in the queue and in the check-in results', () =>
   assert.equal(formatAgeSex({ sex: 'Other' }), 'O');
   assert.equal(formatAgeSex({}), '');
   assert.equal(formatAgeSex(null), '');
+});
+
+test('a missing or unreadable arrival time never breaks the table', () => {
+  const rows = queueRows([
+    visit({ id: 1, checked_in_at: undefined }),
+    visit({ id: 2, checked_in_at: 'not a date' }),
+    visit({ id: 3, checked_in_at: null }),
+  ], NOW);
+  for (const row of rows) {
+    assert.equal(row.arrivedTime, '—');
+    assert.equal(row.carriedOver, false);
+    assert.equal(row.arrivalNote, 'Waiting 78 min');
+  }
+});
+
+test('a check-in key follows the patient: same patient keeps it, another patient gets a new one', () => {
+  let counter = 0;
+  const makeId = () => `k${++counter}`;
+  const first = walkInKeyFor(null, 7, makeId);
+  assert.deepEqual(first, { patientId: 7, key: 'k1' });
+  assert.equal(walkInKeyFor(first, 7, makeId), first);
+  assert.deepEqual(walkInKeyFor(first, 8, makeId), { patientId: 8, key: 'k2' });
 });

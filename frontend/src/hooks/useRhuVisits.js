@@ -8,9 +8,10 @@ const REFRESH_MS = 30_000;
 
 /**
  * The RHU's active visits, oldest first. Other desks check patients in, so the queue
- * is always stale: it reloads on mount, when the window regains focus and every 30 s.
+ * is always stale: it reloads on mount, when the window regains focus and, while it is
+ * on screen (`poll`), every 30 s. `enabled` is off for staff who may not read the queue.
  */
-export default function useRhuVisits() {
+export default function useRhuVisits({ enabled = true, poll = true } = {}) {
   const {
     data,
     isLoading,
@@ -20,8 +21,9 @@ export default function useRhuVisits() {
   } = useQuery({
     queryKey: queryKeys.rhuVisits(),
     queryFn: listRhuVisits,
+    enabled,
     staleTime: 0,
-    refetchInterval: REFRESH_MS,
+    refetchInterval: poll ? REFRESH_MS : false,
     refetchOnWindowFocus: true,
     retry: false,
   });

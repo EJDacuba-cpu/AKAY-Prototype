@@ -7,9 +7,8 @@ import { SearchField } from "../../common";
 import ModalShell from "../../common/modals/ModalShell";
 import { Button } from "../../ui/button";
 import { checkInExistingPatient, searchPatientsForCheckIn } from "../../../services/rhuVisitService";
-import { formatAgeSex, isSearchable } from "../../../utils/rhuQueueView";
+import { formatAgeSex, isSearchable, walkInKeyFor } from "../../../utils/rhuQueueView";
 import { queryKeys } from "../../../utils/queryKeys";
-import { newWalkIn } from "../../../utils/walkInRegistration";
 
 const SEARCH_DELAY_MS = 300;
 
@@ -25,7 +24,8 @@ export default function WalkInCheckInModal({ onClose, registerPath }) {
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState({ loading: false, error: "" });
   const [savingId, setSavingId] = useState(null);
-  const [walkIn, setWalkIn] = useState(() => newWalkIn());
+  // One key per patient: a retry for the same patient is recognised, another patient never inherits it.
+  const walkIn = useRef(null);
   const [reloads, setReloads] = useState(0);
   const latest = useRef(0);
 
@@ -56,9 +56,10 @@ export default function WalkInCheckInModal({ onClose, registerPath }) {
   async function checkIn(patient) {
     setSavingId(patient.id);
     try {
-      await checkInExistingPatient(patient.id, walkIn.key);
+      walkIn.current = walkInKeyFor(walkIn.current, patient.id);
+      await checkInExistingPatient(patient.id, walkIn.current.key);
       toast.success(`${patient.full_name} added to today's queue.`);
-      setWalkIn(newWalkIn());
+      walkIn.current = null;
       await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
       onClose();
     } catch (error) {

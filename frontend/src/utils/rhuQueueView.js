@@ -1,5 +1,7 @@
 // Display logic for the RHU Today's Queue. Pure: the table and the page stay thin.
 
+import { newCheckInKey } from './walkInRegistration.js';
+
 const ZONE = 'Asia/Manila';
 const TIME = new Intl.DateTimeFormat('en-US', { timeZone: ZONE, hour: 'numeric', minute: '2-digit' });
 const DAY_KEY = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -22,6 +24,20 @@ function titleCase(value) {
     .filter(Boolean)
     .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+/** "Waiting 65 min", or just "Just arrived" for the first minute. */
+function waitingNote(minutes) {
+  const text = formatWaiting(minutes);
+  return text === 'Just arrived' ? text : `Waiting ${text}`;
+}
+
+/**
+ * One check-in key per patient: a retry for the same patient keeps its key (so the server recognises it),
+ * a different patient gets a fresh one (so a lost answer for A can never block B).
+ */
+export function walkInKeyFor(current, patientId, makeId) {
+  return current && current.patientId === patientId ? current : { patientId, key: newCheckInKey(makeId) };
 }
 
 /** Waiting is the one status Phase 4 knows; later phases add theirs and fall back to a neutral chip until then. */
@@ -53,7 +69,9 @@ export function queueRows(visits, now = new Date()) {
   const today = DAY_KEY.format(now);
   return (visits ?? []).map((visit, index) => {
     const arrived = new Date(visit.checked_in_at);
-    const carriedOver = DAY_KEY.format(arrived) < today;
+    // An unreadable arrival time must not take the whole table down.
+    const hasArrival = visit.checked_in_at != null && !Number.isNaN(arrived.getTime());
+    const carriedOver = hasArrival && DAY_KEY.format(arrived) < today;
     const bhc = visit.referral?.sending_bhc;
     return {
       id: visit.id,
@@ -64,11 +82,11 @@ export function queueRows(visits, now = new Date()) {
       source: visit.source,
       sourceLabel: visit.source === 'referral' ? 'Referred' : 'Walk-in',
       fromLabel: visit.source === 'referral' && bhc ? `From ${bhc}` : null,
-      arrivedTime: TIME.format(arrived),
+      arrivedTime: hasArrival ? TIME.format(arrived) : '—',
       carriedOver,
       arrivalNote: carriedOver
         ? `From ${DAY_LABEL.format(arrived)} · still open`
-        : `Waiting ${formatWaiting(visit.waiting_minutes)}`,
+        : waitingNote(visit.waiting_minutes),
       status: statusChip(visit.status),
     };
   });
