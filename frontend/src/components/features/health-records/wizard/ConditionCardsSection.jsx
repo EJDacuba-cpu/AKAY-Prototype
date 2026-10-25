@@ -1,14 +1,13 @@
-import { useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Building2, ClipboardList, Hospital, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
-import { ModalShell } from "../../../common";
+import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
-import { Card } from "../../../ui/card";
 import { Input } from "../../../ui/input";
-import { FieldError } from "../fields/ClinicalFields";
-import { CONDITION_OUTCOMES, conditionCardErrors } from "../../../../utils/conditionCards";
+import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
+import { applyEntryCareOutcome, CARE_OUTCOMES, entryCareOutcome, namedConcern } from "../../../../utils/conditionCards";
 import { DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
+import { entryPurposeKey } from "../../../../utils/followUpSchedules";
 import { entryDestinations, newReportingEntry, REPORT_DESTINATIONS, toggleDestination } from "../../../../utils/reportingEntries";
 
 const REPORTS = {
@@ -17,136 +16,220 @@ const REPORTS = {
   surveillance: { label: "Community-Based Surveillance", description: "Include this health problem in community surveillance." },
 };
 
-function OutcomeBadge({ value }) {
-  const referred = value === "refer_to_rhu";
-  return <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${referred ? "bg-red-100 text-red-700" : value === "managed_at_bhc" ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-600"}`}><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />{CONDITION_OUTCOMES[value] || "Choose outcome"}</span>;
+const CARE_OUTCOME_OPTIONS = Object.entries(CARE_OUTCOMES).map(([value, label]) => ({ value, label }));
+
+function scheduleFor(entry, schedules) {
+  const purposeKey = entryPurposeKey(entry?.id);
+  return (schedules || []).find((item) => item?.purposeKey === purposeKey) || null;
 }
 
-function ConditionModal({ entry, entries, onSave, onClose }) {
-  const [draft, setDraft] = useState(() => ({ ...entry, reportIn: entryDestinations(entry), clinicalOutcome: entry.clinicalOutcome || "" }));
-  const [errors, setErrors] = useState({});
-  const nameRef = useRef(null);
-  const key = `reportingEntry.${draft.id}`;
-  function save() {
-    const next = [...entries.filter((item) => item.id !== draft.id), draft];
-    const checked = conditionCardErrors(next);
-    const own = Object.fromEntries(Object.entries(checked).filter(([field]) => field.startsWith(`${key}.`)));
-    if (Object.keys(own).length) {
-      setErrors(own);
-      nameRef.current?.focus();
-      return;
-    }
-    onSave({ ...draft, name: draft.name.trim() });
-  }
-  return createPortal(
-    <ModalShell
-      title={entries.some((item) => item.id === entry.id) ? "Edit Clinical Condition & Classification" : "Add Clinical Condition & Classification"}
-      subtitle="Record the reported health problem, reporting classifications, and clinical outcome."
-      size="2xl" onClose={onClose} initialFocusRef={nameRef}
-      panelClassName="rounded-none [&>header]:bg-[#EFF4FF] [&>header]:text-[#0B1C30] [&>header_h2]:text-[#0B1C30] [&>header_p]:text-[#545F73] [&>header_button]:text-[#545F73] [&>footer]:bg-[#EFF4FF]"
-      bodyClassName="space-y-5"
-      footer={<><Button type="button" variant="secondary" className="rounded-none" onClick={onClose}>Cancel</Button><Button type="button" className="rounded-none bg-[#DC2626] hover:bg-red-700" onClick={save}><Save size={15} />Save Condition</Button></>}
-    >
-      <div>
-        <label htmlFor={`${draft.id}-name`} className="mb-2 block text-sm font-semibold text-[#0B1C30]">Reported Health Problem / Suspected Case <span className="text-red-600">*</span></label>
-        <Input id={`${draft.id}-name`} ref={nameRef} value={draft.name || ""} maxLength={150} autoComplete="off" aria-invalid={Boolean(errors[`${key}.name`] || errors[`${key}.duplicate`])} className="rounded-none" onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
-        <FieldError error={errors[`${key}.name`] || errors[`${key}.duplicate`]} />
-      </div>
-      <fieldset className="border-t border-[#E5EEFF] pt-4">
-        <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">Reporting Classification (check all applicable)</legend>
-        <p className="clear-both text-xs text-[#545F73]">Choose the existing reports this health problem belongs to.</p>
-        <div className="mt-3 space-y-2">
-          {REPORT_DESTINATIONS.map((destination) => <label key={destination} className="flex cursor-pointer items-start gap-3 p-2 hover:bg-slate-50"><input type="checkbox" checked={entryDestinations(draft).includes(destination)} onChange={(event) => setDraft((current) => toggleDestination(current, destination, event.target.checked))} className="mt-1 h-4 w-4 accent-[#B70011]" /><span><span className="block text-sm font-semibold text-[#0B1C30]">{REPORTS[destination].label}</span><span className="mt-1 block text-xs text-[#545F73]">{REPORTS[destination].description}</span></span></label>)}
-        </div>
-        <FieldError error={errors[`${key}.reportIn`]} />
-      </fieldset>
-      <fieldset className="border-t border-[#E5EEFF] pt-4">
-        <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">Clinical Outcome <span className="text-red-600">*</span></legend>
-        <p className="clear-both text-xs text-[#545F73]">Choose local BHC care or referral to an RHU.</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {Object.entries(CONDITION_OUTCOMES).map(([value, label]) => {
-            const selected = draft.clinicalOutcome === value;
-            const Icon = value === "refer_to_rhu" ? Hospital : Building2;
-            return <label key={value} className={`cursor-pointer border p-3 ${selected ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}><span className="flex items-center gap-2 text-sm font-bold text-[#0B1C30]"><Icon size={16} />{label}<input type="radio" name={`${draft.id}-outcome`} value={value} checked={selected} onChange={() => setDraft((current) => ({ ...current, clinicalOutcome: value }))} className="ml-auto h-4 w-4 accent-[#B70011]" /></span><span className="mt-2 block text-xs leading-5 text-[#545F73]">{value === "refer_to_rhu" ? "Uses the RHU referral on Care and Outcome. Does not confirm a diagnosis." : "Local BHC care. A return visit is scheduled separately only if another appointment is needed."}</span></label>;
-          })}
-        </div>
-        <FieldError error={errors[`${key}.clinicalOutcome`]} />
-      </fieldset>
-    </ModalShell>, document.body,
-  );
-}
-
-/** Read-only summary: condition changes belong to the preceding wizard screen. */
-export function ConditionSummaryPanel({ entries = [] }) {
-  const groups = [
-    ...Object.entries(CONDITION_OUTCOMES).map(([value, label]) => ({ label, entries: entries.filter((entry) => entry.clinicalOutcome === value) })),
-    { label: "Outcome not selected", entries: entries.filter((entry) => !Object.hasOwn(CONDITION_OUTCOMES, entry.clinicalOutcome || "")) },
-  ];
+function ConcernFollowUp({ entry, schedule, errors, disabled, onFollowUpChange }) {
+  const purposeKey = entryPurposeKey(entry.id);
+  const followUp = {
+    date: schedule?.date || "",
+    time: schedule?.time || "",
+    purpose: schedule?.purpose || entry.name || "",
+  };
   return (
-    <aside aria-label="Added conditions" className="mt-4 min-h-0 min-w-0 lg:sticky lg:top-3 lg:mt-0 lg:max-h-[calc(100dvh-13rem)]">
-      <Card className="flex h-[400px] max-h-full flex-col overflow-hidden rounded-none">
-        <div className="shrink-0 border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-bold text-[#111827]">Added Conditions</h2>
-          <p className="mt-1 text-xs leading-5 text-[#6B7280]">Use Previous to edit or remove conditions.</p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        {entries.length === 0 && <p className="p-4 text-xs text-[#6B7280]">No conditions added yet.</p>}
-        {groups.filter((group) => group.entries.length > 0).map((group) => (
-          <section key={group.label} aria-label={group.label} className="border-b border-slate-200 px-4 py-3 last:border-b-0">
-            <h3 className="text-xs font-semibold text-[#374151]">{group.label}</h3>
-            <ul className="mt-2 space-y-2">
-              {group.entries.map((entry) => <li key={entry.id} className="break-words border-l-2 border-slate-200 pl-2 text-sm text-[#111827]">{entry.name}</li>)}
-            </ul>
-          </section>
-        ))}
-        </div>
-      </Card>
-    </aside>
+    <fieldset disabled={disabled} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-2">
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldInput
+          label="Follow-up Date"
+          required
+          type="date"
+          name={`followUpSchedule.${purposeKey}.date`}
+          value={followUp.date}
+          error={errors[`followUpSchedule.${purposeKey}.date`]}
+          onChange={(event) => onFollowUpChange({ ...followUp, date: event.target.value })}
+        />
+        <TimePickerField
+          label="Follow-up Time"
+          name={`followUpSchedule.${purposeKey}.time`}
+          value={followUp.time}
+          error={errors[`followUpSchedule.${purposeKey}.time`]}
+          disabled={disabled}
+          onChange={(value) => onFollowUpChange({ ...followUp, time: value })}
+        />
+      </div>
+      <FieldTextarea
+        label="Follow-up Reason"
+        maxLength={1000}
+        required
+        name={`followUpSchedule.${purposeKey}.purpose`}
+        value={followUp.purpose}
+        error={errors[`followUpSchedule.${purposeKey}.purpose`]}
+        rows={2}
+        placeholder="Why should the patient return?"
+        onChange={(event) => onFollowUpChange({ ...followUp, purpose: event.target.value })}
+      />
+    </fieldset>
   );
 }
 
-export default function ConditionCardsSection({ entries = [], errors = {}, disabled = false, onChange, heading = null }) {
-  const [editing, setEditing] = useState(null);
-  function updateEntry(entry) {
-    onChange(entries.some((item) => item.id === entry.id) ? entries.map((item) => item.id === entry.id ? entry : item) : [...entries, entry]);
-  }
-  function save(entry) {
-    updateEntry(entry);
-    setEditing(null);
-  }
-  return <section aria-label="Clinical conditions and reporting" className="space-y-4" data-field="diagnoses" tabIndex={errors.diagnoses ? -1 : undefined}>
-    <div className="flex items-start justify-between gap-3">
-      {heading || (entries.length > 0 && <p className="text-xs text-[#708095]">{entries.length} condition{entries.length === 1 ? "" : "s"} in this consultation</p>)}
-      <Button type="button" disabled={disabled || entries.length >= DIAGNOSIS_LIMITS.count} onClick={() => setEditing(newReportingEntry())} className="ml-auto shrink-0 rounded-none bg-[#DC2626] hover:bg-red-700"><Plus size={15} />Add Condition</Button>
-    </div>
-    {heading && entries.length > 0 && <p className="text-xs text-[#708095]">{entries.length} condition{entries.length === 1 ? "" : "s"} in this consultation</p>}
-    {entries.length === 0 ? (
-      <div className="flex min-h-64 flex-col items-center justify-center px-4 py-12 text-center">
-        <ClipboardList size={32} className="mb-3 text-slate-400" aria-hidden="true" />
-        <p role="status" className="text-sm font-semibold text-[#0B1C30]">No additional conditions in this consultation</p>
-        <p className="mt-1 max-w-sm text-xs leading-5 text-[#708095]">Service-only visits, including routine prenatal care, can continue without adding a condition. Select Add Condition only for a health problem or suspected case.</p>
+function ConcernRow({
+  entry, schedules, errors, disabled, onChange, onFollowUpChange, onRemove, canRemove, showOptionalLabel, showHint,
+}) {
+  const key = `reportingEntry.${entry.id}`;
+  const showDetails = namedConcern(entry);
+  const careOutcome = entryCareOutcome(entry, schedules);
+  const schedule = scheduleFor(entry, schedules);
+  return (
+    <div
+      className="space-y-2"
+      data-field={errors[`${key}.name`] ? `${key}.name` : errors[`${key}.clinicalOutcome`] ? `${key}.clinicalOutcome` : errors[`${key}.reportIn`] ? `${key}.reportIn` : undefined}
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <label htmlFor={`${entry.id}-name`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+            Suspected Condition / Health Problem{showOptionalLabel ? " (Optional)" : ""}
+          </label>
+          <Input
+            id={`${entry.id}-name`}
+            name={`${key}.name`}
+            value={entry.name || ""}
+            maxLength={150}
+            autoComplete="off"
+            disabled={disabled}
+            placeholder="e.g. Suspected hypertension"
+            aria-invalid={Boolean(errors[`${key}.name`] || errors[`${key}.duplicate`])}
+            className="rounded-none"
+            onChange={(event) => {
+              const name = event.target.value;
+              if (!String(name).trim()) {
+                const cleared = { ...entry, name, reportIn: [] };
+                delete cleared.clinicalOutcome;
+                onChange(cleared);
+                onFollowUpChange?.(entry.id, null);
+                return;
+              }
+              onChange({ ...entry, name });
+            }}
+          />
+          <FieldError error={errors[`${key}.name`] || errors[`${key}.duplicate`]} />
+        </div>
+        {canRemove && (
+          <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label="Remove this health problem" onClick={onRemove} className="mt-6 h-8 w-8 shrink-0 rounded-none text-slate-500 hover:text-red-600">
+            <Trash2 size={14} />
+          </Button>
+        )}
       </div>
-    ) : (
-      <div className="grid items-start gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
-        {entries.map((entry) => {
-          const key = `reportingEntry.${entry.id}`;
-          const cardErrors = Object.entries(errors).filter(([field]) => field.startsWith(`${key}.`));
-          return <Card key={entry.id} data-field={cardErrors[0]?.[0]} tabIndex={cardErrors.length ? -1 : undefined} className="@container min-w-0 rounded-none border-slate-200 p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <OutcomeBadge value={entry.clinicalOutcome} />
-              <div className="flex shrink-0 gap-1">
-                <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={`Edit ${entry.name}`} onClick={() => setEditing(entry)} className="h-7 w-7 rounded-none text-slate-500"><Pencil size={14} /></Button>
-                <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={`Remove ${entry.name}`} onClick={() => onChange(entries.filter((item) => item.id !== entry.id))} className="h-7 w-7 rounded-none text-slate-500 hover:text-red-600"><Trash2 size={14} /></Button>
-              </div>
+      {showDetails ? (
+        <>
+          <fieldset className="border-t border-[#E5EEFF] pt-2">
+            <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">Reporting Classification (check all applicable)</legend>
+            <p className="clear-both text-xs text-[#545F73]">Choose the existing reports this health problem belongs to.</p>
+            <div className="mt-2 space-y-1">
+              {REPORT_DESTINATIONS.map((destination) => (
+                <label key={destination} className="flex cursor-pointer items-start gap-3 px-1 py-1.5 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    name={`${key}.reportIn`}
+                    checked={entryDestinations(entry).includes(destination)}
+                    disabled={disabled}
+                    onChange={(event) => onChange(toggleDestination(entry, destination, event.target.checked))}
+                    className="mt-1 h-4 w-4 accent-[#B70011]"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-[#0B1C30]">{REPORTS[destination].label}</span>
+                    <span className="mt-0.5 block text-xs text-[#545F73]">{REPORTS[destination].description}</span>
+                  </span>
+                </label>
+              ))}
             </div>
-            <h3 className="mt-3 break-words text-lg font-bold leading-6 text-[#0B1C30]">{entry.name}</h3>
-            <div className="mt-3 flex flex-wrap gap-1.5">{entryDestinations(entry).map((destination) => <span key={destination} className={`px-1.5 py-1 text-[10px] font-medium tracking-wide ${destination === "notifiable" ? "bg-red-100 text-red-700" : "bg-[#EFF4FF] text-[#545F73]"}`}>{REPORTS[destination].label}</span>)}</div>
-            {cardErrors.map(([field, message]) => <FieldError key={field} error={message} />)}
-          </Card>;
-        })}
+            <FieldError error={errors[`${key}.reportIn`]} />
+          </fieldset>
+          <fieldset className="border-t border-[#E5EEFF] pt-2" disabled={disabled}>
+            <RadioChoiceGroup
+              label="Care Outcome"
+              name={`${key}.clinicalOutcome`}
+              required
+              inline
+              options={CARE_OUTCOME_OPTIONS}
+              value={careOutcome}
+              error={errors[`${key}.clinicalOutcome`]}
+              onChange={(value) => {
+                onChange(applyEntryCareOutcome(entry, value));
+                onFollowUpChange?.(entry.id, value === "bhc_follow_up" ? {
+                  purpose: schedule?.purpose || entry.name || "BHC follow-up",
+                  date: schedule?.date || "",
+                  time: schedule?.time || "",
+                } : null);
+              }}
+            />
+            <p className="mt-1.5 text-xs text-[#545F73]">
+              {careOutcome === "managed_at_bhc" && "No additional return or referral is required for this concern."}
+              {careOutcome === "bhc_follow_up" && "Schedule a BHC return for this concern only."}
+              {careOutcome === "refer_to_rhu" && "Include this concern in the RHU referral for this consultation."}
+              {!careOutcome && "Choose local care, a BHC return, or referral for this concern."}
+            </p>
+          </fieldset>
+          {careOutcome === "bhc_follow_up" && (
+            <ConcernFollowUp
+              entry={entry}
+              schedule={schedule}
+              errors={errors}
+              disabled={disabled}
+              onFollowUpChange={(next) => onFollowUpChange?.(entry.id, next)}
+            />
+          )}
+        </>
+      ) : showHint ? (
+        <p className="text-xs leading-5 text-[#708095]">Optional. Prenatal, family planning, and immunization visits can continue without a suspected condition.</p>
+      ) : null}
+    </div>
+  );
+}
+
+export default function ConditionCardsSection({
+  entries = [], schedules = [], errors = {}, disabled = false, onChange, onFollowUpChange, heading = null,
+}) {
+  const [starter] = useState(newReportingEntry);
+  const rows = entries.length > 0 ? entries : [starter];
+  const namedCount = rows.filter(namedConcern).length;
+  const atLimit = rows.length >= DIAGNOSIS_LIMITS.count;
+  const showAdd = !disabled && !atLimit && namedCount > 0;
+
+  function currentRows() {
+    return entries.length > 0 ? entries : [starter];
+  }
+  function updateAt(index, next) {
+    onChange(currentRows().map((entry, itemIndex) => itemIndex === index ? next : entry));
+  }
+  function removeAt(id) {
+    onFollowUpChange?.(id, null);
+    onChange(currentRows().filter((entry) => entry.id !== id));
+  }
+  function addRow() {
+    if (!showAdd) return;
+    onChange([...currentRows(), newReportingEntry()]);
+  }
+
+  return (
+    <section aria-label="Suspected conditions and reporting" className="space-y-3" data-field="diagnoses" tabIndex={errors.diagnoses ? -1 : undefined}>
+      {heading}
+      <div className="space-y-5">
+        {rows.map((entry, index) => (
+          <ConcernRow
+            key={entry.id}
+            entry={entry}
+            schedules={schedules}
+            errors={errors}
+            disabled={disabled}
+            showOptionalLabel={index === 0}
+            showHint={index === 0 && !namedConcern(entry)}
+            canRemove={!disabled && (namedConcern(entry) || rows.length > 1)}
+            onChange={(next) => updateAt(index, next)}
+            onFollowUpChange={onFollowUpChange}
+            onRemove={() => removeAt(entry.id)}
+          />
+        ))}
       </div>
-    )}
-    {errors.diagnoses && <div role="alert"><FieldError error={errors.diagnoses} /></div>}
-    {editing && !disabled && <ConditionModal key={editing.id} entry={editing} entries={entries} onSave={save} onClose={() => setEditing(null)} />}
-  </section>;
+      {showAdd && (
+        <button type="button" disabled={disabled} onClick={addRow} className="text-[13px] font-semibold text-[#DC2626] underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
+          + Add Another Concern
+        </button>
+      )}
+      {errors.diagnoses && <div role="alert"><FieldError error={errors.diagnoses} /></div>}
+    </section>
+  );
 }

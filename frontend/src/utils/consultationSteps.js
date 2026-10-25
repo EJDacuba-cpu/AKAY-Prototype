@@ -8,8 +8,7 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
  *       -> Service Details: one screen per selected service (Prenatal / Family
  *          Planning / EPI), only when a service is selected
- *       -> Clinical Conditions & Reporting (condition modal and three-column grid)
- *       -> Care and Outcome (condition referrals, shared BHC return, treatment)
+ *       -> Assessment & Care Plan (inline concerns, reporting, one Care Outcome)
  *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Finalize
  *
@@ -167,9 +166,9 @@ export function buildConsultationSteps({
     ...(rhuItr && includeTb
       ? [{ key: TB_INTAKE_STEP, phase: "form", label: "TB Intake" }]
       : []),
-    { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis" : "Clinical Conditions & Reporting" },
+    { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis" : "Assessment & Care Plan" },
     ...(rhuItr ? [{ key: PRESCRIPTION_STEP, phase: "next", label: "Prescription" }] : []),
-    { key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" },
+    ...(includeHistory === false ? [] : [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]),
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(!rhuItr && monitoringDetailKeys.length > 0
       ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
@@ -241,7 +240,7 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     ...tbIntakeKeys(options),
     NEXT_STEP,
     ...(rhuItr ? [PRESCRIPTION_STEP] : []),
-    OUTCOME_STEP,
+    ...(includeHistory === false ? [] : [OUTCOME_STEP]),
     ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
   ];
@@ -374,9 +373,14 @@ function isRhuTbFinalizeError(key) {
   return RHU_TB_FINALIZE_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix));
 }
 
+function carePlanOwnerStep(options = {}) {
+  return options.includeHistory === false ? NEXT_STEP : OUTCOME_STEP;
+}
+
 export function getErrorOwnerStepKey(errorKey, options = {}) {
   const { includeHistory = true, workflow } = options;
   const key = String(errorKey || "");
+  const carePlanStep = carePlanOwnerStep(options);
 
   if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
     return INTERVIEW_STEP;
@@ -412,18 +416,18 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   }
   if (key === "vaccineEntries") return programStepKey("Immunization");
   // The Reporting entries (and any server error on diagnoses) live on step 3.
-  if (key.startsWith("reportingEntry.") && key.includes(".referral.")) return OUTCOME_STEP;
-  if (key.startsWith("diagnoses.") && key.includes(".referral.")) return OUTCOME_STEP;
+  if (key.startsWith("reportingEntry.") && key.includes(".referral.")) return carePlanStep;
+  if (key.startsWith("diagnoses.") && key.includes(".referral.")) return carePlanStep;
   if (key === "diagnosis" || key === "diagnoses" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
-  // Actions Taken (and the medicines dispensed) sit on step 3 too.
-  if (key === "dispensedMedicines") return OUTCOME_STEP;
+  // Actions Taken (and the medicines dispensed) sit on Assessment & Care Plan (BHC) or Care and Outcome (RHU).
+  if (key === "dispensedMedicines" || key === "careOutcome") return carePlanStep;
   if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) return PRESCRIPTION_STEP;
-  if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return OUTCOME_STEP;
-  if (key === "followUpAcknowledged" || key === "referralAcknowledged") return OUTCOME_STEP;
+  if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return carePlanStep;
+  if (key === "followUpAcknowledged" || key === "referralAcknowledged") return carePlanStep;
   // Server-only v2 next-action keys.
-  if (key === "care_plan.refer_to_rhu" || key === "needs_referral") return OUTCOME_STEP;
+  if (key === "care_plan.refer_to_rhu" || key === "needs_referral") return carePlanStep;
   if (key === "reasonForReferral" || key === "receivingRhuId" || key === "urgencyLevel" || key === "followUpDate" || key === "followUpTime" || key === "followUpReason" || key === "followUpStatus") {
-    return OUTCOME_STEP;
+    return carePlanStep;
   }
   return null;
 }

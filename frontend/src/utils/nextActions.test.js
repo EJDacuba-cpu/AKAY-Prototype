@@ -9,8 +9,10 @@ import {
   nextActionsDraft,
   nextActionsPayload,
   nextStepsReviewRows,
+  referralAcknowledgmentKey,
   referralItemCount,
   referralNeedsAcknowledgment,
+  referralSourceCount,
   restoreNextActions,
   serviceDateSuggestions,
   setFollowUpChecked,
@@ -22,15 +24,15 @@ const followUpOn = { ...initialNextActions(), bhcFollowUp: true };
 const referOn = { ...initialNextActions(), referToRhu: true };
 
 test("initialNextActions is all false and nothing ticks the follow-up by itself", () => {
-  assert.deepEqual(initialNextActions(), { bhcFollowUp: false, referToRhu: false, referralMultipleIssues: false });
+  assert.deepEqual(initialNextActions(), { bhcFollowUp: false, referToRhu: false, referralMultipleIssues: false, serviceReferrals: [] });
   assert.equal(setReferChecked(initialNextActions(), true).bhcFollowUp, false);
   assert.equal(setFollowUpChecked(initialNextActions(), true).bhcFollowUp, true);
   assert.equal(setFollowUpChecked(followUpOn, false).bhcFollowUp, false);
 });
 
 test("unticking Refer to RHU also clears the multiple-issues acknowledgment", () => {
-  const state = { bhcFollowUp: true, referToRhu: true, referralMultipleIssues: true };
-  assert.deepEqual(setReferChecked(state, false), { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false });
+  const state = { bhcFollowUp: true, referToRhu: true, referralMultipleIssues: true, serviceReferrals: [] };
+  assert.deepEqual(setReferChecked(state, false), { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false, serviceReferrals: [] });
   assert.deepEqual(setReferChecked(state, true), state);
   assert.equal(state.referToRhu, true);
 });
@@ -169,19 +171,17 @@ test("a ticked referral needs a reason and, when it covers 2+ items, the acknowl
     reasonExempt: false,
     acknowledged: true,
     count: 2,
-    multipleIssues: false,
   });
   assert.deepEqual(acknowledged, {});
-  const multiple = nextActionErrors({
+  const single = nextActionErrors({
     state: referOn,
     followUp: {},
     referral: { reason: "Needs workup" },
     reasonExempt: false,
     acknowledged: false,
     count: 1,
-    multipleIssues: true,
   });
-  assert.deepEqual(multiple, { referralAcknowledged: SHARED_ACKNOWLEDGMENT_MESSAGE });
+  assert.deepEqual(single, {});
 });
 
 test("monitoring referrals alone (Refer unticked) still need the acknowledgment at 2+ items", () => {
@@ -197,14 +197,46 @@ test("monitoring referrals alone (Refer unticked) still need the acknowledgment 
   assert.deepEqual(errors, { referralAcknowledged: SHARED_ACKNOWLEDGMENT_MESSAGE });
 });
 
-test("referral item count and acknowledgment follow the server rule", () => {
+test("referral item count and acknowledgment follow named sources, not a checkbox", () => {
   assert.equal(referralItemCount({ referToRhu: true, monitoringReferralIds: [] }), 1);
-  assert.equal(referralNeedsAcknowledgment({ count: 1, multipleIssues: false }), false);
+  assert.equal(referralNeedsAcknowledgment({ count: 1 }), false);
   assert.equal(referralItemCount({ referToRhu: true, monitoringReferralIds: ["htn"] }), 2);
-  assert.equal(referralNeedsAcknowledgment({ count: 2, multipleIssues: false }), true);
-  assert.equal(referralNeedsAcknowledgment({ count: 1, multipleIssues: true }), true);
+  assert.equal(referralNeedsAcknowledgment({ count: 2 }), true);
+  assert.equal(referralNeedsAcknowledgment({ count: 1 }), false);
   assert.equal(referralItemCount({ referToRhu: false, monitoringReferralIds: ["a", "a", "b"] }), 2);
   assert.equal(referralItemCount({}), 0);
+  assert.equal(referralSourceCount({ conditionReferrals: [{ name: "Cough" }] }), 1);
+  assert.equal(referralSourceCount({ conditionReferrals: [{ name: "Cough" }, { name: "Fever" }] }), 2);
+  assert.equal(referralSourceCount({ conditionReferrals: [{ name: "Cough" }], serviceReferrals: ["Maternal"] }), 2);
+  assert.equal(referralSourceCount({ serviceReferrals: ["Maternal"], legacyReferToRhu: true }), 1);
+  assert.equal(referralSourceCount({ conditionReferrals: [{ name: "Cough" }], monitoringReferralIds: [4] }), 2);
+});
+
+test("removing a referral source drops the count without merging remaining follow-ups", () => {
+  const two = referralSourceCount({
+    conditionReferrals: [{ name: "Cough" }, { name: "Wound" }],
+    serviceReferrals: ["Maternal"],
+  });
+  const afterConcernRemoved = referralSourceCount({
+    conditionReferrals: [{ name: "Wound" }],
+    serviceReferrals: ["Maternal"],
+  });
+  const afterServiceRemoved = referralSourceCount({
+    conditionReferrals: [{ name: "Cough" }, { name: "Wound" }],
+    serviceReferrals: [],
+  });
+  assert.equal(two, 3);
+  assert.equal(afterConcernRemoved, 2);
+  assert.equal(afterServiceRemoved, 2);
+  assert.equal(referralNeedsAcknowledgment({ count: afterConcernRemoved }), true);
+});
+
+test("acknowledgment identity resets when coverage, destination, or urgency changes", () => {
+  const key = referralAcknowledgmentKey({ coverage: ["Cough", "Prenatal"], receivingRhuId: "7", urgencyLevel: "Priority" });
+  assert.notEqual(key, referralAcknowledgmentKey({ coverage: ["Cough"], receivingRhuId: "7", urgencyLevel: "Priority" }));
+  assert.notEqual(key, referralAcknowledgmentKey({ coverage: ["Cough", "Prenatal"], receivingRhuId: "8", urgencyLevel: "Priority" }));
+  assert.notEqual(key, referralAcknowledgmentKey({ coverage: ["Cough", "Prenatal"], receivingRhuId: "7", urgencyLevel: "Urgent" }));
+  assert.equal(key, referralAcknowledgmentKey({ coverage: ["Cough", "Prenatal"], receivingRhuId: "7", urgencyLevel: "Priority" }));
 });
 
 test("EPI visit with a suggestion but the follow-up unticked sends no follow-up date or status", () => {
@@ -257,7 +289,7 @@ test("both ticked sends the follow-up and the referral", () => {
   });
   assert.deepEqual(payload, {
     needs_referral: true,
-    care_plan: { bhc_follow_up: true, refer_to_rhu: true, referral_multiple_issues: true },
+    care_plan: { bhc_follow_up: true, refer_to_rhu: true, referral_multiple_issues: false, service_referrals: [] },
     monitoring_data: {
       followUpStatus: "scheduled",
       followUpDate: "2026-10-20",
@@ -267,35 +299,47 @@ test("both ticked sends the follow-up and the referral", () => {
   });
 });
 
+test("two named referral sources send a derived multiple-issues flag without a checkbox", () => {
+  const payload = nextActionsPayload(
+    { ...initialNextActions(), referToRhu: true, serviceReferrals: ["Maternal"] },
+    { followUp: {}, conditionReferred: true, conditionReferralCount: 1, monitoringReferralIds: [] },
+  );
+  assert.equal(payload.care_plan.refer_to_rhu, true);
+  assert.equal(payload.care_plan.referral_multiple_issues, true);
+  assert.deepEqual(payload.care_plan.service_referrals, ["Maternal"]);
+});
+
 test("a ticked follow-up with no explicit status leaves the status to the server", () => {
   const payload = nextActionsPayload(followUpOn, { followUp: { date: "2026-10-20" }, monitoringReferralIds: [] });
   assert.equal(payload.monitoring_data.followUpStatus, "");
   assert.equal(payload.monitoring_data.followUpDate, "2026-10-20");
 });
 
-test("the draft holds the three booleans and restoring is lenient", () => {
-  const state = { bhcFollowUp: true, referToRhu: true, referralMultipleIssues: true };
-  assert.deepEqual(nextActionsDraft(state), state);
-  assert.deepEqual(restoreNextActions(nextActionsDraft(state)), state);
-  const noRefer = { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false };
+test("the draft holds the next-action flags and restoring is lenient", () => {
+  const state = { bhcFollowUp: true, referToRhu: true, referralMultipleIssues: false, serviceReferrals: ["Maternal"] };
+  assert.deepEqual(nextActionsDraft({ ...state, referralMultipleIssues: true }), state);
+  assert.deepEqual(restoreNextActions(nextActionsDraft(state), { selectedPrograms: ["Maternal"] }), state);
+  const noRefer = { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false, serviceReferrals: [] };
   assert.deepEqual(restoreNextActions(nextActionsDraft(noRefer)), noRefer);
-  assert.deepEqual(restoreNextActions({ bhcFollowUp: true }), { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false });
+  assert.deepEqual(restoreNextActions({ bhcFollowUp: true }), { bhcFollowUp: true, referToRhu: false, referralMultipleIssues: false, serviceReferrals: [] });
   assert.deepEqual(restoreNextActions({}), initialNextActions());
   assert.deepEqual(restoreNextActions(null), initialNextActions());
   assert.deepEqual(restoreNextActions(undefined), initialNextActions());
   assert.deepEqual(restoreNextActions({ bhcFollowUp: "true", referToRhu: 1, referralMultipleIssues: "yes" }), initialNextActions());
 });
 
-test("restoring keeps multiple-issues only with Refer ticked, and a referral-only draft does not tick the follow-up", () => {
+test("restoring drops a stale multiple-issues checkbox and a referral-only draft does not tick the follow-up", () => {
   assert.deepEqual(restoreNextActions({ referToRhu: false, referralMultipleIssues: true }), {
     bhcFollowUp: false,
     referToRhu: false,
     referralMultipleIssues: false,
+    serviceReferrals: [],
   });
   assert.deepEqual(restoreNextActions({ referToRhu: true, referralMultipleIssues: true }), {
     bhcFollowUp: false,
     referToRhu: true,
-    referralMultipleIssues: true,
+    referralMultipleIssues: false,
+    serviceReferrals: [],
   });
   const referralOnly = restoreNextActions({ referToRhu: true });
   assert.equal(referralOnly.bhcFollowUp, false);

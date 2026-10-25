@@ -104,6 +104,8 @@ class HealthRecordRequest extends FormRequest
             $rules['monitoring_data.followUpSchedules.*.sourceEntryId'] = ['nullable', 'string', 'max:64'];
             $rules['care_plan.refer_to_rhu'] = ['nullable', 'boolean'];
             $rules['care_plan.referral_multiple_issues'] = ['nullable', 'boolean'];
+            $rules['care_plan.service_referrals'] = ['nullable', 'array', 'max:3'];
+            $rules['care_plan.service_referrals.*'] = ['string', Rule::in(array_keys(\App\Services\ConsultationPrograms::CLASSIFICATIONS))];
             $rules['care_plan.condition_cards'] = ['nullable', 'boolean'];
             $rules['care_plan.shared_condition_referral'] = ['nullable', 'boolean', Rule::prohibitedIf(! $this->boolean('care_plan.condition_cards'))];
             $rules['diagnoses.*.id'] = [$this->boolean('care_plan.condition_cards') ? 'required' : 'nullable', 'string', 'max:64', 'distinct'];
@@ -785,14 +787,12 @@ class HealthRecordRequest extends FormRequest
     {
         $refers = $this->boolean('care_plan.refer_to_rhu');
         $shared = $this->boolean('care_plan.shared_condition_referral');
-        $cardReferralCount = 0;
         $hasCardReferrals = false;
         foreach ($this->diagnosesInput() as $index => $entry) {
             if (($entry['clinicalOutcome'] ?? null) !== 'refer_to_rhu') {
                 continue;
             }
             $hasCardReferrals = true;
-            $cardReferralCount++;
             if ($shared) {
                 continue;
             }
@@ -841,15 +841,22 @@ class HealthRecordRequest extends FormRequest
             }
         }
 
-        // One referral covering two or more issues needs the worker's explicit
-        // confirmation. It is audited, never a clinical compatibility check.
-        // "Covers more than one health issue" belongs to Refer to RHU: it
-        // counts only when that box is ticked (as in the controller's audit).
-        $count = ($shared && $hasCardReferrals ? $cardReferralCount : ($refers ? 1 : 0)) + count(array_unique($referredIds));
-        $multipleIssues = $refers && $this->boolean('care_plan.referral_multiple_issues');
+        // One referral covering two or more named sources needs confirmation.
+        // Count referred concerns, selected services, and monitoring. A stale
+        // multiple-issues checkbox never adds a source or requires acknowledgment.
+        $count = \App\Services\CarePlan::v2ReferralSourceCount(
+            $this->diagnosesInput(),
+            [
+                'refer_to_rhu' => $refers,
+                'shared_condition_referral' => $shared,
+                'service_referrals' => $this->input('care_plan.service_referrals', []) ?: [],
+            ],
+            $referredIds,
+            $this->input('monitoring_data.selectedPrograms', []) ?: []
+        );
         if (
             $needsReferral
-            && ($count >= 2 || $multipleIssues)
+            && $count >= 2
             && ! $this->boolean('care_plan.shared_referral_acknowledged')
         ) {
             $validator->errors()->add(

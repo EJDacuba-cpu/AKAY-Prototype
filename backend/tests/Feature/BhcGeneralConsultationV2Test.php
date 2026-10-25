@@ -598,11 +598,64 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->v2(['care_plan' => ['refer_to_rhu' => true], ...$this->referral()])->assertCreated();
     }
 
-    public function test_v2_multiple_issues_requires_acknowledgment(): void
+    public function test_v2_stale_multiple_issues_flag_does_not_require_acknowledgment(): void
     {
-        $payload = ['care_plan' => ['refer_to_rhu' => true, 'referral_multiple_issues' => true], ...$this->referral()];
+        $this->v2(['care_plan' => ['refer_to_rhu' => true, 'referral_multiple_issues' => true], ...$this->referral()])
+            ->assertCreated();
+    }
+
+    public function test_v2_concern_and_service_referral_require_acknowledgment(): void
+    {
+        $payload = [
+            'category' => 'Maternal',
+            'diagnoses' => [['id' => 'c1', 'name' => 'Cough', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'refer_to_rhu']],
+            'care_plan' => [
+                'condition_cards' => true,
+                'shared_condition_referral' => true,
+                'refer_to_rhu' => true,
+                'service_referrals' => ['Maternal'],
+            ],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'needs_referral' => true,
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'reason_for_referral' => 'Further assessment',
+                'urgency_level' => 'Routine',
+            ],
+        ];
         $this->v2($payload)->assertUnprocessable()->assertJsonValidationErrors(['care_plan.shared_referral_acknowledged']);
-        $this->v2([...$payload, 'care_plan' => [...$payload['care_plan'], 'shared_referral_acknowledged' => true]])->assertCreated();
+        $payload['care_plan']['shared_referral_acknowledged'] = true;
+        $this->v2($payload)->assertCreated();
+    }
+
+    public function test_v2_single_service_referral_does_not_require_acknowledgment(): void
+    {
+        $this->v2([
+            'category' => 'Maternal',
+            'care_plan' => [
+                'condition_cards' => true,
+                'shared_condition_referral' => true,
+                'refer_to_rhu' => true,
+                'service_referrals' => ['Maternal'],
+            ],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'needs_referral' => true,
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'reason_for_referral' => 'Further assessment',
+                'urgency_level' => 'Routine',
+            ],
+        ])->assertCreated();
     }
 
     public function test_v2_general_referral_plus_monitoring_referral_requires_acknowledgment(): void
@@ -819,18 +872,15 @@ class BhcGeneralConsultationV2Test extends TestCase
         }
     }
 
-    public function test_v2_acknowledgment_is_audited_with_multiple_issues_note(): void
+    public function test_v2_acknowledgment_is_audited_for_named_sources(): void
     {
-        $id = $this->v2([
-            'care_plan' => ['refer_to_rhu' => true, 'referral_multiple_issues' => true, 'shared_referral_acknowledged' => true],
-            ...$this->referral(),
-        ])->assertCreated()->json('data.id');
+        $id = $this->v2($this->sharedReferral())->assertCreated()->json('data.id');
 
         $this->assertDatabaseHas('audit_logs', ['module' => 'referrals', 'action' => 'acknowledged']);
-        $audit = AuditLog::where('module', 'referrals')->where('action', 'acknowledged')
-            ->where('description', 'like', '%Worker indicated multiple health issues.%')->sole();
+        $audit = AuditLog::where('module', 'referrals')->where('action', 'acknowledged')->sole();
         $this->assertStringContainsString("health record {$id}", $audit->description);
-        $this->assertStringContainsString('(General consultation)', $audit->description);
+        $this->assertStringContainsString('2 items (Concern one; Concern two)', $audit->description);
+        $this->assertStringNotContainsString('Worker indicated multiple health issues.', $audit->description);
         $this->assertStringEndsWith('Not a clinical compatibility check.', $audit->description);
     }
 

@@ -1,9 +1,9 @@
 /**
  * Independent BHC return schedules for one consultation. Locally managed
- * concerns and extra or service returns live in one Scheduled Returns list.
- * A locally managed condition may complete care with no return; each scheduled
- * return has its own purpose and date. Older drafts that only stored a visit
- * follow-up date are restored as a `visit` row.
+ * concerns and selected-service returns live in one list. A locally managed
+ * condition may complete care with no return; each scheduled return has its
+ * own purpose and date. Older drafts that only stored a visit follow-up date
+ * are restored as a `visit` row.
  */
 
 export const VISIT_PURPOSE_KEY = "visit";
@@ -77,7 +77,7 @@ export function followUpSchedulesPayload({
   continuedFollowUps = [],
 } = {}) {
   const rows = [
-    ...managedReturns.filter((row) => row.needed === true),
+    ...managedReturns.filter((row) => row.needed === true && text(row.date) && text(row.purpose)),
     ...extraSchedules.filter((row) => text(row.purpose) && text(row.date)),
     ...(visitFollowUp?.date ? [{ ...visitFollowUp, purposeKey: visitFollowUp.purposeKey || VISIT_PURPOSE_KEY, purpose: text(visitFollowUp.purpose) || "BHC follow-up" }] : []),
   ];
@@ -118,7 +118,7 @@ export function restoreFollowUpSchedules(list, fallback = null) {
       predecessorTaskId: Number(item?.predecessorTaskId || item?.predecessor_task_id) || null,
       sourceEntryId: text(item?.sourceEntryId || item?.source_entry_id) || null,
     }))
-    .filter((item) => item.purposeKey && item.date);
+    .filter((item) => item.purposeKey);
   if (stored.length) return stored;
   if (fallback?.bhcFollowUp === true && text(fallback.date)) {
     return [{
@@ -141,6 +141,12 @@ export function followUpScheduleErrors({ managedReturns = [], extraSchedules = [
     if (!text(row.purpose)) errors[`followUpSchedule.${row.purposeKey}.purpose`] = "Describe the reason for return.";
   }
   extraSchedules.forEach((row, index) => {
+    const key = text(row.purposeKey);
+    if (key.startsWith("service:")) {
+      if (!text(row.date)) errors[`followUpSchedule.${key}.date`] = "Set the follow-up date.";
+      if (!text(row.purpose)) errors[`followUpSchedule.${key}.purpose`] = "Describe the reason for return.";
+      return;
+    }
     if (!text(row.purpose)) errors[`extraFollowUp.${index}.purpose`] = "Describe the reason for return.";
     if (!text(row.date)) errors[`extraFollowUp.${index}.date`] = "Set the follow-up date.";
   });

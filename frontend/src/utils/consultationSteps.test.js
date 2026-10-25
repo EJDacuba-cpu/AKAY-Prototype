@@ -163,7 +163,7 @@ test("the global steps read in the new order with the new names", () => {
       "Patient History",
       "Physical Examination",
       "Service Details",
-      "Clinical Conditions & Reporting",
+      "Assessment & Care Plan",
       "Care and Outcome",
       "Review & Finalize",
     ],
@@ -314,7 +314,7 @@ test("later steps never show a program title", () => {
     const heading = headingFor(stepKey, ["Family Planning"], "Family Planning");
     assert.doesNotMatch(heading.title, /Family Planning|Program \d/);
   }
-  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Clinical Conditions & Reporting");
+  assert.equal(headingFor(NEXT_STEP, ["EPI"], "EPI").title, "Assessment & Care Plan");
   assert.equal(headingFor(OUTCOME_STEP, ["EPI"], "EPI").title, "Care and Outcome");
   assert.equal(headingFor(REVIEW_STEP, ["EPI"], "EPI").title, "Review & Finalize");
 });
@@ -534,7 +534,7 @@ test("a draft saved on the removed Hypertension / Diabetic form reopens on a rea
 
 test("condition and outcome steps, and Monitoring Details appears only when needed", () => {
   const labels = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "" }).map((s) => s.label);
-  assert.deepEqual(labels, ["Patient Interview", "Patient History", "Physical Examination", "Clinical Conditions & Reporting", "Care and Outcome", "Review & Finalize"]);
+  assert.deepEqual(labels, ["Patient Interview", "Patient History", "Physical Examination", "Assessment & Care Plan", "Care and Outcome", "Review & Finalize"]);
 
   const withTb = buildConsultationSteps({ selectedPrograms: [], primaryProgram: "", monitoringDetailKeys: ["tb_dots"] }).map((s) => s.key);
   assert.deepEqual(withTb, [INTERVIEW_STEP, HISTORY_STEP, ASSESSMENT_STEP, NEXT_STEP, OUTCOME_STEP, MONITORING_STEP, REVIEW_STEP]);

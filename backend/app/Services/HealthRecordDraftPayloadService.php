@@ -393,6 +393,7 @@ class HealthRecordDraftPayloadService
             'bhcFollowUp' => self::SCALAR,
             'referToRhu' => self::SCALAR,
             'referralMultipleIssues' => self::SCALAR,
+            'serviceReferrals' => ['*' => self::SCALAR],
         ],
         // Patient Background sections edited in this consultation, applied to
         // the patient on finalize (PatientBackground::apply). Only the sections
@@ -648,6 +649,8 @@ class HealthRecordDraftPayloadService
             'payload.sharedConditionReferral' => ['nullable', 'boolean'],
             'payload.carePlan.referToRhu' => ['nullable', 'boolean'],
             'payload.carePlan.referralMultipleIssues' => ['nullable', 'boolean'],
+            'payload.carePlan.serviceReferrals' => ['nullable', 'array', 'max:3'],
+            'payload.carePlan.serviceReferrals.*' => ['string', Rule::in(['Maternal', 'EPI', 'Family Planning'])],
             'payload.assessmentNotes' => ['nullable', 'string', 'max:5000'],
             'payload.dateOfVisit' => ['nullable', 'date_format:Y-m-d'],
             'payload.timeOfVisit' => ['nullable', 'date_format:H:i'],

@@ -5,12 +5,24 @@ import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralA
 import { formatDate } from "../../../../utils/formatters";
 import { conditionStatusLabel } from "../../../../utils/medicalConditions";
 import { Card } from "../../../ui/card";
+import {
+  CARE_PLAN_SERVICE_LABELS,
+  SERVICE_NEXT_ACTIONS,
+  defaultServicePurpose,
+  serviceNextAction,
+  serviceSchedule,
+  suggestionsForProgram,
+} from "../../../../utils/serviceNextActions";
+import { followUpDateWarnings } from "../../../../utils/nextActions";
+import { servicePurposeKey } from "../../../../utils/followUpSchedules";
 
 const MONITORING_DECISIONS = [
   { value: "continue", label: "Continue Monitoring" },
   { value: "refer", label: "Refer back to RHU" },
   { value: "stop", label: "Stop BHC Monitoring" },
 ];
+
+const SERVICE_NEXT_ACTION_OPTIONS = Object.entries(SERVICE_NEXT_ACTIONS).map(([value, label]) => ({ value, label }));
 
 const SECTION_HEADING_CLASS = "text-sm font-bold text-[#111827]";
 
@@ -77,23 +89,6 @@ function Acknowledgment({ name, label, checked, error, disabled, onChange }) {
         </p>
       )}
     </div>
-  );
-}
-
-/** One of the two independent Next Actions. */
-function ActionCheckbox({ name, label, checked, disabled, onChange }) {
-  return (
-    <label className="inline-flex cursor-pointer items-center gap-1.5 text-[13px]">
-      <input
-        type="checkbox"
-        name={name}
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange?.(event.target.checked)}
-        className="h-4 w-4 shrink-0 accent-[#DC2626]"
-      />
-      <span className={checked ? "font-semibold text-[#DC2626]" : "text-[#374151]"}>{label}</span>
-    </label>
   );
 }
 
@@ -187,9 +182,9 @@ function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFo
 }
 
 /**
- * Service-proposed return dates (EPI next dose, FP next appointment). "Use this
- * date" fills the follow-up date only: it never ticks the follow-up or
- * schedules anything.
+ * Service-proposed return dates (EPI next dose, FP next appointment). Shown
+ * only after Schedule next visit is chosen; "Use this date" fills that
+ * service's date and never starts a schedule or referral on its own.
  */
 function DateSuggestions({ suggestions = [], disabled, onUse }) {
   if (suggestions.length === 0) return null;
@@ -225,31 +220,60 @@ function DateWarnings({ warnings = [] }) {
   );
 }
 
-function extraScheduleHeading(row) {
-  const key = String(row?.purposeKey || "");
-  if (key.startsWith("service:")) return row.purpose || "Service return";
-  if (key === "visit") return row.purpose || "BHC follow-up";
-  return row.purpose || "Scheduled return";
-}
-
-function referralDecisionHint({ conditionReferred, monitoringReferred, referOn }) {
+function referralDecisionHint({ conditionReferred, monitoringReferred, serviceReferred, referOn }) {
+  if (conditionReferred && serviceReferred) {
+    return "From concerns and selected health services marked Refer to RHU. Change those outcomes to cancel this referral.";
+  }
   if (conditionReferred) return "From conditions marked Refer to RHU. Change the condition outcome to cancel this referral.";
+  if (serviceReferred) return "From selected health services marked Refer to RHU. Change the service next action to cancel this referral.";
   if (monitoringReferred && !referOn) return "From condition monitoring. Change the monitoring decision to cancel this referral.";
   return "One referral for this consultation.";
 }
 
+function serviceNextActionHint(action) {
+  if (action === "none") return "No additional return or referral is required for this service.";
+  if (action === "schedule") return "Schedule a BHC return for this service only.";
+  if (action === "refer_to_rhu") return "Include this service in the RHU referral for this consultation.";
+  return "Choose no additional action, a BHC return, or referral for this service.";
+}
+
+function ServiceFollowUp({ program, schedule, errors, disabled, suggestions, onFollowUpChange }) {
+  const purposeKey = servicePurposeKey(program);
+  const followUp = {
+    date: schedule?.date || "",
+    time: schedule?.time || "",
+    purpose: schedule?.purpose || defaultServicePurpose(program),
+  };
+  const warnings = followUpDateWarnings(followUp.date, suggestions);
+  return (
+    <div className="space-y-3">
+      <FollowUpFields
+        followUp={{ date: followUp.date, time: followUp.time, purpose: followUp.purpose, reason: followUp.purpose }}
+        errors={errors}
+        disabled={disabled}
+        reasonRequired
+        dateName={`followUpSchedule.${purposeKey}.date`}
+        timeName={`followUpSchedule.${purposeKey}.time`}
+        reasonName={`followUpSchedule.${purposeKey}.purpose`}
+        onFollowUpChange={(field, value) => onFollowUpChange?.({
+          ...followUp,
+          [field === "reason" ? "purpose" : field]: value,
+        })}
+      />
+      <DateSuggestions
+        suggestions={suggestions}
+        disabled={disabled}
+        onUse={(date) => onFollowUpChange?.({ ...followUp, date })}
+      />
+      <DateWarnings warnings={warnings} />
+    </div>
+  );
+}
+
 /**
- * Care and Outcome, flat sections divided by thin
- * rules, top to bottom:
- * - Scheduled Returns: locally managed concerns plus extra or service returns.
- * - RHU referral details, only after a condition, visit, or monitoring decision.
- * - Condition Monitoring, only when the visit continues or starts monitoring:
- *   Continue / Refer back to RHU / Stop per monitored condition (only the RHU
- *   sets a condition's status), with Additional Clinical Notes.
- * - Next Actions: Refer to RHU when no condition or monitoring already refers.
- * - Actions Taken / Treatment: `treatmentSlot`.
- * - Reporting: `reportingSlot`.
- * Rules live in utils/nextActions.js and utils/followUpSchedules.js.
+ * Assessment & Care Plan remainder: Selected Health Services next actions,
+ * the shared RHU referral panel, monitoring, and treatment. Concern
+ * follow-ups live on each concern row.
  */
 export default function NextStepsSection({
   continuedMonitorings = [], startingConditions = [], stops = {}, referrals = [],
@@ -257,89 +281,65 @@ export default function NextStepsSection({
   onStopChange, onMonitoringDecision,
   monitoringNotes = "", notesLabel = "Monitoring Notes", notesPlaceholder = "Write monitoring notes if useful...",
   onMonitoringNotesChange,
-  nextActions = {}, onReferCheckedChange, onMultipleIssuesChange,
-  suggestions = [], onUseSuggestedDate, warnings = [],
+  nextActions = {},
+  suggestions = [],
   referral = {}, onReferralChange, coverage = [],
   acknowledgmentRequired = false, referralAcknowledged = false, onAcknowledgeChange,
   treatmentSlot = null, reportingSlot = null, earlierDraftNotes = "", earlierDraftContinued = "",
   conditionReferred = false,
-  managedReturns = [], onManagedReturnChange,
-  extraSchedules = [], onExtraScheduleChange, onAddExtraSchedule, onRemoveExtraSchedule,
+  selectedPrograms = [], followUpSchedules = [], serviceReferrals = [],
+  onServiceNextAction, onServiceFollowUp,
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const referredIds = new Set(referrals.map(Number));
   const monitoringReferred = continuedMonitorings.some(
     (monitoring) => referredIds.has(Number(monitoring.id)) && !Object.hasOwn(stops, monitoring.id),
   );
-  const referOn = nextActions.referToRhu === true;
-  const hasReferralDecision = conditionReferred || monitoringReferred || referOn;
-  const showVisitReferralToggle = !conditionReferred && !monitoringReferred;
-  const showExtraSchedules = typeof onAddExtraSchedule === "function";
+  const namedServiceReferrals = serviceReferrals || [];
+  const serviceReferred = namedServiceReferrals.length > 0;
+  const referOn = nextActions.referToRhu === true || serviceReferred;
+  const hasReferralDecision = conditionReferred || monitoringReferred || serviceReferred || nextActions.referToRhu === true;
 
   return (
     <div className="divide-y divide-[#E5E7EB] [&>section]:py-5 [&>section:first-child]:pt-0 [&>section:last-child]:pb-0">
-      <section aria-labelledby="scheduled-returns-title">
-        <h2 id="scheduled-returns-title" className={SECTION_HEADING_CLASS}>Scheduled Returns</h2>
-        <p className="mb-3 mt-1 text-xs text-[#6B7280]">Each return identifies the condition or service, date, and reason. If none is added, no follow-up is scheduled.</p>
-        {managedReturns.length > 0 && (
-          <ul className="divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-            {managedReturns.map((row) => (
-              <li key={row.purposeKey} className="py-3">
-                <p className="text-sm font-semibold text-[#111827]">{row.name}</p>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-                    <input type="radio" name={`return-${row.purposeKey}`} checked={!row.needed} disabled={disabled} onChange={() => onManagedReturnChange?.(row.purposeKey, { ...row, needed: false, date: "", time: "" })} className="h-4 w-4 accent-[#DC2626]" />
-                    <span className={!row.needed ? "font-semibold text-[#111827]" : "text-gray-600"}>Care completed — no scheduled return</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-1.5 text-[13px]">
-                    <input type="radio" name={`return-${row.purposeKey}`} checked={row.needed === true} disabled={disabled} onChange={() => onManagedReturnChange?.(row.purposeKey, { ...row, needed: true })} className="h-4 w-4 accent-[#DC2626]" />
-                    <span className={row.needed ? "font-semibold text-[#DC2626]" : "text-gray-600"}>Schedule another BHC visit</span>
-                  </label>
-                </div>
-                {row.needed && (
-                  <div className="mt-3">
-                    <FollowUpFields
-                      followUp={{ date: row.date, time: row.time, purpose: row.purpose }}
-                      errors={errors}
-                      disabled={disabled}
-                      reasonRequired
-                      dateName={`followUpSchedule.${row.purposeKey}.date`}
-                      timeName={`followUpSchedule.${row.purposeKey}.time`}
-                      reasonName={`followUpSchedule.${row.purposeKey}.purpose`}
-                      onFollowUpChange={(field, value) => onManagedReturnChange?.(row.purposeKey, { ...row, needed: true, [field === "reason" ? "purpose" : field]: value })}
+      <section aria-labelledby="selected-health-services-title">
+        <h2 id="selected-health-services-title" className={SECTION_HEADING_CLASS}>Selected Health Services</h2>
+        {selectedPrograms.length === 0 ? (
+          <p className="mt-2 text-xs text-[#6B7280]">No health services selected for this consultation.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-[#E5E7EB]">
+            {selectedPrograms.map((program) => {
+              const action = serviceNextAction(program, { schedules: followUpSchedules, serviceReferrals: namedServiceReferrals });
+              const schedule = serviceSchedule(program, followUpSchedules);
+              const programSuggestions = suggestionsForProgram(program, suggestions);
+              return (
+                <li key={program} className="py-3 first:pt-2">
+                  <fieldset disabled={disabled} className="min-w-0 space-y-2">
+                    <legend className="text-sm font-semibold text-[#111827]">{CARE_PLAN_SERVICE_LABELS[program] || program}</legend>
+                    <RadioChoiceGroup
+                      label="Next action"
+                      name={`serviceNextAction.${program}`}
+                      inline
+                      options={SERVICE_NEXT_ACTION_OPTIONS}
+                      value={action}
+                      onChange={(value) => onServiceNextAction?.(program, value)}
                     />
-                  </div>
-                )}
-              </li>
-            ))}
+                    <p className="text-xs text-[#6B7280]">{serviceNextActionHint(action)}</p>
+                    {action === "schedule" && (
+                      <ServiceFollowUp
+                        program={program}
+                        schedule={schedule}
+                        errors={errors}
+                        disabled={disabled}
+                        suggestions={programSuggestions}
+                        onFollowUpChange={(next) => onServiceFollowUp?.(program, next)}
+                      />
+                    )}
+                  </fieldset>
+                </li>
+              );
+            })}
           </ul>
-        )}
-        {showExtraSchedules && (
-          <div className={managedReturns.length > 0 ? "mt-3" : undefined}>
-            <DateSuggestions suggestions={suggestions} disabled={disabled} onUse={onUseSuggestedDate} />
-            {extraSchedules.map((row, index) => (
-              <div key={row.purposeKey || index} className="mt-3 border-l border-[#E5E7EB] pl-3">
-                <p className="mb-2 text-sm font-semibold text-[#111827]">{extraScheduleHeading(row)}</p>
-                <FollowUpFields
-                  followUp={{ date: row.date, time: row.time, purpose: row.purpose, reason: row.purpose }}
-                  errors={errors}
-                  disabled={disabled}
-                  reasonRequired
-                  dateName={`extraFollowUp.${index}.date`}
-                  timeName={`extraFollowUp.${index}.time`}
-                  reasonName={`extraFollowUp.${index}.purpose`}
-                  onFollowUpChange={(field, value) => onExtraScheduleChange?.(index, { ...row, [field === "reason" ? "purpose" : field]: value })}
-                />
-                <button type="button" disabled={disabled} onClick={() => onRemoveExtraSchedule?.(index)} className="mt-2 text-xs font-semibold text-[#DC2626] underline underline-offset-2">
-                  Remove this schedule
-                </button>
-              </div>
-            ))}
-            <DateWarnings warnings={warnings} />
-            <button type="button" disabled={disabled} onClick={onAddExtraSchedule} className="mt-2 text-[13px] font-semibold text-[#DC2626] underline underline-offset-2">
-              Add a scheduled return
-            </button>
-          </div>
         )}
       </section>
       {hasMonitoring && (
@@ -413,52 +413,17 @@ export default function NextStepsSection({
           </div>
         </section>
       )}
-      {(showVisitReferralToggle || hasReferralDecision) && (
+      {hasReferralDecision && (
         <section aria-labelledby="shared-rhu-referral-title">
-          {showVisitReferralToggle && !hasReferralDecision ? (
-            <>
-              <h2 id="shared-rhu-referral-title" className={SECTION_HEADING_CLASS}>RHU Referral</h2>
-              <div className="mt-2">
-                <ActionCheckbox
-                  name="referToRhu"
-                  label="Refer to RHU"
-                  checked={referOn}
-                  disabled={disabled}
-                  onChange={onReferCheckedChange}
-                />
-              </div>
-            </>
-          ) : (
-            <Card className="rounded-none border-slate-200 p-5 text-black shadow-sm">
-              <h2 id="shared-rhu-referral-title" className={SECTION_HEADING_CLASS}>Refer to RHU</h2>
-              <p className="mb-4 mt-1 text-xs text-[#6B7280]">{referralDecisionHint({ conditionReferred, monitoringReferred, referOn })}</p>
-              {showVisitReferralToggle && (
-                <div className="mb-4">
-                  <ActionCheckbox
-                    name="referToRhu"
-                    label="Refer to RHU"
-                    checked={referOn}
-                    disabled={disabled}
-                    onChange={onReferCheckedChange}
-                  />
-                </div>
-              )}
-              <div className="space-y-4">
-                <Covers items={coverage} />
-                <ReferralFields referral={referral} referralFacilityField={referralFacilityField} errors={errors} disabled={disabled} onReferralChange={onReferralChange} />
-                {referOn && (
-                  <ActionCheckbox
-                    name="referralMultipleIssues"
-                    label="This referral covers more than one health issue"
-                    checked={nextActions.referralMultipleIssues === true}
-                    disabled={disabled}
-                    onChange={onMultipleIssuesChange}
-                  />
-                )}
-                {acknowledgmentRequired && <Acknowledgment name="referralAcknowledged" label="All listed concerns can go to this facility with this priority." checked={referralAcknowledged} error={errors.referralAcknowledged} disabled={disabled} onChange={(checked) => onAcknowledgeChange?.(checked)} />}
-              </div>
-            </Card>
-          )}
+          <Card className="rounded-none border-slate-200 p-5 text-black shadow-sm">
+            <h2 id="shared-rhu-referral-title" className={SECTION_HEADING_CLASS}>Refer to RHU</h2>
+            <p className="mb-4 mt-1 text-xs text-[#6B7280]">{referralDecisionHint({ conditionReferred, monitoringReferred, serviceReferred, referOn })}</p>
+            <div className="space-y-4">
+              <Covers items={coverage} />
+              <ReferralFields referral={referral} referralFacilityField={referralFacilityField} errors={errors} disabled={disabled} onReferralChange={onReferralChange} />
+              {acknowledgmentRequired && <Acknowledgment name="referralAcknowledged" label="All listed concerns can go to this facility with this priority." checked={referralAcknowledged} error={errors.referralAcknowledged} disabled={disabled} onChange={(checked) => onAcknowledgeChange?.(checked)} />}
+            </div>
+          </Card>
         </section>
       )}
 

@@ -226,18 +226,20 @@ export function continuedVisitLink(continuedFollowUpTaskIds = [], continuedFollo
 
 /** Continue from a screen of the Next phase. */
 export function nextPhaseForwardTarget(screen, monitoringDetailKeys = []) {
-  if (screen === NEXT_STEP) return OUTCOME_STEP;
-  return screen === OUTCOME_STEP && monitoringDetailKeys.length > 0 ? MONITORING_STEP : REVIEW_STEP;
+  if (screen === NEXT_STEP || screen === OUTCOME_STEP) {
+    return monitoringDetailKeys.length > 0 ? MONITORING_STEP : REVIEW_STEP;
+  }
+  return REVIEW_STEP;
 }
 
 /** Previous from a screen of the Next phase; null means leave the phase. */
 export function nextPhaseBackTarget(screen) {
-  return screen === MONITORING_STEP ? OUTCOME_STEP : screen === OUTCOME_STEP ? NEXT_STEP : null;
+  return screen === MONITORING_STEP || screen === OUTCOME_STEP ? NEXT_STEP : null;
 }
 
 /** Previous from Review. */
 export function reviewBackTarget(monitoringDetailKeys = []) {
-  return monitoringDetailKeys.length > 0 ? MONITORING_STEP : OUTCOME_STEP;
+  return monitoringDetailKeys.length > 0 ? MONITORING_STEP : NEXT_STEP;
 }
 
 const NO_NEXT_ACTION = "No next action";

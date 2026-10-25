@@ -32,6 +32,12 @@ test("managed returns start unscheduled so local care can complete without a dat
   assert.deepEqual(followUpSchedulesPayload({ managedReturns: rows }), []);
 });
 
+test("an unfinished follow-up row is not sent until it has a date and reason", () => {
+  assert.deepEqual(followUpSchedulesPayload({
+    managedReturns: [{ needed: true, purposeKey: "entry:c1", purpose: "Wound", date: "", sourceEntryId: "c1" }],
+  }), []);
+});
+
 test("one consultation can schedule two independent returns", () => {
   const payload = followUpSchedulesPayload({
     managedReturns: [{ needed: true, purposeKey: "entry:c1", purpose: "Wound reassessment", date: "2026-10-29", sourceEntryId: "c1" }],
@@ -72,6 +78,11 @@ test("schedule validation does not require a date when no return is needed", () 
   });
   assert.equal(extraErrors["extraFollowUp.0.date"], "Set the follow-up date.");
   assert.equal(extraErrors["extraFollowUp.0.purpose"], "Describe the reason for return.");
+  const serviceErrors = followUpScheduleErrors({
+    extraSchedules: [{ purposeKey: "service:maternal", purpose: "Prenatal follow-up", date: "" }],
+  });
+  assert.equal(serviceErrors["followUpSchedule.service:maternal.date"], "Set the follow-up date.");
+  assert.equal("extraFollowUp.0.date" in serviceErrors, false);
 });
 
 test("review rows list each scheduled purpose separately", () => {
@@ -111,4 +122,11 @@ test("purpose key helpers stay stable", () => {
   assert.equal(entryPurposeKey("c1"), "entry:c1");
   assert.equal(extraPurposeKey(4), "extra:4");
   assert.equal(VISIT_PURPOSE_KEY, "visit");
+});
+
+test("restore keeps an in-progress concern follow-up even before a date is entered", () => {
+  assert.deepEqual(
+    restoreFollowUpSchedules([{ purposeKey: "entry:c1", purpose: "Wound", date: "", sourceEntryId: "c1" }]),
+    [{ purposeKey: "entry:c1", purpose: "Wound", date: "", time: "", predecessorTaskId: null, sourceEntryId: "c1" }],
+  );
 });

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { conditionCardErrors, conditionCardReviewRows, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "./conditionCards.js";
-import { recordReportingLines, reportingEntryDraft, reportingEntryPayload, restoreReportingEntries } from "./reportingEntries.js";
+import { applyEntryCareOutcome, conditionCardErrors, conditionCardReviewRows, entryCareOutcome, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "./conditionCards.js";
+import { recordReportingLines, reportingEntryDraft, reportingEntryErrors, reportingEntryPayload, restoreReportingEntries } from "./reportingEntries.js";
 import { normalizeDiagnoses } from "./diagnoses.js";
-import { getErrorOwnerStepKey, remapServerErrorKeys, NEXT_STEP, OUTCOME_STEP } from "./consultationSteps.js";
+import { BHC_STEP_OPTIONS, getErrorOwnerStepKey, remapServerErrorKeys, NEXT_STEP, OUTCOME_STEP } from "./consultationSteps.js";
 
 const referral = { urgencyLevel: "Priority", receivingRhuId: "7", reasonForReferral: "Needs physician assessment" };
 const entry = { id: "case-a", name: "Suspected hypertension", reportIn: ["morbidity", "surveillance"], clinicalOutcome: "refer_to_rhu", referral };
@@ -49,8 +49,23 @@ test("empty conditions are allowed for service-only visits; added conditions are
   assert.deepEqual(conditionCardErrors([], { allowEmpty: false }), { diagnoses: "Add at least one condition before continuing." });
   assert.equal(getErrorOwnerStepKey("diagnoses"), NEXT_STEP);
   assert.deepEqual(conditionCardErrors([entry]), {});
+  const unnamed = { id: "starter", name: "", reportIn: [] };
+  assert.deepEqual(conditionCardErrors([unnamed]), {});
   const blank = { ...entry, clinicalOutcome: "" };
-  assert.equal(conditionCardErrors([blank])["reportingEntry.case-a.clinicalOutcome"], "Choose a clinical outcome.");
+  assert.equal(conditionCardErrors([blank])["reportingEntry.case-a.clinicalOutcome"], "Choose a care outcome.");
+});
+
+test("a blank starter and extra empty rows are ignored while named concerns keep their reports", () => {
+  const rows = [
+    { id: "starter", name: "", reportIn: [] },
+    { id: "a", name: "Hypertension", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+    { id: "extra", name: "  ", reportIn: [] },
+    { id: "b", name: "Cough", reportIn: ["surveillance"], clinicalOutcome: "managed_at_bhc" },
+  ];
+  assert.deepEqual(conditionCardErrors(rows), {});
+  assert.deepEqual(reportingEntryErrors(rows), {});
+  assert.deepEqual(reportingEntryPayload(rows).map((item) => item.id), ["a", "b"]);
+  assert.deepEqual(reportingEntryPayload(rows).map((item) => item.reportIn), [["morbidity"], ["surveillance"]]);
 });
 
 test("condition referral details survive draft restore and the official record serializer", () => {
@@ -69,9 +84,36 @@ test("switching to local care keeps the hidden referral in drafts but excludes i
   assert.deepEqual(conditionCardErrors([managed], { referralDetails: true }), {});
 });
 
-test("outcome is chosen explicitly and referral fields are checked only on Care and Outcome", () => {
-  const blank = { ...entry, clinicalOutcome: "" };
-  assert.equal(conditionCardErrors([blank])["reportingEntry.case-a.clinicalOutcome"], "Choose a clinical outcome.");
+test("each named concern keeps its own care outcome and reporting classification", () => {
+  const cough = { id: "c1", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" };
+  const htn = { ...entry, id: "c2", name: "Suspected hypertension", reportIn: ["notifiable", "surveillance"] };
+  const schedules = [{ purposeKey: "entry:c1", purpose: "Cough review", date: "2026-11-04", sourceEntryId: "c1" }];
+  assert.equal(entryCareOutcome(cough, schedules), "bhc_follow_up");
+  assert.equal(entryCareOutcome(htn, schedules), "refer_to_rhu");
+  assert.equal(entryCareOutcome({ ...cough, clinicalOutcome: "managed_at_bhc" }, []), "managed_at_bhc");
+  assert.equal(applyEntryCareOutcome(cough, "refer_to_rhu").clinicalOutcome, "refer_to_rhu");
+  assert.equal(applyEntryCareOutcome(htn, "managed_at_bhc").clinicalOutcome, "managed_at_bhc");
+  assert.equal(applyEntryCareOutcome(htn, "bhc_follow_up").clinicalOutcome, "managed_at_bhc");
+  const errors = conditionCardErrors([cough, htn], { schedules });
+  assert.deepEqual(errors, {});
+  const rows = conditionCardReviewRows([cough, htn], schedules);
+  assert.match(rows[0].value, /BHC Follow-up/);
+  assert.match(rows[0].value, /Morbidity/);
+  assert.match(rows[1].value, /Refer to RHU/);
+  assert.match(rows[1].value, /Notifiable/);
+  assert.match(rows[1].value, /Surveillance/);
+});
+
+test("removing or clearing a concern does not rewrite the other row's outcome", () => {
+  const cough = { id: "c1", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" };
+  const htn = { ...entry };
+  const remaining = [htn];
+  assert.equal(entryCareOutcome(remaining[0], []), "refer_to_rhu");
+  assert.equal(remaining[0].reportIn.join(","), "morbidity,surveillance");
+  assert.deepEqual(conditionCardErrors(remaining), {});
+});
+
+test("unfinished referral details on a referred concern still fail when details are required", () => {
   const unfinished = { ...entry, referral: {} };
   assert.deepEqual(conditionCardErrors([unfinished]), {});
   assert.equal(Object.keys(conditionCardErrors([unfinished], { referralDetails: true })).length, 3);
@@ -81,7 +123,8 @@ test("server errors on a specific condition reach its visible field on the corre
   const errors = remapServerErrorKeys({ "diagnoses.0.referral.receivingRhuId": "Unauthorized RHU" }, [entry]);
   assert.deepEqual(errors, { "reportingEntry.case-a.referral.receivingRhuId": "Unauthorized RHU" });
   assert.equal(getErrorOwnerStepKey(Object.keys(errors)[0]), OUTCOME_STEP);
-  assert.equal(getErrorOwnerStepKey("reportingEntry.case-a.clinicalOutcome"), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey(Object.keys(errors)[0], BHC_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpDate", BHC_STEP_OPTIONS), NEXT_STEP);
 });
 
 test("a partially submitted consultation reports both submitted and held referrals", () => {

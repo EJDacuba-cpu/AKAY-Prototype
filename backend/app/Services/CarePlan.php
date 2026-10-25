@@ -154,6 +154,62 @@ final class CarePlan
         return $concerns + count(array_unique(array_map('intval', $monitoringReferralIds)));
     }
 
+    /**
+     * Selected Prenatal / EPI / FP services explicitly marked Refer to RHU.
+     *
+     * @param  array<string, mixed>  $carePlan
+     * @param  array<int, mixed>  $selectedPrograms
+     * @return array<int, string>
+     */
+    public static function v2ServiceReferrals(array $carePlan, array $selectedPrograms = []): array
+    {
+        $selected = array_flip(array_values(array_filter($selectedPrograms, 'is_string')));
+        $keys = [];
+        foreach ($carePlan['service_referrals'] ?? [] as $key) {
+            if (is_string($key) && isset(ConsultationPrograms::CLASSIFICATIONS[$key]) && isset($selected[$key])) {
+                $keys[$key] = $key;
+            }
+        }
+
+        return array_values($keys);
+    }
+
+    /**
+     * v2 shared-referral sources: named concerns, selected services, and
+     * referred monitoring. A visit-level Refer with no named source still
+     * counts as one item. The retired multiple-issues checkbox is ignored.
+     *
+     * @param  array<int, mixed>  $diagnoses
+     * @param  array<string, mixed>  $carePlan
+     * @param  array<int, mixed>  $monitoringReferralIds
+     * @param  array<int, mixed>  $selectedPrograms
+     */
+    public static function v2ReferralSourceCount(
+        array $diagnoses,
+        array $carePlan,
+        array $monitoringReferralIds = [],
+        array $selectedPrograms = []
+    ): int {
+        $shared = filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $cards = 0;
+        if ($shared) {
+            foreach ($diagnoses as $diagnosis) {
+                if (! is_array($diagnosis) || ($diagnosis['clinicalOutcome'] ?? null) !== 'refer_to_rhu') {
+                    continue;
+                }
+                if (trim((string) ($diagnosis['name'] ?? '')) !== '') {
+                    $cards++;
+                }
+            }
+        }
+        $services = count(self::v2ServiceReferrals($carePlan, $selectedPrograms));
+        $monitoring = count(array_unique(array_map('intval', $monitoringReferralIds)));
+        $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $legacy = ($cards === 0 && $services === 0 && $refers) ? 1 : 0;
+
+        return $cards + $services + $monitoring + $legacy;
+    }
+
     public static function refersAny(array $diagnoses): bool
     {
         foreach ($diagnoses as $diagnosis) {

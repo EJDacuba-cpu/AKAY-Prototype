@@ -88,6 +88,7 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $payload['carePlan']['bhcFollowUp'] = true;
         $payload['carePlan']['referToRhu'] = false;
         $payload['carePlan']['referralMultipleIssues'] = true;
+        $payload['carePlan']['serviceReferrals'] = ['Maternal', 'EPI'];
 
         $sanitized = $service->sanitize($payload);
 
@@ -96,6 +97,7 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertTrue($sanitized['carePlan']['bhcFollowUp']);
         $this->assertFalse($sanitized['carePlan']['referToRhu']);
         $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
+        $this->assertSame(['Maternal', 'EPI'], $sanitized['carePlan']['serviceReferrals']);
     }
 
     public function test_condition_cards_and_outcome_screen_survive_draft_sanitization(): void

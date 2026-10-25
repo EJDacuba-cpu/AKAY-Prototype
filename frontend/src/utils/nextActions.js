@@ -1,13 +1,15 @@
 /**
  * Step 3 of the BHC General Consultation ("Medication, Treatment & Next Steps"):
- * Scheduled Returns (independent dates) and Refer to RHU.
+ * selected-service next actions, independent concern follow-ups, and Refer to RHU.
  *
- * Pure state and validation helpers (no React). Return dates are suggestions
- * only: using one creates or fills a scheduled return. Referral details are
- * required only after an actual referral decision.
+ * Pure state and validation helpers (no React). Service return dates are
+ * suggestions only and never schedule a visit on their own. Referral details
+ * are required only after an actual referral decision.
  */
 import { SHARED_ACKNOWLEDGMENT_MESSAGE } from "./carePlanWorkspace.js";
+import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 import { formatEntryDestinations } from "./reportingEntries.js";
+import { restoreServiceReferrals } from "./serviceNextActions.js";
 
 export const FOLLOW_UP_DATE_ERROR = "Set the follow-up date.";
 export const FOLLOW_UP_REASON_ERROR = "Follow-up reason is required.";
@@ -17,7 +19,7 @@ const text = (value) => String(value ?? "").trim();
 
 /** Everything unticked. */
 export function initialNextActions() {
-  return { bhcFollowUp: false, referToRhu: false, referralMultipleIssues: false };
+  return { bhcFollowUp: false, referToRhu: false, referralMultipleIssues: false, serviceReferrals: [] };
 }
 
 export function setFollowUpChecked(state, checked) {
@@ -65,8 +67,32 @@ export function referralItemCount({ referToRhu = false, monitoringReferralIds = 
   return (referToRhu === true ? 1 : 0) + new Set(monitoringReferralIds || []).size;
 }
 
-export function referralNeedsAcknowledgment({ count = 0, multipleIssues = false } = {}) {
-  return count >= 2 || multipleIssues === true;
+/**
+ * Named referral sources for one shared RHU referral: referred concerns,
+ * selected services marked Refer to RHU, and referred monitoring. A legacy
+ * visit-level Refer with no named source still counts as one item.
+ */
+export function referralSourceCount({
+  conditionReferrals = [],
+  serviceReferrals = [],
+  monitoringReferralIds = [],
+  legacyReferToRhu = false,
+} = {}) {
+  const conditions = (conditionReferrals || []).length;
+  const services = (serviceReferrals || []).length;
+  const monitoring = new Set(monitoringReferralIds || []).size;
+  const legacy = conditions === 0 && services === 0 && legacyReferToRhu === true ? 1 : 0;
+  return conditions + services + monitoring + legacy;
+}
+
+/** Show and require the shared-referral acknowledgment only when two or more sources are included. */
+export function referralNeedsAcknowledgment({ count = 0 } = {}) {
+  return count >= 2;
+}
+
+/** Identity of the acknowledged shared referral. Coverage, destination, or urgency changes invalidate it. */
+export function referralAcknowledgmentKey({ coverage = [], receivingRhuId = "", urgencyLevel = "" } = {}) {
+  return [...(coverage || []), String(receivingRhuId || ""), String(urgencyLevel || "")].join("\n");
 }
 
 /** Blocking errors only. Date mismatches are warnings and never appear here. */
@@ -77,7 +103,6 @@ export function nextActionErrors({
   reasonExempt = false,
   acknowledged = false,
   count = 0,
-  multipleIssues = false,
 } = {}) {
   const errors = {};
   if (state.bhcFollowUp === true) {
@@ -85,10 +110,7 @@ export function nextActionErrors({
     if (!reasonExempt && !text(followUp?.reason)) errors.followUpReason = FOLLOW_UP_REASON_ERROR;
   }
   if (state.referToRhu === true && !text(referral?.reason)) errors.reasonForReferral = REFERRAL_REASON_ERROR;
-  // The shared acknowledgment also covers monitoring referrals made with Refer unticked.
-  // The multiple-issues trigger only counts while Refer to RHU is ticked (the payload sends it false otherwise).
-  const multiple = state.referToRhu === true && multipleIssues === true;
-  if (referralNeedsAcknowledgment({ count, multipleIssues: multiple }) && acknowledged !== true) {
+  if (referralNeedsAcknowledgment({ count }) && acknowledged !== true) {
     errors.referralAcknowledged = SHARED_ACKNOWLEDGMENT_MESSAGE;
   }
   return errors;
@@ -99,10 +121,21 @@ export function nextActionErrors({
  * "" (the server clears them too). The caller never sends `referral` when
  * needs_referral is false.
  */
-export function nextActionsPayload(state, { followUp = {}, monitoringReferralIds = [], followUpSchedules = [], conditionReferred = false } = {}) {
+export function nextActionsPayload(state, { followUp = {}, monitoringReferralIds = [], followUpSchedules = [], conditionReferred = false, conditionReferralCount, referralCount } = {}) {
   const schedules = Array.isArray(followUpSchedules) ? followUpSchedules.filter((item) => item?.date && item?.purpose) : [];
   const followUpOn = state?.bhcFollowUp === true || schedules.length > 0;
-  const referOn = state?.referToRhu === true;
+  const serviceReferrals = Array.isArray(state?.serviceReferrals)
+    ? [...new Set(state.serviceReferrals.filter((key) => Object.hasOwn(PROGRAM_CLASSIFICATIONS, key)))]
+    : [];
+  const referOn = state?.referToRhu === true || serviceReferrals.length > 0;
+  const count = Number.isInteger(referralCount)
+    ? referralCount
+    : referralSourceCount({
+      conditionReferrals: Array.from({ length: Number.isInteger(conditionReferralCount) ? conditionReferralCount : (conditionReferred ? 1 : 0) }),
+      serviceReferrals,
+      monitoringReferralIds,
+      legacyReferToRhu: referOn,
+    });
   const field = (value) => (followUpOn && schedules.length === 0 ? String(value ?? "") : "");
   const first = schedules[0];
   return {
@@ -110,7 +143,8 @@ export function nextActionsPayload(state, { followUp = {}, monitoringReferralIds
     care_plan: {
       bhc_follow_up: followUpOn,
       refer_to_rhu: referOn,
-      referral_multiple_issues: referOn && state?.referralMultipleIssues === true,
+      referral_multiple_issues: count >= 2,
+      service_referrals: serviceReferrals,
     },
     monitoring_data: {
       followUpStatus: first ? String(followUp?.status || "Follow-up Required") : field(followUp?.status),
@@ -126,21 +160,27 @@ export function nextActionsDraft(state) {
   return {
     bhcFollowUp: state?.bhcFollowUp === true,
     referToRhu: state?.referToRhu === true,
-    referralMultipleIssues: state?.referralMultipleIssues === true,
+    referralMultipleIssues: false,
+    serviceReferrals: Array.isArray(state?.serviceReferrals)
+      ? [...new Set(state.serviceReferrals.filter((key) => Object.hasOwn(PROGRAM_CLASSIFICATIONS, key)))]
+      : [],
   };
 }
 
 /**
- * Any missing or non-boolean value becomes false. referralMultipleIssues is
- * kept only when referToRhu is true, so a stale draft cannot break the invariant.
+ * Any missing or non-boolean value becomes false. Multiple-issue coverage is
+ * derived from named referral sources, so a stale checkbox never restores.
+ * `serviceReferrals` restores onto currently selected Prenatal / EPI / FP keys.
  */
-export function restoreNextActions(draftCarePlan) {
+export function restoreNextActions(draftCarePlan, { selectedPrograms = [] } = {}) {
   const draft = draftCarePlan && typeof draftCarePlan === "object" ? draftCarePlan : {};
-  const referToRhu = draft.referToRhu === true;
+  const serviceReferrals = restoreServiceReferrals(draft, selectedPrograms);
+  const referToRhu = draft.referToRhu === true || serviceReferrals.length > 0;
   return {
     bhcFollowUp: draft.bhcFollowUp === true,
     referToRhu,
-    referralMultipleIssues: referToRhu && draft.referralMultipleIssues === true,
+    referralMultipleIssues: false,
+    serviceReferrals,
   };
 }
 

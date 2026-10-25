@@ -108,6 +108,7 @@ test("reportingEntryErrors: name, destination and duplicate messages", () => {
     { "reportingEntry.b.duplicate": "This health problem is already listed." },
   );
   assert.deepEqual(reportingEntryErrors(null), {});
+  assert.deepEqual(reportingEntryErrors([{ id: "blank", name: "", reportIn: [] }]), {});
 });
 
 test("formatEntryDestinations joins labels in canonical order", () => {

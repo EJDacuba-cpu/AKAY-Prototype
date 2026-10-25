@@ -1121,27 +1121,22 @@ class HealthRecordController extends Controller
         $names = [];
         $note = '';
         if ($v2) {
-            // v2 (B4): the structural count is the visit's own Refer to RHU
-            // plus the distinct referred monitorings; reporting entries never
-            // count. The worker's "covers more than one health issue" flag
-            // also asks for the acknowledgment, and is noted in the audit -
-            // only with Refer to RHU ticked, as in HealthRecordRequest.
             $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $multipleIssues = $refers && filter_var($carePlan['referral_multiple_issues'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $cardNames = filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                ? collect($diagnoses)->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')->all()
-                : [];
-            $count = ($cardNames !== [] ? count($cardNames) : ($refers ? 1 : 0)) + count(array_unique(array_map('intval', $monitoringIds)));
-            if ($count < 2 && ! $multipleIssues) {
+            $selectedPrograms = $record->monitoring_data['selectedPrograms'] ?? $request->input('monitoring_data.selectedPrograms', []);
+            $selectedPrograms = is_array($selectedPrograms) ? $selectedPrograms : [];
+            $count = \App\Services\CarePlan::v2ReferralSourceCount($diagnoses, $carePlan, $monitoringIds, is_array($selectedPrograms) ? $selectedPrograms : []);
+            if ($count < 2) {
                 return;
             }
-            if ($cardNames !== []) {
-                $names = $cardNames;
-            } elseif ($refers) {
+            $cardNames = filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                ? collect($diagnoses)->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')->filter()->all()
+                : [];
+            $serviceNames = collect(\App\Services\CarePlan::v2ServiceReferrals($carePlan, is_array($selectedPrograms) ? $selectedPrograms : []))
+                ->map(fn ($key) => $key === 'Maternal' ? 'Prenatal' : $key)
+                ->all();
+            $names = [...$cardNames, ...$serviceNames];
+            if ($names === [] && $refers) {
                 $names[] = 'General consultation';
-            }
-            if ($multipleIssues) {
-                $note = ' Worker indicated multiple health issues.';
             }
         } else {
             $count = \App\Services\CarePlan::referralItemCount($diagnoses, $monitoringIds);

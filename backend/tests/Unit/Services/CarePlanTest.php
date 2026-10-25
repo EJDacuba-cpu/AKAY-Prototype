@@ -100,6 +100,22 @@ class CarePlanTest extends TestCase
         $this->assertFalse(CarePlan::keepsFollowUpWithReferral($refer, null));
     }
 
+    public function test_v2_referral_source_count_uses_named_concerns_and_services(): void
+    {
+        $cough = ['id' => 'c1', 'name' => 'Cough', 'clinicalOutcome' => 'refer_to_rhu'];
+        $wound = ['id' => 'c2', 'name' => 'Wound', 'clinicalOutcome' => 'refer_to_rhu'];
+        $carePlan = ['refer_to_rhu' => true, 'shared_condition_referral' => true, 'service_referrals' => ['Maternal']];
+
+        $this->assertSame(1, CarePlan::v2ReferralSourceCount([$cough], ['refer_to_rhu' => true, 'shared_condition_referral' => true], [], []));
+        $this->assertSame(2, CarePlan::v2ReferralSourceCount([$cough, $wound], ['refer_to_rhu' => true, 'shared_condition_referral' => true], [], []));
+        $this->assertSame(2, CarePlan::v2ReferralSourceCount([$cough], $carePlan, [], ['Maternal']));
+        $this->assertSame(1, CarePlan::v2ReferralSourceCount([], $carePlan, [], ['Maternal']));
+        $this->assertSame(1, CarePlan::v2ReferralSourceCount([], ['refer_to_rhu' => true, 'referral_multiple_issues' => true], [], []));
+        $this->assertSame(2, CarePlan::v2ReferralSourceCount([], ['refer_to_rhu' => true], [4], []));
+        $this->assertSame(0, CarePlan::v2ReferralSourceCount([$cough, $wound], ['condition_cards' => true], [], []));
+        $this->assertSame(1, CarePlan::v2ReferralSourceCount([$cough], $carePlan, [], ['EPI']));
+    }
+
     public function test_bhc_follow_up_flag_keeps_follow_up_with_referral(): void
     {
         // v2: the visit-level Schedule BHC Follow-up flag survives a referral,

@@ -94,8 +94,8 @@ import {
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import NextStepsSection from "../../components/features/health-records/wizard/NextStepsSection";
-import ConditionCardsSection, { ConditionSummaryPanel } from "../../components/features/health-records/wizard/ConditionCardsSection";
-import { conditionCardErrors, conditionCardReviewRows, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
+import ConditionCardsSection from "../../components/features/health-records/wizard/ConditionCardsSection";
+import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
@@ -153,29 +153,36 @@ import {
   shouldRegenerateReferralReason,
 } from "../../utils/carePlanWorkspace";
 import {
-  followUpDateWarnings,
   followUpReasonExempt,
   initialNextActions,
   nextActionErrors,
   nextActionsDraft,
   nextActionsPayload,
   nextStepsReviewRows,
-  referralItemCount,
   referralNeedsAcknowledgment,
+  referralSourceCount,
+  referralAcknowledgmentKey,
   hasReferralDecision,
   restoreNextActions,
   serviceDateSuggestions,
-  setReferChecked,
 } from "../../utils/nextActions";
 import {
-  extraPurposeKey,
   extraScheduleRows,
   followUpScheduleErrors,
   followUpSchedulesPayload,
   managedReturnRows,
-  restoreFollowUpSchedules,
+  entryPurposeKey,
   servicePurposeKey,
 } from "../../utils/followUpSchedules";
+import {
+  applyServiceNextAction,
+  applyServiceReferral,
+  carePlanServiceLabel,
+  defaultServicePurpose,
+  pruneServiceReferrals,
+  pruneServiceSchedules,
+  restoreSelectedServiceSchedules,
+} from "../../utils/serviceNextActions";
 import {
   reportingEntryDraft,
   reportingEntryPayload,
@@ -731,8 +738,8 @@ export default function ConsultationWorkspace() {
   // suggest or alert.
   const [fbs, setFbs] = useState("");
 
-  // Step 3's two independent Next Actions: { bhcFollowUp, referToRhu,
-  // referralMultipleIssues }. Only the checkboxes and a restored draft set them.
+  // Step 3 next actions: { bhcFollowUp, referToRhu, serviceReferrals }.
+  // Multiple-issue coverage is derived from named referral sources.
   const [nextActions, setNextActions] = useState(initialNextActions);
   // The follow-up form. Kept while Schedule BHC Follow-up is unticked; only
   // sent while it is ticked (nextActionsPayload).
@@ -1147,8 +1154,8 @@ export default function ConsultationWorkspace() {
   // A service visit: programs selected, and sent (see the payload's
   // consultationMode guard) - the server's monitoring_data.selectedPrograms.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
-  // ---- Next Actions (step 3). Visit level; rules in utils/nextActions.js ----
-  const conditionReferrals = reportingEntries.filter((entry) => entry.clinicalOutcome === "refer_to_rhu");
+  // ---- Next Actions. Per-concern outcomes plus selected-service next actions. ----
+  const conditionReferrals = reportingEntries.filter((entry) => namedConcern(entry) && entry.clinicalOutcome === "refer_to_rhu");
   const referredConcernNames = [...conditionReferrals.map((entry) => entry.name), ...referredMonitoringRows.map((monitoring) => monitoring.conditionName)].join("; ");
   const managedReturns = managedReturnRows(reportingEntries, followUpSchedules);
   const extraSchedules = extraScheduleRows(followUpSchedules);
@@ -1157,14 +1164,22 @@ export default function ConsultationWorkspace() {
     extraSchedules,
     continuedFollowUps,
   });
+  const namedServiceReferrals = pruneServiceReferrals(nextActions.serviceReferrals, selectedPrograms);
+  const referralCount = referralSourceCount({
+    conditionReferrals,
+    serviceReferrals: namedServiceReferrals,
+    monitoringReferralIds,
+    legacyReferToRhu: nextActions.referToRhu === true,
+  });
   const effectiveNextActions = {
     ...nextActions,
     bhcFollowUp: scheduledReturns.length > 0,
-    referToRhu: conditionReferrals.length > 0 || nextActions.referToRhu,
-    referralMultipleIssues: conditionReferrals.length > 1 || nextActions.referralMultipleIssues,
+    referToRhu: conditionReferrals.length > 0 || namedServiceReferrals.length > 0 || nextActions.referToRhu,
+    referralMultipleIssues: referralCount >= 2,
+    serviceReferrals: namedServiceReferrals,
   };
   const needsReferral = hasReferralDecision({
-    referToRhu: nextActions.referToRhu,
+    referToRhu: namedServiceReferrals.length > 0 || nextActions.referToRhu,
     conditionReferred: conditionReferrals.length > 0,
     monitoringReferralIds,
   });
@@ -1181,20 +1196,21 @@ export default function ConsultationWorkspace() {
       : "",
     familyPlanningNextDate: isFamilyPlanning ? familyPlanningData.nextAppointmentDate || "" : "",
   });
-  const followUpWarnings = scheduledReturns.flatMap((item) => followUpDateWarnings(item.date, followUpSuggestions));
-  // What the one referral covers: this visit's own referral, then each
-  // followed condition referred back.
+  // What the one referral covers: referred concerns, selected services, then
+  // followed conditions referred back. A legacy visit-level Refer with no
+  // named source still uses the general-consultation cover.
   const referralCoverage = [
-    ...(conditionReferrals.length > 0 ? conditionReferrals.map((entry) => entry.name) : nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
+    ...conditionReferrals.map((entry) => entry.name),
+    ...namedServiceReferrals.map((program) => carePlanServiceLabel(program)),
+    ...(conditionReferrals.length === 0 && namedServiceReferrals.length === 0 && nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
     ...referredMonitoringRows.map((monitoring) => monitoring.conditionName),
   ];
-  const referralCount = conditionReferrals.length > 0 ? conditionReferrals.length + monitoringReferralIds.length : referralItemCount({ referToRhu: nextActions.referToRhu, monitoringReferralIds });
-  const referralMultipleIssues = effectiveNextActions.referToRhu && effectiveNextActions.referralMultipleIssues === true;
-  const referralAcknowledgmentRequired = referralNeedsAcknowledgment({
-    count: referralCount,
-    multipleIssues: referralMultipleIssues,
+  const referralAcknowledgmentRequired = referralNeedsAcknowledgment({ count: referralCount });
+  const referralCoversKey = referralAcknowledgmentKey({
+    coverage: referralCoverage,
+    receivingRhuId,
+    urgencyLevel: referralForm.urgencyLevel,
   });
-  const referralCoversKey = [...referralCoverage, referralMultipleIssues ? "multiple-issues" : ""].join("\n");
   const referralAcknowledged =
     referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
   const patientGateLocked = !selectedPatientId;
@@ -1240,7 +1256,7 @@ export default function ConsultationWorkspace() {
   // Monitoring Details disappears when nothing monitored needs it any more.
   useEffect(() => {
     if (monitoringDetailKeys.length === 0 && nextScreen === MONITORING_STEP) {
-      setNextScreen(OUTCOME_STEP);
+      setNextScreen(NEXT_STEP);
     }
   }, [monitoringDetailKeys.length, nextScreen]);
 
@@ -1509,7 +1525,7 @@ export default function ConsultationWorkspace() {
           monitoringReferrals,
           startingConditions,
         }),
-        ...nextActionsDraft(nextActions),
+        ...nextActionsDraft(effectiveNextActions),
       },
       sharedConditionReferral: true,
       referralForm: pickDraftFields(referralForm, [
@@ -1646,9 +1662,7 @@ export default function ConsultationWorkspace() {
     // was already converted above: its unreported concerns are in assessmentNotes.
     setReportingEntries(restoreReportingEntries(payload.diagnoses));
     setAssessmentNotes(typeof payload.assessmentNotes === "string" ? payload.assessmentNotes : "");
-    // Only the draft's own checkboxes: nothing is ticked from a date.
-    setNextActions(restoreNextActions(payload.carePlan));
-    setFollowUpReason(payload.followUpReason || "");
+    setNextActions(restoreNextActions(payload.carePlan, { selectedPrograms: restoredPrograms }));
     setMedication(payload.medication || "");
     setAttendingStaff(payload.attendingStaff || currentUserName);
     setConsultationNotes(payload.consultationNotes || "");
@@ -1660,14 +1674,15 @@ export default function ConsultationWorkspace() {
     setWeight(payload.weight || "");
     setHeight(payload.height || "");
     setFbs(payload.fbs === undefined || payload.fbs === null ? "" : String(payload.fbs));
-    setFollowUpDate(payload.followUpDate || "");
-    setFollowUpSchedules(restoreFollowUpSchedules(payload.followUpSchedules, {
+    setFollowUpSchedules(restoreSelectedServiceSchedules(payload.followUpSchedules, restoredPrograms, {
       bhcFollowUp: payload.carePlan?.bhcFollowUp === true,
       date: payload.followUpDate,
       time: payload.followUpTime,
       purpose: payload.followUpReason,
     }));
+    setFollowUpDate(payload.followUpDate || "");
     setFollowUpTime(payload.followUpTime || "");
+    setFollowUpReason(payload.followUpReason || "");
     // The acknowledgment is not stored: the worker confirms it again.
     setReferralAcknowledgment(NO_ACKNOWLEDGMENT);
     setMonitoringNotes(payload.monitoringNotes || "");
@@ -1761,7 +1776,10 @@ export default function ConsultationWorkspace() {
     // Back to the exact screen the user left on - see resolveRestoredPosition.
     // A draft saved on the old Patient History step reopens on Patient Interview.
     const restored = resolveRestoredPosition(payload, BHC_STEP_OPTIONS);
-    setNextScreen([NEXT_STEP, OUTCOME_STEP, MONITORING_STEP].includes(payload.nextScreen) ? payload.nextScreen : NEXT_STEP);
+    {
+      const restoredScreen = payload.nextScreen === OUTCOME_STEP ? NEXT_STEP : payload.nextScreen;
+      setNextScreen([NEXT_STEP, MONITORING_STEP].includes(restoredScreen) ? restoredScreen : NEXT_STEP);
+    }
     setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
     setValidationErrors({});
@@ -2282,14 +2300,13 @@ export default function ConsultationWorkspace() {
         reasonExempt: followUpReasonIsExempt,
         acknowledged: referralAcknowledged,
         count: referralCount,
-        multipleIssues: referralMultipleIssues,
       }),
       ...followUpScheduleErrors({
         managedReturns,
         extraSchedules,
         reasonExempt: followUpReasonIsExempt,
       }),
-      ...conditionCardErrors(reportingEntries),
+      ...conditionCardErrors(reportingEntries, { schedules: followUpSchedules }),
       ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
       ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
       ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
@@ -2297,11 +2314,84 @@ export default function ConsultationWorkspace() {
   }
 
   function handleReportingEntriesChange(next) {
-    setReportingEntries(next);
-    // Entry errors are re-checked on Continue / Save.
+    const rows = Array.isArray(next) ? next : [];
+    setReportingEntries(rows);
+    const ids = new Set(rows.map((entry) => String(entry.id)));
+    setFollowUpSchedules((current) => current.filter((item) => {
+      const key = String(item.purposeKey || "");
+      const source = String(item.sourceEntryId || "");
+      if (!key.startsWith("entry:") && !source) return true;
+      return ids.has(source) || ids.has(key.slice("entry:".length));
+    }));
     setValidationErrors((current) => {
       const kept = Object.fromEntries(
-        Object.entries(current).filter(([key]) => key !== "diagnoses" && !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.")),
+        Object.entries(current).filter(([key]) => key !== "diagnoses" && !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.") && !key.startsWith("followUpSchedule.entry:")),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function handleConcernFollowUp(entryId, followUp) {
+    const purposeKey = entryPurposeKey(entryId);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (!followUp) return rest;
+      const existing = current.find((item) => item.purposeKey === purposeKey);
+      return [...rest, {
+        purposeKey,
+        purpose: followUp.purpose || existing?.purpose || "BHC follow-up",
+        date: followUp.date ?? existing?.date ?? "",
+        time: followUp.time ?? existing?.time ?? "",
+        sourceEntryId: String(entryId),
+        predecessorTaskId: existing?.predecessorTaskId || null,
+      }];
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.${purposeKey}`)),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function handleServiceFollowUp(program, followUp) {
+    const purposeKey = servicePurposeKey(program);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (!followUp) return rest;
+      const existing = current.find((item) => item.purposeKey === purposeKey);
+      return [...rest, {
+        purposeKey,
+        purpose: followUp.purpose || existing?.purpose || defaultServicePurpose(program),
+        date: followUp.date ?? existing?.date ?? "",
+        time: followUp.time ?? existing?.time ?? "",
+        predecessorTaskId: existing?.predecessorTaskId || null,
+        sourceEntryId: existing?.sourceEntryId || null,
+      }];
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.${purposeKey}`)),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function handleServiceNextAction(program, action) {
+    ["reasonForReferral", "receivingRhuId", "urgencyLevel", "referralAcknowledged", "care_plan.refer_to_rhu", "needs_referral"].forEach(clearValidationError);
+    setFollowUpSchedules((current) => applyServiceNextAction(program, action, current));
+    setNextActions((current) => {
+      const serviceReferrals = applyServiceReferral(program, action, current.serviceReferrals);
+      return {
+        ...current,
+        serviceReferrals,
+        referToRhu: serviceReferrals.length > 0,
+        referralMultipleIssues: false,
+      };
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.service:`) && !key.startsWith("extraFollowUp.")),
       );
       return Object.keys(kept).length === Object.keys(current).length ? current : kept;
     });
@@ -3033,10 +3123,7 @@ export default function ConsultationWorkspace() {
     // The visit's Next Actions (v2): only what is ticked is sent. The EPI next
     // dose and the FP next appointment stay in their service data; they never
     // become the follow-up date or a follow-up task by themselves.
-    const nextActionsFragments = nextActionsPayload({
-      ...nextActions,
-      bhcFollowUp: scheduledReturns.length > 0,
-    }, {
+    const nextActionsFragments = nextActionsPayload(effectiveNextActions, {
       followUp: {
         status: "Follow-up Required",
         date: followUpDate,
@@ -3046,6 +3133,8 @@ export default function ConsultationWorkspace() {
       monitoringReferralIds,
       followUpSchedules: scheduledReturns,
       conditionReferred: conditionReferrals.length > 0,
+      conditionReferralCount: conditionReferrals.length,
+      referralCount,
     });
     const finalNeedsReferral = nextActionsFragments.needs_referral === true;
     // Continued follow-ups (Start Consultation modal): the visit is a
@@ -3254,8 +3343,8 @@ export default function ConsultationWorkspace() {
       // What this visit continues, starts and stops. validateCarePlan already
       // ran in getClinicalValidationErrors above (this payload drops blank
       // stops). A condition's status is the RHU's to set: never sent from here.
-      // Plus the visit's Next Actions: bhc_follow_up, refer_to_rhu and
-      // referral_multiple_issues.
+      // Plus the visit's Next Actions: bhc_follow_up, refer_to_rhu,
+      // derived referral_multiple_issues, and service_referrals.
       carePlan: {
         ...buildCarePlanPayload({
           continuedFollowUpTaskIds,
@@ -3679,16 +3768,8 @@ export default function ConsultationWorkspace() {
   function handleNextActionContinue() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
-    const conditionErrors = conditionCardErrors(reportingEntries);
-    if (revealErrorStep(conditionErrors)) return;
-    if (setValidationErrorsAndFocus(conditionErrors)) return;
-    if (nextScreen === OUTCOME_STEP) {
-      // This screen's own rules, asked for before moving on (getNextStepErrors).
-      // Only the errors are set and the first one focused; nothing entered is
-      // cleared or chosen.
-      if (setValidationErrorsAndFocus(getNextStepErrors())) return;
-    }
-    goToStepKey(nextPhaseForwardTarget(nextScreen, monitoringDetailKeys));
+    if (setValidationErrorsAndFocus(getNextStepErrors())) return;
+    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP ? NEXT_STEP : nextScreen, monitoringDetailKeys));
   }
 
   // ---- Wizard view models -------------------------------------------------
@@ -3772,6 +3853,16 @@ export default function ConsultationWorkspace() {
     // draft payload and the saved record read it exactly as before.
     setConsultationMode(next.selectedPrograms.length ? "program" : "general");
     setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
+    setFollowUpSchedules((current) => pruneServiceSchedules(current, next.selectedPrograms));
+    setNextActions((current) => {
+      const serviceReferrals = pruneServiceReferrals(current.serviceReferrals, next.selectedPrograms);
+      return {
+        ...current,
+        serviceReferrals,
+        referToRhu: serviceReferrals.length > 0,
+        referralMultipleIssues: false,
+      };
+    });
     if (option === "Maternal" && next.selectedPrograms.includes("Maternal")) {
       applyBhcPrenatalPrefill();
     }
@@ -3924,47 +4015,21 @@ export default function ConsultationWorkspace() {
         recordId={null}
       />
     </LockedFormContent>
-  ) : nextScreen === NEXT_STEP ? (
-    <ConditionCardsSection heading={<ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} />
   ) : (
-    <>
+    <div className="space-y-8">
+    <ConditionCardsSection heading={<ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
     <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
     <NextStepsSection
-      conditionReferred={conditionReferrals.length > 0}
-      managedReturns={managedReturns}
-      onManagedReturnChange={(purposeKey, next) => {
-        setFollowUpSchedules((current) => {
-          const rest = current.filter((item) => item.purposeKey !== purposeKey);
-          return next.needed ? [...rest, { purposeKey, purpose: next.purpose, date: next.date, time: next.time, sourceEntryId: next.sourceEntryId, predecessorTaskId: next.predecessorTaskId || null }] : rest;
-        });
-      }}
-      extraSchedules={extraSchedules}
-      onExtraScheduleChange={(index, next) => {
-        setFollowUpSchedules((current) => {
-          const extras = extraSchedules.map((item, itemIndex) => itemIndex === index ? next : item);
-          return [...current.filter((item) => String(item.purposeKey || "").startsWith("entry:")), ...extras];
-        });
-      }}
-      onAddExtraSchedule={() => {
-        setFollowUpSchedules((current) => {
-          const prenatalKey = servicePurposeKey("Maternal");
-          const addPrenatal = selectedPrograms.includes("Maternal") && !current.some((item) => item.purposeKey === prenatalKey);
-          return [...current, addPrenatal
-            ? { purposeKey: prenatalKey, purpose: "Prenatal follow-up", date: "", time: "" }
-            : { purposeKey: extraPurposeKey(Date.now()), purpose: "", date: "", time: "" }];
-        });
-      }}
-      onRemoveExtraSchedule={(index) => {
-        const removed = extraSchedules[index];
-        if (!removed) return;
-        setFollowUpSchedules((current) => current.filter((item) => item.purposeKey !== removed.purposeKey));
-      }}
+      selectedPrograms={selectedPrograms}
+      followUpSchedules={followUpSchedules}
+      serviceReferrals={namedServiceReferrals}
+      onServiceNextAction={handleServiceNextAction}
+      onServiceFollowUp={handleServiceFollowUp}
       continuedMonitorings={continuedMonitorings}
       startingConditions={startingConditions}
       stops={monitoringStops}
       referrals={monitoringReferrals}
       errors={validationErrors}
-      // A locked review is already disabled by the workspace fieldset.
       disabled={conditionFieldsLocked}
       onStopChange={(monitoringId, reason) => {
         clearValidationError(`carePlanStop.${monitoringId}`);
@@ -3976,37 +4041,14 @@ export default function ConsultationWorkspace() {
         setMonitoringStops(next.stops);
         setMonitoringReferrals(next.referrals);
       }}
-      // Additional Clinical Notes (monitoringNotes), inside Condition Monitoring.
       monitoringNotes={monitoringNotes}
       notesLabel={monitoringNotesLabel}
       notesPlaceholder={monitoringNotesPlaceholder}
       onMonitoringNotesChange={setMonitoringNotes}
       treatmentSlot={treatmentSlot}
-      nextActions={nextActions}
-      onReferCheckedChange={(checked) => {
-        ["reasonForReferral", "receivingRhuId", "urgencyLevel", "referralAcknowledged", "care_plan.refer_to_rhu", "needs_referral"].forEach(clearValidationError);
-        setNextActions((current) => setReferChecked(current, checked));
-      }}
-      onMultipleIssuesChange={(checked) => {
-        clearValidationError("referralAcknowledged");
-        setNextActions((current) => ({ ...current, referralMultipleIssues: checked === true }));
-      }}
+      nextActions={effectiveNextActions}
+      conditionReferred={conditionReferrals.length > 0}
       suggestions={followUpSuggestions}
-      onUseSuggestedDate={(date) => {
-        setFollowUpSchedules((current) => {
-          const extras = extraScheduleRows(current);
-          const open = extras.find((item) => !String(item.date || "").trim());
-          if (open) {
-            return current.map((item) => item.purposeKey === open.purposeKey ? { ...item, date } : item);
-          }
-          const prenatalKey = servicePurposeKey("Maternal");
-          const addPrenatal = selectedPrograms.includes("Maternal") && !current.some((item) => item.purposeKey === prenatalKey);
-          return [...current, addPrenatal
-            ? { purposeKey: prenatalKey, purpose: "Prenatal follow-up", date, time: "" }
-            : { purposeKey: extraPurposeKey(Date.now()), purpose: "", date, time: "" }];
-        });
-      }}
-      warnings={followUpWarnings}
       referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
       referralFacilityField={
         <ReferralFacilityField
@@ -4033,7 +4075,7 @@ export default function ConsultationWorkspace() {
       earlierDraftNotes={assessmentNotes}
       earlierDraftContinued={earlierDraftContinued}
     />
-    </>
+    </div>
   );
 
 
@@ -4134,9 +4176,9 @@ export default function ConsultationWorkspace() {
     [ASSESSMENT_STEP]:
       "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
-      "Enter reported health problems or suspected cases, reporting classifications, and clinical outcomes.",
+      "Record each suspected condition, its reporting classification, and its own care outcome.",
     [OUTCOME_STEP]:
-      "Complete referral details, the shared BHC return schedule, and treatment for this consultation.",
+      "Record each suspected condition, its reporting classification, and its own care outcome.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
@@ -4158,8 +4200,7 @@ export default function ConsultationWorkspace() {
     !(activeDraft?.reviewState === "review" && !canFinalize);
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
-  const showConditionPanel = wizardPhase === WIZARD_NEXT && nextScreen === OUTCOME_STEP;
-  const showSidePanel = showProgramPanel || showBodyPanel || showConditionPanel;
+  const showSidePanel = showProgramPanel || showBodyPanel;
   // Same lock the whole form used to sit under: a review awaiting a finalizer
   // who cannot correct records is read-only.
   const programPanel = (
@@ -4240,15 +4281,10 @@ export default function ConsultationWorkspace() {
     },
     {
       key: NEXT_STEP,
-      title: "Clinical Conditions & Reporting",
+      title: "Assessment & Care Plan",
       stepKey: NEXT_STEP,
-      rows: conditionCardReviewRows(sharedConditionEntries(reportingEntries)),
-    },
-    {
-      key: OUTCOME_STEP,
-      title: "Care and Outcome",
-      stepKey: OUTCOME_STEP,
       rows: [
+        ...conditionCardReviewRows(sharedConditionEntries(reportingEntries), followUpSchedules),
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
         // Continued, starting and stopped monitoring only (no concerns, no
@@ -4408,7 +4444,7 @@ export default function ConsultationWorkspace() {
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
           showVisitOverview={nextScreen === MONITORING_STEP}
-          unboxed={nextScreen === NEXT_STEP || nextScreen === OUTCOME_STEP}
+          unboxed={nextScreen === NEXT_STEP}
           saving={false}
           saveLabel="Save Record"
           savingLabel="Saving health record..."
@@ -4707,11 +4743,7 @@ export default function ConsultationWorkspace() {
       )}
       </fieldset>
       </div>
-      {showSidePanel && (showConditionPanel ? (
-        <fieldset className="contents">
-          <ConditionSummaryPanel entries={reportingEntries} />
-        </fieldset>
-      ) : showProgramPanel ? (
+      {showSidePanel && (showProgramPanel ? (
         <fieldset disabled={workspaceLocked} className="contents">
           {programPanel}
         </fieldset>

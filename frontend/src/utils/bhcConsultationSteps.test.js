@@ -44,7 +44,6 @@ test("BHC steps go Patient Interview -> Physical Examination with no History ste
     ASSESSMENT_STEP,
     PROGRAMS_STEP,
     NEXT_STEP,
-    OUTCOME_STEP,
     MONITORING_STEP,
     REVIEW_STEP,
   ]);
@@ -54,7 +53,6 @@ test("BHC steps go Patient Interview -> Physical Examination with no History ste
     ASSESSMENT_STEP,
     MATERNAL,
     NEXT_STEP,
-    OUTCOME_STEP,
     MONITORING_STEP,
     REVIEW_STEP,
   ]);
@@ -82,7 +80,9 @@ test("BHC: Informant, Similar Illness and staged background errors belong to Pat
   // Every other owner is unchanged.
   assert.equal(getErrorOwnerStepKey("chiefComplaint", BHC), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("pulse", BHC), ASSESSMENT_STEP);
-  assert.equal(getErrorOwnerStepKey("dispensedMedicines", BHC), OUTCOME_STEP);
+  assert.equal(getErrorOwnerStepKey("dispensedMedicines", BHC), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("careOutcome", BHC), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpDate", BHC), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("somethingElse", BHC), null);
 });
 

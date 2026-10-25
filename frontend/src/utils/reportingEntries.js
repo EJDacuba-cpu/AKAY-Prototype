@@ -104,12 +104,14 @@ export function restoreReportingEntries(list) {
     }));
 }
 
-/** Validation messages keyed `reportingEntry.<id>.<name|reportIn|duplicate>`. */
+/** Validation messages keyed `reportingEntry.<id>.<name|reportIn|duplicate>`. Blank starter rows are ignored. */
 export function reportingEntryErrors(entries) {
   const errors = {};
   const seen = new Set();
   for (const entry of Array.isArray(entries) ? entries : []) {
     const key = normalizeNameKey(entry?.name);
+    const destinations = entryDestinations(entry);
+    if (!key && destinations.length === 0) continue;
     if (!key) {
       errors[`reportingEntry.${entry?.id}.name`] = "Enter the reported health problem.";
     } else if (seen.has(key)) {
@@ -117,7 +119,7 @@ export function reportingEntryErrors(entries) {
     } else {
       seen.add(key);
     }
-    if (entryDestinations(entry).length === 0) {
+    if (destinations.length === 0) {
       errors[`reportingEntry.${entry?.id}.reportIn`] = "Choose at least one report.";
     }
   }
