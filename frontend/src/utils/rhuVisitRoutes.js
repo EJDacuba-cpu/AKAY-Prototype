@@ -3,7 +3,12 @@ export function rhuConsultationPath(visitId, patientId) {
   return `/rhu/health-records/add?visitId=${visitId}&patientId=${patientId}&mode=continue`;
 }
 
-/** Opens the RHU profile Referrals tab on the visit's linked referral. Navigation only; never changes visit status. */
+/** Profile Referrals tab. Navigation only; never changes visit status. */
+export function rhuPatientReferralsPath(patientId) {
+  return `/rhu/patients/${patientId}?tab=referrals`;
+}
+
+/** Dedicated read-only BHC slip for one referral on this patient's profile. */
 export function reviewReferralSlipPath(patientId, referralId) {
-  return `/rhu/patients/${patientId}?tab=referrals&referral=${referralId}`;
+  return `/rhu/patients/${patientId}/referrals/${referralId}`;
 }

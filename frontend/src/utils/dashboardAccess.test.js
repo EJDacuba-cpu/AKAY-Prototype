@@ -89,4 +89,6 @@ test("RHU intake nav locks without rhu.intake or rhu.manage", () => {
   assert.equal(navigationAllowed(intake, "/rhu/referrals/AKY-1"), true);
   assert.equal(canAccessModule(intake, "rhuIntake"), true);
   assert.equal(navigationAllowed({ role: "bhc", permissions: ["clinical.history"] }, "/bhc/referrals"), true);
+  assert.equal(navigationAllowed(historyOnly, "/rhu/patients/9/referrals/5"), true);
+  assert.equal(navigationAllowed({ role: "rhu", permissions: ["rhu.intake"] }, "/rhu/patients/9/referrals/5"), false);
 });

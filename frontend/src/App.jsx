@@ -73,6 +73,7 @@ import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
 import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
+import RhuReferralSlip from "./pages/rhu/RhuReferralSlip";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
 import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
@@ -706,6 +707,14 @@ export default function App() {
         }
       />
 
+      <Route
+        path="/rhu/patients/:patientId/referrals/:referralId"
+        element={
+          <ProtectedPage allowedRole="rhu" module="history">
+            <RhuReferralSlip />
+          </ProtectedPage>
+        }
+      />
       <Route
         path="/rhu/patients/:patientId"
         element={

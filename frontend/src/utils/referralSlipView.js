@@ -1,5 +1,4 @@
 import { normalizeBodyFindings } from "./bodyFindings.js";
-import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 import { formatServiceType, getRecordValue } from "./healthRecordPrograms.js";
 
 export function referralListKey(referral = {}) {
@@ -56,13 +55,37 @@ function text(value) {
   return next && next !== "Not recorded" ? next : "";
 }
 
-export function referredServices(referral, record) {
-  const fromRecord = record
-    ? getConsultationPrograms(record).map((key) => PROGRAM_CLASSIFICATIONS[key] || key)
-    : [];
-  const uniquePrograms = [...new Set(fromRecord.filter((item) => text(item)))];
-  if (uniquePrograms.length) return uniquePrograms.join(" · ");
+/** Explicitly referred concern/service from the referral snapshot — not BHC-managed programs. */
+export function referredServices(referral) {
   return formatServiceType(referral?.referralCategory || referral?.category, "");
+}
+
+export function referralDateTime(referral) {
+  const raw =
+    referral?.referralDateTime ||
+    referral?.referral_datetime ||
+    referral?.createdAt ||
+    referral?.created_at ||
+    referral?.date ||
+    "";
+  if (!raw) return "";
+  const date = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw);
+  return date.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function receivingFacilityName(referral) {
+  return text(
+    referral?.receivingFacility ||
+      referral?.ruralHealthUnit?.name ||
+      referral?.rural_health_unit?.name,
+  );
 }
 
 export function referralHistoryOfPresentIllness(record) {
@@ -97,7 +120,14 @@ function vitalItems(record) {
   const systolic = record.systolicBp || record.systolic_bp || bag.systolicBp || bag.systolic_bp;
   const diastolic = record.diastolicBp || record.diastolic_bp || bag.diastolicBp || bag.diastolic_bp;
   const temperature = record.temp || record.temperature || bag.temp || bag.temperature;
-  const pulse = record.pulse || record.heart_rate || record.heartRate || bag.pulse;
+  const pulse = record.pulse || record.heart_rate || record.heartRate || bag.pulse || bag.heart_rate;
+  const respiratory =
+    record.respiratoryRate ||
+    record.respiratory_rate ||
+    record.rr ||
+    bag.respiratoryRate ||
+    bag.respiratory_rate ||
+    bag.rr;
   const spo2 = record.spo2 || record.spO2 || bag.spo2 || bag.spO2;
   const weight = record.weight || bag.weight;
   const height = record.height || bag.height;
@@ -105,6 +135,7 @@ function vitalItems(record) {
     { label: "BP", value: systolic && diastolic ? `${systolic}/${diastolic} mmHg` : "" },
     { label: "Temperature", value: temperature ? String(temperature) : "" },
     { label: "Pulse", value: pulse ? String(pulse) : "" },
+    { label: "Respiratory rate", value: respiratory ? String(respiratory) : "" },
     { label: "SpO2", value: spo2 ? String(spo2) : "" },
     { label: "Weight", value: weight ? `${weight} kg` : "" },
     { label: "Height", value: height ? `${height} cm` : "" },
@@ -130,13 +161,16 @@ export function referralSlipModel(referral, record) {
       vitals: [],
       bodyFindings: [],
       referringHci: "",
+      receivingFacility: "",
       practitioner: "",
+      dateTime: "",
+      trackingId: "",
     };
   }
 
   const linked = record || null;
   const missingLinkedRecord = !linked;
-  const services = referredServices(referral, linked);
+  const services = referredServices(referral);
   const reason = text(referral.reasonForReferral || referral.reason_for_referral || referral.referralReason);
   const chiefComplaint = text(
     referral.chiefComplaint ||
@@ -173,6 +207,9 @@ export function referralSlipModel(referral, record) {
     vitals: vitalItems(linked),
     bodyFindings: referralBodyFindings(linked),
     referringHci: text(referral.referringHci || referral.barangayHealthCenter?.name || referral.barangay_health_center?.name),
+    receivingFacility: receivingFacilityName(referral),
     practitioner: text(referral.referringPractitioner || referral.referring_practitioner),
+    dateTime: referralDateTime(referral),
+    trackingId: text(referral.trackingId || referral.tracking_id),
   };
 }

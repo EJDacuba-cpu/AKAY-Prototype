@@ -103,10 +103,11 @@ test("missing linked clinical data is reported instead of invented", () => {
   assert.equal(referralSlipModel(null, record22).missingReferral, true);
 });
 
-test("referred services stay on the saved category and linked programs", () => {
-  assert.equal(referredServices(linked, null), "General Consultation");
-  assert.equal(
-    referredServices(older, { selectedPrograms: ["Maternal", "EPI"] }),
+test("referred concerns come from the referral snapshot, not BHC-managed programs", () => {
+  assert.equal(referredServices(linked), "General Consultation");
+  assert.equal(referredServices(older), "Maternal / Prenatal");
+  assert.notEqual(
+    referredServices({ ...linked, referralCategory: "General Consultation" }),
     "Maternal · Immunization",
   );
 });

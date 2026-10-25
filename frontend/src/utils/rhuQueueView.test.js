@@ -76,7 +76,7 @@ test('the row menu follows visit progress and duties', () => {
   ]);
   assert.equal(
     queueRowActions(referred, { canEncode: false, canClose: false }).find((item) => item.label === 'Review Referral Slip').to,
-    '/rhu/patients/9?tab=referrals&referral=5',
+    '/rhu/patients/9/referrals/5',
   );
 });
 
@@ -115,7 +115,7 @@ test('a walk-in later linked to a referral keeps walk-in labelling and exposes t
   );
   assert.equal(
     queueRowActions(row, { canEncode: true, canClose: true }).find((item) => item.label === 'Review Referral Slip').to,
-    '/rhu/patients/9?tab=referrals&referral=8',
+    '/rhu/patients/9/referrals/8',
   );
 });
 

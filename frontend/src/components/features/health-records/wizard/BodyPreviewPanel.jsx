@@ -510,6 +510,7 @@ export function getBodyRegionAnchor(region) {
  *                       it picks the infant figure instead, whatever the sex
  * @param side           "front" | "back" - the figure side shown, owned by the page
  * @param onSideChange   receives the next side when the flip button is used
+ * @param sticky         pin the panel in the consultation column; off in document views
  */
 export default function BodyPreviewPanel({
   findings = [],
@@ -521,6 +522,7 @@ export default function BodyPreviewPanel({
   birthDate,
   side = "front",
   onSideChange,
+  sticky = true,
 }) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const countByRegion = findings.reduce((counts, item) => {
@@ -551,7 +553,9 @@ export default function BodyPreviewPanel({
     <aside
       aria-label="Body Preview"
       data-body-preview
-      className="min-w-0 rounded-none border border-[#E5E7EB] bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
+      className={`min-w-0 rounded-none border border-[#E5E7EB] bg-white ${
+        sticky ? "lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
         <div className="min-w-0">

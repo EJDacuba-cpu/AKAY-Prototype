@@ -29,6 +29,13 @@ test("referral details map to the incoming referrals inbox", () => {
   ]);
 });
 
+test("the BHC slip viewer stays under the RHU patient profile, not Incoming Referrals", () => {
+  assert.deepEqual(getBreadcrumbs("/rhu/patients/9/referrals/5", "Referral Slip"), [
+    { label: "Patients", path: "/rhu/patients" },
+    { label: "Referral Slip" },
+  ]);
+});
+
 test("a consultation for a patient sits under that patient's profile", () => {
   assert.deepEqual(
     getBreadcrumbs(

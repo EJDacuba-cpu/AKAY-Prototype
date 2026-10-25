@@ -21,11 +21,9 @@ import AnatomyFindingsPanel from "../../components/features/patients/profile/Ana
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
-import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
-import BhcReferralSlip from "../../components/features/patients/profile/BhcReferralSlip";
+import PatientReferralsTab from "../../components/features/patients/profile/PatientReferralsTab";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
 import { getRhuPatientProfileQueries } from "../../services/patientProfileQueries";
-import { getReferralById } from "../../services/referrals";
 import { updatePatient } from "../../services/patientService";
 import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
@@ -46,13 +44,7 @@ import {
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import { registrationErrors } from "../../utils/householdData";
 import { canModifyRhuPatient } from "../../utils/rhuPatientAccess";
-import {
-  isNumericReferralId,
-  linkedReferralRecord,
-  pickReferral,
-  referralBelongsToPatient,
-  referralListKey,
-} from "../../utils/referralSlipView";
+import { reviewReferralSlipPath } from "../../utils/rhuVisitRoutes";
 
 const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
 const BASE_PATH = "/rhu";
@@ -176,55 +168,19 @@ function LiveRHUPatientDetails() {
   const requestedTab = searchParams.get("tab") || "overview";
   const activeTab = tabs.some((tab) => tab.key === requestedTab) ? requestedTab : "overview";
   const activeSpecializedProgram = tabs.find((tab) => tab.key === activeTab)?.program || "";
-  const selectedReferralParam = searchParams.get("referral") || "";
-  const listedReferral = pickReferral(referrals, selectedReferralParam);
-  const needsReferralFetch =
-    canViewHistory &&
-    Boolean(selectedReferralParam) &&
-    isNumericReferralId(selectedReferralParam) &&
-    !listedReferral &&
-    !referralsLoading;
-
-  const {
-    data: fetchedReferral = null,
-    isPending: referralFetchPending,
-    isError: referralFetchError,
-    error: referralFetchFailure,
-  } = useQuery({
-    queryKey: queryKeys.referralDetails("rhu", selectedReferralParam),
-    queryFn: () => getReferralById(selectedReferralParam),
-    enabled: needsReferralFetch,
-    retry: false,
-  });
-
-  const fetchedForThisPatient =
-    fetchedReferral && referralBelongsToPatient(fetchedReferral, patientId) ? fetchedReferral : null;
-  const selectedReferral = listedReferral || fetchedForThisPatient || null;
-  const selectedReferralKey = selectedReferralParam || referralListKey(selectedReferral);
-  const selectedReferralRecord = linkedReferralRecord(selectedReferral, records);
-  const referralSlipUnauthorized = referralFetchError && Number(referralFetchFailure?.status) === 403;
-  const referralSlipLoading =
-    (referralsLoading && !selectedReferral) || (needsReferralFetch && referralFetchPending);
-  const referralSlipMissing =
-    Boolean(selectedReferralParam) &&
-    !selectedReferral &&
-    !referralSlipLoading &&
-    !referralSlipUnauthorized;
 
   function setActiveTab(tab) {
     const next = new URLSearchParams(searchParams);
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
-    if (tab !== "referrals") next.delete("referral");
     setSearchParams(next, { replace: true, state: location.state });
   }
 
   function openReferralSlip(key) {
-    const next = new URLSearchParams(searchParams);
-    next.set("tab", "referrals");
-    if (key) next.set("referral", String(key));
-    else next.delete("referral");
-    setSearchParams(next, { replace: true, state: location.state });
+    const match = referrals.find(
+      (item) => String(item.id) === String(key) || String(item.trackingId) === String(key),
+    );
+    navigate(reviewReferralSlipPath(patientId, match?.id || key));
   }
 
   function retryPatientDetails() {
@@ -502,24 +458,14 @@ function LiveRHUPatientDetails() {
                 )}
 
                 {activeTab === "referrals" && canViewHistory && (
-                  <>
-                    <ReferralsSection
-                      referrals={referrals}
-                      isLoading={referralsLoading}
-                      isFetching={referralsFetching}
-                      isError={Boolean(referralsError)}
-                      selectedKey={selectedReferralKey}
-                      onSelect={(referral) => openReferralSlip(referral.id || referral.trackingId)}
-                    />
-                    <BhcReferralSlip
-                      referral={selectedReferral}
-                      record={selectedReferralRecord}
-                      patient={patient}
-                      loading={referralSlipLoading}
-                      missing={referralSlipMissing}
-                      unauthorized={referralSlipUnauthorized}
-                    />
-                  </>
+                  <PatientReferralsTab
+                    patientId={patientId}
+                    referrals={referrals}
+                    isLoading={referralsLoading}
+                    isFetching={referralsFetching}
+                    isError={Boolean(referralsError)}
+                    onRetry={retryPatientDetails}
+                  />
                 )}
               </div>
             )}
