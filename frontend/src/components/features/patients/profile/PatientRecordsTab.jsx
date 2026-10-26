@@ -10,7 +10,7 @@ import { DEFAULT_RECORD_FILTERS, DEFAULT_RECORD_VIEW, filterPatientRecords, pati
 import { queryKeys } from "../../../../utils/queryKeys";
 import { clampPage, pageCount, sliceRows } from "../../../../utils/tablePaging";
 
-const OUTCOMES = [{ value: "", label: "All outcomes" }, { value: "follow_up", label: "BHC Follow-up" }, { value: "referral", label: "RHU Referral" }, { value: "routine", label: "Routine" }];
+const NEXT_ACTIONS = [{ value: "", label: "All next actions" }, { value: "follow_up", label: "Follow-up Scheduled" }, { value: "referral", label: "RHU Referral" }, { value: "routine", label: "No Further Action" }];
 const VISITS = [{ value: "", label: "All visit types" }, { value: "initial_consultation", label: "Initial Consultation" }, { value: "follow_up_visit", label: "Follow-up Visit" }];
 
 function RecordFilter({ label, options, value, onChange }) {
@@ -31,7 +31,7 @@ function RecordFilter({ label, options, value, onChange }) {
   );
 }
 
-export default function PatientRecordsTab({ patientId, records = [], referrals = [], followUps = [], isLoading, isFetching, isError, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
+export default function PatientRecordsTab({ patientId, records = [], referrals, followUps, isLoading, isFetching, isError, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.patientRecordView(role, patientId);
   // Session memory only: search can contain a complaint, so never put it in the URL or browser storage.
@@ -59,7 +59,7 @@ export default function PatientRecordsTab({ patientId, records = [], referrals =
         <label className="space-y-1 text-xs text-neutral-600">Date to
           <Input type="date" value={filters.dateTo} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? "record-date-error" : undefined} onChange={event => changeFilters({ dateTo: event.target.value })} className="h-9 text-xs sm:text-xs" />
         </label>
-        <RecordFilter label="Outcome" options={OUTCOMES} value={filters.outcome} onChange={outcome => changeFilters({ outcome })} />
+        <RecordFilter label="Next Action" options={NEXT_ACTIONS} value={filters.outcome} onChange={outcome => changeFilters({ outcome })} />
         <RecordFilter label="Visit Type" options={VISITS} value={filters.visitType} onChange={visitType => changeFilters({ visitType })} />
         <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-neutral-300 text-xs text-neutral-900">Clear</Button>
       </div>

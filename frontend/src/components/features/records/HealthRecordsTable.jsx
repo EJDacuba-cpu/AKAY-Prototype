@@ -29,7 +29,7 @@ export default function HealthRecordsTable({ records = [], currentPage = 1, tota
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                   <dt className="text-slate-600">Date of Visit</dt><dd className="text-right">{formatDate(getRecordDateValue(record), "Not recorded")}</dd>
                   <dt className="text-slate-600">Visit Type</dt><dd className="text-right">{getRecordVisitTypeLabel(record)}</dd>
-                  <dt className="text-slate-600">Outcome</dt><dd className="text-right">{record.outcomeText}</dd>
+                  <dt className="text-slate-600">Next Action</dt><dd className="text-right">{record.outcomeText}</dd>
                 </dl>
               </li>
             ))}
@@ -40,7 +40,7 @@ export default function HealthRecordsTable({ records = [], currentPage = 1, tota
         <FixedTable minWidth="min-w-[760px]">
           <thead>
             <tr className="bg-slate-50 text-xs font-semibold text-slate-600">
-              {["Record ID", "Date of Visit", "Chief Complaint", "Visit Type", "Outcome", "View"].map(label => <th key={label} scope="col" className="whitespace-nowrap px-4 py-3">{label}</th>)}
+              {["Record ID", "Date of Visit", "Chief Complaint", "Visit Type", "Next Action", "View"].map(label => <th key={label} scope="col" className="whitespace-nowrap px-4 py-3">{label}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm text-slate-900">
