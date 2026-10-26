@@ -12,6 +12,7 @@ const server = await createServer({ configFile: false, plugins: [react()],
 after(() => server.close());
 const { default: Field } = await server.ssrLoadModule('/src/components/features/patients/FamilyRegistryField.jsx');
 const { PatientRegistrationSuccess } = await server.ssrLoadModule('/src/pages/bhc/AddPatient.jsx');
+const { default: Review } = await server.ssrLoadModule('/src/components/features/patients/HouseholdConnectionReview.jsx');
 const registry = { patients: [], households: [] };
 const render = (props = {}) => renderToStaticMarkup(createElement(Field, {
   registry, patient: { firstName: 'Adult', birthDate: '1990-01-01' },
@@ -73,4 +74,25 @@ test('success feedback displays the committed FSN and omits a serial when none w
   const success = (serialNumber) => renderToStaticMarkup(createElement(PatientRegistrationSuccess, { householdEnabled: true, live: true, serialNumber }));
   assert.match(success('FSN-2026-0042'), /Family Serial Number[\s\S]*FSN-2026-0042/);
   assert.doesNotMatch(success(''), /Family Serial Number|FSN-\d{4}-\d{4}/);
+});
+
+test('household review confirms membership and labels without relationship linking controls', () => {
+  const html = renderToStaticMarkup(createElement(Review, {
+    live: true, registrationLinking: true, registry: {
+      patients: [{ id: '1', firstName: 'Head', sex: 'Male' }],
+      households: [{ id: '7', headPatientId: '1', serialNumber: 'FSN-7', address: {} }],
+    }, patient: { firstName: 'New', sex: 'Female' }, candidate: { kind: 'existing', householdId: '7', relationship: 'Wife' },
+  }));
+  assert.match(html, /Confirm Household/);
+  assert.doesNotMatch(html, /Household Label Only|Confirm Family Connection/);
+  assert.doesNotMatch(html, /type="checkbox"/);
+});
+
+test('selected registration summary contains relationship-to-head label without link confirmation', () => {
+  const html = render({ registrationLinking: true, registry: {
+    patients: [{ id: '1', firstName: 'Head', sex: 'Male' }], households: [{ id: '7', headPatientId: '1', serialNumber: 'FSN-7', address: {} }],
+  }, connection: { kind: 'existing', householdId: '7', relationship: 'Wife' } });
+  assert.match(html, /relationship to household head/);
+  assert.doesNotMatch(html, /Household Label Only|Confirm Family Connection/);
+  assert.doesNotMatch(html, /type="checkbox"/);
 });

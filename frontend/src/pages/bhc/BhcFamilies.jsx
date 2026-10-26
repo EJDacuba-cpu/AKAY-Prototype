@@ -22,7 +22,6 @@ import FamilyMembersList from '../../components/features/families/FamilyMembersL
 import FamilySummaryPanel from '../../components/features/families/FamilySummaryPanel';
 import TransferHouseholdModal from '../../components/features/families/TransferHouseholdModal';
 import '../../components/features/patients/clinical-directory.css';
-import { buildFamilyGraph } from '../../utils/familyGraph';
 import { RELATIONSHIP_LABELS } from '../../utils/relationshipLabels';
 import { errorStateVariant } from '../../utils/errorStateVariant';
 import { queryKeys } from '../../utils/queryKeys';
@@ -135,9 +134,9 @@ export function BhcFamilyDetails({role='bhc'}={}) {
   const [transferring,setTransferring]=useState(null);
   const query=useQuery({queryKey:[...scope.key,'detail',householdId],queryFn:()=>getHouseholdById(householdId, role),retry:false});
   const item=query.data;
-  const graph=useMemo(()=>buildFamilyGraph(item),[item]);
+  const members=useMemo(()=>[...(item?.members || [])].sort((a,b)=>Number(b.id === item?.headPatientId)-Number(a.id === item?.headPatientId)),[item]);
   const head=item?.members.find(member=>member.id === item.headPatientId);
-  const tabs=[['tree','Family Tree'],['list','Members List']];
+  const tabs=[['tree','Household Relationships'],['list','Members List']];
   const openMember=id=>navigate(`/${role}/patients/${id}?tab=patient-info`);
   function moveTab(event) {
     if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
@@ -151,8 +150,8 @@ export function BhcFamilyDetails({role='bhc'}={}) {
       <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-neutral-600"><span className="inline-flex items-center gap-1.5"><User size={14} className="text-neutral-500" aria-hidden="true"/>Head: <b className="font-semibold text-ink-800">{head ? patientName(head) : 'Not assigned'}</b></span><span className="inline-flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0 text-neutral-500" aria-hidden="true"/>{addressText(item.address) || 'No address recorded'}</span><span className="inline-flex items-center gap-1.5"><Users size={14} className="text-neutral-500" aria-hidden="true"/>{item.members.length} {item.members.length === 1 ? 'member' : 'members'}</span></p></div>
       <div className="flex flex-wrap gap-2">{access.can('families.manage') && <Button asChild variant="secondary"><Link to={`${base}/${item.id}/edit`}>Edit Family</Link></Button>}{access.can('patients.register') && <Button asChild variant="brand"><Link to={`/${role}/patients/add?household=${item.id}`}><Plus size={17}/>Register Member</Link></Button>}</div></header>
     <section id={`family-panel-${view}`} className="space-y-3" aria-label="Household members">{view === 'tree'
-      ? <FamilyTreeCanvas leading={viewTabs} members={graph.members} edges={graph.edges} headId={item.headPatientId} onOpenMember={openMember} canManage={access.can('families.manage')} familyPath={`${base}/${item.id}`}/>
-      : <>{viewTabs}<FamilyMembersList members={graph.members} headId={item.headPatientId} canManage={access.can('families.manage')} canTransfer={access.can('patients.register')} onTransfer={setTransferring} familyPath={`${base}/${item.id}`} patientPath={`/${role}/patients`}/></>}</section>
+      ? <FamilyTreeCanvas leading={viewTabs} members={members} headId={item.headPatientId} onOpenMember={openMember}/>
+      : <>{viewTabs}<FamilyMembersList members={members} headId={item.headPatientId} canTransfer={access.can('patients.register')} onTransfer={setTransferring} patientPath={`/${role}/patients`}/></>}</section>
     {transferring && <TransferHouseholdModal role={role} member={transferring} household={item} onClose={()=>setTransferring(null)}/>}
   </>}</FamilyFrame>;
 }
@@ -216,5 +215,5 @@ export function BhcAddMember({role='bhc'}={}) {
 }
 export function BhcDeferredFamilyAction({role='bhc'}={}) {
   const {householdId}=useParams();
-  return <FamilyFrame role={role} title="Family Connections"><BackLink to={`${familyBase(role)}/${householdId}`}>Back to Family</BackLink><p role="status">Relationship editing is not available yet. Household membership is managed through patient registration.</p></FamilyFrame>;
+  return <Navigate replace to={`${familyBase(role)}/${householdId}`}/>;
 }

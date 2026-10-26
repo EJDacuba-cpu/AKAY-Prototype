@@ -340,36 +340,16 @@ class PatientController extends Controller
      */
     private function authorizeParentLinks(Request $request, array $data): void
     {
-        foreach (['mother' => 'Female', 'father' => 'Male'] as $role => $sex) {
+        foreach (['mother', 'father'] as $role) {
             $parentId = $data["{$role}_patient_id"] ?? null;
             if (! $parentId) {
                 continue;
             }
 
             $currentPatient = $request->route('patient');
-            abort_if(
-                $currentPatient instanceof Patient
-                    && (string) $currentPatient->id === (string) $parentId,
-                422,
-                "A patient cannot be linked as their own {$role}."
-            );
-
             $parent = Patient::find($parentId);
             abort_unless($parent, 422, "Selected {$role} patient was not found.");
-            $this->facilityAccess->authorizePatient($request->user(), $parent);
-            abort_unless(
-                $parent->sex === $sex,
-                422,
-                "The linked {$role} must be a {$sex} patient."
-            );
-            if ($currentPatient instanceof Patient && (int) $currentPatient->{"{$role}_patient_id"} !== (int) $parentId) {
-                if ($parent->status === 'inactive' || $currentPatient->status === 'inactive') {
-                    throw ValidationException::withMessages(["{$role}_patient_id" => 'An inactive patient cannot receive a new parent connection.']);
-                }
-                app(PatientRelationships::class)->assertParentLinkAllowed($currentPatient, (int) $parentId, "{$role}_patient_id");
-            } elseif (! $currentPatient && $parent->status === 'inactive') {
-                throw ValidationException::withMessages(["{$role}_patient_id" => 'An inactive patient cannot be selected as a parent.']);
-            }
+            app(PatientRelationships::class)->assertParentCandidate($request, $currentPatient instanceof Patient ? $currentPatient : null, $parent, $role, "{$role}_patient_id");
         }
     }
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { householdPayload, normalizeHousehold, householdRegistry, householdKeys, registrationErrors } from './householdData.js';
-import { validateConnection } from '../services/familyRegistry.js';
+import { stageConnection, validateConnection } from '../services/familyRegistry.js';
 
 test('automatic household creation sends mode, never a browser allocated serial', () => {
   assert.deepEqual(householdPayload({kind:'new', household:{serialMode:'auto',serialNumber:'stale',address:{barangay:'Pitpitan'}}}),
@@ -11,6 +11,23 @@ test('automatic household creation sends mode, never a browser allocated serial'
 test('existing household selection sends permanent identity and current version', () => {
   assert.deepEqual(householdPayload({kind:'existing',householdId:'7',relationship:'Son / Daughter'}, {households:[{id:'7',version:3}]}),
     {kind:'existing',household_id:'7',relationship:'Son / Daughter',version:3});
+});
+test('registry-only registration omits every retired relationship command even from stale drafts', () => {
+  for (const type of ['spouse', 'sibling', 'mother', 'father']) {
+    assert.deepEqual(householdPayload({ kind: 'existing', householdId: '7', relationship: 'Mother', relationshipLink: { type } },
+      { households: [{ id: '7', version: 3 }] }, { includeRelationshipLink: false }), {
+      kind: 'existing', household_id: '7', relationship: 'Mother', version: 3,
+    });
+  }
+});
+
+test('live household drafts preserve historical parent references and manually reported information', () => {
+  const original = { familySerialNumber: 'OLD', motherPatientId: '8', fatherPatientId: '9', motherName: '', fatherName: 'Reported father', guardianName: 'Guardian' };
+  const staged = stageConnection(original, { households: [{ id: '7', serialNumber: 'NEW', address: {} }] },
+    { kind: 'existing', householdId: '7', relationship: 'Nephew' }, { preserveParentLinks: true });
+  assert.equal(staged.familySerialNumber, 'NEW');
+  for (const field of ['motherPatientId', 'fatherPatientId', 'motherName', 'fatherName', 'guardianName']) assert.equal(staged[field], original[field], field);
+  assert.equal(original.familySerialNumber, 'OLD');
 });
 test('household responses normalize numeric IDs and safe member demographics', () => {
   const item=normalizeHousehold({id:7,serial_number:'FSN-2026-0001',head_patient_id:9,version:2,address:{barangay:'Pitpitan'},members:[{id:9,first_name:'Ana',last_name:'Cruz',birthdate:'1980-01-01',household_id:7} ]});

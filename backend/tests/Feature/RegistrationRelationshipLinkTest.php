@@ -6,6 +6,7 @@ use App\Models\BarangayHealthCenter;
 use App\Models\Household;
 use App\Models\Patient;
 use App\Models\PatientRelationship;
+use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,9 +73,15 @@ class RegistrationRelationshipLinkTest extends TestCase
     {
         $this->staff();
         $head = $this->newHead();
-        foreach (['Wife', 'Husband', 'Brother', 'Sister', 'Son', 'Mother'] as $label) {
-            $this->join($head, $label)->assertCreated();
+        foreach (['Wife', 'Husband', 'Brother', 'Sister', 'Son', 'Daughter', 'Mother', 'Father', 'Grandson', 'Nephew', 'Niece'] as $label) {
+            $this->join($head, $label)->assertCreated()
+                ->assertJsonPath('data.household_id', $head['household_id'])
+                ->assertJsonPath('data.relationship_to_household_head', $label)
+                ->assertJsonPath('data.mother_patient_id', null)
+                ->assertJsonPath('data.father_patient_id', null);
         }
+        $this->assertNull(Patient::findOrFail($head['id'])->mother_patient_id);
+        $this->assertNull(Patient::findOrFail($head['id'])->father_patient_id);
         $this->assertDatabaseCount('patient_relationships', 0);
     }
 
@@ -163,5 +170,131 @@ class RegistrationRelationshipLinkTest extends TestCase
         $this->assertSame('09171234567', $fresh->contact_number);
         $this->assertSame((int) $two['household_id'], $fresh->household_id);
         $this->assertSame('Nephew', $fresh->relationship_to_household_head);
+    }
+
+    public function test_son_can_explicitly_confirm_the_head_as_father_with_registration_permission(): void
+    {
+        $this->staff(['patients.register']);
+        $head = $this->newHead();
+        $this->join($head, 'Son', 'father', ['sex' => 'Male', 'mother_name' => 'Reported mother'])
+            ->assertCreated()->assertJsonPath('data.father_patient_id', $head['id'])
+            ->assertJsonPath('data.mother_name', 'Reported mother');
+        $this->assertDatabaseCount('patient_relationships', 0);
+        $this->assertNull(Patient::find($head['id'])->father_patient_id);
+    }
+
+    public function test_daughter_can_explicitly_confirm_the_head_as_mother(): void
+    {
+        $this->staff(['patients.register']);
+        $head = $this->newHead();
+        Patient::find($head['id'])->update(['sex' => 'Female']);
+        $this->join($head, 'Daughter', 'mother')->assertCreated()->assertJsonPath('data.mother_patient_id', $head['id']);
+    }
+
+    public function test_mother_and_father_labels_update_the_heads_parent_slot_in_the_correct_direction(): void
+    {
+        $this->staff();
+        foreach (['mother' => 'Female', 'father' => 'Male'] as $role => $sex) {
+            $head = $this->newHead();
+            Patient::find($head['id'])->update(['mother_name' => 'Keep reported', 'guardian_name' => 'Keep guardian']);
+            $saved = $this->join($head, ucfirst($role), $role, ['sex' => $sex])->assertCreated()->json('data');
+            $child = Patient::find($head['id']);
+            $this->assertSame($saved['id'], $child->{$role.'_patient_id'});
+            $this->assertSame('Keep reported', $child->mother_name);
+            $this->assertSame('Keep guardian', $child->guardian_name);
+            $this->assertNull(Patient::find($saved['id'])->{$role.'_patient_id'});
+        }
+        $this->assertDatabaseCount('patient_relationships', 0);
+    }
+
+    public function test_reverse_parent_confirmation_requires_management_but_label_only_registration_does_not(): void
+    {
+        $this->staff(['patients.register']);
+        $head = $this->newHead();
+        $before = $this->snapshot($head);
+        $this->join($head, 'Mother', 'mother')->assertForbidden();
+        $this->assertSame($before, $this->snapshot($head));
+        $this->join($head, 'Mother')->assertCreated();
+        $this->assertNull(Patient::find($head['id'])->mother_patient_id);
+    }
+
+    public function test_occupied_parent_slot_is_not_replaced_and_registration_is_rolled_back(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        $existing = $this->join($head, 'Mother')->assertCreated()->json('data');
+        Patient::find($head['id'])->update(['mother_patient_id' => $existing['id']]);
+        $before = $this->snapshot($head);
+        $this->join($head, 'Mother', 'mother')->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
+        $this->assertSame($before, $this->snapshot($head));
+        $this->assertSame($existing['id'], Patient::find($head['id'])->mother_patient_id);
+        $this->join($head, 'Mother')->assertCreated();
+    }
+
+    public function test_parent_confirmation_rejects_wrong_role_and_unsupported_labels_atomically(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        $before = $this->snapshot($head);
+        foreach ([['Son', 'mother'], ['Mother', 'father'], ['Nephew', 'father'], ['Grandmother', 'mother']] as [$label, $type]) {
+            $this->join($head, $label, $type)->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
+        }
+        $this->assertSame($before, $this->snapshot($head));
+    }
+
+    public function test_inactive_head_cannot_be_confirmed_as_parent(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        Patient::find($head['id'])->update(['status' => 'inactive']);
+        $before = $this->snapshot($head);
+        $this->join($head, 'Son', 'father')->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
+        $this->assertSame($before, $this->snapshot($head));
+    }
+
+    public function test_reverse_parent_confirmation_cannot_create_a_cycle(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        $before = $this->snapshot($head);
+        $this->join($head, 'Mother', 'mother', ['father_patient_id' => $head['id']])
+            ->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
+        $this->assertSame($before, $this->snapshot($head));
+        $this->assertNull(Patient::find($head['id'])->mother_patient_id);
+    }
+
+    public function test_parent_link_and_existing_head_change_roll_back_on_late_failure(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        $before = $this->snapshot($head);
+        $this->mock(AuditLogger::class)->shouldReceive('log')->andThrow(new \RuntimeException('Audit unavailable'));
+        $this->join($head, 'Mother', 'mother')->assertInternalServerError();
+        $this->assertSame($before, $this->snapshot($head));
+        $this->assertNull(Patient::find($head['id'])->mother_patient_id);
+    }
+
+    public function test_parent_confirmation_is_not_added_to_the_household_transfer_command(): void
+    {
+        $this->staff();
+        $head = $this->newHead();
+        $member = $this->join($head, 'Daughter')->assertCreated()->json('data');
+        $this->patchJson('/api/patients/'.$member['id'], ['household' => [
+            'kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Daughter',
+            'relationship_link' => ['type' => 'father'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
+        $this->assertNull(Patient::find($member['id'])->father_patient_id);
+    }
+
+    public function test_rhu_registration_confirms_both_parent_directions_in_its_own_scope(): void
+    {
+        $user = $this->staff();
+        $rhu = RuralHealthUnit::create(['name' => 'Registration RHU', 'status' => 'active']);
+        $user->update(['role' => 'rhu', 'staff_role' => 'nurse', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $rhu->id]);
+        $head = $this->newHead();
+        $this->join($head, 'Daughter', 'father')->assertCreated()->assertJsonPath('data.father_patient_id', $head['id']);
+        $mother = $this->join($head, 'Mother', 'mother')->assertCreated()->json('data');
+        $this->assertSame($mother['id'], Patient::find($head['id'])->mother_patient_id);
+        $this->assertSame($rhu->id, Patient::find($mother['id'])->rural_health_unit_id);
     }
 }

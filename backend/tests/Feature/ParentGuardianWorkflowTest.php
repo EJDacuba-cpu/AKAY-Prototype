@@ -11,6 +11,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ParentGuardianWorkflowTest extends TestCase
@@ -216,5 +217,46 @@ class ParentGuardianWorkflowTest extends TestCase
                 ->assertUnprocessable()->assertJsonValidationErrors('mother_patient_id');
             $this->assertNull($ancestor->fresh()->mother_patient_id);
         }
+    }
+
+    public static function registrationFacilities(): array
+    {
+        return [['bhc'], ['rhu']];
+    }
+
+    #[DataProvider('registrationFacilities')]
+    public function test_reported_names_can_be_edited_and_cleared_without_changing_legacy_links_or_clinical_history(string $role): void
+    {
+        $facility = ['barangay_health_center_id' => $this->bhc->id];
+        if ($role === 'rhu') {
+            $rhu = RuralHealthUnit::create(['name' => 'Registry RHU', 'status' => 'active']);
+            $facility = ['barangay_health_center_id' => null, 'rural_health_unit_id' => $rhu->id];
+            $this->staff->update(['role' => 'rhu', 'staff_role' => 'nurse', ...$facility]);
+        }
+        $household = Household::create([...$facility, 'serial_number' => 'KEEP-FSN', 'address' => [], 'version' => 1]);
+        $mother = $this->person('Female', $facility);
+        $father = $this->person('Male', $facility);
+        $child = $this->person('Male', [...$facility, 'mother_patient_id' => $mother->id, 'father_patient_id' => $father->id,
+            'mother_name' => 'Reported mother', 'father_name' => 'Reported father', 'guardian_name' => 'Guardian',
+            'household_id' => $household->id, 'family_serial_number' => 'KEEP-FSN', 'medical_background' => ['family' => ['reported' => 'Reported history']]]);
+        $household->update(['head_patient_id' => $child->id]);
+        PatientRelationship::create([...$facility, 'patient_id' => min($mother->id, $father->id), 'relative_id' => max($mother->id, $father->id), 'type' => 'spouse']);
+        $relationships = PatientRelationship::get()->toArray();
+        $this->staff->update(['permissions' => ['patients.register']]);
+        foreach ([['mother_name' => 'Corrected mother', 'father_name' => 'Corrected father'], ['mother_name' => null, 'father_name' => null]] as $names) {
+            $this->patchJson('/api/patients/'.$child->id, $names)->assertOk();
+            $saved = $child->fresh();
+            $this->assertSame($mother->id, $saved->mother_patient_id);
+            $this->assertSame($father->id, $saved->father_patient_id);
+            $this->assertSame($names['mother_name'], $saved->mother_name);
+            $this->assertSame($names['father_name'], $saved->father_name);
+            $this->assertSame('KEEP-FSN', $saved->family_serial_number);
+            $this->assertSame($household->id, $saved->household_id);
+            $this->assertSame(1, $household->fresh()->version);
+            $this->assertSame('Guardian', $saved->guardian_name);
+            $this->assertSame($child->medical_background, $saved->medical_background);
+        }
+        $this->assertSame(0, AuditLog::where('action', 'parent_links_updated')->count());
+        $this->assertSame($relationships, PatientRelationship::get()->toArray());
     }
 }

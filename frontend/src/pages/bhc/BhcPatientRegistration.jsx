@@ -43,7 +43,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
     } catch(error) {if(seq === request.current) setSearchState({loading:false,error:error.message || 'Unable to search households.'});}
   }
   async function save(data,connection,id,replacement,options={}) {
-    const base={...data,household:householdPayload(connection,registry),
+    const base={...data,household:householdPayload(connection,registry,{includeRelationshipLink:false}),
       ...(replacement ? {head_replacement:{household_id:replacement.householdId,head_patient_id:replacement.headPatientId,relationships:replacement.relationships,version:registry.households.find(item=>item.id === replacement.householdId)?.version}} : {})};
     const payload=walkIn && !id ? withCheckIn(base,{key:walkIn.key,confirmDuplicate:options.confirmDuplicate}) : base;
     const response=normalizeHouseholdPatient(await mutation.mutateAsync({id,data:payload}));
@@ -55,7 +55,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
         return householdRegistry([...previous.filter(item=>item.id !== household.id),household]).households;
       });
     }
-    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:queryKeys.patients(role)}),client.invalidateQueries({queryKey:queryKeys.patientDetails(role, response?.id || id)})]);
+    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:queryKeys.patients(role)}),client.invalidateQueries({queryKey:['patient-details',role]})]);
     return response;
   }
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending);

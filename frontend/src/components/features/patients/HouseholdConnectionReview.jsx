@@ -7,7 +7,6 @@ import {
   validateConnection, validateHeadReplacement,
 } from "../../../services/familyRegistry";
 import { isAcceptedLabel, labelOptions } from "../../../utils/relationshipLabels";
-import { relationshipLinkOffer } from "../../../utils/relationshipLink";
 
 export const householdSelectClass = "h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus-visible:border-red-700 focus-visible:ring-2 focus-visible:ring-red-700/15 aria-invalid:border-red-700";
 
@@ -44,7 +43,6 @@ export default function HouseholdConnectionReview({
   const [replacementHeadId, setReplacementHeadId] = useState(initialReplacement?.headPatientId || "");
   const [relationships, setRelationships] = useState(initialReplacement?.relationships || {});
   const [errors, setErrors] = useState({});
-  const [recordLink, setRecordLink] = useState(false);
   const isAllowed = live ? isAcceptedLabel : undefined;
   const nextConnection = candidate ? { ...candidate, relationship } : null;
   const target = householdForConnection(registry, nextConnection);
@@ -59,12 +57,12 @@ export default function HouseholdConnectionReview({
     : "";
   const savedPatient = registry.patients.find((item) => item.id === patient.id);
   const savedLabel = savedPatient && nextConnection?.kind === "existing" && savedPatient.householdId === nextConnection.householdId ? savedPatient.relationshipToHouseholdHead : "";
-  // Staff must tick this; a label alone never creates a connection.
-  const offer = live && nextConnection?.kind === "existing" ? relationshipLinkOffer(nextRelationship, headName) : null;
   const detailsError = Object.entries(errors).find(([key]) => key !== "relationship" && key !== "replacementHeadId" && !departure?.members.some((item) => item.id === key))?.[1];
 
   function confirm() {
-    const connection = nextConnection ? { ...nextConnection, relationship: nextRelationship, ...(offer && recordLink ? { relationshipLink: { type: offer.type } } : {}) } : null;
+    const connection = nextConnection ? { ...nextConnection, relationship: nextRelationship } : null;
+    // Household review never carries legacy relationship commands into registration or transfer.
+    if (connection) delete connection.relationshipLink;
     const replacement = departure?.members.length
       ? { householdId: departure.household.id, headPatientId: replacementHeadId, relationships }
       : null;
@@ -96,11 +94,7 @@ export default function HouseholdConnectionReview({
           <p className="mt-1 text-xs text-gray-600">{addressText(target.address)}</p>
           {detailsError && <p role="alert" className="mt-1 text-xs text-red-700">{detailsError}</p>}
         </div>
-        <RelationshipField live={live} saved={savedLabel} value={nextRelationship} error={errors.relationship} onChange={(value) => { setRelationship(value); setRecordLink(false); setErrors((previous) => ({ ...previous, relationship: "" })); }} />
-        {offer && <label className="flex items-start gap-2 text-xs text-gray-950">
-          <input type="checkbox" className="mt-0.5" checked={recordLink} onChange={(event) => setRecordLink(event.target.checked)} />
-          <span>{offer.text}<span className="block text-gray-500">Optional. Saved with the patient only if you tick this.</span></span>
-        </label>}
+        <RelationshipField live={live} saved={savedLabel} value={nextRelationship} error={errors.relationship} onChange={(value) => { setRelationship(value); setErrors((previous) => ({ ...previous, relationship: "" })); }} />
       </> : <p className="text-sm text-gray-600">The Family Serial Number will be cleared. The current address stays editable.</p>}
       {departure?.members.length > 0 && <div className="space-y-3 border-t border-gray-200 pt-4">
         <div className="space-y-1.5">
@@ -122,7 +116,7 @@ export default function HouseholdConnectionReview({
       <p className="text-xs text-gray-500">Changes apply after Save Patient.</p>
       <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-        <Button type="button" size="sm" onClick={confirm}>{confirmLabel || (!target ? "Remove Connection" : isChanging ? "Confirm Change" : "Confirm Connection")}</Button>
+        <Button type="button" size="sm" onClick={confirm}>{confirmLabel || (!target ? "Remove Connection" : isChanging ? "Confirm Change" : "Confirm Household")}</Button>
       </div>
     </div>
   );

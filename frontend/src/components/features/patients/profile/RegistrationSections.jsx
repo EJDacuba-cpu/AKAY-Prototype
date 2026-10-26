@@ -1,6 +1,7 @@
 import { formatEducation } from "../../../../utils/backgroundFormat";
 import { formatLongDate } from "../../../../utils/formatters";
 import { parentInformation } from "../../../../utils/parentLinks";
+import HistoricalParentLinks from '../HistoricalParentLinks';
 import { Input } from "../../../ui/input";
 import {
   EDUCATION_COMPLETED_OPTIONS,
@@ -94,7 +95,6 @@ export default function RegistrationSections({
   saving = false,
   householdLocked = false,
   onViewHousehold,
-  onManageParents,
 }) {
   const read = (keys, fallback = "") => getPatientValue(patient, keys, fallback);
   const editing = editingSection !== null;
@@ -271,17 +271,16 @@ export default function RegistrationSections({
             {parents.map((parent) => {
               const label = parent.role === 'mother' ? 'Mother' : 'Father';
               return <div key={parent.role}>
-                {editingSection === 'family' && !parent.linked ? (
+                {editingSection === 'family' ? (
                   <EditField label={`${label} name (reported, optional)`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} />
                 ) : <FieldList rows={[
-                  [parent.linked ? `${label} (linked)` : `${label} (reported)`, parent.name],
-                  ...(parent.birthDate ? [[`${label}'s birthday`, formatLongDate(parent.birthDate, '')]] : []),
+                  [`${label} (reported)`, parent.reportedName],
+                  ...(parent.reportedBirthDate ? [[`${label}'s birthday (reported)`, formatLongDate(parent.reportedBirthDate, '')]] : []),
                 ]} />}
-                {parent.linked && (parent.reportedName || parent.reportedBirthDate) && <p className="mt-2 text-xs text-neutral-600">Previously reported: {[parent.reportedName, formatLongDate(parent.reportedBirthDate, '')].filter(Boolean).join(' · ')}. Preserved separately.</p>}
               </div>;
             })}
-            <p className="text-xs text-neutral-600">Connect registered parents through Families. Reported names are optional. A shared FSN does not confirm parenthood.</p>
-            {onManageParents && <TextAction onClick={onManageParents} disabled={editing}>Manage parent connections in Families</TextAction>}
+            <p className="text-xs text-neutral-600">Reported parent names are optional. A shared FSN does not confirm biological parenthood.</p>
+            <HistoricalParentLinks patient={patient} />
           </div>
         </ProfileSection>
         <ProfileSection id="guardian" title="Guardian Information" actions={editingSection === 'family' ? null : actionsFor('family')}>

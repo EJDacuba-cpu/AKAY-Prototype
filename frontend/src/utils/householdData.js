@@ -21,11 +21,11 @@ export function householdRegistry(households = [], patient) {
   const unique = [...new Map(households.filter(Boolean).map(item => [item.id,item])).values()];
   return { households:unique, patients:[...new Map([...unique.flatMap(item => item.members || []), ...(patient ? [patient] : [])].map(item => [item.id,item])).values()], connections:[] };
 }
-export function householdPayload(connection, registry = {households:[]}) {
+export function householdPayload(connection, registry = {households:[]}, { includeRelationshipLink = true } = {}) {
   if (!connection) return null;
   if (connection.kind === 'existing') return { kind:'existing',household_id:connection.householdId,relationship:connection.relationship,
     version:registry.households.find(item => item.id === connection.householdId)?.version,
-    ...(connection.relationshipLink?.type ? {relationship_link:{type:connection.relationshipLink.type}} : {}) };
+    ...(includeRelationshipLink && connection.relationshipLink?.type ? {relationship_link:{type:connection.relationshipLink.type}} : {}) };
   const household=connection.household;
   return {kind:'new',serial_mode:household.serialMode || 'auto',address:household.address,
     ...(household.serialMode === 'manual' ? {serial_number:household.serialNumber} : {})};
@@ -40,7 +40,7 @@ const fields={first_name:'firstName',middle_name:'middleName',last_name:'lastNam
 export function registrationErrors(error = {}) {
   const result={};
   for (const [key,value] of Object.entries(error.errors || {})) {
-    const target=key === 'household.relationship' || key === 'household.relationship_link' ? 'relationshipToHouseholdHead'
+    const target=key === 'relationship' || key === 'household.relationship' || key.startsWith('household.relationship_link') ? 'relationshipToHouseholdHead'
       : key.startsWith('household') || key.startsWith('head_replacement') || key.startsWith('relationships') || key === 'head_patient_id' ? 'familySerialNumber' : fields[key] || key;
     result[target]=Array.isArray(value) ? value[0] : String(value);
   }

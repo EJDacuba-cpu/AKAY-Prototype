@@ -2,6 +2,19 @@
 // or relationship-to-head inference belongs here.
 const CARD = { width: 184, height: 76, gap: 72, rowGap: 88, padding: 32 };
 
+// Registry associations mean household membership only. Historical genealogy never affects placement.
+export function layoutHouseholdRegistry(members = [], headId) {
+  const width = 224, height = 88, padding = 32, gap = 96, rowGap = 24;
+  const head = members.find(member => String(member.id) === String(headId));
+  const others = head ? members.filter(member => member !== head) : members;
+  const contentHeight = Math.max(height, others.length * (height + rowGap) - rowGap);
+  const nodes = others.map((member, index) => ({ ...member,
+    x: padding + (head ? width + gap : 0), y: padding + index * (height + rowGap), width, height,
+  }));
+  if (head) nodes.unshift({ ...head, x: padding, y: padding + (contentHeight - height) / 2, width, height });
+  return { nodes, width: padding * 2 + width + (head && others.length ? width + gap : 0), height: padding * 2 + contentHeight };
+}
+
 function layoutGroups(members, edges, headId, groupTypes) {
   const { width, height, gap, rowGap, padding } = CARD;
   const groupOf = new Map(members.map(member => [member.id, member.id]));

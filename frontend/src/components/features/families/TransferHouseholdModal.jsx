@@ -201,7 +201,7 @@ export default function TransferHouseholdModal({ role = "bhc", member, household
         <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-neutral-600">
           <li>The address changes to the new household&apos;s address only when you confirm.</li>
           <li>The relationship label is descriptive. It does not create or change any parent-child link.</li>
-          <li>Saved spouse and sibling connections are kept, and appear only when both people share a household.</li>
+          <li>Historical parent, spouse, and sibling connections are preserved separately from household membership.</li>
         </ul>
       </section>}
     </div>

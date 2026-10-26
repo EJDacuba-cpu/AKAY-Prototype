@@ -138,7 +138,7 @@ class Households
         return $target;
     }
 
-    /** An explicit, staff-confirmed spouse/sibling link between the saved patient and the household head. */
+    /** Explicit registration confirmation; parent links keep their existing patient-column storage. */
     private function confirmLink(Request $request, Household $target, Patient $patient, string $relationship, ?string $type): void
     {
         if ($type === null) {
@@ -147,6 +147,23 @@ class Households
         $field = 'household.relationship_link';
         if ($target->head_patient_id === $patient->id) {
             throw ValidationException::withMessages([$field => 'A household head cannot be linked to themselves.']);
+        }
+        if (in_array($type, ['mother', 'father'], true)) {
+            if (! $request->isMethod('post')) {
+                throw ValidationException::withMessages([$field => 'Confirm parent links in registration or Families, not through a household transfer.']);
+            }
+            $head = $target->members()->findOrFail($target->head_patient_id);
+            if (in_array($relationship, ['Son', 'Daughter'], true)) {
+                app(PatientRelationships::class)->confirmParentLink($request, $patient, $head, $type, false, $field);
+
+                return;
+            }
+            if (in_array($relationship, ['Mother', 'Father'], true) && strtolower($relationship) === $type) {
+                app(PatientRelationships::class)->confirmParentLink($request, $head, $patient, $type, true, $field);
+
+                return;
+            }
+            throw ValidationException::withMessages([$field => 'The confirmed parent role must match Son/Daughter or Mother/Father and its direction.']);
         }
         if (RelationshipLabels::linkTypeFor($relationship) !== $type) {
             throw ValidationException::withMessages([$field => 'Only Husband or Wife can be recorded as spouse, and Brother or Sister as sibling.']);

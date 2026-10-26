@@ -35,6 +35,7 @@ import {
 import { Button } from "../../components/ui/button";
 import ModalShell from "../../components/common/modals/ModalShell";
 import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
+import HistoricalParentLinks from "../../components/features/patients/HistoricalParentLinks";
 import { isAcceptedLabel } from "../../utils/relationshipLabels";
 import BhcPatientRegistration from "./BhcPatientRegistration";
 import { registrationErrors } from "../../utils/householdData";
@@ -48,7 +49,7 @@ import { checkInExistingPatient } from "../../services/rhuVisitService";
 import { duplicatePrompt, postSaveDestination } from "../../utils/walkInRegistration";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
-import { parentInformation, reportedParentValues } from "../../utils/parentLinks";
+import { reportedParentValues } from "../../utils/parentLinks";
 import { Input } from "../../components/ui/input";
 
 // Flat bordered panel used for each registration section.
@@ -210,7 +211,7 @@ export function RegistrationForm({
   });
   const [saving, setSaving] = useState(false);
   const [duplicates, setDuplicates] = useState(null);
-  const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection) : registrationForm(savedPatient));
+  const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection,{preserveParentLinks:live}) : registrationForm(savedPatient));
   const [fieldErrors, setFieldErrors] = useState({});
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
@@ -330,7 +331,7 @@ function handleBirthDateChange(valueOrEvent) {
   function handleHouseholdChange(connection, replacement) {
     setHouseholdConnection(connection);
     setHeadReplacement(replacement || null);
-    setForm((current) => stageConnection(current, registry, connection));
+    setForm((current) => stageConnection(current, registry, connection, {preserveParentLinks:live}));
     setFieldErrors((current) => ({ ...current, familySerialNumber: "", relationshipToHouseholdHead: "", ...Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, ""])) }));
   }
 
@@ -720,7 +721,7 @@ function handleBirthDateChange(valueOrEvent) {
               <FormPanel
                 icon={Users}
                 title="Parent Information"
-                description="Reported parent names are optional. Connect registered parents separately through Families; a shared FSN does not confirm parenthood."
+                description="Reported parent names are optional. A shared FSN does not confirm biological parenthood."
               >
                 <div className="space-y-4">
                   {Object.keys(PARENT_FIELDS).map((role) => (
@@ -734,6 +735,7 @@ function handleBirthDateChange(valueOrEvent) {
                       onBirthDateChange={handleParentBirthDateChange}
                     />
                   ))}
+                  <HistoricalParentLinks patient={form} />
                 </div>
               </FormPanel>
               <FormPanel icon={Users} title="Guardian Information" description="Optional guardian details, recorded separately from parents and household membership.">
@@ -906,10 +908,7 @@ export default function AddPatient() {
   return <PatientRegistrationPage />;
 }
 
-// Preserve explicit parent linking for children using the selected mock household.
-/**
- * Optional reported information; existing registered links are managed in Families.
- */
+// Optional reported information is independent of historical parent links.
 function ParentFields({
   role,
   form,
@@ -919,15 +918,6 @@ function ParentFields({
   onBirthDateChange,
 }) {
   const fields = PARENT_FIELDS[role];
-  const parent = parentInformation(form, role);
-  const linked = parent.linked;
-
-  if (linked) return <div className="space-y-1 border-t border-neutral-200 pt-4 text-sm">
-    <p className="font-medium text-neutral-900">{fields.label}: {parent.name}</p>
-    <p className="text-xs text-neutral-600">Linked patient. Manage this connection in Families.</p>
-    {parent.reportedName && <p className="text-xs text-neutral-600">Previously reported: {parent.reportedName}. Preserved separately.</p>}
-  </div>;
-
   return (
     <div className="grid min-w-0 gap-4 border-t border-[#EEF2F6] pt-5 sm:grid-cols-2 xl:grid-cols-3">
       <label className="space-y-1.5 text-sm text-neutral-700">{fields.label} name (optional)
@@ -935,7 +925,6 @@ function ParentFields({
         name={fields.name}
         value={form[fields.name]}
         onChange={onChange}
-        readOnly={linked}
         aria-invalid={Boolean(errors[fields.name])}
         aria-describedby={errors[fields.name] ? `${fields.name}-error` : undefined}
       />
@@ -949,7 +938,6 @@ function ParentFields({
         mode="birthdate"
         maxDate={todayIso}
         disableFuture
-        disabled={linked}
         onChange={(value) => onBirthDateChange(fields.birthDate, value)}
         error={errors[fields.birthDate]}
       />

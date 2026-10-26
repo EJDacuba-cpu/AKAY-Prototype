@@ -3,7 +3,6 @@ import { CircleX, Plus, Search } from "lucide-react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import HouseholdConnectionReview, { RelationshipField } from "./HouseholdConnectionReview";
-import { relationshipLinkOffer } from "../../../utils/relationshipLink";
 import {
   HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
   patientName, relationshipForConnection, searchHouseholds,
@@ -166,14 +165,6 @@ export default function FamilyRegistryField({
             saved={savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId ? savedConnection.relationship : ""}
             onChange={(relationship) => onChange({ ...connection, relationship, relationshipLink: undefined }, headReplacement)}
           />}
-          {!review && live && connection.kind === "existing" && !(savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId) && (() => {
-            const offer = relationshipLinkOffer(relationshipForConnection(registry, connection, patient.id), patientName(head));
-            return offer && <label className="flex items-start gap-2 text-xs text-gray-950">
-              <input type="checkbox" className="mt-0.5" checked={connection.relationshipLink?.type === offer.type}
-                onChange={(event) => onChange({ ...connection, relationshipLink: event.target.checked ? { type: offer.type } : undefined }, headReplacement)} />
-              <span>{offer.text}<span className="block text-gray-500">Optional. Saved with the patient only if you tick this.</span></span>
-            </label>;
-          })()}
         </div>}
         {(searching || !connection) && !review && <div className={household ? "mt-3 space-y-3" : "space-y-3"}>
           <div className="flex gap-2">

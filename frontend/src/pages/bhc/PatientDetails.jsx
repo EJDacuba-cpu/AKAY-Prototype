@@ -490,7 +490,6 @@ function LivePatientDetails() {
                     onEdit={canRegister ? handleEditSection : undefined}
                     householdLocked={Boolean(patient.householdId)}
                     onViewHousehold={patient.householdId && canViewFamilies ? () => navigate(`/bhc/families/${patient.householdId}`) : undefined}
-                    onManageParents={patient.householdId && canRegister && canViewFamilies && (getCurrentUser()?.permissions || []).includes('families.manage') ? () => navigate(`/bhc/families/${patient.householdId}/members/${patientId}/edit`) : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}

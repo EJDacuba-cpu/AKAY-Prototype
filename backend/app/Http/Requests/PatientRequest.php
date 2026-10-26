@@ -52,7 +52,7 @@ class PatientRequest extends FormRequest
         return [
             'household' => ['sometimes', 'required', 'array:kind,household_id,relationship,version,serial_mode,serial_number,address,relationship_link'],
             'household.relationship_link' => ['sometimes', 'nullable', 'array:type'],
-            'household.relationship_link.type' => ['required_with:household.relationship_link', 'in:spouse,sibling'],
+            'household.relationship_link.type' => ['required_with:household.relationship_link', 'in:spouse,sibling,mother,father'],
             'household.kind' => ['required_with:household', 'in:existing,new'],
             'household.household_id' => ['required_if:household.kind,existing', 'integer'],
             'household.relationship' => ['required_if:household.kind,existing', 'string', 'max:100'],

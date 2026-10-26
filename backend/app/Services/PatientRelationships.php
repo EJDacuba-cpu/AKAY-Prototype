@@ -91,6 +91,49 @@ class PatientRelationships
         }
     }
 
+    /** Shared by existing patient updates and atomic registration confirmation. */
+    public function assertParentCandidate(Request $request, ?Patient $child, Patient $parent, string $role, string $field): void
+    {
+        $this->access->authorizePatient($request->user(), $parent);
+        $sex = match ($role) {
+            'mother' => 'Female', 'father' => 'Male', default => null
+        };
+        if ($sex === null || $parent->sex !== $sex) {
+            $this->fail($field, 'Choose the correct Mother/Father role for the registered parent.');
+        }
+        if ($child && $child->id === $parent->id) {
+            $this->fail($field, 'A patient cannot be linked as their own parent.');
+        }
+        if (! $child || (int) $child->{$role.'_patient_id'} !== (int) $parent->id) {
+            if ($parent->status === 'inactive' || $child?->status === 'inactive') {
+                $this->fail($field, 'An inactive patient cannot receive a new parent connection.');
+            }
+            if ($child) {
+                $this->assertParentLinkAllowed($child, $parent->id, $field);
+            }
+        }
+    }
+
+    /** Caller holds the registration transaction/facility lock; never replaces a saved parent. */
+    public function confirmParentLink(Request $request, Patient $child, Patient $parent, string $role, bool $existingChild, string $field): void
+    {
+        $this->access->authorizePatientModification($request->user(), $child);
+        if ($existingChild) {
+            ActionPermissions::ensure($request->user(), 'families.view');
+            ActionPermissions::ensure($request->user(), 'families.manage');
+        }
+        $this->assertParentCandidate($request, $child, $parent, $role, $field);
+        $column = $role.'_patient_id';
+        if ($child->{$column} && (int) $child->{$column} !== (int) $parent->id) {
+            $this->fail($field, 'A parent is already linked. Keep the household label only, or review the saved connection in Families.');
+        }
+        if ((int) $child->{$column} === (int) $parent->id) {
+            return;
+        }
+        $child->update([$column => $parent->id]);
+        $this->audit->log($request, 'parent_links_updated', 'patients', "Patient {$child->id}: {$column}: none -> {$parent->id}. Confirmed during registration.");
+    }
+
     /** Links whose two people are both current members of the household. */
     public function forHousehold(Household $household): Collection
     {

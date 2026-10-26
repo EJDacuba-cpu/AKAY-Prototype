@@ -126,15 +126,16 @@ export function validateConnection(registry, connection, patientId, patient, isA
   return errors;
 }
 
-export function stageConnection(form, registry, connection) {
+export function stageConnection(form, registry, connection, { preserveParentLinks = false } = {}) {
   const household = householdForConnection(registry, connection);
   const serial = household?.serialNumber.trim() || "";
   return {
     ...form,
     ...(household && !isSelfHousehold(connection) ? addressValues(household.address) : {}),
     familySerialNumber: serial,
-    // Parent names remain available as manual entries after moving household.
-    ...(serial !== form.familySerialNumber ? { motherPatientId: "", fatherPatientId: "" } : {}),
+    // Live registration keeps legacy references independent of the household draft.
+    // The default retains deferred prototype behavior; live saves omit IDs entirely.
+    ...(!preserveParentLinks && serial !== form.familySerialNumber ? { motherPatientId: "", fatherPatientId: "" } : {}),
   };
 }
 
