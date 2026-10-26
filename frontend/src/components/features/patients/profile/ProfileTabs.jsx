@@ -7,7 +7,7 @@ import LockedPlaceholder from "../../../common/access/LockedPlaceholder";
  */
 export default function ProfileTabs({ tabs, activeTab, onSelect, aside }) {
   return (
-    <div className="mb-3 mt-1 flex shrink-0 items-center gap-2 shadow-[inset_0_-1px_0_var(--color-neutral-200)]">
+    <div className="patient-profile-tabs mb-3 mt-1 flex shrink-0 items-center gap-2 shadow-[inset_0_-1px_0_var(--color-neutral-200)]">
       <div
         role="tablist"
         aria-label="Patient profile"

@@ -208,7 +208,7 @@ class PatientController extends Controller
         $this->facilityAccess->authorizePatient($request->user(), $patient);
 
         if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
-            return response()->json(['data' => PatientIdentity::response($patient)]);
+            return response()->json(['data' => PatientIdentity::withParents($patient, $request->user())]);
         }
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
@@ -236,7 +236,8 @@ class PatientController extends Controller
         $data = $this->normalizeProfileFields($request->validated(), $patient);
         $householdInput = $data['household'] ?? null;
         $replacement = $data['head_replacement'] ?? null;
-        unset($data['household'], $data['head_replacement']);
+        $parentBase = $data['parent_link_base'] ?? [];
+        unset($data['household'], $data['head_replacement'], $data['parent_link_base']);
         if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
             $data = array_intersect_key($data, array_flip(PatientIdentity::FIELDS));
         }
@@ -247,8 +248,7 @@ class PatientController extends Controller
                 $data['facility_id']
             );
         }
-        $this->authorizeParentLinks($request, $data);
-        DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $auditLogger) {
+        DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $parentBase, $auditLogger) {
             $user = $request->user();
             if ($user->isBhc() || $user->isRhu()) {
                 // Acquire the same facility lock before any patient row write;
@@ -261,6 +261,27 @@ class PatientController extends Controller
                     $households->validateLegacySerial($owner, $data, $patient);
                 }
             }
+            // Validate against the saved graph after acquiring the existing facility lock.
+            $parentChanges = [];
+            foreach (['mother_patient_id', 'father_patient_id'] as $field) {
+                if (! array_key_exists($field, $data)) {
+                    continue;
+                }
+                $before = $patient->{$field} === null ? null : (int) $patient->{$field};
+                $after = $data[$field] === null ? null : (int) $data[$field];
+                if (array_key_exists($field, $parentBase)) {
+                    $expected = $parentBase[$field] === null ? null : (int) $parentBase[$field];
+                    abort_if($before !== $expected, 409, 'This parent link changed. Reload the patient and review the saved connection.');
+                }
+                if ($before !== $after) {
+                    if (! $user->isAdmin()) {
+                        ActionPermissions::ensure($user, 'families.view');
+                        ActionPermissions::ensure($user, 'families.manage');
+                    }
+                    $parentChanges[] = $field.': '.($before ?? 'none').' -> '.($after ?? 'none');
+                }
+            }
+            $this->authorizeParentLinks($request, $data);
             if ($householdInput) {
                 app(Households::class)->owner($request->user());
                 ActionPermissions::ensure($request->user(), 'patients.register');
@@ -280,11 +301,18 @@ class PatientController extends Controller
             }
             app(Households::class)->validateHeadPatient($patient);
             $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
+            if ($parentChanges) {
+                $auditLogger->log($request, 'parent_links_updated', 'patients', "Patient {$patient->id}: ".implode('; ', $parentChanges).'.');
+            }
         });
 
         return response()->json(['data' => ! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')
-            ? PatientIdentity::response($patient->fresh())
-            : $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father', 'household'])]);
+            ? PatientIdentity::withParents($patient->fresh(), $request->user())
+            : $patient->fresh()->load([
+                'barangayHealthCenter', 'ruralHealthUnit', 'household',
+                'mother' => fn ($query) => $this->facilityAccess->scopePatients($query, $request->user())->select(PatientIdentity::PARENT_COLUMNS),
+                'father' => fn ($query) => $this->facilityAccess->scopePatients($query, $request->user())->select(PatientIdentity::PARENT_COLUMNS),
+            ])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
@@ -335,7 +363,12 @@ class PatientController extends Controller
                 "The linked {$role} must be a {$sex} patient."
             );
             if ($currentPatient instanceof Patient && (int) $currentPatient->{"{$role}_patient_id"} !== (int) $parentId) {
+                if ($parent->status === 'inactive' || $currentPatient->status === 'inactive') {
+                    throw ValidationException::withMessages(["{$role}_patient_id" => 'An inactive patient cannot receive a new parent connection.']);
+                }
                 app(PatientRelationships::class)->assertParentLinkAllowed($currentPatient, (int) $parentId, "{$role}_patient_id");
+            } elseif (! $currentPatient && $parent->status === 'inactive') {
+                throw ValidationException::withMessages(["{$role}_patient_id" => 'An inactive patient cannot be selected as a parent.']);
             }
         }
     }

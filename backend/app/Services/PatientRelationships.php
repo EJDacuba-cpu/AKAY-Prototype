@@ -71,16 +71,22 @@ class PatientRelationships
     }
 
     /**
-     * A mother/father link may not contradict a stored spouse/sibling link: the new parent cannot be
-     * the patient's own spouse/sibling, nor a descendant of one (which would make that person an ancestor).
+     * A new parent changes ancestry for this patient and all their descendants.
+     * None of their spouses/siblings may become an ancestor through this link.
      */
     public function assertParentLinkAllowed(Patient $patient, int $parentId, string $field): void
     {
-        $partners = $patient->relationshipLinks()->get()
-            ->map(fn (PatientRelationship $link) => (int) ($link->patient_id === $patient->id ? $link->relative_id : $link->patient_id));
+        if ($patient->id === $parentId || $this->isAncestor($patient->id, $parentId)) {
+            $this->fail($field, 'A patient or their descendant cannot be selected as their parent.');
+        }
+        $descendants = $this->descendantsOf($patient->id, $field);
+        $partners = PatientRelationship::where(fn ($query) => $query
+            ->whereIn('patient_id', $descendants)->orWhereIn('relative_id', $descendants))->get()
+            ->flatMap(fn (PatientRelationship $link) => [(int) $link->patient_id, (int) $link->relative_id])
+            ->reject(fn (int $id) => in_array($id, $descendants, true))->unique();
         foreach ($partners as $partnerId) {
             if ($partnerId === $parentId || $this->isAncestor($partnerId, $parentId)) {
-                $this->fail($field, 'This patient is already recorded as a spouse or sibling of the selected parent’s family. Remove that connection first.');
+                $this->fail($field, 'This parent link would make a spouse or sibling a direct ancestor. Review the existing family connections first.');
             }
         }
     }
@@ -137,6 +143,25 @@ class PatientRelationships
         return [min($a->id, $b->id), max($a->id, $b->id)];
     }
 
+    /** Includes the patient; used only to validate effects of a proposed parent link. */
+    private function descendantsOf(int $patientId, string $field): array
+    {
+        $seen = [$patientId];
+        $frontier = [$patientId];
+        for ($generation = 0; $generation < self::MAX_GENERATIONS && $frontier; $generation++) {
+            $children = Patient::where(fn ($query) => $query
+                ->whereIn('mother_patient_id', $frontier)->orWhereIn('father_patient_id', $frontier))
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $frontier = array_values(array_diff($children, $seen));
+            $seen = array_merge($seen, $frontier);
+        }
+        if ($frontier) {
+            $this->fail($field, 'This family has too many generations to verify safely. Review the existing family connections first.');
+        }
+
+        return $seen;
+    }
+
     /** Bounded walk up mother/father links, safe against cycles in bad imported data. */
     private function isAncestor(int $candidate, int $person): bool
     {
@@ -153,6 +178,10 @@ class PatientRelationships
             foreach ($frontier as $id) {
                 $seen[$id] = true;
             }
+        }
+
+        if ($frontier) {
+            $this->fail('relationship', 'This ancestry is too deep to verify safely. Review the existing family connections first.');
         }
 
         return false;

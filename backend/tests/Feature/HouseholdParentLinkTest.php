@@ -28,7 +28,7 @@ class HouseholdParentLinkTest extends TestCase
             'name' => 'Household BHW', 'email' => 'household@example.test',
             'password' => 'password123', 'status' => 'active', 'role' => 'bhc',
             'staff_role' => 'midwife',
-            'permissions' => ['patients.register', 'clinical.history'],
+            'permissions' => ['patients.register', 'clinical.history', 'families.view', 'families.manage'],
             'barangay_health_center_id' => $this->bhc->id,
         ]), ['akay:access']);
     }

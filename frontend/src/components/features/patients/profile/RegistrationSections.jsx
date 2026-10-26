@@ -1,11 +1,13 @@
 import { formatEducation } from "../../../../utils/backgroundFormat";
-import { formatLongDate, formatPatientName } from "../../../../utils/formatters";
+import { formatLongDate } from "../../../../utils/formatters";
+import { parentInformation } from "../../../../utils/parentLinks";
+import { Input } from "../../../ui/input";
 import {
   EDUCATION_COMPLETED_OPTIONS,
   EDUCATION_LEVEL_OPTIONS,
   readEducation,
 } from "../../../../utils/patientRegistrationPayload";
-import { calculateAge, calculateAgeInMonths } from "../../../../utils/patientUtils";
+import { calculateAgeInMonths } from "../../../../utils/patientUtils";
 import {
   BULAKAN_BARANGAYS,
   getPatientAge,
@@ -19,15 +21,11 @@ import {
   TextAction,
 } from "./ProfileSection";
 
-const PARENT_FIELDS = [
-  ["Parent / Guardian", ["parentName", "parent_name"]],
-  ["Mother", ["motherName", "mother_name"]],
-  ["Mother's birthday", ["motherBirthDate", "mother_birth_date"]],
-  ["Father", ["fatherName", "father_name"]],
+const GUARDIAN_FIELDS = [
+  ["Previously reported parent / guardian", ["parentName", "parent_name"]],
   ["Guardian", ["guardianName", "guardian_name"]],
   ["Guardian relationship", ["guardianRelationship", "guardian_relationship"]],
   ["Guardian contact", ["guardianContactNumber", "guardian_contact_number"]],
-  ["Household head", ["householdHead", "household_head"]],
 ];
 
 const INPUT_CLASS =
@@ -38,7 +36,7 @@ function EditField({ label, required, readOnly, error, value, ...props }) {
     <label className="min-w-0 text-xs text-neutral-500">
       {label}
       {required && <span className="text-alert-600"> *</span>}
-      <input
+      <Input
         {...props}
         value={value ?? ""}
         required={required}
@@ -81,10 +79,8 @@ function EditGrid({ children }) {
 }
 
 /**
- * The patient's registration details as three inline-editable sections:
- * Demographics, Contact & Address, and (for children, or when the data
- * exists) Family & Birth. Only one section edits at a time; the page owns the
- * form, validation and save.
+ * Registration identity, parent and separate guardian information for every age.
+ * Only one section edits at a time; the page owns validation and saving.
  */
 export default function RegistrationSections({
   patient,
@@ -98,29 +94,17 @@ export default function RegistrationSections({
   saving = false,
   householdLocked = false,
   onViewHousehold,
+  onManageParents,
 }) {
   const read = (keys, fallback = "") => getPatientValue(patient, keys, fallback);
   const editing = editingSection !== null;
 
-  const linkedMother = patient.motherPatient || patient.mother_patient || patient.mother || null;
-  const displayMotherName =
-    read(["motherName", "mother_name"]) ||
-    (linkedMother ? formatPatientName(linkedMother, "") : "");
-  const hasParentData =
-    PARENT_FIELDS.some(([, keys]) => hasDisplayValue(read(keys))) ||
-    hasDisplayValue(displayMotherName);
+  const parents = ['mother', 'father'].map((role) => ({ role, ...parentInformation(patient, role) }));
 
-  const formAgeYears = calculateAge(form.birthDate);
   const formAgeMonths = calculateAgeInMonths(form.birthDate);
   const hasBirthDate = Boolean(form.birthDate);
-  const isFormMinor = hasBirthDate && formAgeYears !== "" && Number(formAgeYears) < 18;
   const isEpiTargetAge = hasBirthDate && formAgeMonths !== "" && Number(formAgeMonths) <= 12;
   const shouldRequireCivilStatus = hasBirthDate && !isEpiTargetAge;
-  const showChildSections =
-    hasParentData ||
-    (editingSection === "family" || editingSection === "demographics"
-      ? isFormMinor
-      : Number(read(["age"], 99)) < 18);
 
   const actionsFor = (section) =>
     !onEdit ? null : editingSection === section ? (
@@ -141,8 +125,8 @@ export default function RegistrationSections({
     );
 
   const familyRows = [
-    ...PARENT_FIELDS.map(([label, keys]) => {
-      const value = label === "Mother" ? displayMotherName : read(keys);
+    ...GUARDIAN_FIELDS.map(([label, keys]) => {
+      const value = read(keys);
       return hasDisplayValue(value)
         ? [label, label.includes("birthday") ? formatLongDate(value, "") : value]
         : null;
@@ -282,21 +266,36 @@ export default function RegistrationSections({
         />
       </ProfileSection>
 
-      {showChildSections && (
-        <ProfileSection id="family" title="Parent & Guardian Information" actions={actionsFor("family")}>
+        <ProfileSection id="family" title="Parent Information" actions={actionsFor("family")}>
+          <div className="space-y-4">
+            {parents.map((parent) => {
+              const label = parent.role === 'mother' ? 'Mother' : 'Father';
+              return <div key={parent.role}>
+                {editingSection === 'family' && !parent.linked ? (
+                  <EditField label={`${label} name (reported, optional)`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} />
+                ) : <FieldList rows={[
+                  [parent.linked ? `${label} (linked)` : `${label} (reported)`, parent.name],
+                  ...(parent.birthDate ? [[`${label}'s birthday`, formatLongDate(parent.birthDate, '')]] : []),
+                ]} />}
+                {parent.linked && (parent.reportedName || parent.reportedBirthDate) && <p className="mt-2 text-xs text-neutral-600">Previously reported: {[parent.reportedName, formatLongDate(parent.reportedBirthDate, '')].filter(Boolean).join(' · ')}. Preserved separately.</p>}
+              </div>;
+            })}
+            <p className="text-xs text-neutral-600">Connect registered parents through Families. Reported names are optional. A shared FSN does not confirm parenthood.</p>
+            {onManageParents && <TextAction onClick={onManageParents} disabled={editing}>Manage parent connections in Families</TextAction>}
+          </div>
+        </ProfileSection>
+        <ProfileSection id="guardian" title="Guardian Information" actions={editingSection === 'family' ? null : actionsFor('family')}>
           {editingSection === "family" ? (
             <EditGrid>
-              <EditField label="Mother name" name="motherName" value={form.motherName} onChange={onChange} error={fieldErrors.motherName} required={isFormMinor} />
-              <EditField label="Father name" name="fatherName" value={form.fatherName} onChange={onChange} />
               <EditField label="Guardian name" name="guardianName" value={form.guardianName} onChange={onChange} />
               <EditField label="Guardian relationship" name="guardianRelationship" value={form.guardianRelationship} onChange={onChange} />
               <EditField label="Guardian contact" name="guardianContactNumber" value={form.guardianContactNumber} onChange={onChange} />
             </EditGrid>
           ) : (
-            <FieldList rows={familyRows} />
+            <FieldList rows={familyRows.length ? familyRows : [['Guardian', '']]} />
           )}
+          <p className="mt-3 text-xs text-neutral-600">Record guardian details separately. Parent and household connections do not establish legal guardianship.</p>
         </ProfileSection>
-      )}
     </>
   );
 }

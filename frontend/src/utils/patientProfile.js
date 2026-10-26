@@ -132,10 +132,7 @@ export const REGISTRATION_SECTION_FIELDS = Object.freeze({
 export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
   const errors = {};
   const hasBirthDate = Boolean(form.birthDate);
-  const ageYears = calculateAge(form.birthDate);
   const ageInMonths = calculateAgeInMonths(form.birthDate);
-  const isChildRegistration =
-    hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
   const isEpiTargetAge =
     hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
 
@@ -159,9 +156,6 @@ export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
   if (!String(form.streetAddress || "").trim()) errors.streetAddress = "Street address is required.";
   if (!form.barangay) errors.barangay = "Barangay is required.";
   if (!String(form.municipality || "").trim()) errors.municipality = "Municipality is required.";
-  if (isChildRegistration && !String(form.motherName || "").trim()) {
-    errors.motherName = "Mother name is required.";
-  }
 
   return errors;
 }

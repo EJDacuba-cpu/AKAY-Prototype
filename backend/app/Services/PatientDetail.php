@@ -23,9 +23,9 @@ class PatientDetail
                 ->scopeReferrals($query, $user)
                 ->with('feedback'),
             'mother' => fn ($query) => $this->facilityAccess
-                ->scopePatients($query, $user),
+                ->scopePatients($query, $user)->select(PatientIdentity::PARENT_COLUMNS),
             'father' => fn ($query) => $this->facilityAccess
-                ->scopePatients($query, $user),
+                ->scopePatients($query, $user)->select(PatientIdentity::PARENT_COLUMNS),
         ]);
         $patient->loadCount([
             'healthRecords' => fn ($query) => $this->facilityAccess

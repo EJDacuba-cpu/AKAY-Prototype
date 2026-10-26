@@ -425,6 +425,7 @@ function LiveRHUPatientDetails() {
                     form={form}
                     editingSection={editingSection}
                     onEdit={canRegisterOwned ? handleEditSection : undefined}
+                    onManageParents={patient.householdId && canRegisterOwned && ['families.view', 'families.manage'].every(permission => (user?.permissions || []).includes(permission)) ? () => navigate(`/rhu/families/${patient.householdId}/members/${patientId}/edit`) : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}

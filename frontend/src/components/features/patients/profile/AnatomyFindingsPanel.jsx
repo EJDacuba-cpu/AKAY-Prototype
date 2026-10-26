@@ -64,6 +64,7 @@ export default function AnatomyFindingsPanel({
   sex,
   birthDate,
   age = "",
+  fitToPanel = false,
 }) {
   const [side, setSide] = useState("front");
   const [openFact, setOpenFact] = useState(null);
@@ -77,10 +78,13 @@ export default function AnatomyFindingsPanel({
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(([entry]) => setArcLayout(entry.contentRect.width >= ARC_MIN_WIDTH));
+    // A bounded workspace scales the figure with its controls; the original
+    // flowing layout keeps its wider threshold.
+    const minWidth = fitToPanel ? 520 : ARC_MIN_WIDTH;
+    const observer = new ResizeObserver(([entry]) => setArcLayout(entry.contentRect.width >= minWidth));
     observer.observe(panel);
     return () => observer.disconnect();
-  }, []);
+  }, [fitToPanel]);
 
   const loadNote =
     recordsLoading && records.length === 0
@@ -241,10 +245,10 @@ export default function AnatomyFindingsPanel({
           <p role="status" className="sr-only">{caption(summary, records.length > 0)}</p>
         )}
       </header>
-      <div ref={panelRef} className="relative">
+      <div ref={panelRef} className="patient-anatomy-layout relative">
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
         {!arcLayout && (
-          <div className="mb-4">
+          <div className="patient-anatomy-controls-row mb-4">
             <PatientClinicalControls
               background={background}
               conditions={conditions}
@@ -258,15 +262,17 @@ export default function AnatomyFindingsPanel({
             />
           </div>
         )}
-        <div className="min-w-0">
+        <div className="patient-anatomy-stage min-w-0">
           {/* Narrow layouts pad the right to reserve the ruler's lane; the wide one
               centres the figure on the column. Model and findings share
               one proportional frame, so markers stay attached as it scales.
               In the wide layout the clinical and lifestyle controls curve
               around the figure's left inside this same frame. */}
           <div
-            style={{ "--figure-s": "min(100cqh, 150cqw)" }}
-            className={`relative flex h-[420px] min-w-0 items-center justify-center [container-type:size] @lg/anatomy:h-[520px] ${arcLayout ? "" : "pr-[6.5rem]"}`}
+            style={{ "--figure-s": fitToPanel && arcLayout
+              ? "min(100cqh, max(240px, calc(150cqw - 510px)))"
+              : "min(100cqh, 150cqw)" }}
+            className={`patient-anatomy-frame relative flex h-[420px] min-w-0 items-center justify-center [container-type:size] @lg/anatomy:h-[520px] ${arcLayout ? "" : "pr-[6.5rem]"}`}
           >
             <BodyFigureSvg
               sex={sex}
@@ -291,7 +297,7 @@ export default function AnatomyFindingsPanel({
             <HeightRuler
               height={measures.height}
               isLoading={recordsLoading && records.length === 0}
-              className="absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
+              className="patient-anatomy-ruler absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
             />
             {arcLayout && (
               <>
@@ -313,7 +319,7 @@ export default function AnatomyFindingsPanel({
         </div>
 
         {/* Weight and BMI sit right under the feet, centred on the figure. */}
-        <div className={`mt-3 flex flex-col items-center gap-5 ${arcLayout ? "" : "pr-[6.5rem]"}`}>
+        <div className={`patient-anatomy-measures mt-3 flex flex-col items-center gap-5 ${arcLayout ? "" : "pr-[6.5rem]"}`}>
           {recordsLoading && records.length === 0 ? (
             <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
           ) : (

@@ -37,14 +37,14 @@ test("required fields and the future birth date are reported", () => {
   assert.equal(errors.barangay, "Barangay is required.");
 });
 
-test("a child needs a mother name but not a civil status under one year", () => {
+test("an infant can have unknown parents and needs no civil status", () => {
   // Relative to now: age is computed against the real clock.
   const threeMonthsAgo = new Date();
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
   const infant = { ...validAdult, birthDate: getTodayIsoDate(threeMonthsAgo), civilStatus: "" };
   const errors = validatePatientForm(infant, getTodayIsoDate());
   assert.equal(errors.civilStatus, undefined);
-  assert.equal(errors.motherName, "Mother name is required.");
+  assert.equal(errors.motherName, undefined);
 });
 
 test("PhilHealth number is required only with PhilHealth", () => {
@@ -105,7 +105,7 @@ test("saving a profile edit never sends birth details or clears stored parent li
 
 test("the Parent & Guardian section validates only its own fields", () => {
   const errors = validatePatientForm({ ...validAdult, birthDate: getTodayIsoDate(new Date(Date.now() - 5 * 365 * 24 * 3600 * 1000)), motherName: "" }, getTodayIsoDate());
-  assert.equal(getSectionErrors(errors, "family").motherName, "Mother name is required.");
+  assert.deepEqual(getSectionErrors(errors, "family"), {});
   assert.deepEqual(Object.keys(getSectionErrors(errors, "contact")), []);
 });
 

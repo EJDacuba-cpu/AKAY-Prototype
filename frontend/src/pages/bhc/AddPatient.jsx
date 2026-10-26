@@ -48,6 +48,8 @@ import { checkInExistingPatient } from "../../services/rhuVisitService";
 import { duplicatePrompt, postSaveDestination } from "../../utils/walkInRegistration";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
+import { parentInformation, reportedParentValues } from "../../utils/parentLinks";
+import { Input } from "../../components/ui/input";
 
 // Flat bordered panel used for each registration section.
 function FormPanel({ icon, title, description, children }) {
@@ -63,6 +65,17 @@ const CIVIL_STATUS_OPTIONS = [
   { value: "Single", label: "Single" },
   { value: "Married", label: "Married" },
 ];
+
+// This receives the form refreshed from the successful save response, never a predicted FSN.
+export function PatientRegistrationSuccess({ householdEnabled, live, serialNumber }) {
+  return <div className="space-y-3">
+    <p>{householdEnabled && live ? "Patient registration and household connection saved." : live ? "Patient registration saved." : "Patient registration saved for this mock session."}</p>
+    {householdEnabled && live && serialNumber && <dl className="border-t border-neutral-200 pt-3">
+      <dt className="text-xs text-neutral-600">Family Serial Number</dt>
+      <dd className="mt-1 break-words text-lg font-semibold tabular-nums text-neutral-900">{serialNumber}</dd>
+    </dl>}
+  </div>;
+}
 
 const BARANGAY_OPTIONS = [
   "Bagumbayan",
@@ -134,6 +147,9 @@ const INITIAL_FORM_STATE = {
   motherBirthDate: "",
   fatherName: "",
   fatherBirthDate: "",
+  guardianName: "",
+  guardianRelationship: "",
+  guardianContactNumber: "",
   familySerialNumber: "",
 
   nhtsStatus: "",
@@ -276,8 +292,6 @@ function handleBirthDateChange(valueOrEvent) {
 
   const nextIsEpiTarget =
     Boolean(value) && nextAgeMonths !== "" && Number(nextAgeMonths) <= 12;
-  const nextIsChild =
-    Boolean(value) && nextAgeYears !== "" && Number(nextAgeYears) < 18;
 
   setFieldErrors((prev) => ({
     ...prev,
@@ -303,12 +317,6 @@ function handleBirthDateChange(valueOrEvent) {
       !nextIsEpiTarget && prev.civilStatus === "Married"
         ? prev.spouseOccupation
         : "",
-
-    // clear child-only fields kapag adult na yung bagong DOB
-    motherName: nextIsChild ? prev.motherName : "",
-    motherBirthDate: nextIsChild ? prev.motherBirthDate : "",
-    fatherName: nextIsChild ? prev.fatherName : "",
-    fatherBirthDate: nextIsChild ? prev.fatherBirthDate : "",
 
   }));
 }
@@ -370,18 +378,12 @@ function handleBirthDateChange(valueOrEvent) {
     if (!form.municipality.trim()) {
   nextErrors.municipality = "Municipality is required.";
 }
-    if (isChildRegistration) {
-      if (!form.motherName.trim()) {
-        nextErrors.motherName = "Mother name is required.";
-      }
+    if (form.motherBirthDate && form.motherBirthDate > todayIso) {
+      nextErrors.motherBirthDate = "Mother birthdate cannot be in the future.";
+    }
 
-      if (form.motherBirthDate && form.motherBirthDate > todayIso) {
-        nextErrors.motherBirthDate = "Mother birthdate cannot be in the future.";
-      }
-
-      if (form.fatherBirthDate && form.fatherBirthDate > todayIso) {
-        nextErrors.fatherBirthDate = "Father birthdate cannot be in the future.";
-      }
+    if (form.fatherBirthDate && form.fatherBirthDate > todayIso) {
+      nextErrors.fatherBirthDate = "Father birthdate cannot be in the future.";
     }
 
 
@@ -401,23 +403,16 @@ function handleBirthDateChange(valueOrEvent) {
       ? {
           registrationType: "child",
           patientClassification: "Child Patient",
-          motherName: form.motherName || null,
-          motherBirthDate: form.motherBirthDate || null,
-          fatherName: form.fatherName || null,
-          fatherBirthDate: form.fatherBirthDate || null,
         }
       : {
           registrationType: "general",
           patientClassification: form.patientClassification || "",
-          motherName: null,
-          motherBirthDate: null,
-          fatherName: null,
-          fatherBirthDate: null,
         };
 
     return {
       ...omitParentLinks(form),
       ...childPatientData,
+      ...reportedParentValues(form),
       philHealthNumber:
         form.philHealthStatus === "With PhilHealth"
           ? form.philHealthNumber || null
@@ -675,6 +670,7 @@ function handleBirthDateChange(valueOrEvent) {
                 )}
                 {householdEnabled ? (
                   <FamilyRegistryField
+                    allowDirectCreate={live && !editingPatientId}
                     live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
                     registry={registry}
                     patient={{ ...form, id: editingPatientId }}
@@ -721,28 +717,32 @@ function handleBirthDateChange(valueOrEvent) {
                 </FormPanel>
               )}
 
-              {isChildRegistration && (
-                <FormPanel
-                  icon={Users}
-                  title="Parent / Household Information"
-                  description="The Family Serial Number links this child to their household."
-                >
-                  <div className="space-y-4">
-                    {Object.keys(PARENT_FIELDS).map((role) => (
-                      <ParentFields
-                        key={role}
-                        role={role}
-                        form={form}
-                        errors={fieldErrors}
-                        todayIso={todayIso}
-                        required={role === "mother"}
-                        onChange={handleChange}
-                        onBirthDateChange={handleParentBirthDateChange}
-                      />
-                    ))}
-                  </div>
-                </FormPanel>
-              )}
+              <FormPanel
+                icon={Users}
+                title="Parent Information"
+                description="Reported parent names are optional. Connect registered parents separately through Families; a shared FSN does not confirm parenthood."
+              >
+                <div className="space-y-4">
+                  {Object.keys(PARENT_FIELDS).map((role) => (
+                    <ParentFields
+                      key={role}
+                      role={role}
+                      form={form}
+                      errors={fieldErrors}
+                      todayIso={todayIso}
+                      onChange={handleChange}
+                      onBirthDateChange={handleParentBirthDateChange}
+                    />
+                  ))}
+                </div>
+              </FormPanel>
+              <FormPanel icon={Users} title="Guardian Information" description="Optional guardian details, recorded separately from parents and household membership.">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[["guardianName", "Guardian name"], ["guardianRelationship", "Guardian relationship"], ["guardianContactNumber", "Guardian contact"]].map(([name, label]) => (
+                    <label key={name} className="space-y-1.5 text-sm text-neutral-700">{label}<Input name={name} value={form[name]} onChange={handleChange} type={name === 'guardianContactNumber' ? 'tel' : 'text'} /></label>
+                  ))}
+                </div>
+              </FormPanel>
 
             </div>
 
@@ -874,7 +874,7 @@ function handleBirthDateChange(valueOrEvent) {
           <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
           <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(walkIn ? patientsPath : `${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>{walkIn ? "Back to queue" : "Edit Patient"}</Button>
         </>}
-      ><p>{householdEnabled && live ? "Patient registration and household connection saved." : live ? "Patient registration saved." : "Patient registration saved for this mock session."}</p></ModalShell>}
+      ><PatientRegistrationSuccess householdEnabled={householdEnabled} live={live} serialNumber={form.familySerialNumber} /></ModalShell>}
       {modals.confirm && <ModalShell
         title="Save Patient?" appearance="plain"
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}
@@ -908,40 +908,39 @@ export default function AddPatient() {
 
 // Preserve explicit parent linking for children using the selected mock household.
 /**
- * One parent's Name / Date of Birth / Age. A parent linked from the household
- * is locked to their registered record until unlinked.
+ * Optional reported information; existing registered links are managed in Families.
  */
 function ParentFields({
   role,
   form,
   errors,
   todayIso,
-  required,
   onChange,
   onBirthDateChange,
 }) {
   const fields = PARENT_FIELDS[role];
-  const linked = Boolean(form[fields.id]);
+  const parent = parentInformation(form, role);
+  const linked = parent.linked;
+
+  if (linked) return <div className="space-y-1 border-t border-neutral-200 pt-4 text-sm">
+    <p className="font-medium text-neutral-900">{fields.label}: {parent.name}</p>
+    <p className="text-xs text-neutral-600">Linked patient. Manage this connection in Families.</p>
+    {parent.reportedName && <p className="text-xs text-neutral-600">Previously reported: {parent.reportedName}. Preserved separately.</p>}
+  </div>;
 
   return (
     <div className="grid min-w-0 gap-4 border-t border-[#EEF2F6] pt-5 sm:grid-cols-2 xl:grid-cols-3">
-      <FormInput
-        label={`${fields.label} Name`}
+      <label className="space-y-1.5 text-sm text-neutral-700">{fields.label} name (optional)
+      <Input
         name={fields.name}
         value={form[fields.name]}
         onChange={onChange}
         readOnly={linked}
-        error={errors[fields.name]}
-        required={required}
-        helperText={
-          linked ? (
-            <span className="inline-flex flex-wrap items-center gap-1.5 font-medium text-[#B91C1C]">
-              <Check size={11} />
-              Linked to registered patient
-            </span>
-          ) : null
-        }
+        aria-invalid={Boolean(errors[fields.name])}
+        aria-describedby={errors[fields.name] ? `${fields.name}-error` : undefined}
       />
+      {errors[fields.name] && <span id={`${fields.name}-error`} className="block text-xs text-red-700">{errors[fields.name]}</span>}
+      </label>
 
       <DatePickerField
         label={`${fields.label} Date of Birth`}

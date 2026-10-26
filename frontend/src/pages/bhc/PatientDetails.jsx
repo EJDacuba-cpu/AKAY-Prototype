@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import "../../components/features/patients/profile/patient-overview.css";
 import {
   ConfirmationModal,
   ConnectionErrorState,
@@ -47,7 +48,7 @@ import { canUpdateBackground } from "../../utils/backgroundEditing";
 import { registrationErrors } from "../../utils/householdData";
 
 // The profile fills the whole content area inside an even 12-16px margin.
-const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
+const PROFILE_CONTENT_CLASS = "patient-profile-content p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
 
 function ProfileShell({ children }) {
   return (
@@ -417,7 +418,7 @@ function LivePatientDetails() {
             }
           />
 
-          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
+          <div className="patient-profile-panels @container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
             {tabStrip}
 
             {activeTab === "overview" &&
@@ -427,6 +428,7 @@ function LivePatientDetails() {
                   center={
                     <AnatomyFindingsPanel
                       key={patientId}
+                      fitToPanel
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}
                       conditions={conditions}
@@ -488,6 +490,7 @@ function LivePatientDetails() {
                     onEdit={canRegister ? handleEditSection : undefined}
                     householdLocked={Boolean(patient.householdId)}
                     onViewHousehold={patient.householdId && canViewFamilies ? () => navigate(`/bhc/families/${patient.householdId}`) : undefined}
+                    onManageParents={patient.householdId && canRegister && canViewFamilies && (getCurrentUser()?.permissions || []).includes('families.manage') ? () => navigate(`/bhc/families/${patient.householdId}/members/${patientId}/edit`) : undefined}
                     onCancel={handleCancelEdit}
                     onSave={handleRequestSave}
                     onChange={handleChange}

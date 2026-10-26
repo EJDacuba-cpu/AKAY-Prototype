@@ -14,6 +14,7 @@ const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wi
 export default function FamilyRegistryField({
   registry, patient, connection, savedConnection, headReplacement,
   onChange, onPendingChange, error, relationshipError, live = false, onSearch, searchResults = [], searchLoading = false, searchError = "", refreshError, onRefresh,
+  allowDirectCreate = false,
 }) {
   const id = useId();
   const inputRef = useRef(null);
@@ -30,6 +31,33 @@ export default function FamilyRegistryField({
   const hasQuery = Boolean(submitted.trim());
   const creatingHousehold = connection?.kind === "new";
   const eligibility = canHeadHousehold(patient);
+  const directCreate = allowDirectCreate && !patient?.id && !savedConnection;
+  const automaticSerial = live && (connection?.household?.serialMode || 'auto') === 'auto';
+  const serialPreview = `FSN-${new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date())}-XXXX`;
+
+  function selectHouseholdTab(mode) {
+    // These handlers only stage/reset the form draft. Persistence still happens on Save Patient.
+    if (mode === 'create') {
+      if (!creatingHousehold) createHousehold();
+    } else if (creatingHousehold) {
+      cancelCreation();
+    } else {
+      setSearching(true);
+      resetSearch();
+    }
+  }
+
+  function handleTabKeys(event) {
+    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (!keys.includes(event.key)) return;
+    const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+    const index = tabs.indexOf(event.target);
+    if (index < 0) return;
+    event.preventDefault();
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + 1) % tabs.length;
+    tabs[next].focus();
+    tabs[next].click();
+  }
 
   function resetSearch() {
     setQuery("");
@@ -83,17 +111,46 @@ export default function FamilyRegistryField({
       {refreshError && <div className="space-y-2 text-xs text-red-700"><p role="status">Saved household data could not refresh. Your draft is kept.</p><Button type="button" variant="secondary" size="sm" onClick={onRefresh}>Retry refresh</Button></div>}
       <div>
         <label htmlFor={searching || !connection ? id : `${id}-serial`} className={labelClass}>Family Serial Number</label>
+        {directCreate && !review && <div className="mb-3">
+          <div className="grid grid-cols-1 gap-1 rounded-2xl bg-neutral-100 p-1 sm:grid-cols-2 sm:rounded-full" role="tablist" aria-label="Household selection" onKeyDown={handleTabKeys}>
+            {[['search', 'Search Existing Household'], ['create', 'Create New Household']].map(([mode, label]) => {
+              const selected = creatingHousehold === (mode === 'create');
+              return <Button key={mode} id={`${id}-${mode}-tab`} type="button" variant="ghost" size="sm" role="tab" aria-selected={selected}
+                aria-controls={`${id}-${mode}-panel`} tabIndex={selected ? 0 : -1}
+                className={`h-auto min-h-9 min-w-0 whitespace-normal rounded-full text-xs ${selected ? 'bg-white text-neutral-900 shadow-xs' : 'text-neutral-600'}`}
+                onClick={() => selectHouseholdTab(mode)}>{label}</Button>;
+            })}
+          </div>
+        </div>}
+        <div role={directCreate && !review ? 'tabpanel' : undefined} id={directCreate ? `${id}-${creatingHousehold ? 'create' : 'search'}-panel` : undefined}
+          aria-labelledby={directCreate && !review ? `${id}-${creatingHousehold ? 'create' : 'search'}-tab` : undefined}>
         {creatingHousehold && <div className="space-y-3">
+          {directCreate && <>
+            <p role="status" className={`text-xs ${eligibility.ok ? 'text-neutral-600' : 'text-red-700'}`}>{eligibility.ok
+              ? 'This patient will be the household head. The address on this form will be used.'
+              : eligibility.reason}</p>
+            <fieldset className="flex flex-wrap gap-x-5 gap-y-2">
+              <legend className="mb-2 text-xs font-medium text-neutral-700">FSN assignment</legend>
+              {[['auto', 'Auto-generated'], ['manual', 'Enter manually']].map(([mode, label]) => <label key={mode} className="inline-flex items-center gap-2 text-sm text-neutral-900">
+                <input type="radio" name={`${id}-assignment`} value={mode} checked={(connection.household.serialMode || 'auto') === mode}
+                  className="size-4 accent-ink-700" onChange={() => onChange({ ...connection, household: { ...connection.household, serialMode: mode } }, null)} />
+                {label}
+              </label>)}
+            </fieldset>
+          </>}
           <div className="flex flex-wrap gap-2">
-            <Input id={`${id}-serial`} aria-label="Family Serial Number" value={live && connection.household.serialMode === "auto" ? "Assigned automatically on save" : connection.household.serialNumber}
-              readOnly={live && connection.household.serialMode === "auto"} maxLength={100}
+            <Input id={`${id}-serial`} aria-label={directCreate && automaticSerial ? 'FSN format preview' : 'Family Serial Number'} value={automaticSerial ? (directCreate ? serialPreview : "Assigned automatically on save") : connection.household.serialNumber}
+              readOnly={automaticSerial} maxLength={100}
               aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined}
               onChange={(event) => onChange({ ...connection, household: { ...connection.household, serialNumber: event.target.value } }, null)}
               className="h-9 min-w-28 flex-1 shadow-none" />
-            {live && <Button type="button" variant="secondary" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
-            <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>
+            {live && !directCreate && <Button type="button" variant="secondary" size="sm" onClick={() => onChange({...connection,household:{...connection.household,serialMode:connection.household.serialMode === "auto" ? "manual" : "auto",serialNumber:""}},null)}>{connection.household.serialMode === "auto" ? "Enter manually" : "Use automatic FSN"}</Button>}
+            {!directCreate && <Button type="button" variant="ghost" size="sm" onClick={cancelCreation}>Cancel</Button>}
           </div>
-          <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{live && connection.household.serialMode === "auto" ? " Format: FSN-YYYY-NNNN. The number is assigned by your facility on save." : ""}</p>
+          {directCreate ? <p className="text-xs text-neutral-600">{automaticSerial
+            ? 'Format preview only. Your actual FSN is assigned by your facility on save.'
+            : 'Enter the household FSN. Availability is checked when registration is saved.'}</p>
+            : <p className="text-xs text-gray-600">New household &middot; This patient is the household head.{automaticSerial ? " Format: FSN-YYYY-NNNN. The number is assigned by your facility on save." : ""}</p>}
         </div>}
         {household && !creatingHousehold && <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -153,11 +210,12 @@ export default function FamilyRegistryField({
               <p role="status" className="text-sm font-semibold text-gray-950">No household found</p>
               <p className="mt-1 text-xs text-gray-600">No match for &ldquo;{submitted.trim()}&rdquo;. Check your search or add a new family serial number.</p>
             </div>
-            {emptyActions}
+            {!directCreate && emptyActions}
           </div> : connection && <div>
             <Button type="button" variant="ghost" size="sm" onClick={() => { setSearching(false); resetSearch(); }}>Cancel search</Button>
           </div>}
         </div>}
+        </div>
       </div>
       {error && <p id={`${id}-error`} role="alert" className="text-xs text-red-700">{error}</p>}
       {review && <HouseholdConnectionReview

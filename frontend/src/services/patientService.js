@@ -3,6 +3,7 @@ import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { getHealthRecordsByPatient } from "./healthRecordService";
 import { getReferralsByPatient } from "./referrals";
 import { normalizeBackground, normalizeHouseholdEnvironment } from "../utils/backgroundUpdate";
+import { parentLinkPayload } from "../utils/parentLinks";
 
 
 function fullName(patient = {}) {
@@ -293,6 +294,14 @@ export async function createPatient(patientData) {
 
 export async function updatePatient(patientId, patientData) {
   return updateBhcPatient(patientId, patientData);
+}
+
+// Parent changes must never pass through the full registration serializer.
+export async function updatePatientParent(patientId, role, parentId, previousId) {
+  const response = await apiRequest(`/patients/${patientId}`, {
+    method: 'PATCH', body: parentLinkPayload(role, parentId, previousId),
+  });
+  return normalizePatient(unwrapData(response));
 }
 
 export async function deletePatient(patientId) {

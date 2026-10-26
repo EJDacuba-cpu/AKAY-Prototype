@@ -12,13 +12,16 @@ import useHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { addRelationship, changeRelationship, getHouseholdById, removeRelationship } from '../../services/householdService';
 import { patientName } from '../../services/familyRegistry';
 import { candidateRelatives, connectionRowsFor, describeConnection } from '../../utils/familyConnections';
+import FamilyParentLinks from '../../components/features/families/FamilyParentLinks';
+import useAccess from '../../hooks/useAccess';
 
 const TYPES = [['spouse', 'Spouse'], ['sibling', 'Sibling']];
 
-// Explicit spouse/sibling links only. Nothing here is inferred from labels, and parent links stay on each patient's record.
+// Explicit connections only: parent links stay on patient records; spouse/sibling rows use household APIs.
 export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
   const { householdId, memberId } = useParams();
   const scope = useHouseholdScope(role);
+  const access = useAccess();
   const client = useQueryClient();
   const base = `/${role}/families`;
   const key = [...scope.key, 'detail', householdId];
@@ -59,7 +62,6 @@ export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
 
   const rows = connectionRowsFor(household, memberId);
   const candidates = candidateRelatives(household, memberId);
-  const parents = [['Mother', member.motherPatientId], ['Father', member.fatherPatientId]].filter(([, id]) => id && household.members.some((item) => item.id === id));
   const busy = mutation.isPending;
   const confirmText = !pending ? '' : pending.kind === 'add'
     ? `Record ${patientName(member)} as ${pending.type} of ${nameOf(pending.relativeId)}?`
@@ -69,6 +71,9 @@ export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
 
   return frame(<>
     <header><h1 className="text-2xl font-bold leading-tight tracking-tight text-ink-800">Connections for {patientName(member)}</h1><p className="mt-1 text-[13px] text-neutral-600">Only connections you confirm here are saved. Household labels do not create connections.</p></header>
+    {access.can('patients.register') && access.can('families.manage') && access.can('families.view')
+      ? <FamilyParentLinks key={`${scope.identity}:${memberId}`} memberId={memberId} scope={scope} role={role} />
+      : <p className="text-sm text-neutral-600">Managing parent links requires patient registration and family management permissions.</p>}
     {error && <div role="alert" className="space-y-2 text-sm text-red-700"><p>{error}</p>{conflict && <Button type="button" variant="secondary" onClick={() => { setConflict(false); setError(''); query.refetch(); }}>Reload saved family</Button>}</div>}
     <section aria-labelledby="saved-connections" className="space-y-3 rounded-card border border-neutral-200 bg-white p-5 shadow-[var(--shadow-card)]">
       <h2 id="saved-connections" className="text-sm font-bold text-ink-800">Saved connections</h2>
@@ -79,7 +84,6 @@ export default function BhcFamilyConnections({ role = 'bhc' } = {}) {
           <Button type="button" variant="ghost" disabled={busy} onClick={() => setPending({ kind: 'remove', id: row.id, relativeId: row.relativeId, type: row.type })}>Remove<span className="sr-only"> connection with {nameOf(row.relativeId)}</span></Button>
         </span>
       </li>)}</ul> : <p className="text-sm text-neutral-500" role="status">No spouse or sibling connections saved.</p>}
-      {parents.length > 0 && <p className="text-xs text-neutral-500">Parent links from the patient record: {parents.map(([label, id]) => `${label}: ${nameOf(id)}`).join(', ')}. Change them in Patient Information.</p>}
     </section>
     <section aria-labelledby="add-connection" className="space-y-3 rounded-card border border-neutral-200 bg-white p-5 shadow-[var(--shadow-card)]">
       <h2 id="add-connection" className="text-sm font-bold text-ink-800">Add a connection</h2>
