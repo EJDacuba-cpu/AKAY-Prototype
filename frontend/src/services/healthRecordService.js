@@ -409,6 +409,11 @@ function normalizeRecord(record = {}) {
     height: vitalSigns.height || record.height || "",
     // Optional Additional Measurement (mg/dL); "" when not recorded.
     fbs: vitalSigns.fbs ?? record.fbs ?? "",
+    // Read-only provenance: distinguish saved legacy text from the fallback below.
+    recordedLegacyStatus: firstPresent([
+      monitoringData.followUpStatus, monitoringData.follow_up_status, monitoringData.status,
+      record.followUpStatus, record.follow_up_status, record.status,
+    ]),
     status:
       record.status ||
       monitoringData.followUpStatus ||

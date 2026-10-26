@@ -15,11 +15,6 @@ import {
   ConnectionErrorState,
   SoftLoadingArea,
 } from "../../components/common";
-import {
-  NEXT_ACTION_REFERRAL,
-  NEXT_ACTION_SCHEDULE,
-  deriveNextAction,
-} from "../../utils/nextAction";
 import BhcHealthRecordWorkspace from "../../components/features/health-records/BhcHealthRecordWorkspace";
 import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
@@ -189,26 +184,6 @@ export default function HealthRecordDetails() {
     record.referral_tracking_id ||
     "";
   const hasLinkedReferral = Boolean(linkedReferralTarget);
-  const needsRhuReferral =
-    record.needs_referral === true ||
-    record.needsReferral === true ||
-    record.needsReferral === "yes";
-  const nextAction = deriveNextAction({
-    needsReferral: needsRhuReferral,
-    followUpStatus: record.followUpStatus || record.follow_up_status,
-  });
-  const scheduledFollowUpDate =
-    record.followUpDate || record.follow_up_date || "";
-  const nextActionLabel =
-    nextAction === NEXT_ACTION_REFERRAL
-      ? "Referral"
-      : nextAction === NEXT_ACTION_SCHEDULE
-        ? `Follow-up${
-            scheduledFollowUpDate
-              ? ` - ${formatLongDate(scheduledFollowUpDate, "")}`
-              : ""
-          }`
-        : "No follow-up";
   const isImmunizationRecord = isImmunizationClassification(record, patient);
   const patientName = formatPatientName(
     patient || record.patient,
@@ -229,11 +204,7 @@ export default function HealthRecordDetails() {
   const displayDate = formatLongDate(getRecordDateValue(record), "Not recorded");
   const displayTime = getRecordTime(record);
   const pageTitle = getHealthRecordDetailsTitle(serviceType);
-  const isGeneralConsultationRecord =
-    serviceType === "General Consultation";
-  const parentRecordId = isGeneralConsultationRecord
-    ? null
-    : parentHealthRecordId;
+  const parentRecordId = parentHealthRecordId;
 
   return (
     <DashboardLayout role="bhc" title="Health Record Details">
@@ -253,11 +224,9 @@ export default function HealthRecordDetails() {
             practitioner={getRecordPractitioner(record)}
             isFollowUpVisit={isFollowUpVisitRecord}
             parentRecordId={parentRecordId}
-            nextActionLabel={nextActionLabel}
             hasLinkedReferral={hasLinkedReferral}
             referralStatus={linkedReferral?.status}
             isUpdating={detailsUpdating}
-            outcomeRecord={record}
             onBack={returnToProfile}
             onPrint={() => window.print()}
           />
@@ -277,7 +246,6 @@ export default function HealthRecordDetails() {
             practitioner={getRecordPractitioner(record)}
             isFollowUpVisit={isFollowUpVisitRecord}
             parentRecordId={parentRecordId}
-            nextActionLabel={nextActionLabel}
           />
         </div>
       </div>

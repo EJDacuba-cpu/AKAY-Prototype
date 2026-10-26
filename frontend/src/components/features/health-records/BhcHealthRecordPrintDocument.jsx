@@ -1,3 +1,5 @@
+import { ReportingCategories, ClinicalOutcomes, FollowUpRecordInformation } from "./RecordDetailsSections";
+import { recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
 import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
@@ -7,24 +9,11 @@ import {
   TEENAGE_PREGNANCY_MESSAGE,
 } from "../../../utils/visitPurpose";
 import {
-  formatRecordReporting,
-  getMorbidityReportingStatus,
-} from "../../../utils/diagnosisReporting";
-import { getSurveillanceDiagnoses } from "../../../utils/surveillance";
-import {
-  diagnosisCarePlanHeading,
-  diagnosisCarePlanItems,
-} from "../../../utils/recordCarePlan";
-import {
   earlierDraftContinuedNotes,
   earlierDraftNotes,
-  isBhcGeneralV2,
   showsDiagnosisRow,
-  visitAssessmentDisplay,
 } from "../../../utils/consultationWorkflow";
-import { recordReportingLines } from "../../../utils/reportingEntries";
 import { isTbRecord } from "../../../utils/tbRecords";
-import { getRecordOutcome, getRecordOutcomeSubLabel } from "../../../utils/healthRecordPrograms";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -54,7 +43,6 @@ import {
   getRecordTreatmentNotes,
   isDistinctRecordedValue,
   getRecordInitialActions,
-  getVitalSignItems,
   getMaternalValue,
   getPreviousPregnancyHistory,
   getSelectedMaternalRiskLabels,
@@ -63,7 +51,6 @@ import {
   getRecordedTetanusToxoidDoses,
   getUltrasoundValue,
   getRecordVisitTypeValue,
-  formatDisplayTime,
 } from "./recordDetailsHelpers";
 import {
   TB_REFERRED_BY_OPTIONS,
@@ -243,7 +230,6 @@ export default function BhcHealthRecordPrintDocument({
   practitioner,
   isFollowUpVisit = false,
   parentRecordId = "",
-  nextActionLabel = "",
 }) {
   if (!record) return null;
 
@@ -270,7 +256,7 @@ export default function BhcHealthRecordPrintDocument({
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
-  const vitalItems = getVitalSignItems(record);
+  const vitalItems = recordedVitalItems(record);
   const isFollowUp = getRecordVisitTypeValue(record) === "follow_up_visit";
   const chiefComplaint = getRecordChiefComplaint(record, "");
   const diagnosis = getRecordDiagnosis(record, "");
@@ -287,37 +273,12 @@ export default function BhcHealthRecordPrintDocument({
       : getRecordNotes(record, "");
   const treatmentAction = getRecordInitialActions(record, "");
   const treatmentNotes = getRecordTreatmentNotes(record, "");
-  const patientCondition = getRecordValue(
-    record,
-    ["patientCondition", "patient_condition"],
-    "",
-  );
-  const followUpDate = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
-  const followUpReason = getRecordValue(record, ["followUpReason"], "");
-  const needsReferral =
-    record.needs_referral === true ||
-    record.needsReferral === true ||
-    record.needsReferral === "yes";
   const medicines = getDispensedMedicines(record);
-  const morbidityStatus = getMorbidityReportingStatus(record);
-  const reportingSummary = formatRecordReporting(record);
-  const surveillanceSummary = getSurveillanceDiagnoses(record)
-    .map(({ name }) => name)
-    .join(", ");
-  const showReporting =
-    serviceType === "General Consultation" ||
-    morbidityStatus === "morbidity" ||
-    morbidityStatus === "notifiable";
-  const reportingLines = isBhcGeneralV2(record)
-    ? recordReportingLines(record)
-    : [];
-  const carePlanItems = diagnosisCarePlanItems(record?.diagnoses);
+  const presentation = recordDetailsPresentation(record, linkedReferral);
   const draftNotes = earlierDraftNotes(record);
   const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
-  const outcome = getRecordOutcome(record);
-  const outcomeSub = getRecordOutcomeSubLabel(record);
   const facility = facilityLabel(record, patient);
   const patientCode =
     patient?.patientId ||
@@ -348,12 +309,7 @@ export default function BhcHealthRecordPrintDocument({
           <p className="bhc-print-doctype">BHC Health Record</p>
           <p>{title || "Health Record"}</p>
           <p>Record #{recordId}</p>
-          {outcome ? (
-            <p>
-              Outcome: {outcome}
-              {outcomeSub ? ` · ${outcomeSub}` : ""}
-            </p>
-          ) : null}
+
         </div>
       </header>
 
@@ -375,11 +331,9 @@ export default function BhcHealthRecordPrintDocument({
             { label: "Service", value: serviceType },
             { label: "Date of visit", value: displayDate },
             { label: "Time of visit", value: displayTime },
-            { label: "Practitioner", value: practitioner },
-            { label: "Next action", value: nextActionLabel },
-            ...(isFollowUpVisit
-              ? [{ label: "Visit type", value: "Follow-up visit" }]
-              : []),
+            { label: "Recorded By", value: practitioner },
+            { label: "Current next action", value: presentation.nextAction },
+            { label: "Visit type", value: isFollowUpVisit ? "Follow-up Visit" : "Initial Consultation" },
             ...(parentRecordId
               ? [{ label: "Parent record", value: `#${parentRecordId}` }]
               : []),
@@ -411,18 +365,8 @@ export default function BhcHealthRecordPrintDocument({
       )}
 
       <Section title="Vital signs" avoidBreak>
-        <InlineGrid
-          items={[
-            ...vitalItems.map((item) => ({
-              label: item.label,
-              value: item.value,
-            })),
-            { label: "Record status", value: status },
-            ...(isFollowUp
-              ? [{ label: "Current condition", value: patientCondition }]
-              : []),
-          ]}
-        />
+        <InlineGrid items={vitalItems} />
+        {!vitalItems.length && <p className="bhc-print-muted">No vital measurements recorded.</p>}
       </Section>
 
       {!tbRecord && (
@@ -533,74 +477,18 @@ export default function BhcHealthRecordPrintDocument({
         )}
       </Section>
 
-      {(showReporting ||
-        reportingLines.length > 0 ||
-        carePlanItems.length > 0 ||
-        draftNotes ||
-        continuedNotes) && (
-        <Section title="Reporting">
-          {reportingLines.length > 0 && (
-            <ul className="bhc-print-list">
-              {reportingLines.map((line) => (
-                <li key={line.key}>{line.text}</li>
-              ))}
-            </ul>
-          )}
-          {showReporting && (
-            <InlineGrid
-              columns={2}
-              items={[
-                {
-                  label: "Morbidity / notifiable reports",
-                  value: reportingSummary,
-                },
-                {
-                  label: "Included in surveillance",
-                  value: surveillanceSummary || "No",
-                },
-              ]}
-            />
-          )}
-          {carePlanItems.length > 0 && (
-            <div>
-              <p className="bhc-print-k">
-                {diagnosisCarePlanHeading(record?.diagnoses)}
-              </p>
-              <ul className="bhc-print-list">
-                {carePlanItems.map((item) => (
-                  <li key={item.key}>
-                    {item.name}
-                    {item.plan ? ` — ${item.plan}` : ""}
-                    {item.inSurveillance ? " (In surveillance)" : ""}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {draftNotes && (
-            <Narrative label="Earlier draft notes" value={draftNotes} />
-          )}
-          {continuedNotes && (
-            <Narrative
-              label="Earlier draft notes (continued)"
-              value={continuedNotes}
-            />
-          )}
-        </Section>
-      )}
-
-      <FollowUpPrintSection
-        record={record}
-        linkedReferral={linkedReferral}
-        followUpDate={followUpDate}
-        followUpReason={followUpReason}
-        needsReferral={needsReferral}
-        patientCondition={patientCondition}
-        monitoringNotes={monitoringNotes}
-        status={status}
-        parentRecordId={parentRecordId}
-        nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")}
-      />
+      <Section title="Clinical outcomes">
+        <ClinicalOutcomes record={record} print />
+      </Section>
+      <Section title="Reporting">
+        <ReportingCategories record={record} print />
+      </Section>
+      {(draftNotes || continuedNotes) && <Section title="Earlier draft notes">
+        {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
+        {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
+      </Section>}
+      <FollowUpPrintSection record={record} linkedReferral={linkedReferral} monitoringNotes={monitoringNotes}
+        nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")} />
 
       <footer className="bhc-print-footer">
         Printed on {printedOn}. This copy reflects the saved health record and
@@ -703,15 +591,6 @@ function MaternalPrintSection({ record, maternal, postpartumOnly }) {
 
   return (
     <Section title={postpartumOnly ? "Postpartum record" : "Maternal / Prenatal"}>
-      {postpartumOnly && (
-        <InlineGrid
-          columns={2}
-          items={[
-            { label: "Pulse", value: record.pulse },
-            { label: "SpO₂", value: record.spo2 },
-          ]}
-        />
-      )}
       <InlineGrid
         items={[
           {
@@ -1177,130 +1056,30 @@ function TbPrintSection({ record }) {
   );
 }
 
-function FollowUpPrintSection({
-  record,
-  linkedReferral,
-  followUpDate,
-  followUpReason,
-  needsReferral,
-  patientCondition,
-  monitoringNotes,
-  status,
-  parentRecordId,
-  nextAppointmentDate,
-}) {
-  const referralStatus =
-    linkedReferral?.status ||
-    linkedReferral?.referralStatus ||
-    record.referralStatus ||
-    record.referral_status ||
-    "";
-  const records = Array.isArray(record.followUpEpisode?.records)
-    ? record.followUpEpisode.records
-    : [];
-  const tasks = (Array.isArray(record.followUpEpisode?.tasks)
-    ? record.followUpEpisode.tasks
-    : []
-  ).filter(
-    (task) => String(task.healthRecordId) === String(record.id || record._id),
-  );
-
-  return (
-    <Section title="Follow-up & referral information">
-      <InlineGrid
-        items={[
-          {
-            label: "Follow-up date",
-            value: formatLongDate(followUpDate, "Not recorded"),
-          },
-          { label: "Follow-up reason", value: followUpReason },
-          ...(nextAppointmentDate
-            ? [{ label: "Next appointment date", value: nextAppointmentDate }]
-            : []),
-          {
-            label: "Needs RHU referral",
-            value: needsReferral ? "Yes" : "No",
-          },
-          { label: "Referral status", value: referralStatus },
-          {
-            label: "Urgency",
-            value:
-              linkedReferral?.urgencyLevel || linkedReferral?.urgency_level,
-          },
-          {
-            label: "Receiving facility",
-            value:
-              linkedReferral?.receivingFacility ||
-              linkedReferral?.ruralHealthUnit?.name ||
-              linkedReferral?.rural_health_unit?.name,
-          },
-          ...(parentRecordId
-            ? [{ label: "Parent record", value: `#${parentRecordId}` }]
-            : []),
-          ...(patientCondition || status === "Follow-up Required"
-            ? [{ label: "Patient condition", value: patientCondition }]
-            : []),
-        ]}
-      />
-      <Narrative
-        label="Reason for referral"
-        value={
-          linkedReferral?.reasonForReferral ||
-          linkedReferral?.reason_for_referral ||
-          record.referralReason ||
-          record.referral_reason ||
-          ""
-        }
-      />
-      {monitoringNotes ? (
-        <Narrative label="Monitoring notes" value={monitoringNotes} />
-      ) : null}
-      {records.length > 0 && (
-        <>
-          <p className="bhc-print-k">Visit chain</p>
-          <ol className="bhc-print-list">
-            {records.map((item) => {
-              const assessment = visitAssessmentDisplay(item);
-              return (
-                <li key={item.id}>
-                  Record #{item.id} ·{" "}
-                  {item.visitType === "follow_up_visit"
-                    ? "Follow-up visit"
-                    : "Initial consultation"}{" "}
-                  · {formatLongDate(item.dateRecorded, "Date not recorded")}
-                  {assessment ? ` · ${assessment.label}: ${assessment.value}` : ""}
-                </li>
-              );
-            })}
-          </ol>
-        </>
-      )}
-      {tasks.length > 0 && (
-        <>
-          <p className="bhc-print-k">Follow-up schedules</p>
-          <PrintTable
-            columns={["Source record", "Next visit", "Time", "Status"]}
-            rows={tasks.map((task) => ({
-              key: task.id,
-              cells: [
-                `Record #${task.healthRecordId}`,
-                formatLongDate(task.dueDate, "Not recorded"),
-                formatDisplayTime(task.dueTime, "Not recorded"),
-                String(task.state || "pending")
-                  .replaceAll("_", " ")
-                  .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-              ],
-            }))}
-          />
-        </>
-      )}
-      {records.length === 0 && tasks.length === 0 && (
-        <p className="bhc-print-muted">
-          No follow-up is scheduled for this record.
-        </p>
-      )}
-    </Section>
-  );
+function FollowUpPrintSection({ record, linkedReferral, monitoringNotes, nextAppointmentDate }) {
+  const { schedules } = recordDetailsPresentation(record, linkedReferral);
+  const savedReferral = {
+    ...linkedReferral,
+    status: linkedReferral?.status || linkedReferral?.referralStatus || record.referralStatus || record.referral_status,
+    trackingId: linkedReferral?.trackingId || linkedReferral?.tracking_id || record.linkedTrackingId || record.linked_tracking_id || record.referralTrackingId || record.referral_tracking_id,
+    reasonForReferral: linkedReferral?.reasonForReferral || linkedReferral?.reason_for_referral || record.referralReason || record.referral_reason,
+  };
+  const referralFields = [
+    { label: "Referral status", value: savedReferral.status || savedReferral.referralStatus },
+    { label: "Tracking ID", value: savedReferral.trackingId || savedReferral.tracking_id },
+    { label: "Urgency", value: savedReferral.urgencyLevel || savedReferral.urgency_level },
+    { label: "Receiving facility", value: savedReferral.receivingFacility || savedReferral.ruralHealthUnit?.name || savedReferral.rural_health_unit?.name },
+  ].filter((item) => item.value);
+  const reason = savedReferral.reasonForReferral || savedReferral.reason_for_referral;
+  return <Section title="Follow-up & referral information">
+    <div className="space-y-4">
+      <InlineGrid items={referralFields} />
+      {reason && <Narrative label="Reason for referral" value={reason} />}
+      {!schedules.length && nextAppointmentDate && <InlineGrid items={[{ label: "Recorded next appointment", value: nextAppointmentDate }]} />}
+      {monitoringNotes && <Narrative label="Monitoring notes" value={monitoringNotes} />}
+      <FollowUpRecordInformation record={record} linkedReferral={linkedReferral} print />
+    </div>
+  </Section>;
 }
 
 const documentStyles = `

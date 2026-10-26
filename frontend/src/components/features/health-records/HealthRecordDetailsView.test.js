@@ -66,6 +66,140 @@ const episode = {
 };
 
 const wrap = (node) => renderToStaticMarkup(createElement(MemoryRouter, null, node));
+const { recordDetailsPresentation, recordedVitalItems } = await server.ssrLoadModule(
+  "/src/components/features/health-records/recordDetailsPresentation.js",
+);
+const { getRecordPractitioner } = await server.ssrLoadModule(
+  "/src/components/features/health-records/recordDetailsHelpers.js",
+);
+
+test("details reader uses scoped task states and explicit related IDs without mutating records", () => {
+  const record = {
+    id: 11, parent_health_record_id: 10,
+    followUpDate: "2020-01-01", followUpStatus: "Follow-up Required",
+    followUpEpisode: { records: [...episode.records].reverse(), tasks: [
+      { id: 1, healthRecordId: 10, dueDate: "2027-01-01", state: "pending" },
+      { id: 2, healthRecordId: 11, dueDate: "2026-10-10", state: "fulfilled", fulfilledByHealthRecordId: 12 },
+      { id: 3, healthRecordId: 11, dueDate: "2026-10-11", state: "cancelled" },
+    ] },
+  };
+  const before = JSON.stringify(record);
+  const details = recordDetailsPresentation(record);
+  assert.equal(details.nextAction, "No active follow-up task");
+  assert.deepEqual(details.related.map((row) => row.id), [10, 11]);
+  assert.equal(details.schedules.length, 2);
+  assert.equal(details.schedules[0].completedRecordId, 12);
+  assert.deepEqual(details.legacy, []);
+  assert.equal(JSON.stringify(record), before);
+});
+
+test("explicit empty reporting destinations suppress legacy mirrors and fabricated legacy defaults", () => {
+  const details = recordDetailsPresentation({
+    id: 1, recordedLegacyStatus: "", status: "Routine Monitoring", followUpStatus: "Routine Monitoring",
+    diagnoses: [{ name: "Recorded only", reportIn: [] }],
+    morbidityReportingStatus: "notifiable", hfmdSurveillance: true,
+  });
+  assert.deepEqual(details.legacy, []);
+  assert.ok(details.reporting.every((group) => group.names.length === 0));
+  assert.equal(details.nextAction, "Not recorded");
+});
+
+test("recorded vitals keep units and attribution never invents credentials", () => {
+  const items = recordedVitalItems({ temperature: "36.7 C", weight: "62 kg", pulse: "80", spo2: "98", height: "0", fbs: 0 });
+  assert.deepEqual(items, [
+    { label: "Temperature", value: "36.7 C" }, { label: "Weight", value: "62 kg" },
+    { label: "Pulse", value: "80 bpm" }, { label: "SpO₂", value: "98 %" },
+  ]);
+  assert.equal(getRecordPractitioner({ creator: { name: "Ana Cruz", role: "doctor" }, attendingStaff: "Other staff" }), "Ana Cruz");
+  assert.equal(getRecordPractitioner({ recordedBy: "Saved Encoder", attendingStaff: "Old Practitioner" }), "Saved Encoder");
+  assert.equal(getRecordPractitioner({ practitioner: { name: "Other Practitioner" }, recordedBy: "Saved Encoder" }), "Saved Encoder");
+});
+
+test("older care plans retain historical fields without becoming current clinical outcomes", () => {
+  const details = recordDetailsPresentation({
+    id: 8, patientCondition: "Historical condition", followUpStatus: "Follow-up Required",
+    followUpDate: "2020-01-01", diagnoses: [{ id: "old", name: "Old concern", carePlan: "monitor" }],
+  });
+  assert.ok(details.legacy.some((item) => item.value === "Historical condition"));
+  assert.ok(details.legacy.some((item) => item.value === "2020-01-01"));
+  assert.equal(details.nextAction, "Not recorded");
+});
+
+for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
+  test(`${View.name}: separates historical fields from authoritative schedules`, () => {
+    const record = {
+      id: 10, patientCondition: "Improving historically", followUpStatus: "Follow-up Required",
+      followUpDate: "2020-01-01", followUpReason: "Old return reason",
+      monitoringData: { consultationWorkflow: "bhc_general_v2", followUpSchedules: [] },
+      diagnoses: [{ id: "a", name: "Recorded concern", reportIn: ["morbidity", "surveillance"], clinicalOutcome: "managed_at_bhc" }],
+      followUpEpisode: { ...episode, tasks: [{ id: 44, healthRecordId: 10, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
+    };
+    const html = wrap(createElement(View, { record, serviceType: "General Consultation", practitioner: "Ana Santos" }));
+    assert.match(html, /Recorded By/);
+    assert.doesNotMatch(html, /Record status|Current condition|Visit chain|Morbidity \/ notifiable reports/);
+    assert.match(html, /November 15, 2026/);
+    assert.match(html, /Rescheduled/);
+    assert.match(html, /Updated return reason/);
+    assert.doesNotMatch(html, /January 1, 2020|Old return reason|Improving historically|Legacy Recorded Information/);
+    assert.match(html, /Notifiable Diseases/);
+    assert.match(html, /No entries recorded/);
+    assert.match(html, /Clinical outcomes/);
+    assert.match(html, /Managed at BHC/);
+    assert.match(html, /Related Visits/);
+  });
+
+  test(`${View.name}: legacy values are historical only and empty vitals are omitted`, () => {
+    const html = wrap(createElement(View, {
+      record: { id: 3, patientCondition: "Historical stable", followUpStatus: "Follow-up Required", temperature: "0", weight: "0", followUpDate: "2020-01-01" },
+      serviceType: "General Consultation",
+    }));
+    assert.match(html, /Legacy Recorded Information/);
+    assert.match(html, /Historical stable/);
+    assert.match(html, /Follow-up Required/);
+    assert.doesNotMatch(html, /Record status|Current condition|Related Visits/);
+    assert.doesNotMatch(html, />0(?:\s|<)/);
+    assert.match(html, /Current next action/);
+    assert.match(html, /Not recorded/);
+    assert.match(html, /No vital measurements recorded/);
+  });
+
+  test(`${View.name}: retains saved referral facts when a linked referral is unavailable`, () => {
+    const html = wrap(createElement(View, {
+      record: { id: 4, referral_status: "Pending", referral_reason: "Saved referral reason", needs_referral: true },
+      serviceType: "General Consultation",
+    }));
+    assert.match(html, /Saved referral reason/);
+    assert.match(html, /Pending/);
+    const partial = wrap(createElement(View, {
+      record: { id: 4, referral_reason: "Saved fallback reason", linkedTrackingId: "TRACK-SAVED" },
+      linkedReferral: { status: "Pending" }, serviceType: "General Consultation",
+    }));
+    assert.match(partial, /Saved fallback reason/);
+    assert.match(partial, /TRACK-SAVED/);
+  });
+
+  test(`${View.name}: keeps distinct condition referral facts outside reporting`, () => {
+    const html = wrap(createElement(View, {
+      record: { id: 5, diagnoses: [
+        { id: "a", name: "First saved concern", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "First condition reason" } },
+        { id: "b", name: "Second saved concern", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Routine", reasonForReferral: "Second condition reason" } },
+      ] },
+      serviceType: "General Consultation",
+    }));
+    assert.match(html, /First condition reason/);
+    assert.match(html, /Second condition reason/);
+    assert.equal((html.match(/First condition reason/g) || []).length, 1);
+  });
+
+  test(`${View.name}: postpartum vitals appear once in Vital signs`, () => {
+    const html = wrap(createElement(View, {
+      record: { id: 6, pulse: "80", spo2: "98", monitoringData: { visitPurpose: { services: ["Postpartum"] } } },
+      serviceType: "General Consultation",
+    }));
+    assert.equal((html.match(/Pulse/g) || []).length, 1);
+    assert.equal((html.match(/SpO₂/g) || []).length, 1);
+  });
+}
 
 test("stacked record tabs show every clinical section and hide the tablist", () => {
   const tabbed = wrap(createElement(RecordTabs, { tabs: sampleTabs, defaultTabId: "clinical" }));
@@ -299,7 +433,7 @@ test("BHC print document uses A4 ledger layout and the same saved record values"
   assert.match(html, /Vital signs/);
   assert.match(html, /Clinical assessment/);
   assert.match(html, /Follow-up &amp; referral information/);
-  assert.match(html, /Visit chain/);
+  assert.match(html, /Related Visits/);
   assert.match(html, /Record #10/);
   assert.doesNotMatch(html, />Back</);
   assert.doesNotMatch(html, />Print</);

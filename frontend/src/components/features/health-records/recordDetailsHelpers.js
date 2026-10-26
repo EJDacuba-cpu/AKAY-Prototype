@@ -503,9 +503,8 @@ export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
     record.creator ||
       record.createdByUser ||
       record.created_by_user ||
-      record.user ||
-      record.practitioner ||
-      record.staff,
+      (typeof record.createdBy === "object" ? record.createdBy : null) ||
+      record.user,
     "",
   );
 
@@ -514,17 +513,18 @@ export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
   const value = getNestedRecordValue(
     record,
     [
+      "recordedBy",
+      "recorded_by",
       "attendingStaff",
       "attending_staff",
       "nameOfPractitioner",
       "name_of_practitioner",
-      "recordedBy",
-      "recorded_by",
     ],
     ["monitoringData", "monitoring_data"],
   );
 
-  if (!value || isLikelyRawId(value)) return fallback;
+  if (!value) return formatUserName(record.practitioner || record.staff, fallback);
+  if (isLikelyRawId(value)) return fallback;
   return value;
 }
 
