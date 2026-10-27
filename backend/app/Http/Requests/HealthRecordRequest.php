@@ -447,6 +447,7 @@ class HealthRecordRequest extends FormRequest
             'chief_complaint' => [$this->isMethod('post') ? 'required' : 'sometimes', 'string'],
             'physical_exam' => ['nullable', 'string'],
             'history_of_present_illness' => ['nullable', 'string'],
+            ...\App\Services\BodyFindingReassessments::rules('monitoring_data.bodyFindingReassessments'),
             'body_findings' => ['nullable', 'array', 'max:50'],
             'body_findings.*.id' => ['nullable', 'string', 'max:64'],
             'body_findings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Pencil, Plus, X } from "lucide-react";
 import useMediaQuery from "../../../../hooks/useMediaQuery";
 import AnatomyFigure from "../../patients/AnatomyFigure";
+import { ReassessmentChoices } from "../BodyFindingReassessment";
 import {
   BODY_FINDING_LIMITS,
   BODY_REGIONS,
@@ -58,7 +59,7 @@ function BodyDot({ region, label, position, count, active, hovered, readOnly, on
       data-region={region}
       role={readOnly ? "img" : undefined}
       tabIndex={readOnly ? -1 : 0}
-      aria-label={readOnly ? fullLabel : `${fullLabel}. Add a finding`}
+      aria-label={readOnly ? fullLabel : `${fullLabel}. Review or add findings`}
       // A native button turns Enter and Space into this click.
       onClick={readOnly ? undefined : (event) => onOpen(region, event.currentTarget)}
       onMouseEnter={() => onHoverStart(region)}
@@ -194,7 +195,7 @@ function BodyFigure({ findings, sex, birthDate, side, onToggleSide, countByRegio
  * immediately when editing a specific entry. A region with no findings yet
  * opens straight to the form, so there's no empty summary to tap through.
  */
-function FindingDialog({ region, side, anchor, findings, initialEditingId, readOnly, onSave, onRemove, onClose }) {
+function FindingDialog({ region, side, anchor, findings, previousFindings, reassessments, onReassess, reassessmentDisabled, initialEditingId, readOnly, onSave, onRemove, onClose }) {
   const dialogRef = useRef(null);
   const findingInputRef = useRef(null);
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
@@ -351,6 +352,11 @@ function FindingDialog({ region, side, anchor, findings, initialEditingId, readO
         </button>
       </div>
 
+      {previousFindings.length > 0 && <section className="border-b border-neutral-200 px-4 py-2">
+        <h3 className="text-xs font-semibold text-ink-900">Previous findings</h3>
+        <p className="mt-1 text-xs text-ink-600">Historical observations, not confirmed conditions. Choices save on finalization.</p>
+        <ReassessmentChoices findings={previousFindings} decisions={reassessments} onChange={onReassess} readOnly={readOnly || reassessmentDisabled} />
+      </section>}
       {findings.length > 0 && (
         <ul className="divide-y divide-[#E5E7EB] border-b border-[#E5E7EB]">
           {findings.map((item) => (
@@ -514,6 +520,10 @@ export function getBodyRegionAnchor(region) {
  */
 export default function BodyPreviewPanel({
   findings = [],
+  previousFindings = [],
+  reassessments = [],
+  onReassess,
+  reassessmentDisabled = false,
   onChange,
   readOnly = false,
   dialog,
@@ -525,7 +535,8 @@ export default function BodyPreviewPanel({
   sticky = true,
 }) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
-  const countByRegion = findings.reduce((counts, item) => {
+  const displayedFindings = [...previousFindings, ...findings];
+  const countByRegion = displayedFindings.reduce((counts, item) => {
     if (normalizeBodySide(item.side) === side) counts[item.region] = (counts[item.region] || 0) + 1;
     return counts;
   }, {});
@@ -563,17 +574,17 @@ export default function BodyPreviewPanel({
           <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
             {readOnly
               ? "Where findings were noted for this visit."
-              : "Optional. Select a body area to add a finding at that location."}
+              : "Select a body area to reassess previous findings or add a new finding."}
           </p>
         </div>
         <span className="mt-0.5 inline-flex min-w-[20px] flex-none items-center justify-center rounded-sm bg-[#F3F4F6] px-1.5 py-0.5 text-[11px] font-semibold text-[#374151]">
-          {findings.length}
+          {displayedFindings.length}
         </span>
       </div>
 
       <div className="px-4 pb-3 pt-3">
         <BodyFigure
-          findings={findings}
+          findings={displayedFindings}
           sex={sex}
           birthDate={birthDate}
           side={side}
@@ -601,6 +612,10 @@ export default function BodyPreviewPanel({
           anchor={dialog.anchor}
           initialEditingId={dialog.editingId}
           findings={findings.filter((item) => item.region === dialog.region && normalizeBodySide(item.side) === dialog.side)}
+          previousFindings={previousFindings.filter((item) => item.region === dialog.region && normalizeBodySide(item.side) === dialog.side)}
+          reassessments={reassessments}
+          onReassess={onReassess}
+          reassessmentDisabled={reassessmentDisabled}
           readOnly={readOnly}
           onSave={saveFinding}
           onRemove={(id) => onChange(findings.filter((item) => item.id !== id))}

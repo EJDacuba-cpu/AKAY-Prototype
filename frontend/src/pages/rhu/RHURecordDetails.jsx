@@ -17,7 +17,8 @@ import {
 } from "../../components/common";
 import PatientDetailItem from "../../components/features/patients/PatientDetailItem";
 import RecordHeaderCard from "../../components/features/health-records/RecordHeaderCard";
-import { getRhuHealthRecords } from "../../services/healthRecordService";
+import { BodyFindingRecordHistory } from "../../components/features/health-records/BodyFindingReassessment";
+import { getHealthRecordById } from "../../services/healthRecordService";
 import {
   getPatientDetailsListByRole,
   getPatientsByRole,
@@ -51,15 +52,11 @@ export default function RHURecordDetails() {
   } = useQuery({
     queryKey: queryKeys.healthRecordDetails("rhu", recordId),
     queryFn: async () => {
-      const [rhuRecords, patientDetails, patientList] = await Promise.all([
-        getRhuHealthRecords(),
+      const [foundRecord, patientDetails, patientList] = await Promise.all([
+        getHealthRecordById(recordId),
         getPatientDetailsListByRole("rhu"),
         getPatientsByRole("rhu"),
       ]);
-
-      const allRecords = Array.isArray(rhuRecords) ? rhuRecords : [];
-      const foundRecord =
-        allRecords.find((item) => getRecordId(item) === recordId) || null;
 
       const foundPatient = foundRecord
         ? findPatientForRecord(foundRecord, [
@@ -273,6 +270,7 @@ export default function RHURecordDetails() {
         }
       >
         <div>
+          <BodyFindingRecordHistory record={record} />
           {isImmunizationRecord ? (
             <EpiRecordDetails
               record={record}

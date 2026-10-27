@@ -158,6 +158,17 @@ export function normalizeBodyFindings(list) {
     }));
 }
 
+// Official records are immutable: preserve original array positions before
+// filtering malformed legacy entries. Never use generated UUIDs as history IDs.
+export function normalizeRecordedBodyFindings(list, recordId, alreadyNormalized = false) {
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((item, index) => normalizeBodyFindings([item]).map((finding) => ({
+    ...finding,
+    id: `record:${recordId}:${alreadyNormalized ? item.sourceFindingIndex ?? index : index}`,
+    sourceFindingIndex: alreadyNormalized ? item.sourceFindingIndex ?? index : index,
+  })));
+}
+
 /** "Head - Forehead: Headache (2 days); Left leg: Swelling" - for summaries. */
 export function formatBodyFindings(list) {
   return normalizeBodyFindings(list)

@@ -378,6 +378,7 @@ function carePlanOwnerStep(options = {}) {
 }
 
 export function getErrorOwnerStepKey(errorKey, options = {}) {
+  if (String(errorKey).startsWith("monitoring_data.bodyFindingReassessments")) return ASSESSMENT_STEP;
   const { includeHistory = true, workflow } = options;
   const key = String(errorKey || "");
   const carePlanStep = carePlanOwnerStep(options);

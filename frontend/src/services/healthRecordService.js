@@ -5,7 +5,7 @@ import {
   unwrapList,
 } from "./apiClient";
 import { getConsultationPrograms, getPrimaryProgram } from "../utils/consultationPrograms";
-import { normalizeBodyFindings, serializeBodyFindings } from "../utils/bodyFindings";
+import { normalizeRecordedBodyFindings, serializeBodyFindings } from "../utils/bodyFindings";
 import { normalizeDiagnoses } from "../utils/diagnoses";
 import { getMorbidityReportingStatus } from "../utils/diagnosisReporting";
 import { API_BASE_URL } from "../config/environment";
@@ -313,7 +313,8 @@ function normalizeRecord(record = {}) {
       monitoringData.physicalExam,
       monitoringData.physical_exam,
     ]),
-    bodyFindings: normalizeBodyFindings(record.body_findings || record.bodyFindings),
+    bodyFindings: normalizeRecordedBodyFindings(record.body_findings || record.bodyFindings, record.id || record._id),
+    bodyFindingReassessments: monitoringData.bodyFindingReassessments || [],
     consultationNotes: record.notes || record.consultationNotes || "",
     medicalHistory: record.medical_history || record.medicalHistory || "",
     attendingStaff:
@@ -805,7 +806,10 @@ function toPayload(record = {}, { partial = false } = {}) {
       (recordTypeKey === "immunization" || programs.includes("EPI"))
         ? record.immunizationData || record.immunization_data || {}
         : null,
-    monitoring_data: monitoringData,
+    monitoring_data: {
+      ...monitoringData,
+      ...(record.bodyFindingReassessments ? { bodyFindingReassessments: record.bodyFindingReassessments } : {}),
+    },
     family_planning_data:
       (recordTypeKey === "family planning" || programs.includes("Family Planning")) ? familyPlanningData : null,
     // TB-DOTS data travels with any record that carries it: the BHC workspace
@@ -978,6 +982,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     !hasAny(record, [
       "monitoringData",
       "monitoring_data",
+      "bodyFindingReassessments",
       "followUpStatus",
       "status",
       "followUpDate",

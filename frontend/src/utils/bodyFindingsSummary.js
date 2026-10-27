@@ -1,4 +1,4 @@
-import { BODY_REGIONS, BODY_SIDES, getBodyRegionLabel, normalizeBodyFindings, normalizeBodySide } from "./bodyFindings.js";
+import { BODY_REGIONS, BODY_SIDES, getBodyRegionLabel, normalizeBodyFindings, normalizeRecordedBodyFindings, normalizeBodySide } from "./bodyFindings.js";
 import { getVitalRecordDate } from "./currentPatientVitals.js";
 
 /**
@@ -86,6 +86,10 @@ export function groupFindingsByArea(findings) {
  * @param {"latest"|"history"} mode
  */
 export function summarizeBodyFindings(records, mode = "latest") {
+  if (mode === "ongoing") {
+    const findings = bodyFindingHistory(records).filter((item) => item.status !== "no_longer_present");
+    return { mode, findings, visitDate: null, visitCount: new Set(findings.map((f) => f.recordId)).size, countByRegion: countRegions(findings) };
+  }
   const dated = (Array.isArray(records) ? records : [])
     .filter(Boolean)
     .map((record) => ({ record, date: getVitalRecordDate(record) }));
@@ -116,4 +120,53 @@ export function summarizeBodyFindings(records, mode = "latest") {
     findings,
     countByRegion: countRegions(findings),
   };
+}
+
+export const BODY_FINDING_STATUS_LABELS = {
+  not_yet_reassessed: "Not Yet Reassessed",
+  still_present: "Still Present",
+  no_longer_present: "No Longer Present",
+};
+
+export const findingIdentity = (item) => `${item.sourceRecordId}:${item.sourceFindingIndex}`;
+
+export function recordReassessments(record) {
+  const events = record.bodyFindingReassessments ?? record.monitoringData?.bodyFindingReassessments ?? record.monitoring_data?.bodyFindingReassessments;
+  return Array.isArray(events) ? events : [];
+}
+
+// Records are committed in patient-lock order, so record ID orders events even
+// when visit dates are backdated. Drafts never enter this projection.
+export function bodyFindingHistory(records = []) {
+  const sources = new Map();
+  const ordered = [...(Array.isArray(records) ? records : [])].filter(Boolean).sort((a, b) => Number(getRecordId(a)) - Number(getRecordId(b)));
+  for (const record of ordered) {
+    const recordId = getRecordId(record);
+    if (!recordId) continue;
+    for (const item of normalizeRecordedBodyFindings(record.body_findings ?? record.bodyFindings, recordId, !record.body_findings)) {
+      const source = {
+        ...item, sourceRecordId: Number(recordId), recordId,
+        visitDate: getVitalRecordDate(record), regionLabel: getBodyRegionLabel(item.region, item.side),
+        status: "not_yet_reassessed", revision: 0, reassessments: [],
+      };
+      sources.set(findingIdentity(source), source);
+    }
+    for (const event of recordReassessments(record)) {
+      const source = sources.get(findingIdentity(event));
+      if (!source || !["still_present", "no_longer_present"].includes(event.status)) continue;
+      source.status = event.status;
+      source.revision = Number(recordId);
+      source.reassessments.push({ ...event, recordId: Number(recordId), visitDate: getVitalRecordDate(record) });
+    }
+  }
+  return [...sources.values()];
+}
+
+export function setFindingReassessment(decisions, finding, status) {
+  const remaining = decisions.filter((item) => findingIdentity(item) !== findingIdentity(finding));
+  if (status === "not_yet_reassessed") return remaining;
+  return [...remaining, {
+    sourceRecordId: finding.sourceRecordId, sourceFindingIndex: finding.sourceFindingIndex,
+    expectedRevision: finding.revision, status,
+  }];
 }

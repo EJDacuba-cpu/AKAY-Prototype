@@ -45,6 +45,12 @@ class HealthRecordDraftPayloadService
             'finding' => self::SCALAR,
             'note' => self::SCALAR,
         ]],
+        'bodyFindingReassessments' => ['*' => [
+            'sourceRecordId' => self::SCALAR,
+            'sourceFindingIndex' => self::SCALAR,
+            'expectedRevision' => self::SCALAR,
+            'status' => self::SCALAR,
+        ]],
         'summaryOfPresentIllness' => self::SCALAR,
         'diagnosis' => self::SCALAR,
         'diagnoses' => ['*' => [
@@ -627,6 +633,7 @@ class HealthRecordDraftPayloadService
             'payload.formStep' => ['nullable', 'string', 'max:100'],
             'payload.nextScreen' => ['nullable', 'in:next,outcome,monitoring'],
             'payload.physicalExam' => ['nullable', 'string'],
+            ...BodyFindingReassessments::rules('payload.bodyFindingReassessments'),
             'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
             'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
             'payload.bodyFindings.*.region' => ['required', 'string', Rule::in(HealthRecord::BODY_REGIONS)],

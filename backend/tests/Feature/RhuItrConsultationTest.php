@@ -145,6 +145,43 @@ class RhuItrConsultationTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
+    public function test_referred_bhc_findings_and_rhu_reassessments_remain_accessible_without_patient_rhu_assignment(): void
+    {
+        $patient = $this->patient(['rural_health_unit_id' => null]);
+        $clinician = $this->clinician();
+        $source = HealthRecord::create([
+            'patient_id' => $patient->id, 'created_by' => $clinician->id,
+            'barangay_health_center_id' => $this->bhc->id, 'category' => 'General Consultation',
+            'body_findings' => [['region' => 'chest', 'finding' => 'Tenderness']],
+        ]);
+        $hidden = $source->replicate();
+        $hidden->save();
+        $referral = Referral::create([
+            'tracking_id' => 'AKY-BODY-'.Str::upper(Str::random(6)),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id, 'health_record_id' => $source->id,
+            'barangay_health_center_id' => $this->bhc->id, 'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Assessment', 'status' => Referral::STATUS_RECEIVED,
+        ]);
+        $visit = $this->visit($patient, ['source' => RhuVisitQueueEntry::SOURCE_REFERRAL, 'referral_id' => $referral->id]);
+        $uuid = $this->startVisit($clinician, $visit);
+        $ids = $this->getJson('/api/health-records?patient_id='.$patient->id)->assertOk()->json('data.data');
+        $this->assertSame([$source->id], array_column($ids, 'id'));
+        $this->postRecord($clinician, $patient, $visit, $uuid, ['monitoring_data' => ['bodyFindingReassessments' => [[
+            'sourceRecordId' => $hidden->id, 'sourceFindingIndex' => 0, 'expectedRevision' => 0, 'status' => 'still_present',
+        ]]]])->assertUnprocessable();
+        $id = $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'body_findings' => [['region' => 'chest', 'finding' => 'New RHU finding']],
+            'monitoring_data' => ['bodyFindingReassessments' => [[
+                'sourceRecordId' => $source->id, 'sourceFindingIndex' => 0, 'expectedRevision' => 0, 'status' => 'no_longer_present',
+            ]]],
+        ])->assertCreated()->json('data.id');
+        $this->getJson('/api/health-records/'.$id)->assertOk()->assertJsonPath('data.monitoring_data.bodyFindingReassessments.0.status', 'no_longer_present');
+        $ids = $this->getJson('/api/health-records?patient_id='.$patient->id)->assertOk()->json('data.data');
+        $this->assertEqualsCanonicalizing([$source->id, $id], array_column($ids, 'id'));
+        $this->getJson('/api/health-records/'.$hidden->id)->assertForbidden();
+    }
+
     public function test_walk_in_finalize_activates_condition_prescribes_without_stock_change_and_schedules_rhu_follow_up(): void
     {
         $patient = $this->patient();

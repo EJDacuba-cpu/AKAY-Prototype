@@ -68,9 +68,16 @@ class HealthRecordController extends Controller
             return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
         }
 
-        $query = $this->facilityAccess
-            ->scopeHealthRecords(HealthRecord::query(), $request->user())
-            ->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
+        if ($request->query('patient_id')) {
+            $patient = Patient::findOrFail($request->query('patient_id'));
+            $this->facilityAccess->authorizePatient($request->user(), $patient);
+            // Match the record history already exposed by PatientDetail,
+            // including referred BHC records for an authorized RHU patient.
+            $query = $this->facilityAccess->scopePatientHealthRecords(HealthRecord::query(), $request->user());
+        } else {
+            $query = $this->facilityAccess->scopeHealthRecords(HealthRecord::query(), $request->user());
+        }
+        $query->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
 
         if ($request->query('patient_id')) {
             $query->where('patient_id', $request->query('patient_id'))
@@ -325,11 +332,16 @@ class HealthRecordController extends Controller
                 // A save that confirms conditions or changes monitoring locks the
                 // patient row first - the order PatientConditions::apply uses -
                 // so two such saves cannot deadlock on the rows below.
-                if ($conditionConfirmations !== []
+                if (($data['monitoring_data']['bodyFindingReassessments'] ?? []) !== []
+                    || $conditionConfirmations !== []
                     || $legacyDiscontinuations !== []
                     || ($carePlan['continued_monitoring_ids'] ?? []) !== []
                     || ($carePlan['start_monitoring_condition_ids'] ?? []) !== []) {
                     Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
+                }
+                if (isset($data['monitoring_data']['bodyFindingReassessments'])) {
+                    $data['monitoring_data']['bodyFindingReassessments'] = app(\App\Services\BodyFindingReassessments::class)
+                        ->snapshots($patient, $request->user(), $data['monitoring_data']['bodyFindingReassessments']);
                 }
                 // Continued rows first, then the conditions being started - each
                 // in id order, so concurrent saves lock in the same order.
@@ -542,7 +554,11 @@ class HealthRecordController extends Controller
         HealthRecord $healthRecord,
         FollowUpEpisodeService $episodes
     ) {
-        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
+        // Read-only detail uses the same access as the patient's history.
+        // Mutation endpoints retain their existing authorizeHealthRecord guard.
+        $this->facilityAccess->authorizePatient($request->user(), $healthRecord->patient);
+        abort_unless($this->facilityAccess->scopePatientHealthRecords(HealthRecord::query(), $request->user())
+            ->whereKey($healthRecord->id)->exists(), 403, 'This resource is outside your assigned facility.');
         $episode = $episodes->forRecord($healthRecord, $request->user());
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {

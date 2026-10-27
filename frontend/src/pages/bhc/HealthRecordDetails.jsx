@@ -16,6 +16,7 @@ import {
   SoftLoadingArea,
 } from "../../components/common";
 import BhcHealthRecordWorkspace from "../../components/features/health-records/BhcHealthRecordWorkspace";
+import { BodyFindingRecordHistory } from "../../components/features/health-records/BodyFindingReassessment";
 import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
 } from "../../components/features/health-records/BhcHealthRecordPrintDocument";
@@ -230,6 +231,7 @@ export default function HealthRecordDetails() {
             onBack={returnToProfile}
             onPrint={() => window.print()}
           />
+          <BodyFindingRecordHistory record={record} />
         </div>
 
         <div className="hidden print:block">

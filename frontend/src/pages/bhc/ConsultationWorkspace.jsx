@@ -206,6 +206,8 @@ import {
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
+import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
+import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
 import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { deriveReportingStatus } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
@@ -715,6 +717,7 @@ export default function ConsultationWorkspace() {
   const [physicalExam, setPhysicalExam] = useState("");
   // Findings pinned on the assessment step's 2D body preview.
   const [bodyFindings, setBodyFindings] = useState([]);
+  const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
   // The body preview's input while open: { region, side, anchor, editingId }.
   const [bodyFindingDialog, setBodyFindingDialog] = useState(null);
   // Which side of the body figure is shown: "front" | "back".
@@ -1097,11 +1100,17 @@ export default function ConsultationWorkspace() {
   // Prenatal age and height risk are computed, not ticked, and announced when
   // the Prenatal form opens. The last recorded height covers a visit whose own
   // height was not measured; this visit's height wins once it is entered.
-  const { data: patientRecordsForHeight } = useQuery({
+  const bodyHistoryQuery = useQuery({
     queryKey: ["patient-records-height", selectedPatientId],
     queryFn: () => getHealthRecordsByPatient(selectedPatientId),
     enabled: Boolean(selectedPatientId),
   });
+  const patientRecordsForHeight = bodyHistoryQuery.data;
+  const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecordsForHeight, "ongoing").findings, [patientRecordsForHeight]);
+  function changeBodyReassessments(next) {
+    setBodyFindingReassessments(next);
+    setValidationErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("monitoring_data.bodyFindingReassessments"))));
+  }
   const recordedHeight = useMemo(
     () => getLatestRecordedHeight(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
     [patientRecordsForHeight],
@@ -1379,6 +1388,7 @@ export default function ConsultationWorkspace() {
       summaryOfPresentIllness,
       physicalExam,
       bodyFindings,
+      bodyFindingReassessments,
       // Reporting entries with reportIn (always an array).
       diagnoses: reportingEntryDraft(reportingEntries),
       assessmentNotes,
@@ -1669,6 +1679,7 @@ export default function ConsultationWorkspace() {
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
+    setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
     // Reporting entries are the diagnoses that carry reportIn. A legacy draft
     // was already converted above: its unreported concerns are in assessmentNotes.
     setReportingEntries(restoreReportingEntries(payload.diagnoses));
@@ -2862,6 +2873,9 @@ export default function ConsultationWorkspace() {
     try { await completeDraftRecovery(); }
     catch { toast.error("The record was saved, but device recovery cleanup failed. Sign out when finished to clear protected session data."); }
     queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
+    queryClient.invalidateQueries({ queryKey: ["patient-records-height", selectedPatientId] });
+    queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(selectedPatientId)] });
+    queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records"] });
     if (formData.needsReferral || formData.needs_referral) {
       queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
       queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") });
@@ -3313,6 +3327,7 @@ export default function ConsultationWorkspace() {
       summaryOfPresentIllness,
       physicalExam,
       bodyFindings,
+      bodyFindingReassessments,
       // Reporting entries only; v2 sends no plain-text `diagnosis`.
       diagnoses: reportingEntryPayload(sharedConditionEntries(reportingEntries)),
       // A converted earlier draft's read-only text, if any.
@@ -4313,6 +4328,7 @@ export default function ConsultationWorkspace() {
         { label: "Vital Signs", value: vitalsSummary },
         { label: "Physical Findings", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
+        { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
     },
     {
@@ -4764,6 +4780,9 @@ export default function ConsultationWorkspace() {
                     }}
                     onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
                   />
+                  <PreviousBodyFindings findings={previousBodyFindings} decisions={bodyFindingReassessments}
+                    onChange={changeBodyReassessments} loading={bodyHistoryQuery.isFetching} loadError={bodyHistoryQuery.isError}
+                    onRefresh={() => bodyHistoryQuery.refetch()} errors={validationErrors} readOnly={workspaceLocked} />
                 </div>
               </LockedFormContent>
             </FormSection>
@@ -4789,6 +4808,10 @@ export default function ConsultationWorkspace() {
         // locked review; the panel enforces readOnly itself.
         <BodyPreviewPanel
           findings={bodyFindings}
+          previousFindings={previousBodyFindings}
+          reassessments={bodyFindingReassessments}
+          onReassess={changeBodyReassessments}
+          reassessmentDisabled={bodyHistoryQuery.isFetching || bodyHistoryQuery.isError}
           onChange={setBodyFindings}
           readOnly={workspaceLocked || patientGateLocked}
           dialog={bodyFindingDialog}

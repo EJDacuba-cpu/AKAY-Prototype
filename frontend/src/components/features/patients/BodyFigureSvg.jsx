@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import AnatomyFigure from "./AnatomyFigure";
 import { BODY_REGIONS, getBodyRegionLabel } from "../../../utils/bodyFindings";
+import { BODY_FINDING_STATUS_LABELS } from "../../../utils/bodyFindingsSummary";
 import { getDotPosition, getFigureKey, highlightStyle, markerStyle } from "../../../utils/bodyFigureGeometry";
 import { leaderPath, placePopover } from "../../../utils/findingLink";
 import { formatShortDate } from "../../../utils/patientProfile";
@@ -311,6 +312,7 @@ export default function BodyFigureSvg({
                       {item.finding}
                     </span>
                     <span className="block text-[10px] text-slate-500">{formatShortDate(item.visitDate, "Date not recorded")}</span>
+                    {item.status && <span className="block text-[10px] text-neutral-600">{BODY_FINDING_STATUS_LABELS[item.status]}</span>}
                   </>
                 );
                 return (

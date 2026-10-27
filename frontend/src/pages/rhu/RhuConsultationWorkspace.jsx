@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -24,6 +24,8 @@ import TbTreatmentCardForm, {
   normalizeTbData,
 } from "../../components/features/health-records/TbTreatmentCardForm";
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
+import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
+import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
 import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import {
   PROGRAM_CLASSIFICATIONS,
@@ -114,6 +116,7 @@ const CHILD_VACCINE_OPTIONS = [
 ];
 
 export default function RhuConsultationWorkspace() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const access = useAccess();
@@ -147,6 +150,7 @@ export default function RhuConsultationWorkspace() {
   const [fbs, setFbs] = useState("");
   const [physicalExam, setPhysicalExam] = useState("");
   const [bodyFindings, setBodyFindings] = useState([]);
+  const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
   const [includeTb, setIncludeTb] = useState(false);
@@ -174,6 +178,7 @@ export default function RhuConsultationWorkspace() {
   const [catalog, setCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState("");
   const [bodyDialog, setBodyDialog] = useState(null);
+  const [bodyPreviewSide, setBodyPreviewSide] = useState("front");
   const { registry } = useClinicalRegistry();
 
   const patientQuery = useQuery({
@@ -187,6 +192,11 @@ export default function RhuConsultationWorkspace() {
     enabled: Boolean(patientId) && canViewBackground,
   });
   const patientRecords = recordsQuery.data ?? EMPTY_HEALTH_RECORDS;
+  const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecords, "ongoing").findings, [patientRecords]);
+  function changeBodyReassessments(next) {
+    setBodyFindingReassessments(next);
+    setValidationErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("monitoring_data.bodyFindingReassessments"))));
+  }
   const prenatalEnrollment = useMemo(
     () => getPrenatalEnrollment(patient || {}, patientRecords),
     [patient, patientRecords],
@@ -324,6 +334,7 @@ export default function RhuConsultationWorkspace() {
       fbs,
       physicalExam,
       bodyFindings,
+      bodyFindingReassessments,
       selectedPrograms,
       primaryProgram,
       includeTb,
@@ -364,6 +375,7 @@ export default function RhuConsultationWorkspace() {
       fbs,
       physicalExam,
       bodyFindings,
+      bodyFindingReassessments,
       selectedPrograms,
       primaryProgram,
       includeTb,
@@ -432,6 +444,7 @@ export default function RhuConsultationWorkspace() {
     setFbs(payload.fbs || "");
     setPhysicalExam(payload.physicalExam || "");
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
+    setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
     const programs = getConsultationPrograms(payload);
     setSelectedPrograms(programs);
     setPrimaryProgram(payload.primaryProgram || programs[0] || "");
@@ -687,6 +700,7 @@ export default function RhuConsultationWorkspace() {
           summaryOfPresentIllness,
           physicalExam,
           bodyFindings,
+          bodyFindingReassessments,
           systolicBp,
           diastolicBp,
           temperature: temp,
@@ -736,6 +750,10 @@ export default function RhuConsultationWorkspace() {
         },
       );
       setSaveSuccess({ recordId: record.id });
+      queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
+      queryClient.invalidateQueries({ queryKey: ["patient-records-height"] });
+      queryClient.invalidateQueries({ queryKey: ["health-records"] });
     } catch (error) {
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
       setValidationErrors(fieldErrors);
@@ -810,6 +828,7 @@ export default function RhuConsultationWorkspace() {
         { label: "BP", value: systolicBp || diastolicBp ? `${systolicBp || "?"}/${diastolicBp || "?"} mmHg` : "" },
         { label: "Physical Findings", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
+        { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
     },
     ...programFormSteps.map((step) => ({
@@ -957,7 +976,10 @@ export default function RhuConsultationWorkspace() {
                       <textarea rows={4} value={physicalExam} onChange={(event) => setPhysicalExam(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
                     </label>
                     <div className="mt-3">
-                      <BodyFindingsList findings={bodyFindings} />
+                      <BodyFindingsList findings={bodyFindings} readOnly />
+                      <PreviousBodyFindings findings={previousBodyFindings} decisions={bodyFindingReassessments}
+                        onChange={changeBodyReassessments} loading={recordsQuery.isFetching} loadError={recordsQuery.isError}
+                        onRefresh={() => recordsQuery.refetch()} errors={validationErrors} readOnly={assessmentLocked || !canViewBackground || saving || Boolean(saveSuccess)} />
                     </div>
                   </section>
                 </fieldset>
@@ -1148,6 +1170,15 @@ export default function RhuConsultationWorkspace() {
               {currentStepKey === ASSESSMENT_STEP && (
                 <BodyPreviewPanel
                   findings={bodyFindings}
+                  previousFindings={previousBodyFindings}
+                  reassessments={bodyFindingReassessments}
+                  onReassess={changeBodyReassessments}
+                  reassessmentDisabled={!canViewBackground || recordsQuery.isFetching || recordsQuery.isError}
+                  readOnly={assessmentLocked || saving || Boolean(saveSuccess)}
+                  sex={patient?.sex}
+                  birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth}
+                  side={bodyPreviewSide}
+                  onSideChange={setBodyPreviewSide}
                   onChange={setBodyFindings}
                   dialog={bodyDialog}
                   onDialogChange={setBodyDialog}

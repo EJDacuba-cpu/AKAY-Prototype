@@ -24,6 +24,7 @@ const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 function caption(summary, hasRecords) {
   if (!hasRecords) return "No health records yet";
   const count = summary.findings.length;
+  if (summary.mode === "ongoing") return count ? `${plural(count, "finding")} awaiting reassessment or last documented as present` : "No ongoing body findings";
   if (summary.mode === "history") {
     return count === 0
       ? "No body findings recorded on any visit"
@@ -37,7 +38,7 @@ function caption(summary, hasRecords) {
 /**
  * Centre column of the Overview board: the patient's realistic body figure
  * (front or back, switched only by its flip button) with small markers for
- * findings recorded on the latest visit,
+ * ongoing findings across accessible finalized visits,
  * on an open canvas. Round clinical controls sit to its left and a height
  * rule to its right; weight, BMI and click-to-open lifestyle details sit
  * below. The recorded-areas disclosure keeps findings accessible as a list.
@@ -92,7 +93,7 @@ export default function AnatomyFindingsPanel({
       : recordsError && records.length === 0
         ? "Body findings could not be loaded. Please try refreshing the page."
         : "";
-  const summary = useMemo(() => summarizeBodyFindings(records, "latest"), [records]);
+  const summary = useMemo(() => summarizeBodyFindings(records, "ongoing"), [records]);
   const findingsBySide = useMemo(() => splitFindingsBySide(summary.findings), [summary]);
   const areas = useMemo(() => groupFindingsByArea(summary.findings), [summary]);
   const measures = useMemo(() => buildBodyMeasures(records, age), [records, age]);
@@ -245,6 +246,7 @@ export default function AnatomyFindingsPanel({
           <p role="status" className="sr-only">{caption(summary, records.length > 0)}</p>
         )}
       </header>
+      <p className="mb-2 text-center text-xs text-neutral-500">Historical findings awaiting reassessment or last documented as present; not confirmed conditions.</p>
       <div ref={panelRef} className="patient-anatomy-layout relative">
         {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
         {!arcLayout && (
