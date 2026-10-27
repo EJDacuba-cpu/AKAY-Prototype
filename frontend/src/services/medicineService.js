@@ -87,7 +87,7 @@ function toCreatePayload(item = {}) {
 }
 
 function toMetadataPayload(item = {}) {
-  const payload = {
+  return {
     name: item.name,
     category: item.category || null,
     description: item.description || item.notes || null,
@@ -98,12 +98,6 @@ function toMetadataPayload(item = {}) {
     expiration_date:
       item.expiryDate || item.expirationDate || item.expiration_date || null,
   };
-  const reason = String(item.reason || "").trim();
-  if (item.quantity != null && item.quantity !== "" && reason) {
-    payload.quantity = parseQuantity(item.quantity);
-    payload.reason = reason;
-  }
-  return payload;
 }
 
 export async function refreshRhuMedicines() {

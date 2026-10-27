@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   medicineFormHasErrors,
-  medicineFormNeedsCorrection,
   validateMedicineForm,
 } from "./medicineFormValidation.js";
 
@@ -26,20 +25,16 @@ test("add requires name, opening balance, and threshold without mutating the for
   assert.equal(medicineFormHasErrors(errors), true);
 });
 
-test("edit keeps metadata-only forms valid when recorded stock is unchanged", () => {
-  const form = { name: "Amoxicillin", quantity: "8", lowStockThreshold: "8" };
-  const errors = validateMedicineForm(form, "edit", { originalQuantity: 8 });
+test("edit validates metadata without requiring recorded stock or a correction reason", () => {
+  const form = { name: "Amoxicillin", lowStockThreshold: "8" };
+  const errors = validateMedicineForm(form, "edit");
 
   assert.deepEqual(errors, {});
   assert.equal(form.name, "Amoxicillin");
   assert.equal(medicineFormHasErrors(errors), false);
-  assert.equal(
-    medicineFormNeedsCorrection(form, { originalQuantity: 8 }),
-    false,
-  );
 });
 
-test("edit requires a reason when recorded stock changes", () => {
+test("edit does not turn stale stock into a correction", () => {
   const form = {
     name: "Amoxicillin",
     quantity: "5",
@@ -48,14 +43,10 @@ test("edit requires a reason when recorded stock changes", () => {
   };
   const errors = validateMedicineForm(form, "edit", { originalQuantity: 8 });
 
-  assert.equal(errors.reason, "Enter a reason for this stock correction.");
-  assert.equal(
-    medicineFormNeedsCorrection(form, { originalQuantity: 8 }),
-    true,
-  );
+  assert.deepEqual(errors, {});
 });
 
-test("edit requires a reason when reconciliation is pending", () => {
+test("pending reconciliation does not require a correction reason to edit metadata", () => {
   const form = {
     name: "Amoxicillin",
     quantity: "8",
@@ -67,7 +58,7 @@ test("edit requires a reason when reconciliation is pending", () => {
     reconciliationRequired: true,
   });
 
-  assert.equal(errors.reason, "Enter a reason for this stock correction.");
+  assert.deepEqual(errors, {});
 });
 
 test("a failed submit path keeps entered values", () => {

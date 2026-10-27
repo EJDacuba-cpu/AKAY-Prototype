@@ -237,6 +237,87 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->assertSame('Updated Metadata Medicine', $medicine->fresh()->name);
     }
 
+    public function test_bhc_and_rhu_metadata_edits_preserve_stock_reconciliation_and_history(): void
+    {
+        foreach ([$this->bhw, $this->rhuStaff] as $user) {
+            $medicine = $this->medicine('Metadata With History', 11, $user->barangay_health_center_id, $user->rural_health_unit_id);
+            $this->actingAs($user, 'sanctum')
+                ->postJson("/api/medicines/{$medicine->id}/restock", [
+                    'quantity' => 2,
+                    'reason' => 'Received inventory delivery',
+                ])
+                ->assertOk();
+            $medicine->refresh()->update(['reconciliation_required' => true]);
+            $history = $medicine->inventoryTransactions()->get()->toArray();
+            $auditHistory = DB::table('audit_logs')->orderBy('id')->get()->toArray();
+
+            $this->patchJson("/api/medicines/{$medicine->id}", [
+                'name' => 'Updated Item Details',
+                'description' => 'Metadata edit while stock verification is pending',
+                'low_stock_threshold' => 15,
+            ])
+                ->assertOk()
+                ->assertJsonPath('data.name', 'Updated Item Details')
+                ->assertJsonPath('data.quantity', 13)
+                ->assertJsonPath('data.reconciliation_required', true)
+                ->assertJsonPath('data.availability_status', 'Low Stock');
+
+            $this->assertSame($history, $medicine->inventoryTransactions()->get()->toArray());
+            $this->assertEquals($auditHistory, DB::table('audit_logs')
+                ->whereIn('id', array_column($auditHistory, 'id'))->orderBy('id')->get()->toArray());
+            $this->assertDatabaseHas('audit_logs', [
+                'user_id' => $user->id,
+                'action' => 'medicine_updated',
+                'module' => 'medicines',
+            ]);
+        }
+    }
+
+    public function test_bhc_and_rhu_corrections_retain_permission_reason_and_audit_checks(): void
+    {
+        foreach ([$this->bhw, $this->rhuStaff] as $user) {
+            $medicine = $this->medicine('Protected Correction', 11, $user->barangay_health_center_id, $user->rural_health_unit_id, [
+                'reconciliation_required' => true,
+            ]);
+            foreach ([['quantity' => 8], ['quantity' => 8, 'reason' => '   ']] as $payload) {
+                $this->actingAs($user, 'sanctum')
+                    ->patchJson("/api/medicines/{$medicine->id}", $payload)
+                    ->assertUnprocessable()
+                    ->assertJsonValidationErrors('reason');
+            }
+
+            $permissions = $user->permissions;
+            $user->update(['permissions' => ['inventory.view']]);
+            $this->actingAs($user, 'sanctum')
+                ->patchJson("/api/medicines/{$medicine->id}", ['quantity' => 8, 'reason' => 'Physical stock verification'])
+                ->assertForbidden();
+            $this->assertSame(11, $medicine->fresh()->quantity);
+            $this->assertTrue($medicine->fresh()->reconciliation_required);
+            $this->assertSame(0, $medicine->inventoryTransactions()->count());
+
+            $user->update(['permissions' => $permissions]);
+            $this->actingAs($user, 'sanctum')
+                ->patchJson("/api/medicines/{$medicine->id}", ['quantity' => 8, 'reason' => 'Physical stock verification'])
+                ->assertOk()
+                ->assertJsonPath('data.quantity', 8)
+                ->assertJsonPath('data.reconciliation_required', false);
+            $this->assertDatabaseHas('medicine_inventory_transactions', [
+                'medicine_id' => $medicine->id,
+                'actor_user_id' => $user->id,
+                'transaction_type' => 'correction',
+                'quantity_before' => 11,
+                'quantity_after' => 8,
+                'quantity_delta' => -3,
+                'reason' => 'Physical stock verification',
+            ]);
+            $this->assertDatabaseHas('audit_logs', [
+                'user_id' => $user->id,
+                'action' => 'inventory_corrected',
+                'module' => 'medicines',
+            ]);
+        }
+    }
+
     public function test_quantity_correction_requires_reason_and_writes_a_ledger_row(): void
     {
         $medicine = $this->medicine('Correctable Medicine', 11, $this->bhc->id);

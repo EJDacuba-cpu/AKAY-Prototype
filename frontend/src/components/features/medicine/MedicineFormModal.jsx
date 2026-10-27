@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { LoaderCircle, PackagePlus } from "lucide-react";
+import { Input } from "../../ui/input";
 import {
   ModalButton,
   ModalShell,
@@ -10,13 +11,9 @@ import {
   MEDICINE_UNITS,
 } from "../../../services/medicineService";
 import { createIdempotencyKey } from "../../../utils/idempotency";
-import {
-  formatStockQuantity,
-  previewInventoryResult,
-} from "../../../utils/medicineInventoryPreview";
+import { formatStockQuantity } from "../../../utils/medicineInventoryPreview";
 import {
   medicineFormHasErrors,
-  medicineFormNeedsCorrection,
   validateMedicineForm,
 } from "../../../utils/medicineFormValidation";
 import { createSubmitGate } from "../../../utils/medicineSubmitGate";
@@ -29,7 +26,6 @@ const DEFAULT_FORM = {
   lowStockThreshold: "10",
   expiryDate: "",
   notes: "",
-  reason: "",
 };
 
 export default function MedicineFormModal({
@@ -67,7 +63,6 @@ export default function MedicineFormModal({
         lowStockThreshold: String(item.lowStockThreshold ?? 10),
         expiryDate: item.expiryDate || "",
         notes: item.notes || "",
-        reason: "",
       });
     } else {
       setForm(DEFAULT_FORM);
@@ -76,26 +71,10 @@ export default function MedicineFormModal({
 
   if (!open) return null;
 
-  const originalQuantity = Number(item?.quantity ?? 0);
-  const correctionOptions = {
-    originalQuantity,
-    reconciliationRequired: Boolean(item?.reconciliationRequired),
-  };
-  const needsCorrection =
-    mode === "edit" && medicineFormNeedsCorrection(form, correctionOptions);
   const previewStatus = computeMedicineStatus(
     form.quantity,
     form.lowStockThreshold,
   );
-  const stockPreview =
-    mode === "edit"
-      ? previewInventoryResult({
-          mode: "correction",
-          currentQuantity: originalQuantity,
-          inputQuantity: form.quantity,
-          unit: form.unit || item?.unit,
-        })
-      : null;
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -111,7 +90,7 @@ export default function MedicineFormModal({
     event.preventDefault();
     if (!gateRef.current.begin()) return;
 
-    const nextErrors = validateMedicineForm(form, mode, correctionOptions);
+    const nextErrors = validateMedicineForm(form, mode);
     if (medicineFormHasErrors(nextErrors)) {
       setFieldErrors(nextErrors);
       gateRef.current.end();
@@ -119,28 +98,22 @@ export default function MedicineFormModal({
     }
 
     const payload = {
-      ...form,
       name: form.name.trim(),
+      category: form.category,
+      unit: form.unit,
       lowStockThreshold: parseInt(form.lowStockThreshold, 10) || 0,
+      expiryDate: form.expiryDate,
       notes: form.notes.trim(),
     };
     if (mode === "add") {
       payload.quantity = parseInt(form.quantity, 10) || 0;
-      delete payload.reason;
-    } else if (needsCorrection) {
-      payload.quantity = parseInt(form.quantity, 10);
-      payload.reason = form.reason.trim();
-    } else {
-      delete payload.quantity;
-      delete payload.reason;
     }
 
     try {
       setSubmitting(true);
       setError("");
       await onSubmit?.(payload, {
-        idempotencyKey:
-          mode === "add" || needsCorrection ? idempotencyKey : undefined,
+        idempotencyKey: mode === "add" ? idempotencyKey : undefined,
       });
     } catch (submitError) {
       setError(submitError?.message || "Unable to save this medicine.");
@@ -155,7 +128,7 @@ export default function MedicineFormModal({
       title={title || (mode === "edit" ? "Edit Medicine" : "Add Medicine")}
       subtitle={
         mode === "edit"
-          ? "Edit item details. Changing recorded stock requires a reason and writes an inventory correction."
+          ? "Edit item details. Use Restock or Deduct Stock to record stock changes."
           : "Opening balance sets the first ledgered stock quantity."
       }
       icon={<PackagePlus size={14} />}
@@ -174,7 +147,7 @@ export default function MedicineFormModal({
             form={formId}
             variant="primary"
             primary
-            disabled={submitting || Boolean(stockPreview?.wouldBeNegative)}
+            disabled={submitting}
             aria-busy={submitting}
           >
             {submitting && <LoaderCircle size={14} className="animate-spin" />}
@@ -255,19 +228,14 @@ export default function MedicineFormModal({
             {mode === "edit" && (
               <Field
                 label="Recorded Stock"
-                required
-                error={fieldErrors.quantity}
+                htmlFor={`${formId}-recorded-stock`}
               >
-                <input
-                  type="number"
-                  min="0"
-                  value={form.quantity}
-                  onChange={(event) =>
-                    updateField("quantity", event.target.value)
-                  }
-                  className={inputClass}
-                  aria-invalid={fieldErrors.quantity ? true : undefined}
-                  disabled={submitting}
+                <Input
+                  id={`${formId}-recorded-stock`}
+                  type="text"
+                  value={formatStockQuantity(item?.quantity ?? 0, item?.unit)}
+                  readOnly
+                  className="h-10 rounded-lg border-neutral-200 bg-neutral-100 text-sm text-ink-800 shadow-none focus-visible:border-ink-400 focus-visible:ring-ink-400/30"
                 />
               </Field>
             )}
@@ -303,7 +271,7 @@ export default function MedicineFormModal({
               />
             </Field>
 
-            {mode === "add" ? (
+            {mode === "add" && (
               <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                   Computed Status
@@ -312,49 +280,13 @@ export default function MedicineFormModal({
                   {previewStatus}
                 </p>
               </div>
-            ) : (
-              <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  Current quantity → Resulting quantity
-                </p>
-                <p className="mt-1 text-sm font-semibold text-[#0F172A]">
-                  {formatStockQuantity(stockPreview?.current, stockPreview?.unit)}
-                  {" → "}
-                  {formatStockQuantity(stockPreview?.resulting, stockPreview?.unit)}
-                </p>
-                {stockPreview?.wouldBeNegative && (
-                  <p role="alert" className="mt-2 text-xs font-medium text-[#B91C1C]">
-                    Resulting stock cannot be negative.
-                  </p>
-                )}
-              </div>
             )}
 
             {mode === "edit" && item?.reconciliationRequired && (
               <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-medium text-amber-800">
                 This item needs stock verification after a dispensing discrepancy.
-                Confirm or correct the quantity and enter a reason.
+                Saving item details will not resolve this discrepancy.
               </div>
-            )}
-
-            {needsCorrection && (
-              <Field
-                label="Reason"
-                required
-                className="md:col-span-2"
-                error={fieldErrors.reason}
-              >
-                <textarea
-                  value={form.reason}
-                  onChange={(event) => updateField("reason", event.target.value)}
-                  placeholder="Explain why the recorded stock is being corrected"
-                  rows={3}
-                  maxLength={1000}
-                  className={`${inputClass} min-h-21 resize-none py-2.5`}
-                  aria-invalid={fieldErrors.reason ? true : undefined}
-                  disabled={submitting}
-                />
-              </Field>
             )}
 
             <Field label="Notes" className="md:col-span-2">
@@ -382,10 +314,10 @@ export default function MedicineFormModal({
   );
 }
 
-function Field({ label, required = false, className = "", error, children }) {
+function Field({ label, htmlFor, required = false, className = "", error, children }) {
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
         {label}
         {required && <span className="ml-0.5 text-[#B91C1C]">*</span>}
       </label>

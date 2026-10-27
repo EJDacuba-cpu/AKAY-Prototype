@@ -39,7 +39,7 @@
     "test:household-workflow": "node --test src/services/mockFamilyRegistry.test.js src/utils/householdParents.test.js",
     "test:families": "node --test src/services/mockFamilyWorkflows.test.js src/utils/familyAccess.test.js src/services/mockFamilyRegistry.test.js",
     "test:table-paging": "node --test src/utils/tablePaging.test.js",
-    "test:medicine": "node --test src/utils/medicineSubmitGate.test.js src/utils/medicineFormValidation.test.js src/utils/medicineInventoryPreview.test.js src/utils/medicineMutationSafety.test.js src/utils/medicineInventoryStatus.test.js",
+    "test:medicine": "node --test src/utils/medicineSubmitGate.test.js src/utils/medicineFormValidation.test.js src/utils/medicineInventoryPreview.test.js src/utils/medicineMutationSafety.test.js src/utils/medicineInventoryStatus.test.js src/components/features/medicine/MedicineFormModal.test.js",
     "test:facility-filters": "node --test src/utils/facilityFilters.test.js",
     "test:access": "node --test src/utils/staffRoles.test.js src/utils/accountForm.test.js src/utils/accessPolicy.test.js src/utils/accountSetup.test.js src/utils/dashboardAccess.test.js src/utils/fieldState.test.js src/utils/passwordRules.test.js src/utils/accessRequestStatus.test.js src/utils/passwordChange.test.js",
     "test:patient-history": "node --test src/utils/backgroundEditing.test.js src/utils/backgroundNavigation.test.js src/utils/patientHistory.test.js src/utils/backgroundUpdate.test.js src/utils/backgroundFormat.test.js src/utils/historyStep.test.js src/utils/legacyBackgroundRecovery.test.js src/components/features/patients/history/PrenatalHistorySummary.test.js src/components/features/health-records/wizard/LegacyBackgroundRecoveryPanel.test.js"

@@ -198,11 +198,6 @@ export default function MedicineManagement() {
       queryKeys.medicineAvailability("rhu"),
       Array.isArray(nextItems) ? nextItems : [],
     );
-    if (modalMode === "edit" && selectedItem && payload.quantity != null) {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
-      });
-    }
     closeModal();
   }
 

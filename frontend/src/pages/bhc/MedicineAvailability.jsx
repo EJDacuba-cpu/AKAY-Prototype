@@ -202,11 +202,6 @@ export default function MedicineAvailability() {
       queryKeys.medicineAvailability("bhc"),
       Array.isArray(nextItems) ? nextItems : [],
     );
-    if (modalMode === "edit" && selectedItem && payload.quantity != null) {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
-      });
-    }
     closeModal();
     setSuccessNotice({
       title: modalMode === "edit" ? "Medicine updated" : "Medicine added",
