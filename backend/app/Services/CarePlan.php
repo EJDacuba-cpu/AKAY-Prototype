@@ -203,6 +203,7 @@ final class CarePlan
             }
         }
         $services = count(self::v2ServiceReferrals($carePlan, $selectedPrograms));
+        $cards += count(array_filter($carePlan['continued_concerns'] ?? [], fn ($item) => is_array($item) && ($item['careOutcome'] ?? null) === 'refer_to_rhu'));
         $monitoring = count(array_unique(array_map('intval', $monitoringReferralIds)));
         $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $legacy = ($cards === 0 && $services === 0 && $refers) ? 1 : 0;

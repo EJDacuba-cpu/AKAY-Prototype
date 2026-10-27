@@ -97,6 +97,7 @@ import NextStepsSection from "../../components/features/health-records/wizard/Ne
 import ConditionCardsSection from "../../components/features/health-records/wizard/ConditionCardsSection";
 import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
+import { continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, pruneContinuedSchedules, setContinuedSchedule } from "../../utils/continuedConcerns";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
@@ -757,6 +758,7 @@ export default function ConsultationWorkspace() {
   // { id, sourceHealthRecordId } per continued follow-up; the first one's
   // source ITR becomes parent_health_record_id (display/compatibility only).
   const [continuedFollowUps, setContinuedFollowUps] = useState([]);
+  const [continuedConcerns, setContinuedConcerns] = useState([]);
   // Legacy conditions on the continued follow-ups: shown, never continued.
   const [legacyConditionNames, setLegacyConditionNames] = useState([]);
   // The same names per follow-up, so unlinking one can drop its names from the line.
@@ -1155,14 +1157,19 @@ export default function ConsultationWorkspace() {
   // consultationMode guard) - the server's monitoring_data.selectedPrograms.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
   // ---- Next Actions. Per-concern outcomes plus selected-service next actions. ----
-  const conditionReferrals = reportingEntries.filter((entry) => namedConcern(entry) && entry.clinicalOutcome === "refer_to_rhu");
+  const continuedDecisions = continuedConcernPayload(continuedFollowUpTaskIds, continuedConcerns);
+  const continuedReferrals = continuedFollowUps.filter(task => continuedDecisions.some(item => item.taskId === Number(task.id) && item.careOutcome === "refer_to_rhu"));
+  const conditionReferrals = [
+    ...reportingEntries.filter((entry) => namedConcern(entry) && entry.clinicalOutcome === "refer_to_rhu"),
+    ...continuedReferrals.map(task => ({ id: `continued:${task.id}`, name: task.purpose || task.reason || "Follow-up visit" })),
+  ];
   const referredConcernNames = [...conditionReferrals.map((entry) => entry.name), ...referredMonitoringRows.map((monitoring) => monitoring.conditionName)].join("; ");
   const managedReturns = managedReturnRows(reportingEntries, followUpSchedules);
   const extraSchedules = extraScheduleRows(followUpSchedules);
   const scheduledReturns = followUpSchedulesPayload({
     managedReturns,
     extraSchedules,
-    continuedFollowUps,
+    // Continued returns carry explicit predecessor IDs; never infer from text.
   });
   const namedServiceReferrals = pruneServiceReferrals(nextActions.serviceReferrals, selectedPrograms);
   const referralCount = referralSourceCount({
@@ -1518,6 +1525,7 @@ export default function ConsultationWorkspace() {
       // Plus the two Next Actions checkboxes (the hidden forms stay in the
       // draft: followUpDate/Time/Reason and referralForm above and below).
       carePlan: {
+        continuedConcerns: continuedDecisions,
         ...carePlanDraftPayload({
           continuedFollowUpTaskIds,
           continuedMonitorings,
@@ -1525,7 +1533,8 @@ export default function ConsultationWorkspace() {
           monitoringReferrals,
           startingConditions,
         }),
-        ...nextActionsDraft(effectiveNextActions),
+        // Persist explicit intent only; concern referrals are derived on resume.
+        ...nextActionsDraft(nextActions),
       },
       sharedConditionReferral: true,
       referralForm: pickDraftFields(referralForm, [
@@ -1602,6 +1611,8 @@ export default function ConsultationWorkspace() {
     });
     setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
     setContinuedFollowUps(resolved.continuedFollowUps);
+    setContinuedConcerns(current => continuedConcernPayload(resolved.continuedFollowUpTaskIds, current));
+    setFollowUpSchedules(current => pruneContinuedSchedules(current, resolved.continuedFollowUpTaskIds));
     setLegacyConditionNames(resolved.legacyConditionNames);
     setLegacyNamesByFollowUp(resolved.legacyNamesByFollowUp);
     setContinuedMonitorings(resolved.continuedMonitorings);
@@ -1727,6 +1738,7 @@ export default function ConsultationWorkspace() {
       // Names (and each follow-up's source record) are filled in from
       // care-overview once it loads (loadContinuedCare); until then placeholders.
       const restoredCarePlan = restoreCarePlanDraft(payload.carePlan);
+      setContinuedConcerns(continuedConcernPayload(restoredCarePlan.continuedFollowUpTaskIds, payload.carePlan?.continuedConcerns));
       setContinuedFollowUpTaskIds(restoredCarePlan.continuedFollowUpTaskIds);
       setContinuedFollowUps([]);
       setLegacyConditionNames([]);
@@ -2303,10 +2315,11 @@ export default function ConsultationWorkspace() {
       }),
       ...followUpScheduleErrors({
         managedReturns,
-        extraSchedules,
+        extraSchedules: extraSchedules.filter(item => !item.purposeKey.startsWith("continued:")),
         reasonExempt: followUpReasonIsExempt,
       }),
       ...conditionCardErrors(reportingEntries, { schedules: followUpSchedules }),
+      ...continuedConcernErrors(continuedFollowUpTaskIds, continuedDecisions, followUpSchedules),
       ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
       ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
       ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
@@ -2329,6 +2342,25 @@ export default function ConsultationWorkspace() {
       );
       return Object.keys(kept).length === Object.keys(current).length ? current : kept;
     });
+  }
+
+  function clearContinuedErrors(id) {
+    setValidationErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) =>
+      key !== `continuedConcern.${id}.careOutcome` && key !== 'care_plan.continued_concerns' &&
+      !key.startsWith(`followUpSchedule.${continuedPurposeKey(id)}.`)
+    )));
+  }
+
+  function handleContinuedSchedule(id, schedule) {
+    setFollowUpSchedules(current => setContinuedSchedule(current, id, schedule));
+    clearContinuedErrors(id);
+  }
+
+  function handleContinuedOutcome(id, outcome) {
+    setContinuedConcerns(current => [...current.filter(item => Number(item.taskId) !== Number(id)), { taskId: Number(id), careOutcome: outcome }]);
+    const task = continuedFollowUps.find(item => Number(item.id) === Number(id));
+    const existing = followUpSchedules.find(item => item.purposeKey === continuedPurposeKey(id));
+    handleContinuedSchedule(id, outcome === 'bhc_follow_up' ? existing || { date: '', time: '', purpose: task?.purpose || task?.reason || '' } : null);
   }
 
   function handleConcernFollowUp(entryId, followUp) {
@@ -2410,7 +2442,7 @@ export default function ConsultationWorkspace() {
     if (error?.status !== 422 || !error?.errors) return false;
     const errors = remapServerErrorKeys(Object.fromEntries(
       Object.entries(error.errors).map(([field, messages]) => [field, Array.isArray(messages) ? messages[0] : String(messages)]),
-    ), reportingEntries);
+    ), reportingEntries, { continuedConcerns: continuedDecisions, schedules: scheduledReturns });
     if (!Object.keys(errors).length) return false;
     clearOfficialSubmission();
     if (!revealErrorStep(errors)) setValidationErrorsAndFocus(errors);
@@ -3346,6 +3378,7 @@ export default function ConsultationWorkspace() {
       // Plus the visit's Next Actions: bhc_follow_up, refer_to_rhu,
       // derived referral_multiple_issues, and service_referrals.
       carePlan: {
+        continued_concerns: continuedDecisions,
         ...buildCarePlanPayload({
           continuedFollowUpTaskIds,
           continuedMonitorings,
@@ -3887,6 +3920,9 @@ export default function ConsultationWorkspace() {
   const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP, BHC_STEP_OPTIONS)).filter(Boolean);
   // Unlink a follow-up before saving; saving is what completes the rest.
   function removeFollowUpLink(id) {
+    clearContinuedErrors(id);
+    setContinuedConcerns(current => current.filter(item => Number(item.taskId) !== Number(id)));
+    setFollowUpSchedules(current => setContinuedSchedule(current, id, null));
     const next = removeContinuedFollowUp(
       {
         continuedFollowUpTaskIds,
@@ -4018,7 +4054,7 @@ export default function ConsultationWorkspace() {
   ) : (
     <div className="space-y-8">
     <ConditionCardsSection heading={<ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
-    <FollowUpVisitLine followUps={continuedFollowUps} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={patientGateLocked} onRemove={removeFollowUpLink} />
+    <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onRemove={removeFollowUpLink} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
     <NextStepsSection
       selectedPrograms={selectedPrograms}
       followUpSchedules={followUpSchedules}
@@ -4285,6 +4321,7 @@ export default function ConsultationWorkspace() {
       stepKey: NEXT_STEP,
       rows: [
         ...conditionCardReviewRows(sharedConditionEntries(reportingEntries), followUpSchedules),
+        ...continuedConcernReviewRows(continuedFollowUps, continuedDecisions),
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
         // Continued, starting and stopped monitoring only (no concerns, no

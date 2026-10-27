@@ -381,6 +381,7 @@ class HealthRecordDraftPayloadService
         ],
         // Care Plan & Next Steps: what this consultation continues or stops.
         'carePlan' => [
+            'continuedConcerns' => ['*' => ['taskId' => self::SCALAR, 'careOutcome' => self::SCALAR]],
             'continuedFollowUpTaskIds' => ['*' => self::SCALAR],
             'continuedMonitoringIds' => ['*' => self::SCALAR],
             'monitoringStops' => ['*' => [
@@ -646,6 +647,9 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
             'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],
             'payload.carePlan.bhcFollowUp' => ['nullable', 'boolean'],
+            'payload.carePlan.continuedConcerns' => ['nullable', 'array', 'max:20'],
+            'payload.carePlan.continuedConcerns.*.taskId' => ['required', 'integer', 'min:1', 'distinct'],
+            'payload.carePlan.continuedConcerns.*.careOutcome' => ['nullable', Rule::in(ContinuedConcerns::OUTCOMES)],
             'payload.sharedConditionReferral' => ['nullable', 'boolean'],
             'payload.carePlan.referToRhu' => ['nullable', 'boolean'],
             'payload.carePlan.referralMultipleIssues' => ['nullable', 'boolean'],

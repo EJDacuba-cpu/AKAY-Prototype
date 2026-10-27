@@ -1100,6 +1100,8 @@ class BhcGeneralConsultationV2Test extends TestCase
         $this->assertDatabaseCount('health_records', 1);
 
         $visit['monitoring_data']['followUpReason'] = 'Second recheck';
+        $visit['care_plan']['continued_concerns'] = [['taskId' => $task->id, 'careOutcome' => 'bhc_follow_up']];
+        $visit['monitoring_data']['followUpSchedules'] = [['purposeKey' => 'continued:'.$task->id, 'purpose' => 'Second recheck', 'date' => now()->addWeeks(2)->toDateString(), 'time' => '09:30', 'predecessorTaskId' => $task->id]];
         $visitId = $this->v2($visit)->assertCreated()->json('data.id');
 
         $task->refresh();
@@ -1117,6 +1119,7 @@ class BhcGeneralConsultationV2Test extends TestCase
         $visitId = $this->v2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parentId,
+            'care_plan' => ['continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertCreated()->json('data.id');
 

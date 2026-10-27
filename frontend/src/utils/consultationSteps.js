@@ -381,6 +381,7 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   const { includeHistory = true, workflow } = options;
   const key = String(errorKey || "");
   const carePlanStep = carePlanOwnerStep(options);
+  if (key.startsWith('continuedConcern.') || key.startsWith('care_plan.continued_concerns') || key.startsWith('followUpSchedule.')) return carePlanStep;
 
   if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
     return INTERVIEW_STEP;
@@ -447,9 +448,15 @@ const SERVER_ERROR_KEYS = {
 };
 
 /** Renames server validation keys to the form's field keys; other keys pass through. */
-export function remapServerErrorKeys(errors, entries = []) {
+export function remapServerErrorKeys(errors, entries = [], { continuedConcerns = [], schedules = [] } = {}) {
   return Object.fromEntries(
     Object.entries(errors || {}).map(([key, message]) => {
+      const continued = /^care_plan\.continued_concerns\.(\d+)\.(.+)$/.exec(key);
+      const taskId = continued && continuedConcerns[Number(continued[1])]?.taskId;
+      if (taskId) return [`continuedConcern.${taskId}.careOutcome`, message];
+      const schedule = /^monitoring_data\.followUpSchedules\.(\d+)\.(.+)$/.exec(key);
+      const purposeKey = schedule && schedules[Number(schedule[1])]?.purposeKey;
+      if (purposeKey) return [`followUpSchedule.${purposeKey}.${schedule[2]}`, message];
       const match = /^diagnoses\.(\d+)\.(.+)$/.exec(key);
       const entryId = match && entries[Number(match[1])]?.id;
       return [entryId ? `reportingEntry.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];

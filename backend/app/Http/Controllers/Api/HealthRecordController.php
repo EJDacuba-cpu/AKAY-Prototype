@@ -311,6 +311,17 @@ class HealthRecordController extends Controller
                     $request->user(),
                     $lockedFollowUpTask
                 );
+                if ($v2) {
+                    $tasks = $additionalTasks->values();
+                    if ($lockedFollowUpTask !== null) {
+                        $tasks->push($lockedFollowUpTask);
+                    }
+                    $decisions = $carePlan['continued_concerns'] ?? [];
+                    $validator = \Illuminate\Support\Facades\Validator::make([], []);
+                    $validator->after(fn ($validator) => \App\Services\ContinuedConcerns::validate($validator, $tasks->pluck('id')->all(), $decisions, \App\Services\FollowUpSchedules::fromMonitoringData($data['monitoring_data'])));
+                    $validator->validate();
+                    $data['monitoring_data']['continuedConcerns'] = \App\Services\ContinuedConcerns::snapshot($carePlan['continued_concerns'] ?? [], $tasks);
+                }
                 // A save that confirms conditions or changes monitoring locks the
                 // patient row first - the order PatientConditions::apply uses -
                 // so two such saves cannot deadlock on the rows below.
@@ -390,6 +401,7 @@ class HealthRecordController extends Controller
                     // the visit's full complaint and treatment remain context.
                     $names = collect($data['diagnoses'] ?? [])
                         ->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')
+                        ->merge(collect($data['monitoring_data']['continuedConcerns'] ?? [])->where('careOutcome', 'refer_to_rhu')->pluck('purpose'))
                         ->merge($continuedMonitorings->only($carePlan['monitoring_referrals'] ?? [])->pluck('condition_name'))
                         ->filter()->unique()->values();
                     if ($names->isNotEmpty()) {

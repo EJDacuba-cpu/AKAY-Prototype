@@ -165,7 +165,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $id = $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertCreated()->json('data.id');
@@ -181,13 +181,12 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $id = $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'bhc_follow_up']]],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpSchedules' => [$this->schedule('entry:wound', 'Wound reassessment', $next, [
                     'predecessorTaskId' => $task->id,
-                    'sourceEntryId' => 'wound',
                 ])],
             ],
         ])->assertCreated()->json('data.id');
@@ -205,7 +204,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
             'needs_referral' => true,
-            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'diagnoses' => [
                 $this->card('c1', 'managed_at_bhc', 'Wound'),
                 $this->card('c2', 'refer_to_rhu', 'Suspected hypertension'),
@@ -239,7 +238,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$wound->id]],
+            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$wound->id], 'continued_concerns' => [['taskId' => $wound->id, 'careOutcome' => 'managed_at_bhc']]],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
             'monitoring_data' => ['followUpTaskId' => $wound->id],
         ])->assertCreated();
@@ -270,7 +269,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $id = $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$wound->id, $headache->id]],
+            'care_plan' => ['condition_cards' => true, 'continued_follow_up_task_ids' => [$wound->id, $headache->id], 'continued_concerns' => [['taskId' => $wound->id, 'careOutcome' => 'managed_at_bhc'], ['taskId' => $headache->id, 'careOutcome' => 'managed_at_bhc']]],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound'), $this->card('c2', 'managed_at_bhc', 'Headache')],
             'monitoring_data' => ['followUpTaskId' => $wound->id],
         ])->assertCreated()->json('data.id');
@@ -326,7 +325,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertStatus(409)->assertJsonPath('code', 'FOLLOW_UP_ALREADY_PROCESSED');
         $this->assertSame(2, HealthRecord::count());
@@ -338,14 +337,14 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertCreated();
 
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertStatus(409)->assertJsonPath('code', 'FOLLOW_UP_ALREADY_PROCESSED');
         $this->assertSame(1, FollowUpTask::where('state', FollowUpTask::STATE_FULFILLED)->count());
@@ -442,7 +441,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $record->id,
-            'care_plan' => ['continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertForbidden();
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
@@ -484,7 +483,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
         $this->saveV2([
             'visit_type' => 'follow_up_visit',
             'parent_health_record_id' => $parent->id,
-            'care_plan' => ['continued_follow_up_task_ids' => [$task->id]],
+            'care_plan' => ['continued_follow_up_task_ids' => [$task->id], 'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
             'monitoring_data' => ['followUpTaskId' => $task->id],
         ])->assertForbidden();
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);

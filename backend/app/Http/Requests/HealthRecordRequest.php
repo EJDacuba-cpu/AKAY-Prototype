@@ -19,6 +19,39 @@ class HealthRecordRequest extends FormRequest
     {
         $monitoringData = $this->input('monitoring_data');
         if (is_array($monitoringData)) {
+            if ($this->isBhcGeneralV2()) {
+                // Accept existing aliases, but validate every value through the
+                // canonical rules before the schedule normalizer can read it.
+                if (isset($monitoringData['follow_up_task_id']) || isset($monitoringData['followUpId']) || isset($monitoringData['follow_up_id'])) {
+                    $monitoringData['followUpTaskId'] = $monitoringData['followUpTaskId'] ?? $monitoringData['follow_up_task_id'] ?? $monitoringData['followUpId'] ?? $monitoringData['follow_up_id'];
+                }
+                unset($monitoringData['follow_up_task_id'], $monitoringData['followUpId'], $monitoringData['follow_up_id']);
+                $schedules = $monitoringData['followUpSchedules'] ?? $monitoringData['follow_up_schedules'] ?? null;
+                if (is_array($schedules)) {
+                    $monitoringData['followUpSchedules'] = array_map(function ($item) {
+                        if (! is_array($item)) {
+                            return $item;
+                        }
+                        foreach ([
+                            'purposeKey' => ['purpose_key'], 'purpose' => ['reason'],
+                            'date' => ['dueDate', 'due_date'], 'time' => ['dueTime', 'due_time'],
+                            'predecessorTaskId' => ['predecessor_task_id'], 'sourceEntryId' => ['source_entry_id'],
+                        ] as $canonical => $aliases) {
+                            foreach ($aliases as $alias) {
+                                if (! isset($item[$canonical]) && array_key_exists($alias, $item)) {
+                                    $item[$canonical] = $item[$alias];
+                                }
+                                unset($item[$alias]);
+                            }
+                        }
+
+                        return $item;
+                    }, $schedules);
+                } elseif ($schedules !== null) {
+                    $monitoringData['followUpSchedules'] = $schedules;
+                }
+                unset($monitoringData['follow_up_schedules']);
+            }
             unset($monitoringData['follow_up_reason']);
             // The Purpose of Visit is no longer recorded. Older records keep the
             // visitPurpose they stored (it is still displayed and read there);
@@ -27,7 +60,7 @@ class HealthRecordRequest extends FormRequest
             // Server-controlled v2 markers: never taken from the client on any
             // path. The v2 save writes both itself (HealthRecordController::store
             // and applyV2NextActions); a legacy or RHU save never gains them.
-            unset($monitoringData['bhcFollowUp'], $monitoringData['consultationWorkflow'], $monitoringData['conditionReferralOutcomes']);
+            unset($monitoringData['bhcFollowUp'], $monitoringData['consultationWorkflow'], $monitoringData['conditionReferralOutcomes'], $monitoringData['continuedConcerns']);
             $this->merge(['monitoring_data' => $monitoringData]);
         }
 
@@ -65,6 +98,12 @@ class HealthRecordRequest extends FormRequest
         $rules = $this->baseRules();
         $v2 = $this->isBhcGeneralV2();
         $rhuItr = $this->isRhuItrV1();
+        $rules['care_plan.continued_concerns'] = $v2 ? ['nullable', 'array', 'max:20'] : ['prohibited'];
+        if ($v2) {
+            $rules['care_plan.continued_concerns.*'] = ['array:taskId,careOutcome'];
+            $rules['care_plan.continued_concerns.*.taskId'] = ['required', 'integer', 'min:1', 'distinct'];
+            $rules['care_plan.continued_concerns.*.careOutcome'] = ['required', Rule::in(\App\Services\ContinuedConcerns::OUTCOMES)];
+        }
 
         $rules['consultation_workflow'] = $this->isMethod('post')
             ? ['nullable', Rule::in([HealthRecord::WORKFLOW_BHC_GENERAL_V2, HealthRecord::WORKFLOW_RHU_ITR_V1]), function (string $attribute, mixed $value, \Closure $fail): void {
@@ -119,6 +158,7 @@ class HealthRecordRequest extends FormRequest
                 $hasReferredCards = collect($this->diagnosesInput())->contains(fn ($entry) => ($entry['clinicalOutcome'] ?? null) === 'refer_to_rhu');
                 $hasMonitoringReferrals = ($this->input('care_plan.monitoring_referrals', []) ?: []) !== [];
                 $requiresReferral = $hasReferredCards
+                    || \App\Services\ContinuedConcerns::refers((array) $this->input('care_plan.continued_concerns', []))
                     || $hasMonitoringReferrals
                     || $this->boolean('care_plan.refer_to_rhu')
                     || $this->boolean('needs_referral');
@@ -787,6 +827,11 @@ class HealthRecordRequest extends FormRequest
     {
         $refers = $this->boolean('care_plan.refer_to_rhu');
         $shared = $this->boolean('care_plan.shared_condition_referral');
+        $continued = (array) $this->input('care_plan.continued_concerns', []);
+        $continuedRefers = \App\Services\ContinuedConcerns::refers($continued);
+        if ($continuedRefers && ! $shared) {
+            $validator->errors()->add('care_plan.shared_condition_referral', 'Use the shared referral for continued concerns.');
+        }
         $hasCardReferrals = false;
         foreach ($this->diagnosesInput() as $index => $entry) {
             if (($entry['clinicalOutcome'] ?? null) !== 'refer_to_rhu') {
@@ -803,10 +848,10 @@ class HealthRecordRequest extends FormRequest
             }
         }
 
-        if (($refers || $hasCardReferrals) && ! $needsReferral) {
+        if (($refers || $hasCardReferrals || $continuedRefers) && ! $needsReferral) {
             $validator->errors()->add('needs_referral', 'Refer to RHU is selected, so this visit needs a referral.');
         }
-        if ($needsReferral && ! $refers && ! $hasCardReferrals && $referredIds === []) {
+        if ($needsReferral && ! $refers && ! $hasCardReferrals && ! $continuedRefers && $referredIds === []) {
             $validator->errors()->add('care_plan.refer_to_rhu', 'Select Refer to RHU or refer a monitored condition.');
         }
 
@@ -831,9 +876,15 @@ class HealthRecordRequest extends FormRequest
         }
         $continuedIds = collect($this->input('care_plan.continued_follow_up_task_ids', []))->map(fn ($id) => (int) $id);
         $primaryTaskId = (int) ($this->input('monitoring_data.followUpTaskId') ?? $this->input('monitoring_data.follow_up_task_id') ?? 0);
+        $selectedIds = $continuedIds->all();
+        $visitType = $this->input('visit_type') ?? ($this->filled('parent_health_record_id') ? 'follow_up_visit' : 'initial_consultation');
+        if ($primaryTaskId && $visitType === 'follow_up_visit') {
+            $selectedIds[] = $primaryTaskId;
+        }
+        \App\Services\ContinuedConcerns::validate($validator, $selectedIds, $continued, $schedules);
         foreach ($schedules as $index => $schedule) {
             $predecessor = $schedule['predecessor_task_id'];
-            if ($predecessor && $predecessor !== $primaryTaskId && ! $continuedIds->contains($predecessor)) {
+            if ($predecessor && ! in_array($predecessor, $selectedIds, true)) {
                 $validator->errors()->add(
                     "monitoring_data.followUpSchedules.$index.predecessorTaskId",
                     'A successor follow-up must continue a task selected for this visit.'
@@ -850,6 +901,7 @@ class HealthRecordRequest extends FormRequest
                 'refer_to_rhu' => $refers,
                 'shared_condition_referral' => $shared,
                 'service_referrals' => $this->input('care_plan.service_referrals', []) ?: [],
+                'continued_concerns' => $continued,
             ],
             $referredIds,
             $this->input('monitoring_data.selectedPrograms', []) ?: []
