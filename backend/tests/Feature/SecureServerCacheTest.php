@@ -136,6 +136,7 @@ class SecureServerCacheTest extends TestCase
     public function test_role_facility_filter_and_pagination_cache_keys_do_not_collide(): void
     {
         $medicineA = $this->medicine('Alpha Cache Medicine', 8, $this->bhcA->id, null);
+        $secondMedicineA = $this->medicine('Gamma Cache Medicine', 6, $this->bhcA->id, null);
         $medicineB = $this->medicine('Beta Cache Medicine', 9, $this->bhcB->id, null);
         $rhuMedicine = $this->medicine('RHU Cache Medicine', 10, null, $this->rhuA->id);
 
@@ -165,11 +166,70 @@ class SecureServerCacheTest extends TestCase
             ->assertHeader('X-AKAY-Cache', 'MISS');
 
         $this->assertNotSame($aPageOne->json('data.data.0.id'), $aPageTwo->json('data.data.0.id'));
+        $this->assertSame(2, $aPageOne->json('data.total'));
+        $this->assertSame($secondMedicineA->id, $aPageTwo->json('data.data.0.id'));
         $this->assertSame($medicineB->id, $bhwB->json('data.data.0.id'));
         $this->assertSame($rhuMedicine->id, $rhuA->json('data.data.0.id'));
         $this->assertSame([], $rhuB->json('data.data'));
         $this->assertNotContains($medicineB->id, collect($aPageOne->json('data.data'))->pluck('id')->all());
         $this->assertNotContains($medicineA->id, collect($rhuA->json('data.data'))->pluck('id')->all());
+    }
+
+    public function test_bhc_filters_cannot_expand_facility_scope_even_on_cache_hits(): void
+    {
+        $own = $this->medicine('Own Inventory', 8, $this->bhcA->id, null);
+        $this->medicine('Other Inventory', 9, $this->bhcB->id, null);
+        $this->medicine('RHU Inventory', 10, null, $this->rhuA->id);
+        $this->medicine('Mixed Ownership Inventory', 10, $this->bhcA->id, $this->rhuA->id);
+        $archived = $this->medicine('Archived Inventory', 10, $this->bhcA->id, null);
+        $archived->update(['is_active' => false]);
+
+        $cases = [
+            '' => [$own->id],
+            '?barangay_health_center_id='.$this->bhcA->id => [$own->id],
+            '?barangay_health_center_id='.$this->bhcB->id => [],
+            '?rural_health_unit_id='.$this->rhuA->id => [],
+            '?barangay_health_center_id='.$this->bhcA->id.'&rural_health_unit_id='.$this->rhuA->id => [],
+            '?search=Inventory&category=Basic%20Medicines&availability_status=Available' => [$own->id],
+        ];
+
+        foreach ($cases as $query => $expectedIds) {
+            foreach (['MISS', 'HIT'] as $cacheStatus) {
+                $response = $this->actingAs($this->bhwA, 'sanctum')
+                    ->getJson('/api/medicines'.$query)
+                    ->assertOk()
+                    ->assertHeader('X-AKAY-Cache', $cacheStatus)
+                    ->assertJsonPath('data.total', count($expectedIds));
+                $this->assertSame($expectedIds, array_column($response->json('data.data'), 'id'));
+            }
+        }
+    }
+
+    public function test_rhu_stock_changes_refresh_rhu_inventory_without_invalidating_bhc_inventory(): void
+    {
+        $own = $this->medicine('BHC Inventory', 8, $this->bhcA->id, null);
+        $rhuMedicine = $this->medicine('RHU Inventory', 10, null, $this->rhuA->id);
+        $this->primeMedicineCache($this->bhwA);
+        $this->primeMedicineCache($this->rhuStaffA);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->postJson('/api/medicines/'.$rhuMedicine->id.'/restock', [
+                'quantity' => 2,
+                'reason' => 'Received RHU delivery',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertHeader('X-AKAY-Cache', 'HIT')
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $own->id);
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertHeader('X-AKAY-Cache', 'MISS')
+            ->assertJsonPath('data.data.0.quantity', 12);
     }
 
     public function test_cache_keys_hash_sensitive_filters_and_cached_values_are_explicit_arrays(): void
@@ -473,7 +533,7 @@ class SecureServerCacheTest extends TestCase
     {
         $medicine = $this->medicine('Write Failure Medicine', 6, $this->bhcA->id, null);
         Log::spy();
-        Cache::shouldReceive('get')->times(3)->andReturn(1, 1, null);
+        Cache::shouldReceive('get')->twice()->andReturn(1, null);
         Cache::shouldReceive('put')
             ->once()
             ->andThrow(new RuntimeException('secret-cache-write patient@example.test'));

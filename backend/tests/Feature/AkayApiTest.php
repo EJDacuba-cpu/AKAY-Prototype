@@ -188,8 +188,31 @@ class AkayApiTest extends TestCase
             ->getJson('/api/medicines')
             ->assertOk()
             ->assertJsonFragment(['name' => 'Own BHC Medicine'])
-            ->assertJsonFragment(['name' => 'RHU Medicine'])
+            ->assertJsonMissing(['name' => 'RHU Medicine'])
+            ->assertJsonPath('data.total', 1)
             ->assertJsonMissing(['name' => 'Other BHC Medicine']);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $rhuMedicine->id);
+
+        $admin = User::create([
+            'name' => 'Medicine Admin',
+            'email' => 'medicine-scope-admin@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_ADMIN,
+            'status' => User::STATUS_ACTIVE,
+        ]);
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertJsonPath('data.total', 3);
+        $this->getJson('/api/medicines?barangay_health_center_id='.$otherBhc->id)
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $otherMedicine->id);
 
         $this->actingAs($bhw, 'sanctum')
             ->patchJson("/api/medicines/{$rhuMedicine->id}", ['quantity' => 5])

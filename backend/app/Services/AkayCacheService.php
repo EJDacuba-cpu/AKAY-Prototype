@@ -16,8 +16,6 @@ class AkayCacheService
 {
     public const DOMAIN_MEDICINE_AVAILABILITY = 'medicine-availability';
 
-    public const DOMAIN_MEDICINE_RHU_FEED = 'medicine-rhu-feed';
-
     public const DOMAIN_REPORT_AGGREGATE = 'report-aggregate';
 
     private const KEY_PREFIX = 'akay:v1';
@@ -174,16 +172,6 @@ class AkayCacheService
         return $value;
     }
 
-    public function medicineRhuFeedDependency(): array
-    {
-        return $this->scope(
-            self::DOMAIN_MEDICINE_RHU_FEED,
-            User::ROLE_BHC,
-            'bhc',
-            0
-        );
-    }
-
     public function invalidateMedicine(Medicine $medicine): void
     {
         if ($medicine->barangay_health_center_id !== null) {
@@ -208,7 +196,6 @@ class AkayCacheService
             'rhu',
             $rhuId
         ));
-        $this->invalidateScope($this->medicineRhuFeedDependency());
         $this->invalidateRhuReport($rhuId);
     }
 

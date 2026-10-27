@@ -35,15 +35,8 @@ class MedicineController extends Controller
             ->with(['ruralHealthUnit', 'barangayHealthCenter']);
 
         if ($request->user()->isBhc()) {
-            $query->where(function ($query) use ($request) {
-                if ($request->user()->barangay_health_center_id) {
-                    $query->where('barangay_health_center_id', $request->user()->barangay_health_center_id);
-                } else {
-                    $query->whereRaw('1 = 0');
-                }
-
-                $query->orWhereNotNull('rural_health_unit_id');
-            });
+            $query->where('barangay_health_center_id', $request->user()->barangay_health_center_id ?? 0)
+                ->whereNull('rural_health_unit_id');
         } elseif ($request->user()->isRhu()) {
             $query->where('rural_health_unit_id', $request->user()->rural_health_unit_id);
         }
@@ -68,9 +61,6 @@ class MedicineController extends Controller
             'search' => mb_strtolower(trim((string) $request->query('search', ''))),
             'per_page' => $perPage,
         ];
-        $dependencies = $request->user()->isBhc()
-            ? [$this->cache->medicineRhuFeedDependency()]
-            : [];
         $data = $this->cache->rememberForUser(
             AkayCacheService::DOMAIN_MEDICINE_AVAILABILITY,
             $request->user(),
@@ -81,8 +71,7 @@ class MedicineController extends Controller
                 ->orderBy('name')
                 ->paginate($perPage, ['*'], 'page', $page)
                 ->through(fn (Medicine $item): array => $this->medicineListItem($item))
-                ->toArray(),
-            $dependencies
+                ->toArray()
         );
 
         return $this->cache->addDiagnosticHeader(

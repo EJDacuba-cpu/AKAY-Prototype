@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   Edit3,
-  Eye,
   History,
   MoreVertical,
   Package,
@@ -89,9 +88,7 @@ export default function MedicineAvailability() {
   const queryClient = useQueryClient();
   const currentUser = getCurrentUser();
   const canManageBhcInventory = canManageBhcMedicineInventory(currentUser);
-  const [activeTab, setActiveTab] = useState("bhc");
-  const [bhcFilters, setBhcFilters] = useState(DEFAULT_FILTERS);
-  const [rhuFilters, setRhuFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [modalMode, setModalMode] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [openMenuId, setOpenMenuId] = useState("");
@@ -119,29 +116,16 @@ export default function MedicineAvailability() {
     () => (Array.isArray(medicineItems) ? medicineItems : []),
     [medicineItems],
   );
-  const bhcItems = useMemo(
-    () => safeMedicineItems.filter((item) => !item.ruralHealthUnitId),
-    [safeMedicineItems],
-  );
-  const rhuItems = useMemo(
-    () => safeMedicineItems.filter((item) => item.ruralHealthUnitId),
-    [safeMedicineItems],
-  );
-
-  const activeItems = activeTab === "bhc" ? bhcItems : rhuItems;
-  const filters = activeTab === "bhc" ? bhcFilters : rhuFilters;
-  const setFilters = activeTab === "bhc" ? setBhcFilters : setRhuFilters;
-
   const filteredItems = useMemo(
-    () => filterMedicineItems(activeItems, filters),
-    [activeItems, filters],
+    () => filterMedicineItems(safeMedicineItems, filters),
+    [safeMedicineItems, filters],
   );
   const { page, setPage, totalPages, pageRows } = usePagedRows(
     filteredItems,
-    resetKeyOf(activeTab, filters),
+    resetKeyOf(filters),
   );
 
-  const lowStockCount = bhcItems.filter(
+  const lowStockCount = safeMedicineItems.filter(
     (item) => item.status === "Low Stock",
   ).length;
 
@@ -161,7 +145,7 @@ export default function MedicineAvailability() {
   ].filter(Boolean);
   const narrowed =
     Boolean(filters.search.trim()) || activeFilterChips.length > 0;
-  const itemsWord = activeItems.length === 1 ? "item" : "items";
+  const itemsWord = safeMedicineItems.length === 1 ? "item" : "items";
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -317,77 +301,44 @@ export default function MedicineAvailability() {
               Health Commodities
             </h1>
             <p className="mt-0.5 text-[13px] text-neutral-600">
-              Review BHC stock and RHU availability.
+              Manage your BHC medicine inventory.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <CommoditiesFilterMenu
-              key={activeTab}
               applied={listFiltersOf(filters)}
               activeCount={activeFilterChips.length}
               onApply={applyListFilters}
             />
-            {activeTab === "bhc" ? (
-              <RestrictedArea
-                locked={!canManageBhcInventory}
-                label="Stock Management"
-                compact
-                className="shrink-0 rounded-full"
-                placeholder={<AddMedicineButton />}
-              >
-                <AddMedicineButton onClick={openAddModal} />
-              </RestrictedArea>
-            ) : null}
+            <RestrictedArea
+              locked={!canManageBhcInventory}
+              label="Stock Management"
+              compact
+              className="shrink-0 rounded-full"
+              placeholder={<AddMedicineButton />}
+            >
+              <AddMedicineButton onClick={openAddModal} />
+            </RestrictedArea>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div
-            role="tablist"
-            aria-label="Inventory source"
-            className="flex w-fit items-center gap-0.5 rounded-full bg-neutral-100 p-0.5"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "bhc"}
-              onClick={() => setActiveTab("bhc")}
-              className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors ${FOCUS_RING} ${
-                activeTab === "bhc"
-                  ? "bg-white text-ink-800 shadow-xs"
-                  : "text-neutral-600 hover:text-ink-800"
-              }`}
-            >
+            <span className="inline-flex h-8 items-center gap-1.5 text-[12px] font-medium text-ink-800">
               <Package size={13} aria-hidden="true" />
               BHC Inventory
               {lowStockCount > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-100 px-1 text-[9px] font-bold text-amber-800">
+                <span
+                  aria-label={`${lowStockCount} low-stock items`}
+                  className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-100 px-1 text-[9px] font-bold text-amber-800"
+                >
                   {lowStockCount}
                 </span>
               )}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "rhu"}
-              onClick={() => setActiveTab("rhu")}
-              className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors ${FOCUS_RING} ${
-                activeTab === "rhu"
-                  ? "bg-white text-ink-800 shadow-xs"
-                  : "text-neutral-600 hover:text-ink-800"
-              }`}
-            >
-              <Eye size={13} aria-hidden="true" />
-              RHU Availability
-              <span className="rounded-full bg-brand-50 px-1.5 py-px text-[9px] font-bold text-brand-700">
-                View-only
-              </span>
-            </button>
-          </div>
-          {isFetching && safeMedicineItems.length > 0 && (
-            <RefreshingIndicator label="Updating medicine inventory..." />
-          )}
+            </span>
+            {isFetching && safeMedicineItems.length > 0 && (
+              <RefreshingIndicator label="Updating medicine inventory..." />
+            )}
           </div>
           <div className="min-w-[220px] flex-1 sm:max-w-[320px]">
             <SearchField
@@ -401,15 +352,14 @@ export default function MedicineAvailability() {
 
       <p className="sr-only" aria-live="polite">
         {narrowed
-          ? `Showing ${filteredItems.length} of ${activeItems.length} ${itemsWord}`
-          : `${activeItems.length} ${itemsWord}`}
+          ? `Showing ${filteredItems.length} of ${safeMedicineItems.length} ${itemsWord}`
+          : `${safeMedicineItems.length} ${itemsWord}`}
       </p>
 
       <div className="min-w-0 rounded-xl border border-neutral-200 bg-white">
           <MedicineTable
-            key={activeTab}
             items={pageRows}
-            editable={activeTab === "bhc" && canManageBhcInventory}
+            editable={canManageBhcInventory}
             openMenuId={openMenuId}
             setOpenMenuId={setOpenMenuId}
             onEdit={openEditModal}
