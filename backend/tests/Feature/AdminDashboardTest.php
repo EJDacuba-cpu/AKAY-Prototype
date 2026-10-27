@@ -421,6 +421,236 @@ class AdminDashboardTest extends TestCase
         );
     }
 
+    public function test_personnel_cards_exclude_admins_and_count_account_status_independently_of_assignments(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        $bhc = $this->makeBhc('BHC', $rhu);
+        $closed = $this->makeBhc('Closed BHC', $rhu, 'inactive');
+        $closedRhu = $this->makeRhu('Closed RHU', 'inactive');
+        $this->makeUser('admin', ['status' => 'inactive']);
+        $this->makeUser('bhc', ['barangay_health_center_id' => $bhc->id]);
+        $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'status' => 'inactive']);
+        $this->makeUser('bhc'); // No home facility.
+        $this->makeUser('bhc', ['barangay_health_center_id' => $closed->id]);
+        $this->makeUser('rhu', ['staff_role' => 'doctor', 'rural_health_unit_id' => $closedRhu->id]);
+        $this->makeUser('bhc', ['rural_health_unit_id' => $rhu->id]); // Wrong home tier.
+        $this->makeUser('rhu', ['rural_health_unit_id' => $rhu->id, 'barangay_health_center_id' => $bhc->id]); // Ambiguous home.
+
+        $response = $this->dashboard()->assertOk()
+            ->assertJsonPath('data.personnel.active', 6)
+            ->assertJsonPath('data.personnel.inactive', 1)
+            ->assertJsonPath('data.personnel.unassigned', 5);
+
+        // These are current-state counts, regardless of the selected clinical period.
+        $this->assertSame($response->json('data.personnel'), $this->dashboard('?period=year')->json('data.personnel'));
+    }
+
+    public function test_personnel_tables_include_every_registered_facility_and_each_designation(): void
+    {
+        $rhu = $this->makeRhu('A RHU');
+        $this->makeRhu('Z Closed RHU', 'inactive');
+        $bhc = $this->makeBhc('A BHC', $rhu);
+        $closed = $this->makeBhc('Z Closed BHC', $rhu, 'inactive');
+        foreach (['midwife', 'encoder', 'bhw'] as $role) {
+            foreach (['active', 'inactive'] as $status) {
+                $this->makeUser('bhc', ['staff_role' => $role, 'status' => $status, 'barangay_health_center_id' => $bhc->id]);
+            }
+        }
+        foreach (['intake_staff', 'doctor', 'nurse'] as $role) {
+            foreach (['active', 'inactive'] as $status) {
+                $this->makeUser('rhu', ['staff_role' => $role, 'status' => $status, 'rural_health_unit_id' => $rhu->id]);
+            }
+        }
+        // Preserve legacy/null designations in totals, without inventing a designation.
+        $this->makeUser('bhc', ['staff_role' => null, 'barangay_health_center_id' => $bhc->id]);
+        $this->makeUser('bhc', ['barangay_health_center_id' => $closed->id, 'status' => 'inactive']);
+
+        $this->dashboard()->assertOk()
+            ->assertJsonCount(2, 'data.personnel.barangay_health_centers')
+            ->assertJsonCount(2, 'data.personnel.rural_health_units')
+            ->assertJsonPath('data.personnel.barangay_health_centers.0.midwife', 2)
+            ->assertJsonPath('data.personnel.barangay_health_centers.0.encoder', 2)
+            ->assertJsonPath('data.personnel.barangay_health_centers.0.bhw', 2)
+            ->assertJsonPath('data.personnel.barangay_health_centers.0.total', 7)
+            ->assertJsonCount(7, 'data.personnel.barangay_health_centers.0.personnel')
+            ->assertJsonPath('data.personnel.barangay_health_centers.1.total', 1)
+            ->assertJsonPath('data.personnel.rural_health_units.0.intake_staff', 2)
+            ->assertJsonPath('data.personnel.rural_health_units.0.doctor', 2)
+            ->assertJsonPath('data.personnel.rural_health_units.0.nurse', 2)
+            ->assertJsonPath('data.personnel.rural_health_units.0.total', 6)
+            ->assertJsonPath('data.personnel.rural_health_units.1.total', 0)
+            ->assertJsonPath('data.personnel.rural_health_units.1.personnel', []);
+    }
+
+    public function test_personnel_totals_deduplicate_current_nurse_duties_and_ignore_invalid_assignments(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        $closedRhu = $this->makeRhu('Closed RHU', 'inactive');
+        $bhc = $this->makeBhc('BHC', $rhu);
+        $nurse = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        $inactive = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'status' => 'inactive']);
+        $doctor = $this->makeUser('rhu', ['staff_role' => 'doctor', 'rural_health_unit_id' => $rhu->id]);
+        $invalidHome = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $closedRhu->id]);
+        $assign = fn ($user, $dates) => FacilityAssignment::create([
+            'user_id' => $user->id, 'barangay_health_center_id' => $bhc->id,
+            'permissions' => [], 'assignment_type' => 'ongoing', 'starts_on' => today(), ...$dates,
+        ]);
+        $assign($nurse, []);
+        $assign($nurse, ['starts_on' => today()->subDay(), 'ends_on' => today()]);
+        $assign($inactive, []);
+        $assign($doctor, []); // Additional BHC duty is nurse-only.
+        $assign($invalidHome, []);
+        $notCurrent = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        $assign($notCurrent, ['revoked_at' => now()]);
+        $assign($notCurrent, ['starts_on' => today()->addDay()]);
+        $assign($notCurrent, ['starts_on' => today()->subDays(2), 'ends_on' => today()->subDay()]);
+        $assign($notCurrent, ['starts_on' => null]);
+
+        $row = $this->dashboard()->assertOk()->json('data.personnel.barangay_health_centers.0');
+        $this->assertSame(2, $row['total']);
+        $this->assertSame(0, $row['midwife']); // Nurses remain nurses.
+        $this->assertSame([$nurse->id, $inactive->id], array_column($row['personnel'], 'id'));
+        $this->assertSame(['active', 'inactive'], array_column($row['personnel'], 'status'));
+        $this->assertSame(['nurse', 'nurse'], array_column($row['personnel'], 'staff_role'));
+        $this->assertSame(['id', 'name', 'staff_role', 'status'], array_keys($row['personnel'][0]));
+    }
+
+    public function test_pending_reset_card_source_includes_only_requests_needing_mho_action(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        foreach ([
+            ['pending', null, null, 'active'],
+            ['expired', null, null, 'active'],
+            ['approved', 'failed', now()->addDay(), 'active'],
+            ['approved', 'sent', now()->subMinute(), 'active'], // Expired on read.
+            ['approved', 'sent', now()->addDay(), 'active'], // Already in progress.
+            ['completed', null, null, 'active'],
+            ['rejected', null, null, 'active'],
+            ['pending', null, null, 'inactive'],
+        ] as [$status, $delivery, $expires, $accountStatus]) {
+            $user = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'status' => $accountStatus]);
+            PasswordResetRequest::create([
+                'user_id' => $user->id, 'email' => $user->email, 'status' => $status,
+                'requested_at' => now(), 'expires_at' => $expires, 'delivery' => $delivery,
+            ]);
+        }
+
+        $this->dashboard()->assertOk()->assertJsonPath('data.attention.reset_requests', 4);
+    }
+
+    public function test_role_distribution_counts_accounts_once_including_unassigned_and_inactive_personnel(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        $bhc = $this->makeBhc('BHC', $rhu);
+        $nurse = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        FacilityAssignment::create([
+            'user_id' => $nurse->id, 'barangay_health_center_id' => $bhc->id,
+            'permissions' => [], 'starts_on' => today(), 'assignment_type' => 'ongoing',
+        ]);
+        $this->makeUser('bhc', ['staff_role' => 'encoder', 'status' => 'inactive']);
+        $this->makeUser('rhu', ['staff_role' => 'intake_staff']);
+        $this->makeUser('rhu', ['staff_role' => 'doctor', 'rural_health_unit_id' => $rhu->id]);
+        $this->makeUser('bhc', ['staff_role' => 'bhw', 'barangay_health_center_id' => $bhc->id]);
+        $this->makeUser('bhc', ['staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id]);
+        // Unknown legacy designations and administrators must not become a named clinical role.
+        $this->makeUser('bhc', ['staff_role' => null]);
+        $this->makeUser('admin');
+
+        $this->dashboard()->assertOk()->assertJsonPath('data.personnel.by_role', [
+            'midwife' => 1, 'bhw' => 1, 'encoder' => 1, 'nurse' => 1, 'doctor' => 1, 'intake_staff' => 1,
+        ]);
+    }
+
+    public function test_chart_distribution_uses_unique_assigned_accounts_in_each_home_category(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        $closedRhu = $this->makeRhu('Closed RHU', 'inactive');
+        $bhc = $this->makeBhc('BHC', $rhu);
+        $otherBhc = $this->makeBhc('Other BHC', $rhu);
+        $closedBhc = $this->makeBhc('Closed BHC', $rhu, 'inactive');
+        $this->makeUser('bhc', ['staff_role' => 'midwife', 'barangay_health_center_id' => $bhc->id]);
+        $this->makeUser('bhc', ['staff_role' => 'midwife', 'barangay_health_center_id' => $otherBhc->id, 'status' => 'inactive']);
+        $this->makeUser('bhc', ['staff_role' => 'encoder', 'barangay_health_center_id' => $bhc->id, 'status' => 'inactive']);
+        $this->makeUser('rhu', ['staff_role' => 'intake_staff', 'rural_health_unit_id' => $rhu->id]);
+        $this->makeUser('rhu', ['staff_role' => 'doctor', 'rural_health_unit_id' => $rhu->id, 'status' => 'inactive']);
+        $nurse = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id]);
+        foreach ([$bhc, $otherBhc] as $location) {
+            FacilityAssignment::create([
+                'user_id' => $nurse->id, 'barangay_health_center_id' => $location->id,
+                'permissions' => [], 'starts_on' => today(), 'assignment_type' => 'ongoing',
+            ]);
+        }
+        $this->makeUser('bhc', ['staff_role' => 'bhw']); // Unassigned.
+        $this->makeUser('bhc', ['staff_role' => null, 'barangay_health_center_id' => $bhc->id]);
+        $this->makeUser('bhc', ['staff_role' => 'midwife', 'barangay_health_center_id' => $closedBhc->id]);
+        $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $closedRhu->id]);
+        $this->makeUser('bhc', ['staff_role' => 'bhw', 'barangay_health_center_id' => $bhc->id, 'rural_health_unit_id' => $rhu->id]);
+
+        $this->dashboard()->assertOk()->assertJsonPath('data.personnel.assigned_by_role', [
+            'midwife' => 2, 'bhw' => 0, 'encoder' => 1, 'nurse' => 1, 'doctor' => 1, 'intake_staff' => 1,
+        ]);
+    }
+
+    public function test_pending_invitations_count_only_usable_invitations_awaiting_recipient_completion(): void
+    {
+        $rhu = $this->makeRhu('RHU');
+        foreach ([
+            ['pending', 'sent', now()->addDay(), 'active', true, null],
+            ['pending', 'copied', now()->addDay(), 'active', true, null],
+            ['pending', null, now()->addDay(), 'active', true, null], // Legacy sent delivery.
+            ['temporary', 'failed', null, 'active', false, now()->addDay()], // Valid replacement credential.
+            ['completed', 'sent', now()->addDay(), 'active', true, null],
+            ['expired', 'sent', now()->subDay(), 'active', false, null],
+            ['pending', 'sent', now()->subMinute(), 'active', true, null],
+            ['pending', 'failed', now()->addDay(), 'active', true, null],
+            ['pending', 'sent', now()->addDay(), 'inactive', true, null],
+            ['pending', 'sent', now()->addDay(), 'active', false, null], // Revoked/missing link.
+            ['pending', 'sent', null, 'active', true, null],
+            ['temporary', 'sent', null, 'active', false, now()->subMinute()],
+            ['temporary', 'sent', null, 'active', false, null],
+        ] as [$status, $delivery, $expires, $accountStatus, $hasToken, $temporaryExpiry]) {
+            $user = $this->makeUser('rhu', ['staff_role' => 'nurse', 'rural_health_unit_id' => $rhu->id, 'status' => $accountStatus]);
+            $user->forceFill(['temp_password_expires_at' => $temporaryExpiry])->save();
+            AccountInvite::create([
+                'user_id' => $user->id, 'email' => $user->email, 'status' => $status,
+                'delivery' => $delivery, 'expires_at' => $expires, 'sent_at' => now(),
+                'token_hash' => $hasToken ? hash('sha256', 'invite-'.$user->id) : null,
+            ]);
+        }
+        $this->makeUser('bhc', ['status' => 'inactive']); // Inactivity alone is not an invite.
+
+        $this->dashboard()->assertOk()->assertJsonPath('data.pending_invitations', 4);
+    }
+
+    public function test_resent_invitation_counts_once_and_disappears_after_password_completion(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $user = $this->makeUser('bhc');
+        $invite = AccountInvite::create([
+            'user_id' => $user->id, 'email' => $user->email, 'status' => 'expired',
+            'delivery' => 'sent', 'expires_at' => now()->subDay(),
+        ]);
+        $this->dashboard()->assertOk()->assertJsonPath('data.pending_invitations', 0);
+        $service = app(\App\Services\AccountInviteService::class);
+        $service->resend($invite);
+        $service->resend($invite);
+        $this->assertSame(1, AccountInvite::where('user_id', $user->id)->count());
+        $this->dashboard()->assertOk()->assertJsonPath('data.pending_invitations', 1);
+
+        app(\App\Services\PasswordSetRecorder::class)->record($user, \App\Services\PasswordSetRecorder::ROUTE_INVITE);
+        $this->dashboard()->assertOk()->assertJsonPath('data.pending_invitations', 0);
+    }
+
+    public function test_personnel_snapshot_handles_an_empty_registry(): void
+    {
+        $this->dashboard()->assertOk()->assertJsonPath('data.personnel', [
+            'active' => 0, 'inactive' => 0, 'unassigned' => 0,
+            'by_role' => ['midwife' => 0, 'bhw' => 0, 'encoder' => 0, 'nurse' => 0, 'doctor' => 0, 'intake_staff' => 0],
+            'assigned_by_role' => ['midwife' => 0, 'bhw' => 0, 'encoder' => 0, 'nurse' => 0, 'doctor' => 0, 'intake_staff' => 0],
+            'barangay_health_centers' => [], 'rural_health_units' => [],
+        ]);
+    }
+
     public function test_response_contains_no_patient_identifiers(): void
     {
         $bhc = $this->makeBhc('BHC One', $this->makeRhu('RHU One'));

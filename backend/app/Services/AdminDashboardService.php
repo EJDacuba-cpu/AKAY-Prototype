@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * Counts-only summary for the Municipal Health Officer dashboard.
+ * Operational summary for the Municipal Health Officer dashboard.
  * Never returns patient names or clinical fields.
  */
 class AdminDashboardService
@@ -41,11 +41,13 @@ class AdminDashboardService
         return [
             'period' => $this->periodPayload($window),
             'accounts' => $this->accounts(),
+            'personnel' => app(AdminDashboardPersonnelService::class)->summary($now),
             'referrals' => $this->referrals($window, $referralsByBhc),
             'follow_ups' => $this->followUps($window),
             'patients' => $this->patients($window),
             'medicines' => $this->medicines($lowStockByBhc),
             'attention' => $this->attention($window, $withoutStaff),
+            'pending_invitations' => $this->pendingInvitations(),
             'barangays' => $this->barangays($window, $activeBhcs, $referralsByBhc, $lowStockByBhc, $withoutStaff),
             'generated_at' => $now->toIso8601String(),
         ];
@@ -260,6 +262,24 @@ class AdminDashboardService
         return Medicine::query()
             ->where('is_active', true)
             ->whereIn('availability_status', ['Low Stock', 'Unavailable']);
+    }
+
+    /** Invitations awaiting the recipient, distinct from invites needing MHO action. */
+    private function pendingInvitations(): int
+    {
+        $query = AccountInvite::query();
+        AccessRequestStatus::applyToInvites($query, AccessRequestStatus::IN_PROGRESS);
+
+        // A legacy pending row without a usable link cannot be completed by its
+        // recipient. Temporary-password validity is already checked by the shared scope.
+        $query->where(fn (Builder $invite) => $invite
+            ->where('status', AccountInvite::STATUS_TEMPORARY)
+            ->orWhere(fn (Builder $link) => $link
+                ->whereNotNull('token_hash')
+                ->where('expires_at', '>', now())));
+
+        // Resends rotate the same unique user invitation rather than creating a new one.
+        return $query->distinct()->count('user_id');
     }
 
     /**

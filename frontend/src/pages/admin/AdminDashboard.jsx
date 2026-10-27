@@ -11,7 +11,8 @@ import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import AccountCounts from "../../components/features/admin-dashboard/AccountCounts";
 import AttentionStrip from "../../components/features/admin-dashboard/AttentionStrip";
 import BarangayTable from "../../components/features/admin-dashboard/BarangayTable";
-import DoctorAvailability from "../../components/features/admin-dashboard/DoctorAvailability";
+import FacilityPersonnelTable from "../../components/features/admin-dashboard/FacilityPersonnelTable";
+import PersonnelDistribution from "../../components/features/admin-dashboard/PersonnelDistribution";
 import OverviewCards from "../../components/features/admin-dashboard/OverviewCards";
 import PeriodSelect from "../../components/features/admin-dashboard/PeriodSelect";
 import QuickActions from "../../components/features/admin-dashboard/QuickActions";
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          <section className="anim-fade-up p-5">
+          <section className="anim-fade-up px-5 py-3">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
@@ -136,22 +137,29 @@ export default function AdminDashboard() {
 
           {hasData && (
             <OverviewCards
-              referrals={data.referrals}
-              followUps={data.follow_ups}
-              patients={data.patients}
-              medicines={data.medicines}
+              personnel={data.personnel}
+              pendingResetRequests={data.attention.reset_requests}
+              pendingInvitations={data.pending_invitations}
             />
           )}
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="min-w-0 space-y-6">
-              {hasData && <BarangayTable rows={data.barangays} />}
+          {hasData && <PersonnelDistribution counts={data.personnel.assigned_by_role} />}
+
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="@container min-w-0 space-y-4">
+              {hasData && (
+                <div className="grid items-start gap-4 @min-[960px]:grid-cols-2">
+                  <div className="min-w-0">
+                    <BarangayTable rows={data.personnel.barangay_health_centers} />
+                  </div>
+                  <FacilityPersonnelTable type="rhu" rows={data.personnel.rural_health_units} />
+                </div>
+              )}
               <RecentActivity />
             </div>
 
-            <aside className="min-w-0 space-y-6">
+            <aside className="min-w-0 space-y-4">
               <QuickActions />
-              <DoctorAvailability />
               {hasData && <AccountCounts accounts={data.accounts} />}
             </aside>
           </div>
