@@ -452,7 +452,7 @@ function LivePatientDetails() {
                       recordsLoading={recordsLoading}
                       onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
-                      onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                      onViewReferral={(trackingId) => navigate(`/bhc/referrals/${trackingId}`, { state: detailsState })}
                       onViewFollowUp={() => navigate("/bhc/follow-ups")}
                       onViewRecords={() => setActiveTab("records")}
                       onViewRecord={viewRecord}
@@ -544,7 +544,7 @@ function LivePatientDetails() {
                     isLoading={referralsLoading}
                     isFetching={referralsFetching}
                     isError={Boolean(referralsError)}
-                    onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`)}
+                    onView={(trackingId) => navigate(`/bhc/referrals/${trackingId}`, { state: detailsState })}
                   />
                 )}
               </div>
