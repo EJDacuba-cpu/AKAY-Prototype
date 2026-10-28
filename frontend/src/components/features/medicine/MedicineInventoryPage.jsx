@@ -13,7 +13,7 @@ import usePagedRows from '../../../hooks/usePagedRows';
 import useFacilityCalendarDate from '../../../hooks/useFacilityCalendarDate';
 import { getCurrentUser } from '../../../utils/auth';
 import { queryKeys } from '../../../utils/queryKeys';
-import { resetKeyOf } from '../../../utils/tablePaging';
+import { resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
 import { getMedicineExpiryStatus, getMedicineStockStatus } from '../../../utils/medicineInventoryStatus';
 import { retainCalendarData } from '../../../utils/medicineLedger';
 import { addBhcMedicine, addRhuMedicine, loadMedicineAvailability } from '../../../services/medicineService';
@@ -49,7 +49,23 @@ function MedicineInventoryWorkspace({ role }) {
       <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><p aria-live="polite" className="text-xs tabular-nums text-neutral-600">{filtered.length} of {items.length} items</p>{query.isFetching && items.length > 0 && <RefreshingIndicator label="Updating inventory…" />}</div><div className="w-full sm:max-w-xs"><SearchField value={filters.search} onChange={search => setFilters(current => ({ ...current, search }))} placeholder="Search name, category, item ID, or notes" label="Search medicines" /></div></div>
       {(activeCount > 0 || filters.search) && <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">{['category', 'status', 'expiry'].filter(key => filters[key] !== defaults[key]).map(key => <span key={key} className="rounded-full border border-neutral-200 bg-white px-2.5 py-1">{filters[key]}</span>)}<Button variant="ghost" size="compact" className="rounded-full" onClick={() => setFilters(defaults)}>Clear Filters</Button></div>}
       {query.isError && items.length > 0 && <p role="status" className="text-sm text-warning-700">Unable to refresh inventory. The last loaded values are shown.</p>}
-      <div className="min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white"><MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} /><TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} /></div>
+      <div className={`min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white ${role === 'bhc' ? 'medicine-inventory-sheet' : ''}`} style={role === 'bhc' ? { '--medicine-inventory-height': `${tableBodyHeight()}px` } : undefined}>
+        <div className="medicine-inventory-body">
+          <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
+        </div>
+        <div className="medicine-inventory-pagination">
+          {role === 'bhc' && totalPages === 1 ? (
+            <nav aria-label="Inventory pagination" className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3">
+              <span className="text-xs text-neutral-600">Page <span className="font-semibold text-ink-800">1</span> of 1</span>
+              <div className="flex items-center gap-1.5">
+                <Button variant="secondary" size="compact" disabled>Previous</Button>
+                <Button variant="secondary" size="compact" aria-current="page">1</Button>
+                <Button variant="secondary" size="compact" disabled>Next</Button>
+              </div>
+            </nav>
+          ) : <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+        </div>
+      </div>
     </div>
   </PageStateWrapper>
     {canManage && dialog?.mode === 'add' && <MedicineFormModal open mode="add" onClose={() => setDialog(null)} onSubmit={add} />}

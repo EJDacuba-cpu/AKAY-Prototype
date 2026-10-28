@@ -703,3 +703,56 @@ textarea,
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* BHC inventory keeps ten compact rows of space, including on its last page. */
+.medicine-inventory-sheet .medicine-inventory-body {
+  height: var(--medicine-inventory-height);
+  overflow-y: auto;
+}
+
+.medicine-inventory-sheet .medicine-inventory-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.medicine-inventory-sheet .medicine-inventory-status {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 2px 11px 2px 0;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.medicine-inventory-sheet .medicine-inventory-status-dot {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 5px;
+  height: 5px;
+  transform: translateY(-50%);
+  background: var(--color-text-muted);
+}
+
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="info"] .medicine-inventory-status-dot {
+  background: var(--color-info-500);
+}
+
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="warning"] .medicine-inventory-status-dot {
+  background: var(--color-warning-500);
+}
+
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="danger"] .medicine-inventory-status-dot {
+  background: var(--color-danger);
+}
+
+.medicine-inventory-sheet .medicine-inventory-pagination button {
+  border-radius: var(--radius-pill, 999px);
+  box-shadow: none;
+}

@@ -8,7 +8,7 @@ import { inventoryActions, ledgerQuantity, medicineDetailsPath } from '../../../
 const icons = { details: Eye, restock: PackagePlus, deduct: PackageMinus, quarantine: ShieldAlert, history: History };
 export function LedgerStamp({ label, tone = 'neutral' }) {
   const tones = { info: 'border-info-100 bg-info-50 text-info-700', warning: 'border-warning-100 bg-warning-50 text-warning-700', danger: 'border-alert-100 bg-alert-50 text-alert-700', neutral: 'border-neutral-200 bg-neutral-100 text-neutral-600' };
-  return <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tones[tone] || tones.neutral}`}><span aria-hidden="true" className="size-1.5 rounded-full bg-current" />{label}</span>;
+  return <span data-tone={tone} className={`medicine-inventory-status inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tones[tone] || tones.neutral}`}><span aria-hidden="true" className="medicine-inventory-status-dot size-1.5 rounded-full bg-current" />{label}</span>;
 }
 export function MedicineQuantity({ item }) {
   const { recorded, available, differs } = ledgerQuantity(item);
@@ -31,7 +31,7 @@ export function MedicineRowActions({ item, role, canManage, onAction }) {
   </DropdownMenuContent></DropdownMenu>;
 }
 export default function MedicineInventoryTable({ items = [], role, canManage = false, onAction }) {
-  if (!items.length) return <div className="px-4 py-14 text-center"><p className="text-sm font-semibold text-ink-800">No medicines found.</p><p className="mt-1 text-xs text-neutral-600">Adjust the search or filters, or add an item to your inventory.</p></div>;
+  if (!items.length) return <div className="medicine-inventory-empty px-4 py-14 text-center"><p className="text-sm font-semibold text-ink-800">No medicines found.</p><p className="mt-1 text-xs text-neutral-600">Adjust the search or filters, or add an item to your inventory.</p></div>;
   return <>
     <div className="hidden md:block"><table className="w-full table-fixed text-left"><caption className="sr-only">{role.toUpperCase()} medicine inventory</caption><colgroup><col className="w-[34%]" /><col className="w-[21%]" /><col className="w-[21%]" /><col className="w-[18%]" /><col className="w-[6%]" /></colgroup>
       <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600"><tr><th className="px-4">Medicine / Supply</th><th className="px-3">Quantity</th><th className="px-3">Stock</th><th className="px-3">Expiry</th><th className="px-2"><span className="sr-only">Actions</span></th></tr></thead>
