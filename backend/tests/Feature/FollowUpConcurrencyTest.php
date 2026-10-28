@@ -251,10 +251,10 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $medicine = $this->medicine(2);
         // A shortage no longer blocks finalization; an undispensable item still rolls back.
-        $medicine->update(['expiration_date' => now()->subDay()->toDateString()]);
+        $medicine->expiryGroups()->update(['expiration_date' => now()->subDay()->toDateString()]);
         $payload = $this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
                 'confirmed_given' => true,
                 'quantity' => 3,
             ]],
@@ -403,7 +403,7 @@ class FollowUpConcurrencyTest extends TestCase
 
     private function medicine(int $quantity): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => 'Concurrency Medicine '.Str::random(5),
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -412,6 +412,8 @@ class FollowUpConcurrencyTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'created_by' => $this->bhw->id,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function patient(

@@ -155,11 +155,11 @@ class HealthRecordIdempotencyTest extends TestCase
 
         // A shortage no longer blocks finalization; an undispensable item still rolls back.
         $expired = $this->medicine(10);
-        $expired->update(['expiration_date' => now()->subDay()->toDateString()]);
+        $expired->expiryGroups()->update(['expiration_date' => now()->subDay()->toDateString()]);
         $this->postRecord($this->payload([
             'dispensed_medicines' => [
                 ['medicine_id' => $medicine->id, 'confirmed_given' => true, 'quantity' => 1],
-                ['medicine_id' => $expired->id, 'confirmed_given' => true, 'quantity' => 1],
+                ['allocations' => [['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $expired->id, 'confirmed_given' => true, 'quantity' => 1],
             ],
         ]), (string) Str::uuid())
             ->assertUnprocessable()
@@ -392,7 +392,7 @@ class HealthRecordIdempotencyTest extends TestCase
 
     private function medicine(int $quantity): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => 'Test Medicine '.Str::random(5),
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -401,6 +401,13 @@ class HealthRecordIdempotencyTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'created_by' => $this->bhw->id,
         ]);
+        $medicine->expiryGroups()->create([
+            'expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(),
+            'available_quantity' => $quantity,
+            'quarantined_quantity' => 0,
+        ]);
+
+        return $medicine;
     }
 
     private function createPatient(string $firstName, string $lastName): Patient

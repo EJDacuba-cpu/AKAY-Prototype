@@ -124,6 +124,7 @@ class AkayApiTest extends TestCase
         $this->actingAs($bhw, 'sanctum')
             ->postJson("/api/medicines/{$medicineId}/adjust", [
                 'action' => 'adjustment_out',
+                'expiry_group_id' => Medicine::findOrFail($medicineId)->expiryGroups()->firstOrFail()->id,
                 'quantity' => 85,
                 'reason' => 'Issued through the controlled stock workflow.',
             ])

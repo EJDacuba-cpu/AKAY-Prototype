@@ -1,4 +1,4 @@
-import HealthRecordClinicalDetails from './HealthRecordClinicalDetails';
+import HealthRecordClinicalDetails, { DispensedMedicinesList } from './HealthRecordClinicalDetails';
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms } from '../../../utils/consultationPrograms';
 import { VISIT_SERVICES, TEENAGE_PREGNANCY_MESSAGE } from '../../../utils/visitPurpose';
 import { formatFbs } from '../../../utils/recordCarePlan';
@@ -53,7 +53,7 @@ export default function BhcConsultationDetails({ record, ...props }) {
         <h3 className="text-sm font-semibold">Laboratory Results</h3>
         <Details rows={Object.entries(maternal.laboratoryResults || {}).map(([key, value]) => [key, [value, maternal.laboratoryResultDates?.[key]].filter(Boolean).join(' · ')])} />
         <h3 className="text-sm font-semibold">Medicines Dispensed</h3>
-        <Details rows={(record.dispensedMedicines || record.dispensed_medicines || []).map((medicine, index) => [medicine.medicineName || medicine.medicine_name_snapshot || `Medicine ${index + 1}`, `${medicine.quantity} ${medicine.unit || ''} ${medicine.remarks || ''}`])} />
+        <DispensedMedicinesList medicines={record.dispensedMedicines || record.dispensed_medicines || []} />
       </section>;
     })}
   </div>;

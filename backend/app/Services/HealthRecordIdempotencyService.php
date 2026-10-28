@@ -57,7 +57,7 @@ class HealthRecordIdempotencyService
                 $value
             );
 
-            if ($field === 'dispensed_medicines') {
+            if (in_array($field, ['dispensed_medicines', 'allocations'], true)) {
                 usort($normalized, fn (mixed $left, mixed $right): int => strcmp(
                     json_encode($left, JSON_THROW_ON_ERROR),
                     json_encode($right, JSON_THROW_ON_ERROR)

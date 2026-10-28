@@ -715,7 +715,7 @@ class FacilityIsolationSecurityTest extends TestCase
         BarangayHealthCenter $bhc,
         User $creator
     ): Medicine {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Basic Medicines',
             'quantity' => 20,
@@ -724,6 +724,8 @@ class FacilityIsolationSecurityTest extends TestCase
             'barangay_health_center_id' => $bhc->id,
             'created_by' => $creator->id,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function userPayload(string $email, string $role): array

@@ -1,6 +1,7 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 import { medicineCreateRequestHeaders } from "../utils/medicineMutationSafety";
 import { getMedicineExpiryStatus as getFacilityExpiryStatus } from "../utils/medicineInventoryStatus";
+import { expiryGroups } from "../utils/medicineExpiryGroups";
 
 export const MEDICINE_CATEGORIES = [
   "Basic Medicines",
@@ -40,6 +41,7 @@ export function computeMedicineStatus(quantity, lowStockThreshold = 10) {
 
 function normalizeMedicine(item = {}) {
   const quantity = parseQuantity(item.quantity);
+  const groups = expiryGroups(item);
   const lowStockThreshold = parseQuantity(
     item.low_stock_threshold ?? item.lowStockThreshold ?? 10,
   );
@@ -55,6 +57,10 @@ function normalizeMedicine(item = {}) {
     category: item.category || "",
     description: item.description || item.notes || "",
     quantity,
+    itemType: item.item_type || "medicine",
+    expiry_groups: groups,
+    expiryGroups: groups,
+    stockSummary: item.stock_summary || { recorded: quantity, available: 0, quarantined: 0, expired: 0, unassigned: quantity },
     lowStockThreshold,
     unit: item.unit || "pcs",
     status,
@@ -82,6 +88,8 @@ function toCreatePayload(item = {}) {
     quantity: parseQuantity(item.quantity),
     low_stock_threshold: parseQuantity(item.lowStockThreshold ?? item.low_stock_threshold ?? 10),
     unit: item.unit || "pcs",
+    item_type: item.itemType || item.item_type || "medicine",
+    expiry_not_applicable: Boolean(item.expiryNotApplicable || item.expiry_not_applicable),
     expiration_date: item.expiryDate || item.expirationDate || item.expiration_date || null,
   };
 }
@@ -95,8 +103,6 @@ function toMetadataPayload(item = {}) {
       item.lowStockThreshold ?? item.low_stock_threshold ?? 10,
     ),
     unit: item.unit || "pcs",
-    expiration_date:
-      item.expiryDate || item.expirationDate || item.expiration_date || null,
   };
 }
 
@@ -213,6 +219,8 @@ export async function restockMedicine(id, data, options = {}) {
     id,
     "restock",
     {
+      expiration_date: data.expiryDate || data.expiration_date || null,
+      expiry_not_applicable: Boolean(data.expiryNotApplicable || data.expiry_not_applicable),
       quantity: parseQuantity(data.quantity),
       reason: String(data.reason || "").trim(),
     },
@@ -225,6 +233,7 @@ export async function deductMedicine(id, data, options = {}) {
     id,
     "deduct",
     {
+      expiry_group_id: Number(data.expiry_group_id),
       quantity: parseQuantity(data.quantity),
       reason: String(data.reason || "").trim(),
     },
@@ -238,6 +247,9 @@ export async function adjustMedicine(id, data, options = {}) {
     "adjust",
     {
       action: data.action,
+      expiry_group_id: data.expiry_group_id,
+      pool: data.pool,
+      target: data.target,
       direction: data.action === "correction" ? data.direction : null,
       quantity: parseQuantity(data.quantity),
       reason: String(data.reason || "").trim(),
@@ -291,3 +303,10 @@ export function getMedicineExpiryStatus(item, now) {
 
 export const RHU_MEDICINES_UPDATED_EVENT = RHU_UPDATE_EVENT;
 export const BHC_MEDICINES_UPDATED_EVENT = BHC_UPDATE_EVENT;
+
+export async function getMedicineDetails(id) {
+  return normalizeMedicine(unwrapData(await apiRequest(`/medicines/${id}`)));
+}
+export async function medicineGroupAction(id, data, options = {}) {
+  return mutateMedicineInventory(id, "group-action", { ...data, idempotency_key: options.idempotencyKey }, options);
+}

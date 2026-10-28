@@ -50,6 +50,7 @@ class MedicineInventoryWorkflowTest extends TestCase
     public function test_creation_derives_facility_and_records_only_positive_opening_balance(): void
     {
         $positive = $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Opening Balance Medicine',
             'category' => 'Basic Medicines',
             'quantity' => 12,
@@ -73,12 +74,14 @@ class MedicineInventoryWorkflowTest extends TestCase
         ]);
 
         $zero = $this->actingAs($this->rhuStaff, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Zero Opening Medicine',
             'quantity' => 0,
             'rural_health_unit_id' => 999999,
         ])->assertUnprocessable();
 
         $this->actingAs($this->rhuStaff, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Zero Opening Medicine',
             'quantity' => 0,
         ])->assertCreated();
@@ -92,11 +95,13 @@ class MedicineInventoryWorkflowTest extends TestCase
     public function test_negative_opening_balance_and_client_facility_override_fail_validation(): void
     {
         $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Negative Opening',
             'quantity' => -1,
         ])->assertUnprocessable();
 
         $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Overridden Facility',
             'quantity' => 1,
             'barangay_health_center_id' => $this->otherBhc->id,
@@ -113,6 +118,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->actingAs($this->bhw, 'sanctum')
             ->postJson("/api/medicines/{$bhcMedicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 6,
                 'reason' => 'Monthly BHC replenishment',
             ])
@@ -124,6 +130,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->actingAs($this->rhuStaff, 'sanctum')
             ->postJson("/api/medicines/{$rhuMedicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 3,
                 'reason' => 'RHU delivery receipt',
             ])
@@ -138,10 +145,12 @@ class MedicineInventoryWorkflowTest extends TestCase
         $medicine = $this->medicine('Restricted Restock', 2, $this->bhc->id);
 
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/restock", ['quantity' => 1])
+            ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),'quantity' => 1])
             ->assertUnprocessable();
         $this->actingAs($this->otherBhw, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 1,
                 'reason' => 'Unauthorized attempt',
             ])
@@ -243,6 +252,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             $medicine = $this->medicine('Metadata With History', 11, $user->barangay_health_center_id, $user->rural_health_unit_id);
             $this->actingAs($user, 'sanctum')
                 ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                     'quantity' => 2,
                     'reason' => 'Received inventory delivery',
                 ])
@@ -304,7 +314,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             $this->assertDatabaseHas('medicine_inventory_transactions', [
                 'medicine_id' => $medicine->id,
                 'actor_user_id' => $user->id,
-                'transaction_type' => 'correction',
+                'transaction_type' => 'physical_count',
                 'quantity_before' => 11,
                 'quantity_after' => 8,
                 'quantity_delta' => -3,
@@ -334,7 +344,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->assertDatabaseHas('medicine_inventory_transactions', [
             'medicine_id' => $medicine->id,
-            'transaction_type' => 'correction',
+            'transaction_type' => 'physical_count',
             'quantity_before' => 11,
             'quantity_after' => 8,
             'quantity_delta' => -3,
@@ -344,7 +354,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->assertSame(1, $medicine->inventoryTransactions()->count());
     }
 
-    public function test_matching_quantity_with_reason_clears_reconciliation_without_a_ledger_row(): void
+    public function test_matching_quantity_with_reason_clears_reconciliation_with_verification_history(): void
     {
         $medicine = $this->medicine('Reconcile Confirm', 3, $this->bhc->id, null, [
             'reconciliation_required' => true,
@@ -360,7 +370,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             ->assertJsonPath('data.reconciliation_required', false);
 
         $this->assertFalse($medicine->fresh()->reconciliation_required);
-        $this->assertSame(0, $medicine->inventoryTransactions()->count());
+        $this->assertSame(1, $medicine->inventoryTransactions()->count());
     }
 
     public function test_deduct_requires_reason_decrements_stock_and_rejects_negative_or_cross_facility(): void
@@ -370,11 +380,13 @@ class MedicineInventoryWorkflowTest extends TestCase
             'expiration_date' => now()->subDay()->toDateString(),
         ]);
 
+        $this->track($medicine);
+        $this->track($expired);
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/deduct", ['quantity' => 2])
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 2])
             ->assertUnprocessable();
         $this->actingAs($this->otherBhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
                 'quantity' => 2,
                 'reason' => 'Unauthorized deduction',
             ])
@@ -387,7 +399,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             ->assertForbidden();
 
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
                 'quantity' => 2,
                 'reason' => 'Damaged during storage',
             ])
@@ -396,14 +408,14 @@ class MedicineInventoryWorkflowTest extends TestCase
             ->assertJsonPath('data.transaction.transaction_type', 'adjustment_out')
             ->assertJsonPath('data.transaction.quantity_delta', -2);
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$expired->id}/deduct", [
+            ->postJson("/api/medicines/{$expired->id}/deduct", ['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id,
                 'quantity' => 1,
                 'reason' => 'Expired stock removed',
             ])
             ->assertOk()
             ->assertJsonPath('data.medicine.quantity', 3);
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/deduct", [
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
                 'quantity' => 9,
                 'reason' => 'Excessive deduction',
             ])
@@ -426,9 +438,11 @@ class MedicineInventoryWorkflowTest extends TestCase
         $restockKey = (string) Str::uuid();
         $deductKey = (string) Str::uuid();
 
+        $this->track($deduct);
         $this->actingAs($this->bhw, 'sanctum')
             ->withHeader('Idempotency-Key', $restockKey)
             ->postJson("/api/medicines/{$restock->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 4,
                 'reason' => 'Delivery receipt',
             ])
@@ -436,6 +450,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->actingAs($this->bhw, 'sanctum')
             ->withHeader('Idempotency-Key', $restockKey)
             ->postJson("/api/medicines/{$restock->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 4,
                 'reason' => 'Delivery receipt',
             ])
@@ -444,14 +459,14 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->actingAs($this->bhw, 'sanctum')
             ->withHeader('Idempotency-Key', $deductKey)
-            ->postJson("/api/medicines/{$deduct->id}/deduct", [
+            ->postJson("/api/medicines/{$deduct->id}/deduct", ['expiry_group_id' => $deduct->expiryGroups()->firstOrFail()->id,
                 'quantity' => 3,
                 'reason' => 'Lost during transfer',
             ])
             ->assertOk();
         $this->actingAs($this->bhw, 'sanctum')
             ->withHeader('Idempotency-Key', $deductKey)
-            ->postJson("/api/medicines/{$deduct->id}/deduct", [
+            ->postJson("/api/medicines/{$deduct->id}/deduct", ['expiry_group_id' => $deduct->expiryGroups()->firstOrFail()->id,
                 'quantity' => 3,
                 'reason' => 'Lost during transfer',
             ])
@@ -502,6 +517,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         foreach ([1, 2] as $quantity) {
             $this->actingAs($this->bhw, 'sanctum')
                 ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                     'quantity' => $quantity,
                     'reason' => "History restock {$quantity}",
                 ])->assertOk();
@@ -595,6 +611,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         foreach ($rows as $row) {
             $this->assertSame([
                 'transaction_type',
+                'allocations',
                 'quantity_before',
                 'quantity_delta',
                 'quantity_after',
@@ -677,6 +694,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $medicine = $this->medicine('RHU History Medicine', 8, null, $this->rhu->id);
         $this->actingAs($this->rhuStaff, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 2,
                 'reason' => 'RHU history verification',
             ])
@@ -803,6 +821,8 @@ class MedicineInventoryWorkflowTest extends TestCase
         $service = app(MedicineStockService::class);
         $operationKey = "health-record:{$record->id}:dispense";
 
+        $this->track($first);
+        $this->track($second);
         DB::transaction(fn () => $service->dispense($request, $record, $items));
 
         $this->assertInventoryError(
@@ -930,6 +950,11 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->assertSame(5, $medicine->fresh()->quantity);
     }
 
+    private function track(Medicine $medicine): void
+    {
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+    }
+
     private function medicine(
         string $name,
         int $quantity,
@@ -995,7 +1020,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
     private function requestFor(User $user): Request
     {
-        $request = Request::create('/api/medicines', 'POST');
+        $request = Request::create('/api/medicines', 'POST', ['expiration_date' => now()->addYear()->toDateString()]);
         $request->setUserResolver(fn (): User => $user);
 
         return $request;

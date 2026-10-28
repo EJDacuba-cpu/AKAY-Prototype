@@ -9,6 +9,11 @@ use Illuminate\Validation\Rule;
 
 class AdjustMedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (filled($this->header('Idempotency-Key'))) $this->merge(['idempotency_key' => $this->header('Idempotency-Key')]);
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
@@ -27,6 +32,10 @@ class AdjustMedicineRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'idempotency_key' => ['nullable', 'uuid'],
+            'expiry_group_id' => ['nullable', 'integer', 'min:1'],
+            'pool' => ['nullable', 'in:available,quarantined'],
+            'target' => ['nullable', 'in:unassigned'],
             'action' => [
                 'required',
                 Rule::in([

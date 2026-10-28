@@ -7,6 +7,7 @@ import {
 
 const validAdd = {
   name: "Paracetamol 500mg",
+  expiryDate: "2099-12-31",
   quantity: "12",
   lowStockThreshold: "10",
 };
@@ -17,6 +18,7 @@ test("add requires name, opening balance, and threshold without mutating the for
 
   assert.deepEqual(errors, {
     name: "Enter a medicine or supply name.",
+    expiryDate: "Enter the manufacturer expiry date.",
     quantity: "Enter an opening balance.",
     lowStockThreshold: "Enter a low stock threshold.",
   });

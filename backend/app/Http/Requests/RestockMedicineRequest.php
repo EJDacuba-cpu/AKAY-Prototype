@@ -35,6 +35,7 @@ class RestockMedicineRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...\App\Services\MedicineExpiryStockService::expiryRules($this->route('medicine')?->item_type ?? 'medicine', $this->boolean('expiry_not_applicable')),
             'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
             'idempotency_key' => ['nullable', 'uuid'],

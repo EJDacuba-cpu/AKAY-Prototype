@@ -25,6 +25,8 @@ const DEFAULT_FORM = {
   unit: "pcs",
   lowStockThreshold: "10",
   expiryDate: "",
+  itemType: "medicine",
+  expiryNotApplicable: false,
   notes: "",
 };
 
@@ -43,7 +45,7 @@ export default function MedicineFormModal({
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const formId = useId();
   const gateRef = useRef(null);
-  if (!gateRef.current) gateRef.current = createSubmitGate();
+  if (gateRef.current == null) gateRef.current = createSubmitGate();
 
   useEffect(() => {
     if (!open) return;
@@ -61,7 +63,9 @@ export default function MedicineFormModal({
         quantity: String(item.quantity ?? ""),
         unit: item.unit || "pcs",
         lowStockThreshold: String(item.lowStockThreshold ?? 10),
-        expiryDate: item.expiryDate || "",
+        expiryDate: "",
+        itemType: item.itemType || "medicine",
+        expiryNotApplicable: false,
         notes: item.notes || "",
       });
     } else {
@@ -102,10 +106,12 @@ export default function MedicineFormModal({
       category: form.category,
       unit: form.unit,
       lowStockThreshold: parseInt(form.lowStockThreshold, 10) || 0,
-      expiryDate: form.expiryDate,
       notes: form.notes.trim(),
     };
     if (mode === "add") {
+      payload.itemType = form.itemType;
+      payload.expiryDate = form.expiryDate;
+      payload.expiryNotApplicable = form.expiryNotApplicable;
       payload.quantity = parseInt(form.quantity, 10) || 0;
     }
 
@@ -196,17 +202,24 @@ export default function MedicineFormModal({
               </select>
             </Field>
 
-            <Field label="Expiry Date">
-              <input
-                type="date"
-                value={form.expiryDate}
-                onChange={(event) =>
-                  updateField("expiryDate", event.target.value)
-                }
-                className={inputClass}
-                disabled={submitting}
-              />
-            </Field>
+            {mode === "add" && <>
+              <Field label="Item Type">
+                <select aria-label="Item Type" value={form.itemType} className={inputClass} disabled={submitting}
+                  onChange={e => setForm(current => ({ ...current, itemType: e.target.value, expiryNotApplicable: false }))}>
+                  <option value="medicine">Medicine</option><option value="health_supply">Health supply</option>
+                </select>
+              </Field>
+              <Field label="Opening Stock Expiry" required error={fieldErrors.expiryDate}>
+                <Input aria-label="Opening Stock Expiry" type="date" value={form.expiryDate} disabled={submitting || form.expiryNotApplicable}
+                  aria-invalid={Boolean(fieldErrors.expiryDate)} onChange={e => updateField("expiryDate", e.target.value)} />
+                {form.itemType === "health_supply" && <label className="mt-2 flex items-start gap-2 text-xs text-neutral-600">
+                  <input type="checkbox" checked={form.expiryNotApplicable} disabled={submitting}
+                    onChange={e => setForm(current => ({ ...current, expiryNotApplicable: e.target.checked, expiryDate: "" }))} />
+                  Not Applicable ? this supply has no manufacturer-defined expiry.
+                </label>}
+              </Field>
+            </>}
+            {mode === "edit" && <p className="text-xs text-neutral-600">Expiry dates belong to received stock groups. View them in Medicine Details.</p>}
 
             {mode === "add" && (
               <Field label="Opening Balance" required error={fieldErrors.quantity}>

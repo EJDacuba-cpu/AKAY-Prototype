@@ -80,7 +80,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->postRecord($this->payload([
             'needs_referral' => true,
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
                 'confirmed_given' => true,
                 'quantity' => 4,
             ]],
@@ -150,7 +150,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $this->postRecord($this->payload([
             'dispensed_medicines' => [
-                ['medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 3],
+                ['allocations' => [['expiry_group_id' => $second->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 3],
                 ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 2],
             ],
         ]), (string) Str::uuid())
@@ -285,7 +285,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $this->postRecord($this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
                 'confirmed_given' => true,
                 'quantity' => 3,
             ]],
@@ -359,7 +359,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $this->postRecord($this->payload([
             'dispensed_medicines' => [[
-                'medicine_id' => $expired->id,
+                'allocations' => [['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $expired->id,
                 'confirmed_given' => true,
                 'quantity' => 1,
             ]],
@@ -501,7 +501,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
     private function medicine(string $name, int $quantity, array $overrides = []): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -511,6 +511,13 @@ class MedicineStockConcurrencyTest extends TestCase
             'created_by' => $this->bhw->id,
             ...$overrides,
         ]);
+        $medicine->expiryGroups()->create([
+            'expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(),
+            'available_quantity' => $quantity,
+            'quarantined_quantity' => 0,
+        ]);
+
+        return $medicine;
     }
 
     private function patient(

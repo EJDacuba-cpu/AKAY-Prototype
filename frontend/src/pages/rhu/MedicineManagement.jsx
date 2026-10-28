@@ -1,3 +1,5 @@
+import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
+import MedicineDetailsModal from "../../components/features/medicine/MedicineDetailsModal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -54,6 +56,7 @@ const DEFAULT_FILTERS = {
 };
 
 export default function MedicineManagement() {
+  useFacilityCalendarDate();
   const queryClient = useQueryClient();
   const currentUser = getCurrentUser();
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -62,6 +65,7 @@ export default function MedicineManagement() {
   const [openMenuId, setOpenMenuId] = useState("");
   const [inventoryAction, setInventoryAction] = useState(null);
   const [historyItem, setHistoryItem] = useState(null);
+  const [detailsItem, setDetailsItem] = useState(null);
   const {
     data: medicineItems = [],
     isLoading,
@@ -69,16 +73,18 @@ export default function MedicineManagement() {
     error: loadError,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.medicineAvailability("rhu"),
+    queryKey: queryKeys.medicineAvailability("rhu", currentUser),
     queryFn: loadMedicineAvailability,
+    refetchInterval: 60_000,
     retry: false,
   });
+  const currentFacilityId = String(currentUser?.ruralHealthUnitId || currentUser?.rural_health_unit_id || currentUser?.rhuId || currentUser?.facilityId || "");
   const items = useMemo(
     () =>
       (Array.isArray(medicineItems) ? medicineItems : []).filter(
-        (item) => item.ruralHealthUnitId,
+        (item) => currentFacilityId && !item.barangayHealthCenterId && String(item.ruralHealthUnitId || "") === currentFacilityId,
       ),
-    [medicineItems],
+    [medicineItems, currentFacilityId],
   );
 
   const filteredItems = useMemo(
@@ -195,7 +201,7 @@ export default function MedicineManagement() {
         : await addRhuMedicine(payload, options);
 
     queryClient.setQueryData(
-      queryKeys.medicineAvailability("rhu"),
+      queryKeys.medicineAvailability("rhu", currentUser),
       Array.isArray(nextItems) ? nextItems : [],
     );
     closeModal();
@@ -207,7 +213,7 @@ export default function MedicineManagement() {
     if (!confirmed) return;
     const nextItems = await deleteRhuMedicine(item.id);
     queryClient.setQueryData(
-      queryKeys.medicineAvailability("rhu"),
+      queryKeys.medicineAvailability("rhu", currentUser),
       Array.isArray(nextItems) ? nextItems : [],
     );
   }
@@ -218,11 +224,11 @@ export default function MedicineManagement() {
         ? await restockMedicine(selectedItem.id, payload, options)
         : await deductMedicine(selectedItem.id, payload, options);
     queryClient.setQueryData(
-      queryKeys.medicineAvailability("rhu"),
+      queryKeys.medicineAvailability("rhu", currentUser),
       Array.isArray(result.items) ? result.items : [],
     );
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.medicineAvailability("rhu"),
+      queryKey: queryKeys.medicineAvailability("rhu", currentUser),
     });
     await queryClient.invalidateQueries({
       queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
@@ -368,7 +374,7 @@ export default function MedicineManagement() {
 
                     <td className="whitespace-nowrap px-4 py-3.5">
                       <p className="text-sm font-semibold text-[#1A1A1A]">
-                        {item.name}
+                        <button type="button" className="text-left underline-offset-4 hover:underline focus-visible:underline" onClick={() => setDetailsItem(item)}>{item.name}</button>
                       </p>
                     </td>
 
@@ -377,7 +383,7 @@ export default function MedicineManagement() {
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      {formatMedicineQuantity(item)}
+                      {formatMedicineQuantity(item)}<span className="block text-xs text-neutral-500">recorded ? {item.stockSummary?.available ?? 0} available</span>
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5">
@@ -385,7 +391,7 @@ export default function MedicineManagement() {
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
-                      {formatDate(item.expiryDate)}
+                      {item.expiryGroups?.length ? `${item.expiryGroups.length} expiry groups` : "No expiry groups recorded"}
                     </td>
 
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
@@ -447,6 +453,7 @@ export default function MedicineManagement() {
         onClose={closeInventoryAction}
         onSubmit={handleInventoryAction}
       />
+      <MedicineDetailsModal key={detailsItem?.id || "closed"} open={Boolean(detailsItem)} item={detailsItem} user={currentUser} onClose={() => setDetailsItem(null)} />
       <MedicineInventoryHistoryModal
         open={Boolean(historyItem)}
         item={historyItem}
@@ -673,18 +680,6 @@ function CategoryBadge({ category }) {
   );
 }
 
-function formatDate(value) {
-  if (!value) return "\u2014";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "\u2014";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function formatDateTime(value) {
   if (!value) return "\u2014";

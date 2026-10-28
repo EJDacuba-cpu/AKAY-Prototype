@@ -118,6 +118,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
         Route::post('/medicines/{medicine}/deduct', [MedicineController::class, 'deduct']);
         Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
+        Route::post('/medicines/{medicine}/group-action', [MedicineController::class, 'groupAction']);
+        Route::post('/medicines/{medicine}/verify-stock', [MedicineController::class, 'verifyStock']);
         Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
         Route::apiResource('medicines', MedicineController::class);
         // DOC-01/DOC-19 - readable by BHW, RHU staff and admin; each sees only

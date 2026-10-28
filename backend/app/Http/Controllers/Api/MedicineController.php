@@ -32,7 +32,7 @@ class MedicineController extends Controller
     {
         $query = Medicine::query()
             ->where('is_active', true)
-            ->with(['ruralHealthUnit', 'barangayHealthCenter']);
+            ->with(['ruralHealthUnit', 'barangayHealthCenter', 'expiryGroups']);
 
         if ($request->user()->isBhc()) {
             $query->where('barangay_health_center_id', $request->user()->barangay_health_center_id ?? 0)
@@ -54,6 +54,7 @@ class MedicineController extends Controller
         $page = max($request->integer('page', 1), 1);
         $perPage = min(max($request->integer('per_page', 25), 1), 100);
         $filters = [
+            'facility_date' => Medicine::facilityCalendarDate(),
             'category' => (string) $request->query('category', ''),
             'availability_status' => (string) $request->query('availability_status', ''),
             'rural_health_unit_id' => (string) $request->query('rural_health_unit_id', ''),
@@ -167,7 +168,7 @@ class MedicineController extends Controller
     {
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
 
-        return response()->json(['data' => $medicine->load(['ruralHealthUnit', 'barangayHealthCenter'])]);
+        return response()->json(['data' => $medicine->load(['ruralHealthUnit', 'barangayHealthCenter', 'expiryGroups'])]);
     }
 
     public function update(MedicineRequest $request, Medicine $medicine, AuditLogger $auditLogger)
@@ -270,7 +271,8 @@ class MedicineController extends Controller
             $data['action'],
             (int) $data['quantity'],
             $data['reason'],
-            $data['direction'] ?? null
+            $data['direction'] ?? null,
+            $data['idempotency_key'] ?? null
         ));
         $this->cache->invalidateMedicine($medicine);
 
@@ -289,6 +291,7 @@ class MedicineController extends Controller
 
         $transactions = $medicine->inventoryTransactions()
             ->select([
+                'id',
                 'transaction_type',
                 'quantity_before',
                 'quantity_delta',
@@ -299,12 +302,13 @@ class MedicineController extends Controller
                 'created_at',
                 'actor_user_id',
             ])
-            ->with(['actor:id,name'])
+            ->with(['actor:id,name', 'allocations'])
             ->latest('created_at')
             ->latest('id')
             ->paginate($perPage)
             ->through(fn (MedicineInventoryTransaction $transaction): array => [
                 'transaction_type' => $transaction->transaction_type,
+                'allocations' => $transaction->allocations,
                 'quantity_before' => $transaction->quantity_before,
                 'quantity_delta' => $transaction->quantity_delta,
                 'quantity_after' => $transaction->quantity_after,
@@ -318,6 +322,42 @@ class MedicineController extends Controller
             ]);
 
         return response()->json(['data' => $transactions]);
+    }
+
+    public function groupAction(Request $request, Medicine $medicine)
+    {
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
+        $data = $request->validate([
+            'action' => ['required', 'in:quarantine,release,quarantine_disposal'],
+            'expiry_group_id' => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        return $this->applyGroupOperation($request, $medicine, $data);
+    }
+
+    public function verifyStock(Request $request, Medicine $medicine)
+    {
+        $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
+        $data = $request->validate([
+            'groups' => ['present', 'array'],
+            'groups.*.id' => ['required', 'integer', 'min:1', 'distinct'],
+            'groups.*.available_quantity' => ['required', 'integer', 'min:0', 'max:2147483647'],
+            'groups.*.quarantined_quantity' => ['required', 'integer', 'min:0', 'max:2147483647'],
+            'unassigned_quantity' => ['required', 'integer', 'min:0', 'max:2147483647'],
+            'snapshot' => ['required', 'string', 'size:64'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        return $this->applyGroupOperation($request, $medicine, [...$data, 'action' => 'verify_stock']);
+    }
+
+    private function applyGroupOperation(Request $request, Medicine $medicine, array $data)
+    {
+        $result = DB::transaction(fn () => $this->medicineStock->groupOperation($request, $medicine, $data));
+        $this->cache->invalidateMedicine($medicine);
+        return response()->json(['data' => ['medicine' => $medicine->fresh()->load('expiryGroups'), 'transaction' => $result]]);
     }
 
     public function destroy(Request $request, Medicine $medicine, AuditLogger $auditLogger)
@@ -368,6 +408,9 @@ class MedicineController extends Controller
     {
         return [
             'id' => $medicine->id,
+            'item_type' => $medicine->item_type,
+            'expiry_groups' => $medicine->expiryGroups,
+            'stock_summary' => $medicine->stock_summary,
             'name' => $medicine->name,
             'category' => $medicine->category,
             'description' => $medicine->description,

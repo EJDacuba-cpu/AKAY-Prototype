@@ -209,6 +209,7 @@ class MedicineCreateIdempotencyTest extends TestCase
             'quantity' => 8,
             'unit' => 'tablets',
             'low_stock_threshold' => 3,
+            'expiration_date' => now()->addYear()->toDateString(),
         ];
     }
 

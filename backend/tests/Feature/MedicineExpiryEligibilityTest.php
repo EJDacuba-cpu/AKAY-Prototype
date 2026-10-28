@@ -55,7 +55,7 @@ class MedicineExpiryEligibilityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_missing_expiry_is_not_treated_as_expired(): void
+    public function test_missing_expiry_remains_unassigned_and_actual_dispense_records_shortage(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-22 00:30:00', 'Asia/Manila'));
         $medicine = $this->medicine(['expiration_date' => null]);
@@ -63,7 +63,8 @@ class MedicineExpiryEligibilityTest extends TestCase
         $this->assertNull($medicine->expirationCalendarDate());
         $this->assertFalse($medicine->isExpiredOnFacilityCalendar());
         $this->assertFalse($medicine->expiresTodayOnFacilityCalendar());
-        $this->assertSame(8, $this->dispense($medicine, 2)->fresh()->quantity);
+        $this->assertSame(10, $this->dispense($medicine, 2)->fresh()->quantity);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -2]);
     }
 
     public function test_expiry_equal_to_manila_today_is_still_dispensable(): void
@@ -86,19 +87,10 @@ class MedicineExpiryEligibilityTest extends TestCase
         $this->assertSame('2026-10-22', $medicine->expirationCalendarDate());
         $this->assertSame('2026-10-23', Medicine::facilityCalendarDate());
 
-        try {
-            $this->dispense($medicine, 1);
-            $this->fail('Expired stock must not be dispensable.');
-        } catch (HttpResponseException $exception) {
-            $this->assertSame(422, $exception->getResponse()->getStatusCode());
-            $this->assertSame(
-                'MEDICINE_NOT_DISPENSABLE',
-                $exception->getResponse()->getData(true)['code'] ?? null
-            );
-        }
-
+        $this->dispense($medicine, 1);
         $this->assertSame(10, $medicine->fresh()->quantity);
-        $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -1]);
+        $this->assertDatabaseCount('health_record_medicines', 1);
     }
 
     public function test_future_expiry_remains_dispensable(): void
@@ -138,7 +130,7 @@ class MedicineExpiryEligibilityTest extends TestCase
 
     private function medicine(array $overrides = []): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => 'Expiry Test Medicine',
             'category' => 'Basic Medicines',
             'quantity' => 10,
@@ -148,5 +140,7 @@ class MedicineExpiryEligibilityTest extends TestCase
             'created_by' => $this->bhw->id,
             ...$overrides,
         ]);
+        if ($medicine->expirationCalendarDate()) $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate(), 'available_quantity' => 10, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 }

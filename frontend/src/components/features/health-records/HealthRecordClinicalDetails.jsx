@@ -1,3 +1,4 @@
+import { groupLabel } from "../../../utils/medicineExpiryGroups";
 import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
 import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "../../../utils/consultationPrograms";
 import {
@@ -388,6 +389,9 @@ export function DispensedMedicinesList({ medicines }) {
             </p>
             <p className="text-slate-600">
               {formatDisplayValue(medicine.remarks, "—")}
+              {(medicine.inventoryAllocations || medicine.inventory_allocations || medicine.allocations || []).map(a => <span className="mt-1 block text-xs" key={a.id || a.expiry_group_id}>{groupLabel(a.expiry_group || a.group || a)} ? {a.quantity ?? Math.abs(a.available_delta || 0)} {medicine.unit}</span>)}
+              {medicine.override_reason && <span className="mt-1 block text-xs">Override: {medicine.override_reason}</span>}
+              {Number(medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity) > 0 && <span className="mt-1 block text-xs text-amber-800">Unallocated actual dispensing: {medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity}</span>}
             </p>
             <p className="text-slate-500">
               {formatLongDate(

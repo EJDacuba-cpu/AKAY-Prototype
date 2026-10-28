@@ -113,6 +113,9 @@ class SecureServerCacheTest extends TestCase
         $this->assertSame($medicine->id, $second->json('data.data.0.id'));
         $this->assertSame([
             'id',
+            'item_type',
+            'expiry_groups',
+            'stock_summary',
             'name',
             'category',
             'description',
@@ -214,6 +217,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson('/api/medicines/'.$rhuMedicine->id.'/restock', [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 2,
                 'reason' => 'Received RHU delivery',
             ])
@@ -274,9 +278,11 @@ class SecureServerCacheTest extends TestCase
         $this->primeMedicineCache($this->bhwB);
 
         $medicineA->update(['quantity' => 1, 'availability_status' => 'Low Stock']);
+        $medicineA->expiryGroups()->update(['available_quantity' => 1]);
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson("/api/medicines/{$medicineA->id}/adjust", [
                 'action' => 'adjustment_out',
+                'expiry_group_id' => $medicineA->expiryGroups()->firstOrFail()->id,
                 'quantity' => 2,
                 'reason' => 'Must use the locked database row',
             ])
@@ -290,6 +296,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson("/api/medicines/{$medicineA->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 2,
                 'reason' => 'Committed cache invalidation test',
             ])
@@ -385,6 +392,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 4,
                 'reason' => 'RHU report cache invalidation',
             ])
@@ -586,7 +594,7 @@ class SecureServerCacheTest extends TestCase
         ?int $bhcId,
         ?int $rhuId
     ): Medicine {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Basic Medicines',
             'quantity' => $quantity,
@@ -597,6 +605,8 @@ class SecureServerCacheTest extends TestCase
             'rural_health_unit_id' => $rhuId,
             'created_by' => $bhcId === null ? $this->rhuStaffA->id : $this->bhwA->id,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function user(

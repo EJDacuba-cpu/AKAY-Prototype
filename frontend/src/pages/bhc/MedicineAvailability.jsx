@@ -1,3 +1,5 @@
+import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
+import MedicineDetailsModal from "../../components/features/medicine/MedicineDetailsModal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,6 +87,7 @@ const FILTER_SELECT =
   "h-8 w-full min-w-0 cursor-pointer appearance-none rounded-full border border-neutral-200 bg-white py-0 pl-3 pr-8 text-[13px] text-ink-800 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
 
 export default function MedicineAvailability() {
+  useFacilityCalendarDate();
   const queryClient = useQueryClient();
   const currentUser = getCurrentUser();
   const canManageBhcInventory = canManageBhcMedicineInventory(currentUser);
@@ -94,12 +97,13 @@ export default function MedicineAvailability() {
   const [openMenuId, setOpenMenuId] = useState("");
   const [inventoryAction, setInventoryAction] = useState(null);
   const [historyItem, setHistoryItem] = useState(null);
+  const [detailsItem, setDetailsItem] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [successNotice, setSuccessNotice] = useState(null);
   const deleteGateRef = useRef(null);
-  if (!deleteGateRef.current) deleteGateRef.current = createSubmitGate();
+  if (deleteGateRef.current == null) deleteGateRef.current = createSubmitGate();
   const {
     data: medicineItems = [],
     isLoading,
@@ -107,14 +111,16 @@ export default function MedicineAvailability() {
     error: loadError,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.medicineAvailability("bhc"),
+    queryKey: queryKeys.medicineAvailability("bhc", currentUser),
     queryFn: loadMedicineAvailability,
+    refetchInterval: 60_000,
     retry: false,
   });
 
+  const currentFacilityId = String(currentUser?.barangayHealthCenterId || currentUser?.barangay_health_center_id || currentUser?.bhcId || currentUser?.facilityId || "");
   const safeMedicineItems = useMemo(
-    () => (Array.isArray(medicineItems) ? medicineItems : []),
-    [medicineItems],
+    () => (Array.isArray(medicineItems) ? medicineItems : []).filter(item => currentFacilityId && !item.ruralHealthUnitId && String(item.barangayHealthCenterId || "") === currentFacilityId),
+    [medicineItems, currentFacilityId],
   );
   const filteredItems = useMemo(
     () => filterMedicineItems(safeMedicineItems, filters),
@@ -199,7 +205,7 @@ export default function MedicineAvailability() {
         : await addBhcMedicine(payload, options);
 
     queryClient.setQueryData(
-      queryKeys.medicineAvailability("bhc"),
+      queryKeys.medicineAvailability("bhc", currentUser),
       Array.isArray(nextItems) ? nextItems : [],
     );
     closeModal();
@@ -231,7 +237,7 @@ export default function MedicineAvailability() {
     try {
       const nextItems = await deleteBhcMedicine(pendingDelete.id);
       queryClient.setQueryData(
-        queryKeys.medicineAvailability("bhc"),
+        queryKeys.medicineAvailability("bhc", currentUser),
         applyInventoryListAfterDelete(
           Array.isArray(nextItems) ? nextItems : safeMedicineItems,
           pendingDelete.id,
@@ -245,7 +251,7 @@ export default function MedicineAvailability() {
       setPendingDelete(null);
     } catch (error) {
       queryClient.setQueryData(
-        queryKeys.medicineAvailability("bhc"),
+        queryKeys.medicineAvailability("bhc", currentUser),
         applyInventoryListAfterDelete(safeMedicineItems, pendingDelete.id, {
           ok: false,
         }),
@@ -264,11 +270,11 @@ export default function MedicineAvailability() {
         ? await restockMedicine(selectedItem.id, payload, options)
         : await deductMedicine(selectedItem.id, payload, options);
     queryClient.setQueryData(
-      queryKeys.medicineAvailability("bhc"),
+      queryKeys.medicineAvailability("bhc", currentUser),
       Array.isArray(result.items) ? result.items : [],
     );
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.medicineAvailability("bhc"),
+      queryKey: queryKeys.medicineAvailability("bhc", currentUser),
     });
     await queryClient.invalidateQueries({
       queryKey: queryKeys.medicineTransactions(currentUser, selectedItem.id),
@@ -357,6 +363,7 @@ export default function MedicineAvailability() {
             editable={canManageBhcInventory}
             openMenuId={openMenuId}
             setOpenMenuId={setOpenMenuId}
+            onDetails={setDetailsItem}
             onEdit={openEditModal}
             onRestock={(item) => openInventoryAction(item, "restock")}
             onDeduct={(item) => openInventoryAction(item, "deduct")}
@@ -386,6 +393,7 @@ export default function MedicineAvailability() {
         onClose={closeInventoryAction}
         onSubmit={handleInventoryAction}
       />
+      <MedicineDetailsModal key={detailsItem?.id || "closed"} open={Boolean(detailsItem)} item={detailsItem} user={currentUser} onClose={() => setDetailsItem(null)} />
       <MedicineInventoryHistoryModal
         open={Boolean(historyItem)}
         item={historyItem}
@@ -439,6 +447,7 @@ function useMinWidth(query) {
 }
 
 function MedicineTable({
+  onDetails,
   items,
   editable,
   openMenuId,
@@ -462,6 +471,7 @@ function MedicineTable({
   }
 
   const rowProps = {
+    onDetails,
     editable,
     openMenuId,
     setOpenMenuId,
@@ -559,6 +569,7 @@ function MedicineInventoryRow({
   openMenuId,
   setOpenMenuId,
   onToggleExpanded,
+  onDetails,
   onEdit,
   onRestock,
   onDeduct,
@@ -581,7 +592,7 @@ function MedicineInventoryRow({
           />
         </td>
         <td className="truncate px-2.5 py-2 align-middle text-sm font-medium tabular-nums text-ink-800 lg:px-3">
-          {formatMedicineQuantity(item)}
+          {formatMedicineQuantity(item)}<span className="block text-xs font-normal text-neutral-500">recorded ? {item.stockSummary?.available ?? 0} available</span>
         </td>
         <td className="px-2.5 py-2 align-middle lg:px-3">
           <StockCell inventory={inventory} />
@@ -614,6 +625,7 @@ function MedicineInventoryRow({
               item={item}
               detailsId={detailsId}
               categoryLabel={categoryLabel}
+              onDetails={() => onDetails(item)}
             />
           </td>
         </tr>
@@ -631,6 +643,7 @@ function MedicineInventoryRecord({
   openMenuId,
   setOpenMenuId,
   onToggleExpanded,
+  onDetails,
   onEdit,
   onRestock,
   onDeduct,
@@ -668,7 +681,7 @@ function MedicineInventoryRecord({
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 pb-3 min-[420px]:grid-cols-3">
         <RecordMetric label="Quantity">
           <span className="block truncate text-sm font-medium tabular-nums text-ink-800">
-            {formatMedicineQuantity(item)}
+            {formatMedicineQuantity(item)}<span className="block text-xs font-normal text-neutral-500">recorded ? {item.stockSummary?.available ?? 0} available</span>
           </span>
         </RecordMetric>
         <RecordMetric label="Stock">
@@ -687,6 +700,7 @@ function MedicineInventoryRecord({
             item={item}
             detailsId={detailsId}
             categoryLabel={categoryLabel}
+            onDetails={() => onDetails(item)}
           />
         </div>
       )}
@@ -735,12 +749,13 @@ function MedicineNameControl({
   );
 }
 
-function MedicineDetails({ item, detailsId, categoryLabel }) {
+function MedicineDetails({ item, detailsId, categoryLabel, onDetails }) {
   return (
     <dl
       id={detailsId}
       className="grid grid-cols-1 gap-x-6 gap-y-2 min-[420px]:grid-cols-2 lg:grid-cols-4"
     >
+      <div><Button size="sm" variant="outline" onClick={onDetails}>View expiry groups</Button></div>
       <DetailField label="Item ID" value={item.id} tabular />
       <DetailField label="Category" value={categoryLabel} />
       <DetailField

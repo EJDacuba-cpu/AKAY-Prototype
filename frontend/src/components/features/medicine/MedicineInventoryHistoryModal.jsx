@@ -1,3 +1,4 @@
+import { groupLabel } from "../../../utils/medicineExpiryGroups";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -27,6 +28,8 @@ const TRANSACTION_LABELS = {
   damaged_disposal: "Damaged Stock Disposal",
   expired_disposal: "Expired Stock Disposal",
   correction: "Inventory Correction",
+  physical_count: "Complete Physical Verification",
+  quarantine: "Quarantined", release: "Released", quarantine_disposal: "Quarantined Stock Disposal",
 };
 
 const SOURCE_LABELS = {
@@ -217,10 +220,12 @@ function TransactionRow({ transaction }) {
       </td>
       <td className="whitespace-nowrap px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-[#0F172A]">
         {formatQuantity(transaction.quantity_after)}
-        {Number(transaction.discrepancy) < 0 && <span className="mt-1 block text-xs text-amber-700">Discrepancy: {transaction.discrepancy}</span>}
+        {Number(transaction.discrepancy) < 0 && <span className="mt-1 block text-xs text-amber-700">Unallocated actual dispensing: {Math.abs(transaction.discrepancy)}</span>}
       </td>
       <td className="max-w-[260px] px-4 py-3.5 text-xs leading-5 text-[#475569]">
         {formatReason(transaction)}
+        {transaction.override_reason && <p>Override: {transaction.override_reason}</p>}
+        {(transaction.allocations || []).map(a => <p key={a.id || a.expiry_group_id} className="mt-1 text-xs">{groupLabel(a.expiry_group || a.group || a)} ? Available {a.available_before} ? {a.available_after}; quarantined {a.quarantined_before} ? {a.quarantined_after}</p>)}
       </td>
       <td className="whitespace-nowrap px-4 py-3.5 text-xs font-medium text-[#334155]">
         {transaction.actor?.name || "\u2014"}

@@ -1,3 +1,6 @@
+import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
+import MedicineAllocationFields from "../../components/features/medicine/MedicineAllocationFields";
+import { allocationIntent } from "../../utils/medicineExpiryGroups";
 import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
 import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
@@ -807,6 +810,7 @@ export default function ConsultationWorkspace() {
   });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const inventoryCalendarDay = useFacilityCalendarDate();
   const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
   const [bhcMedicineInventoryLoading, setBhcMedicineInventoryLoading] =
     useState(false);
@@ -993,7 +997,7 @@ export default function ConsultationWorkspace() {
             item.bhcId ||
             "",
         ).trim();
-        return !currentBhcFacilityId || !itemBhcId || itemBhcId === currentBhcFacilityId;
+        return Boolean(currentBhcFacilityId && itemBhcId && itemBhcId === currentBhcFacilityId);
       });
     }
 
@@ -1032,7 +1036,7 @@ export default function ConsultationWorkspace() {
       active = false;
       window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
     };
-  }, [bhcMedicineInventoryReloadKey, currentBhcFacilityId]);
+  }, [bhcMedicineInventoryReloadKey, currentBhcFacilityId, inventoryCalendarDay]);
 
   useEffect(() => {
     if (currentUserName && !attendingStaff) {
@@ -1492,7 +1496,7 @@ export default function ConsultationWorkspace() {
           pickDraftFields(entry, [
             "vaccineName",
             "customVaccineName",
-            "medicineId", "inventoryQuantity", "confirmedGiven",
+            "medicineId", "inventoryQuantity", "confirmedGiven", "allocations", "override_reason", "overrideReason",
             "dose",
             "dateGiven",
             "weight",
@@ -1559,6 +1563,7 @@ export default function ConsultationWorkspace() {
         "clinicalSummary",
       ]),
       dispensedMedicines: dispensedMedicines.map((item) => ({
+        ...allocationIntent(item),
         medicineId: Number(item.medicineId),
         confirmedGiven: item.confirmedGiven === true,
         quantity: Number(item.quantity),
@@ -1776,6 +1781,7 @@ export default function ConsultationWorkspace() {
         if (selection.warning) warnings.push(selection.warning);
         const medicine = selection.medicine;
         return {
+          ...allocationIntent(payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id)) || selection),
           medicineId: String(selection.medicine_id),
           confirmedGiven: payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id))?.confirmedGiven === true,
           medicineName: medicine?.name || "Unavailable medicine",
@@ -1903,6 +1909,7 @@ export default function ConsultationWorkspace() {
         // against the server before the official save - see the warning
         // raised by handleRecoverLocalDraft.
         medicineSelections: dispensedMedicines.map((item) => ({
+          ...allocationIntent(item),
           medicine_id: item.medicineId,
           quantity: item.quantity,
           remarks: item.remarks || "",
@@ -2609,7 +2616,12 @@ export default function ConsultationWorkspace() {
 
   function updateVaccineInventory(index, field, value) {
     setImmunizationData(current => {
-      const entries = getVaccineEntries(current).map((entry, i) => i === index ? { ...entry, [field]: value } : entry);
+      const entries = getVaccineEntries(current).map((entry, i) => {
+        if (i !== index) return entry;
+        const next = { ...entry, [field]: value };
+        if (field === "medicineId") { delete next.allocations; delete next.override_reason; delete next.overrideReason; }
+        return next;
+      });
       return { ...current, vaccineEntries: entries, vaccinesGiven: entries };
     });
   }
@@ -2965,7 +2977,7 @@ export default function ConsultationWorkspace() {
     );
 
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.medicineAvailability("bhc") }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.medicineAvailability("bhc", currentUser) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() }),
     ]);
     return { savedRecord, savedId };
@@ -4583,7 +4595,7 @@ export default function ConsultationWorkspace() {
             placed directly in the card rather than inside a FormSection. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up" style={stagger(2)}>
-            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label></fieldset>)}</section>}
+            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label><div className="@xl:col-span-3"><MedicineAllocationFields medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))} quantity={entry.inventoryQuantity} value={entry} disabled={!(currentUser?.permissions || []).includes("items.dispense")} onChange={next => { updateVaccineInventory(index, "allocations", next.allocations); updateVaccineInventory(index, "override_reason", next.override_reason); }} /></div></fieldset>)}</section>}
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
               entries={immunizationVaccineEntries}

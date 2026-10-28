@@ -46,4 +46,9 @@ class MedicineInventoryTransaction extends Model
     {
         return $this->belongsTo(User::class, 'actor_user_id');
     }
+
+    public function allocations()
+    {
+        return $this->hasMany(MedicineInventoryAllocation::class, 'transaction_id')->with('expiryGroup');
+    }
 }

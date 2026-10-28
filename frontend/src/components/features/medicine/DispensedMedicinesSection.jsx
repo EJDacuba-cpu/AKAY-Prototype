@@ -1,3 +1,5 @@
+import MedicineAllocationFields from "./MedicineAllocationFields";
+import { allocationIntent, validateManualAllocation } from "../../../utils/medicineExpiryGroups";
 import { AlertCircle, LoaderCircle, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -6,10 +8,8 @@ import {
 import {
   EXPIRY_STATUS,
   STOCK_STATUS,
-  formatFacilityDate,
   getMedicineExpiryStatus,
   getMedicineStockStatus,
-  isExpiredMedicine,
 } from "../../../utils/medicineInventoryStatus";
 
 const EMPTY_DRAFT = {
@@ -33,14 +33,7 @@ function hasDraftValues(draft = {}) {
   );
 }
 
-function formatDate(value) {
-  const label = formatFacilityDate(value);
-  return label === "\u2014" ? "" : label;
-}
 
-function isBlocked(item) {
-  return isExpiredMedicine(item);
-}
 
 function getStatusClasses(status) {
   if (status === EXPIRY_STATUS.EXPIRED || status === STOCK_STATUS.OUT_OF_STOCK) {
@@ -115,7 +108,7 @@ export default function DispensedMedicinesSection({
           const expiryStatus = getMedicineExpiryStatus(inventoryItem);
           const stockStatus = getMedicineStockStatus(inventoryItem);
           if (expiryStatus === EXPIRY_STATUS.EXPIRED) {
-            return `${item.medicineName || inventoryItem.name} is now expired.`;
+            return `${item.medicineName || inventoryItem.name} has no eligible dated stock. Actual dispensing will remain unallocated unless an eligible group is available.`;
           }
           if (stockStatus === STOCK_STATUS.OUT_OF_STOCK) {
             return `${item.medicineName || inventoryItem.name} is now out of stock.`;
@@ -126,7 +119,7 @@ export default function DispensedMedicinesSection({
           if (expiryStatus === EXPIRY_STATUS.NOT_RECORDED) {
             return `${item.medicineName || inventoryItem.name} has no recorded expiry date.`;
           }
-          if (toNumber(item.quantity) > toNumber(inventoryItem.quantity)) {
+          if (toNumber(item.quantity) > toNumber(inventoryItem.stockSummary?.available ?? 0)) {
             return `${item.medicineName || inventoryItem.name} exceeds current available stock.`;
           }
           return "";
@@ -146,6 +139,7 @@ export default function DispensedMedicinesSection({
       key === "category"
         ? { ...draft, category: nextValue, medicineId: "" }
         : { ...draft, [key]: nextValue };
+    if (key === "medicineId" || key === "category") { delete nextDraft.allocations; delete nextDraft.override_reason; }
     setDraft(nextDraft);
     onPendingDraftChange?.(hasDraftValues(nextDraft));
   }
@@ -166,23 +160,28 @@ export default function DispensedMedicinesSection({
       setValidationError("Quantity must be greater than 0.");
       return;
     }
-    if (isExpiredMedicine(medicine)) {
-      setValidationError("This medicine is expired and cannot be dispensed.");
-      return;
+    if (!Number.isInteger(quantity)) { setValidationError("Enter a whole stock-unit quantity."); return; }
+    if (Array.isArray(draft.allocations)) {
+      const issue = validateManualAllocation(medicine, quantity, draft.allocations, draft.override_reason);
+      if (issue) { setValidationError(issue); return; }
     }
 
     const existingItem = value.find(
       (item) => String(item.medicineId) === String(medicine.id),
     );
+    if (existingItem && (Array.isArray(existingItem.allocations) || Array.isArray(draft.allocations))) {
+      setValidationError("Remove the existing entry before changing a manual allocation for this item."); return;
+    }
     const nextQuantity = quantity + toNumber(existingItem?.quantity);
 
 
     const nextItem = {
       medicineId: String(medicine.id),
       confirmedGiven: true,
+      ...allocationIntent(draft),
       medicineName: medicine.name,
       category: medicine.category || "Uncategorized",
-      availableStock: medicine.quantity,
+      availableStock: medicine.stockSummary?.available ?? 0,
       quantity: nextQuantity,
       unit: medicine.unit || "",
       remarks: [existingItem?.remarks, draft.remarks.trim()]
@@ -326,7 +325,7 @@ export default function DispensedMedicinesSection({
                   expiryStatus !== EXPIRY_STATUS.VALID ? expiryStatus : null,
                 ].filter(Boolean);
                 return (
-                  <option key={item.id} value={item.id} disabled={isBlocked(item)}>
+                  <option key={item.id} value={item.id} >
                     {item.name} - {formatMedicineQuantity(item)}
                     {notes.length ? ` - ${notes.join(", ")}` : ""}
                   </option>
@@ -344,7 +343,7 @@ export default function DispensedMedicinesSection({
         {selectedMedicine && (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
             <span>
-              Stock:{" "}
+              Recorded stock:{" "}
               <strong className="text-[#111827]">
                 {formatMedicineQuantity(selectedMedicine)}
               </strong>
@@ -364,10 +363,7 @@ export default function DispensedMedicinesSection({
               {selectedExpiryStatus}
             </span>
             <span>
-              Expiry Date:{" "}
-              <strong className="text-[#111827]">
-                {formatDate(selectedMedicine.expiryDate) || "Not recorded"}
-              </strong>
+              Eligible available: <strong className="text-[#111827]">{selectedMedicine.stockSummary?.available ?? 0} {selectedMedicine.unit}</strong>
             </span>
           </div>
         )}
@@ -412,6 +408,7 @@ export default function DispensedMedicinesSection({
           </button>
         </div>
 
+        {selectedMedicine && <div className="mt-3"><MedicineAllocationFields medicine={selectedMedicine} quantity={draft.quantity} value={draft} disabled={disabled} onChange={next => { setDraft(next); setValidationError(""); onPendingDraftChange?.(true); }} /></div>}
         {(validationError || pendingDraftError) && (
           <p className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-[#B91C1C]">
             {validationError || pendingDraftError}
@@ -464,7 +461,7 @@ export default function DispensedMedicinesSection({
                 <p className="text-[#475569]">
                   {toNumber(item.availableStock).toLocaleString()} available
                 </p>
-                <p className="text-[#64748B]">{item.remarks || "-"}</p>
+                <div className="text-xs text-neutral-600">{item.remarks || "?"}<p>{Array.isArray(item.allocations) ? `Manual groups: ${item.allocations.map(a => `${a.expiry_group_id}: ${a.quantity}`).join(", ") || "none (unallocated)"}` : "Automatic FEFO"}</p>{item.override_reason && <p>{item.override_reason}</p>}</div>
                 <button
                   type="button"
                   onClick={() => removeMedicine(item.medicineId)}

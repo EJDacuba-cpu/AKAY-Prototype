@@ -14,6 +14,7 @@ class Medicine extends Model
 
     protected $fillable = [
         'name',
+        'item_type',
         'category',
         'description',
         'quantity',
@@ -36,6 +37,32 @@ class Medicine extends Model
         'idempotency_key',
         'idempotency_hash',
     ];
+
+    protected $appends = ['stock_summary'];
+
+    public function expiryGroups(): HasMany
+    {
+        return $this->hasMany(MedicineExpiryGroup::class)->orderBy('id');
+    }
+
+    public function getStockSummaryAttribute(): array
+    {
+        $groups = $this->expiryGroups;
+        $available = $expired = $quarantined = 0;
+        foreach ($groups as $group) {
+            $quarantined += $group->quarantined_quantity;
+            if ($group->is_expired) {
+                $expired += $group->available_quantity;
+            } else {
+                $available += $group->available_quantity;
+            }
+        }
+        $snapshot = [$this->quantity, (bool) $this->reconciliation_required, $groups->map(fn ($g) => [$g->id, $g->available_quantity, $g->quarantined_quantity])->all(), $this->inventoryTransactions()->max('id')];
+
+        return ['recorded' => (int) $this->quantity, 'available' => $available, 'quarantined' => $quarantined, 'expired' => $expired,
+            'unassigned' => (int) $this->quantity - $available - $expired - $quarantined,
+            'snapshot' => hash('sha256', json_encode($snapshot, JSON_THROW_ON_ERROR))];
+    }
 
     protected $casts = [
         'expiration_date' => 'date:Y-m-d',

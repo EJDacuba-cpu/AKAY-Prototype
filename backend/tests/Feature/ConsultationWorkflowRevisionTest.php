@@ -51,6 +51,7 @@ class ConsultationWorkflowRevisionTest extends TestCase
     public function test_shortage_records_actual_quantity_once_on_retry(): void
     {
         $medicine = Medicine::create(['name' => 'Test item', 'category' => 'Supplies', 'quantity' => 6, 'unit' => 'pieces', 'availability_status' => 'Available', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'created_by' => $this->worker->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
         $payload = ['dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 10, 'confirmed_given' => true]]];
         $key = (string) Str::uuid();
         $this->save($payload, $key)->assertCreated();
@@ -96,6 +97,7 @@ class ConsultationWorkflowRevisionTest extends TestCase
     public function test_vaccine_administered_posts_once_and_duplicate_manual_entry_is_rejected(): void
     {
         $medicine = Medicine::create(['name' => 'Test vaccine', 'quantity' => 5, 'unit' => 'dose', 'availability_status' => 'Available', 'barangay_health_center_id' => $this->worker->barangay_health_center_id, 'created_by' => $this->worker->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
         $payload = ['immunization_data' => ['vaccineEntries' => [['vaccineName' => 'Test vaccine', 'medicineId' => $medicine->id, 'inventoryQuantity' => 1, 'confirmedGiven' => true]]]];
         $this->save([...$payload, 'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 1, 'confirmed_given' => true]]])->assertUnprocessable()->assertJsonValidationErrors('dispensed_medicines');
         $this->save($payload)->assertCreated();
@@ -128,6 +130,6 @@ class ConsultationWorkflowRevisionTest extends TestCase
         $this->postJson('/api/medicines/'.$medicine->id.'/adjust', ['action' => 'physical_count', 'quantity' => 3, 'reason' => 'Verified physical count'])->assertOk();
         $this->assertSame(3, $medicine->fresh()->quantity);
         $this->assertFalse($medicine->fresh()->reconciliation_required);
-        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -4]);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -10]);
     }
 }

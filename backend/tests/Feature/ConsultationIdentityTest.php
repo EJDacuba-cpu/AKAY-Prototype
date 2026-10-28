@@ -64,6 +64,7 @@ class ConsultationIdentityTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'created_by' => $this->owner->id,
         ]);
+        $this->medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(), 'available_quantity' => 20, 'quarantined_quantity' => 0]);
     }
 
     // ---- Server draft --------------------------------------------------

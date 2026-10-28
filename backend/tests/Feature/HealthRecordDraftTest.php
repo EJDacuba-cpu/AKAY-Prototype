@@ -388,7 +388,8 @@ class HealthRecordDraftTest extends TestCase
     public function test_official_failure_keeps_draft_active_and_successful_commit_consumes_it(): void
     {
         // A shortage no longer blocks finalization; an undispensable item still rolls back.
-        $this->medicineA->update(['quantity' => 3, 'expiration_date' => now()->subDay()->toDateString()]);
+        $this->medicineA->update(['quantity' => 3]);
+        $this->medicineA->expiryGroups()->update(['available_quantity' => 3, 'expiration_date' => now()->subDay()->toDateString()]);
         $publicId = $this->createDraft($this->draftPayload('Official draft', 2));
         $idempotencyKey = (string) Str::uuid();
         $official = [
@@ -396,7 +397,7 @@ class HealthRecordDraftTest extends TestCase
             'category' => 'General Consultation',
             'chief_complaint' => 'Official save from draft.',
             'dispensed_medicines' => [[
-                'medicine_id' => $this->medicineA->id,
+                'allocations' => [['expiry_group_id' => $this->medicineA->expiryGroups()->firstOrFail()->id, 'quantity' => 2]], 'override_reason' => 'Selected actual package', 'medicine_id' => $this->medicineA->id,
                 'confirmed_given' => true,
                 'quantity' => 2,
             ]],
@@ -418,7 +419,7 @@ class HealthRecordDraftTest extends TestCase
         ]);
         $this->assertDatabaseCount('health_records', 0);
 
-        $this->medicineA->update(['expiration_date' => null]);
+        $this->medicineA->expiryGroups()->update(['expiration_date' => now()->addYear()->toDateString()]);
         $this->actingAs($this->bhwA, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $idempotencyKey,
@@ -658,7 +659,7 @@ class HealthRecordDraftTest extends TestCase
 
     private function medicine(string $name, int $quantity, int $bhcId, int $creatorId): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Basic Medicines',
             'quantity' => $quantity,
@@ -668,6 +669,8 @@ class HealthRecordDraftTest extends TestCase
             'barangay_health_center_id' => $bhcId,
             'created_by' => $creatorId,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function user(

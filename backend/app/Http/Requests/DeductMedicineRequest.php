@@ -35,6 +35,7 @@ class DeductMedicineRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'expiry_group_id' => ['required', 'integer', 'min:1'],
             'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
             'idempotency_key' => ['nullable', 'uuid'],

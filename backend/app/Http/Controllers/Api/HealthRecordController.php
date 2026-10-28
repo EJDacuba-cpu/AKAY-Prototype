@@ -397,7 +397,7 @@ class HealthRecordController extends Controller
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
                     if (($entry['confirmedGiven'] ?? false) === true) {
-                        $confirmedItems[] = ['medicine_id' => $entry['medicineId'], 'quantity' => $entry['inventoryQuantity'], 'remarks' => 'Administered: '.($entry['vaccineName'] ?? 'vaccine')];
+                        $confirmedItems[] = ['medicine_id' => $entry['medicineId'], 'quantity' => $entry['inventoryQuantity'], 'remarks' => 'Administered: '.($entry['vaccineName'] ?? 'vaccine'), ...(array_key_exists('allocations', $entry) ? ['allocations' => $entry['allocations'], 'override_reason' => $entry['override_reason'] ?? null] : [])];
                     }
                 }
                 if ($confirmedItems !== []) {
@@ -636,6 +636,10 @@ class HealthRecordController extends Controller
                 'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
                 'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
                 'dispensed_medicines.*.remarks' => ['nullable', 'string'],
+            'dispensed_medicines.*.allocations' => ['sometimes', 'array'],
+            'dispensed_medicines.*.allocations.*.expiry_group_id' => ['required', 'integer', 'min:1'],
+            'dispensed_medicines.*.allocations.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'dispensed_medicines.*.override_reason' => ['nullable', 'string', 'max:1000'],
             ],
             [
                 'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',

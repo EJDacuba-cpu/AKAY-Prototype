@@ -16,6 +16,8 @@ class MedicineCreateIdempotencyService
                 : null,
             'unit' => $payload['unit'] ?? null,
             'expiration_date' => $payload['expiration_date'] ?? null,
+            'item_type' => $payload['item_type'] ?? 'medicine',
+            'expiry_not_applicable' => (bool) ($payload['expiry_not_applicable'] ?? false),
         ];
         ksort($fingerprint, SORT_STRING);
 

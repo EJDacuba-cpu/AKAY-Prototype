@@ -92,6 +92,11 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'barangay_health_center_id' => $this->bhcA->id,
             'created_by' => $this->owner->id,
         ]);
+        $this->medicine->expiryGroups()->create([
+            'expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => 20,
+            'quarantined_quantity' => 0,
+        ]);
     }
 
     public function test_draft_consumption_failure_rolls_back_official_record_inventory_and_audits(): void

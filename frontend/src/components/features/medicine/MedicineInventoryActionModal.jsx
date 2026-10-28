@@ -1,3 +1,5 @@
+import { Input } from "../../ui/input";
+import { expiryGroups, groupLabel, validateReceiptExpiry } from "../../../utils/medicineExpiryGroups";
 import { useEffect, useId, useRef, useState } from "react";
 import { LoaderCircle, PackageMinus, PackagePlus } from "lucide-react";
 import {
@@ -19,6 +21,7 @@ export default function MedicineInventoryActionModal({
   onSubmit,
 }) {
   const [form, setForm] = useState({
+    expiryDate: "", expiryNotApplicable: false, expiry_group_id: "",
     quantity: "",
     reason: "",
   });
@@ -27,13 +30,14 @@ export default function MedicineInventoryActionModal({
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const formId = useId();
   const gateRef = useRef(null);
-  if (!gateRef.current) gateRef.current = createSubmitGate();
+  if (gateRef.current == null) gateRef.current = createSubmitGate();
 
   useEffect(() => {
     if (!open) return;
     gateRef.current.end();
     setForm({
-      quantity: "",
+      expiryDate: "", expiryNotApplicable: false, expiry_group_id: "",
+    quantity: "",
       reason: "",
     });
     setSubmitting(false);
@@ -44,6 +48,7 @@ export default function MedicineInventoryActionModal({
   if (!open || !item) return null;
 
   const isRestock = mode === "restock";
+  const group = expiryGroups(item).find(g => String(g.id) === String(form.expiry_group_id));
   const preview = previewInventoryResult({
     mode: isRestock ? "restock" : "deduct",
     currentQuantity: item.quantity,
@@ -54,8 +59,9 @@ export default function MedicineInventoryActionModal({
   async function handleSubmit(event) {
     event.preventDefault();
     if (!gateRef.current.begin()) return;
-    if (preview.wouldBeNegative) {
-      setError("Resulting stock cannot be negative.");
+    const issue = isRestock ? validateReceiptExpiry({ ...form, itemType: item.itemType }) : !group ? "Select the expiry group to deduct from." : Number(form.quantity) > Number(group.available_quantity) ? "Quantity exceeds this group?s available stock." : "";
+    if (issue || preview.wouldBeNegative) {
+      setError(issue || "Resulting stock cannot be negative.");
       gateRef.current.end();
       return;
     }
@@ -65,6 +71,7 @@ export default function MedicineInventoryActionModal({
       setError("");
       await onSubmit?.(
         {
+          expiryDate: form.expiryDate, expiryNotApplicable: form.expiryNotApplicable, expiry_group_id: form.expiry_group_id,
           quantity: Number(form.quantity),
           reason: form.reason.trim(),
         },
@@ -136,6 +143,21 @@ export default function MedicineInventoryActionModal({
             )}
           </div>
 
+          {isRestock ? <Field label="Received Stock Expiry" required>
+            <Input aria-label="Received Stock Expiry" type="date" disabled={submitting || form.expiryNotApplicable} value={form.expiryDate}
+              onChange={e => setForm(current => ({ ...current, expiryDate: e.target.value }))} />
+            {item.itemType === "health_supply" && <label className="mt-2 flex gap-2 text-xs text-neutral-600">
+              <input type="checkbox" checked={form.expiryNotApplicable} disabled={submitting} onChange={e => setForm(current => ({ ...current, expiryNotApplicable: e.target.checked, expiryDate: "" }))} />
+              Not Applicable ? no manufacturer-defined expiry.
+            </label>}
+          </Field> : <Field label="Expiry Group ? Available Pool" required>
+            <select aria-label="Expiry group to deduct" className={inputClass} value={form.expiry_group_id} required disabled={submitting}
+              onChange={e => setForm(current => ({ ...current, expiry_group_id: e.target.value }))}>
+              <option value="">Select an expiry group</option>
+              {expiryGroups(item).filter(g => Number(g.available_quantity) > 0).map(g => <option key={g.id} value={g.id}>{groupLabel(g)} ? {g.available_quantity} available</option>)}
+            </select>
+            <p className="mt-1 text-xs text-neutral-600">Quarantined stock must use Dispose in Medicine Details.</p>
+          </Field>}
           <Field label={isRestock ? "Quantity to Add" : "Quantity"} required>
             <input
               type="number"

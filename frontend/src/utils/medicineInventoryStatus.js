@@ -85,7 +85,7 @@ export function formatFacilityDate(value) {
 }
 
 export function getMedicineStockStatus(item = {}) {
-  const quantity = parseQuantity(item.quantity);
+  const quantity = parseQuantity(item.stockSummary?.available ?? item.stock_summary?.available ?? item.quantity);
   if (quantity <= 0) return STOCK_STATUS.OUT_OF_STOCK;
 
   const threshold = parseQuantity(
@@ -95,6 +95,15 @@ export function getMedicineStockStatus(item = {}) {
 }
 
 export function getMedicineExpiryStatus(item = {}, now = new Date()) {
+  const groups = item.expiry_groups || item.expiryGroups;
+  if (Array.isArray(groups)) {
+    const dated = groups.filter(g => g.expiration_date && (Number(g.available_quantity) + Number(g.quarantined_quantity || 0)) > 0);
+    const today = getFacilityCalendarDate(now);
+    const eligible = dated.filter(g => String(g.expiration_date).slice(0, 10) >= today).sort((a, b) => String(a.expiration_date).localeCompare(String(b.expiration_date)));
+    if (eligible.length) return getMedicineExpiryStatus({ expiration_date: eligible[0].expiration_date }, now);
+    if (groups.some(g => g.expiry_not_applicable && (Number(g.available_quantity) + Number(g.quarantined_quantity || 0)) > 0)) return EXPIRY_STATUS.VALID;
+    return dated.length ? EXPIRY_STATUS.EXPIRED : EXPIRY_STATUS.NOT_RECORDED;
+  }
   const expiry = toFacilityCalendarDate(item.expiryDate ?? item.expiration_date);
   if (!expiry) return EXPIRY_STATUS.NOT_RECORDED;
 
@@ -112,7 +121,7 @@ export function getMedicineInventoryView(item = {}, now = new Date()) {
     quantity: parseQuantity(item.quantity),
     stockStatus: getMedicineStockStatus(item),
     expiryStatus: getMedicineExpiryStatus(item, now),
-    expiryDateLabel: formatFacilityDate(item.expiryDate ?? item.expiration_date),
+    expiryDateLabel: Array.isArray(item.expiryGroups || item.expiry_groups) ? `${(item.expiryGroups || item.expiry_groups).length} expiry groups` : formatFacilityDate(item.expiryDate ?? item.expiration_date),
     reconciliationRequired: Boolean(item.reconciliationRequired),
   };
 }

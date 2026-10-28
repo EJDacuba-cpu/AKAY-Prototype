@@ -1,3 +1,4 @@
+import { allocationIntent } from "../utils/medicineExpiryGroups";
 import {
   apiRequest,
   getAuthToken,
@@ -114,6 +115,9 @@ function normalizeDispensedMedicines(record = {}) {
   if (!Array.isArray(medicines)) return [];
 
   return medicines.map((item = {}) => ({
+    ...allocationIntent(item),
+    inventoryAllocations: item.inventory_allocations || item.allocations || [],
+    shortage: item.unallocated_shortage || item.shortage || item.unallocated_quantity || 0,
     id: item.id ? String(item.id) : "",
     medicineId: item.medicine_id ? String(item.medicine_id) : item.medicineId || "",
     medicineName:
@@ -853,6 +857,7 @@ function toPayload(record = {}, { partial = false } = {}) {
           medicine_id: item.medicineId || item.medicine_id,
           quantity: item.quantity,
           confirmed_given: item.confirmedGiven === true,
+          ...allocationIntent(item),
           unit: item.unit || null,
           remarks: item.remarks || null,
         }))
@@ -1188,6 +1193,7 @@ export async function dispenseHealthRecordMedicines(recordId, dispensedMedicines
     method: "POST",
     body: {
       dispensed_medicines: dispensedMedicines.map((item) => ({
+        ...allocationIntent(item),
         medicine_id: item.medicineId || item.medicine_id,
         quantity: item.quantity,
         unit: item.unit || null,

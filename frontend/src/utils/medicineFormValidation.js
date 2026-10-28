@@ -1,3 +1,4 @@
+import { validateReceiptExpiry } from "./medicineExpiryGroups.js";
 function wholeNumberOrEmpty(value) {
   if (value === "" || value == null) return { empty: true, number: null };
   const number = Number(value);
@@ -13,6 +14,8 @@ export function validateMedicineForm(form = {}, mode = "add") {
   }
 
   if (mode === "add") {
+    const expiryError = validateReceiptExpiry(form);
+    if (expiryError) errors.expiryDate = expiryError;
     const quantity = wholeNumberOrEmpty(form.quantity);
     if (quantity.empty) {
       errors.quantity = "Enter an opening balance.";
