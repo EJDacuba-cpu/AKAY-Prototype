@@ -35,6 +35,39 @@ class MedicineExpiryGroupsTest extends TestCase
         $this->actingAs($this->staff, 'sanctum');
     }
 
+    public function test_availability_list_exposes_opening_expiry_groups_as_plain_fefo_stock(): void
+    {
+        $id = $this->postJson('/api/medicines', [
+            'name' => 'Paracetamol 95',
+            'quantity' => 95,
+            'unit' => 'tablets',
+            'expiration_date' => '2027-03-01',
+        ])->assertCreated()->json('data.id');
+
+        $assertPayload = function (array $item) use ($id): void {
+            $this->assertSame($id, $item['id']);
+            $this->assertSame(95, $item['quantity']);
+            $this->assertSame(95, $item['stock_summary']['available']);
+            $this->assertSame(95, $item['stock_summary']['recorded']);
+            $this->assertCount(1, $item['expiry_groups']);
+            $this->assertSame('2027-03-01', $item['expiry_groups'][0]['expiration_date']);
+            $this->assertSame(95, $item['expiry_groups'][0]['available_quantity']);
+            $this->assertFalse($item['expiry_groups'][0]['expiry_not_applicable']);
+            $this->assertTrue(array_is_list($item['expiry_groups']));
+        };
+
+        $assertPayload($this->getJson('/api/medicines')->assertOk()->json('data.data.0'));
+        $assertPayload($this->getJson('/api/medicines')->assertOk()->json('data.data.0'));
+        $this->dispense($id, 20);
+        $this->assertSame(75, Medicine::findOrFail($id)->quantity);
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $id,
+            'transaction_type' => 'dispense',
+            'quantity_delta' => -20,
+            'discrepancy' => 0,
+        ]);
+    }
+
     public function test_medicine_requires_expiry_and_only_explicit_supply_can_use_not_applicable(): void
     {
         $this->postJson('/api/medicines', ['name' => 'Missing expiry', 'quantity' => 5])->assertUnprocessable();
@@ -101,6 +134,41 @@ class MedicineExpiryGroupsTest extends TestCase
     private function createMedicine(int $quantity, string $expiry = '2027-01-01'): int
     {
         return $this->postJson('/api/medicines', ['name' => 'Tracked', 'quantity' => $quantity, 'expiration_date' => $expiry])->assertCreated()->json('data.id');
+    }
+
+    public function test_matching_fefo_allocations_do_not_require_a_reason(): void
+    {
+        $id = $this->createMedicine(5, '2026-11-01');
+        $this->postJson("/api/medicines/$id/restock", ['quantity' => 4, 'expiration_date' => '2027-01-01', 'reason' => 'Received'])->assertOk();
+        $groups = $this->getJson("/api/medicines/$id")->json('data.expiry_groups');
+        $this->dispense($id, 6, ['allocations' => [
+            ['expiry_group_id' => $groups[1]['id'], 'quantity' => 1],
+            ['expiry_group_id' => $groups[0]['id'], 'quantity' => 5],
+        ]]);
+        $this->assertSame(3, Medicine::findOrFail($id)->quantity);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[0]['id'], 'available_quantity' => 0]);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[1]['id'], 'available_quantity' => 3]);
+        $tx = DB::table('medicine_inventory_transactions')->where('medicine_id', $id)->where('transaction_type', 'dispense')->first();
+        $this->assertSame(0, (int) $tx->discrepancy);
+        $this->assertNull($tx->reason);
+    }
+
+    public function test_allocations_that_differ_from_fefo_still_require_a_reason(): void
+    {
+        $id = $this->createMedicine(5, '2026-11-01');
+        $this->postJson("/api/medicines/$id/restock", ['quantity' => 4, 'expiration_date' => '2027-01-01', 'reason' => 'Received'])->assertOk();
+        $groups = $this->getJson("/api/medicines/$id")->json('data.expiry_groups');
+        try {
+            $this->dispense($id, 3, ['allocations' => [['expiry_group_id' => $groups[1]['id'], 'quantity' => 3]]]);
+            $this->fail('Expected a reason when the allocation differs from FEFO.');
+        } catch (HttpException $exception) {
+            $this->assertSame(422, $exception->getStatusCode());
+        }
+        $this->assertSame(9, Medicine::findOrFail($id)->quantity);
+        $this->dispense($id, 3, ['allocations' => [['expiry_group_id' => $groups[1]['id'], 'quantity' => 3]], 'override_reason' => 'Selected later expiry']);
+        $this->assertSame(6, Medicine::findOrFail($id)->quantity);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[0]['id'], 'available_quantity' => 5]);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[1]['id'], 'available_quantity' => 1]);
     }
 
     public function test_manual_override_records_selected_group_and_empty_override_keeps_all_stock(): void

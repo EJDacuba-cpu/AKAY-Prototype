@@ -9,6 +9,7 @@ use App\Http\Requests\MedicineRequest;
 use App\Http\Requests\RestockMedicineRequest;
 use App\Models\HealthRecordMedicine;
 use App\Models\Medicine;
+use App\Models\MedicineExpiryGroup;
 use App\Models\MedicineInventoryTransaction;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
@@ -409,7 +410,10 @@ class MedicineController extends Controller
         return [
             'id' => $medicine->id,
             'item_type' => $medicine->item_type,
-            'expiry_groups' => $medicine->expiryGroups,
+            'expiry_groups' => $medicine->expiryGroups
+                ->map(fn (MedicineExpiryGroup $group): array => $group->toAvailabilityArray())
+                ->values()
+                ->all(),
             'stock_summary' => $medicine->stock_summary,
             'name' => $medicine->name,
             'category' => $medicine->category,

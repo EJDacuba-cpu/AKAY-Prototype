@@ -62,7 +62,8 @@ class MedicineStockService
             if ($manual) {
                 $allocations = $item['allocations'];
                 abort_unless(is_array($allocations), 422, 'Invalid group allocations.');
-                abort_if(trim((string) ($item['override_reason'] ?? '')) === '' || mb_strlen((string) ($item['override_reason'] ?? '')) > 1000, 422, 'A manual allocation reason is required (maximum 1000 characters).');
+                $reason = trim((string) ($item['override_reason'] ?? ''));
+                abort_if(mb_strlen($reason) > 1000, 422, 'A manual allocation reason is required (maximum 1000 characters).');
                 $seen = [];
                 $total = 0;
                 $clean = [];
@@ -77,7 +78,7 @@ class MedicineStockService
                 abort_if($total > $quantity, 422, 'Group allocations exceed the actual quantity.');
                 usort($clean, fn ($a, $b) => $a['expiry_group_id'] <=> $b['expiry_group_id']);
                 $normalized[$medicineId]['allocations'] = $clean;
-                $normalized[$medicineId]['override_reason'] = trim($item['override_reason']);
+                $normalized[$medicineId]['override_reason'] = $reason;
             }
 
             $unit = trim((string) ($item['unit'] ?? ''));
@@ -293,6 +294,7 @@ class MedicineStockService
     ): array {
         $medicines = Medicine::query()
             ->whereIn('id', array_column($items, 'medicine_id'))
+            ->with('expiryGroups')
             ->get()
             ->keyBy('id');
 
@@ -302,11 +304,15 @@ class MedicineStockService
             $this->assertDispensable($medicine);
         }
 
-        $payload = array_map(fn (array $item): array => [
-            'medicine_id' => $item['medicine_id'],
-            'quantity' => $item['quantity'],
-            ...(array_key_exists('allocations', $item) ? ['allocations' => $item['allocations'], 'override_reason' => $item['override_reason']] : []),
-        ], $items);
+        $payload = array_map(function (array $item) use ($medicines): array {
+            $item = $this->expiryStock->resolveManualDispenseItem($medicines->get($item['medicine_id'])->expiryGroups, $item);
+
+            return [
+                'medicine_id' => $item['medicine_id'],
+                'quantity' => $item['quantity'],
+                ...(array_key_exists('allocations', $item) ? ['allocations' => $item['allocations'], 'override_reason' => $item['override_reason']] : []),
+            ];
+        }, $items);
 
         try {
             $rows = DB::select(

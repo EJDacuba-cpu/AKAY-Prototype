@@ -58,9 +58,16 @@ export function getFacilityCalendarDate(now = new Date()) {
 }
 
 export function toFacilityCalendarDate(value) {
-  if (value == null) return null;
+  if (value == null || value === "") return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : dayFormatter.format(value);
+  }
+  if (typeof value === "object") {
+    return toFacilityCalendarDate(value.date ?? value.expiration_date ?? value.expiryDate ?? null);
+  }
+
   const raw = String(value).trim();
-  if (!raw) return null;
+  if (!raw || raw === "[object Object]") return null;
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     return raw;
@@ -94,14 +101,36 @@ export function getMedicineStockStatus(item = {}) {
   return quantity <= threshold ? STOCK_STATUS.LOW_STOCK : STOCK_STATUS.IN_STOCK;
 }
 
+function inventoryGroups(item = {}) {
+  const raw = item.expiry_groups ?? item.expiryGroups;
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const rows = Object.values(raw);
+    return rows.length ? rows : null;
+  }
+  return null;
+}
+
 export function getMedicineExpiryStatus(item = {}, now = new Date()) {
-  const groups = item.expiry_groups || item.expiryGroups;
-  if (Array.isArray(groups)) {
-    const dated = groups.filter(g => g.expiration_date && (Number(g.available_quantity) + Number(g.quarantined_quantity || 0)) > 0);
+  const groups = inventoryGroups(item);
+  if (groups) {
     const today = getFacilityCalendarDate(now);
-    const eligible = dated.filter(g => String(g.expiration_date).slice(0, 10) >= today).sort((a, b) => String(a.expiration_date).localeCompare(String(b.expiration_date)));
-    if (eligible.length) return getMedicineExpiryStatus({ expiration_date: eligible[0].expiration_date }, now);
-    if (groups.some(g => g.expiry_not_applicable && (Number(g.available_quantity) + Number(g.quarantined_quantity || 0)) > 0)) return EXPIRY_STATUS.VALID;
+    const withStock = groups.filter((group) => (
+      Number(group.available_quantity ?? group.availableQuantity ?? 0)
+      + Number(group.quarantined_quantity ?? group.quarantinedQuantity ?? 0)
+    ) > 0);
+    const dated = withStock
+      .map((group) => ({
+        ...group,
+        calendar: toFacilityCalendarDate(group.expiration_date ?? group.expirationDate ?? group.expiryDate),
+      }))
+      .filter((group) => group.calendar)
+      .sort((a, b) => a.calendar.localeCompare(b.calendar) || Number(a.id) - Number(b.id));
+    const eligible = dated.filter((group) => group.calendar >= today);
+    if (eligible.length) return getMedicineExpiryStatus({ expiration_date: eligible[0].calendar }, now);
+    if (withStock.some((group) => group.expiry_not_applicable || group.expiryNotApplicable)) {
+      return EXPIRY_STATUS.VALID;
+    }
     return dated.length ? EXPIRY_STATUS.EXPIRED : EXPIRY_STATUS.NOT_RECORDED;
   }
   const expiry = toFacilityCalendarDate(item.expiryDate ?? item.expiration_date);

@@ -89,6 +89,27 @@ test("positive stock is independent of expiry and still reports Low Stock", () =
   assert.equal(low.reconciliationRequired, false);
 });
 
+test("expiry status follows verified group dates, not the item-level fallback", () => {
+  const grouped = item({
+    expiryDate: "",
+    expiry_groups: [{ id: 11, expiration_date: "2027-03-01", available_quantity: 95 }],
+  });
+  assert.equal(getMedicineExpiryStatus(grouped, TODAY), EXPIRY_STATUS.VALID);
+  assert.equal(
+    getMedicineExpiryStatus({
+      expiry_groups: { 11: { id: 11, expirationDate: "2027-03-01T00:00:00.000000Z", availableQuantity: 95 } },
+    }, TODAY),
+    EXPIRY_STATUS.VALID,
+  );
+  assert.equal(
+    getMedicineExpiryStatus({
+      stockSummary: { available: 95 },
+      expiry_groups: [{ id: 11, expiration_date: null, available_quantity: 95 }],
+    }, TODAY),
+    EXPIRY_STATUS.NOT_RECORDED,
+  );
+});
+
 test("reconciliation required stays visible beside stock and expiry", () => {
   const view = getMedicineInventoryView(
     item({ quantity: 12, reconciliationRequired: true, expiryDate: "2026-10-22" }),

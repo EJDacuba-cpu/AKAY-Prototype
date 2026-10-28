@@ -1,16 +1,40 @@
-import { getFacilityCalendarDate, formatFacilityDate } from './medicineInventoryStatus.js';
+import { getFacilityCalendarDate, formatFacilityDate, toFacilityCalendarDate } from './medicineInventoryStatus.js';
+
+function collection(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    const rows = Object.values(value);
+    return rows.length ? rows : null;
+  }
+  return null;
+}
+
+function normalizeGroup(group) {
+  if (!group || typeof group !== 'object' || Array.isArray(group)) return null;
+  const id = Number(group.id);
+  if (!Number.isInteger(id) || id < 1) return null;
+  return {
+    ...group,
+    id,
+    expiration_date: toFacilityCalendarDate(group.expiration_date ?? group.expirationDate ?? group.expiryDate),
+    expiry_not_applicable: Boolean(group.expiry_not_applicable ?? group.expiryNotApplicable),
+    available_quantity: Number(group.available_quantity ?? group.availableQuantity ?? 0),
+    quarantined_quantity: Number(group.quarantined_quantity ?? group.quarantinedQuantity ?? 0),
+  };
+}
 
 export function expiryGroups(item = {}) {
-  const groups = Array.isArray(item?.expiry_groups) ? item.expiry_groups
-    : Array.isArray(item?.expiryGroups) ? item.expiryGroups : [];
-  return groups.filter(group => group !== null && typeof group === 'object' && !Array.isArray(group));
+  const groups = collection(item?.expiry_groups) ?? collection(item?.expiryGroups) ?? [];
+  return groups.map(normalizeGroup).filter(Boolean);
 }
 export const groupLabel = (group = {}) => group.expiry_not_applicable ? 'Not Applicable' : formatFacilityDate(group.expiration_date);
 export function groupExpired(group, now = new Date()) {
-  return !group.expiry_not_applicable && String(group.expiration_date || '').slice(0, 10) < getFacilityCalendarDate(now);
+  if (group?.expiry_not_applicable) return false;
+  const date = toFacilityCalendarDate(group?.expiration_date);
+  return date != null && date < getFacilityCalendarDate(now);
 }
 export function eligibleGroups(item, now = new Date()) {
-  return expiryGroups(item).filter(g => !groupExpired(g, now) && Number(g.available_quantity) > 0)
+  return expiryGroups(item).filter(g => Number(g.available_quantity) > 0 && (g.expiry_not_applicable || (g.expiration_date && !groupExpired(g, now))))
     .sort((a, b) => String(a.expiration_date || '9999').localeCompare(String(b.expiration_date || '9999')) || Number(a.id) - Number(b.id));
 }
 export function previewFefo(item, quantity, now = new Date()) {
@@ -21,7 +45,19 @@ export function previewFefo(item, quantity, now = new Date()) {
     if (amount > 0) allocations.push({ expiry_group_id: Number(group.id), quantity: amount });
     shortage -= amount;
   }
-  return { allocations, shortage };
+  const recordedAvailable = Number(item?.stockSummary?.available ?? item?.stock_summary?.available ?? 0);
+  return {
+    allocations,
+    shortage,
+    recordIssue: shortage > 0 && allocations.length === 0 && recordedAvailable > 0,
+  };
+}
+export function allocationsMatch(left, right) {
+  const normalize = (rows = []) => (Array.isArray(rows) ? rows : [])
+    .map((row) => ({ expiry_group_id: Number(row.expiry_group_id), quantity: Number(row.quantity) }))
+    .filter((row) => row.expiry_group_id > 0 && row.quantity > 0)
+    .sort((a, b) => a.expiry_group_id - b.expiry_group_id);
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
 }
 export function allocationIntent(item = {}) {
   if (!Array.isArray(item.allocations)) return {};
@@ -36,7 +72,6 @@ export function validateReceiptExpiry(form, now = new Date()) {
   return date < getFacilityCalendarDate(now) ? 'Received stock cannot already be expired.' : '';
 }
 export function validateManualAllocation(item, quantity, allocations, reason, now = new Date()) {
-  if (!String(reason || '').trim()) return 'Enter a reason for this stock choice.';
   const groups = eligibleGroups(item, now);
   const seen = new Set();
   let total = 0;
@@ -45,5 +80,7 @@ export function validateManualAllocation(item, quantity, allocations, reason, no
     if (!group || seen.has(Number(a.expiry_group_id)) || !Number.isInteger(Number(a.quantity)) || Number(a.quantity) <= 0 || Number(a.quantity) > Number(group.available_quantity)) return 'Enter a quantity from available dated stock only.';
     seen.add(Number(a.expiry_group_id)); total += Number(a.quantity);
   }
-  return total > Number(quantity) ? 'Quantities by expiry date add up to more than the amount given.' : '';
+  if (total > Number(quantity)) return 'Quantities by expiry date add up to more than the amount given.';
+  if (allocationsMatch(allocations, previewFefo(item, quantity, now).allocations)) return '';
+  return String(reason || '').trim() ? '' : 'Enter a reason for this stock choice.';
 }

@@ -139,11 +139,67 @@ class MedicineExpiryStockService
         return $this->post($medicine, $user, $type, $before, $after, $delta, 0, $reason, $key, $changes);
     }
 
+    public function automaticAllocations($groups, int $quantity): array
+    {
+        $remaining = max(0, $quantity);
+        $allocations = [];
+        $eligible = collect($groups)
+            ->filter(fn ($group) => $group->isEligibleToDispense())
+            ->sortBy(fn ($group) => ($group->expiration_date?->toDateString() ?? '9999-12-31').sprintf('%020d', $group->id));
+        foreach ($eligible as $group) {
+            if ($remaining === 0) {
+                break;
+            }
+            $amount = min($remaining, (int) $group->available_quantity);
+            if ($amount > 0) {
+                $allocations[] = ['expiry_group_id' => (int) $group->id, 'quantity' => $amount];
+                $remaining -= $amount;
+            }
+        }
+
+        return $allocations;
+    }
+
+    public static function allocationsMatch(array $left, array $right): bool
+    {
+        $normalize = static function (array $rows): array {
+            $clean = [];
+            foreach ($rows as $row) {
+                $id = (int) ($row['expiry_group_id'] ?? 0);
+                $quantity = (int) ($row['quantity'] ?? 0);
+                if ($id > 0 && $quantity > 0) {
+                    $clean[$id] = $quantity;
+                }
+            }
+            ksort($clean);
+
+            return $clean;
+        };
+
+        return $normalize($left) === $normalize($right);
+    }
+
+    public function resolveManualDispenseItem($groups, array $item): array
+    {
+        if (! array_key_exists('allocations', $item)) {
+            return $item;
+        }
+        if (self::allocationsMatch($item['allocations'], $this->automaticAllocations($groups, (int) $item['quantity']))) {
+            unset($item['allocations'], $item['override_reason']);
+
+            return $item;
+        }
+        abort_if(trim((string) ($item['override_reason'] ?? '')) === '', 422, 'A manual allocation reason is required (maximum 1000 characters).');
+
+        return $item;
+    }
+
     public function sqliteDispense(User $user, Medicine $medicine, array $item, string $key, int $recordId): array
     {
         $this->assertNewKey($medicine, $key);
         $groups = $medicine->expiryGroups()->lockForUpdate()->get()->keyBy('id');
-        $eligible = $groups->filter(fn ($g) => ! $g->is_expired && $g->available_quantity > 0)->sortBy(fn ($g) => ($g->expiration_date?->toDateString() ?? '9999-12-31').sprintf('%020d', $g->id));
+        $item = $this->resolveManualDispenseItem($groups, $item);
+        $eligible = $groups->filter(fn ($g) => $g->isEligibleToDispense())->sortBy(fn ($g) => ($g->expiration_date?->toDateString() ?? '9999-12-31').sprintf('%020d', $g->id));
         $remaining = $item['quantity'];
         $changes = [];
         $manual = array_key_exists('allocations', $item);

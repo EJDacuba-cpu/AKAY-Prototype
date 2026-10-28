@@ -1,7 +1,7 @@
 import useFacilityCalendarDate from "../../../hooks/useFacilityCalendarDate";
 import { useId } from "react";
 import { Input } from "../../ui/input";
-import { eligibleGroups, groupLabel, previewFefo } from "../../../utils/medicineExpiryGroups";
+import { allocationsMatch, eligibleGroups, groupLabel, previewFefo } from "../../../utils/medicineExpiryGroups";
 
 function fieldClass(invalid) {
   return invalid
@@ -18,12 +18,14 @@ export default function MedicineAllocationFields({
   if (!medicine) return null;
   const groups = eligibleGroups(medicine);
   const manual = Array.isArray(value.allocations);
+  const automatic = previewFefo(medicine, quantity);
   const preview = manual
     ? {
         allocations: value.allocations,
         shortage: Math.max(0, Number(quantity || 0) - value.allocations.reduce((sum, a) => sum + Number(a.quantity || 0), 0)),
       }
-    : previewFefo(medicine, quantity);
+    : automatic;
+  const reasonRequired = manual && !allocationsMatch(value.allocations, automatic.allocations);
   const reasonError = Boolean(error && /reason|explain why/i.test(error));
   const allocationError = Boolean(error && !reasonError);
   function setGroup(groupId, raw) {
@@ -81,7 +83,7 @@ export default function MedicineAllocationFields({
           ))}
           {!groups.length && <p className="text-xs text-neutral-600">No dated stock is available to dispense.</p>}
           <label htmlFor={`${id}-reason`} className="block text-xs font-semibold text-neutral-600">
-            Reason for this stock choice <span className="text-alert-700">*</span>
+            Reason for this stock choice {reasonRequired && <span className="text-alert-700">*</span>}
             <Input
               id={`${id}-reason`}
               className={`mt-1 h-9 shadow-none ${fieldClass(reasonError)}`}
@@ -102,11 +104,15 @@ export default function MedicineAllocationFields({
           ))}
         </ul>
       )}
-      {preview.shortage > 0 && (
+      {preview.recordIssue ? (
+        <p role="status" className="text-xs font-medium leading-relaxed text-alert-700">
+          Recorded stock is available, but no dated expiry group can be allocated. Refresh inventory or verify expiry dates. This is not a confirmed physical shortage.
+        </p>
+      ) : preview.shortage > 0 ? (
         <p role="status" className="text-xs font-medium leading-relaxed text-alert-700">
           Shortage: {preview.shortage} {medicine.unit} cannot come from recorded stock. Confirm only what was actually given. This will be recorded for later verification.
         </p>
-      )}
+      ) : null}
       {error && (
         <p id={reasonError ? `${id}-reason-error` : undefined} role="alert" className="text-xs font-medium text-alert-700">
           {error}
