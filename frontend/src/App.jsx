@@ -60,6 +60,7 @@ import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
 import MedicineAvailability from "./pages/bhc/MedicineAvailability";
+import MedicineDetailsPage from "./pages/shared/MedicineDetailsPage";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
 import { EditPatientRegistration } from "./pages/bhc/AddPatient";
@@ -630,6 +631,10 @@ export default function App() {
         }
       />
       <Route
+        path="/bhc/medicine-availability/:medicineId"
+        element={<ProtectedPage allowedRole="bhc" module="inventory"><MedicineDetailsPage role="bhc" /></ProtectedPage>}
+      />
+      <Route
         path="/bhc/reports"
         element={
           <ProtectedPage allowedRole="bhc" module="reports">
@@ -791,6 +796,8 @@ export default function App() {
           </ProtectedPage>
         }
       />
+
+      <Route path="/rhu/medicine-management/:medicineId" element={<ProtectedPage allowedRole="rhu" module="inventory"><MedicineDetailsPage role="rhu" /></ProtectedPage>} />
 
       {/* NEW: Dynamic route with trackingId param */}
       <Route

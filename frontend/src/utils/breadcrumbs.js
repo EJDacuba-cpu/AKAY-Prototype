@@ -9,6 +9,7 @@ const PARENT_TRAILS = [
   ["/admin/doctors/add", [{ label: "Users", path: "/admin/users" }]],
 
   // Barangay Health Center
+  ["/bhc/medicine-availability/:medicineId", [{ label: "Health Commodities", path: "/bhc/medicine-availability" }]],
   ["/bhc/patients/add", [{ label: "Patients", path: "/bhc/patients" }]],
   ["/bhc/patients/:patientId", [{ label: "Patients", path: "/bhc/patients" }]],
   [
@@ -52,6 +53,7 @@ const PARENT_TRAILS = [
     "/rhu/medicine-management/add",
     [{ label: "Medicine Management", path: "/rhu/medicine-management" }],
   ],
+  ["/rhu/medicine-management/:medicineId", [{ label: "Health Commodities", path: "/rhu/medicine-management" }]],
 ];
 
 // A consultation opened for a specific patient lives under that patient, even

@@ -15,6 +15,14 @@ test("detail routes get their parent list", () => {
   ]);
 });
 
+test('medicine details in both facilities link back to Health Commodities', () => {
+  for (const [role, path] of [['bhc', 'medicine-availability'], ['rhu', 'medicine-management']]) {
+    assert.deepEqual(getBreadcrumbs(`/${role}/${path}/7`, 'Medicine Details'), [
+      { label: 'Health Commodities', path: `/${role}/${path}` }, { label: 'Medicine Details' },
+    ]);
+  }
+});
+
 test("static /add route resolves to its own parent", () => {
   assert.deepEqual(getBreadcrumbs("/bhc/patients/add", "Add Patient"), [
     { label: "Patients", path: "/bhc/patients" },

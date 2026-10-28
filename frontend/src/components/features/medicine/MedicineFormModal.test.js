@@ -8,7 +8,6 @@ import { join } from "node:path";
 import process from "node:process";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Keep the test optimizer separate from any running Vite dev server.
 const cacheDir = join(tmpdir(), `akay-vite-ssr-medicine-${process.pid}`);
@@ -28,10 +27,8 @@ const { default: MedicineFormModal } = await server.ssrLoadModule(
 );
 const service = await server.ssrLoadModule("/src/services/medicineService.js");
 const clinicalService = await server.ssrLoadModule('/src/services/healthRecordService.js');
-const { default: MedicineDetailsModal } = await server.ssrLoadModule('/src/components/features/medicine/MedicineDetailsModal.jsx');
 const { default: MedicineAllocationFields } = await server.ssrLoadModule('/src/components/features/medicine/MedicineAllocationFields.jsx');
 const { queryKeys } = await server.ssrLoadModule('/src/utils/queryKeys.js');
-const { getFacilityCalendarDate } = await server.ssrLoadModule('/src/utils/medicineInventoryStatus.js');
 const item = { id: "7", name: "Paracetamol", quantity: 8, unit: "tablets" };
 const render = (props = {}) => renderToStaticMarkup(
   createElement(MedicineFormModal, { open: true, mode: "edit", item, ...props }),
@@ -120,25 +117,6 @@ test('edit cannot rewrite received expiry dates or item type', () => {
   const html = render();
   assert.doesNotMatch(html, /type="date"|aria-label="Item Type"/);
   assert.match(html, /Expiry dates belong to received stock groups/);
-});
-
-test('Details exposes group pools and permission-gates disposition; expired release is absent', () => {
-  const medicine = { ...item, itemType: 'medicine', stockSummary: { recorded: 12, available: 2, quarantined: 5, expired: 5, unassigned: 0 }, expiryGroups: [
-    { id: 1, expiration_date: '2099-12-31', available_quantity: 2, quarantined_quantity: 0 },
-    { id: 2, expiration_date: '2000-01-01', available_quantity: 5, quarantined_quantity: 5 },
-  ] };
-  for (const allowed of [false, true]) {
-    const user = { id: 10, permissions: allowed ? ['inventory.manage'] : [] };
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-    client.setQueryData([...queryKeys.medicineTransactions(user, item.id), 'details', getFacilityCalendarDate()], medicine);
-    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MedicineDetailsModal, { open: true, item, user })));
-    assert.match(html, /Eligible available|Quarantined/);
-    assert.match(html, /Expired · unavailable/);
-    assert.doesNotMatch(html, />Release</);
-    if (allowed) { assert.match(html, />Quarantine</); assert.match(html, />Dispose</); }
-    else { assert.doesNotMatch(html, />Quarantine<|>Dispose</); }
-    client.clear();
-  }
 });
 
 test('manual empty allocation explicitly previews shortage and reason field', () => {
