@@ -1,9 +1,10 @@
-import { ReportingCategories, ClinicalOutcomes, FollowUpRecordInformation } from "./RecordDetailsSections";
-import { recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
+import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
+import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
+import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "../../ui/button";
-import { RefreshingIndicator, ReferralIndicatorBadge } from "../../common";
+import { RefreshingIndicator } from "../../common";
 import { ProfileSection } from "../patients/profile/ProfileSection";
 import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
 import {
@@ -201,9 +202,8 @@ export default function BhcHealthRecordWorkspace({
   practitioner,
   isFollowUpVisit = false,
   parentRecordId = "",
-  hasLinkedReferral = false,
-  referralStatus,
   isUpdating = false,
+  bodyFindingsHistory = null,
   onBack,
   onPrint,
 }) {
@@ -250,11 +250,13 @@ export default function BhcHealthRecordWorkspace({
   const treatmentAction = getRecordInitialActions(record, "");
   const treatmentNotes = getRecordTreatmentNotes(record, "");
   const medicines = getDispensedMedicines(record);
-  const presentation = recordDetailsPresentation(record, linkedReferral);
+  const { concerns } = recordDetailsPresentation(record, linkedReferral);
   const draftNotes = earlierDraftNotes(record);
   const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
+  const bodyFindings = thisRecordBodyFindingHistory(record);
+  const hasBodyFindings = bodyFindings.originals.length > 0 || bodyFindings.events.length > 0;
 
   return (
     <div className="space-y-4">
@@ -268,9 +270,6 @@ export default function BhcHealthRecordWorkspace({
         practitioner={practitioner}
         isFollowUpVisit={isFollowUpVisit}
         parentRecordId={parentRecordId}
-        nextActionLabel={presentation.nextAction}
-        hasLinkedReferral={hasLinkedReferral}
-        referralStatus={referralStatus}
         isUpdating={isUpdating}
         onBack={onBack}
         onPrint={onPrint}
@@ -283,22 +282,27 @@ export default function BhcHealthRecordWorkspace({
         {!vitalItems.length && <EmptyNote>No vital measurements recorded.</EmptyNote>}
       </ProfileSection>
 
-      {!tbRecord && (
+      {(!tbRecord || hasBodyFindings) && (
         <ProfileSection id="clinical-assessment" title="Clinical assessment">
           <div className="space-y-5">
-            <Narrative label="Chief complaint" value={chiefComplaint} />
-            <Narrative
-              label={
-                isFollowUp
-                  ? "Follow-up findings / changes since previous visit"
-                  : "Signs & symptoms / summary of present illness"
-              }
-              value={summary}
-            />
-            <Narrative label="Physical exam" value={physicalExam} />
-            {showsDiagnosisRow(record, diagnosis) && (
-              <Narrative label="Diagnosis / assessment" value={diagnosis} />
+            {!tbRecord && (
+              <>
+                <Narrative label="Chief complaint" value={chiefComplaint} />
+                <Narrative
+                  label={
+                    isFollowUp
+                      ? "Follow-up findings / changes since previous visit"
+                      : "History of present illness / signs & symptoms"
+                  }
+                  value={summary}
+                />
+                <Narrative label="Physical exam" value={physicalExam} />
+                {showsDiagnosisRow(record, diagnosis) && diagnosisTextDistinctFromConcerns(diagnosis, concerns) && (
+                  <Narrative label="Assessment" value={diagnosis} />
+                )}
+              </>
             )}
+            {hasBodyFindings ? (bodyFindingsHistory || <BodyFindingHistoryView {...bodyFindings} />) : null}
           </div>
         </ProfileSection>
       )}
@@ -326,8 +330,17 @@ export default function BhcHealthRecordWorkspace({
         </ProfileSection>
       )}
 
+      <ProfileSection id="health-concerns" title="Health concerns & care outcomes">
+        <HealthConcernsAndCareOutcomes
+          record={record}
+          linkedReferral={linkedReferral}
+          monitoringNotes={monitoringNotes}
+          nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")}
+        />
+      </ProfileSection>
+
       {!tbRecord && (
-        <ProfileSection id="treatment" title="Treatment">
+        <ProfileSection id="treatment" title="Treatment & dispensed medicines">
           <div className="space-y-5">
             <Narrative
               label="Treatment / action taken"
@@ -370,27 +383,27 @@ export default function BhcHealthRecordWorkspace({
                 />
               </>
             )}
+            <div>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                Dispensed medicines
+              </p>
+              <MedicinesTable medicines={medicines} />
+            </div>
           </div>
         </ProfileSection>
       )}
 
-      <ProfileSection id="medicines" title="Dispensed medicines">
-        <MedicinesTable medicines={medicines} />
-      </ProfileSection>
+      {tbRecord && (
+        <ProfileSection id="medicines" title="Treatment & dispensed medicines">
+          <MedicinesTable medicines={medicines} />
+        </ProfileSection>
+      )}
 
-      <ProfileSection id="clinical-outcomes" title="Clinical outcomes">
-        <ClinicalOutcomes record={record} />
-      </ProfileSection>
-      <ProfileSection id="reporting" title="Reporting">
-        <ReportingCategories record={record} />
-      </ProfileSection>
       {(draftNotes || continuedNotes) && <ProfileSection id="earlier-draft-notes" title="Earlier draft notes">
         {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
         {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
       </ProfileSection>}
-      <FollowUpReferralSection record={record} linkedReferral={linkedReferral} monitoringNotes={monitoringNotes}
-        nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")} />
-
+      <RelatedConsultationSection record={record} linkedReferral={linkedReferral} />
     </div>
   );
 }
@@ -405,9 +418,6 @@ function VisitHeader({
   practitioner,
   isFollowUpVisit,
   parentRecordId,
-  nextActionLabel,
-  hasLinkedReferral,
-  referralStatus,
   isUpdating,
   onBack,
   onPrint,
@@ -425,9 +435,6 @@ function VisitHeader({
             <h1 className="text-2xl font-bold tracking-tight text-neutral-900">
               {title}
             </h1>
-            {hasLinkedReferral && (
-              <ReferralIndicatorBadge hasReferral status={referralStatus} />
-            )}
             {isUpdating && (
               <RefreshingIndicator label="Updating health record details..." />
             )}
@@ -454,8 +461,6 @@ function VisitHeader({
         <Fact label="Date of visit" value={displayDate} />
         <Fact label="Time of visit" value={displayTime} />
         <Fact label="Recorded By" value={practitioner} />
-        <Fact label="Visit type" value={isFollowUpVisit ? "Follow-up Visit" : "Initial Consultation"} />
-        <Fact label="Current next action" value={nextActionLabel} />
       </dl>
     </section>
   );
@@ -822,29 +827,11 @@ function MedicinesTable({ medicines = [] }) {
   );
 }
 
-function FollowUpReferralSection({ record, linkedReferral, monitoringNotes, nextAppointmentDate }) {
-  const { schedules } = recordDetailsPresentation(record, linkedReferral);
-  const savedReferral = {
-    ...linkedReferral,
-    status: linkedReferral?.status || linkedReferral?.referralStatus || record.referralStatus || record.referral_status,
-    trackingId: linkedReferral?.trackingId || linkedReferral?.tracking_id || record.linkedTrackingId || record.linked_tracking_id || record.referralTrackingId || record.referral_tracking_id,
-    reasonForReferral: linkedReferral?.reasonForReferral || linkedReferral?.reason_for_referral || record.referralReason || record.referral_reason,
-  };
-  const referralFields = [
-    { label: "Referral status", value: savedReferral.status || savedReferral.referralStatus },
-    { label: "Tracking ID", value: savedReferral.trackingId || savedReferral.tracking_id },
-    { label: "Urgency", value: savedReferral.urgencyLevel || savedReferral.urgency_level },
-    { label: "Receiving facility", value: savedReferral.receivingFacility || savedReferral.ruralHealthUnit?.name || savedReferral.rural_health_unit?.name },
-  ].filter((item) => item.value);
-  const reason = savedReferral.reasonForReferral || savedReferral.reason_for_referral;
-  return <ProfileSection id="follow-up-referral" title="Follow-up & referral information">
-    <div className="space-y-4">
-      <FactGrid items={referralFields} />
-      {reason && <Narrative label="Reason for referral" value={reason} />}
-      {!schedules.length && nextAppointmentDate && <FactGrid items={[{ label: "Recorded next appointment", value: nextAppointmentDate }]} />}
-      {monitoringNotes && <Narrative label="Monitoring notes" value={monitoringNotes} />}
-      <FollowUpRecordInformation record={record} linkedReferral={linkedReferral} />
-    </div>
+function RelatedConsultationSection({ record, linkedReferral }) {
+  const { related } = recordDetailsPresentation(record, linkedReferral);
+  if (!related.length) return null;
+  return <ProfileSection id="related-consultation-history" title="Related consultation history">
+    <RelatedConsultationHistory record={record} linkedReferral={linkedReferral} />
   </ProfileSection>;
 }
 

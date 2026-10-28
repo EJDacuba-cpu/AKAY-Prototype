@@ -73,7 +73,7 @@ const { getRecordPractitioner } = await server.ssrLoadModule(
   "/src/components/features/health-records/recordDetailsHelpers.js",
 );
 
-test("details reader uses scoped task states and explicit related IDs without mutating records", () => {
+test("details reader uses stored follow-up dates and explicit related IDs without mutating records", () => {
   const record = {
     id: 11, parent_health_record_id: 10,
     followUpDate: "2020-01-01", followUpStatus: "Follow-up Required",
@@ -87,9 +87,12 @@ test("details reader uses scoped task states and explicit related IDs without mu
   const details = recordDetailsPresentation(record);
   assert.equal(details.nextAction, "No active follow-up task");
   assert.deepEqual(details.related.map((row) => row.id), [10, 11]);
-  assert.equal(details.schedules.length, 2);
-  assert.equal(details.schedules[0].completedRecordId, 12);
-  assert.deepEqual(details.legacy, []);
+  assert.equal(details.schedules.length, 1);
+  assert.equal(details.schedules[0].date, "2020-01-01");
+  assert.equal(details.schedules[0].sourceEntryId, null);
+  assert.equal(details.visitFollowUps.length, 1);
+  assert.ok(details.legacy.some((item) => item.value === "Follow-up Required"));
+  assert.ok(!details.legacy.some((item) => item.value === "2020-01-01"));
   assert.equal(JSON.stringify(record), before);
 });
 
@@ -121,8 +124,49 @@ test("older care plans retain historical fields without becoming current clinica
     followUpDate: "2020-01-01", diagnoses: [{ id: "old", name: "Old concern", carePlan: "monitor" }],
   });
   assert.ok(details.legacy.some((item) => item.value === "Historical condition"));
-  assert.ok(details.legacy.some((item) => item.value === "2020-01-01"));
-  assert.equal(details.nextAction, "Not recorded");
+  assert.equal(details.schedules[0].date, "2020-01-01");
+  assert.ok(!details.legacy.some((item) => item.value === "2020-01-01"));
+  assert.equal(details.nextAction, "Follow-up recorded · task status unavailable");
+  assert.equal(details.concerns[0].name, "Old concern");
+  assert.equal(details.concerns[0].reporting, "");
+  assert.equal(details.mapsReportingToConcerns, false);
+});
+
+test("mixed concerns keep per-entry reporting and outcomes without inferring follow-up", () => {
+  const details = recordDetailsPresentation({
+    id: 10,
+    diagnoses: [
+      { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+      { id: "b", name: "Fever", reportIn: ["notifiable", "surveillance"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever" } },
+    ],
+    followUpEpisode: { tasks: [{ id: 44, healthRecordId: 10, dueDate: "2026-11-01", state: "pending" }] },
+  });
+  assert.equal(details.mapsReportingToConcerns, true);
+  assert.deepEqual(details.unmappedReporting, []);
+  assert.equal(details.concerns[0].outcome, "Managed at BHC");
+  assert.equal(details.concerns[0].reporting, "Morbidity");
+  assert.equal(details.concerns[1].outcome, "Refer to RHU");
+  assert.equal(details.concerns[1].reporting, "Notifiable · Surveillance");
+  assert.equal(details.concerns[1].referralDetails, "Urgent · High fever");
+  assert.equal(details.concerns[1].referral.urgency, "Urgent");
+  assert.equal(details.concerns[0].followUps.length, 0);
+  assert.equal(details.schedules.length, 0);
+  assert.ok(!details.concerns.some((item) => String(item.outcome + item.reporting).includes("2026-11-01")));
+});
+
+test("legacy visit-level reporting stays unmapped when concerns have no reportIn", () => {
+  const details = recordDetailsPresentation({
+    id: 9,
+    diagnosis: "Asthma",
+    morbidityReportingStatus: "morbidity",
+    hfmdSurveillance: true,
+    diagnoses: [{ id: "c", name: "Cough", clinicalOutcome: "managed_at_bhc" }],
+  });
+  assert.equal(details.mapsReportingToConcerns, false);
+  assert.equal(details.concerns[0].name, "Cough");
+  assert.equal(details.concerns[0].reporting, "");
+  assert.ok(details.unmappedReporting.some((group) => group.label === "Morbidity" && group.names.includes("Asthma")));
+  assert.ok(details.unmappedReporting.some((group) => group.label === "Surveillance" && group.names.includes("Hand, Foot and Mouth Disease")));
 });
 
 for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
@@ -137,15 +181,16 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
     const html = wrap(createElement(View, { record, serviceType: "General Consultation", practitioner: "Ana Santos" }));
     assert.match(html, /Recorded By/);
     assert.doesNotMatch(html, /Record status|Current condition|Visit chain|Morbidity \/ notifiable reports/);
-    assert.match(html, /November 15, 2026/);
-    assert.match(html, /Rescheduled/);
-    assert.match(html, /Updated return reason/);
+    assert.doesNotMatch(html, /November 15, 2026|Rescheduled|Updated return reason/);
     assert.doesNotMatch(html, /January 1, 2020|Old return reason|Improving historically|Legacy Recorded Information/);
-    assert.match(html, /Notifiable Diseases/);
-    assert.match(html, /No entries recorded/);
-    assert.match(html, /Clinical outcomes/);
+    assert.doesNotMatch(html, /Visit type|Current next action/);
+    assert.doesNotMatch(html, /No entries recorded/);
+    assert.match(html, /Health concerns/);
     assert.match(html, /Managed at BHC/);
-    assert.match(html, /Related Visits/);
+    assert.match(html, /Morbidity/);
+    assert.match(html, /Surveillance/);
+    assert.match(html, /Related consultation history/);
+    assert.doesNotMatch(html, /Follow-up &amp; referral/);
   });
 
   test(`${View.name}: legacy values are historical only and empty vitals are omitted`, () => {
@@ -158,8 +203,7 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
     assert.match(html, /Follow-up Required/);
     assert.doesNotMatch(html, /Record status|Current condition|Related Visits/);
     assert.doesNotMatch(html, />0(?:\s|<)/);
-    assert.match(html, /Current next action/);
-    assert.match(html, /Not recorded/);
+    assert.doesNotMatch(html, /Visit type|Current next action/);
     assert.match(html, /No vital measurements recorded/);
   });
 
@@ -169,13 +213,14 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
       serviceType: "General Consultation",
     }));
     assert.match(html, /Saved referral reason/);
-    assert.match(html, /Pending/);
+    assert.doesNotMatch(html, /Pending|Received|Completed/);
     const partial = wrap(createElement(View, {
       record: { id: 4, referral_reason: "Saved fallback reason", linkedTrackingId: "TRACK-SAVED" },
       linkedReferral: { status: "Pending" }, serviceType: "General Consultation",
     }));
     assert.match(partial, /Saved fallback reason/);
     assert.match(partial, /TRACK-SAVED/);
+    assert.doesNotMatch(partial, /Pending|Received|Completed/);
   });
 
   test(`${View.name}: keeps distinct condition referral facts outside reporting`, () => {
@@ -352,9 +397,9 @@ test("BHC ledger workspace uses section cards, keeps values, and always shows fo
   assert.doesNotMatch(html, /role="tablist"/);
   assert.match(html, /Vital signs/);
   assert.match(html, /Clinical assessment/);
-  assert.match(html, /Treatment/);
-  assert.match(html, /Dispensed medicines/);
-  assert.match(html, /Follow-up &amp; referral information/);
+  assert.match(html, /Treatment &amp; dispensed medicines/);
+  assert.match(html, /Health concerns/);
+  assert.doesNotMatch(html, /Follow-up &amp; referral/);
   assert.match(html, /Fever for two days/);
   assert.match(html, /Gave paracetamol/);
   assert.match(html, /Paracetamol/);
@@ -432,8 +477,9 @@ test("BHC print document uses A4 ledger layout and the same saved record values"
   assert.match(html, /Rural Health Unit Bulakan/);
   assert.match(html, /Vital signs/);
   assert.match(html, /Clinical assessment/);
-  assert.match(html, /Follow-up &amp; referral information/);
-  assert.match(html, /Related Visits/);
+  assert.match(html, /Health concerns/);
+  assert.doesNotMatch(html, /Follow-up &amp; referral/);
+  assert.match(html, /Related consultation history/);
   assert.match(html, /Record #10/);
   assert.doesNotMatch(html, />Back</);
   assert.doesNotMatch(html, />Print</);
@@ -480,7 +526,7 @@ test("BHC print document groups program sections and keeps shared treatment once
   assert.match(html, /Maternal \/ Prenatal/);
   assert.match(html, /Gravida/);
   assert.equal((html.match(/Dispensed medicines/g) || []).length, 1);
-  assert.equal((html.match(/<h2>Treatment<\/h2>/g) || []).length, 1);
+  assert.equal((html.match(/Treatment &amp; dispensed medicines/g) || []).length, 1);
 });
 
 test("BHC TB print layout keeps recorded TB fields without form controls", () => {
@@ -516,4 +562,322 @@ test("BHC TB print layout keeps recorded TB fields without form controls", () =>
   assert.doesNotMatch(html, /Download/);
   assert.doesNotMatch(html, /<input/);
   assert.doesNotMatch(html, /<button/);
+});
+
+for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
+  test(`${View.name}: mixed concerns show outcome and reporting together without a separate reporting block`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 21,
+        diagnoses: [
+          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+          { id: "b", name: "Fever", reportIn: ["notifiable", "surveillance"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever" } },
+        ],
+        followUpEpisode: { tasks: [{ id: 9, healthRecordId: 21, dueDate: "2026-11-01", state: "pending", purpose: "Wound check" }] },
+      },
+      serviceType: "General Consultation",
+      practitioner: "Ana Santos",
+    }));
+    assert.match(html, /Health concerns/);
+    assert.match(html, /Cough/);
+    assert.match(html, /Managed at BHC/);
+    assert.match(html, /Fever/);
+    assert.match(html, /Refer to RHU/);
+    assert.match(html, /High fever/);
+    assert.match(html, /Morbidity/);
+    assert.match(html, /Notifiable/);
+    assert.match(html, /Surveillance/);
+    assert.doesNotMatch(html, /Recorded reporting/);
+    assert.doesNotMatch(html, /Wound check/);
+    assert.doesNotMatch(html, /Pending|Received|Completed/);
+  });
+
+  test(`${View.name}: unmapped legacy reporting stays at record level`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 22,
+        diagnosis: "Asthma",
+        morbidityReportingStatus: "morbidity",
+        diagnoses: [{ id: "c", name: "Cough", clinicalOutcome: "managed_at_bhc" }],
+      },
+      serviceType: "General Consultation",
+    }));
+    assert.match(html, /Cough/);
+    assert.match(html, /Managed at BHC/);
+    assert.match(html, /Recorded reporting/);
+    assert.match(html, /Asthma/);
+    assert.doesNotMatch(html, /Cough[^<]*Morbidity|Cough[^<]*Asthma/);
+  });
+
+  test(`${View.name}: body findings stay in clinical assessment and print`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 23,
+        chiefComplaint: "Chest pain",
+        bodyFindings: [{ region: "chest", finding: "Tenderness", location: "Upper chest" }],
+      },
+      serviceType: "General Consultation",
+    }));
+    assert.match(html, /Clinical assessment/);
+    assert.match(html, /Body findings and reassessment history/);
+    assert.match(html, /Tenderness/);
+    assert.match(html, /Chest/);
+  });
+}
+
+test("BHC workspace omits live referral statuses from the historical record", () => {
+  const pending = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 24, referral_reason: "Needs review" },
+    linkedReferral: { status: "Pending", reasonForReferral: "Needs review" },
+    hasLinkedReferral: true,
+    referralStatus: "Pending",
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "24",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.doesNotMatch(pending, /border-amber-200 bg-amber-50/);
+  assert.doesNotMatch(pending, /Referral status/);
+  assert.match(pending, /Needs review/);
+  assert.doesNotMatch(pending, /Pending|Received|Completed|Accepted|Done/);
+
+  const accepted = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 25, referral_reason: "Physician review" },
+    linkedReferral: { status: "Accepted", reasonForReferral: "Physician review" },
+    hasLinkedReferral: true,
+    referralStatus: "Accepted",
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "25",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(accepted, /Physician review/);
+  assert.doesNotMatch(accepted, /Accepted|Pending|Received|Completed/);
+});
+
+test("stored assessment text is not repeated when it already names a health concern", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 26,
+      diagnosis: "Cough",
+      diagnoses: [{ id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+    },
+    serviceType: "General Consultation",
+  }));
+  assert.equal((html.match(/Cough/g) || []).length, 1);
+  assert.doesNotMatch(html, /Diagnosis \/ assessment/);
+  assert.match(html, /not RHU-confirmed diagnoses/);
+});
+
+test("verified follow-up and referral stay with their concerns and keep the original schedule date", () => {
+  const details = recordDetailsPresentation({
+    id: 31,
+    diagnoses: [
+      { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+      { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever", receivingRhuId: "9" } },
+    ],
+    monitoringData: {
+      consultationWorkflow: "bhc_general_v2",
+      followUpSchedules: [
+        { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Cough review", date: "2026-10-22", time: "08:00" },
+        { purposeKey: "visit", purpose: "Return for labs", date: "2026-10-28" },
+      ],
+    },
+    followUpEpisode: { tasks: [{ id: 44, healthRecordId: 31, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
+  }, {
+    status: "Pending",
+    trackingId: "TRK-MIX",
+    urgencyLevel: "Urgent",
+    receivingFacility: "RHU Bulakan",
+    ruralHealthUnitId: "9",
+    reasonForReferral: "High fever",
+  });
+  assert.equal(details.concerns[0].followUps[0].date, "2026-10-22");
+  assert.equal(details.concerns[0].followUps[0].reason, "Cough review");
+  assert.equal(details.concerns[0].referral, null);
+  assert.equal(details.concerns[1].referral.facility, "RHU Bulakan");
+  assert.equal(details.concerns[1].referral.reason, "High fever");
+  assert.equal(details.concerns[1].followUps.length, 0);
+  assert.equal(details.visitFollowUps[0].date, "2026-10-28");
+  assert.equal(details.visitReferral.trackingId, "TRK-MIX");
+  assert.equal(details.visitReferral.reason, "");
+  assert.ok(!details.schedules.some((row) => row.date === "2026-11-15"));
+});
+
+test("does not attach a visit schedule to a concern by purpose name", () => {
+  const details = recordDetailsPresentation({
+    id: 40,
+    diagnoses: [{ id: "a", name: "Cough review", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+    monitoringData: { followUpSchedules: [{ purposeKey: "visit", purpose: "Cough review", date: "2026-10-22" }] },
+  });
+  assert.equal(details.concerns[0].followUps.length, 0);
+  assert.equal(details.visitFollowUps[0].date, "2026-10-22");
+});
+
+for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
+  test(`${View.name}: mixed referral and follow-up stay under related concerns`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 31,
+        diagnoses: [
+          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+          { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever", receivingRhuId: "9" } },
+        ],
+        monitoringData: {
+          consultationWorkflow: "bhc_general_v2",
+          followUpSchedules: [
+            { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Cough review", date: "2026-10-22", time: "08:00" },
+          ],
+        },
+      },
+      linkedReferral: {
+        status: "Pending",
+        trackingId: "TRK-MIX",
+        urgencyLevel: "Urgent",
+        receivingFacility: "RHU Bulakan",
+        ruralHealthUnitId: "9",
+        reasonForReferral: "High fever",
+      },
+      serviceType: "General Consultation",
+      practitioner: "Ana Santos",
+      title: "General Consultation Record",
+      recordId: "31",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assert.match(html, /Cough review/);
+    assert.match(html, /October 22, 2026/);
+    assert.match(html, /High fever/);
+    assert.match(html, /RHU Bulakan/);
+    assert.match(html, /TRK-MIX/);
+    assert.doesNotMatch(html, /Visit-level follow-up/);
+    assert.doesNotMatch(html, /Pending|Received|Completed/);
+    assert.doesNotMatch(html, /Follow-up &amp; referral/);
+  });
+
+  test(`${View.name}: keeps the original consultation date after a follow-up is rescheduled`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 32,
+        diagnoses: [{ id: "a", name: "Wound", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+        monitoringData: {
+          consultationWorkflow: "bhc_general_v2",
+          followUpSchedules: [
+            { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Wound reassessment", date: "2026-10-20", time: "08:00" },
+          ],
+        },
+        followUpEpisode: { tasks: [{ id: 44, healthRecordId: 32, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
+      },
+      serviceType: "General Consultation",
+      practitioner: "Ana Santos",
+      title: "General Consultation Record",
+      recordId: "32",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assert.match(html, /October 20, 2026/);
+    assert.match(html, /Wound reassessment/);
+    assert.doesNotMatch(html, /November 15, 2026/);
+    assert.doesNotMatch(html, /Rescheduled|Updated return reason/);
+  });
+
+  test(`${View.name}: labels unassociated follow-up as visit-level`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 33,
+        diagnoses: [{ id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+        monitoringData: {
+          consultationWorkflow: "bhc_general_v2",
+          followUpSchedules: [
+            { purposeKey: "visit", purpose: "Return for review", date: "2026-10-25", time: "09:00" },
+          ],
+        },
+      },
+      serviceType: "General Consultation",
+      practitioner: "Ana Santos",
+      title: "General Consultation Record",
+      recordId: "33",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assert.match(html, /Visit-level follow-up/);
+    assert.match(html, /October 25, 2026/);
+    assert.match(html, /Return for review/);
+  });
+
+  test(`${View.name}: shared referral stays visit-level when concerns have no referral object`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 34,
+        diagnoses: [
+          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu" },
+          { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu" },
+        ],
+      },
+      linkedReferral: {
+        status: "Received",
+        trackingId: "TRK-SHARE",
+        urgencyLevel: "Routine",
+        receivingFacility: "RHU Bulakan",
+        reasonForReferral: "Shared referral reason",
+      },
+      serviceType: "General Consultation",
+      practitioner: "Ana Santos",
+      title: "General Consultation Record",
+      recordId: "34",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assert.match(html, /Visit-level referral/);
+    assert.match(html, /Shared referral reason/);
+    assert.match(html, /TRK-SHARE/);
+    assert.equal((html.match(/Shared referral reason/g) || []).length, 1);
+    assert.doesNotMatch(html, /Received|Pending|Completed/);
+  });
+}
+
+test("BHC workspace links to referral and follow-up modules without live status", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 35,
+      monitoringData: {
+        followUpSchedules: [{ purposeKey: "visit", purpose: "Return", date: "2026-10-26" }],
+      },
+    },
+    linkedReferral: { trackingId: "TRK-35", reasonForReferral: "Needs review" },
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "35",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /View in Referrals/);
+  assert.match(html, /\/bhc\/referrals\/TRK-35/);
+  assert.match(html, /View in Follow-ups/);
+  assert.match(html, /\/bhc\/follow-ups/);
+  const printed = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: {
+      id: 35,
+      monitoringData: {
+        followUpSchedules: [{ purposeKey: "visit", purpose: "Return", date: "2026-10-26" }],
+      },
+    },
+    linkedReferral: { trackingId: "TRK-35", reasonForReferral: "Needs review" },
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "35",
+    patientName: "Ana Cruz",
+  }));
+  assert.doesNotMatch(printed, /View in Referrals|View in Follow-ups/);
+  assert.match(printed, /TRK-35/);
+  assert.match(printed, /Needs review/);
 });

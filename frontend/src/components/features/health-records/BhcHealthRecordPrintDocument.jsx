@@ -1,5 +1,6 @@
-import { ReportingCategories, ClinicalOutcomes, FollowUpRecordInformation } from "./RecordDetailsSections";
-import { recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
+import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
+import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
+import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
 import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
@@ -228,7 +229,6 @@ export default function BhcHealthRecordPrintDocument({
   displayDate,
   displayTime,
   practitioner,
-  isFollowUpVisit = false,
   parentRecordId = "",
 }) {
   if (!record) return null;
@@ -274,8 +274,9 @@ export default function BhcHealthRecordPrintDocument({
   const treatmentAction = getRecordInitialActions(record, "");
   const treatmentNotes = getRecordTreatmentNotes(record, "");
   const medicines = getDispensedMedicines(record);
-  const presentation = recordDetailsPresentation(record, linkedReferral);
+  const { concerns } = recordDetailsPresentation(record, linkedReferral);
   const draftNotes = earlierDraftNotes(record);
+  const bodyFindings = thisRecordBodyFindingHistory(record);
   const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
@@ -332,8 +333,6 @@ export default function BhcHealthRecordPrintDocument({
             { label: "Date of visit", value: displayDate },
             { label: "Time of visit", value: displayTime },
             { label: "Recorded By", value: practitioner },
-            { label: "Current next action", value: presentation.nextAction },
-            { label: "Visit type", value: isFollowUpVisit ? "Follow-up Visit" : "Initial Consultation" },
             ...(parentRecordId
               ? [{ label: "Parent record", value: `#${parentRecordId}` }]
               : []),
@@ -369,21 +368,26 @@ export default function BhcHealthRecordPrintDocument({
         {!vitalItems.length && <p className="bhc-print-muted">No vital measurements recorded.</p>}
       </Section>
 
-      {!tbRecord && (
+      {(!tbRecord || bodyFindings.originals.length > 0 || bodyFindings.events.length > 0) && (
         <Section title="Clinical assessment">
-          <Narrative label="Chief complaint" value={chiefComplaint} />
-          <Narrative
-            label={
-              isFollowUp
-                ? "Follow-up findings / changes since previous visit"
-                : "History of present illness / signs & symptoms"
-            }
-            value={summary}
-          />
-          <Narrative label="Physical examination" value={physicalExam} />
-          {showsDiagnosisRow(record, diagnosis) && (
-            <Narrative label="Diagnosis / assessment" value={diagnosis} />
+          {!tbRecord && (
+            <>
+              <Narrative label="Chief complaint" value={chiefComplaint} />
+              <Narrative
+                label={
+                  isFollowUp
+                    ? "Follow-up findings / changes since previous visit"
+                    : "History of present illness / signs & symptoms"
+                }
+                value={summary}
+              />
+              <Narrative label="Physical examination" value={physicalExam} />
+              {showsDiagnosisRow(record, diagnosis) && diagnosisTextDistinctFromConcerns(diagnosis, concerns) && (
+                <Narrative label="Assessment" value={diagnosis} />
+              )}
+            </>
           )}
+          <BodyFindingHistoryView {...bodyFindings} print />
         </Section>
       )}
 
@@ -398,53 +402,63 @@ export default function BhcHealthRecordPrintDocument({
       {familyPlanning && <FamilyPlanningPrintSection details={fpDetails} />}
       {tbRecord && <TbPrintSection record={record} />}
 
-      {!tbRecord && (
-        <Section title="Treatment">
-          <Narrative
-            label="Treatment / action taken"
-            value={
-              getMaternalValue(maternalData, record, ["treatment"], "") ||
-              treatmentAction
-            }
-          />
-          {isDistinctRecordedValue(
-            treatmentNotes,
-            treatmentAction,
-            getMaternalValue(maternalData, record, ["treatment"], ""),
-          ) && <Narrative label="Treatment notes" value={treatmentNotes} />}
-          {isFollowUp &&
-            isDistinctRecordedValue(
-              medicalNotes,
-              treatmentAction,
-              treatmentNotes,
-            ) && <Narrative label="Follow-up notes" value={medicalNotes} />}
-          {!isFollowUp &&
-            isDistinctRecordedValue(
-              medicalNotes,
-              treatmentAction,
-              treatmentNotes,
-              summary,
-            ) && <Narrative label="Medical notes" value={medicalNotes} />}
-          {familyPlanning && (
-            <>
-              <Narrative
-                label="Advice given"
-                value={fpDetail(fpDetails, "Advice Given")}
-              />
-              <Narrative
-                label="Action taken"
-                value={fpDetail(fpDetails, "Action Taken")}
-              />
-              <Narrative
-                label="Remarks"
-                value={fpDetail(fpDetails, "Remarks / Notes")}
-              />
-            </>
-          )}
-        </Section>
-      )}
+      <Section title="Health concerns & care outcomes">
+        <HealthConcernsAndCareOutcomes
+          record={record}
+          linkedReferral={linkedReferral}
+          monitoringNotes={monitoringNotes}
+          nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")}
+          print
+        />
+      </Section>
 
-      <Section title="Dispensed medicines">
+      <Section title="Treatment & dispensed medicines">
+        {!tbRecord && (
+          <>
+            <Narrative
+              label="Treatment / action taken"
+              value={
+                getMaternalValue(maternalData, record, ["treatment"], "") ||
+                treatmentAction
+              }
+            />
+            {isDistinctRecordedValue(
+              treatmentNotes,
+              treatmentAction,
+              getMaternalValue(maternalData, record, ["treatment"], ""),
+            ) && <Narrative label="Treatment notes" value={treatmentNotes} />}
+            {isFollowUp &&
+              isDistinctRecordedValue(
+                medicalNotes,
+                treatmentAction,
+                treatmentNotes,
+              ) && <Narrative label="Follow-up notes" value={medicalNotes} />}
+            {!isFollowUp &&
+              isDistinctRecordedValue(
+                medicalNotes,
+                treatmentAction,
+                treatmentNotes,
+                summary,
+              ) && <Narrative label="Medical notes" value={medicalNotes} />}
+            {familyPlanning && (
+              <>
+                <Narrative
+                  label="Advice given"
+                  value={fpDetail(fpDetails, "Advice Given")}
+                />
+                <Narrative
+                  label="Action taken"
+                  value={fpDetail(fpDetails, "Action Taken")}
+                />
+                <Narrative
+                  label="Remarks"
+                  value={fpDetail(fpDetails, "Remarks / Notes")}
+                />
+              </>
+            )}
+          </>
+        )}
+        <p className="bhc-print-k">Dispensed medicines</p>
         {medicines.length > 0 ? (
           <PrintTable
             columns={["Medicine / supply", "Quantity", "Remarks", "Date dispensed"]}
@@ -476,19 +490,11 @@ export default function BhcHealthRecordPrintDocument({
           </p>
         )}
       </Section>
-
-      <Section title="Clinical outcomes">
-        <ClinicalOutcomes record={record} print />
-      </Section>
-      <Section title="Reporting">
-        <ReportingCategories record={record} print />
-      </Section>
       {(draftNotes || continuedNotes) && <Section title="Earlier draft notes">
         {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
         {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
       </Section>}
-      <FollowUpPrintSection record={record} linkedReferral={linkedReferral} monitoringNotes={monitoringNotes}
-        nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")} />
+      <RelatedPrintSection record={record} linkedReferral={linkedReferral} />
 
       <footer className="bhc-print-footer">
         Printed on {printedOn}. This copy reflects the saved health record and
@@ -1056,29 +1062,11 @@ function TbPrintSection({ record }) {
   );
 }
 
-function FollowUpPrintSection({ record, linkedReferral, monitoringNotes, nextAppointmentDate }) {
-  const { schedules } = recordDetailsPresentation(record, linkedReferral);
-  const savedReferral = {
-    ...linkedReferral,
-    status: linkedReferral?.status || linkedReferral?.referralStatus || record.referralStatus || record.referral_status,
-    trackingId: linkedReferral?.trackingId || linkedReferral?.tracking_id || record.linkedTrackingId || record.linked_tracking_id || record.referralTrackingId || record.referral_tracking_id,
-    reasonForReferral: linkedReferral?.reasonForReferral || linkedReferral?.reason_for_referral || record.referralReason || record.referral_reason,
-  };
-  const referralFields = [
-    { label: "Referral status", value: savedReferral.status || savedReferral.referralStatus },
-    { label: "Tracking ID", value: savedReferral.trackingId || savedReferral.tracking_id },
-    { label: "Urgency", value: savedReferral.urgencyLevel || savedReferral.urgency_level },
-    { label: "Receiving facility", value: savedReferral.receivingFacility || savedReferral.ruralHealthUnit?.name || savedReferral.rural_health_unit?.name },
-  ].filter((item) => item.value);
-  const reason = savedReferral.reasonForReferral || savedReferral.reason_for_referral;
-  return <Section title="Follow-up & referral information">
-    <div className="space-y-4">
-      <InlineGrid items={referralFields} />
-      {reason && <Narrative label="Reason for referral" value={reason} />}
-      {!schedules.length && nextAppointmentDate && <InlineGrid items={[{ label: "Recorded next appointment", value: nextAppointmentDate }]} />}
-      {monitoringNotes && <Narrative label="Monitoring notes" value={monitoringNotes} />}
-      <FollowUpRecordInformation record={record} linkedReferral={linkedReferral} print />
-    </div>
+function RelatedPrintSection({ record, linkedReferral }) {
+  const { related } = recordDetailsPresentation(record, linkedReferral);
+  if (!related.length) return null;
+  return <Section title="Related consultation history">
+    <RelatedConsultationHistory record={record} linkedReferral={linkedReferral} print />
   </Section>;
 }
 

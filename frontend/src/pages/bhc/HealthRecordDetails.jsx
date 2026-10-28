@@ -228,10 +228,10 @@ export default function HealthRecordDetails() {
             hasLinkedReferral={hasLinkedReferral}
             referralStatus={linkedReferral?.status}
             isUpdating={detailsUpdating}
+            bodyFindingsHistory={<BodyFindingRecordHistory record={record} />}
             onBack={returnToProfile}
             onPrint={() => window.print()}
           />
-          <BodyFindingRecordHistory record={record} />
         </div>
 
         <div className="hidden print:block">

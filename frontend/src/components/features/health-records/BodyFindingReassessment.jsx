@@ -58,6 +58,39 @@ export function PreviousBodyFindings({ findings = [], decisions = [], onChange, 
   </section>;
 }
 
+export function thisRecordBodyFindingHistory(record) {
+  const originals = bodyFindingHistory([record]).filter((finding) => String(finding.sourceRecordId) === String(record?.id || record?._id));
+  return { originals, events: recordReassessments(record) };
+}
+
+export function BodyFindingHistoryView({ originals = [], events = [], base = "/bhc", print = false, status = "", error = false, onRetry }) {
+  const link = (id) => print
+    ? `Record #${id}`
+    : <Link className="underline underline-offset-4" to={`${base}/health-records/${id}`}>Record #{id}</Link>;
+  if (!originals.length && !events.length && !status && !error) return null;
+  return <section aria-label="Body findings and reassessment history" className={print ? undefined : "mt-5 text-sm text-ink-900"}>
+    <h3 className={print ? "bhc-print-k" : "font-semibold"}>Body findings and reassessment history</h3>
+    <p className={print ? "bhc-print-muted" : "mt-1 text-xs text-ink-600"}>Recorded observations only. Reassessment does not change diagnoses or care outcomes.</p>
+    {status ? <p role="status" className={print ? "bhc-print-muted" : undefined}>{status}</p> : null}
+    {error ? <p role="alert">Reassessment history could not be loaded. {onRetry ? <Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button> : null}</p> : null}
+    {originals.map((finding) => <div key={finding.id} className={print ? "bhc-print-narrative" : "mt-3"}>
+      <p className={print ? "bhc-print-prose" : "font-medium"}>{finding.regionLabel}{finding.location ? ` / ${finding.location}` : ""}: {finding.finding}</p>
+      {finding.note && <p className={print ? "bhc-print-prose" : undefined}>{finding.note}</p>}
+      <p className={print ? "bhc-print-muted" : "text-xs text-ink-600"}>Original observation · {formatShortDate(finding.visitDate, "Date not recorded")}</p>
+      <p className={print ? "bhc-print-prose" : "text-xs"}>{BODY_FINDING_STATUS_LABELS[finding.status]}</p>
+      <ol className={print ? "bhc-print-list" : "mt-1 space-y-1 text-xs"}>{finding.reassessments.map((event) => <li key={event.recordId}>
+        {BODY_FINDING_STATUS_LABELS[event.status]} · {formatShortDate(event.visitDate, "Date not recorded")} · {link(event.recordId)}
+      </li>)}</ol>
+    </div>)}
+    {events.length > 0 && <div className={print ? "bhc-print-narrative" : "mt-4"}><h4 className={print ? "bhc-print-k" : "font-medium"}>Reassessed during this consultation</h4>
+      <ul className={print ? "bhc-print-list" : "mt-2 space-y-2"}>{events.map((event) => <li key={findingIdentity(event)}>
+        <span>{event.finding?.finding || "Body finding"}: {BODY_FINDING_STATUS_LABELS[event.status]}</span>
+        <span className={print ? "bhc-print-muted" : "block text-xs text-ink-600"}>Original: {link(event.sourceRecordId)} · finding {event.sourceFindingIndex + 1}</span>
+      </li>)}</ul>
+    </div>}
+  </section>;
+}
+
 // Reuse existing record permissions and pagination. Resolved observations stay
 // reachable here, including every consultation that reassessed the original.
 export function BodyFindingRecordHistory({ record }) {
@@ -70,27 +103,7 @@ export function BodyFindingRecordHistory({ record }) {
   ]), [query.data, record]);
   const originals = history.filter((finding) => String(finding.sourceRecordId) === String(record.id));
   const events = recordReassessments(record);
-  const link = (id) => <Link className="underline underline-offset-4" to={`${base}/health-records/${id}`}>Record #{id}</Link>;
   if (!originals.length && !events.length) return null;
-  return <section aria-label="Body findings and reassessment history" className="mt-4 border-t border-neutral-200 pt-4 text-sm text-ink-900">
-    <h3 className="font-semibold">Body findings and reassessment history</h3>
-    <p className="mt-1 text-xs text-ink-600">Recorded observations only. Reassessment does not change diagnoses or care outcomes.</p>
-    {query.isPending && <p role="status">Loading reassessment history...</p>}
-    {query.isError && <p role="alert">Reassessment history could not be loaded. <Button variant="secondary" size="sm" onClick={() => query.refetch()}>Retry</Button></p>}
-    {originals.map((finding) => <div key={finding.id} className="mt-3">
-      <p className="font-medium">{finding.regionLabel}{finding.location ? ` / ${finding.location}` : ""}: {finding.finding}</p>
-      {finding.note && <p>{finding.note}</p>}
-      <p className="text-xs text-ink-600">Original observation · {formatShortDate(finding.visitDate, "Date not recorded")}</p>
-      <p className="text-xs">{BODY_FINDING_STATUS_LABELS[finding.status]}</p>
-      <ol className="mt-1 space-y-1 text-xs">{finding.reassessments.map((event) => <li key={event.recordId}>
-        {BODY_FINDING_STATUS_LABELS[event.status]} · {formatShortDate(event.visitDate, "Date not recorded")} · {link(event.recordId)}
-      </li>)}</ol>
-    </div>)}
-    {events.length > 0 && <div className="mt-4"><h4 className="font-medium">Reassessed during this consultation</h4>
-      <ul className="mt-2 space-y-2">{events.map((event) => <li key={findingIdentity(event)}>
-        <span>{event.finding?.finding || "Body finding"}: {BODY_FINDING_STATUS_LABELS[event.status]}</span>
-        <span className="block text-xs text-ink-600">Original: {link(event.sourceRecordId)} · finding {event.sourceFindingIndex + 1}</span>
-      </li>)}</ul>
-    </div>}
-  </section>;
+  return <BodyFindingHistoryView originals={originals} events={events} base={base}
+    status={query.isPending ? "Loading reassessment history..." : ""} error={query.isError} onRetry={() => query.refetch()} />;
 }
