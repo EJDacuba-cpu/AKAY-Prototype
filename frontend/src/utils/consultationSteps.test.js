@@ -325,7 +325,11 @@ test("each validation error is owned by the screen that shows its field", () => 
   assert.equal(getErrorOwnerStepKey("chiefComplaint"), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("summaryOfPresentIllness"), INTERVIEW_STEP);
   // Vital Signs is a subsection of Physical Examination on the assessment step.
-  for (const key of ["pulse", "spo2", "weight", "height", "temp", "fbs", "vital_signs.fbs"]) {
+  for (const key of [
+    "pulse", "spo2", "weight", "height", "temp", "fbs", "vital_signs.fbs",
+    "systolicBp", "diastolicBp", "bloodPressure",
+    "vital_signs.systolicBp", "vital_signs.diastolicBp", "vital_signs.temperature",
+  ]) {
     assert.equal(getErrorOwnerStepKey(key), ASSESSMENT_STEP, key);
   }
   assert.equal(getErrorOwnerStepKey("hypertensionDiabeticData.conditionType"), null);
@@ -357,6 +361,9 @@ test("each validation error is owned by the screen that shows its field", () => 
   assert.equal(getErrorOwnerStepKey("vaccineEntries"), EPI);
   // Actions Taken (and the medicines dispensed) sit on Medication, Treatment & Next Steps.
   assert.equal(getErrorOwnerStepKey("dispensedMedicines"), OUTCOME_STEP);
+  assert.equal(getErrorOwnerStepKey("actionsTaken"), OUTCOME_STEP);
+  assert.equal(getErrorOwnerStepKey("noInterventionReason"), OUTCOME_STEP);
+  assert.equal(getErrorOwnerStepKey("treatment_notes"), OUTCOME_STEP);
   assert.equal(getErrorOwnerStepKey("followUpDate"), OUTCOME_STEP);
   assert.equal(getErrorOwnerStepKey("followUpReason"), OUTCOME_STEP);
   assert.equal(getErrorOwnerStepKey("receivingRhuId"), OUTCOME_STEP);
@@ -562,8 +569,21 @@ test("server-only 422 keys are renamed to the Care Plan field keys and route to 
     "monitoring_data.followUpDate": "b",
     "care_plan.shared_referral_acknowledged": "c",
     chiefComplaint: "d",
+    treatment_notes: "e",
+    "monitoring_data.noInterventionReason": "f",
+    "vital_signs.systolicBp": "g",
+    "vital_signs.temperature": "h",
   });
-  assert.deepEqual(remapped, { followUpReason: "a", followUpDate: "b", referralAcknowledged: "c", chiefComplaint: "d" });
+  assert.deepEqual(remapped, {
+    followUpReason: "a",
+    followUpDate: "b",
+    referralAcknowledged: "c",
+    chiefComplaint: "d",
+    actionsTaken: "e",
+    noInterventionReason: "f",
+    systolicBp: "g",
+    temp: "h",
+  });
   assert.equal(findFirstErrorStepKey({ "care_plan.shared_referral_acknowledged": "c" }, getStepOrder([], [])), "");
   assert.equal(findFirstErrorStepKey(remapServerErrorKeys({ "care_plan.shared_referral_acknowledged": "c" }), getStepOrder([], [])), OUTCOME_STEP);
   assert.deepEqual(remapServerErrorKeys(), {});

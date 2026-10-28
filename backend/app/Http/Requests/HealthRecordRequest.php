@@ -10,6 +10,7 @@ use App\Services\LegacyMonitoringReview;
 use App\Services\PatientBackground;
 use App\Services\PatientConditions;
 use App\Services\ReportingEntries;
+use App\Services\VitalSigns;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -224,13 +225,13 @@ class HealthRecordRequest extends FormRequest
             'patient_id' => [$this->isMethod('post') ? 'required' : 'sometimes', 'exists:patients,id'],
             'date_recorded' => ['nullable', 'date'],
             'vital_signs' => ['nullable', 'array'],
-            'vital_signs.systolicBp' => ['nullable', 'numeric', 'min:0'],
-            'vital_signs.diastolicBp' => ['nullable', 'numeric', 'min:0'],
-            'vital_signs.temperature' => ['nullable', 'numeric'],
-            'vital_signs.pulse' => ['nullable', 'numeric', 'min:0'],
+            'vital_signs.systolicBp' => ['nullable', 'numeric', 'min:0', 'max:300', 'required_with:vital_signs.diastolicBp'],
+            'vital_signs.diastolicBp' => ['nullable', 'numeric', 'min:0', 'max:300', 'required_with:vital_signs.systolicBp'],
+            'vital_signs.temperature' => ['nullable', 'numeric', 'min:10', 'max:50'],
+            'vital_signs.pulse' => ['nullable', 'numeric', 'min:0', 'max:350'],
             'vital_signs.spo2' => ['nullable', 'numeric', 'between:0,100'],
-            'vital_signs.weight' => ['nullable', 'numeric', 'gt:0'],
-            'vital_signs.height' => ['nullable', 'numeric', 'gt:0'],
+            'vital_signs.weight' => ['nullable', 'numeric', 'gt:0', 'max:500'],
+            'vital_signs.height' => ['nullable', 'numeric', 'gt:0', 'max:250'],
             // Additional Measurements: optional, reused by Diabetes monitoring
             // and reports. Nothing is ever derived from it.
             'vital_signs.fbs' => ['nullable', 'numeric', 'min:0', 'max:1000'],
@@ -320,6 +321,10 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.followUpTime' => ['nullable', 'date_format:H:i'],
             'monitoring_data.follow_up_time' => ['nullable', 'date_format:H:i'],
             'monitoring_data.followUpReason' => ['nullable', 'string', 'max:1000'],
+            'monitoring_data.noInterventionPerformed' => ['nullable', 'boolean'],
+            'monitoring_data.no_intervention_performed' => ['nullable', 'boolean'],
+            'monitoring_data.noInterventionReason' => ['nullable', 'string', 'max:1000'],
+            'monitoring_data.no_intervention_reason' => ['nullable', 'string', 'max:1000'],
             'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.prenatalIntent' => ['nullable', 'in:enroll,continue'],
@@ -584,6 +589,31 @@ class HealthRecordRequest extends FormRequest
             'dispensed_medicines.*.quantity.required' => 'Quantity must be greater than 0.',
             'dispensed_medicines.*.quantity.integer' => 'Quantity must be a whole number.',
             'dispensed_medicines.*.quantity.min' => 'Quantity must be greater than 0.',
+            'vital_signs.systolicBp.required_with' => VitalSigns::BP_PAIR_MESSAGE,
+            'vital_signs.diastolicBp.required_with' => VitalSigns::BP_PAIR_MESSAGE,
+            'vital_signs.systolicBp.numeric' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.systolicBp.min' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.systolicBp.max' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.diastolicBp.numeric' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.diastolicBp.min' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.diastolicBp.max' => VitalSigns::BP_RANGE_MESSAGE,
+            'vital_signs.pulse.numeric' => VitalSigns::PULSE_MESSAGE,
+            'vital_signs.pulse.min' => VitalSigns::PULSE_MESSAGE,
+            'vital_signs.pulse.max' => VitalSigns::PULSE_MESSAGE,
+            'vital_signs.spo2.numeric' => VitalSigns::SPO2_MESSAGE,
+            'vital_signs.spo2.between' => VitalSigns::SPO2_MESSAGE,
+            'vital_signs.temperature.numeric' => VitalSigns::TEMP_MESSAGE,
+            'vital_signs.temperature.min' => VitalSigns::TEMP_MESSAGE,
+            'vital_signs.temperature.max' => VitalSigns::TEMP_MESSAGE,
+            'vital_signs.weight.numeric' => VitalSigns::WEIGHT_MESSAGE,
+            'vital_signs.weight.gt' => VitalSigns::WEIGHT_MESSAGE,
+            'vital_signs.weight.max' => VitalSigns::WEIGHT_MESSAGE,
+            'vital_signs.height.numeric' => VitalSigns::HEIGHT_MESSAGE,
+            'vital_signs.height.gt' => VitalSigns::HEIGHT_MESSAGE,
+            'vital_signs.height.max' => VitalSigns::HEIGHT_MESSAGE,
+            'vital_signs.fbs.numeric' => VitalSigns::FBS_MESSAGE,
+            'vital_signs.fbs.min' => VitalSigns::FBS_MESSAGE,
+            'vital_signs.fbs.max' => VitalSigns::FBS_MESSAGE,
         ];
     }
 
@@ -608,6 +638,7 @@ class HealthRecordRequest extends FormRequest
             if ($validator->errors()->isNotEmpty()) {
                 return;
             }
+            VitalSigns::validate($validator, $this->all());
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,
@@ -871,6 +902,8 @@ class HealthRecordRequest extends FormRequest
         $schedules = is_array($monitoringData)
             ? \App\Services\FollowUpSchedules::normalizeList($monitoringData['followUpSchedules'] ?? $monitoringData['follow_up_schedules'] ?? [])
             : [];
+        \App\Services\ActionsTaken::validate($validator, $this->all());
+
         $followUpRequested = $this->boolean('care_plan.bhc_follow_up') || $schedules !== [];
         if ($followUpRequested && $schedules === []) {
             if (! $date) {

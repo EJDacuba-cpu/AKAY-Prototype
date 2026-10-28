@@ -16,7 +16,9 @@ use App\Models\ReferralHold;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
+use App\Services\ActionsTaken;
 use App\Services\FollowUpTaskSyncService;
+use App\Services\VitalSigns;
 use App\Services\ReportingEntries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -57,6 +59,7 @@ class BhcGeneralConsultationV2Test extends TestCase
                 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
                 'chief_complaint' => 'Cough for 3 days',
                 'category' => 'General Consultation',
+                'treatment_notes' => 'Wound care and counseling.',
             ],
             ...$extra,
         ]);
@@ -97,7 +100,7 @@ class BhcGeneralConsultationV2Test extends TestCase
     public function test_shared_condition_referral_creates_one_tracking_record_and_replays_once(): void
     {
         $this->seedAvailableProvider($this->rhu, 'Shared Doctor');
-        $payload = [...$this->sharedReferral(), 'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Original visit complaint', 'physical_exam' => 'Original findings', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2];
+        $payload = [...$this->sharedReferral(), 'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Original visit complaint', 'physical_exam' => 'Original findings', 'treatment_notes' => 'Wound care and counseling.', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2];
         $key = (string) Str::uuid();
         $id = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertCreated()->json('data.id');
         $this->assertDatabaseCount('referrals', 1);
@@ -341,7 +344,7 @@ class BhcGeneralConsultationV2Test extends TestCase
         $cards = [$this->card('c1', 'refer_to_rhu', 'Suspected hypertension'), $this->card('c2', 'refer_to_rhu', 'Persistent cough')];
         $cards[1]['referral']['urgencyLevel'] = 'Priority';
         $key = (string) Str::uuid();
-        $payload = ['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Multiple concerns', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2, 'care_plan' => ['condition_cards' => true], 'needs_referral' => true, 'diagnoses' => $cards];
+        $payload = ['patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Multiple concerns', 'treatment_notes' => 'Wound care and counseling.', 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2, 'care_plan' => ['condition_cards' => true], 'needs_referral' => true, 'diagnoses' => $cards];
         $response = $this->withHeader('Idempotency-Key', $key)->postJson('/api/health-records', $payload)->assertCreated();
         $id = $response->json('data.id');
         $this->assertSame(2, Referral::where('health_record_id', $id)->count());
@@ -1102,6 +1105,7 @@ class BhcGeneralConsultationV2Test extends TestCase
             'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             'chief_complaint' => 'Cough for 3 days',
             'category' => 'General Consultation',
+            'treatment_notes' => 'Wound care and counseling.',
             'diagnoses' => [['id' => 'e1', 'name' => 'Cough', 'reportIn' => ['morbidity']]],
             ...$followUp,
             'care_plan' => [...$followUp['care_plan'], 'refer_to_rhu' => true],
@@ -1204,6 +1208,7 @@ class BhcGeneralConsultationV2Test extends TestCase
             'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             'category' => 'General Consultation',
             'chief_complaint' => 'Draft complaint.',
+            'treatment_notes' => 'Wound care and counseling.',
             'diagnoses' => [['id' => 'e1', 'name' => 'Cough', 'reportIn' => ['morbidity']]],
             ...$this->followUp(),
         ])->assertCreated();
@@ -1216,5 +1221,201 @@ class BhcGeneralConsultationV2Test extends TestCase
             'consumed_health_record_id' => $id,
             'encrypted_payload' => null,
         ]);
+    }
+
+    public function test_v2_initial_visit_requires_documented_actions_taken(): void
+    {
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'patient_id' => $this->patient->id,
+            'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'chief_complaint' => 'Cough for 3 days',
+            'category' => 'General Consultation',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['treatment_notes']);
+        $this->v2(['treatment_notes' => ''])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['treatment_notes'])
+            ->assertJsonPath('errors.treatment_notes.0', ActionsTaken::REQUIRED_MESSAGE);
+        $this->v2(['treatment_notes' => '   '])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['treatment_notes']);
+        $this->assertDatabaseCount('health_records', 0);
+
+        $id = $this->v2(['treatment_notes' => 'Wound care applied; counseling given.'])
+            ->assertCreated()
+            ->json('data.id');
+        $this->assertSame('Wound care applied; counseling given.', HealthRecord::findOrFail($id)->treatment_notes);
+    }
+
+    public function test_v2_follow_up_visit_requires_documented_actions_taken(): void
+    {
+        $parentId = $this->v2($this->followUp())->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->sole();
+        $visit = [
+            'treatment_notes' => '',
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'care_plan' => ['continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
+            'monitoring_data' => ['followUpTaskId' => $task->id],
+        ];
+
+        $this->v2($visit)->assertUnprocessable()->assertJsonValidationErrors(['treatment_notes']);
+        $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
+
+        $visit['treatment_notes'] = 'Reassessed wound; dressing changed.';
+        $visitId = $this->v2($visit)->assertCreated()->json('data.id');
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame('Reassessed wound; dressing changed.', HealthRecord::findOrFail($visitId)->treatment_notes);
+    }
+
+    public function test_v2_no_intervention_flag_does_not_replace_actions_taken(): void
+    {
+        $this->v2([
+            'treatment_notes' => '',
+            'monitoring_data' => [
+                'noInterventionPerformed' => true,
+                'noInterventionReason' => 'Patient declined treatment',
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['treatment_notes']);
+
+        $id = $this->v2([
+            'treatment_notes' => 'Patient declined treatment',
+            'monitoring_data' => [
+                'noInterventionPerformed' => true,
+                'noInterventionReason' => 'Patient declined treatment',
+            ],
+        ])->assertCreated()->json('data.id');
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame('Patient declined treatment', $record->treatment_notes);
+        $this->assertTrue($record->monitoring_data['noInterventionPerformed']);
+    }
+
+    public function test_v2_medicines_and_structured_services_still_need_actions_taken(): void
+    {
+        $medicine = Medicine::create([
+            'name' => 'Paracetamol',
+            'quantity' => 10,
+            'availability_status' => 'Available',
+            'barangay_health_center_id' => $this->bhc->id,
+            'created_by' => $this->worker->id,
+        ]);
+        $medicine->expiryGroups()->create([
+            'expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => $medicine->quantity,
+            'quarantined_quantity' => 0,
+        ]);
+        $this->v2([
+            'treatment_notes' => '',
+            'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 1, 'confirmed_given' => true]],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['treatment_notes']);
+
+        $this->v2([
+            'treatment_notes' => 'Paracetamol given',
+            'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 1, 'confirmed_given' => true]],
+        ])->assertCreated();
+
+        $this->v2([
+            'treatment_notes' => '',
+            'category' => 'Maternal',
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['treatment_notes']);
+
+        $this->v2([
+            'treatment_notes' => 'Prenatal counseling given',
+            'category' => 'Maternal',
+            'maternal_data' => ['lmp' => '2026-03-01'],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+        ])->assertCreated();
+    }
+
+    public function test_actions_taken_is_not_required_on_drafts_or_legacy_payloads(): void
+    {
+        $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'General Consultation',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+                'chiefComplaint' => 'Cough',
+                'medication' => '',
+                'noInterventionPerformed' => false,
+            ],
+        ])->assertCreated();
+
+        $this->legacy(['treatment_notes' => ''])->assertCreated();
+        $this->assertDatabaseCount('health_records', 1);
+    }
+
+    public function test_v2_initial_visit_accepts_blank_or_unusual_vitals(): void
+    {
+        $this->v2(['vital_signs' => []])->assertCreated();
+        $id = $this->v2(['vital_signs' => [
+            'systolicBp' => 60,
+            'diastolicBp' => 30,
+            'pulse' => 220,
+            'temperature' => 42,
+        ]])->assertCreated()->json('data.id');
+        $vitals = HealthRecord::findOrFail($id)->vital_signs;
+        $this->assertEquals(60, $vitals['systolicBp']);
+        $this->assertEquals(42, $vitals['temperature']);
+    }
+
+    public function test_v2_follow_up_visit_accepts_blank_vitals(): void
+    {
+        $parentId = $this->v2($this->followUp())->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->sole();
+        $this->v2([
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'care_plan' => ['continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'managed_at_bhc']]],
+            'monitoring_data' => ['followUpTaskId' => $task->id],
+            'vital_signs' => [],
+        ])->assertCreated();
+    }
+
+    public function test_v2_rejects_encoding_errors_and_incomplete_blood_pressure(): void
+    {
+        $temperature = $this->v2(['vital_signs' => ['temperature' => 123]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['vital_signs.temperature']);
+        $this->assertSame(VitalSigns::TEMP_MESSAGE, $temperature->json('errors')['vital_signs.temperature'][0]);
+
+        $pulse = $this->v2(['vital_signs' => ['pulse' => 3123]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['vital_signs.pulse']);
+        $this->assertSame(VitalSigns::PULSE_MESSAGE, $pulse->json('errors')['vital_signs.pulse'][0]);
+
+        $pair = $this->v2(['vital_signs' => ['systolicBp' => 120]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['vital_signs.diastolicBp']);
+        $this->assertSame(VitalSigns::BP_PAIR_MESSAGE, $pair->json('errors')['vital_signs.diastolicBp'][0]);
+    }
+
+    public function test_v2_draft_accepts_blank_and_invalid_vitals(): void
+    {
+        $draftId = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'General Consultation',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+                'chiefComplaint' => 'Cough',
+                'systolicBp' => '120',
+                'diastolicBp' => '',
+                'temp' => '123',
+                'pulse' => '3123',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/$draftId")->assertOk()
+            ->assertJsonPath('data.payload.temp', '123')
+            ->assertJsonPath('data.payload.pulse', '3123')
+            ->assertJsonPath('data.payload.systolicBp', '120');
     }
 }

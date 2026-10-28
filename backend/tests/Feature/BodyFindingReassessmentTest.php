@@ -46,7 +46,7 @@ class BodyFindingReassessmentTest extends TestCase
         return $this->withHeader('Idempotency-Key', $key ?? (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id, 'category' => 'General Consultation',
             'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
-            'chief_complaint' => 'Review', 'monitoring_data' => ['bodyFindingReassessments' => $decisions], ...$extra,
+            'chief_complaint' => 'Review', 'treatment_notes' => 'Findings reassessed.', 'monitoring_data' => ['bodyFindingReassessments' => $decisions], ...$extra,
         ]);
     }
 

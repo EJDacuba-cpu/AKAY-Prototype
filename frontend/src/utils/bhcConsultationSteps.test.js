@@ -81,6 +81,8 @@ test("BHC: Informant, Similar Illness and staged background errors belong to Pat
   assert.equal(getErrorOwnerStepKey("chiefComplaint", BHC), INTERVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("pulse", BHC), ASSESSMENT_STEP);
   assert.equal(getErrorOwnerStepKey("dispensedMedicines", BHC), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("actionsTaken", BHC), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("noInterventionReason", BHC), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("careOutcome", BHC), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpDate", BHC), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("somethingElse", BHC), null);

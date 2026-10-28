@@ -565,6 +565,15 @@ function toPayload(record = {}, { partial = false } = {}) {
     followUpTime: record.followUpTime || null,
     follow_up_time: record.followUpTime || null,
     followUpReason: record.followUpReason || null,
+    noInterventionPerformed:
+      record.noInterventionPerformed === true ||
+      sourceMonitoringData.noInterventionPerformed === true ||
+      sourceMonitoringData.no_intervention_performed === true,
+    noInterventionReason:
+      record.noInterventionReason ||
+      sourceMonitoringData.noInterventionReason ||
+      sourceMonitoringData.no_intervention_reason ||
+      null,
     followUpSchedules: record.followUpSchedules || sourceMonitoringData.followUpSchedules || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,

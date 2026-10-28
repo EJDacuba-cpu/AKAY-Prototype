@@ -49,7 +49,7 @@ class ContinuedConcernOutcomeTest extends TestCase
 
     private function payload(array $decisions): array
     {
-        return ['patient_id' => $this->patient->id, 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2, 'category' => 'General Consultation', 'chief_complaint' => 'Reassessment', 'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true, 'continued_follow_up_task_ids' => array_column($decisions, 'taskId'), 'continued_concerns' => $decisions]];
+        return ['patient_id' => $this->patient->id, 'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2, 'category' => 'General Consultation', 'chief_complaint' => 'Reassessment', 'treatment_notes' => 'Wound care continued.', 'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true, 'continued_follow_up_task_ids' => array_column($decisions, 'taskId'), 'continued_concerns' => $decisions]];
     }
 
     private function save(array $payload, ?string $key = null)

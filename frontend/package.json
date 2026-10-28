@@ -22,7 +22,7 @@
     "test:program-tabs": "node --test src/utils/programApplicability.test.js",
     "test:profile-navigation": "node --test src/utils/profileNavigation.test.js",
     "test:start-consultation": "node --test src/utils/startConsultation.test.js src/utils/continuedCare.test.js",
-    "test:consultation-steps": "node --test src/utils/consultationSteps.test.js src/utils/bhcConsultationSteps.test.js src/utils/consultationPrograms.test.js src/utils/nextActions.test.js src/utils/followUpSchedules.test.js src/utils/serviceNextActions.test.js",
+    "test:consultation-steps": "node --test src/utils/consultationSteps.test.js src/utils/bhcConsultationSteps.test.js src/utils/consultationPrograms.test.js src/utils/nextActions.test.js src/utils/followUpSchedules.test.js src/utils/serviceNextActions.test.js src/utils/actionsTaken.test.js src/utils/vitalSigns.test.js",
     "test:local-draft-vault": "node --test src/services/localDraftCrypto.test.js",
     "test:saved-drafts": "node --test src/utils/savedDrafts.test.js src/utils/draftConversion.test.js",
     "test:consultation-identity": "node --test src/utils/consultationIdentity.test.js",

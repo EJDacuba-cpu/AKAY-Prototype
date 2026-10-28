@@ -37,12 +37,12 @@ export function ReassessmentChoices({ findings = [], decisions = [], onChange, r
   </ul>;
 }
 
-export function PreviousBodyFindings({ findings = [], decisions = [], onChange, loading, loadError, onRefresh, errors = {}, readOnly }) {
+export function PreviousBodyFindings({ findings = [], decisions = [], onChange, loading, loadError, onRefresh, errors = {}, readOnly, title = "Previous body findings" }) {
   const messages = Object.entries(errors).filter(([key]) => key.startsWith("monitoring_data.bodyFindingReassessments")).flatMap(([, value]) => value);
   const unavailable = decisions.some((item) => !findings.some((finding) => findingIdentity(item) === findingIdentity(finding)));
-  return <section className="mt-4 border-t border-neutral-200 pt-4" aria-label="Previous body findings" data-field="monitoring_data.bodyFindingReassessments">
+  return <section className="mt-4 border-t border-neutral-200 pt-4" aria-label={title} data-field="monitoring_data.bodyFindingReassessments">
     <div className="flex items-center justify-between gap-3">
-      <h3 className="text-sm font-semibold text-ink-900">Previous body findings ({findings.length})</h3>
+      <h3 className="text-sm font-semibold text-ink-900">{title} ({findings.length})</h3>
       <Button type="button" variant="secondary" size="sm" disabled={loading || readOnly} onClick={onRefresh}>Refresh</Button>
     </div>
     <p className="mt-2 text-xs text-ink-600">Historical observations, not confirmed conditions. Each finding starts as Not Yet Reassessed for this consultation. Choices take effect only after successful finalization.</p>

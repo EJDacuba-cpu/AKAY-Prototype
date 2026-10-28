@@ -63,6 +63,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
             'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             'chief_complaint' => 'Visit',
             'category' => 'General Consultation',
+            'treatment_notes' => 'Wound care and counseling.',
             ...$extra,
         ]);
     }
@@ -358,6 +359,7 @@ class FollowUpIndependentSchedulingTest extends TestCase
             'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             'chief_complaint' => 'Wound and prenatal',
             'category' => 'General Consultation',
+            'treatment_notes' => 'Wound care and counseling.',
             'care_plan' => ['condition_cards' => true],
             'diagnoses' => [$this->card('c1', 'managed_at_bhc', 'Wound')],
             'monitoring_data' => ['followUpSchedules' => [

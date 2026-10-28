@@ -463,11 +463,20 @@ export function getCompletedRecordMedicalNotes(
 }
 
 export function getRecordTreatmentNotes(record = {}, fallback = "") {
-  return getRecordValue(
+  const notes = getRecordValue(
     record,
     ["treatmentNotes", "treatment_notes", "treatment"],
-    fallback,
+    "",
   );
+  if (notes) return notes;
+  const monitoring = record.monitoring_data || record.monitoringData || {};
+  if (monitoring.noInterventionPerformed === true || monitoring.no_intervention_performed === true) {
+    const reason = String(
+      monitoring.noInterventionReason || monitoring.no_intervention_reason || "",
+    ).trim();
+    return reason ? `No Intervention Performed: ${reason}` : "No Intervention Performed";
+  }
+  return fallback;
 }
 
 export function isDistinctRecordedValue(value, ...existingValues) {

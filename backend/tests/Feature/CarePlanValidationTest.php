@@ -77,6 +77,45 @@ class CarePlanValidationTest extends TestCase
         $this->assertSame(0, \App\Models\ConditionMonitoring::count());
     }
 
+    public function test_blank_vitals_are_optional_on_official_save(): void
+    {
+        $this->store(['vital_signs' => []])->assertCreated();
+        $this->store([])->assertCreated();
+    }
+
+    public function test_blood_pressure_pair_is_required_when_one_side_is_present(): void
+    {
+        $this->store(['vital_signs' => ['systolicBp' => 120]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.diastolicBp']);
+        $this->store(['vital_signs' => ['diastolicBp' => 80]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.systolicBp']);
+    }
+
+    public function test_vital_sign_encoding_errors_are_rejected(): void
+    {
+        $this->store(['vital_signs' => ['temperature' => 123]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.temperature']);
+        $this->store(['vital_signs' => ['pulse' => 3123]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.pulse']);
+        $this->store(['vital_signs' => ['weight' => 0]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.weight']);
+        $this->store(['vital_signs' => ['height' => 251]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['vital_signs.height']);
+    }
+
+    public function test_unusual_clinical_vitals_are_accepted(): void
+    {
+        $this->store(['vital_signs' => [
+            'systolicBp' => 60,
+            'diastolicBp' => 30,
+            'pulse' => 220,
+            'temperature' => 42,
+            'spo2' => 80,
+            'weight' => 0.5,
+            'height' => 40,
+        ]])->assertCreated();
+    }
+
     public function test_a_stop_needs_a_real_reason(): void
     {
         $this->store(['care_plan' => ['monitoring_stops' => [['monitoring_id' => 1, 'reason' => '   ']]]])

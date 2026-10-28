@@ -98,6 +98,28 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertFalse($sanitized['carePlan']['referToRhu']);
         $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
         $this->assertSame(['Maternal', 'EPI'], $sanitized['carePlan']['serviceReferrals']);
+        $payload['noInterventionPerformed'] = true;
+        $payload['noInterventionReason'] = 'Patient declined treatment';
+        $noIntervention = $service->sanitize($payload);
+        $this->assertTrue($noIntervention['noInterventionPerformed']);
+        $this->assertSame('Patient declined treatment', $noIntervention['noInterventionReason']);
+    }
+
+    public function test_draft_accepts_blank_and_invalid_vitals(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = $this->fullFrontendPayload();
+        $payload['systolicBp'] = '120';
+        $payload['diastolicBp'] = '';
+        $payload['temp'] = '123';
+        $payload['pulse'] = '3123';
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('120', $sanitized['systolicBp']);
+        $this->assertSame('', $sanitized['diastolicBp']);
+        $this->assertSame('123', $sanitized['temp']);
+        $this->assertSame('3123', $sanitized['pulse']);
     }
 
     public function test_condition_cards_and_outcome_screen_survive_draft_sanitization(): void
@@ -199,6 +221,8 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
             'summaryOfPresentIllness' => 'Onset three days ago',
             'diagnosis' => 'Upper respiratory tract infection',
             'medication' => 'Paracetamol',
+            'noInterventionPerformed' => false,
+            'noInterventionReason' => '',
             'attendingStaff' => 'Nurse Reyes',
             'consultationNotes' => 'Advised rest and hydration',
             'systolicBp' => '120',

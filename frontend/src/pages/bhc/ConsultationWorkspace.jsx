@@ -58,7 +58,7 @@ import {
   getApplicableFpMethods,
   getFpMethodRestriction,
 } from "../../utils/familyPlanning";
-import { calculateBmi, formatBmi, getBmiCategory } from "../../utils/bmi";
+import { calculateBmi, formatBmi } from "../../utils/bmi";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   applyRiskFlags,
@@ -170,6 +170,7 @@ import {
   restoreNextActions,
   serviceDateSuggestions,
 } from "../../utils/nextActions";
+import { actionsTakenErrors, restoreActionsTakenText } from "../../utils/actionsTaken";
 import {
   extraScheduleRows,
   followUpScheduleErrors,
@@ -272,7 +273,13 @@ import {
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
 import { resolveBhcConsultationRoute } from "../../utils/consultationRoute";
-import { validateFbs } from "../../utils/fbs";
+import {
+  EMPTY_VITALS_REMINDER,
+  VITAL_ERROR_KEYS,
+  areVitalSignsBlank,
+  mergeVitalFieldErrors,
+  vitalSignsErrors,
+} from "../../utils/vitalSigns";
 import {
   adoptConsultationUuid,
   ensureConsultationUuid,
@@ -1397,6 +1404,8 @@ export default function ConsultationWorkspace() {
       diagnoses: reportingEntryDraft(reportingEntries),
       assessmentNotes,
       medication,
+      noInterventionPerformed: false,
+      noInterventionReason: "",
       attendingStaff,
       consultationNotes,
       systolicBp,
@@ -1690,7 +1699,11 @@ export default function ConsultationWorkspace() {
     setReportingEntries(restoreReportingEntries(payload.diagnoses));
     setAssessmentNotes(typeof payload.assessmentNotes === "string" ? payload.assessmentNotes : "");
     setNextActions(restoreNextActions(payload.carePlan, { selectedPrograms: restoredPrograms }));
-    setMedication(payload.medication || "");
+    setMedication(restoreActionsTakenText({
+      treatmentNotes: payload.medication,
+      noInterventionPerformed: payload.noInterventionPerformed === true,
+      noInterventionReason: payload.noInterventionReason,
+    }));
     setAttendingStaff(payload.attendingStaff || currentUserName);
     setConsultationNotes(payload.consultationNotes || "");
     setSystolicBp(payload.systolicBp || "");
@@ -2341,6 +2354,9 @@ export default function ConsultationWorkspace() {
       ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
       ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
       ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
+      ...actionsTakenErrors({
+        treatmentNotes: medication || maternalData.treatment || familyPlanningData.actionTaken || "",
+      }),
     };
   }
 
@@ -2491,14 +2507,25 @@ export default function ConsultationWorkspace() {
     return true;
   }
 
+  function currentVitalSigns(overrides = {}) {
+    return { systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs, ...overrides };
+  }
+
+  function changeVital(field, value, setter) {
+    setter(value);
+    const nextErrors = vitalSignsErrors(currentVitalSigns({ [field]: value }));
+    setValidationErrors((current) => mergeVitalFieldErrors(current, nextErrors, field));
+  }
+
+  function blurVital(field) {
+    const nextErrors = vitalSignsErrors(currentVitalSigns());
+    setValidationErrors((current) => mergeVitalFieldErrors(current, nextErrors, field, { reveal: true }));
+  }
+
   function getClinicalValidationErrors({ finalizing = canFinalize } = {}) {
     const errors = {};
 
-    for (const [key, value] of Object.entries({ pulse, spo2, weight, height, temp })) {
-      if (String(value).trim() && (!Number.isFinite(Number(value)) || (key !== "temp" && Number(value) < 0) || (["weight", "height"].includes(key) && Number(value) === 0) || (key === "spo2" && Number(value) > 100))) errors[key] = "Enter a valid measurement.";
-    }
-    const fbsError = validateFbs(fbs);
-    if (fbsError) errors.fbs = fbsError;
+    Object.assign(errors, vitalSignsErrors(currentVitalSigns()));
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
     // Condition cards are optional for service-only visits. Added concerns
@@ -3353,10 +3380,11 @@ export default function ConsultationWorkspace() {
       weight: weight || null,
       height: height || null,
       fbs: fbs === "" ? null : Number(fbs),
-      medication:
-        effectiveHealthRecordType === "Maternal"
-          ? recordMaternalData.treatment || medication
-          : medication,
+      medication: effectiveHealthRecordType === "Maternal"
+        ? recordMaternalData.treatment || medication
+        : medication,
+      noInterventionPerformed: false,
+      noInterventionReason: "",
       attendingStaff: attendingStaff || currentUserName,
       consultationNotes,
       followUpStatus: finalPatientStatus,
@@ -3790,6 +3818,22 @@ export default function ConsultationWorkspace() {
       setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
       return false;
     }
+    if (stepKey === ASSESSMENT_STEP) {
+      const vitalsErrors = vitalSignsErrors(currentVitalSigns());
+      if (Object.keys(vitalsErrors).length > 0) {
+        setValidationErrorsAndFocus({
+          ...pickErrorsForStep(validationErrors, ASSESSMENT_STEP, BHC_STEP_OPTIONS),
+          ...vitalsErrors,
+        });
+        return false;
+      }
+      setValidationErrors((current) => {
+        const next = { ...current };
+        for (const key of VITAL_ERROR_KEYS) delete next[key];
+        return next;
+      });
+      return true;
+    }
     // Program completion, disposition and referral requirements apply only at finalization.
     setValidationErrorsAndFocus({});
     return true;
@@ -3993,13 +4037,15 @@ export default function ConsultationWorkspace() {
       set: (value) => handleFamilyPlanningChange("actionTaken", value),
     },
   };
-  const treatmentBindings = isGeneralOnly
+  const programTreatmentBindings = programFormSteps
+    .map((step) => treatmentBindingFor[step.classification])
+    .filter(Boolean);
+  const treatmentBindings = isGeneralOnly || programTreatmentBindings.length === 0
     ? [{ value: medication, set: setMedication }]
-    : programFormSteps
-        .map((step) => treatmentBindingFor[step.classification])
-        .filter(Boolean);
+    : programTreatmentBindings;
   const treatmentValue = medication || treatmentBindings[0]?.value || "";
   const handleTreatmentChange = (value) => {
+    clearValidationError("actionsTaken");
     setMedication(value);
     treatmentBindings.forEach((binding) => binding.set(value));
   };
@@ -4011,15 +4057,18 @@ export default function ConsultationWorkspace() {
   const treatmentSlot = (
     <LockedFormContent locked={patientGateLocked}>
       <div className="space-y-4">
-        {treatmentBindings.length > 0 && (
+        {treatmentBindings.length > 0 ? (
           <FieldTextarea
             label="Actions Taken"
+            name="actionsTaken"
+            required
+            error={validationErrors.actionsTaken}
             value={treatmentValue}
             onChange={(event) => handleTreatmentChange(event.target.value)}
-            placeholder="Medications, procedures, advice given..."
+            placeholder="Treatment, wound care, counseling, or other interventions..."
             rows={4}
           />
-        )}
+        ) : null}
         {isFamilyPlanning && (
           <FieldTextarea
             label="Family Planning Medicines / Supplies"
@@ -4337,8 +4386,8 @@ export default function ConsultationWorkspace() {
       title: "Physical Examination",
       stepKey: ASSESSMENT_STEP,
       rows: [
-        { label: "Vital Signs", value: vitalsSummary },
-        { label: "Physical Findings", value: physicalExam },
+        { label: "Vital Signs", value: vitalsSummary || EMPTY_VITALS_REMINDER },
+        { label: "General Examination Findings", value: physicalExam },
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
         { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
@@ -4746,11 +4795,7 @@ export default function ConsultationWorkspace() {
         {/* Clinical Assessment: one screen for every consultation. */}
         {activeFormStep === ASSESSMENT_STEP && (
           <>
-            <FormSection
-              title="Physical Examination"
-              subtitle="Record the patient's vital signs and examination findings for this visit."
-              delay={3}
-            >
+            <FormSection delay={3}>
               <LockedFormContent locked={patientGateLocked}>
                 {/* Vital Signs: recorded once, here. Program forms do not repeat
                     them. Three columns on desktop: BP | Pulse | SpO2, then
@@ -4758,30 +4803,47 @@ export default function ConsultationWorkspace() {
                 <div>
                   <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Vital Signs</h3>
                   <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-                    <BpInputGroup name="bloodPressure" systolic={systolicBp} diastolic={diastolicBp} onSystolicChange={setSystolicBp} onDiastolicChange={setDiastolicBp} />
-                    <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => setPulse(event.target.value)} placeholder="bpm" />
-                    <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => setSpo2(event.target.value)} placeholder="%" />
-                    <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => setWeight(event.target.value)} placeholder="kg" />
-                    <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => setHeight(event.target.value)} placeholder="cm" />
-                    <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => setTemp(event.target.value)} placeholder="°C" />
+                    <BpInputGroup
+                      name="bloodPressure"
+                      systolic={systolicBp}
+                      diastolic={diastolicBp}
+                      error={validationErrors.bloodPressure || validationErrors.systolicBp || validationErrors.diastolicBp}
+                      onSystolicChange={(value) => changeVital("systolicBp", value, setSystolicBp)}
+                      onDiastolicChange={(value) => changeVital("diastolicBp", value, setDiastolicBp)}
+                      onSystolicBlur={() => blurVital("systolicBp")}
+                      onDiastolicBlur={() => blurVital("diastolicBp")}
+                    />
+                    <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => changeVital("pulse", event.target.value, setPulse)} onBlur={() => blurVital("pulse")} placeholder="bpm" />
+                    <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => changeVital("spo2", event.target.value, setSpo2)} onBlur={() => blurVital("spo2")} placeholder="%" />
+                    <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => changeVital("weight", event.target.value, setWeight)} onBlur={() => blurVital("weight")} placeholder="kg" />
+                    <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => changeVital("height", event.target.value, setHeight)} onBlur={() => blurVital("height")} placeholder="cm" />
+                    <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => changeVital("temp", event.target.value, setTemp)} onBlur={() => blurVital("temp")} placeholder="°C" />
                     <BmiOutputField weight={weight} height={height} />
                   </div>
+                  {areVitalSignsBlank(currentVitalSigns()) && (
+                    <p className="mt-2 text-xs leading-relaxed text-[#6B7280]">{EMPTY_VITALS_REMINDER}</p>
+                  )}
                   <div className="mt-4">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
                     <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
-                      <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => { clearValidationError("fbs"); clearValidationError("vital_signs.fbs"); setFbs(event.target.value); }} placeholder="mg/dL" />
+                      <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => changeVital("fbs", event.target.value, setFbs)} onBlur={() => blurVital("fbs")} placeholder="mg/dL" />
                     </div>
                   </div>
                 </div>
                 <div className="mt-6 border-t border-[#E5E7EB] pt-4">
-                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Physical Findings</h3>
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Examination Findings</h3>
+                  <p className="mb-3 text-xs leading-relaxed text-[#6B7280]">
+                    Visit-level, non-localized findings (appearance, hydration, respiratory effort, etc.). Record location-specific findings on the body map.
+                  </p>
                   <FieldTextarea
-                    label="General Examination Notes"
+                    label="General Examination Findings"
                     value={physicalExam}
                     onChange={(event) => setPhysicalExam(event.target.value)}
-                    placeholder="Document general or non-localized examination findings for this visit..."
+                    placeholder="Appearance, hydration, respiratory effort, and other non-localized findings for this visit..."
                     rows={4}
                   />
+                </div>
+                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
                   <BodyFindingsList
                     findings={bodyFindings}
                     readOnly={workspaceLocked}
@@ -4792,10 +4854,18 @@ export default function ConsultationWorkspace() {
                     }}
                     onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
                   />
-                  <PreviousBodyFindings findings={previousBodyFindings} decisions={bodyFindingReassessments}
-                    onChange={changeBodyReassessments} loading={bodyHistoryQuery.isFetching} loadError={bodyHistoryQuery.isError}
-                    onRefresh={() => bodyHistoryQuery.refetch()} errors={validationErrors} readOnly={workspaceLocked} />
                 </div>
+                <PreviousBodyFindings
+                  title="Previous Findings Reassessment"
+                  findings={previousBodyFindings}
+                  decisions={bodyFindingReassessments}
+                  onChange={changeBodyReassessments}
+                  loading={bodyHistoryQuery.isFetching}
+                  loadError={bodyHistoryQuery.isError}
+                  onRefresh={() => bodyHistoryQuery.refetch()}
+                  errors={validationErrors}
+                  readOnly={workspaceLocked}
+                />
               </LockedFormContent>
             </FormSection>
 
@@ -5045,17 +5115,19 @@ function FormSection({ title, subtitle, children, delay = 0, accent }) {
       }`}
       style={stagger(delay)}
     >
-      <div className="border-b border-[#E5E7EB] px-4 py-2.5">
-        <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
-          {title}
-        </h2>
+      {title ? (
+        <div className="border-b border-[#E5E7EB] px-4 py-2.5">
+          <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
+            {title}
+          </h2>
 
-        {subtitle && (
-          <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
-            {subtitle}
-          </p>
-        )}
-      </div>
+          {subtitle && (
+            <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="p-4">{children}</div>
     </section>
@@ -5188,10 +5260,16 @@ function BpInputGroup({
   diastolic,
   onSystolicChange,
   onDiastolicChange,
+  onSystolicBlur,
+  onDiastolicBlur,
   required = false,
   error = "",
   name,
 }) {
+  const inputClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
+
   return (
     <div data-field={name} tabIndex={error ? -1 : undefined}>
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
@@ -5199,21 +5277,27 @@ function BpInputGroup({
       </label>
       <div className="flex items-center gap-0">
         <input
+          name="systolicBp"
           type="number"
           placeholder="Systolic"
           value={systolic}
+          aria-invalid={Boolean(error) || undefined}
           onChange={(event) => onSystolicChange(event.target.value)}
-          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onBlur={onSystolicBlur}
+          className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
         />
         <div className="flex h-9 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
           /
         </div>
         <input
+          name="diastolicBp"
           type="number"
           placeholder="Diastolic"
           value={diastolic}
+          aria-invalid={Boolean(error) || undefined}
           onChange={(event) => onDiastolicChange(event.target.value)}
-          className="h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          onBlur={onDiastolicBlur}
+          className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
         />
       </div>
       {error ? (
@@ -5244,22 +5328,16 @@ function BpInputGroup({
  */
 function BmiOutputField({ weight, height }) {
   const bmi = calculateBmi(weight, height);
-  const category = getBmiCategory(bmi);
 
   return (
     <div>
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
         BMI
       </label>
-      <div className="flex h-9 w-full items-center justify-between rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
+      <div className="flex h-9 w-full items-center rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
         <span className="text-sm font-bold text-gray-900">
           {bmi === null ? "—" : formatBmi(bmi)}
         </span>
-        {category && (
-          <span className="text-[11px] font-bold uppercase text-[#DC2626]">
-            {category}
-          </span>
-        )}
       </div>
     </div>
   );

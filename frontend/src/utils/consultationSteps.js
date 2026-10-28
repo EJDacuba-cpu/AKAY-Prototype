@@ -394,7 +394,10 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
     return includeHistory === false ? INTERVIEW_STEP : HISTORY_STEP;
   }
   // Vital Signs are a subsection of Physical Examination.
-  if (["pulse", "spo2", "weight", "height", "temp", "fbs"].includes(key) || key === "vital_signs.fbs") {
+  if (
+    ["pulse", "spo2", "weight", "height", "temp", "fbs", "systolicBp", "diastolicBp", "bloodPressure"].includes(key)
+    || key.startsWith("vital_signs.")
+  ) {
     return ASSESSMENT_STEP;
   }
   if (key.startsWith("tbData.")) {
@@ -422,7 +425,17 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key.startsWith("diagnoses.") && key.includes(".referral.")) return carePlanStep;
   if (key === "diagnosis" || key === "diagnoses" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
   // Actions Taken (and the medicines dispensed) sit on Assessment & Care Plan (BHC) or Care and Outcome (RHU).
-  if (key === "dispensedMedicines" || key === "careOutcome") return carePlanStep;
+  if (
+    key === "dispensedMedicines" ||
+    key === "careOutcome" ||
+    key === "actionsTaken" ||
+    key === "medication" ||
+    key === "treatment_notes" ||
+    key === "noInterventionPerformed" ||
+    key === "noInterventionReason"
+  ) {
+    return carePlanStep;
+  }
   if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) return PRESCRIPTION_STEP;
   if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return carePlanStep;
   if (key === "followUpAcknowledged" || key === "referralAcknowledged") return carePlanStep;
@@ -437,6 +450,17 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
 // Server-only 422 keys, renamed to the field keys step 3 reads.
 const SERVER_ERROR_KEYS = {
   referral: "reasonForReferral",
+  treatment_notes: "actionsTaken",
+  "vital_signs.systolicBp": "systolicBp",
+  "vital_signs.diastolicBp": "diastolicBp",
+  "vital_signs.pulse": "pulse",
+  "vital_signs.spo2": "spo2",
+  "vital_signs.temperature": "temp",
+  "vital_signs.weight": "weight",
+  "vital_signs.height": "height",
+  "vital_signs.fbs": "fbs",
+  "monitoring_data.noInterventionPerformed": "noInterventionPerformed",
+  "monitoring_data.noInterventionReason": "noInterventionReason",
   "monitoring_data.followUpReason": "followUpReason",
   "monitoring_data.followUpDate": "followUpDate",
   "monitoring_data.followUpTime": "followUpTime",
