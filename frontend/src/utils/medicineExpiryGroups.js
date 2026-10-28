@@ -36,14 +36,14 @@ export function validateReceiptExpiry(form, now = new Date()) {
   return date < getFacilityCalendarDate(now) ? 'Received stock cannot already be expired.' : '';
 }
 export function validateManualAllocation(item, quantity, allocations, reason, now = new Date()) {
-  if (!String(reason || '').trim()) return 'Explain why these groups were used.';
+  if (!String(reason || '').trim()) return 'Enter a reason for this stock choice.';
   const groups = eligibleGroups(item, now);
   const seen = new Set();
   let total = 0;
   for (const a of allocations) {
     const group = groups.find(g => Number(g.id) === Number(a.expiry_group_id));
-    if (!group || seen.has(Number(a.expiry_group_id)) || !Number.isInteger(Number(a.quantity)) || Number(a.quantity) <= 0 || Number(a.quantity) > Number(group.available_quantity)) return 'Review group quantities: only eligible available stock can be allocated.';
+    if (!group || seen.has(Number(a.expiry_group_id)) || !Number.isInteger(Number(a.quantity)) || Number(a.quantity) <= 0 || Number(a.quantity) > Number(group.available_quantity)) return 'Enter a quantity from available dated stock only.';
     seen.add(Number(a.expiry_group_id)); total += Number(a.quantity);
   }
-  return total > Number(quantity) ? 'Group allocations exceed the actual quantity given.' : '';
+  return total > Number(quantity) ? 'Quantities by expiry date add up to more than the amount given.' : '';
 }

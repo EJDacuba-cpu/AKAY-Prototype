@@ -104,6 +104,25 @@ test("each named concern keeps its own care outcome and reporting classification
   assert.match(rows[1].value, /Surveillance/);
 });
 
+test("unclassified named concerns keep their care outcome and empty reportIn", () => {
+  const unclassified = { id: "u1", name: "Cough", reportIn: [], clinicalOutcome: "managed_at_bhc" };
+  const classified = { id: "c1", name: "Dengue", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu" };
+  assert.deepEqual(conditionCardErrors([unclassified, classified]), {});
+  assert.deepEqual(reportingEntryErrors([unclassified, classified]), {});
+  assert.equal(conditionCardErrors([{ id: "u1", name: "Cough", reportIn: [] }])["reportingEntry.u1.clinicalOutcome"], "Choose a care outcome.");
+  const payload = reportingEntryPayload([unclassified, classified]);
+  assert.deepEqual(payload.map((item) => item.reportIn), [[], ["notifiable"]]);
+  assert.equal(payload[0].clinicalOutcome, "managed_at_bhc");
+  assert.equal(payload[1].clinicalOutcome, "refer_to_rhu");
+  const rows = conditionCardReviewRows([unclassified, classified]);
+  assert.match(rows[0].value, /Managed at BHC/);
+  assert.match(rows[0].value, /Not classified/);
+  assert.match(rows[1].value, /Refer to RHU/);
+  assert.match(rows[1].value, /Notifiable/);
+  assert.match(recordReportingLines({ diagnoses: payload })[0].text, /Not classified/);
+  assert.equal(Object.hasOwn(payload[0], "conditionKey"), false);
+});
+
 test("removing or clearing a concern does not rewrite the other row's outcome", () => {
   const cough = { id: "c1", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" };
   const htn = { ...entry };

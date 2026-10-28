@@ -104,7 +104,7 @@ export function restoreReportingEntries(list) {
     }));
 }
 
-/** Validation messages keyed `reportingEntry.<id>.<name|reportIn|duplicate>`. Blank starter rows are ignored. */
+/** Validation messages keyed `reportingEntry.<id>.<name|reportIn|duplicate>`. Blank starter rows are ignored. Named concerns may be unclassified. */
 export function reportingEntryErrors(entries) {
   const errors = {};
   const seen = new Set();
@@ -113,14 +113,11 @@ export function reportingEntryErrors(entries) {
     const destinations = entryDestinations(entry);
     if (!key && destinations.length === 0) continue;
     if (!key) {
-      errors[`reportingEntry.${entry?.id}.name`] = "Enter the reported health problem.";
+      errors[`reportingEntry.${entry?.id}.name`] = "Enter the health concern.";
     } else if (seen.has(key)) {
-      errors[`reportingEntry.${entry?.id}.duplicate`] = "This health problem is already listed.";
+      errors[`reportingEntry.${entry?.id}.duplicate`] = "This health concern is already listed.";
     } else {
       seen.add(key);
-    }
-    if (destinations.length === 0) {
-      errors[`reportingEntry.${entry?.id}.reportIn`] = "Choose at least one report.";
     }
   }
   return errors;
@@ -133,8 +130,8 @@ export function formatEntryDestinations(entry) {
 
 /**
  * The "Reporting" block of a saved v2 record: one line per named entry,
- * "Name — Morbidity · Surveillance" (just the name when it is reported nowhere).
- * Empty when the record reported nothing, so the caller renders no block at all.
+ * "Name — Morbidity · Surveillance" (or "Not classified" when no report applies).
+ * Empty when the record has no named concerns, so the caller renders no block at all.
  */
 export function recordReportingLines(record) {
   const entries = Array.isArray(record?.diagnoses) ? record.diagnoses : [];
@@ -142,7 +139,7 @@ export function recordReportingLines(record) {
     .filter((entry) => entry && typeof entry === "object" && String(entry.name ?? "").trim() !== "")
     .map((entry, index) => {
       const name = String(entry.name).trim();
-      const destinations = formatEntryDestinations(entry);
+      const destinations = formatEntryDestinations(entry) || "Not classified";
       const outcome = entry.clinicalOutcome === "managed_at_bhc" ? "Managed at BHC" : entry.clinicalOutcome === "refer_to_rhu" ? "Refer to RHU" : "";
       const details = [destinations, outcome, ...(entry.clinicalOutcome === "refer_to_rhu" ? [entry.referral?.urgencyLevel, entry.referral?.reasonForReferral] : [])].filter(Boolean).join(" · ");
       return {

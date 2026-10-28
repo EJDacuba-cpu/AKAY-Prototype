@@ -19,7 +19,7 @@ function MedicineName({ item, role }) {
 }
 function StockStatus({ item }) {
   const view = getMedicineInventoryView(item);
-  return <div className="space-y-1"><LedgerStamp label={view.stockStatus} tone={stockStatusTone(view.stockStatus)} />{item.reconciliationRequired && <p className="text-[11px] font-medium text-warning-700">Reconciliation Required</p>}</div>;
+  return <div className="space-y-1"><LedgerStamp label={view.stockStatus} tone={stockStatusTone(view.stockStatus)} />{item.reconciliationRequired && <LedgerStamp label="Reconciliation Required" tone="warning" />}</div>;
 }
 export function MedicineRowActions({ item, role, canManage, onAction }) {
   return <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 rounded-full" aria-label={`Actions for ${item.name}`}><MoreVertical size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="border-neutral-200 text-ink-800">

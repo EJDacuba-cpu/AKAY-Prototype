@@ -2,10 +2,10 @@
  * Which consultation workflow a saved record was written under.
  *
  * A "bhc_general_v2" record (the simplified BHC General Consultation) carries
- * `monitoring_data.consultationWorkflow`, written by the server. Its reported
- * health problems are reporting-only entries (see reportingEntries.js), so its
- * plain-text `diagnosis` can be blank while the Chief Complaint is the visit's
- * only assessment text. Every other record keeps reading exactly as before.
+ * `monitoring_data.consultationWorkflow`, written by the server. Its diagnoses[]
+ * are health-concern entries with optional reporting (see reportingEntries.js),
+ * so its plain-text `diagnosis` can be blank while the Chief Complaint is the
+ * visit's only assessment text. Every other record keeps reading exactly as before.
  */
 
 export const BHC_GENERAL_V2 = "bhc_general_v2";

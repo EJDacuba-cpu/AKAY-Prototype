@@ -11,9 +11,9 @@ import { entryPurposeKey } from "../../../../utils/followUpSchedules";
 import { entryDestinations, newReportingEntry, REPORT_DESTINATIONS, toggleDestination } from "../../../../utils/reportingEntries";
 
 const REPORTS = {
-  morbidity: { label: "Morbidity Report", description: "Include this health problem in morbidity reporting." },
-  notifiable: { label: "Notifiable Disease Report", description: "Include this suspected case in notifiable disease reporting." },
-  surveillance: { label: "Community-Based Surveillance", description: "Include this health problem in community surveillance." },
+  morbidity: { label: "Morbidity Report", description: "Include this health concern in morbidity reporting." },
+  notifiable: { label: "Notifiable Disease Report", description: "Include this health concern in notifiable disease reporting." },
+  surveillance: { label: "Community-Based Surveillance", description: "Include this health concern in community surveillance." },
 };
 
 const CARE_OUTCOME_OPTIONS = Object.entries(CARE_OUTCOMES).map(([value, label]) => ({ value, label }));
@@ -81,7 +81,7 @@ function ConcernRow({
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <label htmlFor={`${entry.id}-name`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-            Suspected Condition / Health Problem{showOptionalLabel ? " (Optional)" : ""}
+            Health Concern{showOptionalLabel ? " (Optional)" : ""}
           </label>
           <Input
             id={`${entry.id}-name`}
@@ -108,7 +108,7 @@ function ConcernRow({
           <FieldError error={errors[`${key}.name`] || errors[`${key}.duplicate`]} />
         </div>
         {canRemove && (
-          <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label="Remove this health problem" onClick={onRemove} className="mt-6 h-8 w-8 shrink-0 rounded-none text-slate-500 hover:text-red-600">
+          <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label="Remove this health concern" onClick={onRemove} className="mt-6 h-8 w-8 shrink-0 rounded-none text-slate-500 hover:text-red-600">
             <Trash2 size={14} />
           </Button>
         )}
@@ -117,7 +117,7 @@ function ConcernRow({
         <>
           <fieldset className="border-t border-[#E5EEFF] pt-2">
             <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">Reporting Classification (check all applicable)</legend>
-            <p className="clear-both text-xs text-[#545F73]">Choose the existing reports this health problem belongs to.</p>
+            <p className="clear-both text-xs text-[#545F73]">Optional. Choose the reports this health concern belongs to, if any apply.</p>
             <div className="mt-2 space-y-1">
               {REPORT_DESTINATIONS.map((destination) => (
                 <label key={destination} className="flex cursor-pointer items-start gap-3 px-1 py-1.5 hover:bg-slate-50">
@@ -174,7 +174,7 @@ function ConcernRow({
           )}
         </>
       ) : showHint ? (
-        <p className="text-xs leading-5 text-[#708095]">Optional. Prenatal, family planning, and immunization visits can continue without a suspected condition.</p>
+        <p className="text-xs leading-5 text-[#708095]">Optional. Prenatal, family planning, and immunization visits can continue without a health concern.</p>
       ) : null}
     </div>
   );
@@ -205,7 +205,7 @@ export default function ConditionCardsSection({
   }
 
   return (
-    <section aria-label="Suspected conditions and reporting" className="space-y-3" data-field="diagnoses" tabIndex={errors.diagnoses ? -1 : undefined}>
+    <section aria-label="Health concerns and reporting" className="space-y-3" data-field="diagnoses" tabIndex={errors.diagnoses ? -1 : undefined}>
       {heading}
       <div className="space-y-5">
         {rows.map((entry, index) => (

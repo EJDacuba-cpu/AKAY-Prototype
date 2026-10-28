@@ -95,17 +95,15 @@ test("reportingEntryPayload trims names, always emits reportIn, and drops blank 
 test("reportingEntryErrors: name, destination and duplicate messages", () => {
   assert.deepEqual(reportingEntryErrors([{ id: "a", name: "Dengue", reportIn: ["morbidity"] }]), {});
   assert.deepEqual(reportingEntryErrors([{ id: "a", name: "  ", reportIn: ["morbidity"] }]), {
-    "reportingEntry.a.name": "Enter the reported health problem.",
+    "reportingEntry.a.name": "Enter the health concern.",
   });
-  assert.deepEqual(reportingEntryErrors([{ id: "a", name: "Dengue", reportIn: [] }]), {
-    "reportingEntry.a.reportIn": "Choose at least one report.",
-  });
+  assert.deepEqual(reportingEntryErrors([{ id: "a", name: "Dengue", reportIn: [] }]), {});
   assert.deepEqual(
     reportingEntryErrors([
       { id: "a", name: "Dengue", reportIn: ["morbidity"] },
       { id: "b", name: " dengue ", reportIn: ["notifiable"] },
     ]),
-    { "reportingEntry.b.duplicate": "This health problem is already listed." },
+    { "reportingEntry.b.duplicate": "This health concern is already listed." },
   );
   assert.deepEqual(reportingEntryErrors(null), {});
   assert.deepEqual(reportingEntryErrors([{ id: "blank", name: "", reportIn: [] }]), {});
@@ -167,7 +165,7 @@ test("recordReportingLines: name, an em dash, then the destinations", () => {
     }),
     [
       { key: "a", text: "Dengue — Notifiable · Surveillance" },
-      { key: "b", text: "Flu" },
+      { key: "b", text: "Flu — Not classified" },
       { key: "c", text: "Old — Morbidity · Surveillance" },
     ],
   );

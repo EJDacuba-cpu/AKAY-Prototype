@@ -128,7 +128,7 @@ class HealthRecordController extends Controller
         $v2 = $request->isBhcGeneralV2();
         unset($data['consultation_workflow']);
         if ($v2) {
-            // Reporting-only entries: stored exactly as typed, never resolved
+            // Health-concern entries: stored exactly as typed, never resolved
             // against the condition registry, never touching patient conditions.
             $data['diagnoses'] = array_values(array_map(
                 fn (array $entry) => ReportingEntries::normalizeForSave($entry),

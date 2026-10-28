@@ -3,11 +3,12 @@
 namespace App\Services;
 
 /**
- * Consultation concern/reporting entries (health_records.diagnoses[] in a
+ * Consultation health-concern entries (health_records.diagnoses[] in a
  * bhc_general_v2 consultation): {id, name, reportIn[]}. reportIn is the source
- * of truth; reportAs and includeInSurveillance are written as compatibility
- * mirrors so existing readers keep working. Condition cards additionally store
- * clinicalOutcome and referral details without touching the patient registry.
+ * of truth and may be empty when no report applies; reportAs and
+ * includeInSurveillance are written as compatibility mirrors so existing
+ * readers keep working. Condition cards additionally store clinicalOutcome
+ * and referral details without touching the patient registry.
  * Historical entries carry only
  * reportAs and includeInSurveillance, so this normalizer reads both shapes.
  * See docs/superpowers/specs/2026-10-10-bhc-general-consultation-simplification-design.md (B2).

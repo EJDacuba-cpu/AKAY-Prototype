@@ -1,15 +1,16 @@
 import MedicineAllocationFields from "./MedicineAllocationFields";
-import { allocationIntent, validateManualAllocation } from "../../../utils/medicineExpiryGroups";
+import { LedgerStamp } from "./MedicineInventoryTable";
+import { allocationIntent, expiryGroups, groupLabel, validateManualAllocation } from "../../../utils/medicineExpiryGroups";
 import { AlertCircle, LoaderCircle, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  formatMedicineQuantity,
-} from "../../../services/medicineService";
+import { formatMedicineQuantity } from "../../../services/medicineService";
 import {
   EXPIRY_STATUS,
   STOCK_STATUS,
+  expiryStatusTone,
   getMedicineExpiryStatus,
   getMedicineStockStatus,
+  stockStatusTone,
 } from "../../../utils/medicineInventoryStatus";
 
 const EMPTY_DRAFT = {
@@ -33,23 +34,48 @@ function hasDraftValues(draft = {}) {
   );
 }
 
+function fieldClass(invalid) {
+  return `h-10 w-full rounded-lg border bg-white px-3.5 text-sm text-ink-800 outline-none transition placeholder:text-neutral-500 disabled:cursor-not-allowed disabled:opacity-60 ${
+    invalid
+      ? "border-alert-700 ring-2 ring-alert-700/15"
+      : "border-neutral-200 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/10"
+  }`;
+}
 
+function itemNotice(item, inventoryItem) {
+  if (!inventoryItem) {
+    return { message: `${item.medicineName || "This item"} is no longer in inventory.`, critical: true };
+  }
+  const expiryStatus = getMedicineExpiryStatus(inventoryItem);
+  const stockStatus = getMedicineStockStatus(inventoryItem);
+  if (expiryStatus === EXPIRY_STATUS.EXPIRED) {
+    return { message: "No dated stock is available. Confirming this records a shortage.", critical: true };
+  }
+  if (stockStatus === STOCK_STATUS.OUT_OF_STOCK) {
+    return { message: "This item is now out of stock.", critical: true };
+  }
+  if (expiryStatus === EXPIRY_STATUS.EXPIRES_TODAY) {
+    return { message: "This stock expires today.", critical: true };
+  }
+  if (expiryStatus === EXPIRY_STATUS.NOT_RECORDED) {
+    return { message: "No expiry date is recorded.", critical: false };
+  }
+  if (toNumber(item.quantity) > toNumber(inventoryItem.stockSummary?.available ?? 0)) {
+    return { message: "Quantity is more than available stock.", critical: true };
+  }
+  return null;
+}
 
-function getStatusClasses(status) {
-  if (status === EXPIRY_STATUS.EXPIRED || status === STOCK_STATUS.OUT_OF_STOCK) {
-    return "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]";
-  }
-  if (
-    status === STOCK_STATUS.LOW_STOCK ||
-    status === EXPIRY_STATUS.EXPIRES_TODAY ||
-    status === EXPIRY_STATUS.EXPIRING_SOON
-  ) {
-    return "border-[#fde68a] bg-[#fffbeb] text-[#b45309]";
-  }
-  if (status === EXPIRY_STATUS.NOT_RECORDED) {
-    return "border-[#d1d5db] bg-[#f3f4f6] text-[#4b5563]";
-  }
-  return "border-[#a5f3fc] bg-[#ecfeff] text-[#0e7490]";
+function allocationSummary(item, inventoryItem) {
+  if (!Array.isArray(item.allocations)) return "Earliest expiry first";
+  if (!item.allocations.length) return "Shortage — not taken from recorded stock";
+  const groups = expiryGroups(inventoryItem);
+  return item.allocations
+    .map((allocation) => {
+      const group = groups.find((entry) => Number(entry.id) === Number(allocation.expiry_group_id));
+      return `${group ? groupLabel(group) : "Stock group"} · ${allocation.quantity}`;
+    })
+    .join("; ");
 }
 
 export default function DispensedMedicinesSection({
@@ -65,7 +91,7 @@ export default function DispensedMedicinesSection({
   onPendingDraftChange,
 }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
-  const [validationError, setValidationError] = useState("");
+  const [fieldError, setFieldError] = useState({ field: "", message: "" });
   const availableInventory = useMemo(
     () => inventory.filter((item) => item?.id && item?.name),
     [inventory],
@@ -97,36 +123,7 @@ export default function DispensedMedicinesSection({
   const selectedExpiryStatus = selectedMedicine
     ? getMedicineExpiryStatus(selectedMedicine)
     : EXPIRY_STATUS.NOT_RECORDED;
-  const draftWarnings = useMemo(
-    () =>
-      value
-        .map((item) => {
-          const inventoryItem = inventoryById.get(String(item.medicineId));
-          if (!inventoryItem) {
-            return `${item.medicineName || "Medicine"} is no longer listed in inventory.`;
-          }
-          const expiryStatus = getMedicineExpiryStatus(inventoryItem);
-          const stockStatus = getMedicineStockStatus(inventoryItem);
-          if (expiryStatus === EXPIRY_STATUS.EXPIRED) {
-            return `${item.medicineName || inventoryItem.name} has no eligible dated stock. Actual dispensing will remain unallocated unless an eligible group is available.`;
-          }
-          if (stockStatus === STOCK_STATUS.OUT_OF_STOCK) {
-            return `${item.medicineName || inventoryItem.name} is now out of stock.`;
-          }
-          if (expiryStatus === EXPIRY_STATUS.EXPIRES_TODAY) {
-            return `${item.medicineName || inventoryItem.name} expires today.`;
-          }
-          if (expiryStatus === EXPIRY_STATUS.NOT_RECORDED) {
-            return `${item.medicineName || inventoryItem.name} has no recorded expiry date.`;
-          }
-          if (toNumber(item.quantity) > toNumber(inventoryItem.stockSummary?.available ?? 0)) {
-            return `${item.medicineName || inventoryItem.name} exceeds current available stock.`;
-          }
-          return "";
-        })
-        .filter(Boolean),
-    [inventoryById, value],
-  );
+  const allocationError = fieldError.field === "allocations" || fieldError.field === "reason";
 
   useEffect(
     () => () => onPendingDraftChange?.(false),
@@ -134,12 +131,15 @@ export default function DispensedMedicinesSection({
   );
 
   function updateDraft(key, nextValue) {
-    setValidationError("");
+    setFieldError({ field: "", message: "" });
     const nextDraft =
       key === "category"
         ? { ...draft, category: nextValue, medicineId: "" }
         : { ...draft, [key]: nextValue };
-    if (key === "medicineId" || key === "category") { delete nextDraft.allocations; delete nextDraft.override_reason; }
+    if (key === "medicineId" || key === "category") {
+      delete nextDraft.allocations;
+      delete nextDraft.override_reason;
+    }
     setDraft(nextDraft);
     onPendingDraftChange?.(hasDraftValues(nextDraft));
   }
@@ -149,31 +149,40 @@ export default function DispensedMedicinesSection({
     const quantity = toNumber(draft.quantity);
 
     if (!draft.category) {
-      setValidationError("Please select a category.");
+      setFieldError({ field: "category", message: "Select a category." });
       return;
     }
     if (!medicine) {
-      setValidationError("Please select a medicine or supply.");
+      setFieldError({ field: "medicineId", message: "Select a medicine or supply." });
       return;
     }
     if (quantity <= 0) {
-      setValidationError("Quantity must be greater than 0.");
+      setFieldError({ field: "quantity", message: "Enter a quantity greater than 0." });
       return;
     }
-    if (!Number.isInteger(quantity)) { setValidationError("Enter a whole stock-unit quantity."); return; }
+    if (!Number.isInteger(quantity)) {
+      setFieldError({ field: "quantity", message: "Enter a whole stock-unit quantity." });
+      return;
+    }
     if (Array.isArray(draft.allocations)) {
       const issue = validateManualAllocation(medicine, quantity, draft.allocations, draft.override_reason);
-      if (issue) { setValidationError(issue); return; }
+      if (issue) {
+        setFieldError({
+          field: /reason|explain why/i.test(issue) ? "reason" : "allocations",
+          message: issue,
+        });
+        return;
+      }
     }
 
     const existingItem = value.find(
       (item) => String(item.medicineId) === String(medicine.id),
     );
     if (existingItem && (Array.isArray(existingItem.allocations) || Array.isArray(draft.allocations))) {
-      setValidationError("Remove the existing entry before changing a manual allocation for this item."); return;
+      setFieldError({ field: "medicineId", message: "Remove the existing entry before changing a manual allocation for this item." });
+      return;
     }
     const nextQuantity = quantity + toNumber(existingItem?.quantity);
-
 
     const nextItem = {
       medicineId: String(medicine.id),
@@ -206,232 +215,202 @@ export default function DispensedMedicinesSection({
 
   if (loading && availableInventory.length === 0) {
     return (
-      <div
-        data-dispensed-medicines-section
-        className="rounded-xl border border-[#E8ECF0] bg-white p-4"
-      >
-        <div className="flex items-center gap-2 text-sm font-semibold text-[#64748B]">
-          <LoaderCircle size={16} className="animate-spin" />
-          Loading BHC inventory...
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="h-10 rounded-lg bg-slate-100" />
-          <div className="h-10 rounded-lg bg-slate-100" />
-          <div className="h-10 rounded-lg bg-slate-100" />
-          <div className="h-10 rounded-lg bg-slate-100" />
-        </div>
+      <div data-dispensed-medicines-section className="flex items-center gap-2 text-sm text-neutral-600">
+        <LoaderCircle size={16} className="animate-spin" />
+        Loading BHC inventory…
       </div>
     );
   }
 
   if (error && availableInventory.length === 0) {
     return (
-      <div
-        data-dispensed-medicines-section
-        className="rounded-xl border border-red-100 bg-red-50 p-4"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-3">
-            <AlertCircle size={18} className="mt-0.5 shrink-0 text-[#B91C1C]" />
-            <div>
-              <p className="text-sm font-bold text-[#0F172A]">
-                Unable to load BHC inventory.
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-[#64748B]">
-                Please check your connection and try again.
-              </p>
-            </div>
+      <div data-dispensed-medicines-section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-2 text-sm text-alert-700">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Unable to load BHC inventory.</p>
+            <p className="mt-0.5 text-xs text-neutral-600">Check your connection and try again.</p>
           </div>
-          {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-red-100 bg-white px-3 text-xs font-semibold text-[#B91C1C] transition hover:bg-red-50"
-            >
-              <RefreshCw size={13} />
-              Retry
-            </button>
-          )}
         </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-ink-800 hover:bg-neutral-50"
+          >
+            <RefreshCw size={13} />
+            Retry
+          </button>
+        )}
       </div>
     );
   }
 
   if (!loading && availableInventory.length === 0) {
     return (
-      <div
-        data-dispensed-medicines-section
-        className="rounded-xl border border-[#E8ECF0] bg-white px-4 py-6 text-center text-sm text-[#64748B]"
-      >
+      <p data-dispensed-medicines-section className="text-sm text-neutral-600">
         No medicines or supplies registered in BHC inventory.
-      </div>
+      </p>
     );
   }
 
   return (
     <div data-dispensed-medicines-section className="space-y-4">
-      <div className="rounded-xl border border-[#E8ECF0] bg-white p-4">
+      <p className="text-xs leading-relaxed text-neutral-600">
+        Select an item and quantity, then click Confirm Dispensed/Given. Only items in the list below are saved and deducted from BHC inventory with this visit.
+      </p>
+      {serviceHint && (
+        <p className="text-xs leading-relaxed text-neutral-600">{serviceHint}</p>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          <p className="text-xs leading-relaxed text-[#64748B]">
-            Select an item and quantity, then click Confirm Dispensed/Given. Only items
-            shown in the list below will be saved and deducted from BHC
-            inventory with this health record.
-          </p>
-          {serviceHint && (
-            <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-700">
-              {serviceHint}
-            </p>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Category
+          </label>
+          <select
+            value={draft.category}
+            onChange={(event) => updateDraft("category", event.target.value)}
+            disabled={disabled}
+            aria-invalid={fieldError.field === "category" || undefined}
+            className={fieldClass(fieldError.field === "category")}
+          >
+            <option value="">Select category</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+          {fieldError.field === "category" && (
+            <p role="alert" className="mt-1 text-xs font-medium text-alert-700">{fieldError.message}</p>
           )}
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Category
-            </label>
-            <select
-              value={draft.category}
-              onChange={(event) => updateDraft("category", event.target.value)}
-              disabled={disabled}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="">Select category</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Medicine / Supply
-            </label>
-            <select
-              value={draft.medicineId}
-              onChange={(event) => updateDraft("medicineId", event.target.value)}
-              disabled={disabled || !draft.category}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="">
-                {draft.category ? "Select medicine or supply" : "Select category first"}
-              </option>
-              {filteredInventory.map((item) => {
-                const stockStatus = getMedicineStockStatus(item);
-                const expiryStatus = getMedicineExpiryStatus(item);
-                const notes = [
-                  stockStatus !== STOCK_STATUS.IN_STOCK ? stockStatus : null,
-                  expiryStatus !== EXPIRY_STATUS.VALID ? expiryStatus : null,
-                ].filter(Boolean);
-                return (
-                  <option key={item.id} value={item.id} >
-                    {item.name} - {formatMedicineQuantity(item)}
-                    {notes.length ? ` - ${notes.join(", ")}` : ""}
-                  </option>
-                );
-              })}
-            </select>
-            {draft.category && filteredInventory.length === 0 && (
-              <p className="mt-1 text-[11px] font-medium text-[#64748B]">
-                No items found under this category.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {selectedMedicine && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
-            <span>
-              Recorded stock:{" "}
-              <strong className="text-[#111827]">
-                {formatMedicineQuantity(selectedMedicine)}
-              </strong>
-            </span>
-            <span
-              className={`rounded-full border px-2 py-0.5 font-semibold ${getStatusClasses(
-                selectedStockStatus,
-              )}`}
-            >
-              {selectedStockStatus}
-            </span>
-            <span
-              className={`rounded-full border px-2 py-0.5 font-semibold ${getStatusClasses(
-                selectedExpiryStatus,
-              )}`}
-            >
-              {selectedExpiryStatus}
-            </span>
-            <span>
-              Eligible available: <strong className="text-[#111827]">{selectedMedicine.stockSummary?.available ?? 0} {selectedMedicine.unit}</strong>
-            </span>
-          </div>
-        )}
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(110px,0.45fr)_minmax(0,1fr)_auto] lg:items-end">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Quantity
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={draft.quantity}
-              onChange={(event) => updateDraft("quantity", event.target.value)}
-              disabled={disabled}
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              Remarks
-            </label>
-            <input
-              type="text"
-              value={draft.remarks}
-              onChange={(event) => updateDraft("remarks", event.target.value)}
-              disabled={disabled}
-              placeholder="Given during visit, provided after consultation..."
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={addMedicine}
-            disabled={disabled}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 text-xs font-semibold text-white transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60"
+        <div>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Medicine / Supply
+          </label>
+          <select
+            value={draft.medicineId}
+            onChange={(event) => updateDraft("medicineId", event.target.value)}
+            disabled={disabled || !draft.category}
+            aria-invalid={fieldError.field === "medicineId" || undefined}
+            className={fieldClass(fieldError.field === "medicineId")}
           >
-            <Package size={14} />
-            Confirm Dispensed/Given
-          </button>
+            <option value="">
+              {draft.category ? "Select medicine or supply" : "Select category first"}
+            </option>
+            {filteredInventory.map((item) => {
+              const stockStatus = getMedicineStockStatus(item);
+              const expiryStatus = getMedicineExpiryStatus(item);
+              const notes = [
+                stockStatus !== STOCK_STATUS.IN_STOCK ? stockStatus : null,
+                expiryStatus !== EXPIRY_STATUS.VALID ? expiryStatus : null,
+              ].filter(Boolean);
+              return (
+                <option key={item.id} value={item.id}>
+                  {item.name} - {formatMedicineQuantity(item)}
+                  {notes.length ? ` - ${notes.join(", ")}` : ""}
+                </option>
+              );
+            })}
+          </select>
+          {fieldError.field === "medicineId" && (
+            <p role="alert" className="mt-1 text-xs font-medium text-alert-700">{fieldError.message}</p>
+          )}
+          {draft.category && filteredInventory.length === 0 && (
+            <p className="mt-1 text-xs text-neutral-600">No items found under this category.</p>
+          )}
         </div>
-
-        {selectedMedicine && <div className="mt-3"><MedicineAllocationFields medicine={selectedMedicine} quantity={draft.quantity} value={draft} disabled={disabled} onChange={next => { setDraft(next); setValidationError(""); onPendingDraftChange?.(true); }} /></div>}
-        {(validationError || pendingDraftError) && (
-          <p className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-[#B91C1C]">
-            {validationError || pendingDraftError}
-          </p>
-        )}
-
-        {draftWarnings.length > 0 && (
-          <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            <p className="font-bold">
-              Some medicines in this draft may no longer be available. Please
-              review before submitting.
-            </p>
-            <ul className="mt-1 list-disc space-y-1 pl-4">
-              {draftWarnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-        <div className="hidden grid-cols-[minmax(160px,1.35fr)_minmax(140px,1fr)_90px_80px_120px_minmax(140px,1fr)_80px] border-b border-[#EEF2F6] bg-[#F8FAFC] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#64748B] xl:grid">
+      {selectedMedicine && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+          <span>
+            Recorded stock:{" "}
+            <strong className="font-semibold text-ink-800">
+              {formatMedicineQuantity(selectedMedicine)}
+            </strong>
+          </span>
+          <LedgerStamp label={selectedStockStatus} tone={stockStatusTone(selectedStockStatus)} />
+          <LedgerStamp label={selectedExpiryStatus} tone={expiryStatusTone(selectedExpiryStatus)} />
+          <span>
+            Available to dispense:{" "}
+            <strong className="font-semibold text-ink-800">
+              {selectedMedicine.stockSummary?.available ?? 0} {selectedMedicine.unit}
+            </strong>
+          </span>
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(110px,0.45fr)_minmax(0,1fr)_auto] lg:items-end">
+        <div>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Quantity
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={draft.quantity}
+            onChange={(event) => updateDraft("quantity", event.target.value)}
+            disabled={disabled}
+            aria-invalid={fieldError.field === "quantity" || undefined}
+            className={fieldClass(fieldError.field === "quantity")}
+          />
+          {fieldError.field === "quantity" && (
+            <p role="alert" className="mt-1 text-xs font-medium text-alert-700">{fieldError.message}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Remarks
+          </label>
+          <input
+            type="text"
+            value={draft.remarks}
+            onChange={(event) => updateDraft("remarks", event.target.value)}
+            disabled={disabled}
+            placeholder="Given during visit, provided after consultation..."
+            className={fieldClass(false)}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={addMedicine}
+          disabled={disabled}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand-600 px-4 text-xs font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Package size={14} />
+          Confirm Dispensed/Given
+        </button>
+      </div>
+
+      {selectedMedicine && (
+        <MedicineAllocationFields
+          medicine={selectedMedicine}
+          quantity={draft.quantity}
+          value={draft}
+          disabled={disabled}
+          error={allocationError ? fieldError.message : ""}
+          onChange={(next) => {
+            setDraft(next);
+            setFieldError({ field: "", message: "" });
+            onPendingDraftChange?.(true);
+          }}
+        />
+      )}
+      {!allocationError && fieldError.message && !["category", "medicineId", "quantity"].includes(fieldError.field) && (
+        <p role="alert" className="text-xs font-medium text-alert-700">{fieldError.message}</p>
+      )}
+      {pendingDraftError && (
+        <p role="alert" className="text-xs font-medium text-alert-700">{pendingDraftError}</p>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <div className="hidden grid-cols-[minmax(160px,1.35fr)_minmax(140px,1fr)_90px_80px_120px_minmax(140px,1fr)_80px] border-b border-neutral-200 bg-neutral-100 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-neutral-600 xl:grid">
           <span>Medicine / Supply</span>
           <span>Category</span>
           <span>Quantity</span>
@@ -442,37 +421,50 @@ export default function DispensedMedicinesSection({
         </div>
 
         {value.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-[#64748B]">
+          <p className="px-4 py-6 text-center text-sm text-neutral-600">
             No medicines or supplies added.
-          </div>
+          </p>
         ) : (
-          <div className="divide-y divide-[#EEF2F6]">
-            {value.map((item) => (
-              <div
-                key={item.medicineId}
-                className="grid gap-2 px-3 py-3 text-sm xl:grid-cols-[minmax(160px,1.35fr)_minmax(140px,1fr)_90px_80px_120px_minmax(140px,1fr)_80px] xl:items-center"
-              >
-                <p className="font-semibold text-[#0F172A]">
-                  {item.medicineName}
-                </p>
-                <p className="text-[#64748B]">{item.category || "-"}</p>
-                <p className="text-[#475569]">{item.quantity}</p>
-                <p className="text-[#475569]">{item.unit || "-"}</p>
-                <p className="text-[#475569]">
-                  {toNumber(item.availableStock).toLocaleString()} available
-                </p>
-                <div className="text-xs text-neutral-600">{item.remarks || "?"}<p>{Array.isArray(item.allocations) ? `Manual groups: ${item.allocations.map(a => `${a.expiry_group_id}: ${a.quantity}`).join(", ") || "none (unallocated)"}` : "Automatic FEFO"}</p>{item.override_reason && <p>{item.override_reason}</p>}</div>
-                <button
-                  type="button"
-                  onClick={() => removeMedicine(item.medicineId)}
-                  disabled={disabled}
-                  className="inline-flex h-9 w-fit items-center gap-1.5 rounded-lg border border-[#E8ECF0] px-2.5 text-xs font-semibold text-[#64748B] transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-60"
+          <div className="divide-y divide-neutral-100">
+            {value.map((item) => {
+              const inventoryItem = inventoryById.get(String(item.medicineId));
+              const notice = itemNotice(item, inventoryItem);
+              return (
+                <div
+                  key={item.medicineId}
+                  className="grid gap-2 px-3 py-3 text-sm xl:grid-cols-[minmax(160px,1.35fr)_minmax(140px,1fr)_90px_80px_120px_minmax(140px,1fr)_80px] xl:items-start"
                 >
-                  <Trash2 size={13} />
-                  Remove
-                </button>
-              </div>
-            ))}
+                  <div>
+                    <p className="font-semibold text-ink-800">{item.medicineName}</p>
+                    {notice && (
+                      <p className={`mt-1 text-xs ${notice.critical ? "font-medium text-alert-700" : "text-neutral-600"}`}>
+                        {notice.message}
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-neutral-600">{item.category || "—"}</p>
+                  <p className="tabular-nums text-ink-800">{item.quantity}</p>
+                  <p className="text-neutral-600">{item.unit || "—"}</p>
+                  <p className="tabular-nums text-neutral-600">
+                    {toNumber(item.availableStock).toLocaleString()} available
+                  </p>
+                  <div className="text-xs text-neutral-600">
+                    <p>{item.remarks || "—"}</p>
+                    <p>{allocationSummary(item, inventoryItem)}</p>
+                    {item.override_reason && <p>{item.override_reason}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMedicine(item.medicineId)}
+                    disabled={disabled}
+                    className="inline-flex h-9 w-fit items-center gap-1.5 rounded-full border border-neutral-200 px-2.5 text-xs font-medium text-neutral-600 transition hover:border-alert-200 hover:bg-alert-50 hover:text-alert-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Trash2 size={13} />
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

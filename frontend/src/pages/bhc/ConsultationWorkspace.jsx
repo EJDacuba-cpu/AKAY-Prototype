@@ -2502,7 +2502,7 @@ export default function ConsultationWorkspace() {
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
     if (!finalizing) return errors;
     // Condition cards are optional for service-only visits. Added concerns
-    // still need a name, reporting classification, and clinical outcome.
+    // still need a name and clinical outcome. Reporting classification is optional.
     // The same step 3 rules Continue checks. validateCarePlan (inside) must run
     // before buildCarePlanPayload, which drops blank-reason stops. The
     // acknowledgment is never stored in a draft, so a draft resumed onto
@@ -2511,7 +2511,7 @@ export default function ConsultationWorkspace() {
 
     if (hasPendingDispensedMedicineDraft) {
       errors.dispensedMedicines =
-        'Click "Add Medicine" before saving so this item is included in the visit.';
+        'Click "Confirm Dispensed/Given" before saving so this item is included in the visit.';
     }
     if (isImmunization) {
       const preparedEntries = immunizationVaccineEntries.map((entry) => ({
@@ -4239,9 +4239,9 @@ export default function ConsultationWorkspace() {
     [ASSESSMENT_STEP]:
       "Record the vital signs and examination findings for this visit.",
     [NEXT_STEP]:
-      "Record each suspected condition, its reporting classification, and its own care outcome.",
+      "Record each health concern, optional reporting classification, and its own care outcome.",
     [OUTCOME_STEP]:
-      "Record each suspected condition, its reporting classification, and its own care outcome.",
+      "Record each health concern, optional reporting classification, and its own care outcome.",
     [MONITORING_STEP]:
       "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",

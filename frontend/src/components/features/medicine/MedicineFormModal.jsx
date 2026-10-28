@@ -296,10 +296,9 @@ export default function MedicineFormModal({
             )}
 
             {mode === "edit" && item?.reconciliationRequired && (
-              <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-medium text-amber-800">
-                This item needs stock verification after a dispensing discrepancy.
-                Saving item details will not resolve this discrepancy.
-              </div>
+              <p role="status" className="md:col-span-2 text-xs leading-relaxed text-ink-800">
+                <span className="font-semibold">Reconciliation required.</span> A dispensing shortage is still recorded. Saving item details will not clear it.
+              </p>
             )}
 
             <Field label="Notes" className="md:col-span-2">
@@ -314,12 +313,9 @@ export default function MedicineFormModal({
             </Field>
 
             {error && (
-              <div
-                role="alert"
-                className="md:col-span-2 rounded-lg border border-red-100 bg-red-50 px-3.5 py-3 text-xs font-medium text-[#B91C1C]"
-              >
+              <p role="alert" className="md:col-span-2 text-xs font-medium text-alert-700">
                 {error}
-              </div>
+              </p>
             )}
           </div>
       </form>
@@ -338,7 +334,7 @@ function Field({ label, htmlFor, required = false, className = "", error, childr
       {(error || required) && (
         <p
           role={error ? "alert" : undefined}
-          className="mt-1 min-h-4 text-xs leading-4 text-[#B91C1C]"
+          className="mt-1 min-h-4 text-xs leading-4 text-alert-700"
         >
           {error || ""}
         </p>
@@ -348,4 +344,4 @@ function Field({ label, htmlFor, required = false, className = "", error, childr
 }
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 text-sm text-[#1F2937] outline-none transition-all placeholder:text-[#BCC3CD] focus:border-[#B91C1C] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10 disabled:cursor-not-allowed disabled:opacity-60";
+  "h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-ink-800 outline-none transition placeholder:text-neutral-500 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/10 disabled:cursor-not-allowed disabled:opacity-60 aria-invalid:border-alert-700 aria-invalid:ring-2 aria-invalid:ring-alert-700/15";

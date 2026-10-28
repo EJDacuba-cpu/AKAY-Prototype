@@ -115,7 +115,7 @@ export default function HealthRecordClinicalDetails(props) {
 function ReportingSummary({ lines, hasConditions = false }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <TabbedSubsection title={hasConditions ? "Clinical Conditions & Reporting" : "Reporting"}>
+      <TabbedSubsection title={hasConditions ? "Health Concerns & Reporting" : "Reporting"}>
         <ul className="divide-y divide-slate-100">
           {lines.map((line) => (
             <li key={line.key} className="py-2 text-sm font-medium text-[#0F172A]">
@@ -389,9 +389,9 @@ export function DispensedMedicinesList({ medicines }) {
             </p>
             <p className="text-slate-600">
               {formatDisplayValue(medicine.remarks, "—")}
-              {(medicine.inventoryAllocations || medicine.inventory_allocations || medicine.allocations || []).map(a => <span className="mt-1 block text-xs" key={a.id || a.expiry_group_id}>{groupLabel(a.expiry_group || a.group || a)} ? {a.quantity ?? Math.abs(a.available_delta || 0)} {medicine.unit}</span>)}
-              {medicine.override_reason && <span className="mt-1 block text-xs">Override: {medicine.override_reason}</span>}
-              {Number(medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity) > 0 && <span className="mt-1 block text-xs text-amber-800">Unallocated actual dispensing: {medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity}</span>}
+              {(medicine.inventoryAllocations || medicine.inventory_allocations || medicine.allocations || []).map(a => <span className="mt-1 block text-xs" key={a.id || a.expiry_group_id}>{groupLabel(a.expiry_group || a.group || a)} · {a.quantity ?? Math.abs(a.available_delta || 0)} {medicine.unit}</span>)}
+              {medicine.override_reason && <span className="mt-1 block text-xs">Reason: {medicine.override_reason}</span>}
+              {Number(medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity) > 0 && <span className="mt-1 block text-xs font-medium text-alert-700">Shortage recorded: {medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity}</span>}
             </p>
             <p className="text-slate-500">
               {formatLongDate(

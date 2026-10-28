@@ -63,7 +63,7 @@ test('inline history renders allocation provenance, shortage and paging without 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.medicineTransactions(user, item.id, 1), { data: { current_page: 1, last_page: 2, data: [{ transaction_type: 'dispense', quantity_before: 10, quantity_delta: -5, quantity_after: 7, discrepancy: -2, reason: 'Actual given', actor: { name: 'Clinic Staff' }, allocations: [{ expiry_group_id: 1, available_before: 4, available_after: 1, quarantined_before: 3, quarantined_after: 3 }] }] } });
   const html = render(createElement(QueryClientProvider, { client }, createElement(History, { item, user })));
-  assert.match(html, /Unallocated actual dispensing: 2/);
+  assert.match(html, /Shortage recorded: 2/);
   assert.match(html, /Clinic Staff/);
   assert.match(html, /Dec 31, 2099/);
   assert.match(html, /Next/);

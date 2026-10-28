@@ -75,8 +75,8 @@ class HealthRecord extends Model
 
     /**
      * monitoring_data.consultationWorkflow value of a simplified BHC General
-     * Consultation, whose diagnoses[] are reporting-only entries
-     * (App\Services\ReportingEntries).
+     * Consultation, whose diagnoses[] are health-concern entries with optional
+     * reporting destinations (App\Services\ReportingEntries).
      */
     public const WORKFLOW_BHC_GENERAL_V2 = 'bhc_general_v2';
 

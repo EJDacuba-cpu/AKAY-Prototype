@@ -60,7 +60,7 @@ test("add keeps an editable opening balance", () => {
 
 test("pending reconciliation stays visible without exposing correction fields", () => {
   const html = render({ item: { ...item, reconciliationRequired: true } });
-  assert.match(html, /dispensing discrepancy/);
+  assert.match(html, /Reconciliation required/);
   assert.doesNotMatch(html, /Explain why the recorded stock|Confirm or correct the quantity/);
 });
 
@@ -121,8 +121,8 @@ test('edit cannot rewrite received expiry dates or item type', () => {
 
 test('manual empty allocation explicitly previews shortage and reason field', () => {
   const html = renderToStaticMarkup(createElement(MedicineAllocationFields, { medicine: item, quantity: 3, value: { allocations: [], override_reason: 'Unrecorded stock' } }));
-  assert.match(html, /Unallocated actual dispensing: 3/);
-  assert.match(html, /Override reason \(required\)/);
+  assert.match(html, /Shortage: 3 tablets cannot come from recorded stock/);
+  assert.match(html, /Reason for this stock choice/);
   assert.match(html, /Unrecorded stock/);
 });
 
@@ -135,8 +135,8 @@ test('inventory response with non-array expiry groups renders the dispensing fie
     assert.deepEqual(medicine.expiryGroups, []);
     assert.deepEqual(medicine.expiry_groups, []);
     const html = renderToStaticMarkup(createElement(MedicineAllocationFields, { medicine, quantity: 3 }));
-    assert.match(html, /Automatic FEFO/);
-    assert.match(html, /Unallocated actual dispensing: 3/);
+    assert.match(html, /earliest expiry date first/);
+    assert.match(html, /Shortage: 3 tablets cannot come from recorded stock/);
   }
 });
 

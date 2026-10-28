@@ -119,6 +119,24 @@ class ReportingEntriesTest extends TestCase
         $this->assertSame(['surveillance'], ReportingEntries::destinations(['includeInSurveillance' => true]));
     }
 
+    public function test_empty_report_in_preserves_unclassified_concern_and_care_outcome(): void
+    {
+        $result = ReportingEntries::normalizeForSave([
+            'id' => 'c1',
+            'name' => 'Cough',
+            'reportIn' => [],
+            'clinicalOutcome' => 'managed_at_bhc',
+            'conditionKey' => 'hypertension',
+        ]);
+
+        $this->assertSame([], $result['reportIn']);
+        $this->assertNull($result['reportAs']);
+        $this->assertFalse($result['includeInSurveillance']);
+        $this->assertNull($result['conditionKey']);
+        $this->assertSame('managed_at_bhc', $result['clinicalOutcome']);
+        $this->assertSame('not_included', ReportingEntries::visitStatus([$result]));
+    }
+
     public function test_legacy_null_report_as_has_no_destinations(): void
     {
         $this->assertSame([], ReportingEntries::destinations(['reportAs' => null, 'includeInSurveillance' => false]));

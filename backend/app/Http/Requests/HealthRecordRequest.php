@@ -117,14 +117,15 @@ class HealthRecordRequest extends FormRequest
             : ['prohibited'];
 
         if ($v2) {
-            // Entries are reporting-only: a name and where it is reported.
-            // The visit decides follow-up and referral (care_plan flags).
+            // Named health concerns: reporting classification is optional when
+            // no report applies. The visit decides follow-up and referral
+            // (care_plan flags). Care outcome stays required for condition cards.
             $rules['diagnosis'] = ['prohibited'];
             $rules['diagnoses.*.name'] = ['bail', 'required', 'string', 'max:150', 'distinct:ignore_case'];
             // Several entries may share a report, so the values are not
             // `distinct` across entries (that rule compares the whole
             // diagnoses array); only a repeat inside one entry is rejected.
-            $rules['diagnoses.*.reportIn'] = ['bail', 'required', 'array', 'min:1', function (string $attribute, mixed $value, \Closure $fail): void {
+            $rules['diagnoses.*.reportIn'] = ['bail', 'nullable', 'array', function (string $attribute, mixed $value, \Closure $fail): void {
                 if (is_array($value) && count(array_unique($value, SORT_REGULAR)) !== count($value)) {
                     $fail('Each report can be chosen once per entry.');
                 }

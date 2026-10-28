@@ -15,7 +15,7 @@ function MovementDetails({ transaction }) {
   return <div className="space-y-1 text-xs leading-relaxed text-neutral-600"><p className="break-words">{transaction.reason || (transaction.transaction_type === 'dispense' ? 'Dispensed through health record' : transaction.transaction_type === 'opening_balance' ? 'Initial stock' : '—')}</p>{allocations.map((a, index) => {
     const group = a.expiry_group;
     return <p key={a.id || `${a.expiry_group_id}-${index}`}>{group ? groupLabel(group) : `Expiry Group ${a.expiry_group_id ?? 'not recorded'}`} · Outside quarantine {a.available_before} → {a.available_after}; quarantined {a.quarantined_before} → {a.quarantined_after}</p>;
-  })}{Number(transaction.discrepancy) < 0 && <p className="font-medium text-warning-700">Unallocated actual dispensing: {Math.abs(transaction.discrepancy)}</p>}</div>;
+  })}{Number(transaction.discrepancy) < 0 && <p className="font-medium text-alert-700">Shortage recorded: {Math.abs(transaction.discrepancy)}</p>}</div>;
 }
 export default function MedicineInventoryHistory({ item, user }) {
   const [page, setPage] = useState(1);

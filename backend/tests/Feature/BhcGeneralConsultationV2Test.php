@@ -473,10 +473,62 @@ class BhcGeneralConsultationV2Test extends TestCase
         ];
     }
 
-    public function test_v2_entry_requires_a_destination(): void
+    public function test_v2_entry_allows_empty_reporting_classification(): void
     {
-        $this->v2(['diagnoses' => [['name' => 'Cough', 'reportIn' => []]]])
-            ->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.reportIn']);
+        $id = $this->v2(['diagnoses' => [['name' => 'Cough', 'reportIn' => []]]])
+            ->assertCreated()->json('data.id');
+
+        $entry = HealthRecord::findOrFail($id)->diagnoses[0];
+        $this->assertSame('Cough', $entry['name']);
+        $this->assertSame([], $entry['reportIn']);
+        $this->assertNull($entry['reportAs']);
+        $this->assertFalse($entry['includeInSurveillance']);
+        $this->assertNull($entry['conditionKey']);
+        $this->assertDatabaseCount('patient_conditions', 0);
+        $this->assertSame('not_included', HealthRecord::findOrFail($id)->monitoring_data['morbidityReportingStatus']);
+    }
+
+    public function test_unclassified_condition_card_keeps_care_outcome(): void
+    {
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true],
+            'diagnoses' => [['id' => 'c1', 'name' => 'Cough', 'reportIn' => [], 'clinicalOutcome' => 'managed_at_bhc']],
+        ])->assertCreated()->json('data.id');
+
+        $entry = HealthRecord::findOrFail($id)->diagnoses[0];
+        $this->assertSame('Cough', $entry['name']);
+        $this->assertSame([], $entry['reportIn']);
+        $this->assertSame('managed_at_bhc', $entry['clinicalOutcome']);
+        $this->assertNull($entry['conditionKey']);
+        $this->assertDatabaseCount('patient_conditions', 0);
+    }
+
+    public function test_unclassified_condition_card_still_requires_care_outcome(): void
+    {
+        $this->v2([
+            'care_plan' => ['condition_cards' => true],
+            'diagnoses' => [['id' => 'c1', 'name' => 'Cough', 'reportIn' => []]],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.clinicalOutcome']);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_classified_and_unclassified_concerns_save_together(): void
+    {
+        $id = $this->v2([
+            'care_plan' => ['condition_cards' => true],
+            'diagnoses' => [
+                ['id' => 'c1', 'name' => 'Cough', 'reportIn' => [], 'clinicalOutcome' => 'managed_at_bhc'],
+                $this->card('c2', 'managed_at_bhc', 'Fever'),
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $record = HealthRecord::findOrFail($id);
+        $this->assertCount(2, $record->diagnoses);
+        $this->assertSame([], $record->diagnoses[0]['reportIn']);
+        $this->assertSame('managed_at_bhc', $record->diagnoses[0]['clinicalOutcome']);
+        $this->assertSame(['morbidity'], $record->diagnoses[1]['reportIn']);
+        $this->assertSame('morbidity', $record->monitoring_data['morbidityReportingStatus']);
+        $this->assertDatabaseCount('patient_conditions', 0);
     }
 
     public function test_v2_rejects_unknown_destination(): void
