@@ -71,13 +71,39 @@ class CareOverviewTest extends TestCase
             ->assertJsonPath('data.monitoring_without_follow_up.0.last_health_record_id', $source->id);
         $this->assertSame(['pending_follow_ups', 'monitoring_without_follow_up', 'monitoring_recommendations'], array_keys($response->json('data')));
         $this->assertSame(
-            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'purpose', 'purpose_key', 'predecessor_task_id', 'reason', 'source_health_record_id', 'source_date', 'source_chief_complaint', 'source_assessment', 'conditions'],
+            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'purpose', 'purpose_key', 'predecessor_task_id', 'reason', 'source_health_record_id', 'source_date', 'source_chief_complaint', 'source_assessment', 'source_selected_programs', 'source_category', 'conditions'],
             array_keys($response->json('data.pending_follow_ups.0'))
         );
         $this->assertSame(
             ['monitoring_id', 'condition_name', 'condition_key', 'started_at', 'condition_status', 'legacy'],
             array_keys($response->json('data.pending_follow_ups.0.conditions.0'))
         );
+    }
+
+    public function test_maternal_source_record_exposes_selected_programs_and_category(): void
+    {
+        $this->actAs(StaffRoles::defaults('encoder'));
+        $source = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'Maternal',
+            'barangay_health_center_id' => $this->bhc->id,
+            'date_recorded' => now()->subWeeks(2),
+            'monitoring_data' => ['selectedPrograms' => ['Maternal']],
+        ]);
+        FollowUpTask::create([
+            'health_record_id' => $source->id,
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'due_date' => now()->addWeek()->toDateString(),
+            'state' => 'pending',
+            'purpose' => 'Prenatal follow-up',
+            'purpose_key' => 'service:maternal',
+        ]);
+
+        $this->getJson("/api/patients/{$this->patient->id}/care-overview")->assertOk()
+            ->assertJsonPath('data.pending_follow_ups.0.purpose_key', 'service:maternal')
+            ->assertJsonPath('data.pending_follow_ups.0.source_category', 'Maternal')
+            ->assertJsonPath('data.pending_follow_ups.0.source_selected_programs', ['Maternal']);
     }
 
     public function test_fulfilled_rescheduled_and_stopped_items_are_excluded(): void

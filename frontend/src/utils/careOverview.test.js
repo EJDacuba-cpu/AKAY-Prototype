@@ -82,6 +82,22 @@ test("recommendations, condition status and the legacy flag are mapped", () => {
   ]);
 });
 
+test("source selected programs and category map onto pending follow-ups", () => {
+  const overview = mapCareOverview({
+    pending_follow_ups: [{
+      id: 8,
+      purpose_key: "service:maternal",
+      source_selected_programs: ["Maternal"],
+      source_category: "Maternal",
+    }],
+  });
+  assert.equal(overview.pendingFollowUps[0].purposeKey, "service:maternal");
+  assert.deepEqual(overview.pendingFollowUps[0].sourceSelectedPrograms, ["Maternal"]);
+  assert.equal(overview.pendingFollowUps[0].sourceCategory, "Maternal");
+  assert.equal(mapCareOverview(payload).pendingFollowUps[0].sourceSelectedPrograms, null);
+  assert.equal(mapCareOverview(payload).pendingFollowUps[0].sourceCategory, "");
+});
+
 test("a payload without the new fields still maps (older server)", () => {
   const overview = mapCareOverview({ monitoring_without_follow_up: [{ id: 5, condition_name: "Gout" }] });
   assert.deepEqual(overview.monitoringRecommendations, []);

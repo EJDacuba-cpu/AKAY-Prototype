@@ -98,7 +98,8 @@ test("mixed concern follow-up and service referral stay independent", () => {
     extraSchedules: extraScheduleRows(afterEpi),
   });
   assert.equal(payload.length, 2);
-  assert.equal(CARE_PLAN_SERVICE_LABELS.Maternal, "Prenatal");
+  assert.equal(CARE_PLAN_SERVICE_LABELS.Maternal, "Maternal Care");
+  assert.equal(defaultServicePurpose("Maternal"), "Prenatal follow-up");
 });
 
 test("deselecting a service drops only that service's schedule and referral", () => {

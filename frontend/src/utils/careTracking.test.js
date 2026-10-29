@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getCareTracking } from "./careTracking.js";
+import { getCareTracking, maternalCareCardStatus } from "./careTracking.js";
 import { EPI_INFANT_SCHEDULE } from "./careTrackingConfig.js";
 
 function woman(birthdate = "1995-01-01") {
@@ -32,9 +32,18 @@ test("maternal stays Prenatal on EDD alone, with no delivery date or postpartum 
     },
   ];
   const maternal = entry(getCareTracking(woman(), records, new Date("2026-09-01")), "maternal");
+  assert.equal(maternal.label, "Maternal Care");
   assert.equal(maternal.status, "Prenatal");
+  assert.equal(maternalCareCardStatus(maternal.status), "Active");
   assert.ok(maternal.facts.some((f) => f.label === "EDD" && f.value === "2026-12-01"));
   assert.equal(maternal.nextVisit, "2026-07-15");
+});
+
+test("Care & Programs keeps Prenatal as the episode phase and shows it as Active", () => {
+  assert.equal(maternalCareCardStatus("Prenatal"), "Active");
+  assert.equal(maternalCareCardStatus("Postpartum"), "Postpartum");
+  assert.equal(maternalCareCardStatus("Completed"), "Completed");
+  assert.equal(maternalCareCardStatus("Not started"), "Not started");
 });
 
 test("maternal switches to Postpartum only once an actual delivery date is recorded", () => {

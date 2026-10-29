@@ -44,7 +44,11 @@ import {
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
-import { getPrenatalEnrollment, prenatalProgramCopy } from "../../utils/prenatalEnrollment";
+import {
+  MATERNAL_CARE_MALE_ELIGIBILITY,
+  getPrenatalEnrollment,
+  prenatalProgramCopy,
+} from "../../utils/prenatalEnrollment";
 import { applyRiskFlags, getMaternalRiskFlags } from "../../utils/maternalRisk";
 import { isPatientMale } from "../../utils/programApplicability";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
@@ -500,7 +504,7 @@ export default function RhuConsultationWorkspace() {
     }
     if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
       if (prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()) {
-        errors["maternalData.lmp"] = "Record the last menstrual period to enroll in prenatal care.";
+        errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
       }
     }
     if (includeTb && currentStepKey === NEXT_STEP && canFinalize) {
@@ -678,7 +682,7 @@ export default function RhuConsultationWorkspace() {
       ...validateCurrent(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
       ...(selectedPrograms.includes("Maternal") && prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()
-        ? { "maternalData.lmp": "Record the last menstrual period to enroll in prenatal care." }
+        ? { "maternalData.lmp": "Record the last menstrual period to enroll in Maternal Care." }
         : {}),
     };
     if (Object.keys(errors).length) {
@@ -774,17 +778,13 @@ export default function RhuConsultationWorkspace() {
       const male = Boolean(patient) && key === "Maternal" && isPatientMale(patient);
       return {
         key,
-        title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? "Prenatal Care" : key,
-        description: key === "Maternal"
-          ? prenatalEnrollment.enrolled
-            ? "Active prenatal care from a finalized consultation. Continue this visit without starting a second enrollment."
-            : "Optional. Enrollment becomes Active only after this consultation is finalized."
-          : "",
+        title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : key,
+        description: key === "Maternal" ? maternalCopy.description : "",
         enrollLabel: maternalCopy?.enrollLabel || programEnrollLabel(key),
         statusLabel: maternalCopy?.statusLabel,
         statusTone: maternalCopy?.statusTone,
         disabled: male,
-        disabledReason: male ? "Prenatal Care records are for pregnant clients. This patient is recorded as male." : "",
+        disabledReason: male ? MATERNAL_CARE_MALE_ELIGIBILITY : "",
         disabledNote: male ? "Not applicable to this patient" : "",
       };
     }),

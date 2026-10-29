@@ -14,7 +14,7 @@ export const SERVICE_NEXT_ACTIONS = Object.freeze({
 });
 
 export const CARE_PLAN_SERVICE_LABELS = Object.freeze({
-  Maternal: "Prenatal",
+  Maternal: "Maternal Care",
   EPI: "EPI",
   "Family Planning": "Family Planning",
 });

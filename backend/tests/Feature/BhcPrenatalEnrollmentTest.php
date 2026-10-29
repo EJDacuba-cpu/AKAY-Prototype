@@ -94,6 +94,7 @@ class BhcPrenatalEnrollmentTest extends TestCase
     private function prenatalPayload(array $overrides = []): array
     {
         return array_replace_recursive([
+            'treatment_notes' => 'Prenatal counseling given',
             'monitoring_data' => [
                 'selectedPrograms' => ['Maternal'],
                 'primaryProgram' => 'Maternal',
@@ -146,6 +147,30 @@ class BhcPrenatalEnrollmentTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
         $this->assertFalse(PrenatalEnrollment::stateFor($patient->id)['enrolled']);
         $this->postRecord($encoder, $patient, $this->prenatalPayload())->assertForbidden();
+    }
+
+    public function test_discarded_draft_does_not_activate_prenatal_enrollment(): void
+    {
+        $patient = $this->patient();
+        $encoder = $this->encoder();
+
+        $publicId = $this->as($encoder)->postJson('/api/health-record-drafts', [
+            'patient_id' => $patient->id,
+            'classification' => 'Maternal',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => PrenatalEnrollment::INTENT_ENROLL,
+                'chiefComplaint' => 'Prenatal visit',
+                'maternalData' => ['lmp' => '2026-03-01', 'fht' => '140 bpm'],
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->as($encoder)->deleteJson("/api/health-record-drafts/{$publicId}")->assertNoContent();
+
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertFalse(PrenatalEnrollment::stateFor($patient->id)['enrolled']);
     }
 
     public function test_mixed_general_and_prenatal_consultation_keeps_both(): void

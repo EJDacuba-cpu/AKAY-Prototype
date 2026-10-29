@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
+import { maternalCareCardStatus } from "../../../../utils/careTracking";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 const STATUS_TONE_STYLES = {
@@ -61,7 +62,7 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
           <h3 className="mt-2 text-sm font-semibold text-neutral-900 font-sans!">{entry.label}</h3>
         </div>
         <StatusBadge
-          status={entry.key === "maternal" && entry.status === "Prenatal" ? "Active" : entry.status}
+          status={entry.key === "maternal" ? maternalCareCardStatus(entry.status) : entry.status}
           tone={entry.key === "maternal" && entry.status === "Prenatal" ? "success" : entry.statusTone}
         />
       </div>

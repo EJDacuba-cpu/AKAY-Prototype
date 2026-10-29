@@ -50,14 +50,14 @@ export function lockProgramsWhilePatientLoads(programs, patientLoading) {
 }
 
 const PROGRAM_ENROLL_LABELS = Object.freeze({
-  Maternal: "Add Prenatal Care to This Visit",
+  Maternal: "Include Maternal Care",
   "Family Planning": "Enroll to Family Planning",
   EPI: "Enroll to Child Health / EPI",
 });
 
 /** The label of the button that enrolls the patient in a service for this visit. */
 export function programEnrollLabel(programKey, { enrolled } = {}) {
-  if (programKey === "Maternal" && enrolled === true) return "Continue Prenatal Care";
-  if (programKey === "Maternal" && enrolled === false) return "Enroll in Prenatal Care";
+  if (programKey === "Maternal" && enrolled === true) return "Continue Maternal Care";
+  if (programKey === "Maternal" && enrolled === false) return "Include Maternal Care";
   return PROGRAM_ENROLL_LABELS[programKey] || "Enroll";
 }

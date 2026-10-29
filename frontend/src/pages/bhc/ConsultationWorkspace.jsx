@@ -86,9 +86,11 @@ import {
   thisVisitDoseEntry,
 } from "../../utils/prenatalForm";
 import {
+  MATERNAL_CARE_MALE_ELIGIBILITY,
   getPrenatalEnrollment,
   prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
+  shouldSeedMaternalFromPrenatalFollowUp,
 } from "../../utils/prenatalEnrollment";
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
@@ -360,7 +362,7 @@ const RECORD_TYPE_DETAILS = {
     icon: ShieldCheck,
   },
   Maternal: {
-    title: "Prenatal Care",
+    title: "Maternal Care",
     description: "For prenatal, pregnancy, postpartum, and maternal monitoring.",
     icon: HeartPulse,
   },
@@ -596,8 +598,7 @@ function getMaternalEligibility(patient) {
   if (patient && isPatientMale(patient)) {
     return {
       eligible: false,
-      message:
-        "Prenatal Care records are for pregnant clients. This patient is recorded as male.",
+      message: MATERNAL_CARE_MALE_ELIGIBILITY,
     };
   }
 
@@ -707,6 +708,7 @@ export default function ConsultationWorkspace() {
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
   const classificationRef = useRef(null);
+  const maternalFollowUpSeededRef = useRef(false);
 
   const [dateOfVisit, setDateOfVisit] = useState(
     (() => { const date = new Date(); return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-"); })(),
@@ -1672,6 +1674,7 @@ export default function ConsultationWorkspace() {
     // state is set from it: the first autosave then writes the converted
     // content (every autosave stamps consultationWorkflow, so an unconverted
     // legacy draft would lose its concerns for good).
+    maternalFollowUpSeededRef.current = true;
     const payload = convertLegacyDraft(draft.payload || {});
     const restoredReferral = restoreSharedReferralDraft(payload);
     setReceivingRhuId(restoredReferral.receivingRhuId);
@@ -2591,7 +2594,7 @@ export default function ConsultationWorkspace() {
       prenatalIntent === "enroll" &&
       !String(maternalData.lmp || "").trim()
     ) {
-      errors["maternalData.lmp"] = "Record the last menstrual period to enroll in prenatal care.";
+      errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
     }
 
     return errors;
@@ -3891,11 +3894,9 @@ export default function ConsultationWorkspace() {
       : null;
     return {
       key,
-      title: key === "Maternal" ? "Prenatal Care" : key,
+      title: key === "Maternal" ? maternalCopy.title : key,
       description: key === "Maternal"
-        ? prenatalEnrollment.enrolled
-          ? "Active prenatal care from a finalized consultation. Continue this visit without starting a second enrollment."
-          : "Optional. Enrollment becomes Active only after this consultation is finalized."
+        ? maternalCopy.description
         : key === "EPI"
           ? "Immunization and child vaccination services."
           : RECORD_TYPE_DETAILS[classification]?.description,
@@ -3985,6 +3986,24 @@ export default function ConsultationWorkspace() {
     setPrenatalEnrollmentModal(null);
     applyProgramSelect("Maternal");
   }
+
+  // A continued prenatal follow-up includes existing Maternal Care once, without
+  // the confirmation modal. Draft resume keeps whatever the draft saved.
+  useEffect(() => {
+    if (maternalFollowUpSeededRef.current) return;
+    if (routeContext.kind !== "continue") return;
+    if (selectedPatientLoading) return;
+    if (!getMaternalEligibility(selectedPatient).eligible) return;
+    if (!shouldSeedMaternalFromPrenatalFollowUp({
+      followUps: continuedFollowUps,
+      alreadyIncluded: selectedPrograms.includes("Maternal"),
+      enrolled: prenatalEnrollment.enrolled,
+    })) return;
+    maternalFollowUpSeededRef.current = true;
+    applyProgramSelect("Maternal");
+    // Seeded once when continued follow-ups and enrollment are both known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, selectedPatientLoading]);
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
   // Details when a condition monitored in this visit needs it.

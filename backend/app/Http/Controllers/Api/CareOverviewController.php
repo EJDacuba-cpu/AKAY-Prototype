@@ -32,7 +32,7 @@ class CareOverviewController extends Controller
         $this->facilityAccess->authorizePatient($user, $patient);
 
         $tasks = FollowUpTask::query()
-            ->with(['healthRecord:id,date_recorded,monitoring_data,chief_complaint,assessment_notes,physical_exam,diagnosis', 'conditionMonitorings' => fn ($q) => $q->with('patientCondition:id,status')->where('status', ConditionMonitoring::STATUS_ACTIVE)])
+            ->with(['healthRecord:id,date_recorded,category,monitoring_data,chief_complaint,assessment_notes,physical_exam,diagnosis', 'conditionMonitorings' => fn ($q) => $q->with('patientCondition:id,status')->where('status', ConditionMonitoring::STATUS_ACTIVE)])
             ->where('patient_id', $patient->id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
@@ -82,6 +82,8 @@ class CareOverviewController extends Controller
                 'source_date' => $task->healthRecord?->date_recorded?->toDateString(),
                 'source_chief_complaint' => $task->healthRecord?->chief_complaint,
                 'source_assessment' => $this->sourceAssessment($task->healthRecord),
+                'source_selected_programs' => $this->sourceSelectedPrograms($task->healthRecord),
+                'source_category' => $task->healthRecord?->category,
                 'conditions' => $task->conditionMonitorings->map(fn (ConditionMonitoring $m) => [
                     'monitoring_id' => $m->id,
                     'condition_name' => $m->condition_name,
@@ -115,6 +117,17 @@ class CareOverviewController extends Controller
                 'recommended_at' => $c->bhc_monitoring_recommended_at?->toISOString(),
             ])->values(),
         ]]);
+    }
+
+    private function sourceSelectedPrograms(?\App\Models\HealthRecord $record): ?array
+    {
+        $monitoring = is_array($record?->monitoring_data) ? $record->monitoring_data : [];
+        $programs = $monitoring['selectedPrograms'] ?? null;
+        if (! is_array($programs)) {
+            return null;
+        }
+
+        return array_values(array_filter($programs, fn ($program) => is_string($program) && $program !== ''));
     }
 
     private function sourceAssessment(?\App\Models\HealthRecord $record): ?string

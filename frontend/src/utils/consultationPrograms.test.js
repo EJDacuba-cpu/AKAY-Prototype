@@ -61,9 +61,9 @@ test("once the patient has loaded, eligibility is left exactly as computed", () 
 });
 
 test("each service has its own enroll button label", () => {
-  assert.equal(programEnrollLabel("Maternal"), "Add Prenatal Care to This Visit");
-  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Enroll in Prenatal Care");
-  assert.equal(programEnrollLabel("Maternal", { enrolled: true }), "Continue Prenatal Care");
+  assert.equal(programEnrollLabel("Maternal"), "Include Maternal Care");
+  assert.equal(programEnrollLabel("Maternal", { enrolled: false }), "Include Maternal Care");
+  assert.equal(programEnrollLabel("Maternal", { enrolled: true }), "Continue Maternal Care");
   assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
   assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");
   assert.equal(programEnrollLabel("Something Else"), "Enroll");

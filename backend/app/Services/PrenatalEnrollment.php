@@ -68,7 +68,7 @@ class PrenatalEnrollment
         if (! in_array($intent, [self::INTENT_ENROLL, self::INTENT_CONTINUE], true)) {
             $validator->errors()->add(
                 'monitoring_data.prenatalIntent',
-                'Say whether this visit enrolls the patient in prenatal care or continues an existing enrollment.'
+                'Say whether this visit enrolls the patient in Maternal Care or continues an existing enrollment.'
             );
 
             return;
@@ -78,19 +78,19 @@ class PrenatalEnrollment
         if ($intent === self::INTENT_ENROLL && $state['enrolled']) {
             $validator->errors()->add(
                 'monitoring_data.prenatalIntent',
-                'This patient already has active prenatal care. Continue the existing enrollment instead of starting another.'
+                'This patient already has active Maternal Care. Continue the existing enrollment instead of starting another.'
             );
         }
         if ($intent === self::INTENT_CONTINUE && ! $state['enrolled']) {
             $validator->errors()->add(
                 'monitoring_data.prenatalIntent',
-                'This patient is not enrolled in prenatal care. Enroll first.'
+                'This patient is not enrolled in Maternal Care. Enroll first.'
             );
         }
         if ($intent === self::INTENT_ENROLL && blank($lmp)) {
             $validator->errors()->add(
                 'maternal_data.lmp',
-                'Record the last menstrual period to enroll in prenatal care.'
+                'Record the last menstrual period to enroll in Maternal Care.'
             );
         }
     }

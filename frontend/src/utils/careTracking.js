@@ -37,6 +37,11 @@ import {
 // Small local helpers
 // ---------------------------------------------------------------------------
 
+/** Care & Programs shows Prenatal-phase Maternal Care as Active. */
+export function maternalCareCardStatus(status) {
+  return status === "Prenatal" ? "Active" : status;
+}
+
 function getMaternalData(record = {}) {
   return record.maternalData || record.maternal_data || {};
 }

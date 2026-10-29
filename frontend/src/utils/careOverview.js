@@ -22,6 +22,8 @@ export function mapCareOverview(data) {
       sourceDate: task.source_date,
       sourceChiefComplaint: task.source_chief_complaint || "",
       sourceAssessment: task.source_assessment || "",
+      sourceSelectedPrograms: Array.isArray(task.source_selected_programs) ? task.source_selected_programs : null,
+      sourceCategory: task.source_category || "",
       conditions: (task.conditions || []).map((c) => ({
         monitoringId: c.monitoring_id,
         conditionName: c.condition_name,

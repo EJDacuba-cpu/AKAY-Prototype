@@ -211,6 +211,8 @@ export function resolveContinuedCare(
       sourceDate: task.sourceDate || "",
       sourceChiefComplaint: task.sourceChiefComplaint || "",
       sourceAssessment: task.sourceAssessment || "",
+      sourceSelectedPrograms: Array.isArray(task.sourceSelectedPrograms) ? task.sourceSelectedPrograms : null,
+      sourceCategory: task.sourceCategory || "",
     })),
     continuedMonitorings,
     monitoringStops,

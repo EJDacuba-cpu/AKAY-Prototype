@@ -226,6 +226,25 @@ test("Record Visit (follow-up ids only) still continues the follow-up's conditio
   assert.deepEqual(r.continuedMonitorings.map((m) => m.id).sort(), [4, 5]);
 });
 
+test("continued follow-ups keep source program metadata from the care overview", () => {
+  const r = resolveContinuedCare({
+    pendingFollowUps: [{
+      id: 21,
+      dueDate: "2026-11-06",
+      sourceHealthRecordId: 80,
+      purposeKey: "service:maternal",
+      purpose: "Prenatal follow-up",
+      sourceSelectedPrograms: ["Maternal"],
+      sourceCategory: "Maternal",
+      conditions: [],
+    }],
+    monitoringWithoutFollowUp: [],
+  }, { followUpIds: [21] });
+  assert.deepEqual(r.continuedFollowUps[0].sourceSelectedPrograms, ["Maternal"]);
+  assert.equal(r.continuedFollowUps[0].sourceCategory, "Maternal");
+  assert.equal(r.continuedFollowUps[0].purposeKey, "service:maternal");
+});
+
 test("a selected monitoring that is no longer active is dropped with its links", () => {
   const r = resolveContinuedCare(linkedOverview, { monitoringIds: [99], includeLinkedFollowUps: true });
   assert.deepEqual(r.continuedFollowUpTaskIds, []);
