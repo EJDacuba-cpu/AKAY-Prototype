@@ -159,6 +159,10 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.match(workspace, /\["family", "medical", "social"\]/);
   assert.match(workspace, /showGeneral=\{false\}/);
   assert.match(workspace, /includeObstetricHistory=\{canViewBackground\}/);
+  assert.match(workspace, /prenatalHistory=\{prenatalHistory\}/);
+  assert.match(workspace, /shouldPrefillPrenatalBaseline/);
+  assert.match(workspace, /prenatalHistory=\{prenatalHistory\}/);
+  assert.match(workspace, /shouldPrefillPrenatalBaseline/);
   assert.match(workspace, /title="Informant"/);
   assert.doesNotMatch(workspace, /Informant & Similar Illness/);
   assert.doesNotMatch(workspace, /showSimilarIllness=\{false\}/);
@@ -181,7 +185,7 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.doesNotMatch(panel, /II\. Past Medical History/);
   assert.doesNotMatch(panel, /III\. Family History/);
   assert.match(panel, /inline = false/);
-  assert.match(prenatal, /showSimilarIllness=\{false\}\s+inline\s+errors=\{historyErrors\}/);
+  assert.match(prenatal, /showSimilarIllness=\{false\}\s+summaryWhenRecorded\s+errors=\{historyErrors\}/);
   const detailsView = readFileSync(join(here, "../components/features/health-records/VisitHistorySnapshot.jsx"), "utf8");
   assert.match(detailsView, /Historical patient history is unavailable for this record/);
   assert.match(detailsView, /Similar illness in the family/);

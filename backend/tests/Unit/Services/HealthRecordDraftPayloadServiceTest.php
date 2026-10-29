@@ -43,6 +43,7 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $sanitized = $service->sanitize($this->fullFrontendPayload());
 
         $this->assertIsArray($sanitized);
+        $this->assertSame('118', $sanitized['maternalData']['laboratoryEntries'][1]['result']);
     }
 
     /**
@@ -288,6 +289,27 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'hiv' => 'Non-reactive',
                     'syphilis' => 'Non-reactive',
                     'urinalysis' => 'Normal',
+                ],
+                'laboratoryResultDates' => [
+                    'hemoglobin' => '2026-08-01',
+                    'cbc' => '2026-08-01',
+                    'hbsag' => '2026-08-01',
+                    'bloodType' => '2026-08-01',
+                    'hiv' => '2026-08-01',
+                    'syphilis' => '2026-08-01',
+                    'urinalysis' => '2026-08-01',
+                ],
+                'laboratoryEntries' => [
+                    [
+                        'test' => 'hemoglobin',
+                        'result' => '120',
+                        'datePerformed' => '2026-08-01',
+                    ],
+                    [
+                        'test' => 'hemoglobin',
+                        'result' => '118',
+                        'datePerformed' => '2026-08-15',
+                    ],
                 ],
                 'tetanusToxoidStatus' => [
                     'tt1' => '2026-01-01',

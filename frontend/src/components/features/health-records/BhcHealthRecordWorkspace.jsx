@@ -104,7 +104,7 @@ function FactGrid({ items = [], columns = 3 }) {
       )}
     >
       {items.map((item) => (
-        <Fact key={item.label} label={item.label} value={item.value} />
+        <Fact key={item.key || item.label} label={item.label} value={item.value} />
       ))}
     </dl>
   );
@@ -707,8 +707,11 @@ function MaternalProgramSection({ record, maternal, postpartumOnly }) {
           {labs.some((item) => item.value) ? (
             <FactGrid
               items={labs.map((item) => ({
+                key: item.key,
                 label: item.label,
-                value: item.value || EMPTY,
+                value: item.date
+                  ? `${item.value || EMPTY} · ${formatLongDate(item.date, EMPTY)}`
+                  : item.value || EMPTY,
               }))}
             />
           ) : (

@@ -128,6 +128,21 @@ export function shouldSeedMaternalFromPrenatalFollowUp({
 }
 
 /**
+ * Pregnancy identity (LMP, G/P, EDC, TT/Td) is copied only when this visit is
+ * an explicit prenatal follow-up of an established pregnancy — never solely
+ * because Maternal Care is Active.
+ */
+export function shouldPrefillPrenatalBaseline({
+  continueRoute = false,
+  followUps = [],
+  enrolled = false,
+  latestRecord = null,
+} = {}) {
+  if (!continueRoute || !enrolled || !latestRecord) return false;
+  return (Array.isArray(followUps) ? followUps : []).some(isPrenatalAssociatedFollowUp);
+}
+
+/**
  * Continue-route Maternal Care stays unresolved until patient, records, and
  * continued follow-ups have settled. Restored drafts keep their saved selection.
  */

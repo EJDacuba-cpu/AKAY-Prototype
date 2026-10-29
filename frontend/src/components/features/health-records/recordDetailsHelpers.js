@@ -6,6 +6,7 @@ import {
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 import { formatFbs } from "../../../utils/recordCarePlan";
+import { labTestLabel, readLaboratoryEntries } from "../../../utils/prenatalForm";
 
 /* ─────────────────────────────────────────────
    Shared health-record detail helpers
@@ -722,18 +723,11 @@ export function getPreviousFpMethodValue(maternal = {}) {
 }
 
 export function getLaboratoryResultItems(maternal = {}) {
-  const labs = maternal.laboratoryResults || maternal.laboratory_results || {};
-  return [
-    ["Hemoglobin", ["hemoglobin"]],
-    ["CBC", ["cbc"]],
-    ["Blood Type", ["bloodType", "blood_type"]],
-    ["HBsAg", ["hbsag", "HBsAg", "hbsAg"]],
-    ["HIV", ["hiv"]],
-    ["Syphilis", ["syphilis"]],
-    ["Urinalysis", ["urinalysis"]],
-  ].map(([label, keys]) => ({
-    label,
-    value: getRecordValue(labs, keys, ""),
+  return readLaboratoryEntries(maternal).map((entry, index) => ({
+    key: `${entry.test}-${index}`,
+    label: labTestLabel(entry.test),
+    value: entry.result,
+    date: entry.datePerformed,
   }));
 }
 

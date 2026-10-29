@@ -1161,9 +1161,13 @@ function MaternalPrenatalRecordDetails({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {labs.map((item) => (
                   <TabbedDetailItem
-                    key={item.label}
+                    key={item.key || item.label}
                     label={item.label}
-                    value={item.value || EMPTY_VALUE}
+                    value={
+                      item.date
+                        ? `${item.value || EMPTY_VALUE} · ${formatLongDate(item.date, EMPTY_VALUE)}`
+                        : item.value || EMPTY_VALUE
+                    }
                   />
                 ))}
               </div>

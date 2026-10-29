@@ -1,19 +1,26 @@
+import { useState } from "react";
+import { Pencil, Plus, X } from "lucide-react";
+
 import { DatePickerField } from "../../common/forms/DatePickerField";
 import { PREVIOUS_FP_METHOD_OPTIONS } from "../../../utils/familyPlanning";
+import { formatLongDate } from "../../../utils/formatters";
 import {
+  EMPTY_LABORATORY_ENTRY,
+  EMPTY_PRENATAL_HISTORY,
   MATERNAL_LAB_TESTS,
   MATERNAL_RISK_GROUPS,
   OB_SCORE_GP_FIELDS,
   OB_SCORE_TPAL_FIELDS,
   PRENATAL_IMMUNIZATION_OPTIONS,
+  labTestLabel,
+  sanitizeLaboratoryEntries,
 } from "../../../utils/prenatalForm";
 import PatientHistoryPanel from "../patients/history/PatientHistoryPanel";
+import { SMALL_BUTTON_CLASS } from "../patients/history/HistoryFields";
 import { sectionVisibility } from "../../../utils/patientHistory";
 
 const MATERNAL_EYEBROW_CLASS =
   "mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#DC2626]";
-const MATERNAL_TABLE_INPUT_CLASS =
-  "h-9 w-full rounded-none border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
 
 /**
  * Prenatal enrollment and visit assessment shared by BHC and RHU.
@@ -41,11 +48,31 @@ export default function PrenatalAssessmentForm({
   historyErrors = [],
   fieldErrors = {},
   includeObstetricHistory = false,
+  prenatalHistory = EMPTY_PRENATAL_HISTORY,
 }) {
   const showObstetricHistory =
     includeObstetricHistory
     && typeof onBackgroundUpdateChange === "function"
     && sectionVisibility(patient).obstetric !== "hidden";
+  const history = prenatalHistory || EMPTY_PRENATAL_HISTORY;
+  const thisVisitLabs = Array.isArray(maternalData.laboratoryEntries) ? maternalData.laboratoryEntries : [];
+  const hasThisVisitUltrasound = Boolean(
+    String(maternalData.ultrasound?.result || "").trim() || maternalData.ultrasound?.dateDone,
+  );
+  const previousFp = String(maternalData.previousFpMethodUsed || "").trim();
+  const [addingLabs, setAddingLabs] = useState(false);
+  const [labDraft, setLabDraft] = useState(EMPTY_LABORATORY_ENTRY);
+  const [editingLabIndex, setEditingLabIndex] = useState(null);
+  const [labFormError, setLabFormError] = useState("");
+  const [addingUltrasound, setAddingUltrasound] = useState(false);
+  const [editingFp, setEditingFp] = useState(false);
+  const showLabForm = addingLabs || editingLabIndex !== null;
+  const showUltrasoundEditor = hasThisVisitUltrasound || addingUltrasound;
+  const showFpEditor = editingFp || !previousFp;
+  const fpSummary =
+    previousFp === "Other"
+      ? String(maternalData.previousFpMethodOther || "").trim() || "Other"
+      : previousFp;
 
   return (
     <div className="space-y-4">
@@ -61,7 +88,7 @@ export default function PrenatalAssessmentForm({
           showGeneral={false}
           sections={["obstetric"]}
           showSimilarIllness={false}
-          inline
+          summaryWhenRecorded
           errors={historyErrors}
           fieldErrors={fieldErrors}
           initialSection="obstetric"
@@ -142,13 +169,22 @@ export default function PrenatalAssessmentForm({
         </LockedFormContent>
       </FormSection>
 
-      <FormSection title="Obstetric Risk Factors" subtitle="Mark any obstetric risk factors relevant to this pregnancy.">
+      <FormSection
+        title="Obstetric Risk Factors"
+        subtitle="Review documented risks and reassess any obstetric risk factors relevant to this pregnancy."
+      >
+        {history.risks.length > 0 && (
+          <HistoryList
+            caption="Documented risks"
+            rows={history.risks.map((label) => ({ key: label, label: "Risk", text: label }))}
+          />
+        )}
         <LockedFormContent locked={locked}>
           <div className="grid gap-6">
             {MATERNAL_RISK_GROUPS.map((group) => (
               <RiskCodeChecklist
                 key={group.key}
-                eyebrow={group.eyebrow}
+                eyebrow={history.risks.length > 0 ? "Reassessment this visit" : group.eyebrow}
                 options={group.options}
                 values={maternalData.riskAssessment}
                 onChange={onRiskChange}
@@ -158,86 +194,236 @@ export default function PrenatalAssessmentForm({
         </LockedFormContent>
       </FormSection>
 
-      <FormSection title="Laboratory Results" subtitle="Record laboratory test results taken for this pregnancy.">
-        <LockedFormContent locked={locked}>
-          <div className="overflow-x-auto rounded-none border border-[#E8ECF0]">
-            <table className="w-full min-w-[520px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-[#EEF2F6] bg-gray-50">
-                  {["Test", "Result", "Date"].map((heading) => (
-                    <th
-                      key={heading}
-                      scope="col"
-                      className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#374151]"
-                    >
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {MATERNAL_LAB_TESTS.map((test) => (
-                  <tr key={test.key} className="border-b border-[#EEF2F6] last:border-b-0">
-                    <th scope="row" className="w-1/3 px-4 py-2 text-sm font-medium text-[#1F2937]">
-                      {test.label}
-                    </th>
-                    <td className="px-2 py-2">
-                      <input
-                        type="text"
-                        aria-label={`${test.label} result`}
-                        placeholder="Enter result..."
-                        value={maternalData.laboratoryResults?.[test.key] || ""}
-                        onChange={(event) => onNestedChange("laboratoryResults", test.key, event.target.value)}
-                        className={MATERNAL_TABLE_INPUT_CLASS}
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <DatePickerField
-                        hideLabel
-                        label={`${test.label} date`}
-                        value={maternalData.laboratoryResultDates?.[test.key] || ""}
-                        onChange={(value) => onNestedChange("laboratoryResultDates", test.key, value)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </LockedFormContent>
-      </FormSection>
-
-      <FormSection title="OB History" subtitle="Record the client's prior family planning method use.">
-        <LockedFormContent locked={locked}>
-          <div className="grid gap-4 @xl:grid-cols-2">
-            <FieldSelect
-              label="Previous FP Method Used"
-              value={maternalData.previousFpMethodUsed}
-              onChange={(event) => onMaternalChange("previousFpMethodUsed", event.target.value)}
+      <FormSection
+        title="Laboratory Results"
+        subtitle="Previous results stay on their own records. Add only tests taken this visit."
+        action={
+          !locked ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingLabIndex(null);
+                setLabDraft(EMPTY_LABORATORY_ENTRY);
+                setLabFormError("");
+                setAddingLabs(true);
+              }}
+              className={LAB_PILL_BUTTON_CLASS}
             >
-              <option value="">Select method...</option>
-              {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </FieldSelect>
-            {maternalData.previousFpMethodUsed === "Other" && (
+              <Plus size={13} aria-hidden="true" />
+              Add Lab Result
+            </button>
+          ) : null
+        }
+      >
+        {history.labs.length > 0 && (
+          <HistoryTable
+            caption="Previous Laboratory Results"
+            columns={["Test", "Result", "Date Performed", "Visit Date"]}
+            rows={history.labs.map((item, index) => ({
+              key: `${item.recordId}-${item.key}-${index}`,
+              cells: [item.label, item.result, formatHistoryDate(item.date), formatHistoryDate(item.visitDate)],
+            }))}
+          />
+        )}
+        {thisVisitLabs.length > 0 && (
+          <HistoryTable
+            caption="New Results This Visit"
+            columns={locked ? ["Test", "Result", "Date Performed"] : ["Test", "Result", "Date Performed", ""]}
+            rows={thisVisitLabs.map((entry, index) => ({
+              key: `this-visit-${entry.test}-${index}`,
+              cells: [
+                labTestLabel(entry.test),
+                entry.result,
+                formatHistoryDate(entry.datePerformed),
+                ...(locked
+                  ? []
+                  : [
+                      <span key={`actions-${index}`} className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          aria-label={`Edit ${labTestLabel(entry.test)} result`}
+                          onClick={() => {
+                            setAddingLabs(false);
+                            setEditingLabIndex(index);
+                            setLabDraft({
+                              test: entry.test,
+                              result: entry.result,
+                              datePerformed: entry.datePerformed || "",
+                            });
+                            setLabFormError("");
+                          }}
+                          className={LAB_ICON_BUTTON_CLASS}
+                        >
+                          <Pencil size={13} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${labTestLabel(entry.test)} result`}
+                          onClick={() => {
+                            onMaternalChange(
+                              "laboratoryEntries",
+                              thisVisitLabs.filter((_, itemIndex) => itemIndex !== index),
+                            );
+                            if (editingLabIndex === index) {
+                              setEditingLabIndex(null);
+                              setLabDraft(EMPTY_LABORATORY_ENTRY);
+                            } else if (editingLabIndex !== null && editingLabIndex > index) {
+                              setEditingLabIndex(editingLabIndex - 1);
+                            }
+                          }}
+                          className={LAB_ICON_BUTTON_CLASS}
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      </span>,
+                    ]),
+              ],
+            }))}
+          />
+        )}
+        {showLabForm && !locked && (
+          <div className="rounded-none border border-[#E8ECF0] p-3">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              {editingLabIndex !== null ? "Edit lab result" : "Add lab result"}
+            </p>
+            <div className="grid gap-3 @xl:grid-cols-3">
+              <FieldSelect
+                label="Test"
+                value={labDraft.test}
+                onChange={(event) => {
+                  setLabFormError("");
+                  setLabDraft((current) => ({ ...current, test: event.target.value }));
+                }}
+              >
+                <option value="">Select test...</option>
+                {MATERNAL_LAB_TESTS.map((test) => (
+                  <option key={test.key} value={test.key}>
+                    {test.label}
+                  </option>
+                ))}
+              </FieldSelect>
               <FieldInput
-                label="Specify FP Method"
-                value={maternalData.previousFpMethodOther}
-                onChange={(event) => onMaternalChange("previousFpMethodOther", event.target.value)}
+                label="Result"
+                placeholder="Enter result..."
+                value={labDraft.result}
+                onChange={(event) => {
+                  setLabFormError("");
+                  setLabDraft((current) => ({ ...current, result: event.target.value }));
+                }}
               />
-            )}
+              <DatePickerField
+                label="Date Performed"
+                value={labDraft.datePerformed}
+                onChange={(value) => setLabDraft((current) => ({ ...current, datePerformed: value }))}
+              />
+            </div>
+            {labFormError ? (
+              <p role="alert" className="mt-2 text-[11px] font-medium text-[#DC2626]">{labFormError}</p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingLabs(false);
+                  setEditingLabIndex(null);
+                  setLabDraft(EMPTY_LABORATORY_ENTRY);
+                  setLabFormError("");
+                }}
+                className={LAB_PILL_BUTTON_CLASS}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const [entry] = sanitizeLaboratoryEntries([labDraft]);
+                  if (!entry) {
+                    setLabFormError("Choose a test and enter a result.");
+                    return;
+                  }
+                  const next = [...thisVisitLabs];
+                  if (editingLabIndex !== null) next[editingLabIndex] = entry;
+                  else next.push(entry);
+                  onMaternalChange("laboratoryEntries", next);
+                  setLabDraft(EMPTY_LABORATORY_ENTRY);
+                  setLabFormError("");
+                  setEditingLabIndex(null);
+                  setAddingLabs(false);
+                }}
+                className={LAB_PILL_PRIMARY_CLASS}
+              >
+                {editingLabIndex !== null ? "Save result" : "Add result"}
+              </button>
+            </div>
           </div>
-        </LockedFormContent>
+        )}
       </FormSection>
 
-      <FormSection title="Immunization This Visit" subtitle="Record any immunization given during this prenatal visit.">
+      <FormSection
+        title="Previous FP Method"
+        subtitle="The client's last recorded family planning method."
+        action={
+          !locked && previousFp ? (
+            <button
+              type="button"
+              aria-expanded={showFpEditor}
+              onClick={() => setEditingFp((current) => !current)}
+              className={SMALL_BUTTON_CLASS}
+            >
+              {showFpEditor ? "Done" : "Update"}
+            </button>
+          ) : null
+        }
+      >
+        {!showFpEditor && previousFp ? (
+          <HistoryList
+            rows={[{ key: "previousFp", label: "Previous FP method used", text: fpSummary }]}
+          />
+        ) : (
+          <LockedFormContent locked={locked}>
+            <div className="grid gap-4 @xl:grid-cols-2">
+              <FieldSelect
+                label="Previous FP Method Used"
+                value={maternalData.previousFpMethodUsed}
+                onChange={(event) => onMaternalChange("previousFpMethodUsed", event.target.value)}
+              >
+                <option value="">Select method...</option>
+                {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </FieldSelect>
+              {maternalData.previousFpMethodUsed === "Other" && (
+                <FieldInput
+                  label="Specify FP Method"
+                  value={maternalData.previousFpMethodOther}
+                  onChange={(event) => onMaternalChange("previousFpMethodOther", event.target.value)}
+                />
+              )}
+            </div>
+          </LockedFormContent>
+        )}
+      </FormSection>
+
+      <FormSection
+        title="Immunization"
+        subtitle="Previous TT/Td doses stay on the record. Record only a vaccine given this visit."
+      >
+        {history.immunizations.length > 0 && (
+          <HistoryTable
+            caption="Previous doses"
+            columns={["Vaccine", "Date given"]}
+            rows={history.immunizations.map((item) => ({
+              key: item.type,
+              cells: [item.label, formatHistoryDate(item.dateGiven)],
+            }))}
+          />
+        )}
         <LockedFormContent locked={locked}>
           <div className="grid gap-4 @xl:grid-cols-3">
             <FieldSelect
-              label="Immunization Type"
+              label="Immunization This Visit"
               value={maternalData.immunizationThisVisit?.type || ""}
               onChange={(event) => onNestedChange("immunizationThisVisit", "type", event.target.value)}
             >
@@ -263,32 +449,131 @@ export default function PrenatalAssessmentForm({
         </LockedFormContent>
       </FormSection>
 
-      <FormSection title="Ultrasound" subtitle="Record the latest ultrasound result and date for this pregnancy.">
-        <LockedFormContent locked={locked}>
-          <div className="grid gap-4 @xl:grid-cols-2">
-            <FieldInput
-              label="Ultrasound Result"
-              value={maternalData.ultrasound?.result || ""}
-              onChange={(event) => onNestedChange("ultrasound", "result", event.target.value)}
-            />
-            <DatePickerField
-              label="Date of Ultrasound"
-              value={maternalData.ultrasound?.dateDone || ""}
-              onChange={(value) => onNestedChange("ultrasound", "dateDone", value)}
-            />
-          </div>
-        </LockedFormContent>
+      <FormSection
+        title="Ultrasound"
+        subtitle="Previous findings stay on their own records. Add only a result from this visit."
+        action={
+          !locked && !showUltrasoundEditor ? (
+            <button type="button" onClick={() => setAddingUltrasound(true)} className={SMALL_BUTTON_CLASS}>
+              <Plus size={13} aria-hidden="true" />
+              Add Ultrasound
+            </button>
+          ) : null
+        }
+      >
+        {history.ultrasounds.length > 0 && (
+          <HistoryList
+            caption="Previous ultrasound findings"
+            rows={history.ultrasounds.map((item, index) => ({
+              key: `${item.recordId}-${item.dateDone}-${index}`,
+              label: formatHistoryDate(item.dateDone || item.visitDate),
+              text: item.result || "Result not recorded",
+            }))}
+          />
+        )}
+        {showUltrasoundEditor ? (
+          <LockedFormContent locked={locked}>
+            <div className="grid gap-4 @xl:grid-cols-2">
+              <FieldInput
+                label="Ultrasound Result"
+                value={maternalData.ultrasound?.result || ""}
+                onChange={(event) => onNestedChange("ultrasound", "result", event.target.value)}
+              />
+              <DatePickerField
+                label="Date of Ultrasound"
+                value={maternalData.ultrasound?.dateDone || ""}
+                onChange={(value) => onNestedChange("ultrasound", "dateDone", value)}
+              />
+            </div>
+          </LockedFormContent>
+        ) : (
+          !history.ultrasounds.length && (
+            <p className="text-[13px] text-gray-500">No ultrasound result recorded yet.</p>
+          )
+        )}
       </FormSection>
     </div>
   );
 }
 
-function FormSection({ title, subtitle, children }) {
+const LAB_PILL_BUTTON_CLASS =
+  "inline-flex h-8 items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-ink-800 hover:bg-neutral-50";
+const LAB_PILL_PRIMARY_CLASS =
+  "inline-flex h-8 items-center gap-1 rounded-full bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700";
+const LAB_ICON_BUTTON_CLASS =
+  "inline-flex size-7 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-ink-800";
+
+function formatHistoryDate(value) {
+  if (!value) return "Not recorded";
+  const formatted = formatLongDate(value, "");
+  return formatted || String(value);
+}
+
+function HistoryList({ caption, rows = [] }) {
+  return (
+    <div className={caption ? "mb-4" : undefined}>
+      {caption ? (
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{caption}</p>
+      ) : null}
+      <dl className="divide-y divide-neutral-100">
+        {rows.map((row) => (
+          <div key={row.key} className="grid gap-1 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
+            <dt className="text-xs font-medium text-neutral-500">{row.label}</dt>
+            <dd className="m-0 min-w-0 break-words text-[13px] text-neutral-900">{row.text}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function HistoryTable({ caption, columns, rows }) {
+  return (
+    <div className="mb-4">
+      {caption ? (
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{caption}</p>
+      ) : null}
+      <div className="overflow-x-auto rounded-none border border-[#E8ECF0]">
+        <table className="w-full min-w-[420px] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-[#EEF2F6] bg-gray-50">
+              {columns.map((heading, index) => (
+                <th
+                  key={`${heading || "actions"}-${index}`}
+                  scope="col"
+                  className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-[#374151]"
+                >
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-b border-[#EEF2F6] last:border-b-0">
+                {row.cells.map((cell, index) => (
+                  <td key={`${row.key}-${index}`} className="px-4 py-2 text-[13px] text-[#1F2937]">
+                    {cell == null || cell === "" ? "Not recorded" : cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function FormSection({ title, subtitle, action, children }) {
   return (
     <section className="rounded-none border border-[#E5E7EB] bg-white">
-      <div className="border-b border-[#E5E7EB] px-4 py-2.5">
-        <h2 className="text-[14px] font-bold leading-snug text-[#111827]">{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">{subtitle}</p> : null}
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E5E7EB] px-4 py-2.5">
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-bold leading-snug text-[#111827]">{title}</h2>
+          {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">{subtitle}</p> : null}
+        </div>
+        {action || null}
       </div>
       <div className="p-4">{children}</div>
     </section>

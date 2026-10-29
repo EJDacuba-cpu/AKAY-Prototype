@@ -38,11 +38,14 @@ import {
 import {
   EMPTY_MATERNAL_DATA,
   applyRiskFactorChange,
+  collectPrenatalHistory,
   computeAogFromLmp,
   computeEddFromLmp,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
+  maternalReviewFields,
+  withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
   MATERNAL_CARE_MALE_ELIGIBILITY,
@@ -207,6 +210,10 @@ export default function RhuConsultationWorkspace() {
     () => getPrenatalEnrollment(patient || {}, patientRecords),
     [patient, patientRecords],
   );
+  const prenatalHistory = useMemo(
+    () => collectPrenatalHistory(patientRecords),
+    [patientRecords],
+  );
   const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
 
   useEffect(() => {
@@ -345,7 +352,10 @@ export default function RhuConsultationWorkspace() {
       primaryProgram,
       includeTb,
       tbData: includeTb ? tbData : null,
-      maternalData,
+      maternalData: {
+        ...maternalData,
+        ...withLaboratoryEntries(maternalData.laboratoryEntries),
+      },
       expectedDeliveryDate,
       aog,
       prenatalIntent,
@@ -656,6 +666,7 @@ export default function RhuConsultationWorkspace() {
     });
     return {
       ...mergeMaternalData(maternalData),
+      ...withLaboratoryEntries(maternalData.laboratoryEntries),
       expectedDeliveryDate,
       aog,
       previous_fp_method_used: maternalData.previousFpMethodUsed || "",
@@ -841,7 +852,7 @@ export default function RhuConsultationWorkspace() {
       title: step.label,
       stepKey: step.key,
       rows: programReviewRows({
-        Maternal: { ...maternalData, expectedDeliveryDate, aog },
+        Maternal: maternalReviewFields({ ...maternalData, expectedDeliveryDate, aog }),
         "Family Planning": familyPlanningData,
         Immunization: { vaccineEntries: immunizationEntries },
       }[step.classification]),
@@ -1032,6 +1043,7 @@ export default function RhuConsultationWorkspace() {
                     onAogChange={setAog}
                     locked={assessmentLocked}
                     errors={validationErrors}
+                    prenatalHistory={prenatalHistory}
                   />
                 </fieldset>
               )}

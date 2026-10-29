@@ -2,10 +2,11 @@ import HealthRecordClinicalDetails, { DispensedMedicinesList } from './HealthRec
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms } from '../../../utils/consultationPrograms';
 import { VISIT_SERVICES, TEENAGE_PREGNANCY_MESSAGE } from '../../../utils/visitPurpose';
 import { formatFbs } from '../../../utils/recordCarePlan';
+import { getLaboratoryResultItems } from './recordDetailsHelpers';
 import { showsDiagnosisRow } from '../../../utils/consultationWorkflow';
 
 function Details({ rows }) {
-  return <dl className="grid gap-4 sm:grid-cols-2">{rows.map(([label, value]) => <div key={label}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{String(value ?? '').trim() || 'Not recorded'}</dd></div>)}</dl>;
+  return <dl className="grid gap-4 sm:grid-cols-2">{rows.map(([label, value], index) => <div key={`${label}-${index}`}><dt className="text-xs font-semibold text-slate-500">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{String(value ?? '').trim() || 'Not recorded'}</dd></div>)}</dl>;
 }
 
 export default function BhcConsultationDetails({ record, ...props }) {
@@ -14,6 +15,7 @@ export default function BhcConsultationDetails({ record, ...props }) {
   const programs = getConsultationPrograms(record);
   const categories = [...new Set(programs.map(key => PROGRAM_CLASSIFICATIONS[key]))];
   const maternal = record.maternalData || record.maternal_data || {};
+  const labItems = getLaboratoryResultItems(maternal);
   const postpartumOnly = purpose.services.includes('Postpartum') && !purpose.services.includes('Prenatal');
   return <div className="space-y-5">
     <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -50,8 +52,12 @@ export default function BhcConsultationDetails({ record, ...props }) {
           ['Previous FP Method Used', maternal.previousFpMethodUsed], ['Other FP Method', maternal.previousFpMethodOther],
           ['Treatment / Action Taken', maternal.treatment || record.medication || record.treatment_notes],
         ]} />
-        <h3 className="text-sm font-semibold">Laboratory Results</h3>
-        <Details rows={Object.entries(maternal.laboratoryResults || {}).map(([key, value]) => [key, [value, maternal.laboratoryResultDates?.[key]].filter(Boolean).join(' · ')])} />
+        {labItems.length > 0 && (
+          <>
+            <h3 className="text-sm font-semibold">Laboratory Results</h3>
+            <Details rows={labItems.map((item) => [item.label, [item.value, item.date].filter(Boolean).join(' · ')])} />
+          </>
+        )}
         <h3 className="text-sm font-semibold">Medicines Dispensed</h3>
         <DispensedMedicinesList medicines={record.dispensedMedicines || record.dispensed_medicines || []} />
       </section>;

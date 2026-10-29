@@ -180,6 +180,13 @@ class HealthRecordDraftPayloadService
                 'syphilis' => self::SCALAR,
                 'urinalysis' => self::SCALAR,
             ],
+            // Append-only this-visit lab list. The keyed maps above stay as a
+            // last-result-per-test snapshot so older readers keep working.
+            'laboratoryEntries' => ['*' => [
+                'test' => self::SCALAR,
+                'result' => self::SCALAR,
+                'datePerformed' => self::SCALAR,
+            ]],
             // The TT/Td dose given at this visit. On the official record its
             // date is also filed under tetanusToxoidStatus /
             // tetanusDiphtheriaStatus, so the dose history stays complete.
@@ -705,6 +712,16 @@ class HealthRecordDraftPayloadService
             'payload.manageToBhc' => ['nullable', 'boolean'],
             'payload.rhuVisitId' => ['nullable', 'integer'],
             'payload.maternalData.previousPregnancyHistory' => ['nullable', 'array', 'max:30'],
+            'payload.maternalData.laboratoryEntries' => ['nullable', 'array', 'max:30'],
+            'payload.maternalData.laboratoryEntries.*.test' => [
+                'nullable',
+                'in:hemoglobin,cbc,hbsag,bloodType,hiv,syphilis,urinalysis',
+            ],
+            'payload.maternalData.laboratoryEntries.*.result' => ['nullable', 'string', 'max:255'],
+            'payload.maternalData.laboratoryEntries.*.datePerformed' => [
+                'nullable',
+                'date_format:Y-m-d',
+            ],
             'payload.maternalData.immunizationThisVisit.type' => [
                 'nullable',
                 'in:tt1,tt2,tt3,tt4,tt5,td1,td2,td3,td4,td5',

@@ -96,6 +96,16 @@ export function buildMaternalTracking(records = [], now = new Date()) {
   const labs = LAB_TESTS.map(([label, keys]) => {
     const candidates = ordered.flatMap((record) => {
       const maternal = maternalOf(record);
+      const entries = Array.isArray(maternal.laboratoryEntries)
+        ? maternal.laboratoryEntries
+        : Array.isArray(maternal.laboratory_entries)
+          ? maternal.laboratory_entries
+          : [];
+      const fromEntries = entries.flatMap((entry) => {
+        if (!keys.includes(entry?.test) || !text(entry?.result)) return [];
+        return [{ value: text(entry.result), date: entry.datePerformed || getRecordDateValue(record) }];
+      });
+      if (fromEntries.length) return fromEntries;
       const value = firstValue(maternal.laboratoryResults || maternal.laboratory_results, keys);
       if (!text(value)) return [];
       const date = firstValue(maternal.laboratoryResultDates || maternal.laboratory_result_dates, keys) || getRecordDateValue(record);

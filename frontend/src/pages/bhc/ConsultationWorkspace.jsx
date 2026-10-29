@@ -75,15 +75,17 @@ import {
 import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
 import {
   EMPTY_MATERNAL_DATA,
-  MATERNAL_LAB_TEST_KEYS,
   MATERNAL_RISK_KEYS,
   applyRiskFactorChange,
+  collectPrenatalHistory,
   computeAogFromLmp,
   computeEddFromLmp,
   continueBhcPrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
+  maternalReviewFields,
+  withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
   MATERNAL_CARE_MALE_ELIGIBILITY,
@@ -95,6 +97,7 @@ import {
   maternalProgramControl,
   prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
+  shouldPrefillPrenatalBaseline,
   shouldSeedMaternalFromPrenatalFollowUp,
 } from "../../utils/prenatalEnrollment";
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
@@ -1147,6 +1150,10 @@ export default function ConsultationWorkspace() {
     ),
     [selectedPatient, patientRecordsForHeight],
   );
+  const prenatalHistory = useMemo(
+    () => collectPrenatalHistory(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
+    [patientRecordsForHeight],
+  );
   const recordsUnresolved = Boolean(selectedPatientId) && !Array.isArray(patientRecordsForHeight);
   const recordsLoading = recordsUnresolved && (bodyHistoryQuery.isPending || bodyHistoryQuery.isFetching);
   const hasFollowUpSelection = routeContinuedIds.followUpIds.length > 0;
@@ -1496,14 +1503,7 @@ export default function ConsultationWorkspace() {
             )
           : [],
         riskAssessment: pickDraftFields(maternalData.riskAssessment, MATERNAL_RISK_KEYS),
-        laboratoryResults: pickDraftFields(
-          maternalData.laboratoryResults,
-          MATERNAL_LAB_TEST_KEYS,
-        ),
-        laboratoryResultDates: pickDraftFields(
-          maternalData.laboratoryResultDates,
-          MATERNAL_LAB_TEST_KEYS,
-        ),
+        ...withLaboratoryEntries(maternalData.laboratoryEntries),
         immunizationThisVisit: pickDraftFields(
           maternalData.immunizationThisVisit,
           ["type", "doseStatus", "dateGiven"],
@@ -3350,14 +3350,7 @@ export default function ConsultationWorkspace() {
         },
         riskFlags,
       ),
-      laboratoryResults: {
-        ...EMPTY_MATERNAL_DATA.laboratoryResults,
-        ...(maternalData.laboratoryResults || {}),
-      },
-      laboratoryResultDates: {
-        ...EMPTY_MATERNAL_DATA.laboratoryResultDates,
-        ...(maternalData.laboratoryResultDates || {}),
-      },
+      ...withLaboratoryEntries(maternalData.laboratoryEntries),
       immunizationThisVisit: thisVisitImmunization,
       tetanusToxoidStatus: {
         ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
@@ -4042,7 +4035,12 @@ export default function ConsultationWorkspace() {
   }
 
   function applyBhcPrenatalPrefill() {
-    if (!prenatalEnrollment.enrolled || !prenatalEnrollment.latestRecord) return;
+    if (!shouldPrefillPrenatalBaseline({
+      continueRoute: routeContext.kind === "continue",
+      followUps: continuedFollowUps,
+      enrolled: prenatalEnrollment.enrolled,
+      latestRecord: prenatalEnrollment.latestRecord,
+    })) return;
     const prefill = continueBhcPrenatalPrefill(prenatalEnrollment.latestRecord);
     setMaternalData((current) => (current.lmp ? current : prefill));
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
@@ -4534,7 +4532,7 @@ export default function ConsultationWorkspace() {
     ...programFormSteps.map(step => ({
       key: step.key, title: step.label, stepKey: step.key,
       rows: programReviewRows({
-        Maternal: { ...maternalData, riskAssessment: applyRiskFlags(maternalData.riskAssessment, riskFlags) },
+        Maternal: maternalReviewFields({ ...maternalData, riskAssessment: applyRiskFlags(maternalData.riskAssessment, riskFlags) }),
         Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
         "Family Planning": familyPlanningData,
         "TB DOTS / TB Monitoring": tbData,
@@ -4888,6 +4886,7 @@ export default function ConsultationWorkspace() {
               historyErrors={obstetricHistoryErrors}
               fieldErrors={backgroundUpdateErrors}
               includeObstetricHistory={canViewBackground}
+              prenatalHistory={prenatalHistory}
             />
           </>
         )}

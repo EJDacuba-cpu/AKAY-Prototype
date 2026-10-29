@@ -257,6 +257,13 @@ class HealthRecordRequest extends FormRequest
             'maternal_data.immunizationThisVisit.dateGiven' => ['nullable', 'date'],
             'maternal_data.laboratoryResultDates' => ['nullable', 'array'],
             'maternal_data.laboratoryResultDates.*' => ['nullable', 'date'],
+            'maternal_data.laboratoryEntries' => ['nullable', 'array', 'max:30'],
+            'maternal_data.laboratoryEntries.*.test' => [
+                'nullable',
+                'in:hemoglobin,cbc,hbsag,bloodType,hiv,syphilis,urinalysis',
+            ],
+            'maternal_data.laboratoryEntries.*.result' => ['nullable', 'string', 'max:255'],
+            'maternal_data.laboratoryEntries.*.datePerformed' => ['nullable', 'date'],
             'maternal_data.fht' => ['nullable', 'string', 'max:100'],
             'maternal_data.tetanusToxoidStatus' => ['nullable', 'array'],
             'maternal_data.tetanusToxoidStatus.tt1' => ['nullable', 'date'],

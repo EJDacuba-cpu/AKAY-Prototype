@@ -684,7 +684,9 @@ function MaternalPrintSection({ record, maternal, postpartumOnly }) {
         <InlineGrid
           items={labs.map((item) => ({
             label: item.label,
-            value: item.value || EMPTY,
+            value: item.date
+              ? `${item.value || EMPTY} · ${formatLongDate(item.date, EMPTY)}`
+              : item.value || EMPTY,
           }))}
         />
       ) : (

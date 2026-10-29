@@ -65,6 +65,9 @@ class PrenatalFormFieldsTest extends TestCase
             ->assertJsonPath('data.payload.maternalData.laboratoryResults.hemoglobin', '11.5 g/dL')
             ->assertJsonPath('data.payload.maternalData.laboratoryResultDates.hemoglobin', '2026-09-10')
             ->assertJsonPath('data.payload.maternalData.laboratoryResultDates.urinalysis', '2026-09-12')
+            ->assertJsonPath('data.payload.maternalData.laboratoryEntries.0.test', 'hemoglobin')
+            ->assertJsonPath('data.payload.maternalData.laboratoryEntries.0.result', '11.5 g/dL')
+            ->assertJsonPath('data.payload.maternalData.laboratoryEntries.1.test', 'urinalysis')
             ->assertJsonPath('data.payload.maternalData.immunizationThisVisit.type', 'tt2')
             ->assertJsonPath('data.payload.maternalData.immunizationThisVisit.doseStatus', 'Given')
             ->assertJsonPath('data.payload.maternalData.immunizationThisVisit.dateGiven', '2026-09-22')
@@ -155,6 +158,9 @@ class PrenatalFormFieldsTest extends TestCase
 
         $this->assertSame('140 bpm', $maternal['fht']);
         $this->assertSame('2026-09-10', $maternal['laboratoryResultDates']['hemoglobin']);
+        $this->assertSame('hemoglobin', $maternal['laboratoryEntries'][0]['test']);
+        $this->assertSame('11.5 g/dL', $maternal['laboratoryEntries'][0]['result']);
+        $this->assertSame('urinalysis', $maternal['laboratoryEntries'][1]['test']);
         $this->assertSame('tt2', $maternal['immunizationThisVisit']['type']);
         $this->assertSame('2026-09-22', $maternal['immunizationThisVisit']['dateGiven']);
         // Earlier doses are kept; this visit's dose is added.
@@ -168,12 +174,81 @@ class PrenatalFormFieldsTest extends TestCase
             ['immunizationThisVisit' => ['type' => 'tt9']],
             ['immunizationThisVisit' => ['type' => 'tt1', 'dateGiven' => 'not-a-date']],
             ['laboratoryResultDates' => ['hemoglobin' => 'not-a-date']],
+            ['laboratoryEntries' => [['test' => 'bloodSugar', 'result' => 'x', 'datePerformed' => '2026-09-10']]],
             ['fht' => str_repeat('9', 101)],
         ] as $invalid) {
             $this->saveRecord($invalid)->assertStatus(422);
         }
 
         $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_draft_keeps_repeated_lab_results_of_the_same_test(): void
+    {
+        $data = $this->maternalData();
+        $data['laboratoryEntries'] = [
+            ['test' => 'hemoglobin', 'result' => '11.2 g/dL', 'datePerformed' => '2026-04-01'],
+            ['test' => 'hemoglobin', 'result' => '11.8 g/dL', 'datePerformed' => '2026-06-01'],
+        ];
+        $data['laboratoryResults'] = ['hemoglobin' => '11.8 g/dL'];
+        $data['laboratoryResultDates'] = ['hemoglobin' => '2026-06-01'];
+
+        $publicId = $this->saveDraft($data)->assertCreated()->json('data.id');
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.maternalData.laboratoryEntries.0.result', '11.2 g/dL')
+            ->assertJsonPath('data.payload.maternalData.laboratoryEntries.1.result', '11.8 g/dL')
+            ->assertJsonPath('data.payload.maternalData.laboratoryResults.hemoglobin', '11.8 g/dL');
+    }
+
+    public function test_official_record_keeps_repeated_lab_results_under_this_visit(): void
+    {
+        $data = $this->maternalData();
+        $data['laboratoryEntries'] = [
+            ['test' => 'hemoglobin', 'result' => '11.2 g/dL', 'datePerformed' => '2026-04-01'],
+            ['test' => 'hemoglobin', 'result' => '11.8 g/dL', 'datePerformed' => '2026-06-01'],
+        ];
+
+        $recordId = $this->saveRecord($data)->assertCreated()->json('data.id');
+        $maternal = json_decode(
+            (string) DB::table('health_records')->where('id', $recordId)->value('maternal_data'),
+            true
+        );
+
+        $this->assertCount(2, $maternal['laboratoryEntries']);
+        $this->assertSame('hemoglobin', $maternal['laboratoryEntries'][0]['test']);
+        $this->assertSame('11.2 g/dL', $maternal['laboratoryEntries'][0]['result']);
+        $this->assertSame('11.8 g/dL', $maternal['laboratoryEntries'][1]['result']);
+    }
+
+    public function test_an_empty_lab_list_does_not_invent_results(): void
+    {
+        $recordId = $this->saveRecord([
+            'lmp' => '2026-03-01',
+            'laboratoryEntries' => [],
+        ])->assertCreated()->json('data.id');
+
+        $maternal = json_decode(
+            (string) DB::table('health_records')->where('id', $recordId)->value('maternal_data'),
+            true
+        );
+
+        $this->assertSame([], $maternal['laboratoryEntries'] ?? []);
+    }
+
+    public function test_draft_rejects_an_unknown_lab_entry(): void
+    {
+        $data = $this->maternalData();
+        $data['laboratoryEntries'][] = [
+            'test' => 'bloodSugar',
+            'result' => 'x',
+            'datePerformed' => '2026-09-10',
+        ];
+
+        $this->saveDraft($data)->assertStatus(422);
+        $this->assertDatabaseCount('health_record_drafts', 0);
     }
 
     private function maternalData(): array
@@ -189,6 +264,10 @@ class PrenatalFormFieldsTest extends TestCase
             ],
             'laboratoryResults' => ['hemoglobin' => '11.5 g/dL', 'urinalysis' => 'Normal'],
             'laboratoryResultDates' => ['hemoglobin' => '2026-09-10', 'urinalysis' => '2026-09-12'],
+            'laboratoryEntries' => [
+                ['test' => 'hemoglobin', 'result' => '11.5 g/dL', 'datePerformed' => '2026-09-10'],
+                ['test' => 'urinalysis', 'result' => 'Normal', 'datePerformed' => '2026-09-12'],
+            ],
             'immunizationThisVisit' => [
                 'type' => 'tt2',
                 'doseStatus' => 'Given',

@@ -17,6 +17,7 @@ import {
   maternalProgramControl,
   prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
+  shouldPrefillPrenatalBaseline,
   shouldSeedMaternalFromPrenatalFollowUp,
 } from "./prenatalEnrollment.js";
 import { removeContinuedFollowUp } from "./continuedCare.js";
@@ -253,6 +254,29 @@ test("a failed prenatal follow-up load offers Retry instead of Not included", ()
   assert.equal(control.hideAction, false);
   assert.equal(control.actionLabel, MATERNAL_SERVICE_RETRY_LABEL);
   assert.equal(canCompleteMaternalFollowUpResolution({ loadFailed: true }), false);
+});
+
+test("pregnancy baseline prefills only on an explicit prenatal follow-up", () => {
+  const latestRecord = { id: 9, maternalData: { lmp: "2026-03-01" } };
+  const prenatalFollowUp = { purposeKey: servicePurposeKey("Maternal") };
+  assert.equal(shouldPrefillPrenatalBaseline({
+    continueRoute: false,
+    followUps: [prenatalFollowUp],
+    enrolled: true,
+    latestRecord,
+  }), false);
+  assert.equal(shouldPrefillPrenatalBaseline({
+    continueRoute: true,
+    followUps: [],
+    enrolled: true,
+    latestRecord,
+  }), false);
+  assert.equal(shouldPrefillPrenatalBaseline({
+    continueRoute: true,
+    followUps: [prenatalFollowUp],
+    enrolled: true,
+    latestRecord,
+  }), true);
 });
 
 test("Active Maternal Care is read-only on a New Consultation", () => {

@@ -40,6 +40,34 @@ test("maternal tracking keeps the latest recorded lab result and both TT/Td hist
   assert.ok(result.progress > 0);
 });
 
+test("maternal tracking prefers dated laboratory entries, including a later repeat of the same test", () => {
+  const result = buildMaternalTracking([
+    {
+      id: 1,
+      dateRecorded: "2026-09-01",
+      maternalData: {
+        laboratoryEntries: [
+          { test: "hemoglobin", result: "10.2 g/dL", datePerformed: "2026-08-30" },
+          { test: "cbc", result: "Normal", datePerformed: "2026-08-30" },
+        ],
+      },
+    },
+    {
+      id: 2,
+      dateRecorded: "2026-10-01",
+      maternalData: {
+        laboratoryEntries: [
+          { test: "hemoglobin", result: "10.4 g/dL", datePerformed: "2026-09-15" },
+          { test: "hemoglobin", result: "10.8 g/dL", datePerformed: "2026-09-29" },
+        ],
+      },
+    },
+  ], new Date(2026, 9, 14));
+
+  assert.equal(result.labs.find((lab) => lab.label === "Hemoglobin").value, "10.8 g/dL");
+  assert.equal(result.labs.find((lab) => lab.label === "CBC").value, "Normal");
+});
+
 test("medicine history only includes dispensed items and keeps visit service labels", () => {
   const rows = buildDispensedMedicineRows([
     {

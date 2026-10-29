@@ -86,8 +86,9 @@ function SectionFrame({ title, status, updated, reviewed, canReview, editing, on
 
 /**
  * Patient History (ITR page 1): the one shared component for the BHC
- * consultation (layout "section", `inline` to edit in place) and the RHU
- * record form (layout "screen" or stacked, with Update / Done / No changes).
+ * consultation (layout "section", `inline` to edit in place), the prenatal
+ * obstetric card (`summaryWhenRecorded`), and the RHU record form
+ * (layout "screen" or stacked, with Update / Done / No changes).
  * Controlled; it holds no save logic. Edits are staged in `update` through
  * buildBackgroundUpdate, "No changes" marks a section reviewed, and nothing
  * here is required to continue. Entered values are checked when the
@@ -121,6 +122,7 @@ export default function PatientHistoryPanel({
   showSimilarIllness = true,
   showEducationAndOccupation = true,
   inline = false,
+  summaryWhenRecorded = false,
 }) {
   const { registry } = useClinicalRegistry();
   const conditionsQuery = usePatientConditions(patient?.id, { enabled: !locked });
@@ -297,6 +299,40 @@ export default function PatientHistoryPanel({
         </section>
       );
     }
+    if (summaryWhenRecorded) {
+      const recordedNow = hasRecordedData(current, section);
+      const updated = updatedKeys.includes(section);
+      const isEditing = recordedNow ? (editing[section] ?? updated) : true;
+      return (
+        <section aria-label={HISTORY_SECTION_TITLES[section]} className="border border-gray-200 bg-white">
+          <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-4 py-2.5">
+            <div className="min-w-0">
+              <h3 className="text-[14px] font-bold leading-snug text-gray-900">{HISTORY_SECTION_TITLES[section]}</h3>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {updated ? (
+                <button type="button" onClick={() => undo(section)} className={SMALL_BUTTON_CLASS}>
+                  Undo changes
+                </button>
+              ) : null}
+              {recordedNow ? (
+                <button
+                  type="button"
+                  aria-expanded={isEditing}
+                  onClick={() => setEditing((state) => ({ ...state, [section]: !isEditing }))}
+                  className={SMALL_BUTTON_CLASS}
+                >
+                  {isEditing ? "Done" : "Update"}
+                </button>
+              ) : null}
+            </div>
+          </header>
+          <div className="px-4 py-3">
+            {isEditing ? sectionForm(section) : sectionSummary(section)}
+          </div>
+        </section>
+      );
+    }
     if (inline) {
       return (
         <section aria-label={HISTORY_SECTION_TITLES[section]} className="border border-gray-200 bg-white">
@@ -367,7 +403,7 @@ export default function PatientHistoryPanel({
         {[...(showGeneral ? ["general"] : []), ...editableKeys].map((section) => (
           <div key={section}>{renderSection(section)}</div>
         ))}
-        {!inline && <div className="max-w-xs">{markAll}</div>}
+        {!inline && !summaryWhenRecorded && <div className="max-w-xs">{markAll}</div>}
       </div>
     );
   }
@@ -380,7 +416,7 @@ export default function PatientHistoryPanel({
       <div className="grid gap-4 @3xl/history:grid-cols-[13rem_minmax(0,1fr)] @3xl/history:items-start">
         <div className="space-y-3">
           <SectionNav sections={navSections} active={shown} onSelect={setActive} />
-          {!inline && markAll}
+          {!inline && !summaryWhenRecorded && markAll}
         </div>
         <div className="min-w-0">{renderSection(shown)}</div>
       </div>

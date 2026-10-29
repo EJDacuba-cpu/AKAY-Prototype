@@ -96,6 +96,85 @@ export const MATERNAL_LAB_TESTS = [
 ];
 export const MATERNAL_LAB_TEST_KEYS = MATERNAL_LAB_TESTS.map((test) => test.key);
 
+export const EMPTY_LABORATORY_ENTRY = {
+  test: "",
+  result: "",
+  datePerformed: "",
+};
+
+export function labTestLabel(key) {
+  return MATERNAL_LAB_TESTS.find((test) => test.key === key)?.label || key;
+}
+
+function keyedLaboratoryEntries(source = {}) {
+  const results = source.laboratoryResults || source.laboratory_results || {};
+  const dates = source.laboratoryResultDates || source.laboratory_result_dates || {};
+  return MATERNAL_LAB_TEST_KEYS.flatMap((key) => {
+    const result = String(results[key] || "").trim();
+    if (!result) return [];
+    return [{ test: key, result, datePerformed: String(dates[key] || "").trim() }];
+  });
+}
+
+/** Drop incomplete rows. Unknown tests never enter the saved list. */
+export function sanitizeLaboratoryEntries(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => ({
+      test: MATERNAL_LAB_TEST_KEYS.includes(entry?.test) ? entry.test : "",
+      result: String(entry?.result || "").trim(),
+      datePerformed: String(entry?.datePerformed || entry?.date || "").trim(),
+    }))
+    .filter((entry) => entry.test && entry.result);
+}
+
+/**
+ * This visit's lab list. An explicit `laboratoryEntries` array — even empty —
+ * is the source of truth. Older records that only stored one value per test
+ * are converted into that list.
+ */
+export function readLaboratoryEntries(source = {}) {
+  if (Array.isArray(source.laboratoryEntries) || Array.isArray(source.laboratory_entries)) {
+    return sanitizeLaboratoryEntries(source.laboratoryEntries || source.laboratory_entries);
+  }
+  return keyedLaboratoryEntries(source);
+}
+
+/** Last result per test key, so older readers of the keyed maps still work. */
+export function laboratorySnapshotFromEntries(entries = []) {
+  const laboratoryResults = { ...EMPTY_MATERNAL_DATA.laboratoryResults };
+  const laboratoryResultDates = { ...EMPTY_MATERNAL_DATA.laboratoryResultDates };
+  for (const entry of sanitizeLaboratoryEntries(entries)) {
+    laboratoryResults[entry.test] = entry.result;
+    laboratoryResultDates[entry.test] = entry.datePerformed || "";
+  }
+  return { laboratoryResults, laboratoryResultDates };
+}
+
+export function withLaboratoryEntries(entries = []) {
+  const laboratoryEntries = sanitizeLaboratoryEntries(entries);
+  return {
+    laboratoryEntries,
+    ...laboratorySnapshotFromEntries(laboratoryEntries),
+  };
+}
+
+/**
+ * Review payload for this visit. The last-result snapshot is omitted so
+ * repeated tests appear as separate rows instead of collapsing to one value.
+ */
+export function maternalReviewFields(maternalData = {}) {
+  const { laboratoryResults, laboratoryResultDates, laboratoryEntries, ...rest } = maternalData;
+  if (!Array.isArray(laboratoryEntries)) {
+    return { ...rest, laboratoryResults, laboratoryResultDates };
+  }
+  const entries = sanitizeLaboratoryEntries(laboratoryEntries).map((entry) => ({
+    test: labTestLabel(entry.test),
+    result: entry.result,
+    ...(entry.datePerformed ? { datePerformed: entry.datePerformed } : {}),
+  }));
+  return entries.length ? { ...rest, laboratoryResults: entries } : rest;
+}
+
 /**
  * The doses "Immunization This Visit" can record. TT and Td are two separate
  * 5-dose schedules; each option names the schedule its date is stored under.
@@ -195,6 +274,7 @@ export const EMPTY_MATERNAL_DATA = {
     syphilis: "",
     urinalysis: "",
   },
+  laboratoryEntries: [],
   immunizationThisVisit: {
     type: "",
     doseStatus: "",
@@ -264,14 +344,7 @@ export function mergeMaternalData(data = {}, fallback = {}) {
       ...EMPTY_MATERNAL_DATA.riskAssessment,
       ...sanitizeRiskAssessment(legacyRiskAssessment),
     },
-    laboratoryResults: {
-      ...EMPTY_MATERNAL_DATA.laboratoryResults,
-      ...(source.laboratoryResults || {}),
-    },
-    laboratoryResultDates: {
-      ...EMPTY_MATERNAL_DATA.laboratoryResultDates,
-      ...(source.laboratoryResultDates || {}),
-    },
+    ...withLaboratoryEntries(readLaboratoryEntries(source)),
     immunizationThisVisit: {
       ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
       ...(source.immunizationThisVisit || {}),
@@ -323,7 +396,8 @@ export function computeAogFromLmp(lmp, visitDate = new Date()) {
 
 /**
  * Pregnancy facts from an earlier prenatal record, with this-visit fields
- * cleared so a continue visit cannot copy FHT or today's dose.
+ * cleared so a continue visit cannot copy FHT, today's dose, labs, or ultrasound.
+ * Prior labs and ultrasounds stay on their own records and are shown as history.
  */
 export function continuePrenatalPrefill(record = {}) {
   const data = mergeMaternalData(record.maternalData || record.maternal_data || {}, {
@@ -336,6 +410,8 @@ export function continuePrenatalPrefill(record = {}) {
     treatment: "",
     bmi: "",
     immunizationThisVisit: { ...EMPTY_MATERNAL_DATA.immunizationThisVisit },
+    ...withLaboratoryEntries([]),
+    ultrasound: { ...EMPTY_MATERNAL_DATA.ultrasound },
   };
 }
 
@@ -350,4 +426,122 @@ export function continueBhcPrenatalPrefill(record = {}) {
     ...data,
     riskAssessment: { ...EMPTY_MATERNAL_DATA.riskAssessment },
   };
+}
+
+export const EMPTY_PRENATAL_HISTORY = {
+  labs: [],
+  ultrasounds: [],
+  risks: [],
+  immunizations: [],
+};
+
+function maternalPayload(record = {}) {
+  return record.maternalData || record.maternal_data || null;
+}
+
+function isMaternalRecord(record = {}) {
+  if (maternalPayload(record) && typeof maternalPayload(record) === "object") return true;
+  const stored =
+    record.selectedPrograms
+    ?? record.monitoringData?.selectedPrograms
+    ?? record.monitoring_data?.selectedPrograms;
+  return Array.isArray(stored) && stored.includes("Maternal");
+}
+
+function visitSortTime(record = {}) {
+  const raw =
+    record.dateOfVisit
+    || record.date_of_visit
+    || record.dateRecorded
+    || record.date_recorded
+    || record.createdAt
+    || record.created_at
+    || "";
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function visitDateOf(record = {}) {
+  return (
+    record.dateOfVisit
+    || record.date_of_visit
+    || record.dateRecorded
+    || record.date_recorded
+    || ""
+  );
+}
+
+function firstFilledSchedule(target, source = {}) {
+  const next = { ...target };
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!next[key] && value) next[key] = value;
+  }
+  return next;
+}
+
+/**
+ * Prior prenatal findings from finalized maternal records. This visit's
+ * editable payload is separate — history is never copied into it.
+ */
+export function collectPrenatalHistory(records = []) {
+  const labs = [];
+  const ultrasounds = [];
+  const risks = [];
+  const seenRisks = new Set();
+  let tetanusToxoidStatus = { ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus };
+  let tetanusDiphtheriaStatus = { ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus };
+  const maternalRecords = (Array.isArray(records) ? records : [])
+    .filter(isMaternalRecord)
+    .slice()
+    .sort((left, right) => visitSortTime(left) - visitSortTime(right));
+
+  for (const record of maternalRecords) {
+    const maternal = mergeMaternalData(maternalPayload(record) || {});
+    const visitDate = visitDateOf(record);
+    const recordId = record.id ?? record.healthRecordId ?? record.health_record_id ?? "";
+
+    maternal.laboratoryEntries.forEach((entry, index) => {
+      labs.push({
+        key: `${entry.test}-${index}`,
+        label: labTestLabel(entry.test),
+        result: entry.result,
+        date: entry.datePerformed,
+        visitDate,
+        recordId,
+      });
+    });
+
+    const ultrasoundResult = String(maternal.ultrasound?.result || "").trim();
+    const ultrasoundDate = maternal.ultrasound?.dateDone || "";
+    if (ultrasoundResult || ultrasoundDate) {
+      ultrasounds.push({
+        result: ultrasoundResult,
+        dateDone: ultrasoundDate,
+        visitDate,
+        recordId,
+      });
+    }
+
+    for (const option of MATERNAL_RISK_GROUPS.flatMap((group) => group.options)) {
+      if (!maternal.riskAssessment?.[option.key] || seenRisks.has(option.key)) continue;
+      seenRisks.add(option.key);
+      risks.push(option.label);
+    }
+
+    tetanusToxoidStatus = firstFilledSchedule(tetanusToxoidStatus, maternal.tetanusToxoidStatus);
+    tetanusDiphtheriaStatus = firstFilledSchedule(
+      tetanusDiphtheriaStatus,
+      maternal.tetanusDiphtheriaStatus,
+    );
+  }
+
+  const immunizations = PRENATAL_IMMUNIZATION_OPTIONS.flatMap((option) => {
+    const dateGiven =
+      option.schedule === "tetanusToxoidStatus"
+        ? tetanusToxoidStatus[option.value]
+        : tetanusDiphtheriaStatus[option.value];
+    return dateGiven ? [{ type: option.value, label: option.label, dateGiven }] : [];
+  });
+
+  return { labs, ultrasounds, risks, immunizations };
 }

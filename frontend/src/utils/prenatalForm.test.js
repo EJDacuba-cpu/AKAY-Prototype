@@ -12,13 +12,18 @@ import {
   MATERNAL_RISK_PARENTS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyRiskFactorChange,
+  collectPrenatalHistory,
   computeAogFromLmp,
   computeEddFromLmp,
   continueBhcPrenatalPrefill,
   continuePrenatalPrefill,
+  maternalReviewFields,
   mergeMaternalData,
+  readLaboratoryEntries,
+  sanitizeLaboratoryEntries,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
+  withLaboratoryEntries,
 } from "./prenatalForm.js";
 
 /* ── Layout matches the prenatal record ──────────────────────────────── */
@@ -176,6 +181,10 @@ test("continue prefill keeps pregnancy facts and clears this-visit findings", ()
       fht: "140 bpm",
       immunizationThisVisit: { type: "tt1", dateGiven: "2026-04-01" },
       tetanusToxoidStatus: { tt1: "2026-04-01" },
+      laboratoryResults: { hemoglobin: "11.5 g/dL" },
+      laboratoryResultDates: { hemoglobin: "2026-04-01" },
+      laboratoryEntries: [{ test: "hemoglobin", result: "11.5 g/dL", datePerformed: "2026-04-01" }],
+      ultrasound: { result: "Single live intrauterine pregnancy", dateDone: "2026-04-10" },
     },
     expectedDeliveryDate: "2026-12-08",
   });
@@ -185,6 +194,11 @@ test("continue prefill keeps pregnancy facts and clears this-visit findings", ()
   assert.equal(next.fht, "");
   assert.equal(next.immunizationThisVisit.type, "");
   assert.equal(next.tetanusToxoidStatus.tt1, "2026-04-01");
+  assert.equal(next.laboratoryResults.hemoglobin, "");
+  assert.equal(next.laboratoryResultDates.hemoglobin, "");
+  assert.deepEqual(next.laboratoryEntries, []);
+  assert.equal(next.ultrasound.result, "");
+  assert.equal(next.ultrasound.dateDone, "");
 });
 
 test("BHC continue prefill keeps pregnancy facts and clears obstetric risk checkboxes", () => {
@@ -216,9 +230,166 @@ test("mergeMaternalData drops retired risk keys", () => {
 test("the Prenatal form keeps this-pregnancy fields and can mount Section V", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const form = readFileSync(join(here, "../components/features/health-records/PrenatalAssessmentForm.jsx"), "utf8");
+  const panel = readFileSync(join(here, "../components/features/patients/history/PatientHistoryPanel.jsx"), "utf8");
+  const workspace = readFileSync(join(here, "../pages/bhc/ConsultationWorkspace.jsx"), "utf8");
+  const rhuWorkspace = readFileSync(join(here, "../pages/rhu/RhuConsultationWorkspace.jsx"), "utf8");
   assert.match(form, /title="Pregnancy \/ Obstetric Information"/);
   assert.match(form, /includeObstetricHistory/);
   assert.match(form, /sections=\{\["obstetric"\]\}/);
+  assert.match(form, /summaryWhenRecorded/);
+  assert.match(form, /Add Lab Result/);
+  assert.match(form, /New Results This Visit/);
+  assert.match(form, /Previous Laboratory Results/);
+  assert.match(form, /Add Ultrasound/);
+  assert.match(panel, /summaryWhenRecorded/);
+  assert.match(workspace, /shouldPrefillPrenatalBaseline/);
+  assert.match(workspace, /prenatalHistory=\{prenatalHistory\}/);
+  assert.match(rhuWorkspace, /prenatalHistory=\{prenatalHistory\}/);
   assert.doesNotMatch(form, /PrenatalHistorySummary/);
   assert.doesNotMatch(form, /Previous pregnancies are in Patient History/);
+});
+
+test("collectPrenatalHistory reads prior labs, ultrasound, risks, and TT/Td without mixing visits", () => {
+  const history = collectPrenatalHistory([
+    {
+      id: 1,
+      dateOfVisit: "2026-04-01",
+      selectedPrograms: ["Maternal"],
+      maternalData: {
+        laboratoryResults: { hemoglobin: "11.2 g/dL" },
+        laboratoryResultDates: { hemoglobin: "2026-04-01" },
+        ultrasound: { result: "Viable pregnancy", dateDone: "2026-04-02" },
+        riskAssessment: { previousCs: true },
+        tetanusToxoidStatus: { tt1: "2026-04-01" },
+      },
+    },
+    {
+      id: 2,
+      dateOfVisit: "2026-06-01",
+      selectedPrograms: ["Maternal"],
+      maternalData: {
+        laboratoryResults: { urinalysis: "Normal" },
+        laboratoryResultDates: { urinalysis: "2026-06-01" },
+        tetanusToxoidStatus: { tt2: "2026-06-01" },
+      },
+    },
+    { id: 3, selectedPrograms: ["EPI"], immunizationData: { vaccineEntries: [] } },
+  ]);
+  assert.deepEqual(history.labs.map((item) => item.label), ["Hemoglobin", "Urinalysis"]);
+  assert.equal(history.labs[0].result, "11.2 g/dL");
+  assert.equal(history.ultrasounds.length, 1);
+  assert.equal(history.ultrasounds[0].result, "Viable pregnancy");
+  assert.deepEqual(history.risks, ["Previous C/S"]);
+  assert.deepEqual(
+    history.immunizations.map((item) => item.type),
+    ["tt1", "tt2"],
+  );
+});
+
+test("collectPrenatalHistory is empty when there are no maternal records", () => {
+  assert.deepEqual(collectPrenatalHistory([]), {
+    labs: [],
+    ultrasounds: [],
+    risks: [],
+    immunizations: [],
+  });
+});
+
+test("laboratory entries keep repeated tests and convert older keyed maps", () => {
+  assert.deepEqual(
+    sanitizeLaboratoryEntries([
+      { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+      { test: "unknown", result: "x" },
+      { test: "cbc", result: "   " },
+      { test: "hemoglobin", result: "11.8 g/dL", date: "2026-06-01" },
+    ]),
+    [
+      { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+      { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+    ],
+  );
+
+  assert.deepEqual(
+    readLaboratoryEntries({
+      laboratoryResults: { hemoglobin: "11.2 g/dL", urinalysis: "Normal" },
+      laboratoryResultDates: { hemoglobin: "2026-04-01" },
+    }),
+    [
+      { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+      { test: "urinalysis", result: "Normal", datePerformed: "" },
+    ],
+  );
+
+  assert.deepEqual(
+    readLaboratoryEntries({
+      laboratoryEntries: [],
+      laboratoryResults: { hemoglobin: "11.2 g/dL" },
+    }),
+    [],
+  );
+
+  const saved = withLaboratoryEntries([
+    { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+    { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+    { test: "urinalysis", result: "Normal", datePerformed: "2026-06-01" },
+  ]);
+  assert.equal(saved.laboratoryEntries.length, 3);
+  assert.equal(saved.laboratoryResults.hemoglobin, "11.8 g/dL");
+  assert.equal(saved.laboratoryResultDates.hemoglobin, "2026-06-01");
+  assert.equal(saved.laboratoryResults.urinalysis, "Normal");
+});
+
+test("mergeMaternalData restores this-visit lab entries, including repeats", () => {
+  const merged = mergeMaternalData({
+    laboratoryEntries: [
+      { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+      { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+    ],
+  });
+  assert.deepEqual(merged.laboratoryEntries, [
+    { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+    { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+  ]);
+});
+
+test("review lists each this-visit lab and omits the last-result snapshot", () => {
+  const rows = maternalReviewFields({
+    lmp: "2026-03-01",
+    laboratoryEntries: [
+      { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+      { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+    ],
+    laboratoryResults: { hemoglobin: "11.8 g/dL" },
+    laboratoryResultDates: { hemoglobin: "2026-06-01" },
+  });
+  assert.equal(rows.lmp, "2026-03-01");
+  assert.equal("laboratoryEntries" in rows, false);
+  assert.equal("laboratoryResultDates" in rows, false);
+  assert.deepEqual(rows.laboratoryResults, [
+    { test: "Hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+    { test: "Hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+  ]);
+  assert.deepEqual(maternalReviewFields({ lmp: "2026-03-01", laboratoryEntries: [] }).laboratoryResults, undefined);
+});
+
+test("collectPrenatalHistory keeps every dated lab from the same visit", () => {
+  const history = collectPrenatalHistory([
+    {
+      id: 4,
+      dateOfVisit: "2026-06-01",
+      selectedPrograms: ["Maternal"],
+      maternalData: {
+        laboratoryEntries: [
+          { test: "hemoglobin", result: "11.2 g/dL", datePerformed: "2026-04-01" },
+          { test: "hemoglobin", result: "11.8 g/dL", datePerformed: "2026-06-01" },
+        ],
+      },
+    },
+  ]);
+  assert.deepEqual(
+    history.labs.map((item) => item.result),
+    ["11.2 g/dL", "11.8 g/dL"],
+  );
+  assert.equal(history.labs[0].visitDate, "2026-06-01");
+  assert.equal(history.labs[1].date, "2026-06-01");
 });
