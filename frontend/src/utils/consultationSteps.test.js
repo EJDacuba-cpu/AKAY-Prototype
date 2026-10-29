@@ -621,6 +621,10 @@ test("background_update 422 errors route to Patient History", () => {
   assert.equal(getErrorOwnerStepKey("informant.relation"), HISTORY_STEP);
   assert.equal(getErrorOwnerStepKey("similar_illness"), HISTORY_STEP);
   assert.equal(
+    getErrorOwnerStepKey("payload.backgroundUpdate.sections.social.personalSocial.smoking.sticksPerDay"),
+    HISTORY_STEP,
+  );
+  assert.equal(
     findFirstErrorStepKey(
       { "background_update.sections.family.familyHistory.items.0.condition": "x", pulse: "y" },
       getStepOrder([], []),

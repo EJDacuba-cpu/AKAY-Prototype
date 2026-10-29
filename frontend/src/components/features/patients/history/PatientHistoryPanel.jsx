@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 
 import RestrictedArea from "../../../common/access/RestrictedArea";
@@ -90,10 +90,12 @@ function SectionFrame({ title, status, updated, reviewed, canReview, editing, on
  * record form (layout "screen" or stacked, with Update / Done / No changes).
  * Controlled; it holds no save logic. Edits are staged in `update` through
  * buildBackgroundUpdate, "No changes" marks a section reviewed, and nothing
- * here is ever required to continue.
+ * here is required to continue. Entered values are checked when the
+ * consultation moves on; invalid numbers and half-filled rows stay as typed.
  *
  * `errors` is historyErrorMessages(..., { withSection: true }) of the last
- * save: listed above the sections, and the first one's section is opened.
+ * check: listed above the sections, and the first one's section is opened.
+ * `fieldErrors` is the keyed object shown inline on the invalid inputs.
  */
 export default function PatientHistoryPanel({
   patient,
@@ -112,6 +114,7 @@ export default function PatientHistoryPanel({
   relatives,
   editLink,
   errors = [],
+  fieldErrors = {},
   initialSection = "general",
   showGeneral = true,
   sections,
@@ -138,6 +141,19 @@ export default function PatientHistoryPanel({
       if (first !== "general") setEditing((current) => ({ ...current, [first]: true }));
     }
   }
+
+  const firstErrorField = errors.find((error) => error.key)?.key || "";
+  useEffect(() => {
+    if (!firstErrorField) return;
+    const frame = window.requestAnimationFrame(() => {
+      const escaped =
+        typeof CSS !== "undefined" && CSS.escape ? CSS.escape(firstErrorField) : firstErrorField.replace(/"/g, '\\"');
+      const element = document.querySelector(`[name="${escaped}"], [data-field="${escaped}"]`);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof element?.focus === "function") element.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [errorKey, firstErrorField]);
 
   if (locked) {
     return (
@@ -205,7 +221,7 @@ export default function PatientHistoryPanel({
   ];
 
   function sectionForm(section) {
-    const props = { value: sliceOf(current, section), onChange: changeSlice };
+    const props = { value: sliceOf(current, section), onChange: changeSlice, errors: fieldErrors };
     if (section === "medical") return <PastMedicalSection {...props} conditionGroups={conditionGroups} />;
     if (section === "family") {
       return (
@@ -335,10 +351,10 @@ export default function PatientHistoryPanel({
 
   const errorList = errors.length > 0 && (
     <div role="alert" className="border border-red-200 border-l-4 border-l-red-600 bg-red-50 p-3">
-      <p className="text-[13px] font-bold text-red-700">The patient history was not saved</p>
+      <p className="text-[13px] font-bold text-red-700">Fix the highlighted fields before continuing</p>
       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-red-700">
         {errors.map((error) => (
-          <li key={error.text}>{error.text}</li>
+          <li key={error.key || error.text}>{error.text}</li>
         ))}
       </ul>
     </div>

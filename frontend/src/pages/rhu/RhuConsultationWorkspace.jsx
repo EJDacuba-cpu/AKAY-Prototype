@@ -85,8 +85,10 @@ import {
   toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
+import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { canUpdateBackground } from "../../utils/backgroundEditing";
 import {
+  historyErrorMessages,
   visitAnswerDraftFields,
   visitAnswerRecordFields,
   visitAnswerRows,
@@ -501,6 +503,9 @@ export default function RhuConsultationWorkspace() {
     const errors = {};
     if (currentStepKey === INTERVIEW_STEP && !String(chiefComplaint).trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
+    }
+    if (currentStepKey === HISTORY_STEP) {
+      Object.assign(errors, stagedHistoryErrors(backgroundUpdate));
     }
     if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
       if (prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()) {
@@ -947,6 +952,8 @@ export default function RhuConsultationWorkspace() {
                     locked={!canViewBackground || !canUpdateHistory}
                     loading={patientQuery.isLoading}
                     editLink={patientId ? `/rhu/patients/${patientId}` : undefined}
+                    errors={historyErrorMessages(validationErrors, { withSection: true })}
+                    fieldErrors={validationErrors}
                   />
                 </fieldset>
               )}

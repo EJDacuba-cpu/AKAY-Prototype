@@ -86,7 +86,7 @@ export function RhuConditions({ groups }) {
  * groups, e.g. with a loading or "could not be loaded" notice so a failed
  * fetch never reads as "No conditions confirmed by RHU". Default: the groups.
  */
-export default function PastMedicalSection({ value, onChange, conditionGroups, rhuConditionsSlot }) {
+export default function PastMedicalSection({ value, onChange, conditionGroups, rhuConditionsSlot, errors = {} }) {
   const diseases = Array.isArray(value?.currentDiseases) ? value.currentDiseases : [];
   const allergies = value?.allergies || {};
   const hospitalizations = value?.hospitalizations || {};
@@ -112,6 +112,8 @@ export default function PastMedicalSection({ value, onChange, conditionGroups, r
               items={diseases}
               columns={REPORTED_COLUMNS}
               newItem={REPORTED_NEW}
+              fieldPrefix="background_update.sections.medical.currentDiseases"
+              errors={errors}
               onChange={(next) => onChange({ ...value, currentDiseases: next })}
             />
           </div>
@@ -125,6 +127,8 @@ export default function PastMedicalSection({ value, onChange, conditionGroups, r
           items={allergyItems}
           columns={ALLERGY_COLUMNS}
           newItem={ALLERGY_NEW}
+          fieldPrefix="background_update.sections.medical.allergies.items"
+          errors={errors}
           noneLabel="No known allergies"
           noneChecked={allergies.noneKnown === true}
           onNoneChange={(checked) =>
@@ -146,6 +150,8 @@ export default function PastMedicalSection({ value, onChange, conditionGroups, r
           items={hospitalItems}
           columns={HOSPITAL_COLUMNS}
           newItem={HOSPITAL_NEW}
+          fieldPrefix="background_update.sections.medical.hospitalizations.items"
+          errors={errors}
           noneLabel="None"
           noneChecked={hospitalizations.none === true}
           onNoneChange={(checked) =>

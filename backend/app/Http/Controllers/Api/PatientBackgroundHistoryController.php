@@ -12,8 +12,9 @@ use App\Services\PatientBackground;
 use Illuminate\Http\Request;
 
 /**
- * The Patient Background tab's Changes log: every background_changes entry the
- * patient's finalized consultations recorded, newest first.
+ * Audit trail of background updates: every background_changes entry the
+ * patient's finalized consultations recorded, plus standalone Patient
+ * Background saves, newest first.
  */
 class PatientBackgroundHistoryController extends Controller
 {

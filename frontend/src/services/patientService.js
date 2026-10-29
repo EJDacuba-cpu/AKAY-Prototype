@@ -220,9 +220,9 @@ export async function savePatientBackground(id, backgroundUpdate) {
 }
 
 /**
- * The Patient Background tab's Changes log: what each finalized consultation
- * changed in the background (and each standalone Patient Background save,
- * source "patient_background", without a health record), newest first.
+ * Audit trail of background updates: what each finalized consultation
+ * changed (and each standalone Patient Background save, source
+ * "patient_background", without a health record), newest first.
  */
 export async function getPatientBackgroundHistory(id) {
   const response = await apiRequest(`/patients/${id}/background-history`);

@@ -194,7 +194,7 @@ function LivePatientDetails() {
     { key: "patient-info", label: "Patient Information" },
     ...(canViewHistory
       ? [
-          // Editable only with clinical.background.update (see PatientBackgroundTab).
+          // Read-only latest chart; visit details stay on Health Records.
           { key: "background", label: "Patient Background" },
           {
             key: "programs",

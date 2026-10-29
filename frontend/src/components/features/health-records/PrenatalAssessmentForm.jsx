@@ -39,6 +39,7 @@ export default function PrenatalAssessmentForm({
   backgroundUpdate,
   onBackgroundUpdateChange,
   historyErrors = [],
+  fieldErrors = {},
   includeObstetricHistory = false,
 }) {
   const showObstetricHistory =
@@ -62,6 +63,7 @@ export default function PrenatalAssessmentForm({
           showSimilarIllness={false}
           inline
           errors={historyErrors}
+          fieldErrors={fieldErrors}
           initialSection="obstetric"
         />
       )}

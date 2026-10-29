@@ -106,6 +106,10 @@ test("BHC: a server error on the informant routes back to Patient Interview, nev
     getErrorOwnerStepKey("background_update.sections.obstetric.obstetric.menarcheAge", BHC),
     MATERNAL,
   );
+  assert.equal(
+    getErrorOwnerStepKey("payload.backgroundUpdate.sections.social.personalSocial.smoking.sticksPerDay", BHC),
+    INTERVIEW_STEP,
+  );
 });
 
 test("BHC: a legacy draft saved on Patient History reopens on Patient Interview", () => {
@@ -159,11 +163,20 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.doesNotMatch(workspace, /Informant & Similar Illness/);
   assert.doesNotMatch(workspace, /showSimilarIllness=\{false\}/);
   assert.match(workspace, /showEducationAndOccupation=\{false\}\s+inline\s+errors=\{historyPanelErrors\}/);
+  assert.match(workspace, /stagedHistoryErrors\(backgroundUpdate, \{ sections: \["family", "medical", "social"\] \}\)/);
+  assert.match(workspace, /fieldErrors=\{backgroundUpdateErrors\}/);
   assert.doesNotMatch(workspace, /PatientHistoryReference/);
   assert.doesNotMatch(workspace, /onEditBackground=/);
   assert.match(details, /canEdit=\{false\}/);
   assert.match(details, /PatientHistoryReference/);
   assert.doesNotMatch(details, /onEditBackground=/);
+  const backgroundTab = readFileSync(join(here, "../components/features/patients/PatientBackgroundTab.jsx"), "utf8");
+  assert.doesNotMatch(backgroundTab, /View Health Records/);
+  assert.doesNotMatch(backgroundTab, /TabIntro/);
+  assert.doesNotMatch(backgroundTab, /onViewRecords/);
+  assert.doesNotMatch(backgroundTab, /function ChangesLog/);
+  assert.doesNotMatch(backgroundTab, /Show changes/);
+  assert.doesNotMatch(backgroundTab, /getPatientBackgroundHistory/);
   assert.doesNotMatch(panel, /I\. General Data/);
   assert.doesNotMatch(panel, /II\. Past Medical History/);
   assert.doesNotMatch(panel, /III\. Family History/);

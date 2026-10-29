@@ -378,9 +378,12 @@ function carePlanOwnerStep(options = {}) {
 }
 
 export function getErrorOwnerStepKey(errorKey, options = {}) {
-  if (String(errorKey).startsWith("monitoring_data.bodyFindingReassessments")) return ASSESSMENT_STEP;
+  const raw = String(errorKey || "");
+  if (raw.startsWith("monitoring_data.bodyFindingReassessments")) return ASSESSMENT_STEP;
   const { includeHistory = true, workflow } = options;
-  const key = String(errorKey || "");
+  const key = raw.startsWith("payload.backgroundUpdate")
+    ? `background_update${raw.slice("payload.backgroundUpdate".length)}`
+    : raw;
   const carePlanStep = carePlanOwnerStep(options);
   if (key.startsWith('continuedConcern.') || key.startsWith('care_plan.continued_concerns') || key.startsWith('followUpSchedule.')) return carePlanStep;
 

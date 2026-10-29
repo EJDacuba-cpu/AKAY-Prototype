@@ -116,13 +116,44 @@ function humanize(segment) {
     .trim();
 }
 
+function firstMessage(message) {
+  if (Array.isArray(message)) return String(message[0] || "").trim();
+  return message ? String(message).trim() : "";
+}
+
+/** Draft 422 keys (`payload.backgroundUpdate…`) become the record spelling. */
+export function normalizeHistoryErrorKey(key) {
+  const raw = String(key || "");
+  return raw.startsWith("payload.backgroundUpdate")
+    ? `background_update${raw.slice("payload.backgroundUpdate".length)}`
+    : raw;
+}
+
+/** Flatten array messages, rewrite draft background keys, and strip technical paths. */
+export function normalizeHistoryErrors(errors) {
+  return Object.fromEntries(
+    Object.entries(errors || {})
+      .map(([key, message]) => {
+        const normalized = normalizeHistoryErrorKey(key);
+        const text = firstMessage(message);
+        return [normalized, isHistoryKey(normalized) ? readableBody(normalized, text) : text];
+      })
+      .filter(([, message]) => message),
+  );
+}
+
 function isHistoryKey(key) {
-  return key.startsWith("background_update") || key.startsWith("informant") || key.startsWith("similar_illness");
+  const normalized = normalizeHistoryErrorKey(key);
+  return (
+    normalized.startsWith("background_update") ||
+    normalized.startsWith("informant") ||
+    normalized.startsWith("similar_illness")
+  );
 }
 
 /** Where the error points: { section, context, leaf }. */
 function locate(key) {
-  const segments = key.split(".");
+  const segments = normalizeHistoryErrorKey(key).split(".");
   const leaf = segments.length > 1 ? segments[segments.length - 1] : "";
 
   if (segments[0] === "informant") return { section: "general", context: "Informant", leaf };
@@ -148,26 +179,47 @@ function locate(key) {
   };
 }
 
+function keyVariants(key) {
+  const normalized = normalizeHistoryErrorKey(key);
+  const payload = normalized.startsWith("background_update")
+    ? `payload.backgroundUpdate${normalized.slice("background_update".length)}`
+    : String(key);
+  return [...new Set([
+    String(key),
+    normalized,
+    payload,
+    String(key).replace(/_/g, " "),
+    normalized.replace(/_/g, " "),
+    payload.replace(/_/g, " "),
+  ])].sort((left, right) => right.length - left.length);
+}
+
+function readableBody(key, message) {
+  const normalized = normalizeHistoryErrorKey(key);
+  const { leaf } = locate(normalized);
+  const readable = humanize(leaf);
+  let body = firstMessage(message);
+  keyVariants(key).forEach((token) => {
+    if (token) body = body.split(token).join(readable);
+  });
+  if (leaf) body = body.split(leaf).join(readable);
+  return body.replace(/\s+/g, " ").trim();
+}
+
 /**
  * The Patient History errors of a 422 (`errors` is { key: message }), one
  * readable line each: "Past Medical History · Hospitalizations & Surgeries,
  * entry 1: The type field is required." Other keys are left out. With
- * `withSection`, each line comes as { section, text } so the panel can open
- * the section it belongs to.
+ * `withSection`, each line comes as { section, key, text } so the panel can
+ * open the section it belongs to and focus the field.
  */
 export function historyErrorMessages(errors, { withSection = false } = {}) {
-  return Object.entries(errors || {})
+  return Object.entries(normalizeHistoryErrors(errors))
     .filter(([key, message]) => isHistoryKey(key) && message)
     .map(([key, message]) => {
-      const { section, context, leaf } = locate(key);
-      const readable = humanize(leaf);
-      const body = String(message)
-        .split(key)
-        .join(readable)
-        .split(key.replace(/_/g, " "))
-        .join(readable);
-      const line = `${context}: ${body}`;
-      return withSection ? { section, text: line } : line;
+      const { section, context } = locate(key);
+      const line = `${context}: ${readableBody(key, message)}`;
+      return withSection ? { section, key, text: line } : line;
     });
 }
 

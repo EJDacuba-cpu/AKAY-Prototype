@@ -1,3 +1,4 @@
+import { historyFieldError } from "../../../../utils/backgroundValidation";
 import {
   DELIVERY_TYPES,
   MENSTRUAL_SYMPTOMS,
@@ -38,17 +39,22 @@ const PREGNANCY_COLUMNS = [
 ];
 const PREGNANCY_NEW = { year: null, outcome: "", delivery: "", place: "", note: "" };
 
+const OBSTETRIC = "background_update.sections.obstetric.obstetric";
+
 /**
  * Section V. `value` is the obstetric slice { obstetric }. It records previous
  * pregnancies; the prenatal form owns the current pregnancy's OB score. The
  * section starts collapsed (with a Show button) below the age that
  * sectionVisibility() opens it; the caller leaves it out for non-female patients.
  */
-export default function ObstetricSection({ value, onChange, patient, today = new Date() }) {
+
+export default function ObstetricSection({ value, onChange, patient, today = new Date(), errors = {} }) {
   const obstetric = value?.obstetric || {};
   const symptoms = Array.isArray(obstetric.symptoms) ? obstetric.symptoms : [];
   const pregnancies = Array.isArray(obstetric.pregnancies) ? obstetric.pregnancies : [];
   const collapsed = patient ? sectionVisibility(patient, today).obstetric === "collapsed" : false;
+  const fieldError = (path) => historyFieldError(errors, `${OBSTETRIC}.${path}`);
+  const hasError = Object.keys(errors).some((key) => key.startsWith(OBSTETRIC));
 
   const set = (patch) => onChange({ ...value, obstetric: { ...obstetric, ...patch } });
 
@@ -73,20 +79,20 @@ export default function ObstetricSection({ value, onChange, patient, today = new
   }
 
   return (
-    <CollapsibleBlock title="Obstetric & Menstrual History" collapsed={collapsed}>
+    <CollapsibleBlock title="Obstetric & Menstrual History" collapsed={collapsed} forceOpen={hasError}>
       <div className="space-y-5">
         <Block title="Menstrual Cycle">
           <FieldGrid>
-            <NumberField label="Age at first period" min={6} max={25} value={obstetric.menarcheAge} onChange={(next) => set({ menarcheAge: next })} />
-            <SelectField label="Menstrual status" value={obstetric.menstrualStatus} options={STATUSES} emptyLabel="Not recorded" onChange={changeStatus} />
+            <NumberField label="Age at first period" name={`${OBSTETRIC}.menarcheAge`} error={fieldError("menarcheAge")} min={6} max={25} value={obstetric.menarcheAge} onChange={(next) => set({ menarcheAge: next })} />
+            <SelectField label="Menstrual status" name={`${OBSTETRIC}.menstrualStatus`} error={fieldError("menstrualStatus")} value={obstetric.menstrualStatus} options={STATUSES} emptyLabel="Not recorded" onChange={changeStatus} />
             {obstetric.menstrualStatus === "menopause" ? (
-              <NumberField label="Age at menopause" min={30} max={70} value={obstetric.menopauseAge} onChange={(next) => set({ menopauseAge: next })} />
+              <NumberField label="Age at menopause" name={`${OBSTETRIC}.menopauseAge`} error={fieldError("menopauseAge")} min={30} max={70} value={obstetric.menopauseAge} onChange={(next) => set({ menopauseAge: next })} />
             ) : (
               <>
-                <NumberField label="Cycle interval (days)" min={10} max={90} value={obstetric.intervalDays} onChange={(next) => set({ intervalDays: next })} />
-                <NumberField label="Duration (days)" min={1} max={15} value={obstetric.durationDays} onChange={(next) => set({ durationDays: next })} />
-                <SelectField label="Amount" value={obstetric.amount} options={AMOUNTS} emptyLabel="Not recorded" onChange={(next) => set({ amount: next })} />
-                <SelectField label="Regularity" value={obstetric.regularity} options={REGULARITY} emptyLabel="Not recorded" onChange={(next) => set({ regularity: next })} />
+                <NumberField label="Cycle interval (days)" name={`${OBSTETRIC}.intervalDays`} error={fieldError("intervalDays")} min={10} max={90} value={obstetric.intervalDays} onChange={(next) => set({ intervalDays: next })} />
+                <NumberField label="Duration (days)" name={`${OBSTETRIC}.durationDays`} error={fieldError("durationDays")} min={1} max={15} value={obstetric.durationDays} onChange={(next) => set({ durationDays: next })} />
+                <SelectField label="Amount" name={`${OBSTETRIC}.amount`} error={fieldError("amount")} value={obstetric.amount} options={AMOUNTS} emptyLabel="Not recorded" onChange={(next) => set({ amount: next })} />
+                <SelectField label="Regularity" name={`${OBSTETRIC}.regularity`} error={fieldError("regularity")} value={obstetric.regularity} options={REGULARITY} emptyLabel="Not recorded" onChange={(next) => set({ regularity: next })} />
               </>
             )}
           </FieldGrid>
@@ -111,6 +117,8 @@ export default function ObstetricSection({ value, onChange, patient, today = new
             items={pregnancies}
             columns={PREGNANCY_COLUMNS}
             newItem={PREGNANCY_NEW}
+            fieldPrefix={`${OBSTETRIC}.pregnancies`}
+            errors={errors}
             onChange={(next) => set({ pregnancies: next })}
           />
         </Block>

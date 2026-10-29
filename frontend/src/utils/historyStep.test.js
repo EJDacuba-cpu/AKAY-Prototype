@@ -5,6 +5,7 @@ import {
   historyErrorMessages,
   informantPayload,
   linkedRelatives,
+  normalizeHistoryErrors,
   similarIllnessPayload,
   visitAnswerDraftFields,
   visitAnswerErrorMessages,
@@ -68,12 +69,40 @@ test("historyErrorMessages names nested social and obstetric fields", () => {
 });
 
 test("historyErrorMessages reports the section of each error", () => {
-  assert.equal(
-    historyErrorMessages(
-      { "background_update.sections.family.familyHistory.items.0.condition": "x" },
-      { withSection: true },
-    )[0].section,
-    "family",
+  const [error] = historyErrorMessages(
+    { "background_update.sections.family.familyHistory.items.0.condition": "x" },
+    { withSection: true },
+  );
+  assert.equal(error.section, "family");
+  assert.equal(error.key, "background_update.sections.family.familyHistory.items.0.condition");
+});
+
+test("historyErrorMessages rewrites draft payload keys and leftover camelCase field names", () => {
+  const [line] = historyErrorMessages({
+    "payload.backgroundUpdate.sections.social.personalSocial.smoking.sticksPerDay":
+      "The payload.backgroundUpdate.sections.social.personalSocial.smoking.sticksPerDay field must be at least 1.",
+  });
+  assert.equal(line, "Personal & Social History · Smoking: The sticks per day field must be at least 1.");
+  const [laravelLeaf] = historyErrorMessages({
+    "background_update.sections.social.personalSocial.smoking.sticksPerDay":
+      "The sticksPerDay field must be between 1 and 100.",
+  });
+  assert.equal(laravelLeaf, "Personal & Social History · Smoking: The sticks per day field must be between 1 and 100.");
+});
+
+test("normalizeHistoryErrors flattens arrays and maps draft background keys", () => {
+  assert.deepEqual(
+    normalizeHistoryErrors({
+      "payload.backgroundUpdate.sections.social.personalSocial.smoking.sticksPerDay": [
+        "The sticksPerDay field must be between 1 and 100.",
+      ],
+      chiefComplaint: "Required.",
+    }),
+    {
+      "background_update.sections.social.personalSocial.smoking.sticksPerDay":
+        "The sticks per day field must be between 1 and 100.",
+      chiefComplaint: "Required.",
+    },
   );
 });
 

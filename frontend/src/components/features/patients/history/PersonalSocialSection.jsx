@@ -1,3 +1,4 @@
+import { historyFieldError } from "../../../../utils/backgroundValidation";
 import { formatEnvironment } from "../../../../utils/backgroundFormat";
 import { formatDisplayValue } from "../../../../utils/formatters";
 import {
@@ -57,6 +58,8 @@ function fillEmptyEnvironment(target, source) {
   return result;
 }
 
+const SOCIAL = "background_update.sections.social.personalSocial";
+
 /**
  * Section IV. `value` is the social slice { personalSocial }. Occupation is
  * read-only from registration. Changing a status clears the fields that only
@@ -67,6 +70,7 @@ function fillEmptyEnvironment(target, source) {
  * Occupations is history only); the values in `value` are passed through
  * untouched. The default keeps the block for the RHU record form.
  */
+
 export default function PersonalSocialSection({
   value,
   onChange,
@@ -74,6 +78,7 @@ export default function PersonalSocialSection({
   householdEnvironment,
   today = new Date(),
   showEducationAndOccupation = true,
+  errors = {},
 }) {
   const social = value?.personalSocial || {};
   const education = social.education || {};
@@ -86,6 +91,9 @@ export default function PersonalSocialSection({
   const smokes = smoking.status === "former" || smoking.status === "current";
   const pack = smokes ? packYears(smoking) : null;
   const sexualCollapsed = sectionVisibility(patient, today).sexual === "collapsed";
+  const field = (path) => `${SOCIAL}.${path}`;
+  const fieldError = (path) => historyFieldError(errors, field(path));
+  const sexualHasError = Object.keys(errors).some((key) => key.startsWith(field("sexual")));
 
   const set = (group, patch) =>
     onChange({ ...value, personalSocial: { ...social, [group]: { ...(social[group] || {}), ...patch } } });
@@ -132,15 +140,47 @@ export default function PersonalSocialSection({
 
       <Block title="Smoking">
         <FieldGrid>
-          <SelectField label="Smoking status" value={smoking.status} options={STATUSES} emptyLabel="Not recorded" onChange={changeSmoking} />
-          {smokes && (
+          <SelectField
+            label="Smoking status"
+            name={field("smoking.status")}
+            error={fieldError("smoking.status")}
+            value={smoking.status}
+            options={STATUSES}
+            emptyLabel="Not recorded"
+            onChange={changeSmoking}
+          />
+          {(smokes || fieldError("smoking.sticksPerDay") || fieldError("smoking.years")) && (
             <>
-              <NumberField label="Sticks per day" min={1} max={100} value={smoking.sticksPerDay} onChange={(next) => set("smoking", { sticksPerDay: next })} />
-              <NumberField label="Years smoked" min={0} max={80} value={smoking.years} onChange={(next) => set("smoking", { years: next })} />
+              <NumberField
+                label="Sticks per day"
+                name={field("smoking.sticksPerDay")}
+                error={fieldError("smoking.sticksPerDay")}
+                min={1}
+                max={100}
+                value={smoking.sticksPerDay}
+                onChange={(next) => set("smoking", { sticksPerDay: next })}
+              />
+              <NumberField
+                label="Years smoked"
+                name={field("smoking.years")}
+                error={fieldError("smoking.years")}
+                min={0}
+                max={80}
+                value={smoking.years}
+                onChange={(next) => set("smoking", { years: next })}
+              />
             </>
           )}
-          {smoking.status === "former" && (
-            <NumberField label="Year quit" min={1900} max={2100} value={smoking.quitYear} onChange={(next) => set("smoking", { quitYear: next })} />
+          {(smoking.status === "former" || fieldError("smoking.quitYear")) && (
+            <NumberField
+              label="Year quit"
+              name={field("smoking.quitYear")}
+              error={fieldError("smoking.quitYear")}
+              min={1900}
+              max={2100}
+              value={smoking.quitYear}
+              onChange={(next) => set("smoking", { quitYear: next })}
+            />
           )}
         </FieldGrid>
         {pack !== null && <p className="text-[12.5px] text-gray-700">Pack-years: {pack}</p>}
@@ -164,7 +204,7 @@ export default function PersonalSocialSection({
         <TextField label="Diet notes" value={diet.notes} onChange={(next) => set("diet", { notes: next })} />
       </Block>
 
-      <CollapsibleBlock title="Sexual History" collapsed={sexualCollapsed}>
+      <CollapsibleBlock title="Sexual History" collapsed={sexualCollapsed} forceOpen={sexualHasError}>
         <Block title="Sexual History">
           <FieldGrid>
             <SelectField label="Sexually active" value={sexual.active} options={SEXUAL_ACTIVE} emptyLabel="Not recorded" onChange={(next) => set("sexual", { active: next })} />

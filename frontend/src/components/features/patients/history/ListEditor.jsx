@@ -1,5 +1,6 @@
 import { Plus, X } from "lucide-react";
 
+import { historyFieldError } from "../../../../utils/backgroundValidation";
 import {
   CheckboxField,
   NumberField,
@@ -34,6 +35,8 @@ export default function ListEditor({
   noneLabel,
   noneChecked = false,
   onNoneChange,
+  fieldPrefix,
+  errors = {},
 }) {
   function update(index, key, next) {
     onChange(items.map((item, position) => (position === index ? { ...item, [key]: next } : item)));
@@ -43,11 +46,18 @@ export default function ListEditor({
     onChange(items.filter((_, position) => position !== index));
   }
 
+  function fieldName(index, key) {
+    return fieldPrefix ? `${fieldPrefix}.${index}.${key}` : undefined;
+  }
+
   function renderCell(column, item, index) {
+    const name = fieldName(index, column.key);
     const common = {
       label: column.label,
       required: column.required,
       value: item[column.key],
+      name,
+      error: historyFieldError(errors, name),
     };
     if (column.type === "number") {
       return (

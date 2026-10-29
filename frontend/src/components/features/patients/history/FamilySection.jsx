@@ -66,6 +66,7 @@ export default function FamilySection({
   relatives,
   showSimilarIllness = true,
   baseline,
+  errors = {},
 }) {
   const family = value?.familyHistory || {};
   const items = Array.isArray(family.items) ? family.items : [];
@@ -138,6 +139,8 @@ export default function FamilySection({
               items={items}
               columns={columns}
               newItem={NEW_ITEM}
+              fieldPrefix="background_update.sections.family.familyHistory.items"
+              errors={errors}
               onChange={(next) => {
                 heldItemsRef.current = next;
                 onChange({ ...value, familyHistory: { noneKnown: false, items: next } });

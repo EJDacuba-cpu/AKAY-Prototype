@@ -8,6 +8,21 @@ import { useState } from "react";
 const LABEL_CLASS = "block text-xs font-medium text-gray-500";
 const CONTROL_CLASS =
   "mt-1 w-full rounded-none border border-gray-200 bg-white px-3 py-2 text-[12.5px] font-normal text-gray-900 outline-none transition focus:border-red-600";
+const CONTROL_ERROR_CLASS = "border-red-600 focus:border-red-600";
+const FIELD_ERROR_CLASS = "mt-1 text-[11px] font-medium text-red-700";
+
+function FieldMessage({ id, error }) {
+  if (!error) return null;
+  return (
+    <p id={id} role="alert" className={FIELD_ERROR_CLASS}>
+      {error}
+    </p>
+  );
+}
+
+function controlClass(error) {
+  return error ? `${CONTROL_CLASS} ${CONTROL_ERROR_CLASS}` : CONTROL_CLASS;
+}
 
 export const SMALL_BUTTON_CLASS =
   "inline-flex items-center gap-1 rounded-none border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-gray-600 transition hover:border-red-100 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-600";
@@ -35,37 +50,49 @@ function Label({ label, required }) {
   );
 }
 
-export function TextField({ label, value, onChange, required = false, placeholder }) {
+export function TextField({ label, value, onChange, required = false, placeholder, error, name }) {
+  const errorId = name ? `${name}-error` : undefined;
   return (
     <label className={LABEL_CLASS}>
       <Label label={label} required={required} />
       <input
         type="text"
+        name={name}
+        data-field={name}
         value={value ?? ""}
         placeholder={placeholder}
         required={required}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL_CLASS}
+        className={controlClass(error)}
       />
+      <FieldMessage id={errorId} error={error} />
     </label>
   );
 }
 
-export function NumberField({ label, value, onChange, min, max, required = false }) {
+export function NumberField({ label, value, onChange, min, max, required = false, error, name }) {
+  const errorId = name ? `${name}-error` : undefined;
   return (
     <label className={LABEL_CLASS}>
       <Label label={label} required={required} />
       <input
         type="number"
         inputMode="numeric"
+        name={name}
+        data-field={name}
         step={1}
         min={min}
         max={max}
         value={value ?? ""}
         required={required}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(parseInteger(event.target.value))}
-        className={CONTROL_CLASS}
+        className={controlClass(error)}
       />
+      <FieldMessage id={errorId} error={error} />
     </label>
   );
 }
@@ -77,15 +104,22 @@ export function SelectField({
   options,
   emptyLabel = "Select",
   required = false,
+  error,
+  name,
 }) {
+  const errorId = name ? `${name}-error` : undefined;
   return (
     <label className={LABEL_CLASS}>
       <Label label={label} required={required} />
       <select
+        name={name}
+        data-field={name}
         value={value ?? ""}
         required={required}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL_CLASS}
+        className={controlClass(error)}
       >
         <option value="">{emptyLabel}</option>
         {normalizeOptions(options).map((option) => (
@@ -94,6 +128,7 @@ export function SelectField({
           </option>
         ))}
       </select>
+      <FieldMessage id={errorId} error={error} />
     </label>
   );
 }
@@ -150,9 +185,9 @@ export function Block({ title, note, children }) {
 }
 
 /** A group that starts collapsed (by age) and always offers a Show button. */
-export function CollapsibleBlock({ title, collapsed, children }) {
+export function CollapsibleBlock({ title, collapsed, forceOpen = false, children }) {
   const [shown, setShown] = useState(false);
-  if (collapsed && !shown) {
+  if (collapsed && !shown && !forceOpen) {
     return (
       <div className="flex items-center justify-between gap-3 border border-dashed border-gray-200 px-3 py-2">
         <span className="text-[13px] font-semibold text-gray-900">{title}</span>

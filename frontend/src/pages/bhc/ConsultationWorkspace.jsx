@@ -129,6 +129,7 @@ import {
   toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
+import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import {
   informantPayload,
@@ -137,6 +138,8 @@ import {
   visitAnswerErrorMessages,
   visitAnswerRecordFields,
   historyErrorMessages,
+  normalizeHistoryErrorKey,
+  normalizeHistoryErrors,
   visitAnswerRows,
 } from "../../utils/historyStep";
 import {
@@ -2200,10 +2203,20 @@ export default function ConsultationWorkspace() {
   useEffect(() => {
     if (!draftAutosaveError) return;
     if (draftAutosaveError.type === "validation") {
+      const remapped = normalizeHistoryErrors(draftAutosaveError.fieldErrors);
       setValidationErrors((current) => ({
         ...current,
-        ...draftAutosaveError.fieldErrors,
+        ...remapped,
       }));
+      const historyLines = historyErrorMessages(remapped);
+      setNoticeModal({
+        title: "Consultation Not Saved",
+        message:
+          historyLines[0] ||
+          draftAutosaveError.message ||
+          "Some entries could not be saved. Your form remains available on this page.",
+      });
+      return;
     }
     setNoticeModal({
       title: "Consultation Not Saved",
@@ -2513,7 +2526,10 @@ export default function ConsultationWorkspace() {
   function showServerValidationErrors(error) {
     if (error?.status !== 422 || !error?.errors) return false;
     const errors = remapServerErrorKeys(Object.fromEntries(
-      Object.entries(error.errors).map(([field, messages]) => [field, Array.isArray(messages) ? messages[0] : String(messages)]),
+      Object.entries(error.errors).map(([field, messages]) => [
+        normalizeHistoryErrorKey(field),
+        Array.isArray(messages) ? messages[0] : String(messages),
+      ]),
     ), reportingEntries, { continuedConcerns: continuedDecisions, schedules: scheduledReturns });
     if (!Object.keys(errors).length) return false;
     clearOfficialSubmission();
@@ -2565,6 +2581,7 @@ export default function ConsultationWorkspace() {
 
     Object.assign(errors, vitalSignsErrors(currentVitalSigns()));
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
+    if (canViewBackground) Object.assign(errors, stagedHistoryErrors(backgroundUpdate));
     if (!finalizing) return errors;
     // Condition cards are optional for service-only visits. Added concerns
     // still need a name and clinical outcome. Reporting classification is optional.
@@ -3141,6 +3158,11 @@ export default function ConsultationWorkspace() {
     }
     if (!canFinalize) {
       if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
+      const historyErrors = canViewBackground ? stagedHistoryErrors(backgroundUpdate) : {};
+      if (Object.keys(historyErrors).length) {
+        if (!revealErrorStep(historyErrors)) setValidationErrorsAndFocus(historyErrors);
+        return;
+      }
       setSaving(true);
       try {
         if (!(await flushDraftBeforeLeave())) throw new Error("Save the latest changes before submitting for review.");
@@ -3854,7 +3876,8 @@ export default function ConsultationWorkspace() {
    * Whether the user may leave a step going forward. Only the step's own
    * fields block it; anything owned by an EARLIER step means that screen was
    * left incomplete (e.g. a restored draft), so the user is sent back there.
-   * Uses the page's existing validation - no rules are added or dropped.
+   * Entered history values are checked here so an invalid sticks-per-day (or
+   * similar) cannot reach finalization; blank optional fields still pass.
    */
   function checkStepGate(stepKey) {
     if (continuedCareUnresolved) {
@@ -3865,9 +3888,23 @@ export default function ConsultationWorkspace() {
       );
       return false;
     }
-    if (stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
-      setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
-      return false;
+    if (stepKey === INTERVIEW_STEP) {
+      const errors = {};
+      if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
+      if (canViewBackground) {
+        Object.assign(errors, stagedHistoryErrors(backgroundUpdate, { sections: ["family", "medical", "social"] }));
+      }
+      if (Object.keys(errors).length) {
+        setValidationErrorsAndFocus(errors);
+        return false;
+      }
+    }
+    if (stepKey === programStepKey("Maternal") && canViewBackground) {
+      const obstetricErrors = stagedHistoryErrors(backgroundUpdate, { sections: ["obstetric"] });
+      if (Object.keys(obstetricErrors).length) {
+        setValidationErrorsAndFocus(obstetricErrors);
+        return false;
+      }
     }
     if (stepKey === ASSESSMENT_STEP) {
       const vitalsErrors = vitalSignsErrors(currentVitalSigns());
@@ -3902,8 +3939,8 @@ export default function ConsultationWorkspace() {
   function handleFormStepNext(event) {
     event?.preventDefault();
     closeDateTimePopovers();
-    // A service form never blocks Next: an unfinished form is caught when the
-    // visit is reviewed and saved.
+    // Service forms still do not block Next for unfinished optional fields.
+    // Invalid entered history (Interview / Prenatal Section V) does.
     if (!checkStepGate(activeFormStep)) return;
     goToStepKey(getNextStepKey(formSequence, activeFormStep));
   }
@@ -4774,6 +4811,7 @@ export default function ConsultationWorkspace() {
                   showEducationAndOccupation={false}
                   inline
                   errors={historyPanelErrors}
+                  fieldErrors={backgroundUpdateErrors}
                   initialSection="family"
                 />
               </div>
@@ -4848,6 +4886,7 @@ export default function ConsultationWorkspace() {
                 setBackgroundUpdate(next);
               }}
               historyErrors={obstetricHistoryErrors}
+              fieldErrors={backgroundUpdateErrors}
               includeObstetricHistory={canViewBackground}
             />
           </>

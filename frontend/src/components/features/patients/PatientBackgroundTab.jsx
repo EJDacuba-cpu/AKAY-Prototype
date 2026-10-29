@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useBlocker } from "react-router";
+import { useBlocker } from "react-router";
 import { ArrowRight } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import NoticeModal from "../../common/modals/NoticeModal";
 import usePatientConsultation from "../../../hooks/usePatientConsultation";
 import { consultationPatientQueryKey } from "../../../services/consultationPatientQuery";
-import { getPatientBackgroundHistory, savePatientBackground } from "../../../services/patientService";
+import { savePatientBackground } from "../../../services/patientService";
 import { formatLongDate } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
 import { sectionStatus, sectionVisibility } from "../../../utils/patientHistory";
@@ -72,98 +72,6 @@ function RhuConditionsBlock({ conditions }) {
   );
 }
 
-/**
- * One dated entry of a section's Changes log; expands to the fields it changed.
- * Consultation entries link to their health record; standalone Patient
- * Background saves (source "patient_background") have no record to open.
- */
-function ChangeEntry({ entry, section, basePath }) {
-  const [open, setOpen] = useState(false);
-  const rows = backgroundChangeRows(entry.before, entry.after, section);
-  const fromDiagnosis = entry.source === "diagnosis";
-  const fromBackground = entry.source === "patient_background";
-
-  return (
-    <li className="py-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
-        <span className="text-neutral-900">
-          {fromDiagnosis ? "Current Conditions updated from diagnosis" : `${BACKGROUND_SECTION_LABELS[section]} updated`}
-          <span className="text-neutral-500">
-            {" · "}
-            {formatLongDate(entry.dateRecorded || entry.changedAt, "")}
-            {entry.changedByName ? ` · ${entry.changedByName}` : ""}
-          </span>
-        </span>
-        <span className="flex items-center gap-3 text-xs">
-          {rows.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setOpen((current) => !current)}
-              aria-expanded={open}
-              className="font-medium text-neutral-600 hover:text-neutral-900 hover:underline"
-            >
-              {open ? "Hide changes" : "Show changes"}
-            </button>
-          )}
-          {entry.healthRecordId ? (
-            <Link
-              to={`${basePath}/health-records/${entry.healthRecordId}`}
-              className="inline-flex items-center gap-1 font-medium text-ink-600 hover:text-ink-900"
-            >
-              From consultation
-              <ArrowRight size={13} aria-hidden="true" />
-            </Link>
-          ) : fromBackground ? (
-            <span className="font-medium text-neutral-500">Patient Background</span>
-          ) : null}
-        </span>
-      </div>
-      {open && (
-        <dl className="mt-1.5 grid grid-cols-[minmax(6.5rem,9rem)_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
-          {rows.map((row) => (
-            <div key={row.key} className="contents">
-              <dt className="text-neutral-500">{row.label}</dt>
-              <dd className="m-0 min-w-0 break-words text-neutral-900">
-                <span className="text-neutral-500 line-through">{row.before || "Not recorded"}</span>
-                {" → "}
-                {row.after || "Not recorded"}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </li>
-  );
-}
-
-function ChangesLog({ section, entries, lastUpdated, isLoading, isError, basePath }) {
-  return (
-    <div className="mt-4 border-t border-neutral-100 pt-3">
-      <h3 className="text-[13px] font-semibold text-neutral-900">Changes</h3>
-      {isLoading ? (
-        <p className="py-2 text-sm text-neutral-500">Loading changes...</p>
-      ) : isError ? (
-        <p className="py-2 text-sm text-neutral-500">Unable to load the change history right now.</p>
-      ) : entries.length ? (
-        <ul className="divide-y divide-neutral-100">
-          {entries.map((entry, index) => (
-            <ChangeEntry
-              key={`${entry.healthRecordId ?? `audit-${entry.auditId ?? ""}`}-${entry.revision}-${index}`}
-              entry={entry}
-              section={section}
-              basePath={basePath}
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="py-2 text-sm text-neutral-500">
-          {lastUpdated ? "Last changed before change history was recorded." : "No recorded changes yet."}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /** The saved values of a section as label/value rows; `hideMoved` drops Education / Past Occupations. */
 function SectionFields({ background, section, hideMoved = false }) {
   const fields = BACKGROUND_SECTION_FIELDS[section].filter(
@@ -179,15 +87,6 @@ function SectionFields({ background, section, hideMoved = false }) {
   );
 }
 
-function useBackgroundHistory(patientId) {
-  const history = useQuery({
-    queryKey: queryKeys.patientBackgroundHistory(patientId),
-    queryFn: () => getPatientBackgroundHistory(patientId),
-    enabled: Boolean(patientId),
-  });
-  return { ...history, entries: Array.isArray(history.data) ? history.data : [] };
-}
-
 function visibleSections(patient) {
   const visibility = sectionVisibility(patient, new Date());
   return BACKGROUND_SECTION_KEYS.filter((section) => section !== "obstetric" || visibility.obstetric !== "hidden");
@@ -195,20 +94,18 @@ function visibleSections(patient) {
 
 /**
  * The Patient Background tab: Past Medical, Family, Personal & Social and
- * (for female patients) Obstetric & Menstrual History, each with its dated
- * Changes log. Read-only unless `canEdit` (a BHC user granted
- * clinical.background.update, see utils/backgroundEditing canUpdateBackground):
- * then each section has its own Edit / Save / Cancel. Both views show the
- * Consultation in progress banner while the patient has an open draft, and
- * neither shows Education / Past Occupations rows (Patient Information owns
- * Education); their old values stay readable in the Changes log.
+ * (for female patients) Obstetric & Menstrual History. A read-only summary of
+ * the latest saved chart unless `canEdit` (a BHC user granted
+ * clinical.background.update). Visit-specific details stay on Health Records.
+ * Education / Past Occupations rows are omitted (Patient Information owns
+ * Education). Both views show the Consultation in progress banner while the
+ * patient has an open draft.
  */
 export default function PatientBackgroundTab({ canEdit = false, ...props }) {
   return canEdit ? <EditableBackground {...props} /> : <ReadOnlyBackground {...props} />;
 }
 
-function ReadOnlyBackground({ patientId, patient, background, conditions, basePath = "/bhc" }) {
-  const history = useBackgroundHistory(patientId);
+function ReadOnlyBackground({ patientId, patient, background, conditions }) {
   const consultation = usePatientConsultation(patientId);
 
   return (
@@ -216,9 +113,6 @@ function ReadOnlyBackground({ patientId, patient, background, conditions, basePa
       {consultationBannerVisible({ draft: consultation.draft }) && (
         <ConsultationBanner consultation={consultation} />
       )}
-      <p className="mb-3 text-sm text-neutral-500">
-        View only. Patient Background is updated here by staff allowed to edit it.
-      </p>
 
       {visibleSections(patient).map((section) => (
         <ProfileSection
@@ -228,16 +122,8 @@ function ReadOnlyBackground({ patientId, patient, background, conditions, basePa
           meta={sectionMeta(background, section)}
         >
           {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
-          {/* Education is Patient Information and Past Occupations is history only; the Changes log still shows both. */}
+          {/* Education is Patient Information; Past Occupations is history only. */}
           <SectionFields background={background} section={section} hideMoved />
-          <ChangesLog
-            section={section}
-            entries={history.entries.filter((entry) => entry.section === section)}
-            lastUpdated={background?.updatedAt?.[section] || ""}
-            isLoading={history.isLoading}
-            isError={history.isError}
-            basePath={basePath}
-          />
         </ProfileSection>
       ))}
     </div>
@@ -322,9 +208,8 @@ function ConsultationBanner({ consultation }) {
   );
 }
 
-function EditableBackground({ patientId, patient, background, conditions, basePath = "/bhc" }) {
+function EditableBackground({ patientId, patient, background, conditions }) {
   const queryClient = useQueryClient();
-  const history = useBackgroundHistory(patientId);
   const consultation = usePatientConsultation(patientId);
   // One section at a time: { section, baseRevision, initial, value }, held
   // apart from the patient query so a refetch never resets typed values.
@@ -428,9 +313,6 @@ function EditableBackground({ patientId, patient, background, conditions, basePa
       {consultationBannerVisible({ draft: consultation.draft }) && (
         <ConsultationBanner consultation={consultation} />
       )}
-      <p className="mb-3 text-sm text-neutral-500">
-        Edit one section at a time. Each save is added to that section&apos;s Changes log.
-      </p>
 
       {visibleSections(patient).map((section) => {
         const editing = edit?.section === section;
@@ -470,14 +352,6 @@ function EditableBackground({ patientId, patient, background, conditions, basePa
                 <SectionFields background={background} section={section} hideMoved />
               </>
             )}
-            <ChangesLog
-              section={section}
-              entries={history.entries.filter((entry) => entry.section === section)}
-              lastUpdated={background?.updatedAt?.[section] || ""}
-              isLoading={history.isLoading}
-              isError={history.isError}
-              basePath={basePath}
-            />
           </ProfileSection>
         );
       })}

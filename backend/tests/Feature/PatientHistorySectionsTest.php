@@ -217,6 +217,27 @@ class PatientHistorySectionsTest extends TestCase
         $this->assertSame(0, HealthRecord::count());
     }
 
+    public function test_smoking_sticks_per_day_zero_is_422_and_blank_is_allowed(): void
+    {
+        $this->finalize([
+            'sections' => ['social' => ['personalSocial' => ['smoking' => [
+                'status' => 'current', 'sticksPerDay' => 0, 'years' => 5,
+            ]]]],
+            'base_revisions' => ['social' => 0],
+        ])->assertUnprocessable()->assertJsonValidationErrors(
+            'background_update.sections.social.personalSocial.smoking.sticksPerDay'
+        );
+        $this->assertSame(0, HealthRecord::count());
+
+        $this->finalize([
+            'sections' => ['social' => ['personalSocial' => ['smoking' => [
+                'status' => 'current', 'sticksPerDay' => null, 'years' => 5,
+            ]]]],
+            'base_revisions' => ['social' => 0],
+        ])->assertCreated();
+        $this->assertSame(1, HealthRecord::count());
+    }
+
     private function obstetricEdit(): array
     {
         return [
