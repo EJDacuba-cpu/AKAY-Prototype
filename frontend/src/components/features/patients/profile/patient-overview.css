@@ -22,7 +22,7 @@
 .patient-profile-content .anatomy-board > div { min-width: 0; }
 
 .patient-profile-content .patient-anatomy-integrated { --anatomy-model-height: 400px; display: flex; min-width: 0; flex-direction: column; padding: 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
-.patient-profile-content .patient-anatomy-integrated > header { padding: 0; margin-bottom: 12px; }
+.patient-profile-content .patient-anatomy-integrated .patient-anatomy-summary-header { padding: 0; margin-bottom: 12px; }
 .patient-profile-content .patient-anatomy-workspace { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
 .patient-profile-content .patient-anatomy-layout { --anatomy-side-space: 80px; display: flex; min-width: 0; flex-direction: column; order: 1; }
 .patient-profile-content .patient-anatomy-vitals { min-width: 0; order: 2; }
@@ -42,29 +42,50 @@
 .patient-profile-content .patient-anatomy-measures > div { gap: 12px; }
 .patient-profile-content .patient-anatomy-measures ol { height: 24px; }
 .patient-profile-content .patient-anatomy-measures [role=group] button { width: 32px; height: 32px; }
+.patient-profile-content .patient-body-measures { display: grid; width: min(100%,244px); min-width: 0; margin-inline: auto; flex: none; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 12px; }
+.patient-profile-content .patient-body-measures__weight { flex-direction: column; align-items: start; gap: 6px; }
+.patient-profile-content .patient-body-measures__reading { display: grid; width: 100%; grid-template-columns: auto minmax(0,1fr); align-items: baseline; column-gap: 6px; row-gap: 4px; }
+.patient-profile-content .patient-body-measures__reading > p:first-child { grid-column: 1; grid-row: 1; }
+.patient-profile-content .patient-body-measures__reading > p:nth-child(2) { grid-column: 2; grid-row: 1; }
+.patient-profile-content .patient-body-measures__value { font-size: 16px; }
+.patient-profile-content .patient-body-measures__metadata { grid-column: 1/-1; grid-row: 2; white-space: normal; overflow-wrap: anywhere; }
+.patient-profile-content .patient-body-measures ol { max-width: 100%; gap: 3px; }
+.patient-profile-content .patient-body-measures ol li { width: 8px; flex-shrink: 1; }
 .patient-profile-content .patient-anatomy-layout > details { margin: 8px auto 0; max-height: none; overflow: visible; }
 .patient-profile-content .patient-anatomy-layout > details summary { padding-block: 8px; }
 
 /* Vitals stay compact. The desktop crescent uses a reserved lane, so its
    horizontal offset cannot collide with the body or its ruler. */
 .patient-profile-content .patient-vitals { container-type: normal; }
+.patient-profile-content .patient-vitals > header { min-height: 44px; align-content: start; }
 .patient-profile-content .patient-vitals__body { overflow: visible; }
-.patient-profile-content .patient-vitals__grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.patient-profile-content .patient-vitals__tile { height: 88px; min-height: 88px; padding: 8px 12px; }
+.patient-profile-content .patient-vitals__grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.patient-profile-content .patient-vitals__tile { container: vital-card / inline-size; height: 88px; min-height: 88px; padding: 8px 12px; }
 .patient-profile-content .patient-vitals__tile > div:first-child { display: grid; grid-template-columns: minmax(0,1fr); gap: 2px; }
+.patient-profile-content .patient-vitals__tile:has(.patient-vitals__empty) > div:first-child { grid-template-columns: auto minmax(0,1fr); align-items: baseline; column-gap: 8px; }
+.patient-profile-content .patient-vitals__tile:has(.patient-vitals__empty) > div:first-child > span:last-child { text-align: right; }
 .patient-profile-content .patient-vitals__fbs { grid-column: 1/-1; }
+
+@container vital-card (min-width: 132px) {
+  .patient-profile-content .patient-vitals__tile > div:first-child { grid-template-columns: auto minmax(0,1fr); align-items: baseline; column-gap: 8px; }
+  .patient-profile-content .patient-vitals__tile > div:first-child > span:last-child { text-align: right; }
+}
 
 /* Enlarge in place for pointer inspection; readings are fully visible at rest. */
 @media (hover: hover) and (pointer: fine) {
   .patient-profile-content .patient-vitals__tile,
   .patient-profile-content .patient-vitals__fbs { position: relative; transform-origin: right center; transition: scale 160ms cubic-bezier(0.16,1,0.3,1), border-color 160ms; }
   .patient-profile-content .patient-vitals__tile:hover,
+  .patient-profile-content .patient-vitals__tile:focus-within,
+  .patient-profile-content .patient-vitals__tile[data-inspecting="true"],
   .patient-profile-content .patient-vitals__fbs:hover { scale: 1.035; z-index: 1; border-color: var(--color-border-strong); }
 }
 @media (prefers-reduced-motion: reduce) {
   .patient-profile-content .patient-vitals__tile,
   .patient-profile-content .patient-vitals__fbs { transition: border-color 120ms; }
   .patient-profile-content .patient-vitals__tile:hover,
+  .patient-profile-content .patient-vitals__tile:focus-within,
+  .patient-profile-content .patient-vitals__tile[data-inspecting="true"],
   .patient-profile-content .patient-vitals__fbs:hover { scale: 1; }
 }
 
@@ -85,22 +106,44 @@
   .patient-profile-content .patient-anatomy-layout { order: initial; }
   .patient-profile-content .patient-anatomy-vitals { order: initial; padding-right: 24px; align-self: start; }
   .patient-profile-content .patient-vitals__grid { grid-template-columns: minmax(0,1fr); }
-  .patient-profile-content .patient-vitals__tile { height: 80px; min-height: 80px; }
   .patient-profile-content .patient-vitals__tile:first-child,
   .patient-profile-content .patient-vitals__tile:nth-child(4),
   .patient-profile-content .patient-vitals__fbs { translate: 24px 0; }
 }
 
-/* Use the available canvas, including when the sidebar is collapsed. The
-   six controls occupy one right-hand curve rather than a row above the body. */
+/* Two right-hand curves share the existing model height. Medicines, smoking,
+   and alcohol form the smaller inner curve; the other facts frame it outside. */
 @container anatomy (min-width: 720px) {
-  .patient-profile-content .patient-anatomy-workspace { grid-template-columns: 168px minmax(0,528px); }
+  .patient-profile-content .patient-anatomy-workspace { grid-template-columns: clamp(168px,24cqw,240px) minmax(0,1fr); gap: clamp(12px,2cqw,24px); }
+  .patient-profile-content .patient-anatomy-vitals { padding-left: 8px; }
   .patient-profile-content .patient-anatomy-layout { --anatomy-side-space: 260px; }
-  .patient-profile-content .patient-anatomy-detail-controls { position: absolute; top: 0; right: 20px; width: 136px; height: var(--anatomy-model-height); margin: 0; grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(6,minmax(0,1fr)); align-items: center; gap: 0; }
-  .patient-profile-content .patient-anatomy-detail-controls .anatomy-arc-control { flex-direction: row; justify-content: start; gap: 8px; text-align: left; }
-  .patient-profile-content .patient-anatomy-detail-controls .anatomy-arc-control__label { width: 80px; flex: none; }
-  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Clinical details"] > :nth-child(2),
-  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Lifestyle details"] > :nth-child(2) { translate: 12px 0; }
-  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Clinical details"] > :nth-child(3),
-  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Lifestyle details"] > :nth-child(1) { translate: 20px 0; }
+  .patient-profile-content .patient-anatomy-double-curve {
+    position: absolute; top: 56px; right: 4px; width: 208px; height: var(--anatomy-model-height); margin: 0;
+    grid-template-columns: repeat(2,88px); grid-template-rows: repeat(3,112px);
+    align-content: center; align-items: center; column-gap: 12px; row-gap: 0;
+  }
+  .patient-profile-content .patient-anatomy-double-curve .anatomy-arc-control { flex-direction: column; justify-content: center; align-items: center; gap: 6px; text-align: center; }
+  .patient-profile-content .patient-anatomy-double-curve .anatomy-arc-control__label { width: 88px; flex: none; }
+  .patient-profile-content .patient-anatomy-double-curve .anatomy-arc-control > button { width: 40px; height: 40px; }
+
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(3) { grid-column: 1; grid-row: 1; translate: 0 36px; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Lifestyle details"] > :nth-child(1) { grid-column: 1; grid-row: 2; translate: 9.6px 0; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Lifestyle details"] > :nth-child(2) { grid-column: 1; grid-row: 3; translate: 0 -36px; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) { grid-column: 2; grid-row: 1; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(2) { grid-column: 2; grid-row: 2; translate: 16px 0; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Lifestyle details"] > :nth-child(3) { grid-column: 2; grid-row: 3; }
+
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) > button,
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(2) > button { width: 48px; height: 48px; }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) > button { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-surface); }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) > button:hover { background: var(--color-primary-hover); }
+  .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) .anatomy-arc-control__label > span:first-child { color: var(--color-text); font-weight: 600; }
+}
+
+/* These balanced lanes need 784px to retain the full 400px anatomy model. */
+@container anatomy (min-width: 784px) {
+  .patient-profile-content .patient-anatomy-workspace {
+    width: 100%; max-width: 920px; margin-inline: auto; padding-inline: 16px;
+    grid-template-columns: 208px minmax(0,1fr); gap: 16px; align-items: start;
+  }
 }

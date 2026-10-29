@@ -14,6 +14,7 @@ import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
 import { normalizeAttention } from "../utils/referralAttention";
 import { getSurveillanceTags } from "../utils/surveillance";
+import { fetchAllReportPages } from "./reportingLists";
 
 /**
  * Download the DS-TB Treatment Card (DOH Form 4b) PDF for a health record.
@@ -1119,6 +1120,11 @@ export async function saveRhuHealthRecords(records) {
 export async function getHealthRecords(role = "bhc", params = {}) {
   void role;
   return listRecords(params);
+}
+
+export async function getAllHealthRecords(role = "bhc", params = {}) {
+  void role;
+  return fetchAllReportPages("/health-records", { params, mapItem: normalizeRecord });
 }
 
 export async function getFamilyPlanningHealthRecords(role = "bhc") {

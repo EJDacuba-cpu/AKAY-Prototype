@@ -82,20 +82,20 @@ function WeightBars({ history }) {
  */
 export function WeightAndBmi({ weight, bmi }) {
   return (
-    <div className="flex flex-wrap items-end justify-center gap-x-8 gap-y-2">
-      <div className="flex min-w-0 items-end gap-3">
-        <div className="min-w-0">
+    <div className="patient-body-measures flex flex-wrap items-end justify-center gap-x-8 gap-y-2">
+      <div className="patient-body-measures__weight flex min-w-0 items-end gap-3">
+        <div className="patient-body-measures__reading min-w-0">
           <p className="flex items-center gap-1 text-[11px] font-medium text-neutral-500">
             <Scale size={12} aria-hidden="true" />
             Weight
           </p>
           {weight ? (
             <>
-              <p className="whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">
+              <p className="patient-body-measures__value whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">
                 {weight.latest.value}
                 <span className="ml-0.5 text-[11px] font-normal text-neutral-500">kg</span>
               </p>
-              <p className="whitespace-nowrap text-[11px] tabular-nums text-neutral-500">
+              <p className="patient-body-measures__metadata whitespace-nowrap text-[11px] tabular-nums text-neutral-500">
                 {weight.change
                   ? `${weight.change.display} kg since ${formatShortDate(weight.change.since, "last visit")}`
                   : formatShortDate(weight.latest.date, "")}
@@ -108,12 +108,12 @@ export function WeightAndBmi({ weight, bmi }) {
         {weight && <WeightBars history={weight.history} />}
       </div>
 
-      <div className="min-w-0">
+      <div className="patient-body-measures__reading min-w-0">
         <p className="text-[11px] font-medium text-neutral-500">BMI</p>
         {bmi ? (
           <>
-            <p className="whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">{bmi.value}</p>
-            <p className="whitespace-nowrap text-[11px] text-neutral-500">
+            <p className="patient-body-measures__value whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">{bmi.value}</p>
+            <p className="patient-body-measures__metadata whitespace-nowrap text-[11px] text-neutral-500">
               {[bmi.category, formatShortDate(bmi.date, "")].filter(Boolean).join(" · ")}
             </p>
           </>

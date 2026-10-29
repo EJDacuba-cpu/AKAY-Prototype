@@ -31,6 +31,7 @@
     "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js src/utils/carePath.test.js src/utils/bodyMeasures.test.js src/utils/arcPlacement.test.js src/utils/medicalConditions.test.js src/utils/backgroundConditions.test.js",
     "test:current-conditions": "node --test src/utils/currentConditions.test.js",
     "test:diagnosis-reporting": "node --test src/utils/diagnoses.test.js src/utils/diagnosisReporting.test.js src/utils/reportingEntries.test.js src/utils/consultationWorkflow.test.js src/utils/surveillance.test.js",
+    "test:bhc-reports": "node --test src/utils/bhcReporting.test.js src/utils/paginatedFetch.test.js",
     "test:patient-overview": "node --test src/utils/bmi.test.js src/utils/revealSequence.test.js src/utils/revealFocus.test.js src/utils/bodyFigureGeometry.test.js src/utils/bodyFindings.test.js src/utils/findingLink.test.js src/utils/bodyFindingsSummary.test.js src/utils/vitalTrends.test.js src/utils/backgroundSummary.test.js src/utils/medicationSummary.test.js",
     "test:request-timeout": "node --test src/services/requestTimeout.test.js",
     "test:prefetch-profile": "node --test src/utils/prefetchPatientProfile.test.js",
@@ -53,6 +54,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@radix-ui/react-popover": "^1.3.1",
     "@radix-ui/react-slot": "^1.3.3",
+    "@radix-ui/react-tooltip": "^1.3.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.101.0",
     "chart.js": "^4.5.1",
@@ -66,6 +68,7 @@
     "react-dom": "^19.2.6",
     "react-hot-toast": "^2.6.0",
     "react-router": "^7.15.0",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.0"
   },

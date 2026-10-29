@@ -1,334 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
-import {
-  Baby,
-  ClipboardList,
-  FileHeart,
-  FileText,
-  HeartPulse,
-  Printer,
-  SlidersHorizontal,
-  Stethoscope,
-  UsersRound,
-} from "lucide-react";
+import { FileText, Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  CommonFilterPopover,
+  DatePickerField,
   PageStateWrapper,
   RefreshingIndicator,
+  SegmentedFilter,
 } from "../../components/common";
-import { getFollowUpTasks } from "../../services/followUpTaskService";
-import { getHealthRecords } from "../../services/healthRecordService";
-import { getPatientDetailsListByRole } from "../../services/patientService";
-import { getReferrals } from "../../services/referrals";
+import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { getCurrentUser } from "../../utils/auth";
 import {
-  formatDate,
-  formatDisplayValue,
-  formatPatientName,
-} from "../../utils/formatters";
-import { getSurveillanceReportEntries } from "../../utils/surveillance";
-import { getReportedDiagnoses } from "../../utils/diagnosisReporting";
-import {
-  ATTENTION_FILTER_ALL,
-  ATTENTION_LEVELS,
-  getReferralAttention,
-} from "../../utils/referralAttention";
-import {
-  createActiveFilterChips,
-  isDateInPreset,
-} from "../../utils/filterUtils";
-import {
-  getEpiVaccineEntries,
-  getRecordDateValue,
-  getRecordId,
-  getServiceTypeLabel,
-  formatServiceType,
-  getTbData,
-  isEpiRecord,
-  isFamilyPlanningRecord,
-  isMaternalRecord,
-  isTbRecord,
-  matchesServiceTypeFilter,
-  normalizeVaccineName,
-} from "../../utils/healthRecordPrograms";
+  PERIOD_PRESETS,
+  REPORT_CATEGORIES,
+  buildBhcReport,
+  normalizeReportCategory,
+  resolveReportPeriod,
+} from "../../utils/bhcReporting";
 import { queryKeys } from "../../utils/queryKeys";
-
-const REPORT_TYPES = [
-  {
-    key: "referrals",
-    slug: "referrals",
-    label: "Referral Tracking",
-    description: "Referral activity, status, and receiving facility tracking.",
-  },
-  {
-    key: "followups",
-    slug: "follow-ups",
-    label: "Follow-up and Monitoring",
-    description: "Scheduled return visits and monitoring outcomes.",
-  },
-  {
-    key: "epi",
-    slug: "epi-target-client-list",
-    label: "Child Immunization (EPI) Target Client List",
-    description:
-      "Generated from registered child patients, Child Health / EPI records, and follow-up schedules.",
-  },
-  {
-    key: "morbidity",
-    slug: "morbidity",
-    label: "Morbidity Report",
-    description:
-      "Diagnoses marked for the morbidity report, one row per diagnosis.",
-  },
-  {
-    key: "notifiable",
-    slug: "notifiable-diseases",
-    label: "Notifiable Disease Report",
-    description:
-      "Diagnoses marked as notifiable diseases, one row per diagnosis.",
-  },
-  {
-    key: "community_surveillance",
-    slug: "community-based-surveillance",
-    label: "Surveillance Report",
-    description:
-      "Diagnoses included in surveillance, one row per diagnosis.",
-  },
-  {
-    key: "family_planning",
-    slug: "family-planning",
-    label: "Family Planning Target Client List",
-    description: "Family planning visits, methods, and client classifications.",
-  },
-  {
-    key: "maternal",
-    slug: "maternal",
-    label: "Maternal and Prenatal Care Target Client List",
-    description: "Prenatal visits, pregnancy details, and maternal follow-ups.",
-  },
-  {
-    key: "tb",
-    slug: "tb",
-    label: "TB Program Register",
-    description:
-      "DS-TB treatment follow-up register: case numbers, phase, treatment start, and outcome.",
-  },
-];
-
-const DEFAULT_REPORT_SLUG = "epi-target-client-list";
-const EMPTY_MARK = "\u2014";
-const CHECK_MARK = "\u2713";
-const EPI_FLAT_VACCINE_COLUMNS = [
-  "OPV 1",
-  "OPV 2",
-  "OPV 3",
-  "PENTA 1",
-  "PENTA 2",
-  "PENTA 3",
-  "PCV 1",
-  "PCV 2",
-  "PCV 3",
-  "IPV 1",
-  "IPV 2",
-  "MCV 1",
-  "MCV 2",
-  "HPV",
-];
-const EPI_CHILD_VACCINE_COLUMNS = [
-  "BCG",
-  "HEPA B",
-  ...EPI_FLAT_VACCINE_COLUMNS,
-];
-
-const EMPTY_FILTERS = {
-  dateRange: "all",
-  dateFrom: "",
-  dateTo: "",
-  barangay: "",
-  serviceType: "",
-  status: "",
-  ageRange: "",
-  sex: "",
-  urgency: "",
-  receivingFacility: "",
-  clientType: "",
-  methodUsed: "",
-  ageMonths: "",
-  vaccine: "",
-  vaccineStatus: "",
-  aogRange: "",
-  disease: "",
-};
+import { getAllHealthRecords } from "../../services/healthRecordService";
+import { getAllPatients } from "../../services/patientService";
+import { getAllReferrals } from "../../services/referrals";
 
 export default function BHCReports() {
+  const user = getCurrentUser();
+  const facilityName = user?.facility || user?.assignedBarangayHealthCenter || "Barangay Health Center";
   const [searchParams, setSearchParams] = useSearchParams();
-  const selectedSlug = normalizeReportSlug(searchParams.get("type"));
-  const currentReport =
-    REPORT_TYPES.find((report) => report.slug === selectedSlug) ||
-    REPORT_TYPES.find((report) => report.slug === DEFAULT_REPORT_SLUG);
-  const selectedReport = currentReport?.key || "epi";
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const category = normalizeReportCategory(searchParams.get("type"));
+  const [periodPreset, setPeriodPreset] = useState("monthly");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const period = useMemo(
+    () => resolveReportPeriod({ preset: periodPreset, from: customFrom, to: customTo }),
+    [periodPreset, customFrom, customTo],
+  );
 
   const {
     data: patients = [],
     isLoading: patientsLoading,
     isFetching: patientsFetching,
+    dataUpdatedAt: patientsUpdatedAt,
     error: patientsError,
     refetch: refetchPatients,
   } = useQuery({
-    queryKey: queryKeys.patients("bhc"),
-    queryFn: () => getPatientDetailsListByRole("bhc", { per_page: 500 }),
+    queryKey: [...queryKeys.patients("bhc"), "report-source"],
+    queryFn: () => getAllPatients("bhc"),
     retry: false,
   });
   const {
     data: records = [],
     isLoading: recordsLoading,
     isFetching: recordsFetching,
+    dataUpdatedAt: recordsUpdatedAt,
     error: recordsError,
     refetch: refetchRecords,
   } = useQuery({
-    queryKey: queryKeys.healthRecords("bhc"),
-    queryFn: () => getHealthRecords("bhc", { per_page: 500 }),
+    queryKey: [...queryKeys.healthRecords("bhc"), "report-source"],
+    queryFn: () => getAllHealthRecords("bhc"),
     retry: false,
   });
   const {
     data: referrals = [],
     isLoading: referralsLoading,
     isFetching: referralsFetching,
+    dataUpdatedAt: referralsUpdatedAt,
     error: referralsError,
     refetch: refetchReferrals,
   } = useQuery({
-    queryKey: queryKeys.referrals("bhc"),
-    queryFn: () => getReferrals(),
-    retry: false,
-  });
-  const {
-    data: followUps = [],
-    isLoading: followUpsLoading,
-    isFetching: followUpsFetching,
-    error: followUpsError,
-    refetch: refetchFollowUps,
-  } = useQuery({
-    queryKey: queryKeys.followUpTasks("bhc"),
-    queryFn: () => getFollowUpTasks(),
-    staleTime: 30_000,
+    queryKey: [...queryKeys.referrals("bhc"), "report-source"],
+    queryFn: () => getAllReferrals(),
     retry: false,
   });
 
-  const safePatients = useMemo(
-    () => (Array.isArray(patients) ? patients : []),
-    [patients],
-  );
-  const safeRecords = useMemo(
-    () => (Array.isArray(records) ? records : []),
-    [records],
-  );
-  const safeReferrals = useMemo(
-    () => (Array.isArray(referrals) ? referrals : []),
-    [referrals],
-  );
-  const safeFollowUps = useMemo(
-    () => (Array.isArray(followUps) ? followUps : []),
-    [followUps],
-  );
-  const patientMap = useMemo(
+  const loading = patientsLoading || recordsLoading || referralsLoading;
+  const loadError = patientsError || recordsError || referralsError || null;
+  const refreshing = !loading && (patientsFetching || recordsFetching || referralsFetching);
+  const report = useMemo(
     () =>
-      new Map(
-        safePatients.map((patient) => [
-          String(patient.id || patient.patientId || ""),
-          patient,
-        ]),
-      ),
-    [safePatients],
-  );
-  const barangayOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            ...safePatients.map((patient) => patient.barangay),
-            ...safeReferrals.map((referral) => referral.barangay),
-          ].filter(Boolean),
-        ),
-      ).sort(),
-    [safePatients, safeReferrals],
-  );
-  const receivingFacilities = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          safeReferrals
-            .map(
-              (referral) =>
-                referral.receivingFacility ||
-                referral.destinationFacility ||
-                referral.ruralHealthUnit?.name,
-            )
-            .filter(Boolean),
-        ),
-      ).sort(),
-    [safeReferrals],
+      buildBhcReport({
+        patients: Array.isArray(patients) ? patients : [],
+        records: Array.isArray(records) ? records : [],
+        referrals: Array.isArray(referrals) ? referrals : [],
+        category,
+        period,
+      }),
+    [patients, records, referrals, category, period],
   );
 
-  const reportFields = getReportFilterFields(
-    selectedReport,
-    barangayOptions,
-    receivingFacilities,
-  );
-  const activeFilters = createActiveFilterChips(filters, reportFields);
-  const loading =
-    patientsLoading || recordsLoading || referralsLoading || followUpsLoading;
-  const loadError =
-    patientsError || recordsError || referralsError || followUpsError || null;
-  const refreshing =
-    !loading &&
-    (patientsFetching || recordsFetching || referralsFetching || followUpsFetching);
-  const reportLabel = currentReport?.label || "Reports";
-
-  useEffect(() => {
-    setFilters(EMPTY_FILTERS);
-    setDraftFilters(EMPTY_FILTERS);
-    setFilterOpen(false);
-  }, [selectedReport]);
-
-  function openFilters() {
-    setDraftFilters(filters);
-    setFilterOpen(true);
-  }
-
-  function applyFilters() {
-    setFilters(draftFilters);
-    setFilterOpen(false);
-  }
-
-  function resetFilters() {
-    setDraftFilters(EMPTY_FILTERS);
-    setFilters(EMPTY_FILTERS);
-  }
-
-  function removeFilter(key) {
-    if (key === "dateRange") {
-      setFilters((current) => ({
-        ...current,
-        dateRange: "all",
-        dateFrom: "",
-        dateTo: "",
-      }));
-      return;
-    }
-
-    setFilters((current) => ({ ...current, [key]: "" }));
-  }
-
-  function printSelectedReport() {
-    window.print();
-  }
-
-  function selectReport(slug) {
+  function selectCategory(slug) {
     setSearchParams({ type: slug });
   }
 
@@ -336,1940 +100,189 @@ export default function BHCReports() {
     refetchPatients();
     refetchRecords();
     refetchReferrals();
-    refetchFollowUps();
   }
 
   return (
     <DashboardLayout role="bhc" title="Reports">
       <style>{`
-        @page { size: landscape; margin: 10mm; }
+        @page { size: landscape; margin: 12mm; }
         @media print {
           body * { visibility: hidden !important; }
-          #selected-report, #selected-report * { visibility: visible !important; }
-          #selected-report { position: absolute; inset: 0; width: 100%; padding: 0 !important; box-shadow: none !important; border: 0 !important; }
-          #selected-report table { font-size: 9px; }
-          #selected-report th, #selected-report td { padding: 5px 6px !important; }
+          #bhc-report-print, #bhc-report-print * { visibility: visible !important; }
+          #bhc-report-print { position: absolute; inset: 0; width: 100%; background: white !important; }
           .no-print { display: none !important; }
         }
       `}</style>
 
-      <PageStateWrapper skeleton="reports"
+      <PageStateWrapper
+        skeleton="reports"
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={refreshing}
-        hasData={false}
+        hasData={patientsUpdatedAt > 0 && recordsUpdatedAt > 0 && referralsUpdatedAt > 0}
         error={loadError}
         onRetry={retryReports}
         loadingMessage="Loading reports..."
       >
-        <div className="space-y-5">
-          <header>
+        <div className="flex flex-col gap-5">
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-[#0F172A]">Reports</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Reports Center for BHC records, monitoring, and official printable lists.
+              <h1 className="text-xl font-bold text-neutral-900">Reports & Analytics</h1>
+              <p className="mt-1 text-sm text-neutral-500">
+                {facilityName} · {period.label}
               </p>
+            </div>
+            <div className="no-print flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>
+                <FileText size={14} />
+                Export PDF
+              </Button>
+              <Button type="button" variant="brand" size="compact" onClick={() => window.print()}>
+                <Printer size={14} />
+                Print
+              </Button>
             </div>
           </header>
 
-          <div className="no-print flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <label className="w-full max-w-sm">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                Report Type
-              </span>
-              <select
-                value={currentReport.slug}
-                onChange={(event) => selectReport(event.target.value)}
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-[#0F172A] shadow-sm outline-none transition focus:border-[#FCA5A5] focus:ring-2 focus:ring-[#B91C1C]/10"
-              >
-                {REPORT_TYPES.map((report) => (
-                  <option key={report.slug} value={report.slug}>
-                    {report.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="relative flex flex-wrap gap-2">
-              <HeaderAction
-                icon={<SlidersHorizontal size={14} />}
-                label="Filters"
-                count={activeFilters.length}
-                onClick={openFilters}
+          <div className="no-print flex flex-col gap-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <SegmentedFilter
+                label="Reporting period"
+                visibleLabel="Reporting period"
+                value={periodPreset}
+                onChange={setPeriodPreset}
+                options={PERIOD_PRESETS}
               />
-              <HeaderAction
-                icon={<FileText size={14} />}
-                label="Export PDF"
-                onClick={printSelectedReport}
-              />
-              <HeaderAction
-                icon={<Printer size={14} />}
-                label="Print"
-                onClick={printSelectedReport}
-              />
-              <CommonFilterPopover
-                open={filterOpen}
-                title="Filters"
-                subtitle={`Narrow the ${reportLabel.toLowerCase()} report.`}
-                filters={draftFilters}
-                config={reportFields}
-                activeFilters={activeFilters}
-                onRemoveFilter={removeFilter}
-                onClearAll={resetFilters}
-                onChange={setDraftFilters}
-                onApply={applyFilters}
-                onReset={resetFilters}
-                onClose={() => setFilterOpen(false)}
+              {periodPreset === "custom" ? (
+                <div className="flex flex-wrap items-end gap-3">
+                  <DatePickerField
+                    label="From"
+                    name="report-from"
+                    value={customFrom}
+                    onChange={setCustomFrom}
+                    disableFuture
+                  />
+                  <DatePickerField
+                    label="To"
+                    name="report-to"
+                    value={customTo}
+                    onChange={setCustomTo}
+                    disableFuture
+                  />
+                  {!customFrom ? (
+                    <p className="pb-2 text-xs text-neutral-500">Choose a start date for the custom range.</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="-mx-1 overflow-x-auto px-1">
+              <SegmentedFilter
+                label="Report category"
+                value={REPORT_CATEGORIES.find((item) => item.key === category)?.slug || "all"}
+                onChange={selectCategory}
+                wrap
+                options={REPORT_CATEGORIES.map((item) => ({ value: item.slug, label: item.label }))}
               />
             </div>
           </div>
 
-          {refreshing && (
+          {refreshing ? (
             <div className="no-print flex justify-end">
               <RefreshingIndicator label="Updating reports..." />
             </div>
-          )}
+          ) : null}
 
-          <main id="selected-report" className="space-y-4 rounded-xl bg-white">
-            <PrintReportHeader title={reportLabel} filters={activeFilters} />
-            <SelectedReport
-              type={selectedReport}
-              filters={filters}
-              patients={safePatients}
-              records={safeRecords}
-              referrals={safeReferrals}
-              followUps={safeFollowUps}
-              patientMap={patientMap}
-            />
-          </main>
+          <div className="anim-stagger no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {report.cards.map((item) => (
+              <article key={item.key} className="rounded-card border border-neutral-200 bg-white p-4 shadow-card">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{item.label}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{item.value}</p>
+                <p className="mt-1 text-xs text-neutral-500">{item.hint}</p>
+              </article>
+            ))}
+          </div>
+
+          <BhcReportCharts charts={report.charts} className="no-print" />
+
+          <Card className="no-print rounded-card shadow-card">
+            <CardHeader>
+              <CardTitle>Reporting summary</CardTitle>
+              <CardDescription>
+                Aggregate counts for {report.categoryLabel.toLowerCase()} · {period.label}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {report.summary.length === 0 || report.empty ? (
+                <p className="py-6 text-center text-sm text-neutral-500">
+                  No matching records in this reporting period.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                        <th className="px-3 py-2.5">Indicator</th>
+                        <th className="px-3 py-2.5 text-right">Count</th>
+                        <th className="px-3 py-2.5">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.summary.map((row, index) => (
+                        <tr key={`${row.label}-${row.note}-${index}`} className="border-b border-neutral-100">
+                          <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
+                          <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <PrintReport
+            facilityName={facilityName}
+            periodLabel={period.label}
+            categoryLabel={report.categoryLabel}
+            cards={report.cards}
+            summary={report.summary}
+          />
         </div>
       </PageStateWrapper>
-
     </DashboardLayout>
   );
 }
 
-function SelectedReport(props) {
-  switch (props.type) {
-    case "family_planning":
-      return <FamilyPlanningReportView {...props} />;
-    case "epi":
-      return <EpiTargetClientListReportView {...props} />;
-    case "morbidity":
-    case "notifiable":
-      return <DiagnosisReportView {...props} reportType={props.type} />;
-    case "community_surveillance":
-      return <CommunitySurveillanceReportView {...props} />;
-    case "followups":
-      return <FollowUpReportView {...props} />;
-    case "maternal":
-      return <MaternalReportView {...props} />;
-    case "tb":
-      return <TbRegisterReportView {...props} />;
-    default:
-      return <ReferralReportView {...props} />;
-  }
-}
-
-function normalizeReportSlug(value) {
-  const raw = String(value || DEFAULT_REPORT_SLUG)
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, "-");
-  const aliases = {
-    epi: "epi-target-client-list",
-    immunization: "epi-target-client-list",
-    "child-health": "epi-target-client-list",
-    "family-planning": "family-planning",
-    family_planning: "family-planning",
-    followups: "follow-ups",
-    "follow-up": "follow-ups",
-    "follow-up-monitoring": "follow-ups",
-    "morbidity-notifiable": "morbidity",
-    notifiable: "notifiable-diseases",
-    "notifiable-disease": "notifiable-diseases",
-    surveillance: "community-based-surveillance",
-    "community-surveillance": "community-based-surveillance",
-    "community-based-surveillance": "community-based-surveillance",
-    hfmd: "community-based-surveillance",
-    "maternal-prenatal": "maternal",
-    "tb-dots": "tb",
-    "tb-monitoring": "tb",
-    "tb-program": "tb",
-    "tb-program-register": "tb",
-    tuberculosis: "tb",
-  };
-
-  return aliases[raw] || raw || DEFAULT_REPORT_SLUG;
-}
-
-function ReferralReportView({ referrals, filters }) {
-  const rows = referrals.filter((referral) => {
-    const date = getReferralDate(referral);
-    const facility =
-      referral.receivingFacility ||
-      referral.destinationFacility ||
-      referral.ruralHealthUnit?.name ||
-      "";
-    return (
-      matchesDateRange(date, filters) &&
-      matchesValue(referral.barangay, filters.barangay) &&
-      matchesValue(referral.status, filters.status) &&
-      matchesValue(getReferralAttention(referral), filters.urgency) &&
-      matchesValue(facility, filters.receivingFacility)
-    );
-  });
-  const completed = rows.filter((row) =>
-    ["completed", "done"].includes(normalizeText(row.status)),
-  ).length;
-  const noShow = rows.filter((row) =>
-    normalizeText(row.status).includes("no show"),
-  ).length;
-
+function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary }) {
   return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Total Referrals" value={rows.length} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="Completed" value={completed} tone="emerald" icon={<FileHeart size={16} />} />
-        <SummaryCard label="No Show" value={noShow} tone="amber" icon={<UsersRound size={16} />} />
-        <SummaryCard label="Active" value={Math.max(rows.length - completed - noShow, 0)} icon={<HeartPulse size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={["Tracking ID", "Date", "Patient", "Barangay", "Status", "Urgency", "Receiving Facility"]}
-        rows={rows.map((referral) => [
-          referral.trackingId || referral.id,
-          formatDate(getReferralDate(referral), "Not recorded"),
-          referral.patientName || formatPatientName(referral.patient, "Unnamed Patient"),
-          referral.barangay || "Not recorded",
-          referral.status || "Pending",
-          getReferralAttention(referral),
-          referral.receivingFacility ||
-            referral.destinationFacility ||
-            referral.ruralHealthUnit?.name ||
-            "Not recorded",
-        ])}
-        emptyTitle="No referral records"
-        emptyMessage="No referrals match the selected filters."
-      />
-    </>
-  );
-}
-
-function FamilyPlanningReportView({ records, filters, patientMap }) {
-  const rows = records
-    .filter(isFamilyPlanningRecord)
-    .map((record) => normalizeProgramRecord(record, patientMap))
-    .filter((record) => {
-      const data = record.familyPlanningData;
-      return (
-        matchesDateRange(record.date, filters) &&
-        matchesValue(record.barangay, filters.barangay) &&
-        matchesValue(data.clientType || data.client_type, filters.clientType) &&
-        matchesValue(data.methodUsed || data.method_used, filters.methodUsed) &&
-        matchesAgeRange(record.age, filters.ageRange)
-      );
-    });
-  const methods = new Set(
-    rows
-      .map(
-        (row) =>
-          row.familyPlanningData.methodUsed ||
-          row.familyPlanningData.method_used,
-      )
-      .filter(Boolean),
-  ).size;
-  const newClients = rows.filter((row) =>
-    normalizeText(
-      row.familyPlanningData.clientType ||
-        row.familyPlanningData.client_type,
-    ).includes("new"),
-  ).length;
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="FP Visits" value={rows.length} icon={<UsersRound size={16} />} />
-        <SummaryCard label="Methods Used" value={methods} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="New Clients" value={newClients} tone="emerald" icon={<FileHeart size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={["Date", "Patient", "Barangay", "Client Type", "Method Used", "Age", "Next Appointment"]}
-        rows={rows.map((row) => {
-          const data = row.familyPlanningData;
-          return [
-            formatDate(row.date, "Not recorded"),
-            row.patientName,
-            row.barangay || "Not recorded",
-            data.clientType || data.client_type || "Not recorded",
-            data.methodUsed || data.method_used || "Not recorded",
-            row.age || "Not recorded",
-            formatDate(
-              data.nextAppointmentDate || data.next_appointment_date,
-              "Not recorded",
-            ),
-          ];
-        })}
-        emptyTitle="No Family Planning records"
-        emptyMessage="No Family Planning records match the selected filters."
-      />
-    </>
-  );
-}
-
-function TbRegisterReportView({ records, filters, patientMap }) {
-  const rows = records
-    .filter(isTbRecord)
-    .map((record) => {
-      const normalized = normalizeProgramRecord(record, patientMap);
-      const patient =
-        record.patient && typeof record.patient === "object"
-          ? record.patient
-          : patientMap.get(normalized.patientId) || {};
-      return {
-        ...normalized,
-        tb: getTbData(record),
-        followUpDate: record.followUpDate || record.follow_up_date || "",
-        outcome:
-          record.followUpStatus || record.status || record.patientCondition || "",
-        phone:
-          patient.contactNumber ||
-          patient.contact_number ||
-          record.contactNumber ||
-          record.contact_number ||
-          "",
-      };
-    })
-    .filter(
-      (row) =>
-        matchesDateRange(row.date, filters) &&
-        matchesValue(row.barangay, filters.barangay) &&
-        matchesValue(row.tb.treatmentType, filters.treatmentType) &&
-        matchesAgeRange(row.age, filters.ageRange),
-    );
-
-  const onTreatment = rows.filter((row) => row.tb.intensiveStart).length;
-  const newCases = rows.filter((row) => !row.tb.isRetreatment).length;
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="TB Patients" value={rows.length} icon={<UsersRound size={16} />} />
-        <SummaryCard label="New Cases" value={newCases} tone="emerald" icon={<FileHeart size={16} />} />
-        <SummaryCard label="On Treatment" value={onTreatment} icon={<HeartPulse size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={[
-          "No.",
-          "Patient",
-          "Age",
-          "P/A",
-          "Registration",
-          "TB Case No.",
-          "Follow-up",
-          "Treatment Started",
-          "Outcome",
-          "Phone No.",
-        ]}
-        rows={rows.map((row, index) => [
-          index + 1,
-          row.patientName,
-          row.age || EMPTY_MARK,
-          row.tb.anatomicalSiteShort || EMPTY_MARK,
-          row.tb.treatmentType,
-          row.tb.tbCaseNumber || EMPTY_MARK,
-          formatDate(row.followUpDate, EMPTY_MARK),
-          formatDate(row.tb.intensiveStart, EMPTY_MARK),
-          row.outcome || EMPTY_MARK,
-          row.phone || EMPTY_MARK,
-        ])}
-        emptyTitle="No TB Program records"
-        emptyMessage="No TB records match the selected filters."
-      />
-    </>
-  );
-}
-
-function EpiTargetClientListReportView({
-  patients,
-  records,
-  filters,
-  followUps,
-}) {
-  const epiByPatient = useMemo(() => {
-    const map = new Map();
-    records.filter(isEpiRecord).forEach((record) => {
-      const patientId = String(
-        record.patientId || record.patient_id || record.patient?.id || "",
-      );
-      if (!map.has(patientId)) map.set(patientId, []);
-      map.get(patientId).push(record);
-    });
-    return map;
-  }, [records]);
-  const followUpsByPatient = useMemo(() => {
-    const map = new Map();
-    followUps
-      .filter(isEpiFollowUpTask)
-      .forEach((task) => {
-        const patientId = String(task.patientId || task.patient?.id || "");
-        if (!patientId) return;
-        if (!map.has(patientId)) map.set(patientId, []);
-        map.get(patientId).push({
-          ...task,
-          effectiveState: getEffectiveFollowUpState(task),
-        });
-      });
-    return map;
-  }, [followUps]);
-  const maternalByPatient = useMemo(() => {
-    const map = new Map();
-    records.filter(isMaternalRecord).forEach((record) => {
-      const patientId = String(
-        record.patientId || record.patient_id || record.patient?.id || "",
-      );
-      if (!patientId) return;
-      if (!map.has(patientId)) map.set(patientId, []);
-      map.get(patientId).push(record);
-    });
-    return map;
-  }, [records]);
-
-  const rows = patients
-    .map((patient) =>
-      buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalByPatient),
-    )
-    .filter(isEpiTargetClient)
-    .filter(
-      (row) =>
-        matchesDateRange(row.registrationDate, filters) &&
-        matchesValue(row.barangay, filters.barangay) &&
-        matchesStatusFilter(row.status, filters.status) &&
-        matchesAgeMonthsRange(row.ageMonths, filters.ageMonths) &&
-        matchesVaccineFilter(row, filters.vaccine),
-    );
-  const completed = rows.filter((row) => row.status === "Completed").length;
-  const due = rows.filter((row) =>
-    ["Due Today", "Pending"].includes(row.status),
-  ).length;
-  const noShow = rows.filter((row) => row.status === "No Show").length;
-
-return (
-  <>
-    <div className="no-print">
-      <SummaryGrid>
-        <SummaryCard label="Target Clients" value={rows.length} icon={<Baby size={16} />} />
-        <SummaryCard label="Completed" value={completed} tone="emerald" icon={<FileHeart size={16} />} />
-        <SummaryCard label="Due" value={due} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="No Show" value={noShow} tone="amber" icon={<UsersRound size={16} />} />
-      </SummaryGrid>
-    </div>
-    <EpiTargetClientTable rows={rows} />
-  </>
-);
-}
-
-/**
- * Morbidity Report / Notifiable Disease Report: one row per diagnosis the
- * worker marked for this report (utils/diagnosisReporting.js). A record
- * saved before per-diagnosis reporting, or a follow-up visit, contributes
- * one row with its plain-text diagnosis when its visit-level status matches.
- */
-function DiagnosisReportView({ records, filters, patientMap, reportType }) {
-  const rows = records
-    .flatMap((record) => {
-      const names = getReportedDiagnoses(record, reportType);
-      if (names.length === 0) return [];
-      const row = normalizeMorbidityLogRow(record, patientMap);
-      return names.map((name) => ({ ...row, diagnosis: name }));
-    })
-    .filter(
-      (row) =>
-        matchesDateRange(row.date, filters) &&
-        matchesValue(row.barangay, filters.barangay) &&
-        (!filters.disease || normalizeText(row.diagnosis).includes(normalizeText(filters.disease))),
-    );
-  const visits = new Set(rows.map((row) => getRecordId(row.raw) || row.raw)).size;
-  const distinctDiagnoses = new Set(
-    rows.map((row) => normalizeText(row.diagnosis)).filter(Boolean),
-  ).size;
-  const notifiable = reportType === "notifiable";
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Reported Diagnoses" value={rows.length} tone={notifiable ? "amber" : undefined} icon={<FileHeart size={16} />} />
-        <SummaryCard label="Visits" value={visits} icon={<Stethoscope size={16} />} />
-        <SummaryCard label="Distinct Diagnoses" value={distinctDiagnoses} icon={<ClipboardList size={16} />} />
-      </SummaryGrid>
-      <MorbidityDailyLogTable
-        rows={rows}
-        title={notifiable ? "Notifiable Diseases Record" : "Morbidity Record"}
-        emptyTitle={notifiable ? "No notifiable disease records" : "No morbidity records"}
-      />
-    </>
-  );
-}
-
-function CommunitySurveillanceReportView({ records, filters, patientMap }) {
-  const eligibleRecords = records.filter(
-    (record) =>
-      matchesDateRange(getRecordDateValue(record), filters) &&
-      matchesValue(getRecordBarangay(record, patientMap), filters.barangay),
-  );
-  const rows = getSurveillanceReportEntries(eligibleRecords, filters.disease).map(
-    ({ record, diagnosis }, index) => ({
-      ...normalizeCommunitySurveillanceRow(record, patientMap, index + 1),
-      diagnosis,
-    }),
-  );
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Surveillance Cases" value={rows.length} icon={<ClipboardList size={16} />} />
-        <SummaryCard
-          label="Areas / Sitios"
-          value={new Set(rows.map((row) => row.areaSitio).filter(Boolean)).size}
-          icon={<UsersRound size={16} />}
-        />
-        <SummaryCard
-          label="This Week"
-          value={rows.filter((row) => isDateInPreset(row.date, "this_week")).length}
-          tone="amber"
-          icon={<FileHeart size={16} />}
-        />
-        <SummaryCard
-          label="Diagnoses"
-          value={new Set(rows.map((row) => row.diagnosis.toLowerCase())).size}
-          tone="emerald"
-          icon={<Stethoscope size={16} />}
-        />
-      </SummaryGrid>
-      <CommunitySurveillanceTable rows={rows} />
-    </>
-  );
-}
-
-function FollowUpReportView({ followUps, filters }) {
-  const rows = followUps
-    .map((task) => ({
-      ...task,
-      effectiveState: getEffectiveFollowUpState(task),
-    }))
-    .filter(
-      (task) =>
-        matchesDateRange(task.dueDate, filters) &&
-        matchesValue(task.patient?.barangay, filters.barangay) &&
-        matchesServiceTypeFilter(filters.serviceType, task.healthRecord, getServiceTypeLabel(task.healthRecord)) &&
-        matchesValue(
-          formatFollowUpState(task.effectiveState),
-          filters.status,
-        ),
-    );
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Total Tasks" value={rows.length} icon={<ClipboardList size={16} />} />
-        <SummaryCard label="Pending" value={rows.filter((row) => ["upcoming", "rescheduled"].includes(row.effectiveState)).length} icon={<HeartPulse size={16} />} />
-        <SummaryCard label="Due Today" value={rows.filter((row) => row.effectiveState === "due_today").length} tone="amber" icon={<UsersRound size={16} />} />
-        <SummaryCard label="Completed" value={rows.filter((row) => row.effectiveState === "fulfilled").length} tone="emerald" icon={<FileHeart size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={["Patient", "Barangay", "Service Type", "Next Follow-up Date", "Status"]}
-        rows={rows.map((task) => [
-          task.patientName || formatPatientName(task.patient, "Unnamed Patient"),
-          task.patient?.barangay || "Not recorded",
-          getServiceTypeLabel(task.healthRecord),
-          formatDate(task.dueDate, "Not recorded"),
-          formatFollowUpState(task.effectiveState),
-        ])}
-        emptyTitle="No follow-up tasks"
-        emptyMessage="No follow-up tasks match the selected filters."
-      />
-    </>
-  );
-}
-
-function MaternalReportView({ records, filters, patientMap }) {
-  const rows = records
-    .filter(isMaternalRecord)
-    .map((record) => normalizeProgramRecord(record, patientMap))
-    .filter((record) => {
-      const maternal = record.raw.maternalData || record.raw.maternal_data || {};
-      return (
-        matchesDateRange(record.date, filters) &&
-        matchesValue(record.barangay, filters.barangay) &&
-        matchesAog(maternal.aog || record.raw.aog, filters.aogRange) &&
-        matchesValue(record.raw.status, filters.status)
-      );
-    });
-
-  return (
-    <>
-      <SummaryGrid>
-        <SummaryCard label="Prenatal Visits" value={rows.length} icon={<FileHeart size={16} />} />
-        <SummaryCard label="Patients" value={new Set(rows.map((row) => row.patientId)).size} icon={<UsersRound size={16} />} />
-      </SummaryGrid>
-      <ReportTable
-        columns={["Record ID", "Visit Date", "Patient", "Barangay", "AOG", "BP", "Weight", "Next Visit"]}
-        rows={rows.map((row) => {
-          const maternal = row.raw.maternalData || row.raw.maternal_data || {};
-          return [
-            `#${getRecordId(row.raw)}`,
-            formatDate(row.date, "Not recorded"),
-            row.patientName,
-            row.barangay || "Not recorded",
-            maternal.aog || row.raw.aog || "Not recorded",
-            formatBloodPressure(row.raw),
-            row.raw.weight || "Not recorded",
-            formatDate(
-              row.raw.followUpDate || row.raw.follow_up_date,
-              "Not recorded",
-            ),
-          ];
-        })}
-        emptyTitle="No maternal records"
-        emptyMessage="No maternal or prenatal records match the selected filters."
-      />
-    </>
-  );
-}
-
-function ReportTable({
-  columns,
-  rows,
-  emptyTitle,
-  emptyMessage,
-  minWidth = "min-w-[900px]",
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className={`w-full text-left ${minWidth}`}>
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap px-4 py-3">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-6 py-16 text-center">
-                  <FileText className="mx-auto text-slate-300" size={28} />
-                  <p className="mt-3 font-semibold text-slate-600">
-                    {emptyTitle}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">{emptyMessage}</p>
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, rowIndex) => (
-                <tr key={`${row[0]}-${rowIndex}`} className="hover:bg-slate-50/70">
-                  {row.map((value, columnIndex) => (
-                    <td
-                      key={`${rowIndex}-${columnIndex}`}
-                      className={`px-4 py-3.5 ${
-                        columnIndex === 0
-                          ? "font-semibold text-[#0F172A]"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      {formatDisplayValue(value, "Not recorded")}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function SummaryGrid({ children }) {
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{children}</div>;
-}
-
-function SummaryCard({ label, value, icon, tone = "red" }) {
-  const tones = {
-    red: "bg-red-50 text-[#B91C1C]",
-    amber: "bg-amber-50 text-amber-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-  };
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            {label}
-          </p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-[#0F172A]">
-            {value}
-          </p>
-        </div>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${tones[tone] || tones.red}`}>
-          {icon}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-
-
-function EpiTargetClientTable({ rows }) {
-  const baseHeaders = [
-    "No.",
-    "Date of Registration",
-    "Family Serial Number",
-    "Name of Child",
-    "Date of Birth",
-    "Age in Months",
-    "Sex",
-    "Name of Mother",
-    "Complete Address",
-  ];
-  const totalColumns = baseHeaders.length + 6;
-
-  return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1900px] text-left">
-          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            <tr className="border-b border-slate-200">
-              {baseHeaders.map((header) => (
-                <th key={header} rowSpan={2} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-middle">
-                  {header}
-                </th>
-              ))}
-              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
-                Children Protected at Birth (CPAB)
-              </th>
-              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
-                BCG Immunization
-              </th>
-              <th colSpan={2} className="border-r border-slate-200 px-3 py-3 text-center">
-                Hepa B Immunization
-              </th>
-            </tr>
-            <tr className="border-b border-slate-200">
-              <th className="w-44 border-r border-slate-200 px-3 py-2 align-top">
-                Td2 given to mother a month prior to delivery
-              </th>
-              <th className="w-48 border-r border-slate-200 px-3 py-2 align-top">
-                Td3 to Td5 / Td1 to Td5 given to mother anytime prior to delivery
-              </th>
-              <th className="w-36 border-r border-slate-200 px-3 py-2 align-top">
-                Within 24 hours
-              </th>
-              <th className="w-48 border-r border-slate-200 px-3 py-2 align-top">
-                24 hours to 11 months and 29 days
-              </th>
-              <th className="w-40 border-r border-slate-200 px-3 py-2 align-top">
-                Within 24 hours after birth
-              </th>
-              <th className="w-40 border-r border-slate-200 px-3 py-2 align-top">
-                More than 24 hours up to 14 days
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={totalColumns} className="px-6 py-16 text-center">
-                  <FileText className="mx-auto text-slate-300" size={28} />
-                  <p className="mt-3 font-semibold text-slate-600">
-                    No records found for this report.
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Try adjusting filters or adding related health records.
-                  </p>
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, index) => (
-                <tr key={`${row.patientId}-${index}`} className="hover:bg-slate-50/70">
-                  {[
-                    index + 1,
-                    formatDate(row.registrationDate, "Not recorded"),
-                    row.familySerialNumber || "Not recorded",
-                    row.name,
-                    formatDate(row.birthDate, "Not recorded"),
-                    row.ageMonths,
-                    row.sex || "Not recorded",
-                    row.motherName || "Not recorded",
-                    row.address || "Not recorded",
-                    row.cpab.td2,
-                    row.cpab.td3ToTd5,
-                    row.groupedVaccines.bcgWithin24,
-                    row.groupedVaccines.bcgAfter24Hours,
-                    row.groupedVaccines.hepaBWithin24,
-                    row.groupedVaccines.hepaBAfter24Hours,
-                  ].map((value, columnIndex) => (
-                    <td
-                      key={`${row.patientId}-${columnIndex}`}
-                      className={`border-r border-slate-100 px-3 py-3 align-top ${
-                        columnIndex === 0
-                          ? "font-semibold text-[#0F172A]"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      {formatDisplayValue(value, EMPTY_MARK)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function MorbidityDailyLogTable({ rows, title, emptyTitle }) {
-  const columns = [
-    "Date",
-    "Name",
-    "Address / CP#",
-    "Age",
-    "Sex",
-    "Birthday",
-    "Signs & Symptoms",
-    "Diagnosis / Suspected Case",
-    "Medication and Treatment",
-  ];
-
-  return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3 text-center">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0F172A]">
-          Daily Log Sheet
-        </p>
-        <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-          {title}
-        </p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1500px] text-left">
-          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            <tr className="border-b border-slate-200">
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-top">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-6 py-16 text-center">
-                  <FileText className="mx-auto text-slate-300" size={28} />
-                  <p className="mt-3 font-semibold text-slate-600">
-                    {emptyTitle}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    No reported diagnoses match the selected filters.
-                  </p>
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, index) => (
-                <tr key={`${row.patientId || row.name}-${row.date}-${index}`} className="hover:bg-slate-50/70">
-                  {[
-                    formatDate(row.date, EMPTY_MARK),
-                    row.name,
-                    row.addressContact,
-                    row.age,
-                    row.sex,
-                    formatDate(row.birthday, EMPTY_MARK),
-                    row.signsSymptoms,
-                    row.diagnosis,
-                    row.medicationTreatment,
-                  ].map((value, columnIndex) => (
-                    <td
-                      key={`${index}-${columnIndex}`}
-                      className={`border-r border-slate-100 px-3 py-3 align-top ${
-                        columnIndex === 1
-                          ? "font-semibold text-[#0F172A]"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      {formatDisplayValue(value, EMPTY_MARK)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function CommunitySurveillanceTable({ rows }) {
-  const columns = [
-    "Week",
-    "Date",
-    "No.",
-    "Name",
-    "Age",
-    "Birthday",
-    "Area / Sitio",
-    "Diagnosis",
-    "Signs and Symptoms",
-  ];
-
-  return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3 text-center">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0F172A]">
-          Surveillance Report
-        </p>
-        <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-          Diagnoses Included in Surveillance
-        </p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] text-left">
-          <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            <tr className="border-b border-slate-200">
-              {columns.map((column) => (
-                <th key={column} className="whitespace-nowrap border-r border-slate-200 px-3 py-3 align-top">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-6 py-16 text-center">
-                  <FileText className="mx-auto text-slate-300" size={28} />
-                  <p className="mt-3 font-semibold text-slate-600">
-                    No surveillance cases
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    No diagnoses were included in surveillance for the selected filters.
-                  </p>
-                </td>
-              </tr>
-            ) : (
-              rows.map((row, index) => (
-                <tr key={`${row.patientId || row.name}-${row.date}-${index}`} className="hover:bg-slate-50/70">
-                  {[
-                    row.week,
-                    formatDate(row.date, EMPTY_MARK),
-                    row.number,
-                    row.name,
-                    row.age,
-                    formatDate(row.birthday, EMPTY_MARK),
-                    row.areaSitio,
-                    row.diagnosis,
-                    row.signsSymptoms,
-                  ].map((value, columnIndex) => (
-                    <td
-                      key={`${index}-${columnIndex}`}
-                      className={`border-r border-slate-100 px-3 py-3 align-top ${
-                        columnIndex === 3
-                          ? "font-semibold text-[#0F172A]"
-                          : "text-slate-600"
-                      }`}
-                    >
-                      {formatDisplayValue(value, EMPTY_MARK)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function PrintReportHeader({ title, filters }) {
-  return (
-    <div className="hidden print:block">
-      <h1 className="text-base font-bold text-[#0F172A]">{title}</h1>
-      <p className="mt-1 text-[11px] text-slate-600">
-        Generated {new Date().toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })}
+    <section id="bhc-report-print" className="print-only">
+      <h1 className="text-base font-bold text-neutral-900">AKAY BHC Reports</h1>
+      <p className="mt-1 text-[12px] text-neutral-600">{facilityName}</p>
+      <p className="mt-1 text-[12px] text-neutral-600">
+        {categoryLabel} · {periodLabel}
       </p>
-      <p className="mt-1 text-[11px] text-slate-500">
-        Filters:{" "}
-        {filters.length
-          ? filters.map((filter) => filter.label).join("; ")
-          : "All records"}
+      <p className="mt-1 text-[11px] text-neutral-500">
+        Generated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
       </p>
-    </div>
+      <table className="mt-4 w-full text-left text-[12px]">
+        <thead>
+          <tr>
+            <th className="border-b border-neutral-300 py-1.5">Indicator</th>
+            <th className="border-b border-neutral-300 py-1.5 text-right">Count</th>
+            <th className="border-b border-neutral-300 py-1.5">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(summary.length ? summary : cards).map((row, index) => (
+            <tr key={`${row.label}-${row.note || row.hint}-${index}`}>
+              <td className="border-b border-neutral-200 py-1.5">{row.label}</td>
+              <td className="border-b border-neutral-200 py-1.5 text-right tabular-nums">{row.value}</td>
+              <td className="border-b border-neutral-200 py-1.5">{row.note || row.hint}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
-}
-
-function HeaderAction({ icon, label, count, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-    >
-      {icon}
-      {label}
-      {count > 0 && (
-        <span className="rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-[9px] text-white">
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function getReportFilterFields(type, barangays, facilities) {
-  const dateField = {
-    key: "dateRange",
-    label: type === "epi" ? "Registration Date Range" : "Date Range",
-    type: "datePresets",
-    resetValue: "all",
-    presets: [
-      { value: "all", label: "All dates" },
-      { value: "today", label: "Today" },
-      { value: "this_week", label: "This week" },
-      { value: "this_month", label: "This month" },
-      { value: "custom", label: "Custom date" },
-    ],
-  };
-  const barangay = {
-    key: "barangay",
-    label: "Barangay",
-    type: "select",
-    resetValue: "",
-    placeholder: "All Barangays",
-    options: barangays,
-  };
-  const serviceType = {
-    key: "serviceType",
-    label: "Service Type",
-    type: "select",
-    resetValue: "",
-    placeholder: "All Service Types",
-    options: [
-      "General Consultation",
-      "Child Health / EPI",
-      "Maternal / Prenatal",
-      "Family Planning",
-      "TB DOTS / TB Monitoring",
-    ],
-  };
-  const status = (options) => ({
-    key: "status",
-    label: "Status",
-    type: "select",
-    resetValue: "",
-    placeholder: "All Statuses",
-    options,
-  });
-
-  switch (type) {
-    case "referrals":
-      return [
-        dateField,
-        barangay,
-        status(["Pending", "Received", "Completed", "No Show", "Cancelled"]),
-        { key: "urgency", label: "Urgency", type: "select", resetValue: "", placeholder: ATTENTION_FILTER_ALL, options: ATTENTION_LEVELS },
-        { key: "receivingFacility", label: "Receiving Facility", type: "select", resetValue: "", placeholder: "All Facilities", options: facilities },
-      ];
-    case "family_planning":
-      return [
-        dateField,
-        barangay,
-        { key: "clientType", label: "Client Type", type: "text", placeholder: "e.g. New Acceptor" },
-        { key: "methodUsed", label: "Method Used", type: "text", placeholder: "e.g. Pills" },
-        { key: "ageRange", label: "Age Range", type: "select", resetValue: "", placeholder: "All Ages", options: ["15-19", "20-49", "50+"] },
-      ];
-    case "tb":
-      return [
-        dateField,
-        barangay,
-        { key: "treatmentType", label: "Registration", type: "select", resetValue: "", placeholder: "All Registrations", options: ["New", "Retreatment"] },
-        { key: "ageRange", label: "Age Range", type: "select", resetValue: "", placeholder: "All Ages", options: ["0-14", "15-19", "20-49", "50+"] },
-      ];
-    case "epi":
-      return [
-        dateField,
-        barangay,
-        { key: "status", label: "Status", type: "select", resetValue: "", placeholder: "All Statuses", options: ["Completed", "Due", "No Show", "Pending"] },
-        { key: "ageMonths", label: "Age Range in Months", type: "text", placeholder: "e.g. 0-12" },
-        { key: "vaccine", label: "Vaccine", type: "select", resetValue: "", placeholder: "All vaccines", options: EPI_CHILD_VACCINE_COLUMNS },
-      ];
-    case "morbidity":
-    case "notifiable":
-    case "community_surveillance":
-      return [
-        dateField,
-        barangay,
-        { key: "disease", label: "Disease / Diagnosis", type: "text", placeholder: "Search diagnosis" },
-      ];
-    case "followups":
-      return [
-        dateField,
-        barangay,
-        serviceType,
-        status(["Pending", "Due Today", "No Show", "Completed", "Cancelled"]),
-      ];
-    case "maternal":
-      return [
-        dateField,
-        barangay,
-        { key: "aogRange", label: "AOG Range", type: "select", resetValue: "", placeholder: "All AOG Ranges", options: ["0-13", "14-27", "28-42"] },
-        status(["Active", "Completed"]),
-      ];
-    default:
-      return [dateField, barangay, serviceType, status(["Active", "Completed"])];
-  }
-}
-
-function normalizeProgramRecord(record, patientMap) {
-  const patientId = String(
-    record.patientId || record.patient_id || record.patient?.id || "",
-  );
-  const patient =
-    record.patient && typeof record.patient === "object"
-      ? record.patient
-      : patientMap.get(patientId) || {};
-  return {
-    raw: record,
-    patientId,
-    patientName: formatPatientName(
-      record.patientName || patient,
-      "Unnamed Patient",
-    ),
-    age: Number(patient.age || record.age || 0) || "",
-    barangay: patient.barangay || record.barangay || "",
-    date: getRecordDateValue(record),
-    familyPlanningData:
-      record.familyPlanningData || record.family_planning_data || {},
-  };
-}
-
-function normalizeMorbidityLogRow(record, patientMap) {
-  const normalized = normalizeProgramRecord(record, patientMap);
-  const patient =
-    record.patient && typeof record.patient === "object"
-      ? record.patient
-      : patientMap.get(normalized.patientId) || {};
-  const birthday = getPatientBirthDate(patient, record);
-
-  return {
-    ...normalized,
-    name: normalized.patientName,
-    addressContact: formatAddressContact(patient, record),
-    age: getPatientAge(patient, record, birthday),
-    sex: getPatientSex(patient, record),
-    birthday,
-    signsSymptoms: getMorbiditySignsSymptoms(record),
-    diagnosis: getMorbidityDiagnosis(record),
-    medicationTreatment: getMorbidityMedicationTreatment(record),
-  };
-}
-
-function normalizeCommunitySurveillanceRow(record, patientMap, number) {
-  const normalized = normalizeMorbidityLogRow(record, patientMap);
-  const patient =
-    record.patient && typeof record.patient === "object"
-      ? record.patient
-      : patientMap.get(normalized.patientId) || {};
-
-  return {
-    ...normalized,
-    number,
-    week: getWeekNumber(normalized.date),
-    name: normalized.patientName,
-    age: formatPatientAgeAtDate(normalized.birthday, normalized.date),
-    areaSitio: getPatientAreaSitio(patient, record),
-  };
-}
-
-// Surveillance rows come from utils/surveillance.js's getSurveillanceReportEntries
-// (per-diagnosis includeInSurveillance, legacy HFMD tags as one HFMD row), and
-// morbidity / notifiable reads through
-// utils/diagnosisReporting.js - see healthRecordService.js for the same
-// consolidation note.
-
-function getWeekNumber(value) {
-  const date = parseDateOnly(value);
-  if (!date) return EMPTY_MARK;
-  const start = new Date(date.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((date - start) / 86400000) + 1;
-  return Math.ceil((dayOfYear + start.getDay()) / 7);
-}
-
-function getPatientBirthDate(patient = {}, record = {}) {
-  return firstFilledValue(
-    patient.birthDate,
-    patient.birthdate,
-    patient.dateOfBirth,
-    patient.date_of_birth,
-    record.patientBirthDate,
-    record.patient_birth_date,
-    record.birthDate,
-    record.birthdate,
-    record.dateOfBirth,
-    record.date_of_birth,
-  );
-}
-
-function getPatientAreaSitio(patient = {}, record = {}) {
-  return firstFilledValue(
-    patient.purokArea,
-    patient.purok_area,
-    patient.purok,
-    patient.sitio,
-    patient.area,
-    record.purokArea,
-    record.purok_area,
-    record.purok,
-    record.sitio,
-    record.area,
-    patient.address,
-    record.patientAddress,
-    record.patient_address,
-    patient.barangay,
-    record.barangay,
-  );
-}
-
-function getRecordBarangay(record = {}, patientMap = new Map()) {
-  const patientId = String(
-    record.patientId || record.patient_id || record.patient?.id || "",
-  );
-  const patient =
-    record.patient && typeof record.patient === "object"
-      ? record.patient
-      : patientMap.get(patientId) || {};
-
-  return firstFilledValue(patient.barangay, record.barangay);
-}
-
-function getPatientAge(patient = {}, record = {}, birthday = "") {
-  return (
-    calculateAgeYears(birthday) ||
-    firstFilledValue(
-      patient.age,
-      record.patientAge,
-      record.patient_age,
-      record.age,
-    )
-  );
-}
-
-function formatPatientAgeAtDate(birthdate, referenceDate) {
-  const birth = parseDateOnly(birthdate);
-  const reference = parseDateOnly(referenceDate);
-  if (!birth || !reference || reference < birth) return EMPTY_MARK;
-
-  const ageInDays = daysBetween(birth, reference);
-  if (ageInDays < 30) {
-    return `${ageInDays} ${ageInDays === 1 ? "day" : "days"}`;
-  }
-
-  let months =
-    (reference.getFullYear() - birth.getFullYear()) * 12 +
-    (reference.getMonth() - birth.getMonth());
-  if (reference.getDate() < birth.getDate()) months -= 1;
-
-  if (months < 12) {
-    const safeMonths = Math.max(months, 1);
-    return `${safeMonths} ${safeMonths === 1 ? "month" : "months"}`;
-  }
-
-  let years = reference.getFullYear() - birth.getFullYear();
-  const birthdayThisYear = new Date(
-    reference.getFullYear(),
-    birth.getMonth(),
-    birth.getDate(),
-  );
-  if (reference < birthdayThisYear) years -= 1;
-
-  return years >= 0
-    ? `${years} ${years === 1 ? "year" : "years"}`
-    : EMPTY_MARK;
-}
-
-function getPatientSex(patient = {}, record = {}) {
-  return firstFilledValue(patient.sex, patient.gender, record.sex, record.gender);
-}
-
-function formatAddressContact(patient = {}, record = {}) {
-  const address = firstFilledValue(
-    patient.completeAddress,
-    patient.complete_address,
-    patient.address,
-    record.patientAddress,
-    record.patient_address,
-    record.address,
-    [
-      patient.streetAddress || patient.street_address,
-      patient.purokArea || patient.purok_area,
-      patient.barangay || record.barangay,
-      patient.municipality || patient.city,
-    ]
-      .filter(Boolean)
-      .join(", "),
-  );
-  const contact = firstFilledValue(
-    patient.contactNumber,
-    patient.contact_number,
-    patient.mobileNumber,
-    patient.mobile_number,
-    patient.phone,
-    record.contactNumber,
-    record.contact_number,
-    record.phone,
-  );
-
-  return [address, contact].filter(Boolean).join(" / ");
-}
-
-function getMorbiditySignsSymptoms(record = {}) {
-  return firstFilledValue(
-    record.history_of_present_illness,
-    record.historyOfPresentIllness,
-    record.summaryOfPresentIllness,
-    record.summary_of_present_illness,
-    record.signsSymptoms,
-    record.signs_symptoms,
-    record.assessmentFindings,
-    record.assessment_findings,
-    record.physicalExamination,
-    record.physical_examination,
-    record.chiefComplaint,
-    record.chief_complaint,
-  );
-}
-
-function getMorbidityDiagnosis(record = {}) {
-  return firstFilledValue(
-    record.diagnosis,
-    record.initialDiagnosis,
-    record.initial_diagnosis,
-    record.condition,
-  );
-}
-
-function getMorbidityMedicationTreatment(record = {}) {
-  const treatment = firstFilledValue(
-    record.medication,
-    record.treatment,
-    record.treatmentAdvice,
-    record.treatment_advice,
-    record.initialActionsTaken,
-    record.initial_actions_taken,
-  );
-  const dispensed = formatDispensedMedicinesForReport(record);
-
-  return [treatment, dispensed ? `Medicines: ${dispensed}` : ""]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function formatDispensedMedicinesForReport(record = {}) {
-  const medicines =
-    record.dispensedMedicines ||
-    record.dispensed_medicines ||
-    record.healthRecordMedicines ||
-    record.health_record_medicines ||
-    [];
-
-  if (!Array.isArray(medicines) || medicines.length === 0) return "";
-
-  return medicines
-    .map((item = {}) => {
-      const name = firstFilledValue(
-        item.medicineName,
-        item.medicine_name_snapshot,
-        item.medicineNameSnapshot,
-        item.name,
-      );
-      const quantity = firstFilledValue(item.quantity, item.qty);
-      const unit = firstFilledValue(item.unit, item.unit_snapshot);
-
-      return [name, [quantity, unit].filter(Boolean).join(" ")]
-        .filter(Boolean)
-        .join(" x ");
-    })
-    .filter(Boolean)
-    .join("; ");
-}
-
-function calculateAgeYears(value) {
-  if (!value) return "";
-  const birth = new Date(value);
-  if (Number.isNaN(birth.getTime())) return "";
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const birthdayThisYear = new Date(
-    today.getFullYear(),
-    birth.getMonth(),
-    birth.getDate(),
-  );
-  if (today < birthdayThisYear) age -= 1;
-  return age >= 0 ? age : "";
-}
-
-function firstFilledValue(...values) {
-  return values.find(
-    (value) => value !== undefined && value !== null && String(value).trim() !== "",
-  ) || "";
-}
-
-function buildEpiTargetRow(patient, epiByPatient, followUpsByPatient, maternalByPatient) {
-  const patientId = String(patient.id || patient.patientId || "");
-  const records = epiByPatient.get(patientId) || [];
-  const entries = records.flatMap(getEpiVaccineEntries);
-  const vaccines = Object.fromEntries(
-    EPI_CHILD_VACCINE_COLUMNS.map((vaccineName) => [
-      vaccineName,
-      getVaccineValue(entries, vaccineName),
-    ]),
-  );
-  const recordedNames = new Set(
-    entries.map((entry) => normalizeVaccineName(entry.vaccineName)),
-  );
-  const completed = EPI_CHILD_VACCINE_COLUMNS.every((name) =>
-    recordedNames.has(name),
-  );
-  const birthDate =
-    patient.birthDate ||
-    patient.birthdate ||
-    patient.dateOfBirth ||
-    patient.date_of_birth ||
-    "";
-  const birthTime = patient.birthTime || patient.birth_time || "";
-  const motherPatientId = String(
-    patient.motherPatientId ||
-      patient.mother_patient_id ||
-      patient.motherPatient?.id ||
-      patient.mother_patient?.id ||
-      patient.mother?.id ||
-      "",
-  );
-  const cpab = motherPatientId
-    ? buildCpabValues(maternalByPatient.get(motherPatientId) || [], birthDate)
-    : emptyCpabValues();
-  const groupedVaccines = buildGroupedBirthDoseValues(entries, birthDate, birthTime);
-  const ageMonths = calculateAgeInMonths(birthDate);
-  const followUpTasks = (followUpsByPatient.get(patientId) || []).sort(
-    (a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")),
-  );
-  const activeFollowUp =
-    followUpTasks.find((task) =>
-      ["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState),
-    ) ||
-    followUpTasks.at(-1) ||
-    null;
-  const status = completed
-    ? "Completed"
-    : activeFollowUp
-      ? formatFollowUpState(activeFollowUp.effectiveState, true)
-      : entries.length > 0
-        ? "Pending"
-        : "Pending";
-  const remarks = buildEpiRemarks(records, activeFollowUp, groupedVaccines.remarks);
-
-  return {
-    patientId,
-    registrationDate:
-      patient.dateRegistered ||
-      patient.date_registered ||
-      patient.createdAt ||
-      patient.created_at ||
-      "",
-    familySerialNumber:
-      patient.familySerialNumber || patient.family_serial_number || "",
-    name: formatPatientName(patient, "Unnamed Child"),
-    birthDate,
-    ageMonths,
-    sex: patient.sex || "",
-    motherName:
-      patient.motherName ||
-      patient.mother_name ||
-      formatPatientName(patient.motherPatient || patient.mother_patient || patient.mother, ""),
-    address: [
-      patient.streetAddress || patient.street_address || patient.address,
-      patient.purokArea || patient.purok_area,
-      patient.barangay,
-      patient.municipality,
-    ]
-      .filter(Boolean)
-      .join(", "),
-    barangay: patient.barangay || "",
-    vaccines,
-    cpab,
-    groupedVaccines,
-    nextScheduleDate: activeFollowUp?.dueDate || "",
-    status,
-    remarks,
-    hasEpiRecord: records.length > 0,
-    registrationType: patient.registrationType || patient.registration_type || "",
-  };
-}
-
-function getVaccineValue(entries, vaccineName) {
-  const matching = entries.filter(
-    (entry) => normalizeVaccineName(entry.vaccineName) === vaccineName,
-  );
-  if (!matching.length) return EMPTY_MARK;
-
-  return matching
-    .map((entry) => {
-      const status = normalizeText(entry.status || entry.result || entry.remarks);
-      if (status.includes("defer")) return "Deferred";
-      if (status.includes("no show")) return "No Show";
-      return formatDate(entry.dateGiven, "Given");
-    })
-    .join(", ");
-}
-
-function buildGroupedBirthDoseValues(entries, birthDate, birthTime = "") {
-  const grouped = {
-    bcgWithin24: EMPTY_MARK,
-    bcgAfter24Hours: EMPTY_MARK,
-    hepaBWithin24: EMPTY_MARK,
-    hepaBAfter24Hours: EMPTY_MARK,
-    remarks: [],
-  };
-
-  splitBirthDoseEntries(entries, "BCG", birthDate, birthTime, "bcg").forEach((result) => {
-    if (result.bucket === "within24") grouped.bcgWithin24 = result.value;
-    if (result.bucket === "after24") grouped.bcgAfter24Hours = result.value;
-    if (result.bucket === "outside") grouped.remarks.push(`BCG: ${result.value}`);
-  });
-
-  splitBirthDoseEntries(entries, "HEPA B", birthDate, birthTime, "hepaB").forEach((result) => {
-    if (result.bucket === "within24") grouped.hepaBWithin24 = result.value;
-    if (result.bucket === "after24") grouped.hepaBAfter24Hours = result.value;
-    if (result.bucket === "outside") grouped.remarks.push(`Hepa B: ${result.value}`);
-  });
-
-  return grouped;
-}
-
-function splitBirthDoseEntries(entries, vaccineName, birthDate, birthTime, vaccineType) {
-  return entries
-    .filter((entry) => normalizeVaccineName(entry.vaccineName) === vaccineName)
-    .map((entry) => {
-      const value = formatVaccineEntryValue(entry);
-      const birth = parseDateOnly(birthDate);
-      const given = parseDateOnly(entry.dateGiven);
-      if (!birth || !given) return { bucket: "outside", value };
-
-      const days = daysBetween(birth, given);
-      if (days < 0) return { bucket: "outside", value };
-      if (isWithin24HoursOfBirth(birthDate, birthTime, entry.dateGiven)) {
-        return { bucket: "within24", value };
-      }
-      if (vaccineType === "hepaB" && days <= 14) return { bucket: "after24", value };
-      if (vaccineType === "bcg" && isWithinMonthsAndDays(birth, given, 11, 29)) {
-        return { bucket: "after24", value };
-      }
-      return { bucket: "outside", value };
-    });
-}
-
-function formatVaccineEntryValue(entry) {
-  const status = normalizeText(entry.status || entry.result || entry.remarks);
-  if (status.includes("defer")) return "Deferred";
-  if (status.includes("no show")) return "No Show";
-  return formatDate(entry.dateGiven, "Given");
-}
-
-function buildCpabValues(maternalRecords, childBirthDate) {
-  const birth = parseDateOnly(childBirthDate);
-  if (!birth || !maternalRecords.length) {
-    return emptyCpabValues();
-  }
-
-  const doses = collectMaternalTdDoses(maternalRecords)
-    .filter((dose) => dose.date && dose.date <= birth)
-    .sort((a, b) => a.dose - b.dose || b.date - a.date);
-  const dose2 = doses.find((dose) => dose.dose === 2);
-  const higherDose = doses
-    .filter((dose) => dose.dose >= 3 && dose.dose <= 5)
-    .sort((a, b) => b.dose - a.dose || b.date - a.date)[0];
-
-  return {
-    td2: dose2 ? `${CHECK_MARK} ${dose2.label}` : EMPTY_MARK,
-    td3ToTd5: higherDose ? `${CHECK_MARK} ${higherDose.label}` : EMPTY_MARK,
-  };
-}
-
-function emptyCpabValues() {
-  return { td2: EMPTY_MARK, td3ToTd5: EMPTY_MARK };
-}
-
-function collectMaternalTdDoses(records) {
-  return records.flatMap((record) => {
-    const maternal = normalizeObject(record.maternalData || record.maternal_data);
-    const sourceObjects = [
-      normalizeObject(maternal.tetanusToxoidStatus),
-      normalizeObject(maternal.tetanus_toxoid_status),
-      normalizeObject(maternal.tetanusToxoid),
-      normalizeObject(maternal.tetanus_toxoid),
-      normalizeObject(maternal.ttStatus),
-      normalizeObject(maternal.tt_status),
-      normalizeObject(maternal.tdStatus),
-      normalizeObject(maternal.td_status),
-      // Td1-Td5 - the separate 5-dose schedule added alongside TT1-TT5
-      // (Forms Finalization Checklist 3.4).
-      normalizeObject(maternal.tetanusDiphtheriaStatus),
-      normalizeObject(maternal.tetanus_diphtheria_status),
-      normalizeObject(record.tetanusToxoidStatus),
-      normalizeObject(record.tetanus_toxoid_status),
-      maternal,
-      normalizeObject(record),
-    ];
-
-    return [1, 2, 3, 4, 5]
-      .map((dose) => {
-        const match = getTdDoseMatch(sourceObjects, dose);
-        return {
-          dose,
-          date: parseDateOnly(match?.value),
-          label: `${match?.prefix || "TT"}${dose}`,
-        };
-      })
-      .filter((dose) => dose.date);
-  });
-}
-
-function getTdDoseMatch(sourceObjects, dose) {
-  const keys = buildTdDoseKeys(dose);
-  const normalizedKeys = new Map(
-    keys.map((item) => [normalizeTdDoseKey(item.key), item.prefix]),
-  );
-
-  for (const source of sourceObjects) {
-    for (const { key, prefix } of keys) {
-      const value = source?.[key];
-      if (value) return { value, prefix };
-    }
-
-    for (const [key, value] of Object.entries(source || {})) {
-      const prefix = normalizedKeys.get(normalizeTdDoseKey(key));
-      if (value && prefix) {
-        return { value, prefix };
-      }
-    }
-  }
-
-  return null;
-}
-
-function buildTdDoseKeys(dose) {
-  const ttKeys = [
-    `tt${dose}`,
-    `TT${dose}`,
-    `tt${dose}Date`,
-    `tt${dose}_date`,
-    `TT${dose}Date`,
-    `tt${dose}DateDone`,
-    `tt${dose}_date_done`,
-    `tt${dose}DateGiven`,
-    `tt${dose}_date_given`,
-    `tetanusToxoid${dose}`,
-    `tetanus_toxoid_${dose}`,
-    `tetanusToxoidStatus${dose}`,
-    `tetanus_toxoid_status_${dose}`,
-  ];
-  const tdKeys = [
-    `td${dose}`,
-    `TD${dose}`,
-    `td${dose}Date`,
-    `td${dose}_date`,
-    `TD${dose}Date`,
-    `td${dose}DateDone`,
-    `td${dose}_date_done`,
-    `td${dose}DateGiven`,
-    `td${dose}_date_given`,
-  ];
-  const sharedKeys = [
-    `TDTT${dose}`,
-    `tdtt${dose}`,
-    `tdtt${dose}Date`,
-    `tdtt${dose}_date`,
-    `tdtt${dose}DateDone`,
-    `tdtt${dose}_date_done`,
-    `tdtt${dose}DateGiven`,
-    `tdtt${dose}_date_given`,
-    `tetanus${dose}`,
-    `tetanus_${dose}`,
-    `tetanusDose${dose}`,
-    `tetanus_dose_${dose}`,
-  ];
-
-  return [
-    ...ttKeys.map((key) => ({ key, prefix: "TT" })),
-    ...tdKeys.map((key) => ({ key, prefix: "TD" })),
-    ...sharedKeys.map((key) => ({ key, prefix: "TT" })),
-  ];
-}
-
-function normalizeTdDoseKey(key) {
-  return String(key || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function normalizeObject(value) {
-  if (!value) return {};
-  if (typeof value === "object") return value;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function isWithin24HoursOfBirth(birthDate, birthTime, givenDate) {
-  const birth = parseDateTime(birthDate, birthTime);
-  const given = parseDateTime(givenDate, "");
-  const birthDay = parseDateOnly(birthDate);
-  const givenDay = parseDateOnly(givenDate);
-
-  if (!birthDay || !givenDay) return false;
-  if (!hasTimeValue(givenDate) && daysBetween(birthDay, givenDay) === 0) {
-    return true;
-  }
-  if (!birth || !given) return daysBetween(birthDay, givenDay) === 0;
-
-  const hours = (given.getTime() - birth.getTime()) / (60 * 60 * 1000);
-  return hours >= 0 && hours <= 24;
-}
-
-function parseDateTime(dateValue, timeValue = "") {
-  if (!dateValue) return null;
-  const datePart = String(dateValue).slice(0, 10);
-  const timeMatch =
-    String(dateValue).match(/T(\d{2}:\d{2})/) ||
-    String(timeValue).match(/(\d{1,2}:\d{2})/);
-  const timePart = timeMatch?.[1] || "00:00";
-  const date = new Date(`${datePart}T${timePart}`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function hasTimeValue(value) {
-  return /T\d{2}:\d{2}|\b\d{1,2}:\d{2}\b/.test(String(value || ""));
-}
-
-function isWithinMonthsAndDays(start, end, months, days) {
-  const limit = new Date(start);
-  limit.setMonth(limit.getMonth() + months);
-  limit.setDate(limit.getDate() + days);
-  return end <= limit;
-}
-
-function parseDateOnly(value) {
-  if (!value) return null;
-  const raw = String(value).slice(0, 10);
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
-    ? new Date(`${raw}T00:00:00`)
-    : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function daysBetween(start, end) {
-  const dayMs = 24 * 60 * 60 * 1000;
-  return Math.floor((end.getTime() - start.getTime()) / dayMs);
-}
-
-function isEpiTargetClient(row) {
-  if (row.hasEpiRecord) return true;
-  if (row.ageMonths < 0) return false;
-  const type = normalizeText(row.registrationType);
-  return type.includes("child") || type.includes("epi") || row.ageMonths <= 59;
-}
-
-function isEpiFollowUpTask(task = {}) {
-  const serviceType = formatServiceType(
-    task.healthRecord?.category ||
-      task.healthRecord?.patientClassification ||
-      task.healthRecord?.recordType ||
-      task.category ||
-      "",
-    "",
-  );
-  return serviceType === "Child Health / EPI";
-}
-
-function matchesStatusFilter(status, filter) {
-  if (!filter) return true;
-  if (filter === "Due") return ["Due Today", "Pending"].includes(status);
-  return status === filter;
-}
-
-function matchesAgeMonthsRange(ageMonths, filter) {
-  if (!filter) return true;
-  const value = Number(ageMonths);
-  if (Number.isNaN(value)) return false;
-  const [fromRaw, toRaw] = String(filter).split("-").map((part) => part.trim());
-  const from = Number(fromRaw);
-  const to = Number(toRaw ?? fromRaw);
-  if (Number.isNaN(from)) return true;
-  if (Number.isNaN(to)) return value === from;
-  return value >= from && value <= to;
-}
-
-function matchesVaccineFilter(row, vaccine) {
-  if (!vaccine) return true;
-  return row.vaccines?.[vaccine] && row.vaccines[vaccine] !== EMPTY_MARK;
-}
-
-function buildEpiRemarks(records, followUpTask, groupedRemarks = []) {
-  const recordRemarks = records
-    .flatMap((record) => [
-      record.remarks,
-      record.notes,
-      record.consultationNotes,
-      record.consultation_notes,
-    ])
-    .filter(Boolean);
-  const followUpRemarks = followUpTask?.notes ? [followUpTask.notes] : [];
-  const state = followUpTask?.effectiveState;
-  const stateRemark =
-    state === "no_show"
-      ? "No Show"
-      : state === "rescheduled"
-        ? "Rescheduled"
-        : "";
-
-  return [
-    ...new Set([
-      stateRemark,
-      ...groupedRemarks,
-      ...followUpRemarks,
-      ...recordRemarks,
-    ].filter(Boolean)),
-  ].join("; ");
-}
-
-function calculateAgeInMonths(value) {
-  if (!value) return -1;
-  const birth = new Date(value);
-  if (Number.isNaN(birth.getTime())) return -1;
-  const today = new Date();
-  let months =
-    (today.getFullYear() - birth.getFullYear()) * 12 +
-    today.getMonth() -
-    birth.getMonth();
-  if (today.getDate() < birth.getDate()) months -= 1;
-  return Math.max(months, 0);
-}
-
-function matchesDateRange(value, filters) {
-  return isDateInPreset(value, filters.dateRange, {
-    from: filters.dateFrom,
-    to: filters.dateTo,
-  });
-}
-
-function matchesValue(value, filter) {
-  if (!filter) return true;
-  return normalizeText(value) === normalizeText(filter);
-}
-
-function matchesAgeRange(age, range) {
-  if (!range) return true;
-  const value = Number(age);
-  if (range === "15-19") return value >= 15 && value <= 19;
-  if (range === "20-49") return value >= 20 && value <= 49;
-  return value >= 50;
-}
-
-function matchesAog(value, range) {
-  if (!range) return true;
-  const weeks = Number(String(value || "").match(/\d+/)?.[0]);
-  if (Number.isNaN(weeks)) return false;
-  const [from, to] = range.split("-").map(Number);
-  return weeks >= from && weeks <= to;
-}
-
-function formatBloodPressure(record) {
-  const systolic = record.systolicBp || record.systolic_bp;
-  const diastolic = record.diastolicBp || record.diastolic_bp;
-  return systolic || diastolic
-    ? `${systolic || "N/A"}/${diastolic || "N/A"}`
-    : "Not recorded";
-}
-
-function getReferralDate(referral) {
-  return (
-    referral.dateOfReferral ||
-    referral.date_of_referral ||
-    referral.referralDate ||
-    referral.createdAt ||
-    referral.created_at ||
-    ""
-  );
-}
-
-function getEffectiveFollowUpState(task) {
-  if (task.state === "fulfilled") return "fulfilled";
-  if (task.state === "no_show") return "no_show";
-  if (["cancelled", "canceled"].includes(task.state)) return "cancelled";
-  const dueDate = normalizeDate(task.dueDate);
-  const today = normalizeDate(new Date());
-  if (!dueDate) return "upcoming";
-  if (dueDate === today) return "due_today";
-  if (dueDate < today) return "no_show";
-  if (task.state === "rescheduled") return "rescheduled";
-  return "upcoming";
-}
-
-function formatFollowUpState(state, epiLabel = false) {
-  const labels = {
-    upcoming: "Pending",
-    rescheduled: "Pending",
-    due_today: "Due Today",
-    no_show: "No Show",
-    fulfilled: "Completed",
-    cancelled: "Cancelled",
-  };
-  const value = labels[state] || "Pending";
-  if (!epiLabel) return value;
-  if (value === "Pending") return "Pending";
-  return value;
-}
-
-function normalizeDate(value) {
-  if (!value) return "";
-  if (value instanceof Date) {
-    const copy = new Date(value);
-    copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset());
-    return copy.toISOString().slice(0, 10);
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-}
-
-function normalizeText(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
 }

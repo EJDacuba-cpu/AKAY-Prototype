@@ -4,6 +4,7 @@ import { getHealthRecordsByPatient } from "./healthRecordService";
 import { getReferralsByPatient } from "./referrals";
 import { normalizeBackground, normalizeHouseholdEnvironment } from "../utils/backgroundUpdate";
 import { parentLinkPayload } from "../utils/parentLinks";
+import { fetchAllReportPages } from "./reportingLists";
 
 
 function fullName(patient = {}) {
@@ -261,6 +262,11 @@ export async function getPatientsByRole() {
 export async function getPatientDetailsListByRole(role, params = {}) {
   void role;
   return listPatients(params);
+}
+
+export async function getAllPatients(role = "bhc", params = {}) {
+  void role;
+  return fetchAllReportPages("/patients", { params, mapItem: normalizePatient });
 }
 
 export async function getPatientByIdForRole(id) {

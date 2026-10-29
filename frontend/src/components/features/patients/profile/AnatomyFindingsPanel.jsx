@@ -237,8 +237,8 @@ export default function AnatomyFindingsPanel({
 
   return (
     <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className={`@container/anatomy min-w-0 px-1 py-1 ${vitals ? "patient-anatomy-integrated" : ""}`}>
-      <header className={`mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout || hasVitals ? "" : "pr-[6.5rem]"}`}>
-        <h2 id="overview-visual-summary-title" className="font-sans! text-[13px] font-semibold text-neutral-900">Visual health summary</h2>
+      <header className={vitals && !loadNote ? "sr-only" : `patient-anatomy-summary-header mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout || hasVitals ? "" : "pr-[6.5rem]"}`}>
+        <h2 id="overview-visual-summary-title" className={vitals ? "sr-only" : "font-sans! text-[13px] font-semibold text-neutral-900"}>Visual health summary</h2>
         {loadNote ? (
           <p role="status" className="min-w-0 text-xs text-neutral-500">{loadNote}</p>
         ) : (
@@ -329,7 +329,7 @@ export default function AnatomyFindingsPanel({
             {!arcLayout && !hasVitals && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
           </div>
           {hasVitals && (
-            <div className="patient-anatomy-detail-controls">
+            <div className="patient-anatomy-detail-controls patient-anatomy-double-curve">
               <PatientClinicalControls
                 background={background}
                 conditions={conditions}

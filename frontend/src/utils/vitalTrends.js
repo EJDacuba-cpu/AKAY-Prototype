@@ -18,14 +18,11 @@ const SINGLE_VITALS = [
 ];
 
 function toNumber(value) {
-  const number = Number.parseFloat(value);
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const text = String(value).trim();
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(text)) return null;
+  const number = Number(text);
   return Number.isFinite(number) ? number : null;
-}
-
-/** The last TREND_LENGTH numeric readings, oldest first; [] under 2 points. */
-function trend(ordered, read) {
-  const values = ordered.map(read).filter((value) => value !== null);
-  return values.length < 2 ? [] : values.slice(-TREND_LENGTH);
 }
 
 function shown(value) {
@@ -34,7 +31,7 @@ function shown(value) {
 
 /**
  * @returns {{ record: object|null, recordedAt: Date|null,
- *   rows: { key: string, label: string, unit: string, display: string, series: number[][] }[] }}
+ *   rows: { key: string, label: string, unit: string, display: string, history: object[] }[] }}
  */
 export function buildVitalRows(records) {
   const list = Array.isArray(records) ? records : [];
@@ -42,17 +39,30 @@ export function buildVitalRows(records) {
   if (!record) return { record: null, recordedAt: null, rows: [] };
 
   const ordered = list
-    .map((item) => ({ item, date: item ? getVitalRecordDate(item) : null }))
+    .map((item, index) => ({ item, index, date: item ? getVitalRecordDate(item) : null }))
     .filter(({ date }) => date)
-    .sort((a, b) => a.date - b.date)
-    .map(({ item }) => item);
+    .sort((a, b) => a.date - b.date);
 
-  const systolic = trend(ordered, (item) => toNumber(item.systolicBp));
-  const diastolic = trend(ordered, (item) => toNumber(item.diastolicBp));
+  // Keep each value attached to its visit. Missing BP sides remain null rather
+  // than shifting the other line onto a different visit's date.
+  const history = (read, display) => ordered
+    .map(({ item, date, index }) => {
+      const values = read(item);
+      return {
+        key: `${item.id ?? index}:${date.getTime()}`,
+        recordId: item.id ?? null,
+        date,
+        values,
+        display: display(item, values),
+        isLatest: item === record,
+      };
+    })
+    .filter((point) => point.values.some((value) => value !== null))
+    .slice(-TREND_LENGTH);
+
+  const single = (field) => history((item) => [toNumber(item[field])], (item) => shown(item[field]));
   const hasBp = hasVitalValue(record.systolicBp) || hasVitalValue(record.diastolicBp);
   const latestBmi = calculateBmi(record.weight, record.height);
-  const single = (field) => trend(ordered, (item) => toNumber(item[field]));
-  const wrap = (series) => (series.length ? [series] : []);
 
   const rows = [
     {
@@ -60,25 +70,59 @@ export function buildVitalRows(records) {
       label: "BP",
       unit: "mmHg",
       display: hasBp ? `${shown(record.systolicBp)}/${shown(record.diastolicBp)}` : EMPTY,
-      series: systolic.length && diastolic.length ? [systolic, diastolic] : [],
+      history: history(
+        (item) => [toNumber(item.systolicBp), toNumber(item.diastolicBp)],
+        (item, values) => ["systolicBp", "diastolicBp"].map((field, index) => values[index] === null ? EMPTY : shown(item[field])).join("/"),
+      ),
     },
     ...SINGLE_VITALS.map(({ field, ...meta }) => ({
       ...meta,
       display: shown(record[field]),
-      series: wrap(single(field)),
+      history: single(field),
     })),
     {
       key: "bmi",
       label: "BMI",
       unit: "kg/m²",
       display: latestBmi === null ? EMPTY : formatBmi(latestBmi),
-      series: wrap(trend(ordered, (item) => calculateBmi(item.weight, item.height))),
+      history: history((item) => [calculateBmi(item.weight, item.height)], (item) => formatBmi(calculateBmi(item.weight, item.height))),
     },
     // Optional Additional Measurement: listed only when the latest visit has it.
     ...(hasVitalValue(record.fbs)
-      ? [{ key: "fbs", label: "FBS", unit: "mg/dL", display: shown(record.fbs), series: wrap(single("fbs")) }]
+      ? [{ key: "fbs", label: "FBS", unit: "mg/dL", display: shown(record.fbs), history: single("fbs") }]
       : []),
   ];
 
   return { record, recordedAt: getVitalRecordDate(record), rows };
+}
+
+/** Relative mini-chart: equally spaced recorded visits, with shared BP scaling.
+ * Gaps break a line; a single reading remains one point; flat values stay flat.
+ */
+export function buildVitalTrendPlot(history = []) {
+  const values = history.flatMap((point) => point.values).filter(Number.isFinite);
+  if (!values.length) return { points: [], lines: [] };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const points = history.map((point, index) => ({
+    ...point,
+    x: history.length === 1 ? 50 : 6 + (index * 88) / (history.length - 1),
+    ys: point.values.map((value) => !Number.isFinite(value) ? null : max === min ? 50 : 82 - ((value - min) / (max - min)) * 64),
+  }));
+  const lines = [];
+  const count = Math.max(...points.map((point) => point.ys.length));
+  for (let seriesIndex = 0; seriesIndex < count; seriesIndex += 1) {
+    let segment = [];
+    const finish = () => {
+      if (segment.length > 1) lines.push({ seriesIndex, points: segment });
+      segment = [];
+    };
+    for (const point of points) {
+      const y = point.ys[seriesIndex];
+      if (y === null || y === undefined) finish();
+      else segment.push({ x: point.x, y });
+    }
+    finish();
+  }
+  return { points, lines };
 }

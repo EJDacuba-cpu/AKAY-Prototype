@@ -7,6 +7,7 @@ import {
 import { refreshNotifications } from "./notificationService";
 import { queryKeys } from "../utils/queryKeys";
 import { arrivalToReferral } from "../utils/referralArrival";
+import { fetchAllReportPages } from "./reportingLists";
 // Re-exported so existing call sites keep importing gate helpers from the
 // referral service, while the contract itself stays dependency-free.
 export { isNoProviderAvailableError } from "../utils/referralGateErrors";
@@ -224,6 +225,10 @@ export function saveReferrals(referrals) {
 
 export async function getReferrals() {
   return listReferrals();
+}
+
+export async function getAllReferrals(params = {}) {
+  return fetchAllReportPages("/referrals", { params, mapItem: normalizeReferral });
 }
 
 export async function getIncomingReferrals(params = {}) {
