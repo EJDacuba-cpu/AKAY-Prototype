@@ -6,9 +6,9 @@ import { getMedicineInventoryView, stockStatusTone, expiryStatusTone } from '../
 import { inventoryActions, ledgerQuantity, medicineDetailsPath } from '../../../utils/medicineLedger';
 
 const icons = { details: Eye, restock: PackagePlus, deduct: PackageMinus, quarantine: ShieldAlert, history: History };
-export function LedgerStamp({ label, tone = 'neutral' }) {
+export function LedgerStamp({ label, tone = 'neutral', appearance = 'badge' }) {
   const tones = { info: 'border-info-100 bg-info-50 text-info-700', warning: 'border-warning-100 bg-warning-50 text-warning-700', danger: 'border-alert-100 bg-alert-50 text-alert-700', neutral: 'border-neutral-200 bg-neutral-100 text-neutral-600' };
-  return <span data-tone={tone} className={`medicine-inventory-status inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tones[tone] || tones.neutral}`}><span aria-hidden="true" className="medicine-inventory-status-dot size-1.5 rounded-full bg-current" />{label}</span>;
+  return <span data-tone={tone} className={`medicine-inventory-status inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${tones[tone] || tones.neutral} ${appearance === 'plain' ? 'medicine-inventory-status--plain' : ''}`}><span aria-hidden="true" className="medicine-inventory-status-dot size-1.5 rounded-full bg-current" />{label}</span>;
 }
 export function MedicineQuantity({ item }) {
   const { recorded, available, differs } = ledgerQuantity(item);

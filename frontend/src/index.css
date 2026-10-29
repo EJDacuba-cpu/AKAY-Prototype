@@ -717,7 +717,8 @@ textarea,
   justify-content: center;
 }
 
-.medicine-inventory-sheet .medicine-inventory-status {
+.medicine-inventory-sheet .medicine-inventory-status,
+.medicine-inventory-status--plain {
   position: relative;
   border: 0;
   background: transparent;
@@ -730,7 +731,8 @@ textarea,
   text-transform: none;
 }
 
-.medicine-inventory-sheet .medicine-inventory-status-dot {
+.medicine-inventory-sheet .medicine-inventory-status-dot,
+.medicine-inventory-status--plain .medicine-inventory-status-dot {
   position: absolute;
   top: 50%;
   right: 0;
@@ -740,15 +742,18 @@ textarea,
   background: var(--color-text-muted);
 }
 
-.medicine-inventory-sheet .medicine-inventory-status[data-tone="info"] .medicine-inventory-status-dot {
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="info"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="info"] .medicine-inventory-status-dot {
   background: var(--color-info-500);
 }
 
-.medicine-inventory-sheet .medicine-inventory-status[data-tone="warning"] .medicine-inventory-status-dot {
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="warning"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="warning"] .medicine-inventory-status-dot {
   background: var(--color-warning-500);
 }
 
-.medicine-inventory-sheet .medicine-inventory-status[data-tone="danger"] .medicine-inventory-status-dot {
+.medicine-inventory-sheet .medicine-inventory-status[data-tone="danger"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="danger"] .medicine-inventory-status-dot {
   background: var(--color-danger);
 }
 

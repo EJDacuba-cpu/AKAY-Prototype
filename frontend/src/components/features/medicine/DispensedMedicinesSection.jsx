@@ -333,8 +333,8 @@ export default function DispensedMedicinesSection({
               {formatMedicineQuantity(selectedMedicine)}
             </strong>
           </span>
-          <LedgerStamp label={selectedStockStatus} tone={stockStatusTone(selectedStockStatus)} />
-          <LedgerStamp label={selectedExpiryStatus} tone={expiryStatusTone(selectedExpiryStatus)} />
+          <LedgerStamp label={selectedStockStatus} tone={stockStatusTone(selectedStockStatus)} appearance="plain" />
+          <LedgerStamp label={selectedExpiryStatus} tone={expiryStatusTone(selectedExpiryStatus)} appearance="plain" />
           <span>
             Available to dispense:{" "}
             <strong className="font-semibold text-ink-800">

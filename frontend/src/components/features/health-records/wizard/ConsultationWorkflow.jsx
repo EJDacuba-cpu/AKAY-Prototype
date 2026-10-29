@@ -1,11 +1,10 @@
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { Button } from "../../../ui/button";
 import ButtonSpinner from "../../../common/loading/ButtonSpinner";
 
 /**
- * The New Consultation workspace: the body and the sticky action bar. Styled to the EHR minimalism system - sharp corners, 1px borders instead
- * of shadows, one red (#DC2626) reserved for the primary action.
- *
- * "Completed" in the progress bar only means the user has moved past a step -
- * it is not a clinical sign-off - so it is derived purely from position.
+ * Consultation body and persistent action bar. Shared buttons keep navigation,
+ * draft actions and busy states consistent across consultation screens.
  */
 
 const EDGE = "-mx-3 px-3 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5";
@@ -39,37 +38,23 @@ export function ConsultationActionBar({
     <div
       className={`ehr-consult__actionbar sticky bottom-[-12px] z-30 mt-5 -mb-3 border-t border-[#D1D5DB] bg-white pb-3 sm:bottom-[-16px] sm:-mb-4 sm:pb-4 lg:bottom-[-20px] lg:-mb-5 lg:pb-5 ${EDGE}`}
     >
-      <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 py-2 sm:gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onPrevious}
-            disabled={previousDisabled}
-            className="inline-flex items-center gap-1.5 rounded-none border border-[#D1D5DB] bg-white px-4 py-2 text-[13px] font-semibold leading-tight text-[#111827] transition-colors duration-150 hover:bg-[#F9FAFB] active:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:border-[#E5E7EB] disabled:text-[#9CA3AF] disabled:hover:bg-white"
-          >
+      <div className="consultation-actions flex min-h-14 flex-wrap items-center justify-between gap-3 py-2">
+        <div className="consultation-actions__leading flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" onClick={onPrevious} disabled={previousDisabled} className="consultation-actions__previous">
+            <ArrowLeft size={14} aria-hidden="true" />
             {previousLabel}
-          </button>
+          </Button>
           {leadingAction}
         </div>
-
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className="consultation-actions__trailing ml-auto flex flex-wrap items-center justify-end gap-2">
           {secondaryAction}
-          <button
-            type="button"
-            onClick={onContinue}
-            disabled={continueBusy || continueDisabled}
-            aria-busy={continueBusy}
-            className="inline-flex items-center justify-center gap-2 rounded-none bg-[#DC2626] px-4 py-2 text-[13px] font-semibold leading-tight text-white transition-colors duration-150 hover:bg-red-700 active:bg-red-800 disabled:cursor-not-allowed disabled:bg-[#D1D5DB] disabled:text-[#6B7280]"
-          >
+          <Button type="button" variant="brand" onClick={onContinue} disabled={continueBusy || continueDisabled} aria-busy={continueBusy} className="consultation-actions__continue">
             {continueBusy ? (
-              <>
-                <ButtonSpinner />
-                {continueBusyLabel}
-              </>
+              <><ButtonSpinner />{continueBusyLabel}</>
             ) : (
-              continueLabel
+              <>{continueLabel}<ArrowRight size={14} aria-hidden="true" /></>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -4147,8 +4147,8 @@ export default function ConsultationWorkspace() {
       />
     </LockedFormContent>
   ) : (
-    <div className="space-y-8">
-    <ConditionCardsSection heading={<ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
+    <div className="ehr-consult__care-plan">
+    <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
     <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onRemove={removeFollowUpLink} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
     <NextStepsSection
       selectedPrograms={selectedPrograms}
@@ -4353,9 +4353,8 @@ export default function ConsultationWorkspace() {
       subtitle={stepHeading.subtitle}
     />
   );
-  // The heading is drawn once, at the top of the scrolling form column, so the
-  // step screens are handed this empty slot: it stops them falling back to
-  // their own titles.
+  // The main consultation screens share a header above their clinical sheets.
+  // Other headings stay in the form; empty slots prevent duplicate titles.
   const stepHeadingSlot = <></>;
 
   // Read-only recap for Review & Save, built from the page's existing state.
@@ -4519,15 +4518,20 @@ export default function ConsultationWorkspace() {
 
       <div className="ehr-consult__stage">
       <ConsultationWorkspaceBody>
+      {inConsultationWorkspace && [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, REVIEW_STEP].includes(currentStepKey) && (
+        <header className={`ehr-consult__header${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__header--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__header--care-plan" : currentStepKey === REVIEW_STEP ? " ehr-consult__header--review" : ""}`}>
+          {stepIndicator}
+        </header>
+      )}
       {/* Barangay Health Services (Interview step) or the Body Preview (Assessment
           step) lives in a fixed column to the right of the form.
           From 1024px this column stays put and only the form column
-          (heading included) scrolls (see consultation-ehr.css); below that everything
+          scrolls below the shared step header (see consultation-ehr.css); below that everything
           stacks and the page scrolls. Notices scroll with the form and sit
           outside the fieldset so a locked review does not disable them. */}
-      <div className={`ehr-consult__grid${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:grid-cols-[minmax(0,1fr)_264px] lg:items-start lg:gap-4" : ""}`}>
+      <div className={`ehr-consult__grid${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__grid--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__grid--care-plan" : ""}${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
-      {inConsultationWorkspace && currentStepKey !== NEXT_STEP && stepIndicator}
+      {inConsultationWorkspace && ![NEXT_STEP, INTERVIEW_STEP, ASSESSMENT_STEP, REVIEW_STEP].includes(currentStepKey) && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
       {draftMedicineWarnings.length > 0 && (
@@ -4649,14 +4653,13 @@ export default function ConsultationWorkspace() {
           </section>
         ) : (
         <div className={CONSULTATION_CARD_CLASS}>
-        <div className="anim-fade-up" style={stagger(2)}>
-          {showMaternalPatientWarning &&
-            activeFormStep === programStepKey("Maternal") && (
-              <div className="pb-4">
-                <MaternalClassificationWarning />
-              </div>
-            )}
-        </div>
+        {showMaternalPatientWarning && activeFormStep === programStepKey("Maternal") && (
+          <div className="anim-fade-up" style={stagger(2)}>
+            <div className="pb-4">
+              <MaternalClassificationWarning />
+            </div>
+          </div>
+        )}
 
 
         {/* ImmunizationVisitFields renders its own titled sections, so it is

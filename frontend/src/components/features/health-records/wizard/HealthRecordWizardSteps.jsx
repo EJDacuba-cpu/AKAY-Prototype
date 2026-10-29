@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 
 import ButtonSpinner from "../../../common/loading/ButtonSpinner";
+import { Button } from "../../../ui/button";
 
 /**
  * Shared shell for every step of the consultation workspace.
@@ -12,8 +13,7 @@ import ButtonSpinner from "../../../common/loading/ButtonSpinner";
  * the date and time it shows are properties of the visit being recorded, not of
  * whichever step happens to be on screen.
  *
- * Styled to the EHR minimalism system: sharp corners, 1px borders, no shadows,
- * red (#DC2626) only for the primary action and the active/selected state.
+ * Callers may add a surface class; shared clinical tokens own the finish.
  */
 export function WizardCard({
   title,
@@ -24,16 +24,17 @@ export function WizardCard({
   unboxed = false,
   headerActions = null,
   backAction = null,
+  className = "",
   children,
 }) {
   return (
-    <section className="anim-fade-up ml-0 mr-auto w-full max-w-6xl">
+    <section className={`anim-fade-up ml-0 mr-auto w-full max-w-6xl ${className}`}>
       <div className={unboxed ? "" : "rounded-none border border-[#E5E7EB] bg-white p-4 sm:p-5"}>
         {backAction}
         {/* The step-based consultation carries its title above the card, so the
             heading here is optional; the Visit Overview strip stays either way. */}
         {(title || subtitle || showVisitOverview || headerActions) && (
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="ehr-consult__visit-overview mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {title || subtitle ? (
           <div className="min-w-0">
             {title && (
@@ -231,6 +232,7 @@ export function ConsultationReviewStep({
 }) {
   return (
     <WizardCard
+      className="ehr-consult__review"
       unboxed
       title={indicator ? "" : "Review & Confirm"}
       subtitle={
@@ -245,7 +247,7 @@ export function ConsultationReviewStep({
       {errors.length > 0 && (
         <div
           role="alert"
-          className="mb-4 rounded-none border border-red-200 border-l-4 border-l-[#DC2626] bg-red-50 p-4"
+          className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4"
         >
           <p className="text-[13px] font-bold text-red-700">
             Please review before saving
@@ -258,22 +260,25 @@ export function ConsultationReviewStep({
         </div>
       )}
       {notice}
-      <div className="space-y-4">
+      <div className="ehr-consult__review-sections">
         {sections.map((section) => (
           <section
             key={section.key}
-            className="rounded-none border border-[#E5E7EB] bg-white"
+            className="ehr-consult__review-card border border-[var(--color-border)] bg-white"
           >
-            <div className="flex items-center justify-between gap-3 border-b border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2">
+            <div className="ehr-consult__review-card-header flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-wide text-[#111827]">{section.title}</h3>
               {section.stepKey && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="compact"
                   onClick={() => onEditStep(section.stepKey)}
-                  className="text-[12px] font-semibold text-[#DC2626] hover:text-red-700"
+                  aria-label={`Edit ${section.title}`}
+                  className="ehr-consult__review-edit"
                 >
                   Edit
-                </button>
+                </Button>
               )}
             </div>
             {section.rows.length > 0 && (
@@ -281,7 +286,7 @@ export function ConsultationReviewStep({
               {section.rows.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="grid gap-1 px-4 py-2 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
+                  className="ehr-consult__review-row grid gap-1 px-5 py-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
                 >
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                     {label}

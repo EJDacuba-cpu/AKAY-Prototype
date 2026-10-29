@@ -114,7 +114,7 @@ function ConcernRow({
         )}
       </div>
       {showDetails ? (
-        <>
+        <div className="concern-reveal space-y-2">
           <fieldset className="border-t border-[#E5EEFF] pt-2">
             <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">Reporting Classification (check all applicable)</legend>
             <p className="clear-both text-xs text-[#545F73]">Optional. Choose the reports this health concern belongs to, if any apply.</p>
@@ -172,7 +172,7 @@ function ConcernRow({
               onFollowUpChange={(next) => onFollowUpChange?.(entry.id, next)}
             />
           )}
-        </>
+        </div>
       ) : showHint ? (
         <p className="text-xs leading-5 text-[#708095]">Optional. Prenatal, family planning, and immunization visits can continue without a health concern.</p>
       ) : null}
