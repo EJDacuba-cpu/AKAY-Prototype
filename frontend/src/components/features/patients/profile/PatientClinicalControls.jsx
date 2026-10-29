@@ -65,16 +65,16 @@ const ARC = {
  * use. With `arc` the three controls curve around the left of the body figure
  * (inside its frame); without it they sit in a row.
  */
-export default function PatientClinicalControls({ background, conditions, records, recordsLoading, recordsError, openFact, onFactChange, onViewRecord, arc = false }) {
+export default function PatientClinicalControls({ background, conditions, records, recordsLoading, recordsError, openFact, onFactChange, onViewRecord, arc = false, rail = false }) {
   const groups = conditions?.groups;
   const conditionCount = (groups?.confirmed?.length || 0) + (groups?.legacyPending?.length || 0) + (groups?.underEvaluation?.length || 0);
   const allergies = summarizeAllergies(background?.allergies);
   const hasAllergy = allergies.status === "recorded";
 
-  const place = (key) => (arc ? { placement: "left", style: arcPosition(ARC[key].angle, ARC[key].offset) } : {});
+  const place = (key) => (rail ? { placement: "rail", side: "left" } : arc ? { placement: "left", style: arcPosition(ARC[key].angle, ARC[key].offset) } : {});
 
   return (
-    <div role="group" aria-label="Clinical details" className={arc ? "contents" : "flex justify-center gap-5"}>
+    <div role="group" aria-label="Clinical details" className={arc || rail ? "contents" : "flex justify-center gap-5"}>
       <ProfileFactPopover label="Medical conditions" Icon={HeartPulse} count={conditionCount} open={openFact === "conditions"} onOpenChange={(open) => onFactChange(open ? "conditions" : null)} {...place("conditions")}>
         <MedicalConditionsGroups groups={groups} isLoading={conditions?.isLoading} isError={conditions?.isError} />
       </ProfileFactPopover>

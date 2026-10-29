@@ -19,15 +19,17 @@ const OUTCOME_TONE = { Referred: "attention", "Follow-up": "active", Routine: "q
 const ROW_BUTTON =
   "group -mx-1.5 grid w-[calc(100%+0.75rem)] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink-400/50";
 
-function CareTrackingSection({ entries, programLabels, onViewAll }) {
+function CareTrackingSection({ entries, programLabels, onViewAll, compact = false, previewCount = PREVIEW_COUNT }) {
   return (
     <OverviewCard
       id="overview-care-tracking"
-      share={2.5}
+      className={compact ? "clinical-summary-card" : ""}
+      scrollable={!compact}
+      share={compact ? (entries.length ? 2 : 1) : 2.5}
       title="Care programs"
-      action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all</TextAction> : null}
+      action={entries.length > 0 ? <TextAction onClick={onViewAll}>View all{compact ? ` (${entries.length})` : ""}</TextAction> : null}
     >
-      {programLabels.length > 0 && (
+      {!compact && programLabels.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {programLabels.map((label) => (
             <span key={label} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-700">
@@ -40,7 +42,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
         <OverviewNote>No applicable care programs for this patient yet.</OverviewNote>
       ) : (
         <ul className="divide-y divide-neutral-100">
-          {entries.map((entry) => (
+          {entries.slice(0, compact ? previewCount : entries.length).map((entry) => (
             <li key={entry.key} className="flex items-center justify-between gap-3 py-1.5 first:pt-0">
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-medium text-neutral-900">{entry.label}</span>
@@ -61,12 +63,14 @@ function CareTrackingSection({ entries, programLabels, onViewAll }) {
   );
 }
 
-function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) {
-  const visible = referrals.slice(0, PREVIEW_COUNT);
+function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView, compact = false, previewCount = PREVIEW_COUNT }) {
+  const visible = referrals.slice(0, previewCount);
   return (
     <OverviewCard
       id="overview-referrals"
-      share={2}
+      className={compact ? "clinical-summary-card" : ""}
+      scrollable={!compact}
+      share={compact ? (referrals.length ? 2 : 1) : 2}
       title="Referrals"
       action={referrals.length > 0 ? <TextAction onClick={onViewAll}>View all ({referrals.length})</TextAction> : null}
     >
@@ -110,13 +114,16 @@ function ReferralsPreview({ referrals, isLoading, isError, onViewAll, onView }) 
   );
 }
 
-function FollowUpsPreview({ followUps, onView }) {
-  const visible = followUps.slice(0, PREVIEW_COUNT);
+function FollowUpsPreview({ followUps, onView, onViewAll, compact = false, previewCount = PREVIEW_COUNT }) {
+  const visible = followUps.slice(0, previewCount);
   return (
     <OverviewCard
       id="overview-follow-ups"
-      share={2}
+      className={compact ? "clinical-summary-card" : ""}
+      scrollable={!compact}
+      share={compact ? (followUps.length ? 2 : 1) : 2}
       title="Upcoming follow-ups"
+      action={compact && followUps.length > 0 && onViewAll ? <TextAction onClick={onViewAll}>View all ({followUps.length})</TextAction> : null}
       meta={followUps.length ? `${followUps.length} active` : null}
     >
       {visible.length === 0 ? (
@@ -151,12 +158,14 @@ function FollowUpsPreview({ followUps, onView }) {
   );
 }
 
-function RecentVisitsPreview({ records, isLoading, onViewAll, onView }) {
-  const visible = records.slice(0, PREVIEW_COUNT);
+function RecentVisitsPreview({ records, isLoading, onViewAll, onView, compact = false, previewCount = PREVIEW_COUNT }) {
+  const visible = records.slice(0, previewCount);
   return (
     <OverviewCard
       id="overview-recent-visits"
-      share={2}
+      className={compact ? "clinical-summary-card" : ""}
+      scrollable={!compact}
+      share={compact ? (records.length ? 2 : 1) : 2}
       title="Recent visits"
       action={records.length > 0 ? <TextAction onClick={onViewAll}>View all ({records.length})</TextAction> : null}
     >
@@ -219,8 +228,8 @@ export default function ClinicalOverviewColumn({
   onViewRecord,
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <ReferralsPreview
+    <div className="clinical-summary flex min-h-0 flex-1 flex-col gap-3">
+      <ReferralsPreview compact previewCount={1}
         referrals={referrals}
         isLoading={referralsLoading}
         isError={referralsError}
@@ -228,10 +237,10 @@ export default function ClinicalOverviewColumn({
         onView={onViewReferral}
       />
       {typeof onViewFollowUp === "function" && (
-        <FollowUpsPreview followUps={activeFollowUps} onView={onViewFollowUp} />
+        <FollowUpsPreview compact previewCount={1} onViewAll={onViewFollowUp} followUps={activeFollowUps} onView={onViewFollowUp} />
       )}
-      <CareTrackingSection entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
-      <RecentVisitsPreview records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
+      <CareTrackingSection compact previewCount={1} entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
+      <RecentVisitsPreview compact previewCount={1} records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>
   );
 }

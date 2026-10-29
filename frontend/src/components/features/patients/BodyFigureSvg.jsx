@@ -184,11 +184,19 @@ export default function BodyFigureSvg({
     const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
     let to;
     if (opens === "right" || opens === "left") {
-      to = { x: opens === "right" ? left : left + POPOVER_WIDTH, y: clamp(markerPx.y, top, top + popHeight) };
+      // Attach slightly above the marker so the diagonal remains visible even
+      // when the pop-up is vertically centered on it. Keep measured anchors
+      // clear of the rounded corners without moving the pop-up itself.
+      const anchorY = markerPx.y - 14;
+      const inset = Math.min(8, popHeight / 2);
+      to = {
+        x: opens === "right" ? left : left + POPOVER_WIDTH,
+        y: popHeight > 0 ? clamp(anchorY, top + inset, top + popHeight - inset) : anchorY,
+      };
     } else {
       to = { x: clamp(markerPx.x, left, left + POPOVER_WIDTH), y: opens === "below" ? top : top + popHeight };
     }
-    return { d: leaderPath(markerPx, to), length: Math.hypot(to.x - markerPx.x, to.y - markerPx.y) };
+    return { d: leaderPath(markerPx, to), to };
   })();
 
   const popoverReady = Boolean(placement) && measuredHeight != null;
@@ -277,13 +285,15 @@ export default function BodyFigureSvg({
             <path
               key={revealed}
               d={leaderLine.d}
+              pathLength={1}
               fill="none"
-              stroke="#DC2626"
+              stroke="var(--color-brand)"
               strokeWidth={1.25}
               strokeLinecap="round"
               className="anatomy-link-draw"
-              style={{ "--link-length": leaderLine.length, strokeDasharray: leaderLine.length }}
+              style={{ "--link-length": 1, strokeDasharray: 1 }}
             />
+            <circle cx={leaderLine.to.x} cy={leaderLine.to.y} r={2} fill="var(--color-brand)" />
           </svg>
         )}
 

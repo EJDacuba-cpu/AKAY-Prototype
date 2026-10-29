@@ -63,8 +63,41 @@ test("placePopover keeps the side when the free space exactly fits", () => {
   assert.equal(placePopover({ x: 87, y: 200 }, FIG, { width: 200, height: 80 }).side, "below");
 });
 
-test("leaderPath is a straight segment", () => {
-  assert.equal(leaderPath({ x: 10, y: 20 }, { x: 110, y: 60 }), "M 10 20 L 110 60");
+function leaderPoints(from, to) {
+  const tokens = leaderPath(from, to).split(" ");
+  assert.equal(tokens.length, 9, "expected a diagonal segment followed by a horizontal segment");
+  assert.deepEqual([tokens[0], tokens[3], tokens[6]], ["M", "L", "L"]);
+  const points = [1, 4, 7].map((offset) => ({ x: Number(tokens[offset]), y: Number(tokens[offset + 1]) }));
+  assert.ok(points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)));
+  assert.deepEqual(points[0], from);
+  assert.deepEqual(points[2], to);
+  assert.equal(points[1].y, to.y, "the last segment enters the pop-up horizontally");
+  return points;
+}
+
+test("leaderPath connects either side with a diagonal and a horizontal tail", () => {
+  for (const [from, to] of [
+    [{ x: 10, y: 20 }, { x: 110, y: 60 }],
+    [{ x: 110, y: 20 }, { x: 10, y: 60 }],
+    [{ x: 10, y: 60 }, { x: 110, y: 20 }],
+  ]) {
+    const [, bend] = leaderPoints(from, to);
+    assert.ok(bend.x > Math.min(from.x, to.x) && bend.x < Math.max(from.x, to.x));
+    assert.notEqual(bend.y, from.y);
+  }
+});
+
+test("leaderPath keeps a horizontal tail for pop-ups directly above or below a marker", () => {
+  for (const y of [10, 90]) {
+    const from = { x: 50, y: 50 };
+    const [, bend] = leaderPoints(from, { x: 50, y });
+    assert.notEqual(bend.x, from.x);
+  }
+});
+
+test("leaderPath stays finite for aligned or coincident endpoints", () => {
+  leaderPoints({ x: 10, y: 20 }, { x: 110, y: 20 });
+  leaderPoints({ x: 10, y: 20 }, { x: 10, y: 20 });
 });
 
 test("placePopover uses a preferred side that fits even when the other side is larger", () => {

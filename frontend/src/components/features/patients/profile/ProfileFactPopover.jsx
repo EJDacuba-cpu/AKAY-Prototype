@@ -20,14 +20,17 @@ const LABEL_BOX = {
  * A labelled round control. Details are click-only; a known allergy stays
  * visible. With a placement the control is positioned by `style` on an arc
  * around the body figure and the label sits beside ("left") or under ("below")
- * the circle; without one it is a plain stacked control.
+ * the circle; without one it is a plain stacked control. A `rail` placement
+ * follows the anatomy workspace's responsive curve without absolute positioning here.
  */
 export default function ProfileFactPopover({ label, Icon, warning, count, open, onOpenChange, side = "right", size = "md", placement, style, children }) {
   const labelId = useId();
   const titleId = useId();
   const warningId = useId();
   const small = size === "sm";
-  const labelClass = LABEL_CLASS[placement || "default"];
+  const rail = placement === "rail";
+  const positioned = placement && !rail;
+  const labelClass = LABEL_CLASS[rail ? "default" : placement || "default"];
   const labels = (
     <>
       <span id={labelId} className={labelClass}>{label}</span>
@@ -38,7 +41,7 @@ export default function ProfileFactPopover({ label, Icon, warning, count, open, 
   return (
     <div
       style={style}
-      className={placement ? `absolute -translate-x-1/2 -translate-y-1/2 ${small ? "size-8" : "size-12"}` : "flex min-w-0 flex-col items-center gap-1.5 text-center"}
+      className={positioned ? `absolute -translate-x-1/2 -translate-y-1/2 ${small ? "size-8" : "size-12"}` : `flex min-w-0 flex-col items-center gap-1.5 text-center ${rail ? "anatomy-arc-control" : ""}`}
     >
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
@@ -75,7 +78,7 @@ export default function ProfileFactPopover({ label, Icon, warning, count, open, 
           {children}
         </PopoverContent>
       </Popover>
-      {placement ? <div className={LABEL_BOX[placement]}>{labels}</div> : labels}
+      {rail ? <div className="anatomy-arc-control__label">{labels}</div> : positioned ? <div className={LABEL_BOX[placement]}>{labels}</div> : labels}
     </div>
   );
 }

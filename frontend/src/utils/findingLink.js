@@ -62,7 +62,14 @@ export function placePopover(marker, figure, popover, gap = 14, prefer) {
   };
 }
 
-/** A straight leader line from a marker centre to a popover edge point. */
+/** A diagonal from the marker, then a horizontal tail into the pop-up edge.
+ * A vertical placement gets a short elbow so the two segments stay visible.
+ */
 export function leaderPath(from, to) {
-  return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const bendX = dx === 0
+    ? from.x + Math.min(16, Math.abs(dy) / 2)
+    : from.x + dx * 0.7;
+  return `M ${from.x} ${from.y} L ${bendX} ${to.y} L ${to.x} ${to.y}`;
 }

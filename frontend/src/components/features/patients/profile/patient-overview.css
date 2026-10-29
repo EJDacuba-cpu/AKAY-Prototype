@@ -1,5 +1,5 @@
-/* Patient Overview: the accepted three-column workspace. Layout rules stay local
-   to the BHC profile; long card bodies scroll without moving the header. */
+/* BHC Patient Overview: one anatomy workspace, with normal page scrolling.
+   The image and findings keep the same 2:3 frame and normalized coordinates. */
 .patient-profile-content { min-height: 0; --profile-panel-gap: 12px; }
 .patient-profile-content .bhc-patient-profile { min-width: 0; }
 .patient-profile-content .patient-profile-panels { min-width: 0; }
@@ -14,45 +14,93 @@
 .patient-profile-content #overview-visual-summary > header { padding-right: 0; }
 .patient-profile-content #overview-visual-summary [role="group"]:not(.contents) { flex-wrap: wrap; column-gap: 16px; row-gap: 8px; }
 .patient-profile-content #overview-visual-summary [role="group"] button { flex-shrink: 0; }
-.patient-profile-content .patient-anatomy-frame > figure { height: var(--figure-s); }
-.patient-profile-content .patient-anatomy-ruler { height: var(--figure-s); left: calc(50cqw + var(--figure-s) / 3 + 0.75rem); }
-.patient-profile-content #profile-panel-overview > div { min-width: 0; }
-@media (max-width: 1099px), (max-height: 599px) {
-  .patient-profile-content .bhc-patient-profile { height: auto; }
-  .patient-profile-content .patient-profile-panels { flex: none; }
-  .patient-profile-content #profile-panel-overview { flex: none; overflow: visible; grid-template-columns: minmax(0,1fr); }
-  .patient-profile-content #profile-panel-overview > div { align-self: stretch; }
-  .patient-profile-content .patient-overview-vitals { order: 2; }
-  .patient-profile-content .patient-overview-anatomy { order: 1; grid-column: 1 / -1; }
-  .patient-profile-content .patient-overview-clinical { order: 3; }
-  .patient-profile-content #overview-visual-summary .patient-anatomy-frame { height: clamp(260px, 55svh, 420px); }
-  .patient-profile-content .patient-anatomy-measures { gap: 16px; }
+
+.patient-profile-content:has(.anatomy-board) { overflow-y: auto; }
+.patient-profile-content .bhc-patient-profile:has(.anatomy-board) { height: auto; min-height: 100%; }
+.patient-profile-content .patient-profile-panels:has(.anatomy-board) { flex: 1 0 auto; }
+.patient-profile-content .anatomy-board { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; align-items: stretch; }
+.patient-profile-content .anatomy-board > div { min-width: 0; }
+
+.patient-profile-content .patient-anatomy-integrated { --anatomy-model-height: 400px; display: flex; min-width: 0; flex-direction: column; padding: 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
+.patient-profile-content .patient-anatomy-integrated > header { padding: 0; margin-bottom: 12px; }
+.patient-profile-content .patient-anatomy-workspace { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
+.patient-profile-content .patient-anatomy-layout { --anatomy-side-space: 80px; display: flex; min-width: 0; flex-direction: column; order: 1; }
+.patient-profile-content .patient-anatomy-vitals { min-width: 0; order: 2; }
+
+/* The frame content box excludes the ruler/control lane. Image and markers
+   keep their original proportional frame as the surrounding controls reflow. */
+.patient-profile-content .patient-anatomy-frame { --figure-s: min(var(--anatomy-model-height), 150cqw); height: var(--anatomy-model-height); min-height: var(--anatomy-model-height); padding: 0 var(--anatomy-side-space) 0 0; flex: none; }
+.patient-profile-content .patient-anatomy-frame > figure { height: var(--figure-s); width: auto; max-width: none; flex: none; }
+.patient-profile-content .patient-anatomy-ruler { height: var(--figure-s); left: calc(50cqw + var(--figure-s) / 3 + 12px); }
+.patient-profile-content .patient-anatomy-stage { min-width: 0; flex: none; }
+.patient-profile-content .patient-anatomy-detail-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin-top: 12px; }
+.patient-profile-content .anatomy-arc-control__label { min-width: 0; }
+.patient-profile-content .patient-anatomy-controls-row { margin: 0 0 8px; }
+.patient-profile-content .patient-anatomy-controls-row [role=group] { flex-wrap: wrap; gap: 12px; }
+.patient-profile-content .patient-anatomy-controls-row button { width: 36px; height: 36px; }
+.patient-profile-content .patient-anatomy-measures { padding: 0 var(--anatomy-side-space) 0 0; margin-top: 8px; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: end; gap: 12px; }
+.patient-profile-content .patient-anatomy-measures > div { gap: 12px; }
+.patient-profile-content .patient-anatomy-measures ol { height: 24px; }
+.patient-profile-content .patient-anatomy-measures [role=group] button { width: 32px; height: 32px; }
+.patient-profile-content .patient-anatomy-layout > details { margin: 8px auto 0; max-height: none; overflow: visible; }
+.patient-profile-content .patient-anatomy-layout > details summary { padding-block: 8px; }
+
+/* Vitals stay compact. The desktop crescent uses a reserved lane, so its
+   horizontal offset cannot collide with the body or its ruler. */
+.patient-profile-content .patient-vitals { container-type: normal; }
+.patient-profile-content .patient-vitals__body { overflow: visible; }
+.patient-profile-content .patient-vitals__grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.patient-profile-content .patient-vitals__tile { height: 88px; min-height: 88px; padding: 8px 12px; }
+.patient-profile-content .patient-vitals__tile > div:first-child { display: grid; grid-template-columns: minmax(0,1fr); gap: 2px; }
+.patient-profile-content .patient-vitals__fbs { grid-column: 1/-1; }
+
+/* Enlarge in place for pointer inspection; readings are fully visible at rest. */
+@media (hover: hover) and (pointer: fine) {
+  .patient-profile-content .patient-vitals__tile,
+  .patient-profile-content .patient-vitals__fbs { position: relative; transform-origin: right center; transition: scale 160ms cubic-bezier(0.16,1,0.3,1), border-color 160ms; }
+  .patient-profile-content .patient-vitals__tile:hover,
+  .patient-profile-content .patient-vitals__fbs:hover { scale: 1.035; z-index: 1; border-color: var(--color-border-strong); }
 }
-@media (min-width: 700px) and (max-width: 1099px) and (min-height: 600px) {
-  .patient-profile-content #profile-panel-overview { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+@media (prefers-reduced-motion: reduce) {
+  .patient-profile-content .patient-vitals__tile,
+  .patient-profile-content .patient-vitals__fbs { transition: border-color 120ms; }
+  .patient-profile-content .patient-vitals__tile:hover,
+  .patient-profile-content .patient-vitals__fbs:hover { scale: 1; }
 }
-@media (min-width: 1100px) and (min-height: 600px) {
-  .patient-profile-content:has(#profile-panel-overview) { overflow-y: hidden; }
-  .patient-profile-content .bhc-patient-profile:has(#profile-panel-overview) { height: 100%; min-height: 0; }
-  .patient-profile-content .patient-profile-panels:has(#profile-panel-overview) { flex: 1 1 0%; min-height: 0; }
-  .patient-profile-content #profile-panel-overview { display: grid; flex: 1 1 0%; min-height: 0; overflow: visible; align-content: stretch; grid-template-columns: 10.5rem minmax(0,1fr) 14rem; grid-template-rows: minmax(0,1fr); }
-  .patient-profile-content #profile-panel-overview > div { min-height: 0; height: 100%; align-self: stretch; grid-column: auto; }
-  .patient-profile-content .patient-overview-vitals { order: 1; }
-  .patient-profile-content .patient-overview-anatomy { order: 2; }
-  .patient-profile-content .patient-overview-clinical { order: 3; }
-  .patient-profile-content .patient-overview-vitals > section { flex: 1 1 0%; min-height: 0; }
-  .patient-profile-content .patient-overview-vitals > section > div { display: block; min-height: 0; flex: 1 1 0%; overflow-y: auto; scrollbar-width: thin; }
-  .patient-profile-content .patient-overview-clinical > div { min-height: 0; height: 100%; gap: var(--profile-panel-gap); }
-  .patient-profile-content .patient-overview-clinical > div > section { min-height: 0 !important; flex-basis: 0; flex-shrink: 1; padding: 10px 12px; }
-  .patient-profile-content .patient-overview-clinical > div > section > div { overflow-y: auto; }
-  .patient-profile-content #overview-visual-summary { display: flex; height: 100%; min-height: 0; flex-direction: column; padding: 8px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); }
-  .patient-profile-content #overview-visual-summary > header { flex-shrink: 0; margin-bottom: 6px; }
-  .patient-profile-content .patient-anatomy-layout { display: flex; min-height: 0; flex: 1 1 0%; flex-direction: column; }
-  .patient-profile-content .patient-anatomy-controls-row { flex-shrink: 0; margin-bottom: 8px; }
-  .patient-profile-content .patient-anatomy-stage { min-height: 0; flex: 1 1 0%; }
-  .patient-profile-content #overview-visual-summary .patient-anatomy-frame { height: 100%; min-height: 100px; padding-block: 4px; }
-  .patient-profile-content .patient-anatomy-measures { flex-shrink: 0; margin-top: 6px; gap: 8px; }
-  .patient-profile-content .patient-anatomy-layout > details { flex-shrink: 0; margin-top: 6px; max-height: 30%; overflow-y: auto; scrollbar-width: thin; }
-  .patient-profile-content .patient-anatomy-layout > details summary { padding-block: 4px; }
-  .patient-profile-content #overview-visual-summary [role="group"]:not(.contents) button { width: 38px; height: 38px; }
+
+/* Each summary links to the full list rather than opening a nested scroll. */
+.patient-profile-content .clinical-summary { display: grid; grid-auto-rows: minmax(112px,1fr); gap: 12px; height: 100%; }
+.patient-profile-content .clinical-summary-card { padding: 12px; min-height: 112px !important; }
+.patient-profile-content .clinical-summary-card > div { overflow: visible; }
+.patient-profile-content .clinical-summary-card > header { gap: 6px; margin-bottom: 6px; }
+.patient-profile-content .clinical-summary-card > header > button { font-size: 12px; white-space: nowrap; }
+.patient-profile-content .clinical-summary-card > div > p { font-size: 12px; line-height: 1.5; }
+.patient-profile-content .clinical-summary-card > div li button { padding-block: 4px; column-gap: 6px; }
+
+@media (min-width: 1100px) {
+  .patient-profile-content .anatomy-board { grid-template-columns: minmax(0,1fr) 224px; }
+}
+@container anatomy (min-width: 560px) {
+  .patient-profile-content .patient-anatomy-workspace { display: grid; grid-template-columns: 168px minmax(0,384px); justify-content: center; align-items: center; gap: 8px; }
+  .patient-profile-content .patient-anatomy-layout { order: initial; }
+  .patient-profile-content .patient-anatomy-vitals { order: initial; padding-right: 24px; align-self: start; }
+  .patient-profile-content .patient-vitals__grid { grid-template-columns: minmax(0,1fr); }
+  .patient-profile-content .patient-vitals__tile { height: 80px; min-height: 80px; }
+  .patient-profile-content .patient-vitals__tile:first-child,
+  .patient-profile-content .patient-vitals__tile:nth-child(4),
+  .patient-profile-content .patient-vitals__fbs { translate: 24px 0; }
+}
+
+/* Use the available canvas, including when the sidebar is collapsed. The
+   six controls occupy one right-hand curve rather than a row above the body. */
+@container anatomy (min-width: 720px) {
+  .patient-profile-content .patient-anatomy-workspace { grid-template-columns: 168px minmax(0,528px); }
+  .patient-profile-content .patient-anatomy-layout { --anatomy-side-space: 260px; }
+  .patient-profile-content .patient-anatomy-detail-controls { position: absolute; top: 0; right: 20px; width: 136px; height: var(--anatomy-model-height); margin: 0; grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(6,minmax(0,1fr)); align-items: center; gap: 0; }
+  .patient-profile-content .patient-anatomy-detail-controls .anatomy-arc-control { flex-direction: row; justify-content: start; gap: 8px; text-align: left; }
+  .patient-profile-content .patient-anatomy-detail-controls .anatomy-arc-control__label { width: 80px; flex: none; }
+  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Clinical details"] > :nth-child(2),
+  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Lifestyle details"] > :nth-child(2) { translate: 12px 0; }
+  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Clinical details"] > :nth-child(3),
+  .patient-profile-content .patient-anatomy-detail-controls [aria-label="Lifestyle details"] > :nth-child(1) { translate: 20px 0; }
 }

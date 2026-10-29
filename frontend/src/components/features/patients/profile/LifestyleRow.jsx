@@ -17,11 +17,11 @@ const ITEMS = [
  * down and never grades it. With `arc` the three smaller controls tuck into
  * a curve just inside the clinical controls, hugging the figure's left side.
  */
-export default function LifestyleRow({ personalSocial, openFact, onFactChange, arc = false }) {
+export default function LifestyleRow({ personalSocial, openFact, onFactChange, arc = false, rail = false }) {
   const social = personalSocial || {};
 
   return (
-    <div role="group" aria-label="Lifestyle details" className={arc ? "contents" : "flex justify-center gap-8"}>
+    <div role="group" aria-label="Lifestyle details" className={arc || rail ? "contents" : "flex justify-center gap-8"}>
       {ITEMS.map(({ key, label, Icon, angle, read }) => {
         const value = read(social[key]);
         return (
@@ -29,10 +29,10 @@ export default function LifestyleRow({ personalSocial, openFact, onFactChange, a
             key={key}
             label={label}
             Icon={Icon}
-            side={arc ? "right" : "top"}
+            side={rail ? "left" : arc ? "right" : "top"}
             open={openFact === key}
             onOpenChange={(open) => onFactChange(open ? key : null)}
-            {...(arc ? { size: "sm", placement: "icon", style: arcPosition(angle, 0.25) } : {})}
+            {...(rail ? { placement: "rail" } : arc ? { size: "sm", placement: "icon", style: arcPosition(angle, 0.25) } : {})}
           >
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-600">{value || "Not recorded"}</p>
           </ProfileFactPopover>

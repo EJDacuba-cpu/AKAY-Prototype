@@ -424,11 +424,11 @@ function LivePatientDetails() {
             {activeTab === "overview" &&
               (canViewHistory ? (
                 <PatientOverviewBoard
-                  left={<VitalsTiles records={records} isLoading={recordsLoading} />}
+                  anatomyWorkspace
                   center={
                     <AnatomyFindingsPanel
+                      vitals={<VitalsTiles records={records} isLoading={recordsLoading} />}
                       key={patientId}
-                      fitToPanel
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}
                       conditions={conditions}

@@ -1,10 +1,13 @@
-/**
- * Vitals, an open anatomy canvas, and clinical cards. The outer columns have
- * readable width floors; the anatomy gets all remaining space. When the
- * available content width is narrower, the anatomy leads and the other
- * columns follow below. The board scrolls instead of shrinking the model.
- */
-export default function PatientOverviewBoard({ left, right, center }) {
+/** The BHC anatomy workspace shares its canvas with vitals; other profiles retain their existing board. */
+export default function PatientOverviewBoard({ left, right, center, anatomyWorkspace = false }) {
+  if (anatomyWorkspace) {
+    return (
+      <section role="tabpanel" id="profile-panel-overview" aria-labelledby="profile-tab-overview" className="anatomy-board min-w-0">
+        <div className="patient-overview-anatomy min-w-0">{center}</div>
+        <div className="patient-overview-clinical flex min-w-0 flex-col">{right}</div>
+      </section>
+    );
+  }
   return (
     <div
       role="tabpanel"

@@ -65,27 +65,26 @@ export default function AnatomyFindingsPanel({
   sex,
   birthDate,
   age = "",
-  fitToPanel = false,
+  vitals,
 }) {
   const [side, setSide] = useState("front");
   const [openFact, setOpenFact] = useState(null);
   const [reveal, dispatch] = useReducer(revealFocusReducer, INITIAL_REVEAL);
   const panelRef = useRef(null);
-  const [arcLayout, setArcLayout] = useState(true);
+  const [wideLayout, setArcLayout] = useState(true);
+  const hasVitals = Boolean(vitals);
+  const arcLayout = !hasVitals && wideLayout;
   const popoverId = `overview-figure-popover${useId()}`;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
   useEffect(() => {
     const panel = panelRef.current;
-    if (!panel || typeof ResizeObserver === "undefined") return undefined;
-    // A bounded workspace scales the figure with its controls; the original
-    // flowing layout keeps its wider threshold.
-    const minWidth = fitToPanel ? 520 : ARC_MIN_WIDTH;
-    const observer = new ResizeObserver(([entry]) => setArcLayout(entry.contentRect.width >= minWidth));
+    if (hasVitals || !panel || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(([entry]) => setArcLayout(entry.contentRect.width >= ARC_MIN_WIDTH));
     observer.observe(panel);
     return () => observer.disconnect();
-  }, [fitToPanel]);
+  }, [hasVitals]);
 
   const loadNote =
     recordsLoading && records.length === 0
@@ -237,8 +236,8 @@ export default function AnatomyFindingsPanel({
   };
 
   return (
-    <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className="@container/anatomy min-w-0 px-1 py-1">
-      <header className={`mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout ? "" : "pr-[6.5rem]"}`}>
+    <section id="overview-visual-summary" aria-labelledby="overview-visual-summary-title" className={`@container/anatomy min-w-0 px-1 py-1 ${vitals ? "patient-anatomy-integrated" : ""}`}>
+      <header className={`mb-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center ${arcLayout || hasVitals ? "" : "pr-[6.5rem]"}`}>
         <h2 id="overview-visual-summary-title" className="font-sans! text-[13px] font-semibold text-neutral-900">Visual health summary</h2>
         {loadNote ? (
           <p role="status" className="min-w-0 text-xs text-neutral-500">{loadNote}</p>
@@ -246,95 +245,112 @@ export default function AnatomyFindingsPanel({
           <p role="status" className="sr-only">{caption(summary, records.length > 0)}</p>
         )}
       </header>
-      <p className="mb-2 text-center text-xs text-neutral-500">Historical findings awaiting reassessment or last documented as present; not confirmed conditions.</p>
-      <div ref={panelRef} className="patient-anatomy-layout relative">
-        {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
-        {!arcLayout && (
-          <div className="patient-anatomy-controls-row mb-4">
-            <PatientClinicalControls
-              background={background}
-              conditions={conditions}
-              records={records}
-              recordsLoading={recordsLoading}
-              recordsError={recordsError}
-              openFact={openFact}
-              onFactChange={changeFact}
-              onViewRecord={viewRecord}
-              arc={arcLayout}
-            />
-          </div>
-        )}
-        <div className="patient-anatomy-stage min-w-0">
-          {/* Narrow layouts pad the right to reserve the ruler's lane; the wide one
-              centres the figure on the column. Model and findings share
-              one proportional frame, so markers stay attached as it scales.
-              In the wide layout the clinical and lifestyle controls curve
-              around the figure's left inside this same frame. */}
-          <div
-            style={{ "--figure-s": fitToPanel && arcLayout
-              ? "min(100cqh, max(240px, calc(150cqw - 510px)))"
-              : "min(100cqh, 150cqw)" }}
-            className={`patient-anatomy-frame relative flex h-[420px] min-w-0 items-center justify-center [container-type:size] @lg/anatomy:h-[520px] ${arcLayout ? "" : "pr-[6.5rem]"}`}
-          >
-            <BodyFigureSvg
-              sex={sex}
-              birthDate={birthDate}
-              side={side}
-              onToggleSide={toggleSide}
-              flipHint={flipHint}
-              flipCorner="left"
-              findingsByRegion={findingsByRegion}
-              isDesktop={isDesktop}
-              popoverId={popoverId}
-              activeRegion={activeRegion}
-              phase={phase}
-              pinned={pinned}
-              leader={leader}
-              onMarkerEnter={markerEnter}
-              onMarkerLeave={markerLeave}
-              onMarkerClick={markerClick}
-              onViewRecord={viewRecord}
-              onDismiss={dismiss}
-            />
-            <HeightRuler
-              height={measures.height}
-              isLoading={recordsLoading && records.length === 0}
-              className="patient-anatomy-ruler absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
-            />
-            {arcLayout && (
-              <>
-                <PatientClinicalControls
-                  background={background}
-                  conditions={conditions}
-                  records={records}
-                  recordsLoading={recordsLoading}
-                  recordsError={recordsError}
-                  openFact={openFact}
-                  onFactChange={changeFact}
-                  onViewRecord={viewRecord}
-                  arc={arcLayout}
-                />
-                <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} arc />
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Weight and BMI sit right under the feet, centred on the figure. */}
-        <div className={`patient-anatomy-measures mt-3 flex flex-col items-center gap-5 ${arcLayout ? "" : "pr-[6.5rem]"}`}>
-          {recordsLoading && records.length === 0 ? (
-            <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
-          ) : (
-            <WeightAndBmi weight={measures.weight} bmi={measures.bmi} />
+      <div className={vitals ? "patient-anatomy-workspace" : "contents"}>
+        {vitals && <div className="patient-anatomy-vitals">{vitals}</div>}
+        <div ref={panelRef} className="patient-anatomy-layout relative">
+          {showRowLine && <FindingLinkOverlay containerRef={panelRef} itemEl={focus.el} markerRegion={focus.region} />}
+          {!arcLayout && !hasVitals && (
+            <div className="patient-anatomy-controls-row mb-4">
+              <PatientClinicalControls
+                background={background}
+                conditions={conditions}
+                records={records}
+                recordsLoading={recordsLoading}
+                recordsError={recordsError}
+                openFact={openFact}
+                onFactChange={changeFact}
+                onViewRecord={viewRecord}
+                arc={arcLayout}
+              />
+            </div>
           )}
-          {!arcLayout && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
+          <div className="patient-anatomy-stage min-w-0">
+            {/* Narrow layouts pad the right to reserve the ruler's lane; the wide one
+                centres the figure on the column. Model and findings share
+                one proportional frame, so markers stay attached as it scales.
+                In the wide layout the clinical and lifestyle controls curve
+                around the figure's left inside this same frame. */}
+            <div
+              style={hasVitals ? undefined : { "--figure-s": "min(100cqh, 150cqw)" }}
+              className={`patient-anatomy-frame relative flex min-w-0 items-center justify-center [container-type:size] ${hasVitals ? "" : `h-[420px] @lg/anatomy:h-[520px] ${arcLayout ? "" : "pr-[6.5rem]"}`}`}
+            >
+              <BodyFigureSvg
+                sex={sex}
+                birthDate={birthDate}
+                side={side}
+                onToggleSide={toggleSide}
+                flipHint={flipHint}
+                flipCorner="left"
+                findingsByRegion={findingsByRegion}
+                isDesktop={isDesktop}
+                popoverId={popoverId}
+                activeRegion={activeRegion}
+                phase={phase}
+                pinned={pinned}
+                leader={leader}
+                onMarkerEnter={markerEnter}
+                onMarkerLeave={markerLeave}
+                onMarkerClick={markerClick}
+                onViewRecord={viewRecord}
+                onDismiss={dismiss}
+              />
+              <HeightRuler
+                height={measures.height}
+                isLoading={recordsLoading && records.length === 0}
+                className="patient-anatomy-ruler absolute top-1/2 h-[min(100cqh,150cqw)] -translate-y-1/2 left-[calc(50cqw+min(100cqh,150cqw)/3+0.75rem)]"
+              />
+              {arcLayout && (
+                <>
+                  <PatientClinicalControls
+                    background={background}
+                    conditions={conditions}
+                    records={records}
+                    recordsLoading={recordsLoading}
+                    recordsError={recordsError}
+                    openFact={openFact}
+                    onFactChange={changeFact}
+                    onViewRecord={viewRecord}
+                    arc={arcLayout}
+                  />
+                  <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} arc />
+                </>
+              )}
+            </div>
+
+          </div>
+
+          {/* Weight and BMI sit right under the feet, centred on the figure. */}
+          <div className={`patient-anatomy-measures mt-3 flex flex-col items-center gap-5 ${arcLayout || hasVitals ? "" : "pr-[6.5rem]"}`}>
+            {recordsLoading && records.length === 0 ? (
+              <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
+            ) : (
+              <WeightAndBmi weight={measures.weight} bmi={measures.bmi} />
+            )}
+            {!arcLayout && !hasVitals && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
+          </div>
+          {hasVitals && (
+            <div className="patient-anatomy-detail-controls">
+              <PatientClinicalControls
+                background={background}
+                conditions={conditions}
+                records={records}
+                recordsLoading={recordsLoading}
+                recordsError={recordsError}
+                openFact={openFact}
+                onFactChange={changeFact}
+                onViewRecord={viewRecord}
+                rail
+              />
+              <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} rail />
+            </div>
+          )}
+          {areas.length > 0 && (
+            <details className="mx-auto mt-5 max-w-sm" onToggle={(event) => { if (!event.currentTarget.open) dispatch({ type: "reset" }); }}>
+              <summary className="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium text-neutral-600 focus-visible:outline-2 focus-visible:outline-ink-400">Recorded areas ({areas.length})</summary>
+              <div className="px-3 py-2">{findings.content}</div>
+            </details>
+          )}
         </div>
-        {areas.length > 0 && (
-          <details className="mx-auto mt-5 max-w-sm" onToggle={(event) => { if (!event.currentTarget.open) dispatch({ type: "reset" }); }}>
-            <summary className="cursor-pointer rounded-md px-2 py-2 text-center text-xs font-medium text-neutral-600 focus-visible:outline-2 focus-visible:outline-ink-400">Recorded areas ({areas.length})</summary>
-            <div className="px-3 py-2">{findings.content}</div>
-          </details>
-        )}
       </div>
     </section>
   );

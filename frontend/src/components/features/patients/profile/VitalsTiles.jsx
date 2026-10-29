@@ -89,7 +89,7 @@ function Label({ Icon, children }) {
 
 function Value({ display, unit }) {
   return (
-    <span className="min-w-0 truncate text-[17px] font-semibold tabular-nums tracking-tight text-neutral-900">
+    <span className="min-w-0 whitespace-normal text-[17px] font-semibold tabular-nums tracking-tight text-neutral-900">
       {display}
       <span className="ml-1 text-[11px] font-normal tracking-normal text-neutral-500">{unit}</span>
     </span>
@@ -111,8 +111,9 @@ function formatRecordedAt(record, recordedAt) {
  * Left column of the Overview board: a plain heading, then one separate card
  * per vital (BP, pulse, temperature, SpO2) with its latest value and a trend
  * of the last few readings; FBS adds a small value-only card once recorded.
- * Height, weight and BMI sit with the body figure. Cards are a fixed size and stack from the top - the column is
- * not stretched - and scrolls on its own only in a window too short for them.
+ * Height, weight and BMI sit with the body figure. The fixed desktop board
+ * divides its available height among the cards; smaller screens use normal
+ * document flow. This column never creates its own scroll region.
  */
 export default function VitalsTiles({ records = [], isLoading = false }) {
   const { record, recordedAt, rows } = buildVitalRows(records);
@@ -121,7 +122,7 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
   const note = isLoading && records.length === 0 ? "Loading..." : !record ? "No vital signs recorded yet." : "";
 
   return (
-    <section aria-labelledby="overview-vitals-title" aria-busy={isLoading} className="flex min-h-0 flex-1 flex-col flow:flex-none">
+    <section aria-labelledby="overview-vitals-title" aria-busy={isLoading} className="patient-vitals flex min-h-0 flex-1 flex-col flow:flex-none">
       <header className="mb-2 flex min-h-5 shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
         <h2 id="overview-vitals-title" className="text-[13px] font-semibold text-neutral-900 font-sans!">
           Latest vital signs
@@ -135,15 +136,15 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
           empty tiles and keep only the note above; the fixed board keeps them
           so its geometry never depends on the patient. */}
       <div
-        className={`akay-content-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain flow:overflow-visible ${
+        className={`patient-vitals__body min-h-0 flex-1 overflow-visible ${
           !record && !isLoading ? "flow:hidden" : ""
         }`}
       >
-        <div className="flex flex-col gap-2">
+        <div className="patient-vitals__grid flex flex-col gap-3">
           {CHART_CARDS.map((key) => {
             const { label, unit, display, series, Icon } = card(key);
             return (
-              <div key={key} className={`${CARD} flex h-[92px] shrink-0 flex-col gap-1.5`}>
+              <div key={key} className={`${CARD} patient-vitals__tile flex h-[92px] shrink-0 flex-col gap-1.5`}>
                 <div className="flex shrink-0 items-center justify-between gap-2">
                   <Label Icon={Icon}>{label}</Label>
                   <Value display={display} unit={unit} />
@@ -154,7 +155,7 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
           })}
 
           {byKey.fbs && (
-            <div className={`${CARD} flex h-16 min-w-0 flex-col justify-between`}>
+            <div className={`${CARD} patient-vitals__fbs flex h-16 min-w-0 flex-col justify-between`}>
               <Label Icon={DEFAULTS.fbs.Icon}>{DEFAULTS.fbs.label}</Label>
               <Value display={card("fbs").display} unit={DEFAULTS.fbs.unit} />
             </div>

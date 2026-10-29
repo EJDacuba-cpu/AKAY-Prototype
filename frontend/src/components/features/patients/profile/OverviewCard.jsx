@@ -16,7 +16,7 @@ const MIN_PX_PER_SHARE = 48;
  * floor, `share * 48` px unless `minHeight` (px) overrides it, and any spare
  * height in a stretched column is still split by share.
  */
-export function OverviewCard({ id, title, meta, action, children, spacious = false, share = 1, minHeight, className = "" }) {
+export function OverviewCard({ id, title, meta, action, children, spacious = false, share = 1, minHeight, className = "", scrollable = true }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
@@ -35,7 +35,7 @@ export function OverviewCard({ id, title, meta, action, children, spacious = fal
         </div>
         {action}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin] flow:overflow-visible">{children}</div>
+      <div className={`min-h-0 flex-1 ${scrollable ? "overflow-y-auto overscroll-contain [scrollbar-width:thin] flow:overflow-visible" : "overflow-visible"}`}>{children}</div>
     </section>
   );
 }
