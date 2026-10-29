@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildPatientConsultationPath,
+  continuedRouteIds,
   resolveBhcConsultationRoute,
 } from "./consultationRoute.js";
 
@@ -64,4 +65,20 @@ test("a follow-up route without a task but with a patient opens a new consultati
     kind: "new",
     patientId: "17",
   });
+});
+
+test("continuedRouteIds is always arrays, including new and draft routes", () => {
+  const empty = { followUpIds: [], monitoringIds: [], startConditionIds: [] };
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=new")), empty);
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("?draftId=draft-1")), empty);
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("")), empty);
+  assert.equal(continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=new")).followUpIds.length, 0);
+  assert.deepEqual(
+    continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=continue")),
+    empty,
+  );
+  assert.deepEqual(
+    continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=25")),
+    { followUpIds: [25], monitoringIds: [], startConditionIds: [] },
+  );
 });

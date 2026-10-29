@@ -3,14 +3,23 @@ import assert from "node:assert/strict";
 
 import {
   MATERNAL_CARE_PROGRAM_TITLE,
+  MATERNAL_SERVICE_LOADING_LABEL,
+  MATERNAL_SERVICE_RETRY_LABEL,
   PRENATAL_INTENT_CONTINUE,
   PRENATAL_INTENT_ENROLL,
+  canCompleteMaternalFollowUpResolution,
+  continuedCareBlocksProgress,
   getPrenatalEnrollment,
+  isMaternalLinkedToPrenatalFollowUp,
+  isMaternalServiceLoadFailed,
+  isMaternalServiceResolving,
   isPrenatalAssociatedFollowUp,
+  maternalProgramControl,
   prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
   shouldSeedMaternalFromPrenatalFollowUp,
 } from "./prenatalEnrollment.js";
+import { removeContinuedFollowUp } from "./continuedCare.js";
 import { servicePurposeKey } from "./followUpSchedules.js";
 
 function woman() {
@@ -185,4 +194,167 @@ test("a completed maternal episode can be enrolled again", () => {
   assert.equal(enrollment.status, "Completed");
   assert.equal(enrollment.enrolled, false);
   assert.equal(enrollment.intent, PRENATAL_INTENT_ENROLL);
+});
+
+test("delayed prenatal follow-up loading stays on a neutral Loading state", () => {
+  assert.equal(isMaternalServiceResolving({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    recordsLoading: true,
+  }), true);
+  assert.equal(isMaternalServiceResolving({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    followUpsLoading: true,
+  }), true);
+  assert.equal(isMaternalServiceResolving({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    patientLoading: true,
+  }), true);
+  const copy = prenatalProgramCopy({ enrolled: false, included: false, resolving: true });
+  assert.equal(copy.statusLabel, MATERNAL_SERVICE_LOADING_LABEL);
+  assert.equal(copy.enrollLabel, MATERNAL_SERVICE_LOADING_LABEL);
+  assert.notEqual(copy.statusLabel, "Not included");
+  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  const control = maternalProgramControl({ resolving: true });
+  assert.equal(control.disabled, true);
+  assert.equal(control.busy, true);
+  assert.equal(control.hideAction, false);
+  assert.equal(control.actionLabel, MATERNAL_SERVICE_LOADING_LABEL);
+  assert.equal(canCompleteMaternalFollowUpResolution({ resolving: true }), false);
+});
+
+test("a failed prenatal follow-up load offers Retry instead of Not included", () => {
+  assert.equal(isMaternalServiceLoadFailed({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    followUpsError: true,
+  }), true);
+  assert.equal(isMaternalServiceLoadFailed({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    recordsError: true,
+  }), true);
+  assert.equal(isMaternalServiceLoadFailed({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    resolving: true,
+    recordsError: true,
+    followUpsError: true,
+  }), false);
+  const copy = prenatalProgramCopy({ enrolled: false, included: false, loadFailed: true });
+  assert.equal(copy.statusLabel, "Unavailable");
+  assert.equal(copy.enrollLabel, MATERNAL_SERVICE_RETRY_LABEL);
+  assert.notEqual(copy.statusLabel, "Not included");
+  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  const control = maternalProgramControl({ loadFailed: true });
+  assert.equal(control.disabled, false);
+  assert.equal(control.hideAction, false);
+  assert.equal(control.actionLabel, MATERNAL_SERVICE_RETRY_LABEL);
+  assert.equal(canCompleteMaternalFollowUpResolution({ loadFailed: true }), false);
+});
+
+test("Active Maternal Care is read-only on a New Consultation", () => {
+  const copy = prenatalProgramCopy({ enrolled: true, included: false, hideAction: true });
+  assert.equal(copy.title, `${MATERNAL_CARE_PROGRAM_TITLE} — Active`);
+  assert.equal(copy.statusLabel, "Active");
+  assert.equal(copy.hideAction, true);
+  assert.notEqual(copy.enrollLabel, "Include Maternal Care");
+  assert.notEqual(copy.enrollLabel, "Continue Maternal Care");
+  assert.match(copy.description, /prenatal assessment is added only when continuing/i);
+  const control = maternalProgramControl({ hideAction: true });
+  assert.equal(control.hideAction, true);
+  assert.equal(control.actionLabel, "");
+  assert.equal(shouldSeedMaternalFromPrenatalFollowUp({
+    followUps: [],
+    enrolled: true,
+  }), false);
+});
+
+test("a selected prenatal follow-up includes Active Maternal Care without Remove", () => {
+  const prenatalFollowUp = { purposeKey: servicePurposeKey("Maternal") };
+  const woundFollowUp = { purposeKey: "visit", purpose: "Wound check" };
+  assert.equal(shouldSeedMaternalFromPrenatalFollowUp({
+    followUps: [prenatalFollowUp],
+    enrolled: true,
+  }), true);
+  assert.equal(shouldSeedMaternalFromPrenatalFollowUp({
+    followUps: [woundFollowUp],
+    enrolled: true,
+  }), false);
+  const copy = prenatalProgramCopy({ enrolled: true, included: true, hideAction: true });
+  assert.equal(copy.statusLabel, "Active");
+  assert.equal(copy.hideAction, true);
+  assert.notEqual(copy.statusLabel, "Continuing this visit");
+  assert.equal(maternalProgramControl({ hideAction: true }).hideAction, true);
+});
+
+test("unlinking a prenatal follow-up does not change enrollment or selected programs", () => {
+  const prenatalFollowUp = { id: 25, purposeKey: servicePurposeKey("Maternal") };
+  const selectedPrograms = ["Maternal"];
+  assert.equal(isMaternalLinkedToPrenatalFollowUp([prenatalFollowUp], selectedPrograms), true);
+  const next = removeContinuedFollowUp({
+    continuedFollowUpTaskIds: [25],
+    continuedFollowUps: [prenatalFollowUp],
+  }, 25);
+  assert.equal(isMaternalLinkedToPrenatalFollowUp(next.continuedFollowUps, selectedPrograms), false);
+  assert.deepEqual(selectedPrograms, ["Maternal"]);
+});
+
+test("draft resume and a late response cannot re-seed Maternal Care", () => {
+  const prenatalFollowUp = { purposeKey: servicePurposeKey("Maternal") };
+  assert.equal(shouldSeedMaternalFromPrenatalFollowUp({
+    followUps: [prenatalFollowUp],
+    enrolled: true,
+    restored: true,
+  }), false);
+  assert.equal(canCompleteMaternalFollowUpResolution({ restoring: true }), false);
+  assert.equal(canCompleteMaternalFollowUpResolution({ resolved: true }), false);
+  assert.equal(isMaternalServiceResolving({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    resolved: true,
+    recordsLoading: true,
+    followUpsLoading: true,
+  }), false);
+  assert.equal(isMaternalServiceLoadFailed({
+    continueRoute: true,
+    hasFollowUpSelection: true,
+    resolved: true,
+    recordsError: true,
+    followUpsError: true,
+  }), false);
+  assert.equal(shouldSeedMaternalFromPrenatalFollowUp({
+    followUps: [prenatalFollowUp],
+    enrolled: true,
+    alreadyIncluded: true,
+  }), false);
+});
+
+test("manual service selection is unchanged for consultations that are not continuing a prenatal follow-up", () => {
+  assert.equal(isMaternalServiceResolving({
+    continueRoute: false,
+    hasFollowUpSelection: false,
+    recordsLoading: true,
+    followUpsLoading: true,
+    patientLoading: true,
+  }), false);
+  assert.equal(isMaternalServiceLoadFailed({
+    continueRoute: false,
+    hasFollowUpSelection: false,
+    recordsError: true,
+    followUpsError: true,
+  }), false);
+  assert.equal(isMaternalLinkedToPrenatalFollowUp([{ purposeKey: "visit" }], ["Maternal"]), false);
+  const copy = prenatalProgramCopy({ enrolled: false, included: false });
+  assert.equal(copy.enrollLabel, "Include Maternal Care");
+  assert.equal(copy.statusLabel, "Not included");
+  assert.equal(maternalProgramControl({}).disabled, false);
+  assert.equal(maternalProgramControl({}).hideAction, false);
+  assert.equal(canCompleteMaternalFollowUpResolution({}), true);
+  assert.equal(continuedCareBlocksProgress({}), false);
+  assert.equal(continuedCareBlocksProgress({ followUpsLoading: true }), true);
+  assert.equal(continuedCareBlocksProgress({ resolving: true }), true);
+  assert.equal(continuedCareBlocksProgress({ loadFailed: true }), true);
 });

@@ -87,7 +87,12 @@ import {
 } from "../../utils/prenatalForm";
 import {
   MATERNAL_CARE_MALE_ELIGIBILITY,
+  canCompleteMaternalFollowUpResolution,
+  continuedCareBlocksProgress,
   getPrenatalEnrollment,
+  isMaternalServiceLoadFailed,
+  isMaternalServiceResolving,
+  maternalProgramControl,
   prenatalEnrollmentModalCopy,
   prenatalProgramCopy,
   shouldSeedMaternalFromPrenatalFollowUp,
@@ -274,7 +279,7 @@ import {
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { createIdempotencyKey } from "../../utils/idempotency";
-import { resolveBhcConsultationRoute } from "../../utils/consultationRoute";
+import { continuedRouteIds, resolveBhcConsultationRoute } from "../../utils/consultationRoute";
 import {
   EMPTY_VITALS_REMINDER,
   VITAL_ERROR_KEYS,
@@ -667,6 +672,7 @@ export default function ConsultationWorkspace() {
   const healthRecordsPath = `${basePath}/health-records`;
   const patientsPath = `${basePath}/patients`;
   const routeContext = resolveBhcConsultationRoute(searchParams);
+  const routeContinuedIds = continuedRouteIds(routeContext);
   // "continue" (Start Consultation modal, Follow-ups "Record Visit") opens the
   // same step-flow New Consultation as "new", then seeds step 3 from it.
   const opensNewConsultation =
@@ -708,7 +714,12 @@ export default function ConsultationWorkspace() {
   const [correctionNote, setCorrectionNote] = useState("");
   const resumedRouteDraft = useRef("");
   const classificationRef = useRef(null);
-  const maternalFollowUpSeededRef = useRef(false);
+  const maternalFollowUpSeededRef = useRef(
+    !(routeContext.kind === "continue" && routeContinuedIds.followUpIds.length > 0),
+  );
+  const [maternalFollowUpResolved, setMaternalFollowUpResolved] = useState(
+    () => maternalFollowUpSeededRef.current,
+  );
 
   const [dateOfVisit, setDateOfVisit] = useState(
     (() => { const date = new Date(); return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-"); })(),
@@ -782,8 +793,13 @@ export default function ConsultationWorkspace() {
   // True while a continued consultation is still reading the monitoring it
   // continues (route entry from Start Consultation / Record Visit, or a resume).
   const [continuedCareLoading, setContinuedCareLoading] = useState(
-    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (routeContext.followUpIds.length > 0 || routeContext.monitoringIds.length > 0 || routeContext.startConditionIds.length > 0),
+    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (
+      routeContinuedIds.followUpIds.length > 0
+      || routeContinuedIds.monitoringIds.length > 0
+      || routeContinuedIds.startConditionIds.length > 0
+    ),
   );
+  const [continuedCareError, setContinuedCareError] = useState("");
   // { [monitoringId]: reason } - a key present means "stop this monitoring".
   const [monitoringStops, setMonitoringStops] = useState({});
   // Followed conditions referred to the RHU (ids).
@@ -1135,6 +1151,31 @@ export default function ConsultationWorkspace() {
     ),
     [selectedPatient, patientRecordsForHeight],
   );
+  const recordsUnresolved = Boolean(selectedPatientId) && !Array.isArray(patientRecordsForHeight);
+  const recordsLoading = recordsUnresolved && (bodyHistoryQuery.isPending || bodyHistoryQuery.isFetching);
+  const hasFollowUpSelection = routeContinuedIds.followUpIds.length > 0;
+  const maternalResolving = isMaternalServiceResolving({
+    continueRoute: routeContext.kind === "continue",
+    hasFollowUpSelection,
+    resolved: maternalFollowUpResolved,
+    patientLoading: selectedPatientLoading,
+    recordsLoading,
+    followUpsLoading: continuedCareLoading,
+  }) || recordsLoading;
+  const maternalLoadFailed = isMaternalServiceLoadFailed({
+    continueRoute: routeContext.kind === "continue",
+    hasFollowUpSelection,
+    resolved: maternalFollowUpResolved,
+    resolving: maternalResolving,
+    recordsError: recordsUnresolved && bodyHistoryQuery.isError,
+    followUpsError: Boolean(continuedCareError),
+  }) || (recordsUnresolved && bodyHistoryQuery.isError && !recordsLoading);
+  const maternalReadonlyActive = prenatalEnrollment.enrolled && !maternalResolving && !maternalLoadFailed;
+  const continuedCareUnresolved = continuedCareBlocksProgress({
+    followUpsLoading: continuedCareLoading,
+    resolving: maternalResolving,
+    loadFailed: maternalLoadFailed,
+  });
   const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
   const riskFlags = useMemo(
     () => getMaternalRiskFlags({
@@ -1597,13 +1638,20 @@ export default function ConsultationWorkspace() {
     const request = ++careOverviewRequestRef.current;
     const isCurrent = () => request === careOverviewRequestRef.current;
     const hasSelection = Boolean(
-      selection && (selection.followUpIds.length || selection.monitoringIds.length || selection.startConditionIds.length),
+      selection && (
+        (selection.followUpIds ?? []).length
+        || (selection.monitoringIds ?? []).length
+        || (selection.startConditionIds ?? []).length
+      ),
     );
     // The form waits for what it continues instead of opening half filled.
     const finishLoading = () => {
       if (isCurrent()) setContinuedCareLoading(false);
     };
-    if (hasSelection) setContinuedCareLoading(true);
+    if (hasSelection) {
+      setContinuedCareLoading(true);
+      setContinuedCareError("");
+    }
     let overview;
     try {
       overview = await queryClient.fetchQuery({
@@ -1613,8 +1661,12 @@ export default function ConsultationWorkspace() {
         staleTime: 30_000,
       });
     } catch {
-      finishLoading();
       if (isCurrent() && hasSelection) {
+        setContinuedCareError(
+          selection.restored
+            ? "Unable to load this patient's follow-ups and monitoring. Continued items show without their condition names until the page is reloaded."
+            : "Unable to load this patient's follow-ups and monitoring. This consultation was opened without them.",
+        );
         toast.error(
           selection.restored
             ? "Unable to load this patient's follow-ups and monitoring. Continued items show without their condition names until the page is reloaded."
@@ -1622,6 +1674,7 @@ export default function ConsultationWorkspace() {
           { id: "continued-care-unavailable" },
         );
       }
+      finishLoading();
       return;
     }
     if (!isCurrent()) return;
@@ -1669,12 +1722,33 @@ export default function ConsultationWorkspace() {
     }
   }
 
+  function retryMaternalServiceResolution() {
+    if (!selectedPatientId) return;
+    if (recordsUnresolved && bodyHistoryQuery.isError) {
+      void bodyHistoryQuery.refetch();
+    }
+    if (!continuedCareError) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(selectedPatientId) });
+    const restored = Boolean(activeDraft);
+    void loadContinuedCare(selectedPatientId, {
+      followUpIds: continuedFollowUpTaskIds.length ? continuedFollowUpTaskIds : routeContinuedIds.followUpIds,
+      monitoringIds: continuedMonitorings.length
+        ? continuedMonitorings.map((monitoring) => monitoring.id)
+        : routeContinuedIds.monitoringIds,
+      startConditionIds: startingConditions.length
+        ? startingConditions.map((condition) => condition.id || condition.conditionId)
+        : routeContinuedIds.startConditionIds,
+      restored,
+    });
+  }
+
   function restoreHealthRecordDraft(draft) {
     // A draft saved before the v2 model is converted once, here, before any
     // state is set from it: the first autosave then writes the converted
     // content (every autosave stamps consultationWorkflow, so an unconverted
     // legacy draft would lose its concerns for good).
     maternalFollowUpSeededRef.current = true;
+    setMaternalFollowUpResolved(true);
     const payload = convertLegacyDraft(draft.payload || {});
     const restoredReferral = restoreSharedReferralDraft(payload);
     setReceivingRhuId(restoredReferral.receivingRhuId);
@@ -1839,9 +1913,9 @@ export default function ConsultationWorkspace() {
       preselectedPatientId,
       routeContext.kind === "continue"
         ? {
-            followUpIds: routeContext.followUpIds,
-            monitoringIds: routeContext.monitoringIds,
-            startConditionIds: routeContext.startConditionIds,
+            followUpIds: routeContinuedIds.followUpIds,
+            monitoringIds: routeContinuedIds.monitoringIds,
+            startConditionIds: routeContinuedIds.startConditionIds,
           }
         : null,
     );
@@ -3087,6 +3161,15 @@ export default function ConsultationWorkspace() {
   async function handleSave(event) {
     event?.preventDefault();
     if (saving) return;
+    if (continuedCareUnresolved) {
+      toast.error(
+        maternalLoadFailed
+          ? "Retry loading Maternal Care before saving."
+          : "Wait until this visit's care records finish loading.",
+      );
+      goToStepKey(INTERVIEW_STEP);
+      return;
+    }
     const recoveryErrors = canViewBackground ? validateLegacyRecovery(backgroundUpdate, legacyRecoveryAcknowledged) : {};
     if (Object.keys(recoveryErrors).length) {
       setLegacyRecoveryExpanded(true);
@@ -3817,6 +3900,14 @@ export default function ConsultationWorkspace() {
    * Uses the page's existing validation - no rules are added or dropped.
    */
   function checkStepGate(stepKey) {
+    if (continuedCareUnresolved) {
+      toast.error(
+        maternalLoadFailed
+          ? "Retry loading Maternal Care before continuing."
+          : "Wait until this visit's care records finish loading.",
+      );
+      return false;
+    }
     if (stepKey === INTERVIEW_STEP && !chiefComplaint.trim()) {
       setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." });
       return false;
@@ -3886,10 +3977,21 @@ export default function ConsultationWorkspace() {
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
       : { eligible: true, message: "" };
+    const maternalIncluded = selectedPrograms.includes("Maternal");
     const maternalCopy = key === "Maternal"
       ? prenatalProgramCopy({
           enrolled: prenatalEnrollment.enrolled,
-          included: selectedPrograms.includes("Maternal"),
+          included: maternalIncluded,
+          resolving: maternalResolving,
+          loadFailed: maternalLoadFailed,
+          hideAction: maternalReadonlyActive,
+        })
+      : null;
+    const maternalControl = key === "Maternal"
+      ? maternalProgramControl({
+          resolving: maternalResolving,
+          loadFailed: maternalLoadFailed,
+          hideAction: maternalReadonlyActive,
         })
       : null;
     return {
@@ -3901,8 +4003,12 @@ export default function ConsultationWorkspace() {
           ? "Immunization and child vaccination services."
           : RECORD_TYPE_DETAILS[classification]?.description,
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
-      disabled: !eligibility.eligible,
-      disabledReason: eligibility.message,
+      disabled: !eligibility.eligible || Boolean(maternalControl?.disabled),
+      disabledReason: !eligibility.eligible ? eligibility.message : (maternalControl?.disabledReason || eligibility.message),
+      disabledNote: eligibility.eligible ? maternalControl?.disabledNote : undefined,
+      busy: Boolean(maternalControl?.busy),
+      actionLabel: maternalControl?.actionLabel,
+      hideAction: Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
       enrollLabel: maternalCopy?.enrollLabel,
       statusLabel: maternalCopy?.statusLabel,
       statusTone: maternalCopy?.statusTone,
@@ -3974,9 +4080,16 @@ export default function ConsultationWorkspace() {
   }
 
   function handleProgramSelect(option) {
-    if (wizardPrograms.find(program => program.key === option)?.disabled) return;
+    if (option === "Maternal" && maternalLoadFailed) {
+      retryMaternalServiceResolution();
+      return;
+    }
+    const program = wizardPrograms.find((item) => item.key === option);
+    if (program?.hideAction) return;
+    if (program?.disabled) return;
+    if (option === "Maternal" && prenatalEnrollment.enrolled) return;
     if (option === "Maternal" && !selectedPrograms.includes("Maternal")) {
-      setPrenatalEnrollmentModal(prenatalEnrollment.enrolled ? "continue" : "enroll");
+      setPrenatalEnrollmentModal("enroll");
       return;
     }
     applyProgramSelect(option);
@@ -3988,22 +4101,33 @@ export default function ConsultationWorkspace() {
   }
 
   // A continued prenatal follow-up includes existing Maternal Care once, without
-  // the confirmation modal. Draft resume keeps whatever the draft saved.
+  // the confirmation modal. Draft resume keeps whatever the draft saved. The
+  // resolved flag is set even when nothing is seeded so a late response cannot
+  // re-add Maternal Care after staff removed it.
   useEffect(() => {
-    if (maternalFollowUpSeededRef.current) return;
-    if (routeContext.kind !== "continue") return;
-    if (selectedPatientLoading) return;
-    if (!getMaternalEligibility(selectedPatient).eligible) return;
-    if (!shouldSeedMaternalFromPrenatalFollowUp({
-      followUps: continuedFollowUps,
-      alreadyIncluded: selectedPrograms.includes("Maternal"),
-      enrolled: prenatalEnrollment.enrolled,
+    if (!canCompleteMaternalFollowUpResolution({
+      resolved: maternalFollowUpResolved,
+      resolving: maternalResolving,
+      loadFailed: maternalLoadFailed,
     })) return;
+    const skipSeed = maternalFollowUpSeededRef.current;
     maternalFollowUpSeededRef.current = true;
-    applyProgramSelect("Maternal");
-    // Seeded once when continued follow-ups and enrollment are both known.
+    if (
+      !skipSeed
+      && routeContext.kind === "continue"
+      && getMaternalEligibility(selectedPatient).eligible
+      && shouldSeedMaternalFromPrenatalFollowUp({
+        followUps: continuedFollowUps,
+        alreadyIncluded: selectedPrograms.includes("Maternal"),
+        enrolled: prenatalEnrollment.enrolled,
+      })
+    ) {
+      applyProgramSelect("Maternal");
+    }
+    setMaternalFollowUpResolved(true);
+    // Resolved once when continued follow-ups and enrollment have settled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, selectedPatientLoading]);
+  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
 
   // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
   // Details when a condition monitored in this visit needs it.
@@ -4149,7 +4273,7 @@ export default function ConsultationWorkspace() {
   ) : (
     <div className="ehr-consult__care-plan">
     <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
-    <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onRemove={removeFollowUpLink} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
+    <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
     <NextStepsSection
       selectedPrograms={selectedPrograms}
       followUpSchedules={followUpSchedules}
@@ -4571,7 +4695,7 @@ export default function ConsultationWorkspace() {
         />
       )}
       <fieldset disabled={workspaceLocked} className="min-w-0">
-      {continuedCareLoading ? (
+      {continuedCareLoading && !isFirstConsultationStep ? (
         <p role="status" aria-live="polite" className="ml-0 mr-auto flex w-full max-w-5xl items-center gap-2 border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-6 text-sm text-[#374151]">
           <Loader2 size={16} className="animate-spin text-[#DC2626]" aria-hidden="true" />
           Loading monitoring records…

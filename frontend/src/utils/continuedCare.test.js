@@ -95,6 +95,24 @@ test("a follow-up without conditions is continued on its own", () => {
   assert.deepEqual(result.continuedMonitorings, []);
 });
 
+test("only the follow-ups selected in Start Consultation are continued", () => {
+  const pending = {
+    pendingFollowUps: [
+      { id: 21, purpose: "Wound check", conditions: [] },
+      { id: 22, purpose: "Rash review", conditions: [] },
+    ],
+    monitoringWithoutFollowUp: [],
+  };
+  assert.deepEqual(
+    resolveContinuedCare(pending, { followUpIds: [21], includeLinkedFollowUps: false }).continuedFollowUps.map((task) => task.id),
+    [21],
+  );
+  assert.deepEqual(
+    resolveContinuedCare(pending, { followUpIds: [21, 22], includeLinkedFollowUps: false }).continuedFollowUps.map((task) => task.id),
+    [21, 22],
+  );
+});
+
 test("a resumed draft's placeholders are re-hydrated from the overview", () => {
   const restored = restoreCarePlanDraft({
     continuedFollowUpTaskIds: [1],
@@ -349,6 +367,17 @@ test("removeContinuedFollowUp works on follow-ups alone and ignores an id that i
     continuedFollowUpTaskIds: [], continuedFollowUps: [], continuedMonitorings: [], monitoringStops: {}, monitoringReferrals: [],
     legacyNamesByFollowUp: {}, legacyConditionNames: [],
   });
+});
+
+test("unlinking a prenatal follow-up only drops the visit link", () => {
+  const r = resolveContinuedCare(visitOverview, { followUpIds: [12, 13] });
+  const next = removeContinuedFollowUp({
+    continuedFollowUpTaskIds: r.continuedFollowUpTaskIds,
+    continuedFollowUps: r.continuedFollowUps,
+  }, 12);
+  assert.deepEqual(next.continuedFollowUpTaskIds, [13]);
+  assert.equal(Object.hasOwn(next, "selectedPrograms"), false);
+  assert.equal(Object.hasOwn(next, "enrollmentStatus"), false);
 });
 
 test("a monitoring shared by two selected follow-ups is kept when either is removed", () => {

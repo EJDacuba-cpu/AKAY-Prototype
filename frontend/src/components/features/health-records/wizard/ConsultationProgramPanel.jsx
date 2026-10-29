@@ -17,7 +17,7 @@ import { Button } from "../../../ui/button";
  */
 
 /**
- * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone }]
+ * @param programs  [{ key, title, description, disabled, disabledReason, disabledNote, enrollLabel, statusLabel, statusTone, busy, actionLabel, hideAction }]
  * @param selected  Active program keys
  * @param primary   the primary program key
  * @param onSelect  enrolls the service, or removes it when it is Active
@@ -59,6 +59,7 @@ export default function ConsultationProgramPanel({
           const active = selected.includes(program.key);
           const statusLabel = program.statusLabel || (active ? "Included" : "Not included");
           const statusTone = program.statusTone || (active ? "active" : "neutral");
+          const actionLabel = program.actionLabel || (active ? "Remove" : program.enrollLabel || programEnrollLabel(program.key));
           const badgeClass =
             statusTone === "active"
               ? "bg-[#DCFCE7] text-[#166534]"
@@ -68,6 +69,7 @@ export default function ConsultationProgramPanel({
           return (
             <div
               key={program.key}
+              aria-busy={program.busy ? "true" : undefined}
               className={`border-b border-[#E5E7EB] px-3 py-2 transition-colors duration-300 motion-reduce:transition-none last:border-b-0 ${
                 active ? "bg-red-50" : ""
               }`}
@@ -114,6 +116,7 @@ export default function ConsultationProgramPanel({
                 </div>
               )}
 
+              {!program.hideAction && (
               <Button
                 type="button"
                 variant="ghost"
@@ -121,16 +124,17 @@ export default function ConsultationProgramPanel({
                 disabled={program.disabled}
                 title={program.disabledReason}
                 onClick={() => onSelect(program.key)}
-                aria-label={active ? `Remove ${program.title} from this visit` : undefined}
+                aria-label={active && actionLabel === "Remove" ? `Remove ${program.title} from this visit` : actionLabel}
                 aria-pressed={active}
                 className={`mt-2 h-auto min-h-9 w-full whitespace-normal rounded-none border bg-white px-3 py-1.5 text-center text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white ${
-                  active
+                  active && actionLabel === "Remove"
                     ? "border-[#D1D5DB] text-[#374151] hover:bg-[#F9FAFB]"
                     : "border-[#DC2626] text-[#DC2626] hover:bg-red-50"
                 }`}
               >
-                {active ? "Remove" : program.enrollLabel || programEnrollLabel(program.key)}
+                {actionLabel}
               </Button>
+              )}
             </div>
           );
         })}

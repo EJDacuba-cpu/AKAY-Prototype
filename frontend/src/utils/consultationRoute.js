@@ -50,6 +50,21 @@ export function resolveBhcConsultationRoute(search = "") {
   return { kind: "redirect", reason: "missing-patient" };
 }
 
+/**
+ * Follow-up and monitoring ids for the open consultation. New, draft, and
+ * redirect routes have none; continue routes always yield arrays.
+ */
+export function continuedRouteIds(routeContext = {}) {
+  if (routeContext?.kind !== "continue") {
+    return { followUpIds: [], monitoringIds: [], startConditionIds: [] };
+  }
+  return {
+    followUpIds: Array.isArray(routeContext.followUpIds) ? routeContext.followUpIds : [],
+    monitoringIds: Array.isArray(routeContext.monitoringIds) ? routeContext.monitoringIds : [],
+    startConditionIds: Array.isArray(routeContext.startConditionIds) ? routeContext.startConditionIds : [],
+  };
+}
+
 export function buildPatientConsultationPath(patientId, basePath = "/bhc") {
   const params = new URLSearchParams({
     patientId: String(patientId || ""),

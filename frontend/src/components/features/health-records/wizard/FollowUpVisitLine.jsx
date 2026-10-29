@@ -26,7 +26,9 @@ export default function FollowUpVisitLine({ followUps = [], decisions = [], sche
                 <p className="mt-1 break-words text-sm text-foreground">{task.purpose || task.reason || 'Follow-up visit'}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Previous consultation: {formatDate(task.sourceDate, 'Not recorded')}</p>
               </div>
-              <Button type="button" variant="link" size="sm" disabled={disabled} onClick={() => onRemove?.(task.id)} aria-label={`Remove link to follow-up FU-${task.id}`}>Remove link</Button>
+              {onRemove ? (
+                <Button type="button" variant="link" size="sm" disabled={disabled} onClick={() => onRemove(task.id)} aria-label={`Remove link to follow-up FU-${task.id}`}>Remove link</Button>
+              ) : null}
             </div>
             <dl className="space-y-1 text-xs text-muted-foreground">
               <div className="break-words"><dt className="inline font-medium">Previous Chief Complaint: </dt><dd className="inline whitespace-pre-wrap">{task.sourceChiefComplaint || 'Not recorded'}</dd></div>
@@ -46,7 +48,7 @@ export default function FollowUpVisitLine({ followUps = [], decisions = [], sche
                 <FieldTextarea label="Follow-up Reason" required maxLength={150} rows={2} name={`followUpSchedule.${key}.purpose`} value={schedule.purpose} error={errors[`followUpSchedule.${key}.purpose`]} onChange={event => onScheduleChange(task.id, { ...schedule, purpose: event.target.value })} />
               </fieldset>
             )}
-            <p className="text-xs text-muted-foreground">Finalizing saves this decision and fulfills FU-{task.id}. Remove link only removes it from this visit; the task stays pending.</p>
+            <p className="text-xs text-muted-foreground">Finalizing saves this decision and fulfills FU-{task.id}. Unselected follow-ups stay pending.</p>
           </section>
         );
       })}

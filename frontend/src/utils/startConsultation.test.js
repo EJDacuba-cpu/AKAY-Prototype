@@ -223,6 +223,7 @@ test("startRoute carries followUpIds", () => {
     "/bhc/health-records/add?patientId=17&mode=continue&followUpIds=31%2C32&monitoringIds=4",
   );
   assert.equal(startRoute({ patientId: 17, followUpIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
+  assert.equal(startRoute({ patientId: 17, followUpIds: [] }).includes("followUpIds"), false);
 });
 
 test("checkContinuedStart reports a fulfilled follow-up as dropped", () => {
