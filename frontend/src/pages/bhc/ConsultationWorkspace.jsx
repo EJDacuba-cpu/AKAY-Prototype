@@ -57,6 +57,7 @@ import {
   PREVIOUS_FP_METHOD_OPTIONS,
   getApplicableFpMethods,
   getFpMethodRestriction,
+  resolveHistoricalFpMethod,
 } from "../../utils/familyPlanning";
 import { calculateBmi, formatBmi } from "../../utils/bmi";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
@@ -78,8 +79,7 @@ import {
   MATERNAL_RISK_KEYS,
   applyRiskFactorChange,
   collectPrenatalHistory,
-  computeAogFromLmp,
-  computeEddFromLmp,
+  applyPregnancyDating,
   continueBhcPrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
@@ -110,7 +110,7 @@ import NextStepsSection from "../../components/features/health-records/wizard/Ne
 import ConditionCardsSection from "../../components/features/health-records/wizard/ConditionCardsSection";
 import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
-import { continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, pruneContinuedSchedules, setContinuedSchedule } from "../../utils/continuedConcerns";
+import { concernFollowUpTaskIds, continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, linkedScheduledFollowUpReviewRows, pruneContinuedSchedules, setContinuedSchedule, stripServiceConcernSchedules } from "../../utils/continuedConcerns";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
@@ -126,6 +126,7 @@ import {
   correctLegacySection,
 } from "../../utils/legacyBackgroundRecovery";
 import {
+  overlayBackgroundUpdate,
   readBackgroundConflicts,
   resolveBackgroundConflicts,
   restoreBackgroundUpdate,
@@ -1154,6 +1155,14 @@ export default function ConsultationWorkspace() {
     () => collectPrenatalHistory(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
     [patientRecordsForHeight],
   );
+  const historicalFpMethod = useMemo(
+    () => resolveHistoricalFpMethod({
+      background: overlayBackgroundUpdate(selectedPatient?.medicalBackground, backgroundUpdate),
+      maternalData,
+      records: Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : [],
+    }),
+    [selectedPatient?.medicalBackground, backgroundUpdate, maternalData, patientRecordsForHeight],
+  );
   const recordsUnresolved = Boolean(selectedPatientId) && !Array.isArray(patientRecordsForHeight);
   const recordsLoading = recordsUnresolved && (bodyHistoryQuery.isPending || bodyHistoryQuery.isFetching);
   const hasFollowUpSelection = routeContinuedIds.followUpIds.length > 0;
@@ -1223,7 +1232,8 @@ export default function ConsultationWorkspace() {
   // consultationMode guard) - the server's monitoring_data.selectedPrograms.
   const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
   // ---- Next Actions. Per-concern outcomes plus selected-service next actions. ----
-  const continuedDecisions = continuedConcernPayload(continuedFollowUpTaskIds, continuedConcerns);
+  const concernTaskIds = concernFollowUpTaskIds(continuedFollowUpTaskIds, continuedFollowUps);
+  const continuedDecisions = continuedConcernPayload(concernTaskIds, continuedConcerns);
   const continuedReferrals = continuedFollowUps.filter(task => continuedDecisions.some(item => item.taskId === Number(task.id) && item.careOutcome === "refer_to_rhu"));
   const conditionReferrals = [
     ...reportingEntries.filter((entry) => namedConcern(entry) && entry.clinicalOutcome === "refer_to_rhu"),
@@ -1231,11 +1241,11 @@ export default function ConsultationWorkspace() {
   ];
   const referredConcernNames = [...conditionReferrals.map((entry) => entry.name), ...referredMonitoringRows.map((monitoring) => monitoring.conditionName)].join("; ");
   const managedReturns = managedReturnRows(reportingEntries, followUpSchedules);
-  const extraSchedules = extraScheduleRows(followUpSchedules);
+  const extraSchedules = extraScheduleRows(stripServiceConcernSchedules(followUpSchedules, continuedFollowUps));
   const scheduledReturns = followUpSchedulesPayload({
     managedReturns,
     extraSchedules,
-    // Continued returns carry explicit predecessor IDs; never infer from text.
+    continuedFollowUps,
   });
   const namedServiceReferrals = pruneServiceReferrals(nextActions.serviceReferrals, selectedPrograms);
   const referralCount = referralSourceCount({
@@ -1686,8 +1696,14 @@ export default function ConsultationWorkspace() {
     });
     setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
     setContinuedFollowUps(resolved.continuedFollowUps);
-    setContinuedConcerns(current => continuedConcernPayload(resolved.continuedFollowUpTaskIds, current));
-    setFollowUpSchedules(current => pruneContinuedSchedules(current, resolved.continuedFollowUpTaskIds));
+    setContinuedConcerns(current => continuedConcernPayload(
+      concernFollowUpTaskIds(resolved.continuedFollowUpTaskIds, resolved.continuedFollowUps),
+      current,
+    ));
+    setFollowUpSchedules(current => stripServiceConcernSchedules(
+      pruneContinuedSchedules(current, resolved.continuedFollowUpTaskIds),
+      resolved.continuedFollowUps,
+    ));
     setLegacyConditionNames(resolved.legacyConditionNames);
     setLegacyNamesByFollowUp(resolved.legacyNamesByFollowUp);
     setContinuedMonitorings(resolved.continuedMonitorings);
@@ -2401,7 +2417,7 @@ export default function ConsultationWorkspace() {
         reasonExempt: followUpReasonIsExempt,
       }),
       ...conditionCardErrors(reportingEntries, { schedules: followUpSchedules }),
-      ...continuedConcernErrors(continuedFollowUpTaskIds, continuedDecisions, followUpSchedules),
+      ...continuedConcernErrors(concernTaskIds, continuedDecisions, followUpSchedules),
       ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
       ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
       ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
@@ -2659,17 +2675,20 @@ export default function ConsultationWorkspace() {
     setReferralForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
   useEffect(() => {
-    const recordLmp = maternalData.lmp;
-    if (!recordLmp) {
-      setExpectedDeliveryDate("");
-      setAog("");
-      return;
-    }
-
-    setExpectedDeliveryDate(computeEddFromLmp(recordLmp));
-    setAog(computeAogFromLmp(recordLmp, dateOfVisit ? new Date(dateOfVisit) : new Date()));
-  }, [maternalData.lmp, dateOfVisit]);
+    const next = applyPregnancyDating({
+      lmp: maternalData.lmp,
+      edc: expectedDeliveryDate,
+      aog,
+      visitDate: dateOfVisit,
+      previousAutoEdd: pregnancyDatingRef.current.autoEdd,
+      previousAutoAog: pregnancyDatingRef.current.autoAog,
+    });
+    pregnancyDatingRef.current = { autoEdd: next.autoEdd, autoAog: next.autoAog };
+    if (next.edc !== expectedDeliveryDate) setExpectedDeliveryDate(next.edc);
+    if (next.aog !== aog) setAog(next.aog);
+  }, [maternalData.lmp, expectedDeliveryDate, aog, dateOfVisit]);
 
   useEffect(() => {
     if (!isMaternal || !weight || !height) return;
@@ -3329,10 +3348,10 @@ export default function ConsultationWorkspace() {
       aog,
       bmi: maternalData.bmi || "",
       treatment: maternalData.treatment || medication || "",
-      previousFpMethodUsed: maternalData.previousFpMethodUsed || "",
-      previous_fp_method_used: maternalData.previousFpMethodUsed || "",
-      previousFpMethodOther: maternalData.previousFpMethodOther || "",
-      previous_fp_method_other: maternalData.previousFpMethodOther || "",
+      previousFpMethodUsed: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previous_fp_method_used: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previousFpMethodOther: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
+      previous_fp_method_other: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
       previousPregnancyHistory: Array.isArray(
         maternalData.previousPregnancyHistory,
       )
@@ -3380,7 +3399,8 @@ export default function ConsultationWorkspace() {
       ...familyPlanningData,
       client_type: familyPlanningData.clientType || "",
       method_used: familyPlanningData.methodUsed || "",
-      previous_method: familyPlanningData.previousMethod || "",
+      previousMethod: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+      previous_method: historicalFpMethod.label || familyPlanningData.previousMethod || "",
       fp_visit_type: familyPlanningData.fpVisitType || "",
       visitType: familyPlanningData.fpVisitType || "",
       visit_type: familyPlanningData.fpVisitType || "",
@@ -4555,7 +4575,8 @@ export default function ConsultationWorkspace() {
       stepKey: NEXT_STEP,
       rows: [
         ...conditionCardReviewRows(sharedConditionEntries(reportingEntries), followUpSchedules),
-        ...continuedConcernReviewRows(continuedFollowUps, continuedDecisions),
+        ...linkedScheduledFollowUpReviewRows(continuedFollowUps),
+        ...continuedConcernReviewRows(continuedFollowUps.filter((task) => concernTaskIds.includes(Number(task.id))), continuedDecisions),
         { label: "Actions Taken", value: treatmentValue },
         { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
         // Continued, starting and stopped monitoring only (no concerns, no
@@ -4923,21 +4944,13 @@ export default function ConsultationWorkspace() {
                   }
                 />
 
-                <FieldSelect
-                  label="Previous Method"
-                  value={familyPlanningData.previousMethod}
-                  onChange={(event) =>
-                    handleFamilyPlanningChange(
-                      "previousMethod",
-                      event.target.value,
-                    )
-                  }
-                >
-                  <option value="">Select previous method...</option>
-                  {PREVIOUS_FP_METHOD_OPTIONS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </FieldSelect>
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">Previous Method</p>
+                  <p className="text-sm text-[#111827]">{historicalFpMethod.label || "Not recorded"}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                    From Patient History. This visit records Method Used / Accepted.
+                  </p>
+                </div>
 
                 <FieldSelect
                   label="Method Used / Accepted"

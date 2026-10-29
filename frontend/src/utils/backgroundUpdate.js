@@ -26,6 +26,7 @@ import {
   formatHospitalizations,
   formatPatientReported,
   formatPregnancies,
+  formatPreviousFpMethod,
   formatSexual,
   formatSmoking,
   formatSymptoms,
@@ -102,6 +103,8 @@ const SCHEMA = {
     regularity: "text",
     symptoms: "list",
     symptomNotes: "text",
+    previousFpMethod: "text",
+    previousFpMethodOther: "text",
     pregnancies: [{ year: "int", outcome: "text", delivery: "text", place: "text", note: "text" }],
   },
 };
@@ -278,8 +281,9 @@ export const BACKGROUND_SECTION_FIELDS = {
     },
   ],
   obstetric: [
-    { key: "cycle", label: "Menstrual Cycle", read: (slice) => formatCycle(slice?.obstetric) },
+    { key: "cycle", label: "Usual menstrual cycle", read: (slice) => formatCycle(slice?.obstetric) },
     { key: "symptoms", label: "Menstrual Symptoms", read: (slice) => formatSymptoms(slice?.obstetric) },
+    { key: "previousFp", label: "Previous FP method", read: (slice) => formatPreviousFpMethod(slice?.obstetric) },
     {
       key: "pregnancies",
       label: "Previous pregnancies",

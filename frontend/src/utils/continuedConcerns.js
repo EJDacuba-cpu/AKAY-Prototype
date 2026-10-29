@@ -1,6 +1,31 @@
 import { CARE_OUTCOMES, isCareOutcome } from './conditionCards.js';
+import { isScheduledServiceFollowUp } from './followUpSchedules.js';
 
 export const continuedPurposeKey = (id) => `continued:${Number(id)}`;
+
+export function concernFollowUpTaskIds(ids = [], followUps = []) {
+  const byId = new Map((Array.isArray(followUps) ? followUps : []).map((task) => [Number(task.id), task]));
+  return (Array.isArray(ids) ? ids : []).filter((id) => !isScheduledServiceFollowUp(byId.get(Number(id)) || {}));
+}
+
+export function stripServiceConcernSchedules(schedules = [], followUps = []) {
+  const serviceIds = new Set(
+    (Array.isArray(followUps) ? followUps : []).filter(isScheduledServiceFollowUp).map((task) => Number(task.id)),
+  );
+  return (Array.isArray(schedules) ? schedules : []).filter((item) => {
+    const key = String(item?.purposeKey || '');
+    if (serviceIds.has(Number(item?.predecessorTaskId)) && key.startsWith('continued:')) return false;
+    if (key.startsWith('continued:') && serviceIds.has(Number(key.slice('continued:'.length)))) return false;
+    return true;
+  });
+}
+
+export function linkedScheduledFollowUpReviewRows(tasks = []) {
+  return (Array.isArray(tasks) ? tasks : []).filter(isScheduledServiceFollowUp).map((task) => ({
+    label: `Linked scheduled follow-up · FU-${task.id}`,
+    value: [task.purpose || task.reason, task.dueDate].filter(Boolean).join(' · ') || 'Selected follow-up',
+  }));
+}
 
 /** Missing decisions stay missing, including on legacy drafts. */
 export function continuedConcernPayload(ids = [], decisions = []) {

@@ -446,6 +446,8 @@ test("the normalizer gives the full shape for null, empty and old string-shaped 
     assert.deepEqual(background.personalSocial.environment.exposures, []);
     assert.deepEqual(background.obstetric.pregnancies, []);
     assert.deepEqual(background.obstetric.symptoms, []);
+    assert.equal(background.obstetric.previousFpMethod, "");
+    assert.equal(background.obstetric.previousFpMethodOther, "");
     assert.deepEqual(background.revisions, { medical: 0, family: 0, social: 0, obstetric: 0 });
     assert.deepEqual(background.updatedAt, { medical: "", family: "", social: "", obstetric: "" });
     assert.deepEqual(background.reviewedAt, { medical: null, family: null, social: null, obstetric: null });
@@ -461,6 +463,7 @@ test("the normalizer reads a missing flag as false and coerces numeric strings",
       menopauseAge: "50",
       intervalDays: "28",
       durationDays: "5",
+      previousFpMethod: "Pills-COC — Combined Oral Contraceptives",
       pregnancies: [{ year: "2019", outcome: "liveBirth" }],
     },
     currentDiseases: [{ name: "Gout", yearDiagnosed: "2015" }],
@@ -477,6 +480,7 @@ test("the normalizer reads a missing flag as false and coerces numeric strings",
   assert.equal(background.obstetric.menopauseAge, 50);
   assert.equal(background.obstetric.intervalDays, 28);
   assert.equal(background.obstetric.durationDays, 5);
+  assert.equal(background.obstetric.previousFpMethod, "Pills-COC — Combined Oral Contraceptives");
   assert.equal(background.obstetric.pregnancies[0].year, 2019);
   assert.equal(background.currentDiseases[0].yearDiagnosed, 2015);
   assert.equal(background.revisions.medical, 2);

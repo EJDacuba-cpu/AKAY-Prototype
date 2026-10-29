@@ -19,6 +19,7 @@ import {
   pruneServiceSchedules,
   restoreSelectedServiceSchedules,
   restoreServiceReferrals,
+  isScheduledServiceFollowUp,
   selectedCarePlanServices,
   serviceNextAction,
   servicePurposeKey,
@@ -173,4 +174,31 @@ test("switching a service from schedule to refer drops that return only", () => 
   const next = applyServiceNextAction("Maternal", "refer_to_rhu", mixed);
   assert.equal(next.some((row) => row.purposeKey === prenatalKey), false);
   assert.equal(next.some((row) => row.purposeKey === fpKey), true);
+});
+
+test("scheduled service follow-ups are identified from saved metadata, not purpose text", () => {
+  assert.equal(isScheduledServiceFollowUp({ purposeKey: prenatalKey, purpose: "Return visit" }), true);
+  assert.equal(isScheduledServiceFollowUp({ purposeKey: epiKey }), true);
+  assert.equal(isScheduledServiceFollowUp({ purposeKey: fpKey }), true);
+  assert.equal(isScheduledServiceFollowUp({
+    purposeKey: "visit",
+    sourceSelectedPrograms: ["Maternal"],
+  }), true);
+  assert.equal(isScheduledServiceFollowUp({
+    purposeKey: "visit",
+    sourceCategory: "Maternal",
+  }), true);
+  assert.equal(isScheduledServiceFollowUp({
+    purposeKey: "entry:wound",
+    purpose: "Prenatal follow-up",
+    sourceSelectedPrograms: ["Maternal"],
+  }), false);
+  assert.equal(isScheduledServiceFollowUp({
+    purposeKey: "visit",
+    purpose: "Prenatal follow-up",
+  }), false);
+  assert.equal(isScheduledServiceFollowUp({
+    purposeKey: "continued:26",
+    purpose: "Prenatal follow-up",
+  }), false);
 });

@@ -5,7 +5,13 @@
  * Clinical service forms are unchanged; these controls live only here.
  */
 import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
-import { restoreFollowUpSchedules, servicePurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
+import {
+  isScheduledServiceFollowUp,
+  restoreFollowUpSchedules,
+  serviceFollowUpProgram,
+  servicePurposeKey,
+  VISIT_PURPOSE_KEY,
+} from "./followUpSchedules.js";
 
 export const SERVICE_NEXT_ACTIONS = Object.freeze({
   none: "No additional action",
@@ -149,4 +155,4 @@ export function suggestionsForProgram(program, suggestions = []) {
   return [];
 }
 
-export { servicePurposeKey, VISIT_PURPOSE_KEY };
+export { isScheduledServiceFollowUp, serviceFollowUpProgram, servicePurposeKey, VISIT_PURPOSE_KEY };

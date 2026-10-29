@@ -104,6 +104,8 @@ const FIELD_LABELS = {
   sexual: "Sexual History",
   environment: "Household Environment",
   pregnancies: "Pregnancies",
+  previousFpMethod: "Previous FP method",
+  previousFpMethodOther: "Specify FP method",
 };
 // Wrapper keys that add nothing a reader needs.
 const SKIPPED = new Set(["personalSocial", "obstetric", "items"]);

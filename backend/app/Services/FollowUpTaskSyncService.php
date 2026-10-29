@@ -95,7 +95,7 @@ class FollowUpTaskSyncService
             if ($alreadyLocked !== null && (int) $taskId === (int) $alreadyLocked->id) {
                 continue;
             }
-            $task = FollowUpTask::query()->whereKey((int) $taskId)->lockForUpdate()->first();
+            $task = FollowUpTask::query()->with('healthRecord')->whereKey((int) $taskId)->lockForUpdate()->first();
             $samePatient = $task !== null && (int) $task->patient_id === (int) $patient->id;
             $sameFacility = $user->isRhu()
                 ? (int) $task?->rural_health_unit_id === (int) $user->rural_health_unit_id

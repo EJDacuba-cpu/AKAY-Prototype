@@ -1,4 +1,5 @@
 import { historyFieldError } from "../../../../utils/backgroundValidation";
+import { PREVIOUS_FP_METHOD_OPTIONS } from "../../../../utils/familyPlanning";
 import {
   DELIVERY_TYPES,
   MENSTRUAL_SYMPTOMS,
@@ -17,7 +18,7 @@ import {
 import ListEditor from "./ListEditor";
 
 const STATUSES = [
-  { value: "menstruating", label: "Menstruating" },
+  { value: "menstruating", label: "Has menstrual periods" },
   { value: "menopause", label: "Menopause" },
 ];
 const AMOUNTS = [
@@ -81,7 +82,10 @@ export default function ObstetricSection({ value, onChange, patient, today = new
   return (
     <CollapsibleBlock title="Obstetric & Menstrual History" collapsed={collapsed} forceOpen={hasError}>
       <div className="space-y-5">
-        <Block title="Menstrual Cycle">
+        <Block
+          title="Usual menstrual cycle"
+          note="These details describe the patient's usual cycle, not amenorrhea of a current pregnancy. Pregnancy is not menopause and must not change this status."
+        >
           <FieldGrid>
             <NumberField label="Age at first period" name={`${OBSTETRIC}.menarcheAge`} error={fieldError("menarcheAge")} min={6} max={25} value={obstetric.menarcheAge} onChange={(next) => set({ menarcheAge: next })} />
             <SelectField label="Menstrual status" name={`${OBSTETRIC}.menstrualStatus`} error={fieldError("menstrualStatus")} value={obstetric.menstrualStatus} options={STATUSES} emptyLabel="Not recorded" onChange={changeStatus} />
@@ -105,6 +109,29 @@ export default function ObstetricSection({ value, onChange, patient, today = new
             ))}
           </div>
           <TextField label="Symptom notes" value={obstetric.symptomNotes} onChange={(next) => set({ symptomNotes: next })} />
+        </Block>
+
+        <Block title="Previous FP method" note="The client's last recorded family planning method. Prenatal and Family Planning visits show this as history, not as this visit's method.">
+          <FieldGrid>
+            <SelectField
+              label="Previous FP method"
+              name={`${OBSTETRIC}.previousFpMethod`}
+              error={fieldError("previousFpMethod")}
+              value={obstetric.previousFpMethod}
+              options={[...PREVIOUS_FP_METHOD_OPTIONS, "Other"]}
+              emptyLabel="Not recorded"
+              onChange={(next) => set({ previousFpMethod: next, previousFpMethodOther: next === "Other" ? obstetric.previousFpMethodOther : "" })}
+            />
+            {obstetric.previousFpMethod === "Other" ? (
+              <TextField
+                label="Specify FP method"
+                name={`${OBSTETRIC}.previousFpMethodOther`}
+                error={fieldError("previousFpMethodOther")}
+                value={obstetric.previousFpMethodOther}
+                onChange={(next) => set({ previousFpMethodOther: next })}
+              />
+            ) : null}
+          </FieldGrid>
         </Block>
 
         <Block title="Previous pregnancies">

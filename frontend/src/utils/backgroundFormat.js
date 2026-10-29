@@ -178,7 +178,7 @@ export function formatCycle(obstetric) {
   const menopauseAge = whole(obstetric.menopauseAge);
 
   let status = "";
-  if (obstetric.menstrualStatus === "menstruating") status = "Menstruating";
+  if (obstetric.menstrualStatus === "menstruating") status = "Has menstrual periods";
   if (obstetric.menstrualStatus === "menopause") {
     status = menopauseAge !== null ? `Menopause at ${menopauseAge}` : "Menopause";
   }
@@ -200,6 +200,15 @@ export function formatSymptoms(obstetric) {
     .map((symptom) => labelFor(MENSTRUAL_SYMPTOMS, symptom))
     .filter(Boolean);
   return join([symptoms.join(", "), text(obstetric.symptomNotes)]);
+}
+
+/** Last recorded family planning method in Patient History, not this visit's method. */
+export function formatPreviousFpMethod(obstetric) {
+  if (!isObject(obstetric)) return "";
+  const method = text(obstetric.previousFpMethod);
+  if (!method) return "";
+  if (method === "Other") return text(obstetric.previousFpMethodOther) || "Other";
+  return method;
 }
 
 /** Previous pregnancies are history entries, not a verified current-pregnancy OB score. */

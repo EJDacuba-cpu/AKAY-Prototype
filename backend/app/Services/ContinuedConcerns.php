@@ -14,6 +14,29 @@ final class ContinuedConcerns
         return collect($decisions)->contains(fn ($item) => is_array($item) && ($item['careOutcome'] ?? null) === 'refer_to_rhu');
     }
 
+    /** Concern tasks only; scheduled service follow-ups use Selected Health Services. */
+    public static function concernTaskIds(Collection $tasks): array
+    {
+        return $tasks
+            ->reject(fn ($task) => $task instanceof \App\Models\FollowUpTask && FollowUpSchedules::isScheduledServiceFollowUp($task))
+            ->map(fn ($task) => (int) $task->id)
+            ->values()
+            ->all();
+    }
+
+    public static function withoutServiceDecisions(array $decisions, Collection $tasks): array
+    {
+        $serviceIds = array_flip(array_diff(
+            $tasks->map(fn ($task) => (int) $task->id)->all(),
+            self::concernTaskIds($tasks)
+        ));
+
+        return array_values(array_filter(
+            $decisions,
+            fn ($item) => is_array($item) && ! isset($serviceIds[(int) ($item['taskId'] ?? 0)])
+        ));
+    }
+
     public static function validate($validator, array $selectedIds, array $decisions, array $schedules): void
     {
         $selected = array_unique(array_map('intval', $selectedIds));

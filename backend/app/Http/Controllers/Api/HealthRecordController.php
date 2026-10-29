@@ -323,11 +323,12 @@ class HealthRecordController extends Controller
                     if ($lockedFollowUpTask !== null) {
                         $tasks->push($lockedFollowUpTask);
                     }
-                    $decisions = $carePlan['continued_concerns'] ?? [];
+                    $concernIds = \App\Services\ContinuedConcerns::concernTaskIds($tasks);
+                    $decisions = \App\Services\ContinuedConcerns::withoutServiceDecisions($carePlan['continued_concerns'] ?? [], $tasks);
                     $validator = \Illuminate\Support\Facades\Validator::make([], []);
-                    $validator->after(fn ($validator) => \App\Services\ContinuedConcerns::validate($validator, $tasks->pluck('id')->all(), $decisions, \App\Services\FollowUpSchedules::fromMonitoringData($data['monitoring_data'])));
+                    $validator->after(fn ($validator) => \App\Services\ContinuedConcerns::validate($validator, $concernIds, $decisions, \App\Services\FollowUpSchedules::fromMonitoringData($data['monitoring_data'])));
                     $validator->validate();
-                    $data['monitoring_data']['continuedConcerns'] = \App\Services\ContinuedConcerns::snapshot($carePlan['continued_concerns'] ?? [], $tasks);
+                    $data['monitoring_data']['continuedConcerns'] = \App\Services\ContinuedConcerns::snapshot($decisions, $tasks);
                 }
                 // A save that confirms conditions or changes monitoring locks the
                 // patient row first - the order PatientConditions::apply uses -

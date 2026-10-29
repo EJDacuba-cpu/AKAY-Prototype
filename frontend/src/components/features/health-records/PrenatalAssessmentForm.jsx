@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Pencil, Plus, X } from "lucide-react";
 
 import { DatePickerField } from "../../common/forms/DatePickerField";
-import { PREVIOUS_FP_METHOD_OPTIONS } from "../../../utils/familyPlanning";
 import { formatLongDate } from "../../../utils/formatters";
 import {
   EMPTY_LABORATORY_ENTRY,
@@ -12,6 +11,7 @@ import {
   OB_SCORE_GP_FIELDS,
   OB_SCORE_TPAL_FIELDS,
   PRENATAL_IMMUNIZATION_OPTIONS,
+  hasPregnancyBaseline,
   labTestLabel,
   sanitizeLaboratoryEntries,
 } from "../../../utils/prenatalForm";
@@ -59,20 +59,16 @@ export default function PrenatalAssessmentForm({
   const hasThisVisitUltrasound = Boolean(
     String(maternalData.ultrasound?.result || "").trim() || maternalData.ultrasound?.dateDone,
   );
-  const previousFp = String(maternalData.previousFpMethodUsed || "").trim();
   const [addingLabs, setAddingLabs] = useState(false);
   const [labDraft, setLabDraft] = useState(EMPTY_LABORATORY_ENTRY);
   const [editingLabIndex, setEditingLabIndex] = useState(null);
   const [labFormError, setLabFormError] = useState("");
   const [addingUltrasound, setAddingUltrasound] = useState(false);
-  const [editingFp, setEditingFp] = useState(false);
+  const [startedWithBaseline] = useState(() => hasPregnancyBaseline(maternalData, expectedDeliveryDate));
+  const [correctingBaseline, setCorrectingBaseline] = useState(false);
   const showLabForm = addingLabs || editingLabIndex !== null;
   const showUltrasoundEditor = hasThisVisitUltrasound || addingUltrasound;
-  const showFpEditor = editingFp || !previousFp;
-  const fpSummary =
-    previousFp === "Other"
-      ? String(maternalData.previousFpMethodOther || "").trim() || "Other"
-      : previousFp;
+  const showBaselineEditor = correctingBaseline || !startedWithBaseline;
 
   return (
     <div className="space-y-4">
@@ -96,77 +92,107 @@ export default function PrenatalAssessmentForm({
       )}
       <FormSection
         title="Pregnancy / Obstetric Information"
-        subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment."
+        subtitle="Record this pregnancy's baseline once. Later visits keep it as a summary unless staff correct it."
+        action={
+          !locked && startedWithBaseline ? (
+            <button
+              type="button"
+              aria-expanded={showBaselineEditor}
+              onClick={() => setCorrectingBaseline((current) => !current)}
+              className={SMALL_BUTTON_CLASS}
+            >
+              {showBaselineEditor ? "Done" : "Correct"}
+            </button>
+          ) : null
+        }
       >
-        <LockedFormContent locked={locked}>
-          <div className="space-y-5">
-            <div>
-              <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
-              <div className="grid gap-4 @xl:grid-cols-2">
-                <DatePickerField
-                  label="LMP"
-                  value={maternalData.lmp}
-                  onChange={(value) => onMaternalChange("lmp", value)}
-                  error={errors.lmp || errors["maternalData.lmp"] || errors["maternal_data.lmp"]}
-                />
-                <DatePickerField
-                  label="EDC"
-                  value={expectedDeliveryDate}
-                  onChange={onExpectedDeliveryDateChange}
-                />
+        {!showBaselineEditor ? (
+          <HistoryList
+            caption="Pregnancy baseline"
+            rows={[
+              { key: "lmp", label: "LMP", text: formatHistoryDate(maternalData.lmp) },
+              { key: "edc", label: "EDC", text: formatHistoryDate(expectedDeliveryDate) },
+              { key: "gravida", label: "Gravida (G)", text: maternalData.gravida },
+              { key: "para", label: "Para (P)", text: maternalData.para },
+              ...OB_SCORE_TPAL_FIELDS.map((field) => ({
+                key: field.key,
+                label: field.label,
+                text: maternalData[field.key],
+              })),
+            ]}
+          />
+        ) : (
+          <LockedFormContent locked={locked}>
+            <div className="space-y-5">
+              <div>
+                <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
+                <div className="grid gap-4 @xl:grid-cols-2">
+                  <DatePickerField
+                    label="LMP"
+                    value={maternalData.lmp}
+                    onChange={(value) => onMaternalChange("lmp", value)}
+                    error={errors.lmp || errors["maternalData.lmp"] || errors["maternal_data.lmp"]}
+                  />
+                  <DatePickerField
+                    label="EDC"
+                    value={expectedDeliveryDate}
+                    onChange={onExpectedDeliveryDateChange}
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="grid gap-4 @xl:grid-cols-2">
-              {OB_SCORE_GP_FIELDS.map((field) => (
-                <FieldInput
-                  key={field.key}
-                  label={field.label}
-                  type="number"
-                  min="0"
-                  placeholder={field.placeholder}
-                  value={maternalData[field.key]}
-                  onChange={(event) => onMaternalChange(field.key, event.target.value)}
-                />
-              ))}
-            </div>
-
-            <div>
-              <p className={MATERNAL_EYEBROW_CLASS}>OB Score (TPAL)</p>
-              <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
-                {OB_SCORE_TPAL_FIELDS.map((field) => (
+              <div className="grid gap-4 @xl:grid-cols-2">
+                {OB_SCORE_GP_FIELDS.map((field) => (
                   <FieldInput
                     key={field.key}
                     label={field.label}
                     type="number"
                     min="0"
-                    placeholder="0"
+                    placeholder={field.placeholder}
                     value={maternalData[field.key]}
                     onChange={(event) => onMaternalChange(field.key, event.target.value)}
                   />
                 ))}
               </div>
-            </div>
 
-            <div>
-              <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
-              <div className="grid gap-4 @xl:grid-cols-2">
-                <FieldInput
-                  label="AOG (Age of Gestation)"
-                  placeholder="e.g. 28 weeks"
-                  value={aog}
-                  onChange={(event) => onAogChange(event.target.value)}
-                />
-                <FieldInput
-                  label="FHT (Fetal Heart Tone)"
-                  placeholder="e.g. 140 bpm"
-                  value={maternalData.fht}
-                  onChange={(event) => onMaternalChange("fht", event.target.value)}
-                />
+              <div>
+                <p className={MATERNAL_EYEBROW_CLASS}>OB Score (TPAL)</p>
+                <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
+                  {OB_SCORE_TPAL_FIELDS.map((field) => (
+                    <FieldInput
+                      key={field.key}
+                      label={field.label}
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={maternalData[field.key]}
+                      onChange={(event) => onMaternalChange(field.key, event.target.value)}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </LockedFormContent>
+          </LockedFormContent>
+        )}
+        <div className="mt-5">
+          <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
+          <LockedFormContent locked={locked}>
+            <div className="grid gap-4 @xl:grid-cols-2">
+              <FieldInput
+                label="AOG (Age of Gestation)"
+                placeholder="e.g. 28 weeks"
+                value={aog}
+                onChange={(event) => onAogChange(event.target.value)}
+              />
+              <FieldInput
+                label="FHT (Fetal Heart Tone)"
+                placeholder="e.g. 140 bpm"
+                value={maternalData.fht}
+                onChange={(event) => onMaternalChange("fht", event.target.value)}
+              />
+            </div>
+          </LockedFormContent>
+        </div>
       </FormSection>
 
       <FormSection
@@ -360,53 +386,6 @@ export default function PrenatalAssessmentForm({
       </FormSection>
 
       <FormSection
-        title="Previous FP Method"
-        subtitle="The client's last recorded family planning method."
-        action={
-          !locked && previousFp ? (
-            <button
-              type="button"
-              aria-expanded={showFpEditor}
-              onClick={() => setEditingFp((current) => !current)}
-              className={SMALL_BUTTON_CLASS}
-            >
-              {showFpEditor ? "Done" : "Update"}
-            </button>
-          ) : null
-        }
-      >
-        {!showFpEditor && previousFp ? (
-          <HistoryList
-            rows={[{ key: "previousFp", label: "Previous FP method used", text: fpSummary }]}
-          />
-        ) : (
-          <LockedFormContent locked={locked}>
-            <div className="grid gap-4 @xl:grid-cols-2">
-              <FieldSelect
-                label="Previous FP Method Used"
-                value={maternalData.previousFpMethodUsed}
-                onChange={(event) => onMaternalChange("previousFpMethodUsed", event.target.value)}
-              >
-                <option value="">Select method...</option>
-                {PREVIOUS_FP_METHOD_OPTIONS.map((method) => (
-                  <option key={method} value={method}>
-                    {method}
-                  </option>
-                ))}
-              </FieldSelect>
-              {maternalData.previousFpMethodUsed === "Other" && (
-                <FieldInput
-                  label="Specify FP Method"
-                  value={maternalData.previousFpMethodOther}
-                  onChange={(event) => onMaternalChange("previousFpMethodOther", event.target.value)}
-                />
-              )}
-            </div>
-          </LockedFormContent>
-        )}
-      </FormSection>
-
-      <FormSection
         title="Immunization"
         subtitle="Previous TT/Td doses stay on the record. Record only a vaccine given this visit."
       >
@@ -519,7 +498,9 @@ function HistoryList({ caption, rows = [] }) {
         {rows.map((row) => (
           <div key={row.key} className="grid gap-1 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
             <dt className="text-xs font-medium text-neutral-500">{row.label}</dt>
-            <dd className="m-0 min-w-0 break-words text-[13px] text-neutral-900">{row.text}</dd>
+            <dd className="m-0 min-w-0 break-words text-[13px] text-neutral-900">
+              {row.text == null || row.text === "" ? "Not recorded" : row.text}
+            </dd>
           </div>
         ))}
       </dl>

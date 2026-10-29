@@ -11,6 +11,39 @@ final class FollowUpSchedules
 {
     public const VISIT_KEY = 'visit';
 
+    public static function serviceKey(string $program): string
+    {
+        return 'service:'.str_replace(' ', '-', strtolower(trim($program)));
+    }
+
+    public static function isScheduledServiceFollowUp(\App\Models\FollowUpTask $task): bool
+    {
+        $key = self::text($task->purpose_key !== null && $task->purpose_key !== '' ? $task->purpose_key : self::VISIT_KEY);
+        if (str_starts_with($key, 'entry:') || str_starts_with($key, 'continued:')) {
+            return false;
+        }
+        foreach (array_keys(ConsultationPrograms::CLASSIFICATIONS) as $program) {
+            if ($key === self::serviceKey($program)) {
+                return true;
+            }
+        }
+        if ($key !== self::VISIT_KEY) {
+            return false;
+        }
+        $record = $task->healthRecord;
+        $programs = is_array($record?->monitoring_data['selectedPrograms'] ?? null)
+            ? $record->monitoring_data['selectedPrograms']
+            : [];
+        foreach ($programs as $program) {
+            if (is_string($program) && isset(ConsultationPrograms::CLASSIFICATIONS[$program])) {
+                return true;
+            }
+        }
+        $category = (string) ($record?->category ?? '');
+
+        return in_array($category, ConsultationPrograms::CLASSIFICATIONS, true);
+    }
+
     public const PURPOSE_MAX = 150;
 
     public const KEY_MAX = 64;

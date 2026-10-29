@@ -113,6 +113,7 @@ class PatientHistorySectionsTest extends TestCase
                     'menarcheAge' => 13, 'menstrualStatus' => 'menstruating', 'intervalDays' => 28,
                     'durationDays' => 5, 'amount' => 'moderate', 'regularity' => 'regular',
                     'symptoms' => ['dysmenorrhea', 'bloating'], 'symptomNotes' => 'Cramps on day 1',
+                    'previousFpMethod' => 'Pills-COC — Combined Oral Contraceptives',
                     'pregnancies' => [
                         ['year' => 2018, 'outcome' => 'liveBirth', 'delivery' => 'normal', 'place' => 'BHC', 'note' => 'Healthy'],
                         ['year' => 2020, 'outcome' => 'miscarriage', 'delivery' => 'notApplicable'],
@@ -213,6 +214,13 @@ class PatientHistorySectionsTest extends TestCase
             'background_update.sections.obstetric.obstetric.menarcheAge',
             'background_update.sections.obstetric.obstetric.durationDays',
         ]);
+
+        $this->finalize([
+            'sections' => ['obstetric' => ['obstetric' => ['previousFpMethod' => 'Unknown method']]],
+            'base_revisions' => ['obstetric' => 0],
+        ])->assertUnprocessable()->assertJsonValidationErrors(
+            'background_update.sections.obstetric.obstetric.previousFpMethod'
+        );
 
         $this->assertSame(0, HealthRecord::count());
     }

@@ -6,6 +6,8 @@
  * are restored as a `visit` row.
  */
 
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
+
 export const VISIT_PURPOSE_KEY = "visit";
 
 const text = (value) => String(value ?? "").trim();
@@ -20,6 +22,37 @@ export function extraPurposeKey(id) {
 
 export function servicePurposeKey(program) {
   return `service:${String(program || "").trim().toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+function programsFromFollowUp(task = {}) {
+  return getConsultationPrograms({
+    selectedPrograms: Array.isArray(task.sourceSelectedPrograms) ? task.sourceSelectedPrograms : undefined,
+    category: task.sourceCategory,
+  });
+}
+
+/**
+ * A scheduled health-service return (Prenatal / EPI / FP). Uses purpose_key
+ * or the source record's selected programs — never purpose text alone.
+ * Concern tasks (`entry:` / `continued:`) stay independent even when the
+ * source consultation also included a service.
+ */
+export function isScheduledServiceFollowUp(task = {}) {
+  const key = text(task?.purposeKey);
+  if (key.startsWith("entry:") || key.startsWith("continued:")) return false;
+  if (Object.keys(PROGRAM_CLASSIFICATIONS).some((program) => servicePurposeKey(program) === key)) {
+    return true;
+  }
+  if (key && key !== VISIT_PURPOSE_KEY) return false;
+  return programsFromFollowUp(task).length > 0;
+}
+
+export function serviceFollowUpProgram(task = {}) {
+  const key = text(task?.purposeKey);
+  for (const program of Object.keys(PROGRAM_CLASSIFICATIONS)) {
+    if (servicePurposeKey(program) === key) return program;
+  }
+  return isScheduledServiceFollowUp(task) ? (programsFromFollowUp(task)[0] || "") : "";
 }
 
 export function emptySchedule(overrides = {}) {
@@ -98,10 +131,13 @@ export function attachPredecessors(schedules = [], continuedFollowUps = []) {
   const continued = Array.isArray(continuedFollowUps) ? continuedFollowUps : [];
   return schedules.map((schedule) => {
     if (schedule.predecessorTaskId) return schedule;
+    const scheduleKey = text(schedule.purposeKey);
     const match = continued.find((task) => {
       const key = text(task.purposeKey);
-      const purpose = text(task.purpose || task.reason).toLowerCase();
-      return (key && key === schedule.purposeKey) || (purpose && purpose === text(schedule.purpose).toLowerCase());
+      if (key && scheduleKey && key === scheduleKey) return true;
+      if (!scheduleKey.startsWith("service:")) return false;
+      const program = serviceFollowUpProgram(task);
+      return Boolean(program) && servicePurposeKey(program) === scheduleKey;
     });
     if (match) return { ...schedule, predecessorTaskId: Number(match.id) };
     return { ...schedule, predecessorTaskId: schedule.predecessorTaskId || null };

@@ -65,6 +65,35 @@ test("a successor is linked only when the purpose matches a selected follow-up",
   );
 });
 
+test("a service return links the original scheduled follow-up without a second concern successor", () => {
+  const continued = [{ id: 26, purposeKey: "service:maternal", purpose: "Prenatal follow-up" }];
+  const scheduled = followUpSchedulesPayload({
+    extraSchedules: [{ purposeKey: "service:maternal", purpose: "Prenatal follow-up", date: "2026-11-06" }],
+    continuedFollowUps: continued,
+  });
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].purposeKey, "service:maternal");
+  assert.equal(scheduled[0].predecessorTaskId, 26);
+  assert.deepEqual(
+    followUpSchedulesPayload({ extraSchedules: [], continuedFollowUps: continued }),
+    [],
+  );
+  assert.equal(
+    attachPredecessors(
+      [{ purposeKey: "service:maternal", purpose: "Different wording", date: "2026-11-06" }],
+      [{ id: 26, purposeKey: "visit", purpose: "Return visit", sourceSelectedPrograms: ["Maternal"] }],
+    )[0].predecessorTaskId,
+    26,
+  );
+  assert.equal(
+    attachPredecessors(
+      [{ purposeKey: "service:maternal", purpose: "Prenatal follow-up", date: "2026-11-06" }],
+      [{ id: 12, purposeKey: "entry:wound", purpose: "Prenatal follow-up" }],
+    )[0].predecessorTaskId,
+    null,
+  );
+});
+
 test("schedule validation does not require a date when no return is needed", () => {
   assert.deepEqual(followUpScheduleErrors({
     managedReturns: [{ needed: false, purposeKey: "entry:c1", purpose: "Wound", date: "" }],

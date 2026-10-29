@@ -332,4 +332,170 @@ class ContinuedConcernOutcomeTest extends TestCase
         $this->assertSame('active', $monitoring->fresh()->status);
         $this->assertSame('active', $condition->fresh()->status);
     }
+
+    private function prenatalTask(): FollowUpTask
+    {
+        $record = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'Maternal',
+            'barangay_health_center_id' => $this->patient->barangay_health_center_id,
+            'chief_complaint' => 'Prenatal checkup',
+            'maternal_data' => ['lmp' => '2026-03-01', 'expectedDeliveryDate' => '2026-12-06'],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'enroll',
+            ],
+        ]);
+
+        return FollowUpTask::create([
+            'health_record_id' => $record->id,
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->patient->barangay_health_center_id,
+            'due_date' => now()->toDateString(),
+            'state' => FollowUpTask::STATE_PENDING,
+            'purpose_key' => 'service:maternal',
+            'purpose' => 'Prenatal follow-up',
+        ]);
+    }
+
+    private function prenatalContinuePayload(FollowUpTask $task, array $extra = []): array
+    {
+        return [
+            'patient_id' => $this->patient->id,
+            'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'category' => 'Maternal',
+            'chief_complaint' => 'Prenatal follow-up visit',
+            'treatment_notes' => 'Counseling continued.',
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $task->health_record_id,
+            'maternal_data' => ['lmp' => '2026-03-01', 'expectedDeliveryDate' => '2026-12-06'],
+            'care_plan' => [
+                'condition_cards' => true,
+                'shared_condition_referral' => true,
+                'continued_follow_up_task_ids' => [$task->id],
+                'continued_concerns' => [],
+            ],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'continue',
+                'followUpTaskId' => $task->id,
+            ],
+            ...$extra,
+        ];
+    }
+
+    public function test_service_follow_up_finalizes_without_a_concern_outcome_and_creates_no_successor(): void
+    {
+        $task = $this->prenatalTask();
+        $id = $this->save($this->prenatalContinuePayload($task))->assertCreated()->json('data.id');
+        $this->assertSame($id, $task->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame([], HealthRecord::findOrFail($id)->monitoring_data['continuedConcerns'] ?? []);
+    }
+
+    public function test_scheduling_the_service_return_creates_one_successor_for_the_original_task(): void
+    {
+        $task = $this->prenatalTask();
+        $payload = $this->prenatalContinuePayload($task);
+        $payload['monitoring_data']['followUpSchedules'] = [[
+            'purposeKey' => 'service:maternal',
+            'purpose' => 'Prenatal follow-up',
+            'date' => now()->addWeeks(4)->toDateString(),
+            'predecessorTaskId' => $task->id,
+        ]];
+        $id = $this->save($payload)->assertCreated()->json('data.id');
+        $successor = FollowUpTask::where('health_record_id', $id)->sole();
+        $this->assertSame($task->id, $successor->predecessor_task_id);
+        $this->assertSame('service:maternal', $successor->purpose_key);
+        $this->assertSame($id, $task->fresh()->fulfilled_by_health_record_id);
+        $this->assertDatabaseCount('follow_up_tasks', 2);
+    }
+
+    public function test_mixed_service_and_concern_follow_ups_keep_independent_decisions(): void
+    {
+        $prenatal = $this->prenatalTask();
+        $wound = $this->task();
+        $payload = $this->prenatalContinuePayload($prenatal);
+        $payload['care_plan']['continued_follow_up_task_ids'] = [$prenatal->id, $wound->id];
+        $payload['diagnoses'] = [['id' => 'new', 'name' => 'Headache', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'managed_at_bhc']];
+        $this->save($payload)->assertUnprocessable()->assertJsonValidationErrors('care_plan.continued_concerns');
+
+        $payload['care_plan']['continued_concerns'] = [$this->decision($wound, 'managed_at_bhc')];
+        $id = $this->save($payload)->assertCreated()->json('data.id');
+        $this->assertSame($id, $prenatal->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame($id, $wound->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame(
+            [['taskId' => $wound->id, 'careOutcome' => 'managed_at_bhc', 'sourceHealthRecordId' => $wound->health_record_id, 'purpose' => 'Wound review']],
+            HealthRecord::findOrFail($id)->monitoring_data['continuedConcerns']
+        );
+    }
+
+    public function test_stale_service_concern_decision_is_ignored_and_does_not_create_a_second_return(): void
+    {
+        $task = $this->prenatalTask();
+        $payload = $this->prenatalContinuePayload($task);
+        $payload['care_plan']['continued_concerns'] = [$this->decision($task, 'bhc_follow_up')];
+        $payload['monitoring_data']['followUpSchedules'] = [[
+            'purposeKey' => 'service:maternal',
+            'purpose' => 'Prenatal follow-up',
+            'date' => now()->addWeeks(4)->toDateString(),
+            'predecessorTaskId' => $task->id,
+        ]];
+        $id = $this->save($payload)->assertCreated()->json('data.id');
+        $this->assertSame(1, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame('service:maternal', FollowUpTask::where('health_record_id', $id)->sole()->purpose_key);
+    }
+
+    public function test_visit_key_service_follow_up_uses_source_programs_not_purpose_text(): void
+    {
+        $task = $this->prenatalTask();
+        $task->update(['purpose_key' => 'visit', 'purpose' => 'Return visit']);
+        $id = $this->save($this->prenatalContinuePayload($task))->assertCreated()->json('data.id');
+        $this->assertSame($id, $task->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame([], HealthRecord::findOrFail($id)->monitoring_data['continuedConcerns'] ?? []);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+    }
+
+    public function test_service_referral_fulfills_the_original_task_without_a_concern_outcome(): void
+    {
+        $task = $this->prenatalTask();
+        $payload = $this->refer($this->prenatalContinuePayload($task));
+        $payload['care_plan']['service_referrals'] = ['Maternal'];
+        $id = $this->save($payload)->assertCreated()->json('data.id');
+        $this->assertSame($id, $task->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame([], HealthRecord::findOrFail($id)->monitoring_data['continuedConcerns'] ?? []);
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertDatabaseCount('referrals', 0);
+    }
+
+    public function test_service_follow_up_draft_resume_does_not_require_a_concern_outcome(): void
+    {
+        $task = $this->prenatalTask();
+        $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'Maternal',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+                'chiefComplaint' => 'Prenatal follow-up visit',
+                'carePlan' => [
+                    'continuedFollowUpTaskIds' => [$task->id],
+                    'continuedConcerns' => [$this->decision($task, 'managed_at_bhc')],
+                ],
+                'selectedPrograms' => ['Maternal'],
+                'primaryProgram' => 'Maternal',
+                'prenatalIntent' => 'continue',
+            ],
+        ])->assertCreated();
+        $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
+        $id = $this->save($this->prenatalContinuePayload($task))->assertCreated()->json('data.id');
+        $this->assertSame($id, $task->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame(0, FollowUpTask::where('health_record_id', $id)->count());
+        $this->assertSame([], HealthRecord::findOrFail($id)->monitoring_data['continuedConcerns'] ?? []);
+    }
 }

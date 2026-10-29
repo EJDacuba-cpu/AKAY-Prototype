@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -39,8 +39,7 @@ import {
   EMPTY_MATERNAL_DATA,
   applyRiskFactorChange,
   collectPrenatalHistory,
-  computeAogFromLmp,
-  computeEddFromLmp,
+  applyPregnancyDating,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
@@ -84,10 +83,12 @@ import {
 import { createDiagnosisId } from "../../utils/diagnoses";
 import { defaultInformant } from "../../utils/patientHistory";
 import {
+  overlayBackgroundUpdate,
   restoreBackgroundUpdate,
   toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
+import { resolveHistoricalFpMethod } from "../../utils/familyPlanning";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
 import { canUpdateBackground } from "../../utils/backgroundEditing";
 import {
@@ -214,6 +215,14 @@ export default function RhuConsultationWorkspace() {
     () => collectPrenatalHistory(patientRecords),
     [patientRecords],
   );
+  const historicalFpMethod = useMemo(
+    () => resolveHistoricalFpMethod({
+      background: overlayBackgroundUpdate(patient?.medicalBackground, backgroundUpdate),
+      maternalData,
+      records: patientRecords,
+    }),
+    [patient?.medicalBackground, backgroundUpdate, maternalData, patientRecords],
+  );
   const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
 
   useEffect(() => {
@@ -261,15 +270,20 @@ export default function RhuConsultationWorkspace() {
     setInformant(defaultInformant(patient, new Date()));
   }, [patient, informant]);
 
+  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
   useEffect(() => {
-    if (!maternalData.lmp) {
-      setExpectedDeliveryDate("");
-      setAog("");
-      return;
-    }
-    setExpectedDeliveryDate(computeEddFromLmp(maternalData.lmp));
-    setAog(computeAogFromLmp(maternalData.lmp, new Date()));
-  }, [maternalData.lmp]);
+    const next = applyPregnancyDating({
+      lmp: maternalData.lmp,
+      edc: expectedDeliveryDate,
+      aog,
+      visitDate: new Date(),
+      previousAutoEdd: pregnancyDatingRef.current.autoEdd,
+      previousAutoAog: pregnancyDatingRef.current.autoAog,
+    });
+    pregnancyDatingRef.current = { autoEdd: next.autoEdd, autoAog: next.autoAog };
+    if (next.edc !== expectedDeliveryDate) setExpectedDeliveryDate(next.edc);
+    if (next.aog !== aog) setAog(next.aog);
+  }, [maternalData.lmp, expectedDeliveryDate, aog]);
 
   useEffect(() => {
     if (selectedPrograms.includes("Maternal")) applyPrenatalPrefill();
@@ -669,8 +683,10 @@ export default function RhuConsultationWorkspace() {
       ...withLaboratoryEntries(maternalData.laboratoryEntries),
       expectedDeliveryDate,
       aog,
-      previous_fp_method_used: maternalData.previousFpMethodUsed || "",
-      previous_fp_method_other: maternalData.previousFpMethodOther || "",
+      previousFpMethodUsed: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previous_fp_method_used: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previousFpMethodOther: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
+      previous_fp_method_other: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
       riskAssessment: applyRiskFlags(
         {
           ...EMPTY_MATERNAL_DATA.riskAssessment,
@@ -743,7 +759,13 @@ export default function RhuConsultationWorkspace() {
           expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
           aog: selectedPrograms.includes("Maternal") ? aog : undefined,
           prenatalIntent: selectedPrograms.includes("Maternal") ? prenatalIntent : undefined,
-          familyPlanningData: selectedPrograms.includes("Family Planning") ? familyPlanningData : null,
+          familyPlanningData: selectedPrograms.includes("Family Planning")
+            ? {
+                ...familyPlanningData,
+                previousMethod: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+                previous_method: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+              }
+            : null,
           immunizationData: selectedPrograms.includes("EPI") ? { vaccineEntries: immunizationEntries } : null,
           selectedPrograms,
           primaryProgram,
@@ -1054,6 +1076,13 @@ export default function RhuConsultationWorkspace() {
                       <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Client type</span>
                       <input value={familyPlanningData.clientType} onChange={(event) => setFamilyPlanningData((current) => ({ ...current, clientType: event.target.value }))} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
                     </label>
+                    <div className="block text-xs">
+                      <p className="mb-1 font-semibold uppercase tracking-wide text-[#374151]">Previous method</p>
+                      <p className="text-sm text-[#111827]">{historicalFpMethod.label || "Not recorded"}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                        From Patient History. This visit records Method used.
+                      </p>
+                    </div>
                     <label className="block text-xs">
                       <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Method used</span>
                       <input value={familyPlanningData.methodUsed} onChange={(event) => setFamilyPlanningData((current) => ({ ...current, methodUsed: event.target.value }))} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />

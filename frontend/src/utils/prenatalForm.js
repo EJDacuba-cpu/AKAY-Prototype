@@ -366,32 +366,127 @@ export function mergeMaternalData(data = {}, fallback = {}) {
   };
 }
 
-export function computeEddFromLmp(lmp) {
-  if (!lmp) return "";
-  const lmpDate = new Date(lmp);
-  if (Number.isNaN(lmpDate.getTime())) return "Invalid Date";
-  const edd = new Date(lmpDate);
-  edd.setDate(edd.getDate() + 7);
-  edd.setMonth(edd.getMonth() - 3);
-  edd.setFullYear(edd.getFullYear() + 1);
-  return edd.toISOString().split("T")[0];
+const CIVIL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const PREGNANCY_DAYS = 280;
+
+function padCivil(value) {
+  return String(value).padStart(2, "0");
 }
 
-export function computeAogFromLmp(lmp, visitDate = new Date()) {
-  if (!lmp) return "";
-  const lmpDate = new Date(lmp);
-  if (Number.isNaN(lmpDate.getTime())) return "Invalid Date";
-  const visit = visitDate ? new Date(visitDate) : new Date();
-  if (Number.isNaN(visit.getTime())) return "";
-  const timeDiff = visit.getTime() - lmpDate.getTime();
-  if (timeDiff < 0) return "Invalid (LMP is ahead of visit)";
-  const totalDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+export function formatCivilDate({ y, m, d }) {
+  return `${String(y).padStart(4, "0")}-${padCivil(m)}-${padCivil(d)}`;
+}
+
+/** Parse a calendar date without timezone shift. Date objects use local Y-M-D. */
+export function parseCivilDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
+  }
+  const raw = String(value || "").trim().slice(0, 10);
+  const match = CIVIL_DATE.exec(raw);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) return null;
+  return { y, m, d };
+}
+
+export function civilDateFromValue(value) {
+  const parsed = parseCivilDate(value);
+  if (parsed) return formatCivilDate(parsed);
+  if (!value) {
+    const now = new Date();
+    return formatCivilDate({ y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() });
+  }
+  return "";
+}
+
+export function addCivilDays(value, days) {
+  const parsed = parseCivilDate(value);
+  if (!parsed || !Number.isFinite(days)) return "";
+  const next = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d + Number(days)));
+  return formatCivilDate({
+    y: next.getUTCFullYear(),
+    m: next.getUTCMonth() + 1,
+    d: next.getUTCDate(),
+  });
+}
+
+export function civilDayDiff(from, to) {
+  const start = parseCivilDate(from);
+  const end = parseCivilDate(to);
+  if (!start || !end) return null;
+  return Math.round(
+    (Date.UTC(end.y, end.m - 1, end.d) - Date.UTC(start.y, start.m - 1, start.d)) / 86_400_000,
+  );
+}
+
+function formatAogFromDays(totalDays) {
+  if (!Number.isFinite(totalDays)) return "";
+  if (totalDays < 0) return "Invalid (LMP is ahead of visit)";
   const weeks = Math.floor(totalDays / 7);
   const days = totalDays % 7;
   if (weeks > 42) return "Post-term (>42 Weeks)";
   const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
   const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
   return `${weekStr}${dayStr}`;
+}
+
+/** Auto EDC is LMP + 280 calendar days. */
+export function computeEddFromLmp(lmp) {
+  if (!lmp) return "";
+  return addCivilDays(lmp, PREGNANCY_DAYS) || "Invalid Date";
+}
+
+export function computeAogFromLmp(lmp, visitDate = new Date()) {
+  if (!lmp) return "";
+  const days = civilDayDiff(lmp, visitDate);
+  if (days === null) return "Invalid Date";
+  return formatAogFromDays(days);
+}
+
+/** AOG from documented EDC when present, otherwise from LMP, to the visit date. */
+export function computeAogFromDating({ lmp, edc, visitDate } = {}) {
+  const visit = civilDateFromValue(visitDate);
+  if (edc) {
+    const remaining = civilDayDiff(visit, edc);
+    if (remaining === null) return "";
+    return formatAogFromDays(PREGNANCY_DAYS - remaining);
+  }
+  return computeAogFromLmp(lmp, visit);
+}
+
+/**
+ * Keep a typed EDC/AOG when it is a clinical correction; otherwise follow
+ * auto dating. `previousAutoEdd` / `previousAutoAog` are the last auto values
+ * assigned for the prior inputs.
+ */
+export function applyPregnancyDating({
+  lmp,
+  edc = "",
+  aog = "",
+  visitDate,
+  previousAutoEdd = "",
+  previousAutoAog = "",
+} = {}) {
+  const autoEdd = computeEddFromLmp(lmp);
+  const nextEdd = !lmp
+    ? (edc && edc !== previousAutoEdd ? edc : "")
+    : (!edc || edc === previousAutoEdd ? autoEdd : edc);
+  const autoAog = computeAogFromDating({ lmp, edc: nextEdd, visitDate });
+  const nextAog = !aog || aog === previousAutoAog ? autoAog : aog;
+  return { edc: nextEdd, aog: nextAog, autoEdd, autoAog };
+}
+
+export function hasPregnancyBaseline(maternal = {}, expectedDeliveryDate = "") {
+  return Boolean(
+    String(maternal.lmp || "").trim()
+    || String(expectedDeliveryDate || maternal.expectedDeliveryDate || "").trim()
+    || String(maternal.gravida || "").trim()
+    || String(maternal.para || "").trim(),
+  );
 }
 
 /**
@@ -407,6 +502,7 @@ export function continuePrenatalPrefill(record = {}) {
   return {
     ...data,
     fht: "",
+    aog: "",
     treatment: "",
     bmi: "",
     immunizationThisVisit: { ...EMPTY_MATERNAL_DATA.immunizationThisVisit },

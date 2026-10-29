@@ -9,6 +9,7 @@
  */
 
 import { toRecordBackgroundUpdate } from "./backgroundUpdate.js";
+import { PREVIOUS_FP_METHOD_OPTIONS } from "./familyPlanning.js";
 
 const STATUS = ["never", "former", "current"];
 const PREFIX = "background_update.sections";
@@ -163,6 +164,7 @@ function validateObstetric(slice, errors) {
   setError(errors, `${base}.durationDays`, rangeError(obstetric.durationDays, { min: 1, max: 15, label: "Duration" }));
   setError(errors, `${base}.amount`, enumError(obstetric.amount, ["light", "moderate", "heavy"], "amount"));
   setError(errors, `${base}.regularity`, enumError(obstetric.regularity, ["regular", "irregular"], "regularity"));
+  setError(errors, `${base}.previousFpMethod`, enumError(obstetric.previousFpMethod, [...PREVIOUS_FP_METHOD_OPTIONS, "Other"], "previous FP method"));
   validateRows(errors, obstetric.pregnancies, `${base}.pregnancies`, {
     year: { type: "int", min: 1900, max: 2100, label: "Year" },
     outcome: { type: "enum", in: ["liveBirth", "miscarriage", "stillbirth"], label: "outcome" },

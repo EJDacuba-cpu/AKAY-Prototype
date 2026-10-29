@@ -11,6 +11,7 @@ import {
   formatHospitalizations,
   formatPatientReported,
   formatPregnancies,
+  formatPreviousFpMethod,
   formatSexual,
   formatSmoking,
   formatSymptoms,
@@ -29,6 +30,7 @@ const EVERY_FORMATTER = {
   formatCycle,
   formatSymptoms,
   formatPregnancies,
+  formatPreviousFpMethod,
   formatPatientReported,
 };
 
@@ -183,12 +185,19 @@ test("formatCycle", () => {
       amount: "moderate",
       regularity: "regular",
     }),
-    "Menarche at 12 · Menstruating · every 28 days · lasts 5 days · moderate flow · regular",
+    "Menarche at 12 · Has menstrual periods · every 28 days · lasts 5 days · moderate flow · regular",
   );
   assert.equal(formatCycle({ menstrualStatus: "menopause", menopauseAge: 51 }), "Menopause at 51");
   assert.equal(formatCycle({ menstrualStatus: "menopause" }), "Menopause");
   assert.equal(formatCycle({ intervalDays: 1, durationDays: 1 }), "every 1 day · lasts 1 day");
   assert.equal(formatCycle({ symptoms: ["headache"] }), "");
+});
+
+test("formatPreviousFpMethod reads history, including Other", () => {
+  assert.equal(formatPreviousFpMethod({ previousFpMethod: "Pills-COC — Combined Oral Contraceptives" }), "Pills-COC — Combined Oral Contraceptives");
+  assert.equal(formatPreviousFpMethod({ previousFpMethod: "Other", previousFpMethodOther: "Calendar method" }), "Calendar method");
+  assert.equal(formatPreviousFpMethod({ previousFpMethod: "Other" }), "Other");
+  assert.equal(formatPreviousFpMethod({}), "");
 });
 
 test("formatSymptoms", () => {

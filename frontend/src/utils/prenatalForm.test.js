@@ -11,12 +11,16 @@ import {
   MATERNAL_RISK_KEYS,
   MATERNAL_RISK_PARENTS,
   PRENATAL_IMMUNIZATION_OPTIONS,
+  applyPregnancyDating,
   applyRiskFactorChange,
   collectPrenatalHistory,
+  computeAogFromDating,
   computeAogFromLmp,
   computeEddFromLmp,
+  parseCivilDate,
   continueBhcPrenatalPrefill,
   continuePrenatalPrefill,
+  hasPregnancyBaseline,
   maternalReviewFields,
   mergeMaternalData,
   readLaboratoryEntries,
@@ -164,13 +168,71 @@ test("filing the dose keeps earlier doses on the record", () => {
   assert.deepEqual(merged, { tt1: "2026-05-01", tt2: "2026-09-22", tt3: "" });
 });
 
-test("Naegele's rule fills EDC from LMP", () => {
-  assert.equal(computeEddFromLmp("2026-03-01"), "2026-12-08");
+test("EDC is LMP plus 280 calendar days, without timezone shift", () => {
+  assert.deepEqual(parseCivilDate("2026-07-09"), { y: 2026, m: 7, d: 9 });
+  assert.equal(parseCivilDate("2026-02-31"), null);
+  assert.equal(computeEddFromLmp("2026-03-01"), "2026-12-06");
+  assert.equal(computeEddFromLmp("2026-07-09"), "2027-04-15");
+  assert.equal(computeEddFromLmp("2026-01-31"), "2026-11-07");
   assert.equal(computeEddFromLmp(""), "");
+  assert.equal(computeEddFromLmp("2026-02-31"), "Invalid Date");
 });
 
-test("AOG is counted from LMP to the visit date", () => {
+test("AOG is counted from established dating to the visit date", () => {
   assert.equal(computeAogFromLmp("2026-03-01", "2026-06-07"), "14 weeks");
+  assert.equal(computeAogFromDating({
+    lmp: "2026-03-01",
+    edc: "2026-12-06",
+    visitDate: "2026-06-07",
+  }), "14 weeks");
+});
+
+test("a documented EDC is kept when it is not the auto value", () => {
+  const kept = applyPregnancyDating({
+    lmp: "2026-07-09",
+    edc: "2027-04-16",
+    aog: "16 weeks",
+    visitDate: "2026-10-29",
+    previousAutoEdd: "2027-04-15",
+    previousAutoAog: "15 weeks",
+  });
+  assert.equal(kept.edc, "2027-04-16");
+  assert.equal(kept.aog, "16 weeks");
+
+  const auto = applyPregnancyDating({
+    lmp: "2026-07-09",
+    edc: "",
+    visitDate: "2026-10-29",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(auto.edc, "2027-04-15");
+
+  const lmpChange = applyPregnancyDating({
+    lmp: "2026-07-10",
+    edc: "2027-04-15",
+    visitDate: "2026-10-29",
+    previousAutoEdd: "2027-04-15",
+    previousAutoAog: "",
+  });
+  assert.equal(lmpChange.edc, "2027-04-16");
+
+  const visitChange = applyPregnancyDating({
+    lmp: "2026-07-09",
+    edc: "2027-04-16",
+    aog: "16 weeks",
+    visitDate: "2026-11-01",
+    previousAutoEdd: "2027-04-15",
+    previousAutoAog: "16 weeks",
+  });
+  assert.equal(visitChange.edc, "2027-04-16");
+});
+
+test("hasPregnancyBaseline follows this visit's LMP, EDC, or G/P", () => {
+  assert.equal(hasPregnancyBaseline({}), false);
+  assert.equal(hasPregnancyBaseline({ lmp: "2026-07-09" }), true);
+  assert.equal(hasPregnancyBaseline({}, "2027-04-15"), true);
+  assert.equal(hasPregnancyBaseline({ gravida: "2" }), true);
 });
 
 test("continue prefill keeps pregnancy facts and clears this-visit findings", () => {
@@ -191,6 +253,7 @@ test("continue prefill keeps pregnancy facts and clears this-visit findings", ()
   assert.equal(next.lmp, "2026-03-01");
   assert.equal(next.gravida, "2");
   assert.equal(next.expectedDeliveryDate, "2026-12-08");
+  assert.equal(next.aog, "");
   assert.equal(next.fht, "");
   assert.equal(next.immunizationThisVisit.type, "");
   assert.equal(next.tetanusToxoidStatus.tt1, "2026-04-01");
@@ -230,6 +293,7 @@ test("mergeMaternalData drops retired risk keys", () => {
 test("the Prenatal form keeps this-pregnancy fields and can mount Section V", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const form = readFileSync(join(here, "../components/features/health-records/PrenatalAssessmentForm.jsx"), "utf8");
+  const obstetric = readFileSync(join(here, "../components/features/patients/history/ObstetricSection.jsx"), "utf8");
   const panel = readFileSync(join(here, "../components/features/patients/history/PatientHistoryPanel.jsx"), "utf8");
   const workspace = readFileSync(join(here, "../pages/bhc/ConsultationWorkspace.jsx"), "utf8");
   const rhuWorkspace = readFileSync(join(here, "../pages/rhu/RhuConsultationWorkspace.jsx"), "utf8");
@@ -238,13 +302,23 @@ test("the Prenatal form keeps this-pregnancy fields and can mount Section V", ()
   assert.match(form, /sections=\{\["obstetric"\]\}/);
   assert.match(form, /summaryWhenRecorded/);
   assert.match(form, /Add Lab Result/);
+  assert.match(form, /Correct/);
+  assert.match(form, /hasPregnancyBaseline/);
+  assert.doesNotMatch(form, /title="Previous FP Method"/);
   assert.match(form, /New Results This Visit/);
   assert.match(form, /Previous Laboratory Results/);
   assert.match(form, /Add Ultrasound/);
   assert.match(panel, /summaryWhenRecorded/);
   assert.match(workspace, /shouldPrefillPrenatalBaseline/);
   assert.match(workspace, /prenatalHistory=\{prenatalHistory\}/);
+  assert.match(workspace, /From Patient History. This visit records Method Used \/ Accepted/);
+  assert.doesNotMatch(workspace, /handleFamilyPlanningChange\("previousMethod"/);
   assert.match(rhuWorkspace, /prenatalHistory=\{prenatalHistory\}/);
+  assert.match(rhuWorkspace, /From Patient History. This visit records Method used/);
+  assert.match(obstetric, /Usual menstrual cycle/);
+  assert.match(obstetric, /Has menstrual periods/);
+  assert.match(obstetric, /Pregnancy is not menopause/);
+  assert.match(obstetric, /Previous FP method/);
   assert.doesNotMatch(form, /PrenatalHistorySummary/);
   assert.doesNotMatch(form, /Previous pregnancies are in Patient History/);
 });

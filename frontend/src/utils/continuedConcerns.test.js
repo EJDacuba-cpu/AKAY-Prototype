@@ -1,10 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { continuedConcernErrors, continuedConcernPayload, setContinuedSchedule, pruneContinuedSchedules, continuedConcernReviewRows } from './continuedConcerns.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { continuedConcernErrors, continuedConcernPayload, setContinuedSchedule, pruneContinuedSchedules, continuedConcernReviewRows, concernFollowUpTaskIds, stripServiceConcernSchedules, linkedScheduledFollowUpReviewRows } from './continuedConcerns.js';
+import { servicePurposeKey } from './followUpSchedules.js';
 import { followUpSchedulesPayload, managedReturnRows } from './followUpSchedules.js';
 import { remapServerErrorKeys, getErrorOwnerStepKey, BHC_STEP_OPTIONS, NEXT_STEP } from './consultationSteps.js';
 import { initialNextActions, nextActionsDraft, restoreNextActions, hasReferralDecision } from './nextActions.js';
 import { getReportedDiagnoses } from './diagnosisReporting.js';
+
+test('service follow-ups do not require a continued-concern outcome', () => {
+  const prenatal = { id: 26, purposeKey: servicePurposeKey('Maternal'), purpose: 'Prenatal follow-up' };
+  const visitKeyed = { id: 27, purposeKey: 'visit', sourceSelectedPrograms: ['Maternal'], purpose: 'Return visit' };
+  const wound = { id: 12, purposeKey: 'entry:wound', purpose: 'Wound review' };
+  const ids = concernFollowUpTaskIds([26, 27, 12], [prenatal, visitKeyed, wound]);
+  assert.deepEqual(ids, [12]);
+  assert.deepEqual(continuedConcernErrors(ids, [], []), { 'continuedConcern.12.careOutcome': 'Choose a care outcome.' });
+  assert.deepEqual(continuedConcernPayload(ids, [{ taskId: 26, careOutcome: 'managed_at_bhc' }]), []);
+  assert.deepEqual(
+    stripServiceConcernSchedules(
+      [{ purposeKey: 'continued:26', predecessorTaskId: 26 }, { purposeKey: 'continued:12', predecessorTaskId: 12 }],
+      [prenatal, wound],
+    ).map((row) => row.purposeKey),
+    ['continued:12'],
+  );
+  assert.match(linkedScheduledFollowUpReviewRows([prenatal])[0].label, /Linked scheduled follow-up/i);
+  assert.match(linkedScheduledFollowUpReviewRows([visitKeyed])[0].label, /FU-27/);
+});
 
 test('every selected task requires an explicit independent outcome', () => {
   const decisions = [{ taskId: 1, careOutcome: 'managed_at_bhc' }];
@@ -63,4 +86,15 @@ test('reporting counts original entry once; continued visits do not imply new ca
   assert.equal([original, returning].flatMap(record => getReportedDiagnoses(record, 'morbidity')).length, 1);
   const independent = { ...returning, diagnoses: [{ id: 'new', name: 'Wound', reportIn: ['morbidity'] }] };
   assert.equal([original, independent].flatMap(record => getReportedDiagnoses(record, 'morbidity')).length, 2);
+});
+
+test('Care Plan shows linked scheduled follow-ups as read-only and keeps concern outcomes', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const line = readFileSync(join(here, '../components/features/health-records/wizard/FollowUpVisitLine.jsx'), 'utf8');
+  const workspace = readFileSync(join(here, '../pages/bhc/ConsultationWorkspace.jsx'), 'utf8');
+  assert.match(line, /Linked Scheduled Follow-up/);
+  assert.match(line, /Selected Health Services/);
+  assert.match(line, /Continued Concern/);
+  assert.match(workspace, /concernFollowUpTaskIds/);
+  assert.doesNotMatch(line, /isScheduledServiceFollowUp\(task\) \? .*Care Outcome/);
 });

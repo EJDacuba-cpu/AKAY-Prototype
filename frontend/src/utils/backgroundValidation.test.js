@@ -94,6 +94,20 @@ test("Interview can check social without obstetric, and obstetric stays on its o
   assert.equal(obstetric["background_update.sections.social.personalSocial.smoking.sticksPerDay"], undefined);
 });
 
+test("previous FP method must be a known option", () => {
+  const edited = structuredClone(loaded);
+  edited.obstetric = { previousFpMethod: "Unknown method" };
+  const errors = backgroundUpdateErrors(buildBackgroundUpdate(loaded, edited), { sections: ["obstetric"] });
+  assert.equal(
+    errors["background_update.sections.obstetric.obstetric.previousFpMethod"],
+    "Choose a valid previous FP method.",
+  );
+
+  const valid = structuredClone(loaded);
+  valid.obstetric = { previousFpMethod: "Pills-COC — Combined Oral Contraceptives" };
+  assert.deepEqual(backgroundUpdateErrors(buildBackgroundUpdate(loaded, valid), { sections: ["obstetric"] }), {});
+});
+
 test("half-filled history rows fail; completely blank rows are dropped and stay valid", () => {
   const edited = structuredClone(loaded);
   edited.hospitalizations = { none: false, items: [{ type: "", year: 2019, reason: "", place: "" }] };

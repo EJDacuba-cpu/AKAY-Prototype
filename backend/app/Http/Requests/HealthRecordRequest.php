@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
@@ -875,7 +876,24 @@ class HealthRecordRequest extends FormRequest
     {
         $refers = $this->boolean('care_plan.refer_to_rhu');
         $shared = $this->boolean('care_plan.shared_condition_referral');
-        $continued = (array) $this->input('care_plan.continued_concerns', []);
+        $continuedIds = collect($this->input('care_plan.continued_follow_up_task_ids', []))->map(fn ($id) => (int) $id);
+        $primaryTaskId = (int) ($this->input('monitoring_data.followUpTaskId') ?? $this->input('monitoring_data.follow_up_task_id') ?? 0);
+        $selectedIds = $continuedIds->all();
+        $visitType = $this->input('visit_type') ?? ($this->filled('parent_health_record_id') ? 'follow_up_visit' : 'initial_consultation');
+        if ($primaryTaskId && $visitType === 'follow_up_visit') {
+            $selectedIds[] = $primaryTaskId;
+        }
+        $selectedIds = array_values(array_unique(array_map('intval', $selectedIds)));
+        $selectedTasks = $selectedIds === []
+            ? collect()
+            : FollowUpTask::query()->with('healthRecord')->whereIn('id', $selectedIds)->get();
+        $knownIds = $selectedTasks->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $serviceIds = array_flip(array_diff($knownIds, \App\Services\ContinuedConcerns::concernTaskIds($selectedTasks)));
+        $concernIds = array_values(array_filter($selectedIds, fn ($id) => ! isset($serviceIds[$id])));
+        $continued = \App\Services\ContinuedConcerns::withoutServiceDecisions(
+            (array) $this->input('care_plan.continued_concerns', []),
+            $selectedTasks
+        );
         $continuedRefers = \App\Services\ContinuedConcerns::refers($continued);
         if ($continuedRefers && ! $shared) {
             $validator->errors()->add('care_plan.shared_condition_referral', 'Use the shared referral for continued concerns.');
@@ -924,14 +942,7 @@ class HealthRecordRequest extends FormRequest
                 $validator->errors()->add('monitoring_data.followUpReason', 'Follow-up reason is required.');
             }
         }
-        $continuedIds = collect($this->input('care_plan.continued_follow_up_task_ids', []))->map(fn ($id) => (int) $id);
-        $primaryTaskId = (int) ($this->input('monitoring_data.followUpTaskId') ?? $this->input('monitoring_data.follow_up_task_id') ?? 0);
-        $selectedIds = $continuedIds->all();
-        $visitType = $this->input('visit_type') ?? ($this->filled('parent_health_record_id') ? 'follow_up_visit' : 'initial_consultation');
-        if ($primaryTaskId && $visitType === 'follow_up_visit') {
-            $selectedIds[] = $primaryTaskId;
-        }
-        \App\Services\ContinuedConcerns::validate($validator, $selectedIds, $continued, $schedules);
+        \App\Services\ContinuedConcerns::validate($validator, $concernIds, $continued, $schedules);
         foreach ($schedules as $index => $schedule) {
             $predecessor = $schedule['predecessor_task_id'];
             if ($predecessor && ! in_array($predecessor, $selectedIds, true)) {
