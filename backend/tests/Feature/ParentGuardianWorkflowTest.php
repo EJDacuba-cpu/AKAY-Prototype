@@ -163,12 +163,30 @@ class ParentGuardianWorkflowTest extends TestCase
         $this->assertSame('FATHER', $parent->fresh()->family_serial_number);
     }
 
-    public function test_registration_without_reported_or_registered_parents_is_allowed(): void
+    public function test_registration_without_reported_or_registered_parents_is_allowed_for_older_children(): void
     {
         $this->postJson('/api/patients', [
             'first_name' => 'Child', 'last_name' => 'Cruz', 'sex' => 'Male',
-            'birthdate' => now()->subMonths(3)->toDateString(), 'registration_type' => 'child',
+            'birthdate' => now()->subYears(5)->toDateString(), 'registration_type' => 'child',
         ])->assertCreated()->assertJsonPath('data.mother_patient_id', null)->assertJsonPath('data.father_patient_id', null);
+    }
+
+    public function test_infant_registration_may_omit_father_and_parent_links_but_not_mother_name(): void
+    {
+        $this->postJson('/api/patients', [
+            'first_name' => 'Infant', 'last_name' => 'Cruz', 'sex' => 'Male',
+            'birthdate' => now()->subMonths(3)->toDateString(), 'registration_type' => 'child',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['mother_name']);
+
+        $this->postJson('/api/patients', [
+            'first_name' => 'Infant', 'last_name' => 'Cruz', 'sex' => 'Male',
+            'birthdate' => now()->subMonths(3)->toDateString(), 'registration_type' => 'child',
+            'mother_name' => 'Ana Cruz',
+        ])->assertCreated()
+            ->assertJsonPath('data.mother_name', 'Ana Cruz')
+            ->assertJsonPath('data.father_name', null)
+            ->assertJsonPath('data.mother_patient_id', null)
+            ->assertJsonPath('data.father_patient_id', null);
     }
 
     public function test_clinical_staff_also_read_linked_identity_without_parent_clinical_data(): void

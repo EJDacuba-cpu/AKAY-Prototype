@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Throwable;
 
 class Patient extends Model
 {
@@ -72,6 +76,71 @@ class Patient extends Model
     ];
 
     protected $appends = ['full_name', 'age'];
+
+    /** Last completed month of age that still counts as an infant. */
+    public const INFANT_MAX_MONTHS = 12;
+
+    /**
+     * Calendar months fully elapsed from a date of birth. Null when the date
+     * is missing, unparseable, or in the future — matching the frontend
+     * calculateAgeInMonths helper, including the 12-month infant cutoff.
+     */
+    public static function completedMonths(
+        CarbonInterface|DateTimeInterface|string|null $birthdate,
+        CarbonInterface|DateTimeInterface|string|null $today = null,
+    ): ?int {
+        $dob = static::parseCalendarDate($birthdate);
+        if ($dob === null) {
+            return null;
+        }
+
+        $on = static::parseCalendarDate($today) ?? Carbon::now()->startOfDay();
+        if ($dob->gt($on)) {
+            return null;
+        }
+
+        $months = (($on->year - $dob->year) * 12) + ($on->month - $dob->month);
+        if ($on->day < $dob->day) {
+            $months--;
+        }
+
+        return max($months, 0);
+    }
+
+    /** Infants are aged from birth through 12 completed months. */
+    public static function isInfantBirthdate(
+        CarbonInterface|DateTimeInterface|string|null $birthdate,
+        CarbonInterface|DateTimeInterface|string|null $today = null,
+    ): bool {
+        $months = static::completedMonths($birthdate, $today);
+
+        return $months !== null && $months <= self::INFANT_MAX_MONTHS;
+    }
+
+    private static function parseCalendarDate(mixed $value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof CarbonInterface) {
+            return Carbon::instance($value)->startOfDay();
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return Carbon::instance($value)->startOfDay();
+        }
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (Throwable) {
+            return null;
+        }
+    }
 
     protected function fullName(): Attribute
     {

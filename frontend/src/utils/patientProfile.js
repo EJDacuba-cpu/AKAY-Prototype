@@ -1,6 +1,6 @@
 // Extensions are explicit so this module can be exercised directly by
 // `node --test`, which does not resolve extensionless specifiers.
-import { calculateAge, calculateAgeInMonths } from "./patientUtils.js";
+import { calculateAge, isInfantPatient } from "./patientUtils.js";
 
 /**
  * Pure helpers behind the BHC patient profile: the editable registration form,
@@ -132,9 +132,7 @@ export const REGISTRATION_SECTION_FIELDS = Object.freeze({
 export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
   const errors = {};
   const hasBirthDate = Boolean(form.birthDate);
-  const ageInMonths = calculateAgeInMonths(form.birthDate);
-  const isEpiTargetAge =
-    hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
+  const infant = isInfantPatient(form.birthDate);
 
   if (!String(form.firstName || "").trim()) errors.firstName = "First name is required.";
   if (!String(form.lastName || "").trim()) errors.lastName = "Last name is required.";
@@ -144,8 +142,11 @@ export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
     errors.birthDate = "Date of Birth cannot be in the future.";
   }
   if (!form.sex) errors.sex = "Sex is required.";
-  if (hasBirthDate && !isEpiTargetAge && !form.civilStatus) {
+  if (hasBirthDate && !infant && !form.civilStatus) {
     errors.civilStatus = "Civil status is required.";
+  }
+  if (infant && !String(form.motherName || "").trim()) {
+    errors.motherName = "Mother name is required.";
   }
   if (
     form.philHealthStatus === "With PhilHealth" &&

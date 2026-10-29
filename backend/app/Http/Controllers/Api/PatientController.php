@@ -15,7 +15,6 @@ use App\Services\PatientRelationships;
 use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -381,13 +380,6 @@ class PatientController extends Controller
         $effectivePhilhealthStatus =
             $data['philhealth_status'] ?? $patient?->philhealth_status;
 
-        $isEpiInfant = false;
-
-        if ($effectiveBirthdate) {
-            $isEpiInfant = Carbon::parse($effectiveBirthdate)
-                ->diffInMonths(now()) <= 12;
-        }
-
         if (
             array_key_exists('philhealth_status', $data)
             && $effectivePhilhealthStatus !== 'With PhilHealth'
@@ -395,20 +387,26 @@ class PatientController extends Controller
             $data['philhealth_number'] = null;
         }
 
+        if (Patient::isInfantBirthdate($effectiveBirthdate)) {
+            foreach ([
+                'civil_status',
+                'occupation',
+                'education_level',
+                'education_completed',
+                'nhts_status',
+                'spouse_name',
+                'spouse_occupation',
+            ] as $field) {
+                unset($data[$field]);
+            }
+
+            return $data;
+        }
+
         $profileDecisionChanged = $patient === null
             || array_key_exists('registration_type', $data)
             || array_key_exists('birthdate', $data)
             || array_key_exists('civil_status', $data);
-
-        if ($isEpiInfant && $profileDecisionChanged) {
-            $data['civil_status'] = 'Single';
-            $data['occupation'] = null;
-            $data['nhts_status'] = null;
-            $data['spouse_name'] = null;
-            $data['spouse_occupation'] = null;
-
-            return $data;
-        }
 
         if ($profileDecisionChanged && $effectiveCivilStatus !== 'Married') {
             $data['spouse_name'] = null;

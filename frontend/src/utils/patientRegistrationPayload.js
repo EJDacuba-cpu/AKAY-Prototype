@@ -1,3 +1,5 @@
+import { isInfantPatient } from "./patientUtils.js";
+
 export function splitName(name = "") {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   if (parts.length <= 1) return { firstName: parts[0] || "", middleName: "", lastName: "" };
@@ -111,6 +113,23 @@ export function toPayload(patient = {}) {
 
   // Structured membership is authoritative; the compatibility serial is set by Laravel.
   if (hasHouseholdCommand) delete payload.family_serial_number;
+
+  // Infant registration hides adult socio-demographic fields. Omit the keys
+  // rather than sending null/"Single" so a DOB change cannot wipe stored values.
+  if (isInfantPatient(payload.birthdate)) {
+    for (const field of [
+      "civil_status",
+      "occupation",
+      "education_level",
+      "education_completed",
+      "nhts_status",
+      "spouse_name",
+      "spouse_occupation",
+    ]) {
+      delete payload[field];
+    }
+  }
+
   return payload;
 }
 

@@ -8,10 +8,11 @@ import {
   EDUCATION_LEVEL_OPTIONS,
   readEducation,
 } from "../../../../utils/patientRegistrationPayload";
-import { calculateAgeInMonths } from "../../../../utils/patientUtils";
+import { isInfantPatient } from "../../../../utils/patientUtils";
 import {
   BULAKAN_BARANGAYS,
   getPatientAge,
+  getPatientBirthDate,
   getPatientValue,
   hasDisplayValue,
 } from "../../../../utils/patientProfile";
@@ -101,10 +102,8 @@ export default function RegistrationSections({
 
   const parents = ['mother', 'father'].map((role) => ({ role, ...parentInformation(patient, role) }));
 
-  const formAgeMonths = calculateAgeInMonths(form.birthDate);
-  const hasBirthDate = Boolean(form.birthDate);
-  const isEpiTargetAge = hasBirthDate && formAgeMonths !== "" && Number(formAgeMonths) <= 12;
-  const shouldRequireCivilStatus = hasBirthDate && !isEpiTargetAge;
+  const infant = isInfantPatient(form.birthDate || getPatientBirthDate(patient));
+  const shouldRequireCivilStatus = Boolean(form.birthDate) && !infant;
 
   const actionsFor = (section) =>
     !onEdit ? null : editingSection === section ? (
@@ -165,31 +164,35 @@ export default function RegistrationSections({
               <option>Male</option>
               <option>Female</option>
             </EditSelect>
-            <EditSelect label="Civil status" name="civilStatus" value={form.civilStatus} onChange={onChange} error={fieldErrors.civilStatus} required={shouldRequireCivilStatus}>
-              <option value="">Select civil status</option>
-              <option>Single</option>
-              <option>Married</option>
-              <option>Widowed</option>
-              <option>Separated</option>
-            </EditSelect>
-            <EditField label="Occupation" name="occupation" value={form.occupation} onChange={onChange} />
-            <EditSelect label="Education level" name="educationLevel" value={form.educationLevel} onChange={onChange} error={fieldErrors.educationLevel}>
-              <option value="">Not recorded</option>
-              {EDUCATION_LEVEL_OPTIONS.map((level) => (
-                <option key={level}>{level}</option>
-              ))}
-            </EditSelect>
-            <EditSelect label="Education completed" name="educationCompleted" value={form.educationCompleted} onChange={onChange} error={fieldErrors.educationCompleted}>
-              <option value="">Not recorded</option>
-              {EDUCATION_COMPLETED_OPTIONS.map((completed) => (
-                <option key={completed}>{completed}</option>
-              ))}
-            </EditSelect>
-            <EditField label="NHTS status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
-            {form.civilStatus === "Married" && (
+            {!infant && (
               <>
-                <EditField label="Spouse name" name="spouseName" value={form.spouseName} onChange={onChange} />
-                <EditField label="Spouse occupation" name="spouseOccupation" value={form.spouseOccupation} onChange={onChange} />
+                <EditSelect label="Civil status" name="civilStatus" value={form.civilStatus} onChange={onChange} error={fieldErrors.civilStatus} required={shouldRequireCivilStatus}>
+                  <option value="">Select civil status</option>
+                  <option>Single</option>
+                  <option>Married</option>
+                  <option>Widowed</option>
+                  <option>Separated</option>
+                </EditSelect>
+                <EditField label="Occupation" name="occupation" value={form.occupation} onChange={onChange} />
+                <EditSelect label="Education level" name="educationLevel" value={form.educationLevel} onChange={onChange} error={fieldErrors.educationLevel}>
+                  <option value="">Not recorded</option>
+                  {EDUCATION_LEVEL_OPTIONS.map((level) => (
+                    <option key={level}>{level}</option>
+                  ))}
+                </EditSelect>
+                <EditSelect label="Education completed" name="educationCompleted" value={form.educationCompleted} onChange={onChange} error={fieldErrors.educationCompleted}>
+                  <option value="">Not recorded</option>
+                  {EDUCATION_COMPLETED_OPTIONS.map((completed) => (
+                    <option key={completed}>{completed}</option>
+                  ))}
+                </EditSelect>
+                <EditField label="NHTS status" name="nhtsStatus" value={form.nhtsStatus} onChange={onChange} />
+                {form.civilStatus === "Married" && (
+                  <>
+                    <EditField label="Spouse name" name="spouseName" value={form.spouseName} onChange={onChange} />
+                    <EditField label="Spouse occupation" name="spouseOccupation" value={form.spouseOccupation} onChange={onChange} />
+                  </>
+                )}
               </>
             )}
           </EditGrid>
@@ -198,12 +201,14 @@ export default function RegistrationSections({
             rows={[
               ["Birthday", [birthday, age !== "" ? `${age} yrs` : ""].filter(Boolean).join(" · ")],
               ["Sex", read(["sex"])],
-              ["Civil status", read(["civilStatus", "civil_status"])],
-              ["Occupation", read(["occupation"])],
-              ["Education", formatEducation({ level: education.educationLevel, completed: education.educationCompleted })],
-              ["NHTS status", read(["nhtsStatus", "nhts_status"])],
-              ...(hasDisplayValue(read(["spouseName", "spouse_name"])) ? [["Spouse", read(["spouseName", "spouse_name"])]] : []),
-              ...(hasDisplayValue(read(["spouseOccupation", "spouse_occupation"])) ? [["Spouse occupation", read(["spouseOccupation", "spouse_occupation"])]] : []),
+              ...(!infant ? [
+                ["Civil status", read(["civilStatus", "civil_status"])],
+                ["Occupation", read(["occupation"])],
+                ["Education", formatEducation({ level: education.educationLevel, completed: education.educationCompleted })],
+                ["NHTS status", read(["nhtsStatus", "nhts_status"])],
+                ...(hasDisplayValue(read(["spouseName", "spouse_name"])) ? [["Spouse", read(["spouseName", "spouse_name"])]] : []),
+                ...(hasDisplayValue(read(["spouseOccupation", "spouse_occupation"])) ? [["Spouse occupation", read(["spouseOccupation", "spouse_occupation"])]] : []),
+              ] : []),
             ]}
           />
         )}
@@ -272,14 +277,14 @@ export default function RegistrationSections({
               const label = parent.role === 'mother' ? 'Mother' : 'Father';
               return <div key={parent.role}>
                 {editingSection === 'family' ? (
-                  <EditField label={`${label} name (reported, optional)`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} />
+                  <EditField label={`${label} name (reported${parent.role === 'mother' && infant ? '' : ', optional'})`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} required={parent.role === 'mother' && infant} />
                 ) : <FieldList rows={[
                   [`${label} (reported)`, parent.reportedName],
                   ...(parent.reportedBirthDate ? [[`${label}'s birthday (reported)`, formatLongDate(parent.reportedBirthDate, '')]] : []),
                 ]} />}
               </div>;
             })}
-            <p className="text-xs text-neutral-600">Reported parent names are optional. A shared FSN does not confirm biological parenthood.</p>
+            <p className="text-xs text-neutral-600">{infant ? "Mother name is required for infants. Father name is optional. A shared FSN does not confirm biological parenthood." : "Reported parent names are optional. A shared FSN does not confirm biological parenthood."}</p>
             <HistoricalParentLinks patient={patient} />
           </div>
         </ProfileSection>

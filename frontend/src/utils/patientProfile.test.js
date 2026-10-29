@@ -37,13 +37,33 @@ test("required fields and the future birth date are reported", () => {
   assert.equal(errors.barangay, "Barangay is required.");
 });
 
-test("an infant can have unknown parents and needs no civil status", () => {
-  // Relative to now: age is computed against the real clock.
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-  const infant = { ...validAdult, birthDate: getTodayIsoDate(threeMonthsAgo), civilStatus: "" };
+function monthsAgoIso(months) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return getTodayIsoDate(date);
+}
+
+test("an infant needs a mother name and no civil status", () => {
+  const infant = { ...validAdult, birthDate: monthsAgoIso(3), civilStatus: "", motherName: "" };
   const errors = validatePatientForm(infant, getTodayIsoDate());
   assert.equal(errors.civilStatus, undefined);
+  assert.equal(errors.motherName, "Mother name is required.");
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "family")), ["motherName"]);
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "demographics")), []);
+});
+
+test("an infant with a reported mother name has no parent or civil-status errors", () => {
+  const infant = { ...validAdult, birthDate: monthsAgoIso(3), civilStatus: "", motherName: "Ana Cruz" };
+  const errors = validatePatientForm(infant, getTodayIsoDate());
+  assert.equal(errors.civilStatus, undefined);
+  assert.equal(errors.motherName, undefined);
+  assert.equal(errors.fatherName, undefined);
+});
+
+test("a child older than 12 months still requires civil status, not a mother name", () => {
+  const child = { ...validAdult, birthDate: monthsAgoIso(60), civilStatus: "", motherName: "" };
+  const errors = validatePatientForm(child, getTodayIsoDate());
+  assert.equal(errors.civilStatus, "Civil status is required.");
   assert.equal(errors.motherName, undefined);
 });
 

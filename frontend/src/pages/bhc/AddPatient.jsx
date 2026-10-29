@@ -22,11 +22,12 @@ import {
 // Import extracted utils and components
 import {
   calculateAge,
-  calculateAgeInMonths,
   formatAgeDisplay,
+  isInfantPatient,
   normalizePhilippineContact,
   formatFullName,
 } from "../../utils/patientUtils";
+import { validatePatientForm } from "../../utils/patientProfile";
 import {
   SectionHeader,
   PhilippineContactInput,
@@ -215,13 +216,11 @@ export function RegistrationForm({
   const [fieldErrors, setFieldErrors] = useState({});
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
-  const ageInMonths = calculateAgeInMonths(form.birthDate);
   const hasBirthDate = Boolean(form.birthDate);
   const isChildRegistration =
     hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
-  const isEpiTargetAge =
-    hasBirthDate && ageInMonths !== "" && Number(ageInMonths) <= 12;
-  const showGeneralProfileFields = !isEpiTargetAge;
+  const infant = isInfantPatient(form.birthDate);
+  const showGeneralProfileFields = !infant;
   /**
    * "Husband Information" is only meaningful for a married patient who has a
    * husband. A married male patient has a wife, so the section is hidden and
@@ -289,36 +288,18 @@ function handleBirthDateChange(valueOrEvent) {
       : valueOrEvent?.target?.value || "";
 
   const nextAgeYears = calculateAge(value);
-  const nextAgeMonths = calculateAgeInMonths(value);
-
-  const nextIsEpiTarget =
-    Boolean(value) && nextAgeMonths !== "" && Number(nextAgeMonths) <= 12;
 
   setFieldErrors((prev) => ({
     ...prev,
     birthDate: "",
   }));
 
+  // Keep hidden adult fields in form state so a DOB mis-click can be reversed
+  // in the same session. Infant saves omit those keys instead of clearing them.
   setForm((prev) => ({
     ...prev,
     birthDate: value,
     age: nextAgeYears,
-
-    // EPI-age patients use child registration fields instead of general profile fields.
-    civilStatus: nextIsEpiTarget ? "Single" : prev.civilStatus,
-    occupation: nextIsEpiTarget ? "" : prev.occupation,
-    educationLevel: nextIsEpiTarget ? "" : prev.educationLevel,
-    educationCompleted: nextIsEpiTarget ? "" : prev.educationCompleted,
-    nhtsStatus: nextIsEpiTarget ? "" : prev.nhtsStatus,
-    spouseName:
-      !nextIsEpiTarget && prev.civilStatus === "Married"
-        ? prev.spouseName
-        : "",
-    spouseOccupation:
-      !nextIsEpiTarget && prev.civilStatus === "Married"
-        ? prev.spouseOccupation
-        : "",
-
   }));
 }
   function handleParentBirthDateChange(name, value) {
@@ -353,32 +334,11 @@ function handleBirthDateChange(valueOrEvent) {
       if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
     }
 
-    if (!form.firstName.trim()) nextErrors.firstName = "First name is required.";
-    if (!form.lastName.trim()) nextErrors.lastName = "Last name is required.";
-    if (!form.birthDate) nextErrors.birthDate = "Date of Birth is required.";
+    Object.assign(nextErrors, validatePatientForm(form, todayIso));
     if (form.birthDate && form.birthDate > todayIso) {
-      nextErrors.birthDate = "Date of Birth cannot be in the future.";
       setFieldErrors(nextErrors);
       return false;
     }
-    if (!form.sex) nextErrors.sex = "Sex is required.";
-    if (showGeneralProfileFields && hasBirthDate && !form.civilStatus) {
-      nextErrors.civilStatus = "Civil status is required.";
-    }
-    if (
-      form.philHealthStatus === "With PhilHealth" &&
-      !form.philHealthNumber.trim()
-    ) {
-      nextErrors.philHealthNumber =
-        "PhilHealth number is required if marked with PhilHealth.";
-    }
-    if (!form.streetAddress.trim()) {
-      nextErrors.streetAddress = "Street address is required.";
-    }
-    if (!form.barangay) nextErrors.barangay = "Barangay is required.";
-    if (!form.municipality.trim()) {
-  nextErrors.municipality = "Municipality is required.";
-}
     if (form.motherBirthDate && form.motherBirthDate > todayIso) {
       nextErrors.motherBirthDate = "Mother birthdate cannot be in the future.";
     }
@@ -418,17 +378,8 @@ function handleBirthDateChange(valueOrEvent) {
         form.philHealthStatus === "With PhilHealth"
           ? form.philHealthNumber || null
           : null,
-      civilStatus: isEpiTargetAge ? "Single" : form.civilStatus,
-      occupation: isEpiTargetAge ? null : form.occupation || null,
-      educationLevel: isEpiTargetAge ? null : form.educationLevel || null,
-      educationCompleted: isEpiTargetAge ? null : form.educationCompleted || null,
-      nhtsStatus: isEpiTargetAge ? null : form.nhtsStatus || null,
       purokArea: form.purokArea || null,
       familySerialNumber: form.familySerialNumber || null,
-      spouseName: showHusbandInformation ? form.spouseName || null : null,
-      spouseOccupation: showHusbandInformation
-        ? form.spouseOccupation || null
-        : null,
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
@@ -721,7 +672,7 @@ function handleBirthDateChange(valueOrEvent) {
               <FormPanel
                 icon={Users}
                 title="Parent Information"
-                description="Reported parent names are optional. A shared FSN does not confirm biological parenthood."
+                description={infant ? "Mother name is required for infants. Father name is optional. A shared FSN does not confirm biological parenthood." : "Reported parent names are optional. A shared FSN does not confirm biological parenthood."}
               >
                 <div className="space-y-4">
                   {Object.keys(PARENT_FIELDS).map((role) => (
@@ -731,6 +682,7 @@ function handleBirthDateChange(valueOrEvent) {
                       form={form}
                       errors={fieldErrors}
                       todayIso={todayIso}
+                      required={role === "mother" && infant}
                       onChange={handleChange}
                       onBirthDateChange={handleParentBirthDateChange}
                     />
@@ -914,17 +866,19 @@ function ParentFields({
   form,
   errors,
   todayIso,
+  required = false,
   onChange,
   onBirthDateChange,
 }) {
   const fields = PARENT_FIELDS[role];
   return (
     <div className="grid min-w-0 gap-4 border-t border-[#EEF2F6] pt-5 sm:grid-cols-2 xl:grid-cols-3">
-      <label className="space-y-1.5 text-sm text-neutral-700">{fields.label} name (optional)
+      <label className="space-y-1.5 text-sm text-neutral-700">{fields.label} name{required ? "" : " (optional)"}
       <Input
         name={fields.name}
         value={form[fields.name]}
         onChange={onChange}
+        required={required}
         aria-invalid={Boolean(errors[fields.name])}
         aria-describedby={errors[fields.name] ? `${fields.name}-error` : undefined}
       />

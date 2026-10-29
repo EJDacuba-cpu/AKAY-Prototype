@@ -73,6 +73,40 @@ test('birth details are never sent, even when a form still carries stored values
   const payload=toPayload({firstName:'Mia',lastName:'Cruz',birthPlace:'Bulakan',birth_place:'Bulakan',birthTime:'08:30',birthWeight:'3.1',birthHeight:'50'});
   for(const field of ['birth_place','birth_time','birth_weight','birth_height']) assert.equal(Object.hasOwn(payload,field),false,field);
 });
+function monthsAgoIso(months) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return date.toISOString().slice(0, 10);
+}
+
+test('an infant payload omits adult socio-demographic fields instead of sending Single or null', () => {
+  const payload = toPayload({
+    firstName: 'Mia', lastName: 'Cruz', birthDate: monthsAgoIso(3), sex: 'Female',
+    civilStatus: 'Single', occupation: 'Should omit', educationLevel: 'None',
+    educationCompleted: 'Level', nhtsStatus: 'NHTS', spouseName: 'Should omit',
+    spouseOccupation: 'Should omit', motherName: 'Ana Cruz',
+  });
+  for (const field of ['civil_status', 'occupation', 'education_level', 'education_completed', 'nhts_status', 'spouse_name', 'spouse_occupation']) {
+    assert.equal(Object.hasOwn(payload, field), false, field);
+  }
+  assert.equal(payload.mother_name, 'Ana Cruz');
+  assert.equal(payload.birthdate, monthsAgoIso(3));
+});
+
+test('an adult payload still sends socio-demographic fields', () => {
+  const payload = toPayload({
+    firstName: 'Ana', lastName: 'Cruz', birthDate: '1990-01-01',
+    civilStatus: 'Married', occupation: 'Farmer', educationLevel: 'College',
+    educationCompleted: 'Graduate', nhtsStatus: 'Non-NHTS', spouseName: 'Ben',
+    spouseOccupation: 'Driver',
+  });
+  assert.equal(payload.civil_status, 'Married');
+  assert.equal(payload.occupation, 'Farmer');
+  assert.equal(payload.education_level, 'College');
+  assert.equal(payload.nhts_status, 'Non-NHTS');
+  assert.equal(payload.spouse_name, 'Ben');
+});
+
 test('parent links are sent only by forms that carry them', () => {
   assert.equal(Object.hasOwn(toPayload({firstName:'Mia',lastName:'Cruz',motherName:'Ana'}),'mother_patient_id'),false);
   assert.equal(Object.hasOwn(toPayload({firstName:'Mia',lastName:'Cruz'}),'father_patient_id'),false);

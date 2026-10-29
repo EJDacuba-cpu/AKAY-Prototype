@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Http\Controllers\Api\HouseholdController;
+use App\Models\Patient;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -93,7 +94,12 @@ class PatientRequest extends FormRequest
             'parent_link_base' => ['sometimes', 'array:mother_patient_id,father_patient_id'],
             'parent_link_base.mother_patient_id' => ['nullable', 'integer'],
             'parent_link_base.father_patient_id' => ['nullable', 'integer'],
-            'mother_name' => ['nullable', 'string', 'max:255'],
+            'mother_name' => [
+                Rule::requiredIf(fn () => $this->isMethod('post') && Patient::isInfantBirthdate($this->input('birthdate'))),
+                'nullable',
+                'string',
+                'max:255',
+            ],
             'mother_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'father_name' => ['nullable', 'string', 'max:255'],
             'father_birth_date' => ['nullable', 'date', 'before_or_equal:today'],

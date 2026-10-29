@@ -55,6 +55,49 @@ test('blank manual names show no inferred value and inaccessible links reveal no
   assert.doesNotMatch(html, /Unlink|Replace|Search registered/);
 });
 
+function monthsAgoIso(months) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return date.toISOString().slice(0, 10);
+}
+
+test('infant demographics hide civil status, occupation, education, NHTS and spouse', () => {
+  const birthDate = monthsAgoIso(4);
+  const infant = { birthDate, civilStatus: 'Single', occupation: 'None', education_level: 'None', nhts_status: 'NHTS', spouse_name: 'Hidden' };
+  const view = render({ patient: infant, form: { birthDate } });
+  assert.doesNotMatch(view, /Civil status/);
+  assert.doesNotMatch(view, /Occupation/);
+  assert.doesNotMatch(view, />Education</);
+  assert.doesNotMatch(view, /NHTS status/);
+  assert.doesNotMatch(view, /Spouse/);
+  assert.match(view, /Birthday/);
+  assert.match(view, /Parent Information/);
+
+  const edit = render({ patient: infant, form: { birthDate, civilStatus: 'Single', occupation: 'None' }, editingSection: 'demographics' });
+  assert.doesNotMatch(edit, /name="civilStatus"/);
+  assert.doesNotMatch(edit, /name="occupation"/);
+  assert.doesNotMatch(edit, /name="educationLevel"/);
+  assert.doesNotMatch(edit, /name="nhtsStatus"/);
+  assert.doesNotMatch(edit, /name="spouseName"/);
+});
+
+test('a 5-year-old still shows civil status', () => {
+  const birthDate = monthsAgoIso(60);
+  const html = render({ patient: { birthDate, civilStatus: 'Single' }, form: { birthDate, civilStatus: 'Single' } });
+  assert.match(html, /Civil status/);
+});
+
+test('infant family edit requires a mother name and leaves father optional', () => {
+  const birthDate = monthsAgoIso(2);
+  const html = render({
+    patient: { birthDate },
+    form: { birthDate, motherName: '', fatherName: '' },
+    editingSection: 'family',
+  });
+  assert.match(html, /required(?:="")?[^>]*name="motherName"/);
+  assert.doesNotMatch(html, /required(?:="")?[^>]*name="fatherName"/);
+});
+
 test('blank reported names remain blank when an authorized historical reference is available', () => {
   for (const age of [4, 40]) {
     const html = render({ editingSection: 'family', patient: { age, mother_patient_id: 8, mother: { id: 8, first_name: 'Historical', last_name: 'Mother' } }, form: { motherName: '' } });

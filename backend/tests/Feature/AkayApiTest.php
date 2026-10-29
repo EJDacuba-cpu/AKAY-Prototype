@@ -367,7 +367,7 @@ class AkayApiTest extends TestCase
         ]);
     }
 
-    public function test_epi_infant_patient_creation_preserves_household_fields_and_clears_adult_profile_fields(): void
+    public function test_infant_patient_creation_keeps_household_fields_and_does_not_assign_civil_status(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Infant Profile BHC']);
         $bhw = User::create([
@@ -376,13 +376,6 @@ class AkayApiTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $bhc->id,
-        ]);
-        $mother = Patient::create([
-            'first_name' => 'Infant',
-            'last_name' => 'Mother',
-            'sex' => 'Female',
-            'birthdate' => now()->subYears(25)->toDateString(),
             'barangay_health_center_id' => $bhc->id,
         ]);
 
@@ -394,21 +387,20 @@ class AkayApiTest extends TestCase
                 'birthdate' => now()->subMonths(6)->toDateString(),
                 'civil_status' => 'Married',
                 'registration_type' => 'child',
-                'occupation' => 'Should Clear',
+                'occupation' => 'Should Ignore',
                 'nhts_status' => 'NHTS',
                 'purok_area' => 'Purok 1',
-                'mother_patient_id' => $mother->id,
                 'mother_name' => 'Infant Mother',
                 'family_serial_number' => 'FSN-INFANT',
-                'spouse_name' => 'Should Clear',
-                'spouse_occupation' => 'Should Clear',
+                'spouse_name' => 'Should Ignore',
+                'spouse_occupation' => 'Should Ignore',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.civil_status', 'Single')
+            ->assertJsonPath('data.civil_status', null)
             ->assertJsonPath('data.occupation', null)
             ->assertJsonPath('data.nhts_status', null)
             ->assertJsonPath('data.purok_area', 'Purok 1')
-            ->assertJsonPath('data.mother_patient_id', $mother->id)
+            ->assertJsonPath('data.mother_patient_id', null)
             ->assertJsonPath('data.mother_name', 'Infant Mother')
             ->assertJsonPath('data.family_serial_number', 'FSN-INFANT')
             ->assertJsonPath('data.spouse_name', null)
@@ -416,16 +408,132 @@ class AkayApiTest extends TestCase
 
         $this->assertDatabaseHas('patients', [
             'first_name' => 'Infant',
-            'civil_status' => 'Single',
+            'civil_status' => null,
             'occupation' => null,
             'nhts_status' => null,
             'purok_area' => 'Purok 1',
-            'mother_patient_id' => $mother->id,
             'mother_name' => 'Infant Mother',
             'family_serial_number' => 'FSN-INFANT',
-            'spouse_name' => null,
-            'spouse_occupation' => null,
         ]);
+    }
+
+    public function test_infant_patient_creation_requires_a_reported_mother_name(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Mother BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-mother-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Infant',
+                'last_name' => 'Patient',
+                'sex' => 'Female',
+                'birthdate' => now()->subMonths(4)->toDateString(),
+                'registration_type' => 'child',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['mother_name']);
+    }
+
+    public function test_infant_patient_creation_allows_omitted_father_information(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Father BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-father-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Infant',
+                'last_name' => 'Patient',
+                'sex' => 'Male',
+                'birthdate' => now()->subMonths(2)->toDateString(),
+                'registration_type' => 'child',
+                'mother_name' => 'Ana Cruz',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.mother_name', 'Ana Cruz')
+            ->assertJsonPath('data.father_name', null)
+            ->assertJsonPath('data.father_patient_id', null);
+    }
+
+    public function test_changing_adult_birthdate_to_infant_preserves_occupation_and_does_not_force_civil_status(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Dob Change BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'dob-change-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Adult',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'birthdate' => now()->subYears(25)->toDateString(),
+            'civil_status' => 'Married',
+            'occupation' => 'Farmer',
+            'nhts_status' => 'Non-NHTS',
+            'spouse_name' => 'Ben',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson('/api/patients/'.$patient->id, [
+                'birthdate' => now()->subMonths(6)->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.occupation', 'Farmer')
+            ->assertJsonPath('data.civil_status', 'Married')
+            ->assertJsonPath('data.nhts_status', 'Non-NHTS')
+            ->assertJsonPath('data.spouse_name', 'Ben');
+    }
+
+    public function test_infant_contact_update_does_not_clear_stored_occupation(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Contact BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-contact-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Infant',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'birthdate' => now()->subMonths(5)->toDateString(),
+            'occupation' => 'Kept',
+            'civil_status' => 'Single',
+            'mother_name' => 'Ana Cruz',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson('/api/patients/'.$patient->id, [
+                'contact_number' => '+639171234567',
+                'birthdate' => $patient->birthdate->toDateString(),
+                'civil_status' => 'Single',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.occupation', 'Kept')
+            ->assertJsonPath('data.civil_status', 'Single')
+            ->assertJsonPath('data.contact_number', '+639171234567');
     }
 
     public function test_referral_creation_generates_tracking_notification_and_audit_log(): void

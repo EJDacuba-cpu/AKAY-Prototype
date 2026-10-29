@@ -1,7 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getPatientSex } from "./patientUtils.js";
+import { getPatientSex, isInfantPatient } from "./patientUtils.js";
+
+const DOB = "2025-10-04";
+function daysAfterMonths(months, days = 0) {
+  const dob = new Date(DOB);
+  return new Date(dob.getFullYear(), dob.getMonth() + months, dob.getDate() + days, 12);
+}
+
+test("isInfantPatient is true from birth through 12 completed months", () => {
+  assert.equal(isInfantPatient(DOB, daysAfterMonths(0)), true);
+  assert.equal(isInfantPatient(DOB, daysAfterMonths(12)), true);
+  assert.equal(isInfantPatient(DOB, daysAfterMonths(13, -1)), true);
+});
+
+test("isInfantPatient is false at 13 completed months", () => {
+  assert.equal(isInfantPatient(DOB, daysAfterMonths(13)), false);
+});
+
+test("isInfantPatient is false for missing, invalid, or future birth dates", () => {
+  const today = daysAfterMonths(1);
+  assert.equal(isInfantPatient("", today), false);
+  assert.equal(isInfantPatient(undefined, today), false);
+  assert.equal(isInfantPatient("not a date", today), false);
+  assert.equal(isInfantPatient(DOB, daysAfterMonths(0, -1)), false);
+});
 
 test("reads the stored sex field", () => {
   assert.equal(getPatientSex({ sex: "Female" }), "Female");

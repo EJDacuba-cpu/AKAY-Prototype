@@ -44,6 +44,19 @@ export const calculateAgeInMonths = (birthDate, today = new Date()) => {
   return Math.max(months, 0);
 };
 
+/** Last completed month of age that still counts as an infant. */
+export const INFANT_MAX_MONTHS = 12;
+
+/**
+ * Infants are aged from birth through 12 completed months. Missing, invalid,
+ * or future birth dates are not infants — the caller still has to collect
+ * adult fields until a usable date of birth is present.
+ */
+export const isInfantPatient = (birthDate, today = new Date()) => {
+  const months = calculateAgeInMonths(birthDate, today);
+  return months !== "" && months <= INFANT_MAX_MONTHS;
+};
+
 /**
  * Formats patient age for display, including month-based ages for children under 2.
  * @param {string} birthDate - ISO date string
