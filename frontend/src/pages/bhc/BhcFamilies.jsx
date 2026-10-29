@@ -7,7 +7,6 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { ConnectionErrorState, RefreshingIndicator } from '../../components/common';
 import NoticeModal from '../../components/common/modals/NoticeModal';
 import ModuleToolbar from '../../components/common/list/ModuleToolbar';
-import Drawer from '../../components/common/drawer/Drawer';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select } from '../../components/ui/select';
@@ -19,7 +18,6 @@ import FamilyTreeCanvas from '../../components/features/families/FamilyTreeCanva
 import FamilyDirectoryTable from '../../components/features/families/FamilyDirectoryTable';
 import FamilyDirectoryFilter from '../../components/features/families/FamilyDirectoryFilter';
 import FamilyMembersList from '../../components/features/families/FamilyMembersList';
-import FamilySummaryPanel from '../../components/features/families/FamilySummaryPanel';
 import TransferHouseholdModal from '../../components/features/families/TransferHouseholdModal';
 import '../../components/features/patients/clinical-directory.css';
 import { RELATIONSHIP_LABELS } from '../../utils/relationshipLabels';
@@ -65,7 +63,6 @@ function Directory({scope,role}) {
   const [search,setSearch]=useState('');
   const [filters,setFilters]=useState(NO_FILTERS);
   const [sort,setSort]=useState(NO_SORT);
-  const [selectedId,setSelectedId]=useState(null);
   const isDesktop=useMediaQuery(DESKTOP_QUERY);
   const canManage=access.can('families.manage');
   // ModuleToolbar clinical search submits on Enter; this still applies a short delay if the draft changes.
@@ -93,12 +90,11 @@ function Directory({scope,role}) {
   function clearAll() {setDraft('');setSearch('');setFilters(NO_FILTERS);}
   // Ascending, then descending, then back to newest first.
   function toggleSort(key) {setSort(previous=>previous.key !== key ? {key,direction:'asc'} : previous.direction === 'asc' ? {key,direction:'desc'} : NO_SORT);}
-  const selected=items.find(item=>item.id === selectedId) || null;
   const heading=<div className="clinical-directory__heading min-w-0"><h1 className="clinical-directory__title">Families</h1><p className="clinical-directory__count">{query.isPending || query.error ? 'Households registered in your '+facilityLabel(role) : `${total} ${narrowed ? (total === 1 ? 'household found' : 'households found') : (total === 1 ? 'registered household' : 'registered households')}`}</p></div>;
   const addPath=`${base}/new`;
   return <DashboardLayout role={role} title="Families">
     <div className="clinical-directory">
-      <div className={`clinical-directory__layout${isDesktop ? ' clinical-directory__layout--preview is-open' : ''}`}>
+      <div className="clinical-directory__layout">
         <div className="clinical-directory__main">
           <ModuleToolbar variant="clinical" heading={heading} searchValue={draft} onSearchChange={setDraft} searchPlaceholder="Search FSN, household head or address" showFilters={false}
             primaryActionTo={isDesktop && canManage ? addPath : undefined} primaryActionLabel={isDesktop && canManage ? 'Add Family' : undefined} primaryActionIcon={<Plus size={14} strokeWidth={2.5}/>}
@@ -111,17 +107,13 @@ function Directory({scope,role}) {
             </div>}
             {!query.isPending && !query.error && <p role="status" className="sr-only">{total} {total === 1 ? 'household' : 'households'}{narrowed ? ' found' : ''}</p>}
             {query.isPending || query.error ? <QueryState query={query} skeleton={DirectorySkeleton}/> : <>
-              {items.length ? <FamilyDirectoryTable items={items} base={base} dimmed={query.isPlaceholderData} sort={sort} onSort={toggleSort} selectedId={selected?.id} onSelect={setSelectedId} footer={query.hasNextPage && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3"><p className="text-sm text-neutral-500">Showing {items.length} of {total}</p><Button variant="secondary" size="sm" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Show more'}</Button></div>}/> : <div className={`${SHEET} flex min-h-[324px] flex-col items-center justify-center gap-2 px-6 py-12 text-center`}><h2 className="text-sm font-semibold text-ink-800">{emptyRegistry ? 'No families registered yet' : 'No households found'}</h2><p className="max-w-sm text-[13px] text-neutral-500">{emptyRegistry ? 'Register a patient to start the first household, or use Add Family for a patient who is already registered.' : 'Try a different search, or clear the search and filters.'}</p>{narrowed && <Button variant="secondary" size="sm" className="mt-2" onClick={clearAll}>Clear search and filters</Button>}</div>}
+              {items.length ? <FamilyDirectoryTable items={items} base={base} dimmed={query.isPlaceholderData} sort={sort} onSort={toggleSort} footer={query.hasNextPage && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3"><p className="text-sm text-neutral-500">Showing {items.length} of {total}</p><Button variant="secondary" size="sm" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Show more'}</Button></div>}/> : <div className={`${SHEET} flex min-h-[324px] flex-col items-center justify-center gap-2 px-6 py-12 text-center`}><h2 className="text-sm font-semibold text-ink-800">{emptyRegistry ? 'No families registered yet' : 'No households found'}</h2><p className="max-w-sm text-[13px] text-neutral-500">{emptyRegistry ? 'Register a patient to start the first household, or use Add Family for a patient who is already registered.' : 'Try a different search, or clear the search and filters.'}</p>{narrowed && <Button variant="secondary" size="sm" className="mt-2" onClick={clearAll}>Clear search and filters</Button>}</div>}
             </>}
           </div>
           {!isDesktop && canManage && <div className="clinical-directory__fab-anchor"><Link to={addPath} className="patients-fab" aria-label="Add Family"><Plus size={24} strokeWidth={2.25} aria-hidden="true"/><span className="patients-fab__tooltip" aria-hidden="true">Add Family</span></Link></div>}
         </div>
-        {isDesktop && <aside className="clinical-directory__details" data-open="true" aria-label="Family summary"><div className="clinical-directory__preview">
-          {selected ? <FamilySummaryPanel key={selected.id} item={selected} base={base} showTitle/> : <div className="clinical-directory__preview-empty"><p className="clinical-directory__preview-empty-title">Select a family to preview</p><p className="clinical-directory__preview-empty-hint">Choose a household in the list to see its members here.</p></div>}
-        </div></aside>}
       </div>
     </div>
-    <Drawer open={!isDesktop && Boolean(selected)} onClose={()=>setSelectedId(null)} title="Family Summary" widthClassName="w-full sm:w-[420px]">{!isDesktop && selected && <FamilySummaryPanel key={selected.id} item={selected} base={base}/>}</Drawer>
   </DashboardLayout>;
 }
 export function BhcFamilyDetails({role='bhc'}={}) {

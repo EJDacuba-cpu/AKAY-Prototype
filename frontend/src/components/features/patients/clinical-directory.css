@@ -276,6 +276,19 @@
     overflow-y: auto;
     padding-top: 16px;
   }
+  /* Patient tools stay full-width above both independently scrolling panes. */
+  .clinical-directory--patients {
+    display: flex;
+    flex-direction: column;
+  }
+  .clinical-directory--patients > .clinical-directory__layout {
+    flex: 1 1 auto;
+    height: auto;
+    padding-top: 16px;
+  }
+  .clinical-directory--patients .clinical-directory__results {
+    padding-top: 0;
+  }
 }
 .clinical-directory__preview-empty {
   display: flex;

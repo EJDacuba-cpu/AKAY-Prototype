@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { addressText, patientName } from "../../../services/familyRegistry";
+import { Button } from "../../ui/button";
 
 const HEAD_CELL = "px-4 text-left align-middle";
 
@@ -17,8 +18,8 @@ function SortHeader({ column, label, sort, onSort, className = "" }) {
   );
 }
 
-// One ledger row per household. The whole row opens the household; the name is the real link for keyboard and screen readers.
-export default function FamilyDirectoryTable({ items, base, footer, dimmed = false, sort, onSort, selectedId = null, onSelect }) {
+// One ledger row per household; the name and Open links lead to its details.
+export default function FamilyDirectoryTable({ items, base, footer, dimmed = false, sort, onSort }) {
   return (
     <div className={`min-h-[324px] overflow-hidden rounded-card border border-neutral-200 bg-white shadow-[var(--shadow-card)] transition-opacity ${dimmed ? "opacity-60" : ""}`}>
       <table className="w-full border-separate border-spacing-0 text-left">
@@ -41,11 +42,7 @@ export default function FamilyDirectoryTable({ items, base, footer, dimmed = fal
             return (
               <tr
                 key={item.id}
-                onClick={(event) => { if (!event.target.closest("a")) onSelect?.(item.id); }}
-                onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect?.(item.id); } }}
-                tabIndex={0}
-                aria-current={selectedId === item.id ? "true" : undefined}
-                className={`group h-16 cursor-pointer outline-none transition-colors hover:bg-neutral-50 focus-visible:bg-neutral-50 has-[a:focus-visible]:bg-neutral-50 ${selectedId === item.id ? "bg-neutral-100 hover:bg-neutral-100" : ""}`}
+                className="group h-16 transition-colors hover:bg-neutral-50 has-[a:focus-visible]:bg-neutral-50"
               >
                 <td className="max-w-0 border-t border-neutral-100 px-4 py-2 align-middle">
                   <Link to={to} title={name} className="block min-h-5 truncate rounded text-sm font-semibold text-ink-800 outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50">{name}</Link>
@@ -56,8 +53,7 @@ export default function FamilyDirectoryTable({ items, base, footer, dimmed = fal
                 <td className="hidden border-t border-neutral-100 px-4 align-middle font-mono text-xs text-neutral-500 sm:table-cell">{item.serialNumber}</td>
                 <td className="hidden max-w-0 border-t border-neutral-100 px-4 align-middle text-[13px] text-neutral-600 md:table-cell"><p className="truncate" title={address}>{address || "No address recorded"}</p></td>
                 <td className="border-t border-neutral-100 px-4 text-right align-middle text-sm tabular-nums text-ink-800">{item.members.length}</td>
-                {/* The row and the name already open the household, so the pill is a visual cue only. */}
-                <td className="border-t border-neutral-100 px-4 align-middle"><span aria-hidden="true" className="ml-auto flex h-8 w-8 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white text-xs font-medium text-neutral-700 shadow-xs transition-colors group-hover:border-neutral-300 group-hover:bg-neutral-50 sm:w-auto sm:px-3"><span className="hidden sm:inline">Open</span><ChevronRight size={14} /></span></td>
+                <td className="border-t border-neutral-100 px-4 text-right align-middle"><Button asChild variant="secondary" size="compact" className="h-8 w-8 gap-1 px-0 sm:w-auto sm:px-3"><Link to={to} aria-label={`Open ${name}`}><span className="hidden sm:inline">Open</span><ChevronRight size={14} aria-hidden="true" /></Link></Button></td>
               </tr>
             );
           })}

@@ -10,6 +10,7 @@ import {
 } from "../../components/common";
 import Drawer from "../../components/common/drawer/Drawer";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
+import { Button } from "../../components/ui/button";
 import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
@@ -229,8 +230,52 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         isLoading={showInitialLoading}
         message="Loading patients..."
         scope="area"
-        className="clinical-directory"
+        className="clinical-directory clinical-directory--patients"
       >
+        {/* The toolbar spans the workspace; opening Details only resizes the area below. */}
+        {!showInitialLoading && (
+          <ModuleToolbar
+            variant="clinical"
+            heading={
+              <div className="clinical-directory__heading min-w-0">
+                {!embedded && <h1 className="clinical-directory__title">Patients</h1>}
+                <p className="clinical-directory__count">{patientCountLabel}</p>
+              </div>
+            }
+            searchValue={filters.search}
+            onSearchChange={(value) =>
+              setFilters((prev) => ({ ...prev, search: value }))
+            }
+            searchPlaceholder="Search name, ID, or contact number..."
+            filters={dropdownFilters}
+            activeFilterCount={activeFilterCount}
+            activeFilters={activeFilters}
+            onApplyFilters={applyDropdownFilters}
+            onClearFilters={clearFilters}
+            onRemoveFilter={removeFilter}
+            filterDescription="Narrow the patient directory."
+            primaryActionTo={isDesktop && canRegister ? addPatientPath : undefined}
+            primaryActionLabel={isDesktop && canRegister ? "New Patient" : undefined}
+            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
+            actions={
+              isDesktop && (
+                <Button
+                  variant="secondary"
+                  type="button"
+                  className="clinical-directory__details-toggle"
+                  onClick={togglePanel}
+                  aria-pressed={panelOpen}
+                  aria-expanded={panelOpen}
+                  aria-controls="patient-details-panel"
+                  title={panelOpen ? "Hide patient details" : "Show patient details"}
+                >
+                  <PanelRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                  Details
+                </Button>
+              )
+            }
+          />
+        )}
         <div
           className={`clinical-directory__layout${
             isDesktop && !showInitialLoading
@@ -238,51 +283,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
               : ""
           }`}
         >
-          {/* Left column: the pinned header (title, search, filters, New Patient)
-              above the card list, which is the only part that scrolls. */}
           <div className="clinical-directory__main">
-            {!showInitialLoading && (
-              <ModuleToolbar
-                variant="clinical"
-                heading={
-                  <div className="clinical-directory__heading min-w-0">
-                    {!embedded && <h1 className="clinical-directory__title">Patients</h1>}
-                    <p className="clinical-directory__count">{patientCountLabel}</p>
-                  </div>
-                }
-                searchValue={filters.search}
-                onSearchChange={(value) =>
-                  setFilters((prev) => ({ ...prev, search: value }))
-                }
-                searchPlaceholder="Search name, ID, or contact number..."
-                filters={dropdownFilters}
-                activeFilterCount={activeFilterCount}
-                activeFilters={activeFilters}
-                onApplyFilters={applyDropdownFilters}
-                onClearFilters={clearFilters}
-                onRemoveFilter={removeFilter}
-                filterDescription="Narrow the patient directory."
-                primaryActionTo={isDesktop && canRegister ? addPatientPath : undefined}
-                primaryActionLabel={isDesktop && canRegister ? "New Patient" : undefined}
-                primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-                actions={
-                  isDesktop && (
-                    <button
-                      type="button"
-                      className="clinical-directory__details-toggle"
-                      onClick={togglePanel}
-                      aria-pressed={panelOpen}
-                      aria-controls="patient-details-panel"
-                      title={panelOpen ? "Hide patient details" : "Show patient details"}
-                    >
-                      <PanelRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                      Details
-                    </button>
-                  )
-                }
-              />
-            )}
-
             <div
               ref={resultsRef}
               className="clinical-directory__results akay-scrollbar relative min-w-0"
