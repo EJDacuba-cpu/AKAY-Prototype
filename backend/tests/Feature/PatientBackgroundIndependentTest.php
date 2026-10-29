@@ -142,6 +142,34 @@ class PatientBackgroundIndependentTest extends TestCase
         $this->assertSame('Farmer', $social['pastOccupations']);
     }
 
+    public function test_omitted_infant_lifestyle_fields_are_preserved(): void
+    {
+        $this->patient->update([
+            'birthdate' => '2026-06-01',
+            'medical_background' => [
+                'revisions' => ['social' => 1],
+                'personalSocial' => [
+                    'education' => ['level' => 'College', 'completed' => 'Level'],
+                    'pastOccupations' => 'Farmer',
+                    'smoking' => ['status' => 'never'],
+                    'alcohol' => ['status' => 'never'],
+                    'diet' => ['highSalt' => true],
+                    'sexual' => ['active' => 'no'],
+                    'environment' => ['waterSource' => 'Level III'],
+                ],
+            ],
+        ]);
+        $this->save(['social' => ['personalSocial' => ['environment' => ['waterSource' => 'Level II']]]], ['social' => 1])->assertOk();
+        $social = $this->patient->fresh()->medical_background['personalSocial'];
+        $this->assertSame(['level' => 'College', 'completed' => 'Level'], $social['education']);
+        $this->assertSame('Farmer', $social['pastOccupations']);
+        $this->assertSame('never', $social['smoking']['status']);
+        $this->assertSame('never', $social['alcohol']['status']);
+        $this->assertTrue($social['diet']['highSalt']);
+        $this->assertSame('no', $social['sexual']['active']);
+        $this->assertSame('Level II', $social['environment']['waterSource']);
+    }
+
     public function test_omitted_removed_fields_are_preserved_and_rhu_apply_retains_its_existing_behavior(): void
     {
         $this->save(['social' => ['personalSocial' => ['smoking' => ['status' => 'former']]]], ['social' => 1])->assertOk();

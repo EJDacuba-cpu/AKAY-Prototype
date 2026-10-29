@@ -16,3 +16,17 @@ export function arcPosition(angle, offsetRem, centerY = "44cqh") {
     top: `calc(${centerY} + ${radius} * ${Math.sin(rad).toFixed(3)})`,
   };
 }
+
+/**
+ * Evenly space `count` controls along the existing left-side clinical arc.
+ * One control sits at the midpoint; none returns an empty list so callers can
+ * omit a second curve instead of leaving blank slots.
+ */
+export function evenSpreadArc(count, { minAngle = -22, maxAngle = 22, offsetRem = 3.5, centerY = "44cqh" } = {}) {
+  if (count <= 0) return [];
+  if (count === 1) return [arcPosition((minAngle + maxAngle) / 2, offsetRem, centerY)];
+  return Array.from({ length: count }, (_, index) => {
+    const t = index / (count - 1);
+    return arcPosition(minAngle + t * (maxAngle - minAngle), offsetRem, centerY);
+  });
+}

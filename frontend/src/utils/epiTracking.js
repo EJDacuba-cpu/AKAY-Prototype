@@ -5,7 +5,8 @@ import {
   getRecordId,
   isEpiRecord,
   normalizeVaccineName,
-} from "./healthRecordPrograms";
+} from "./healthRecordPrograms.js";
+import { applicableInfantScheduleLabels } from "./epiApplicability.js";
 
 export const REQUIRED_EPI_ITEMS = [
   { code: "NEWBORN_SCREENING", label: "Newborn Screening" },
@@ -97,15 +98,23 @@ export function getSelectedEpiCodes(entries = []) {
   );
 }
 
-export function getRemainingEpiItems(completedCodes = new Set()) {
-  return REQUIRED_EPI_ITEMS.filter((item) => !completedCodes.has(item.code));
+export function getRemainingEpiItems(completedCodes = new Set(), requiredItems = REQUIRED_EPI_ITEMS) {
+  return requiredItems.filter((item) => !completedCodes.has(item.code));
 }
 
-export function getEpiCompletionState(historyByCode, selectedEntries = []) {
+function requiredItemsForVisit(birthDate, visitDate) {
+  if (!birthDate) return REQUIRED_EPI_ITEMS;
+  return applicableInfantScheduleLabels(birthDate, visitDate).map((label) => ({
+    code: getEpiCode(label),
+    label,
+  })).filter((item) => item.code);
+}
+
+export function getEpiCompletionState(historyByCode, selectedEntries = [], { birthDate, visitDate } = {}) {
   const alreadyGivenCodes = new Set(historyByCode.keys());
   const selectedCodes = getSelectedEpiCodes(selectedEntries);
   const completedCodes = new Set([...alreadyGivenCodes, ...selectedCodes]);
-  const remainingItems = getRemainingEpiItems(completedCodes);
+  const remainingItems = getRemainingEpiItems(completedCodes, requiredItemsForVisit(birthDate, visitDate));
 
   return {
     alreadyGivenCodes,

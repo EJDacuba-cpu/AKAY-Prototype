@@ -3,6 +3,7 @@ import { Droplet, Gauge, HeartPulse, Thermometer, Wind } from "lucide-react";
 
 import { buildVitalRows, buildVitalTrendPlot } from "../../../../utils/vitalTrends";
 import { isVitalRecordToday } from "../../../../utils/currentPatientVitals";
+import { visibleOverviewVitalKeys } from "../../../../utils/infantVisibility";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../ui/tooltip";
 
 const EMPTY = "—";
@@ -146,12 +147,13 @@ function formatRecordedAt(record, recordedAt) {
  * divides its available height among the cards; smaller screens use normal
  * document flow. This column never creates its own scroll region.
  */
-export default function VitalsTiles({ records = [], isLoading = false }) {
+export default function VitalsTiles({ records = [], isLoading = false, infant = false }) {
   const [inspectedKey, setInspectedKey] = useState(null);
   const { record, recordedAt, rows } = buildVitalRows(records);
   const byKey = Object.fromEntries(rows.map((row) => [row.key, row]));
   const card = (key) => ({ ...DEFAULTS[key], display: EMPTY, history: [], ...byKey[key], key });
   const note = isLoading && records.length === 0 ? "Loading..." : !record ? "No vital signs recorded yet." : "";
+  const chartKeys = visibleOverviewVitalKeys(CHART_CARDS, byKey, { infant });
 
   return (
     <TooltipProvider delayDuration={180} skipDelayDuration={100}>
@@ -168,7 +170,7 @@ export default function VitalsTiles({ records = [], isLoading = false }) {
         {/* Keep the same four cards visible for recorded, loading, and empty states. */}
         <div className="patient-vitals__body min-h-0 flex-1 overflow-visible">
           <div className="patient-vitals__grid flex flex-col gap-3">
-            {CHART_CARDS.map((key) => {
+            {chartKeys.map((key) => {
               const { label, unit, display, history, Icon } = card(key);
               return (
                 <div key={key} data-inspecting={inspectedKey === key || undefined} className={`${CARD} patient-vitals__tile flex h-[92px] shrink-0 flex-col gap-1.5`}>

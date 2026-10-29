@@ -167,7 +167,7 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.doesNotMatch(workspace, /Informant & Similar Illness/);
   assert.doesNotMatch(workspace, /showSimilarIllness=\{false\}/);
   assert.match(workspace, /showEducationAndOccupation=\{false\}\s+inline\s+errors=\{historyPanelErrors\}/);
-  assert.match(workspace, /stagedHistoryErrors\(backgroundUpdate, \{ sections: \["family", "medical", "social"\] \}\)/);
+  assert.match(workspace, /stagedHistoryErrors\(historyUpdateForSave, \{ sections: \["family", "medical", "social"\] \}\)/);
   assert.match(workspace, /fieldErrors=\{backgroundUpdateErrors\}/);
   assert.doesNotMatch(workspace, /PatientHistoryReference/);
   assert.doesNotMatch(workspace, /onEditBackground=/);

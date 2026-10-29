@@ -80,9 +80,9 @@ function WeightBars({ history }) {
  * weight, the change since the previous reading, a few recent weights as
  * bars, and the latest BMI. Numbers only - no judgement of the change.
  */
-export function WeightAndBmi({ weight, bmi }) {
+export function WeightAndBmi({ weight, bmi, showBmi = true }) {
   return (
-    <div className="patient-body-measures flex flex-wrap items-end justify-center gap-x-8 gap-y-2">
+    <div className={`patient-body-measures flex flex-wrap items-end justify-center gap-x-8 gap-y-2${showBmi ? "" : " patient-body-measures--weight-only"}`}>
       <div className="patient-body-measures__weight flex min-w-0 items-end gap-3">
         <div className="patient-body-measures__reading min-w-0">
           <p className="flex items-center gap-1 text-[11px] font-medium text-neutral-500">
@@ -108,19 +108,21 @@ export function WeightAndBmi({ weight, bmi }) {
         {weight && <WeightBars history={weight.history} />}
       </div>
 
-      <div className="patient-body-measures__reading min-w-0">
-        <p className="text-[11px] font-medium text-neutral-500">BMI</p>
-        {bmi ? (
-          <>
-            <p className="patient-body-measures__value whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">{bmi.value}</p>
-            <p className="patient-body-measures__metadata whitespace-nowrap text-[11px] text-neutral-500">
-              {[bmi.category, formatShortDate(bmi.date, "")].filter(Boolean).join(" · ")}
-            </p>
-          </>
-        ) : (
-          <p className="text-xs text-neutral-500">Not recorded</p>
-        )}
-      </div>
+      {showBmi && (
+        <div className="patient-body-measures__reading min-w-0">
+          <p className="text-[11px] font-medium text-neutral-500">BMI</p>
+          {bmi ? (
+            <>
+              <p className="patient-body-measures__value whitespace-nowrap text-[15px] font-semibold tabular-nums leading-5 text-neutral-900">{bmi.value}</p>
+              <p className="patient-body-measures__metadata whitespace-nowrap text-[11px] text-neutral-500">
+                {[bmi.category, formatShortDate(bmi.date, "")].filter(Boolean).join(" · ")}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-neutral-500">Not recorded</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

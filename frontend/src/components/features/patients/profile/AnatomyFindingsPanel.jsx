@@ -13,6 +13,7 @@ import { groupFindingsByArea, splitFindingsBySide, summarizeBodyFindings } from 
 import { formatShortDate } from "../../../../utils/patientProfile";
 import { INITIAL_REVEAL, revealFocusReducer } from "../../../../utils/revealFocus";
 import { phaseReached } from "../../../../utils/revealSequence";
+import { shouldShowBmiDisplay, shouldShowLifestyleControls } from "../../../../utils/infantVisibility";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -74,6 +75,8 @@ export default function AnatomyFindingsPanel({
   const [wideLayout, setArcLayout] = useState(true);
   const hasVitals = Boolean(vitals);
   const arcLayout = !hasVitals && wideLayout;
+  const showLifestyle = shouldShowLifestyleControls({ birthDate });
+  const showBmi = shouldShowBmiDisplay({ birthDate });
   const popoverId = `overview-figure-popover${useId()}`;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
@@ -312,7 +315,7 @@ export default function AnatomyFindingsPanel({
                     onViewRecord={viewRecord}
                     arc={arcLayout}
                   />
-                  <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} arc />
+                  {showLifestyle && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} arc />}
                 </>
               )}
             </div>
@@ -324,12 +327,12 @@ export default function AnatomyFindingsPanel({
             {recordsLoading && records.length === 0 ? (
               <p role="status" className="text-xs text-neutral-500">Loading measurements...</p>
             ) : (
-              <WeightAndBmi weight={measures.weight} bmi={measures.bmi} />
+              <WeightAndBmi weight={measures.weight} bmi={measures.bmi} showBmi={showBmi} />
             )}
-            {!arcLayout && !hasVitals && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
+            {!arcLayout && !hasVitals && showLifestyle && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} />}
           </div>
           {hasVitals && (
-            <div className="patient-anatomy-detail-controls patient-anatomy-double-curve">
+            <div className={`patient-anatomy-detail-controls ${showLifestyle ? "patient-anatomy-double-curve" : "patient-anatomy-single-curve"}`}>
               <PatientClinicalControls
                 background={background}
                 conditions={conditions}
@@ -341,7 +344,7 @@ export default function AnatomyFindingsPanel({
                 onViewRecord={viewRecord}
                 rail
               />
-              <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} rail />
+              {showLifestyle && <LifestyleRow personalSocial={background?.personalSocial} openFact={openFact} onFactChange={changeFact} rail />}
             </div>
           )}
           {areas.length > 0 && (

@@ -26,7 +26,7 @@ import {
 import { queryKeys } from "../../utils/queryKeys";
 import { getPatientRecordReturn } from "../../utils/profileNavigation";
 import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
-import { getBmiDisplayValue } from "../../components/features/health-records/recordDetailsHelpers";
+import { getVitalSignItems } from "../../components/features/health-records/recordDetailsHelpers";
 import {
   formatDisplayValue,
   formatLongDate,
@@ -306,7 +306,7 @@ export default function RHURecordDetails() {
         {!isImmunizationRecord && (
           <aside className="space-y-3">
             <QuickSummaryCard
-              vitalItems={getVitalSignItems(record)}
+              vitalItems={getVitalSignItems(record, patient)}
             />
           </aside>
         )}
@@ -1356,104 +1356,3 @@ function formatDisplayTime(value, fallback = "Not recorded") {
   return `${displayHour}:${minutes} ${period}`;
 }
 
-function getVitalSigns(record) {
-  const vitalSigns = record?.vitalSigns || record?.vital_signs;
-  if (vitalSigns && typeof vitalSigns !== "object") return vitalSigns;
-
-  if (vitalSigns && typeof vitalSigns === "object") {
-    if (vitalSigns.summary) return String(vitalSigns.summary);
-
-    const values = [
-      (vitalSigns.systolicBp || vitalSigns.systolic_bp) &&
-      (vitalSigns.diastolicBp || vitalSigns.diastolic_bp)
-        ? `BP: ${vitalSigns.systolicBp || vitalSigns.systolic_bp}/${vitalSigns.diastolicBp || vitalSigns.diastolic_bp} mmHg`
-        : "",
-      vitalSigns.temperature ? `Temp: ${vitalSigns.temperature} C` : "",
-      vitalSigns.weight ? `Weight: ${vitalSigns.weight} kg` : "",
-      vitalSigns.height ? `Height: ${vitalSigns.height} cm` : "",
-    ].filter(Boolean);
-
-    if (values.length) return values.join(" | ");
-  }
-
-  const values = [
-    record?.systolicBp && record?.diastolicBp
-      ? `BP: ${record.systolicBp}/${record.diastolicBp} mmHg`
-      : "",
-    record?.temp ? `Temp: ${record.temp} C` : "",
-    record?.weight ? `Weight: ${record.weight} kg` : "",
-    record?.height ? `Height: ${record.height} cm` : "",
-  ].filter(Boolean);
-
-  return values.join(", ");
-}
-
-function getVitalSignItems(record = {}) {
-  const vitalSigns = record?.vitalSigns || record?.vital_signs || {};
-  const vitalObject =
-    vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
-  const vitalText =
-    typeof vitalSigns === "string" ? vitalSigns : getVitalSigns(record);
-
-  const readTextValue = (patterns) => {
-    for (const pattern of patterns) {
-      const match = String(vitalText || "").match(pattern);
-      if (match?.[1]) return match[1].trim();
-    }
-    return "";
-  };
-
-  const systolic =
-    record?.systolicBp ||
-    record?.systolic_bp ||
-    vitalObject.systolicBp ||
-    vitalObject.systolic_bp;
-  const diastolic =
-    record?.diastolicBp ||
-    record?.diastolic_bp ||
-    vitalObject.diastolicBp ||
-    vitalObject.diastolic_bp;
-  const bpValue =
-    systolic && diastolic
-      ? `${systolic}/${diastolic} mmHg`
-      : readTextValue([/BP:\s*([^|,]+)/i, /Blood Pressure:\s*([^|,]+)/i]);
-  const temperatureValue =
-    record?.temperature ||
-    record?.temp ||
-    vitalObject.temperature ||
-    vitalObject.temp ||
-    readTextValue([/Temp(?:erature)?:\s*([^|,]+)/i]);
-  const weightValue =
-    record?.weight ||
-    vitalObject.weight ||
-    readTextValue([/Weight:\s*([^|,]+)/i]);
-  const heightValue =
-    record?.height ||
-    vitalObject.height ||
-    readTextValue([/Height:\s*([^|,]+)/i]);
-
-  const cleanWeight = cleanVitalSignValue(weightValue);
-  const cleanHeight = cleanVitalSignValue(heightValue);
-
-  return [
-    { label: "BP", value: cleanVitalSignValue(bpValue) },
-    {
-      label: "Temperature",
-      value: cleanVitalSignValue(temperatureValue),
-    },
-    { label: "Weight", value: cleanWeight },
-    { label: "Height", value: cleanHeight },
-    {
-      label: "BMI",
-      value: getBmiDisplayValue(record, cleanWeight, cleanHeight),
-    },
-  ];
-}
-
-function cleanVitalSignValue(value) {
-  const text = String(value || "").trim();
-  if (!text || /^n\/a\b/i.test(text) || /(^|[/: ])n\/a($|[ /])/i.test(text)) {
-    return "";
-  }
-  return text;
-}

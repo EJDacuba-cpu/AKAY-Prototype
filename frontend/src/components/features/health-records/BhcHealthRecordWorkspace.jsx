@@ -233,7 +233,7 @@ export default function BhcHealthRecordWorkspace({
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
-  const vitalItems = recordedVitalItems(record);
+  const vitalItems = recordedVitalItems(record, patient);
   const isFollowUp = getRecordVisitTypeValue(record) === "follow_up_visit";
   const chiefComplaint = getRecordChiefComplaint(record, "");
   const diagnosis = getRecordDiagnosis(record, "");

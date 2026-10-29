@@ -17,6 +17,7 @@ import {
   toRecordBackgroundUpdate,
 } from "./backgroundUpdate.js";
 import { historyErrorMessages } from "./historyStep.js";
+import { infantHiddenSocialKeys, omitHiddenSocialKeys } from "./infantVisibility.js";
 import { sectionVisibility } from "./patientHistory.js";
 
 export const BACKGROUND_UPDATE_PERMISSION = "clinical.background.update";
@@ -41,11 +42,33 @@ export function canUpdateBackground(user) {
   );
 }
 
-function withoutHiddenSocial(slice, section) {
+function withoutHiddenSocial(slice, section, patient, today) {
   if (section !== "social" || !slice?.personalSocial) return slice;
-  const personalSocial = { ...slice.personalSocial };
-  BHC_HIDDEN_SOCIAL_FIELDS.forEach((key) => delete personalSocial[key]);
-  return { ...slice, personalSocial };
+  return {
+    ...slice,
+    personalSocial: omitHiddenSocialKeys(
+      slice.personalSocial,
+      infantHiddenSocialKeys(patient, today, { includeBhcProfileFields: true }),
+    ),
+  };
+}
+
+/** Drop hidden nested social keys from a staged consultation background update. */
+export function omitHiddenSocialFromUpdate(update, patient, today, options) {
+  if (!update?.sections?.social?.personalSocial) return update;
+  return {
+    ...update,
+    sections: {
+      ...update.sections,
+      social: {
+        ...update.sections.social,
+        personalSocial: omitHiddenSocialKeys(
+          update.sections.social.personalSocial,
+          infantHiddenSocialKeys(patient, today, options),
+        ),
+      },
+    },
+  };
 }
 
 /** A new edit of one section: its saved values and the revision they are at. */
@@ -65,11 +88,11 @@ export function updateSectionEdit(edit, value) {
 }
 
 /** Whether the typed values differ from what the edit started from (hidden fields ignored). */
-export function isSectionEditDirty(edit) {
+export function isSectionEditDirty(edit, { patient, today } = {}) {
   if (!edit) return false;
   return sectionChanged(
-    withoutHiddenSocial(sliceBackground(edit.initial, edit.section), edit.section),
-    withoutHiddenSocial(sliceBackground(edit.value, edit.section), edit.section),
+    withoutHiddenSocial(sliceBackground(edit.initial, edit.section), edit.section, patient, today),
+    withoutHiddenSocial(sliceBackground(edit.value, edit.section), edit.section, patient, today),
     edit.section,
   );
 }
@@ -79,8 +102,8 @@ export function isSectionEditDirty(edit) {
  * section, blank rows dropped, Education / Past Occupations left out, with
  * the revision captured when editing started.
  */
-export function sectionSavePayload(edit) {
-  const slice = withoutHiddenSocial(sliceBackground(edit.value, edit.section), edit.section);
+export function sectionSavePayload(edit, { patient, today } = {}) {
+  const slice = withoutHiddenSocial(sliceBackground(edit.value, edit.section), edit.section, patient, today);
   const record = toRecordBackgroundUpdate({
     sections: { [edit.section]: slice },
     baseRevisions: { [edit.section]: Number(edit.baseRevision) || 0 },
@@ -189,10 +212,17 @@ function referenceRows(background, section, keys) {
  * Menstrual History is included only when Section V is visible for the patient.
  */
 export function historyReferenceSections(background, { patient, today } = {}) {
+  const hiddenSocial = infantHiddenSocialKeys(patient, today, { includeBhcProfileFields: true });
   const sections = ["medical", "family", "social"].map((section) => ({
     key: section,
     title: REFERENCE_SECTION_TITLES[section],
-    rows: referenceRows(background, section, REFERENCE_FIELDS[section]),
+    rows: referenceRows(
+      background,
+      section,
+      section === "social"
+        ? REFERENCE_FIELDS[section].filter((key) => !hiddenSocial.includes(key))
+        : REFERENCE_FIELDS[section],
+    ),
   }));
   if (sectionVisibility(patient, today).obstetric !== "hidden") {
     sections.push({

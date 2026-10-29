@@ -90,7 +90,8 @@ import {
 } from "../../utils/backgroundUpdate";
 import { resolveHistoricalFpMethod } from "../../utils/familyPlanning";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
-import { canUpdateBackground } from "../../utils/backgroundEditing";
+import { canUpdateBackground, omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
+import { visibleConsultationPrograms } from "../../utils/infantVisibility";
 import {
   historyErrorMessages,
   visitAnswerDraftFields,
@@ -350,7 +351,9 @@ export default function RhuConsultationWorkspace() {
       chiefComplaint,
       summaryOfPresentIllness,
       ...visitAnswerDraftFields({ informant, similarIllness, allowed: canViewBackground }),
-      backgroundUpdate: canViewBackground ? toDraftBackgroundUpdate(backgroundUpdate) : undefined,
+      backgroundUpdate: canViewBackground
+        ? toDraftBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))
+        : undefined,
       systolicBp,
       diastolicBp,
       temp,
@@ -529,7 +532,10 @@ export default function RhuConsultationWorkspace() {
       errors.chiefComplaint = "Chief complaint is required.";
     }
     if (currentStepKey === HISTORY_STEP) {
-      Object.assign(errors, stagedHistoryErrors(backgroundUpdate));
+      Object.assign(
+        errors,
+        stagedHistoryErrors(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false })),
+      );
     }
     if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
       if (prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()) {
@@ -781,7 +787,9 @@ export default function RhuConsultationWorkspace() {
             manage_to_bhc: Boolean(manageToBhc),
             continued_follow_up_task_ids: linkedFollowUpTaskId ? [linkedFollowUpTaskId] : [],
           },
-          backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
+          backgroundUpdate: canViewBackground
+            ? toRecordBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))
+            : undefined,
           ...visitAnswerRecordFields({ informant, similarIllness, allowed: canViewBackground }),
         },
         {
@@ -806,7 +814,7 @@ export default function RhuConsultationWorkspace() {
   }
 
   const wizardPrograms = lockProgramsWhilePatientLoads(
-    Object.entries(PROGRAM_CLASSIFICATIONS).map(([key]) => {
+    visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), patient).map((key) => {
       const maternalCopy = key === "Maternal"
         ? prenatalProgramCopy({
             enrolled: prenatalEnrollment.enrolled,
@@ -1028,6 +1036,8 @@ export default function RhuConsultationWorkspace() {
                 <fieldset disabled={assessmentLocked}>
                   <ImmunizationVisitFields
                     vaccineOptions={CHILD_VACCINE_OPTIONS}
+                    birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth}
+                    visitDate={visit?.consultationDate || visit?.date || visit?.created_at || new Date()}
                     entries={immunizationEntries}
                     temperature={temp}
                     pulse={pulse}

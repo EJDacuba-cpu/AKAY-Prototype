@@ -1,6 +1,8 @@
 import HistorySectionSummary from "../patients/history/HistorySectionSummary";
 import { BACKGROUND_SECTION_LABELS } from "../../../utils/backgroundUpdate";
 import { BHC_HIDDEN_SOCIAL_FIELDS } from "../../../utils/backgroundEditing";
+import { infantHiddenSocialKeys } from "../../../utils/infantVisibility";
+import { getRecordDateValue } from "./recordDetailsHelpers";
 import {
   visitHistoryInformantLine,
   visitHistorySectionKeys,
@@ -35,8 +37,14 @@ function VisitAnswer({ label, value, print = false }) {
  * Read-only Patient History as documented on this visit. Missing snapshot
  * (legacy records) is stated as unavailable — never today's live background.
  */
-export default function VisitHistorySnapshot({ record, print = false }) {
+export default function VisitHistorySnapshot({ record, patient, print = false }) {
   const snapshot = visitHistorySnapshot(record);
+  const hiddenSocialKeys = [
+    ...BHC_HIDDEN_SOCIAL_FIELDS,
+    ...infantHiddenSocialKeys(patient || record?.patient, getRecordDateValue(record), {
+      includeBhcProfileFields: false,
+    }),
+  ];
   const informantLine = visitHistoryInformantLine(record);
   const similarLine = visitHistorySimilarIllnessLine(record);
 
@@ -79,7 +87,7 @@ export default function VisitHistorySnapshot({ record, print = false }) {
             <HistorySectionSummary
               section={section}
               value={snapshot.sections[section]}
-              omitFields={BHC_HIDDEN_SOCIAL_FIELDS}
+              omitFields={hiddenSocialKeys}
               print={print}
               leading={
                 section === "family"

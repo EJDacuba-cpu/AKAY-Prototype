@@ -2245,6 +2245,8 @@ export default function AddHealthRecord() {
           <div className="anim-fade-up" style={stagger(2)}>
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
+              birthDate={getPatientBirthdate(selectedPatient)}
+              visitDate={dateOfVisit}
               entries={immunizationVaccineEntries}
               temperature={temp}
               weight={weight}

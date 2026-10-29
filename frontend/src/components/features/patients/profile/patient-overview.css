@@ -43,6 +43,7 @@
 .patient-profile-content .patient-anatomy-measures ol { height: 24px; }
 .patient-profile-content .patient-anatomy-measures [role=group] button { width: 32px; height: 32px; }
 .patient-profile-content .patient-body-measures { display: grid; width: min(100%,244px); min-width: 0; margin-inline: auto; flex: none; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 12px; }
+.patient-profile-content .patient-body-measures--weight-only { width: min(100%,122px); grid-template-columns: minmax(0,1fr); }
 .patient-profile-content .patient-body-measures__weight { flex-direction: column; align-items: start; gap: 6px; }
 .patient-profile-content .patient-body-measures__reading { display: grid; width: 100%; grid-template-columns: auto minmax(0,1fr); align-items: baseline; column-gap: 6px; row-gap: 4px; }
 .patient-profile-content .patient-body-measures__reading > p:first-child { grid-column: 1; grid-row: 1; }
@@ -138,6 +139,22 @@
   .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) > button { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-surface); }
   .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) > button:hover { background: var(--color-primary-hover); }
   .patient-profile-content .patient-anatomy-double-curve [aria-label="Clinical details"] > :nth-child(1) .anatomy-arc-control__label > span:first-child { color: var(--color-text); font-weight: 600; }
+
+  /* Infants keep the three clinical controls on one right-hand curve. */
+  .patient-profile-content .patient-anatomy-single-curve {
+    position: absolute; top: 56px; right: 4px; width: 104px; height: var(--anatomy-model-height); margin: 0;
+    grid-template-columns: 88px; grid-template-rows: repeat(3, 112px);
+    align-content: center; align-items: center; row-gap: 0;
+  }
+  .patient-profile-content .patient-anatomy-single-curve .anatomy-arc-control { flex-direction: column; justify-content: center; align-items: center; gap: 6px; text-align: center; }
+  .patient-profile-content .patient-anatomy-single-curve .anatomy-arc-control__label { width: 88px; flex: none; }
+  .patient-profile-content .patient-anatomy-single-curve .anatomy-arc-control > button { width: 48px; height: 48px; }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(1) { grid-row: 1; translate: 0 12px; }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(2) { grid-row: 2; translate: 16px 0; }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(3) { grid-row: 3; translate: 0 -12px; }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(1) > button { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-surface); }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(1) > button:hover { background: var(--color-primary-hover); }
+  .patient-profile-content .patient-anatomy-single-curve [aria-label="Clinical details"] > :nth-child(1) .anatomy-arc-control__label > span:first-child { color: var(--color-text); font-weight: 600; }
 }
 
 /* These balanced lanes need 784px to retain the full 400px anatomy model. */

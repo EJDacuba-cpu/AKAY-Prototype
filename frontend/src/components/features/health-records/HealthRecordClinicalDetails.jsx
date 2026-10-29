@@ -163,7 +163,7 @@ function RecordDetailsBody({
   if (!record) return null;
 
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
-  const historyBlock = !omitVisitHistory && canViewHistory ? <VisitHistorySnapshot record={record} /> : null;
+  const historyBlock = !omitVisitHistory && canViewHistory ? <VisitHistorySnapshot record={record} patient={patient} /> : null;
   const withHistory = (inner) => (historyBlock ? <div className="space-y-5">{historyBlock}{inner}</div> : inner);
 
   const programs = getConsultationPrograms(record);
@@ -248,7 +248,7 @@ function RecordDetailsBody({
   const reportingSummary = formatRecordReporting(record);
   // Diagnoses included in surveillance; a legacy HFMD-tagged record reads as HFMD.
   const surveillanceSummary = getSurveillanceDiagnoses(record).map(({ name }) => name).join(", ");
-  const generalVitalItems = getVitalSignItems(record);
+  const generalVitalItems = getVitalSignItems(record, patient);
   const linkedReferralTarget =
     linkedReferral?.trackingId ||
     linkedReferral?.id ||
@@ -1043,7 +1043,7 @@ function MaternalPrenatalRecordDetails({
   const bmi =
     getMaternalValue(maternal, record, ["bmi"], "") ||
     getBmiDisplayValue(record, weight, height);
-  const vitalItems = getVitalSignItems(record);
+  const vitalItems = getVitalSignItems(record, record.patient);
   const temperature =
     vitalItems.find((item) => item.label === "Temperature")?.value || "";
   const fbs = vitalItems.find((item) => item.label === "FBS")?.value || "";

@@ -6,15 +6,14 @@ import {
   FieldTextarea,
 } from "./fields/ClinicalFields";
 import { formatEpiDate, getEpiCode } from "../../../utils/epiTracking";
+import { visibleEpiVaccineOptions } from "../../../utils/epiApplicability";
 
 /**
  * Services recorded on the EPI form that are screenings rather than vaccines.
  *
- * These stay inside the same `vaccineEntries` data model and still count toward
- * EPI completion (REQUIRED_EPI_ITEMS in utils/epiTracking includes
- * NEWBORN_SCREENING) - only their placement in the form differs. Splitting them
- * out of the vaccine grid is presentation, never a change to what is stored or
- * to the "remaining after this visit" arithmetic.
+ * These stay inside the same `vaccineEntries` data model. Splitting them out of
+ * the vaccine grid is presentation, never a change to what is stored. Infant
+ * completion counts the age-applicable EPI_INFANT_SCHEDULE doses, not NBS/CPAB/HPV.
  */
 export const ESSENTIAL_SERVICE_LABELS = ["Newborn Screening"];
 
@@ -68,6 +67,8 @@ function isEssentialService(label) {
  */
 export default function ImmunizationVisitFields({
   vaccineOptions = [],
+  birthDate,
+  visitDate,
   entries = [],
   epiHistoryByCode = null,
   epiCompletion = null,
@@ -101,9 +102,19 @@ export default function ImmunizationVisitFields({
   const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
   const historyByCode = epiHistoryByCode || new Map();
   const tracksHistory = Boolean(epiHistoryByCode);
+  const visibleOptions = birthDate
+    ? visibleEpiVaccineOptions(vaccineOptions, {
+        birthDate,
+        visitDate,
+        historyLabels: [
+          ...vaccineOptions.filter((label) => historyByCode.has(getEpiCode(label))),
+          ...entries.map((entry) => entry.vaccineName),
+        ],
+      })
+    : vaccineOptions;
 
-  const essentialOptions = vaccineOptions.filter(isEssentialService);
-  const vaccineOnlyOptions = vaccineOptions.filter(
+  const essentialOptions = visibleOptions.filter(isEssentialService);
+  const vaccineOnlyOptions = visibleOptions.filter(
     (option) => !isEssentialService(option),
   );
 

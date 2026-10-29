@@ -26,6 +26,7 @@ import FamilySection, { SimilarIllnessBlock } from "./FamilySection";
 import GeneralDataSection from "./GeneralDataSection";
 import HistorySectionSummary from "./HistorySectionSummary";
 import { BHC_HIDDEN_SOCIAL_FIELDS } from "../../../../utils/backgroundEditing";
+import { infantHiddenSocialKeys } from "../../../../utils/infantVisibility";
 import { SMALL_BUTTON_CLASS } from "./HistoryFields";
 import ObstetricSection from "./ObstetricSection";
 import { LegacyPendingConditions } from "../MedicalConditionsGroups";
@@ -265,7 +266,10 @@ export default function PatientHistoryPanel({
           <HistorySectionSummary
             section={section}
             value={current}
-            omitFields={showEducationAndOccupation ? [] : BHC_HIDDEN_SOCIAL_FIELDS}
+            omitFields={[
+              ...(showEducationAndOccupation ? [] : BHC_HIDDEN_SOCIAL_FIELDS),
+              ...infantHiddenSocialKeys(patient, today, { includeBhcProfileFields: false }),
+            ]}
           />
         ) : (
           <p className="text-[13px] text-gray-500">

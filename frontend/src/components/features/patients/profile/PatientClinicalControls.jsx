@@ -6,7 +6,7 @@ import MedicalConditionsGroups from "../MedicalConditionsGroups";
 import ProfileFactPopover from "./ProfileFactPopover";
 import { summarizeAllergies } from "../../../../utils/patientHistory";
 import { summarizeMedicines } from "../../../../utils/medicationSummary";
-import { arcPosition } from "../../../../utils/arcPlacement";
+import { evenSpreadArc } from "../../../../utils/arcPlacement";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 function MedicinesGiven({ records, isLoading, isError, onViewRecord }) {
@@ -54,11 +54,8 @@ function MedicinesGiven({ records, isLoading, isError, onViewRecord }) {
 }
 
 // Outer arc around the figure: conditions above the chest line, medicines below.
-const ARC = {
-  conditions: { angle: -22, offset: 3.5 },
-  allergies: { angle: 0, offset: 3.5 },
-  medicines: { angle: 22, offset: 3.5 },
-};
+const ARC_KEYS = ["conditions", "allergies", "medicines"];
+const ARC_POSITIONS = evenSpreadArc(3, { minAngle: -22, maxAngle: 22, offsetRem: 3.5 });
 
 /**
  * Read-only clinical facts. Dispensing history never implies ongoing medicine
@@ -71,7 +68,7 @@ export default function PatientClinicalControls({ background, conditions, record
   const allergies = summarizeAllergies(background?.allergies);
   const hasAllergy = allergies.status === "recorded";
 
-  const place = (key) => (rail ? { placement: "rail", side: "left" } : arc ? { placement: "left", style: arcPosition(ARC[key].angle, ARC[key].offset) } : {});
+  const place = (key) => (rail ? { placement: "rail", side: "left" } : arc ? { placement: "left", style: ARC_POSITIONS[ARC_KEYS.indexOf(key)] } : {});
 
   return (
     <div role="group" aria-label="Clinical details" className={arc || rail ? "contents" : "flex justify-center gap-5"}>

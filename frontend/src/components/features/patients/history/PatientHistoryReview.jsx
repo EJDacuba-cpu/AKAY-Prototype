@@ -20,7 +20,12 @@ function GroupTitle({ children, count }) {
  * `visibleSections` leaves out a section the patient does not have (V for a
  * non-female patient).
  */
-export default function PatientHistoryReview({ background, update, visibleSections = EDITABLE_SECTION_KEYS }) {
+export default function PatientHistoryReview({
+  background,
+  update,
+  visibleSections = EDITABLE_SECTION_KEYS,
+  omitFields = [],
+}) {
   const groups = reviewGroups({ update, sections: visibleSections });
 
   return (
@@ -34,7 +39,7 @@ export default function PatientHistoryReview({ background, update, visibleSectio
                 sliceBackground(background, section),
                 update.sections[section],
                 section,
-              );
+              ).filter((row) => !omitFields.includes(row.key));
               return (
                 <li key={section} className="border border-gray-200">
                   <p className="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[12.5px] font-semibold text-gray-900">

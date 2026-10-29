@@ -104,6 +104,19 @@ test("sectionVisibility hides Section V for males and counts unknown age as open
   assert.equal(sectionVisibility({ sex: "", birthdate: null }, today).obstetric, "hidden");
 });
 
+test("sectionVisibility hides obstetric and sexual history for infants", () => {
+  const infant = { sex: "Female", birthdate: bornYearsAgo(0) };
+  assert.deepEqual(sectionVisibility(infant, today), { obstetric: "hidden", sexual: "hidden" });
+  assert.deepEqual(sectionVisibility({ sex: "Female", birthdate: bornYearsAgo(1) }, today), {
+    obstetric: "hidden",
+    sexual: "hidden",
+  });
+  assert.deepEqual(sectionVisibility({ sex: "Female", birthdate: "2025-09-16" }, today), {
+    obstetric: "collapsed",
+    sexual: "collapsed",
+  });
+});
+
 test("hasRecordedData reads each section", () => {
   assert.equal(hasRecordedData({}, "medical"), false);
   assert.equal(hasRecordedData(null, "medical"), false);

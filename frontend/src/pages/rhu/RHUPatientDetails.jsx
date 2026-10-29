@@ -29,6 +29,7 @@ import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../util
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
+import { isInfantAt } from "../../utils/infantVisibility";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
@@ -364,7 +365,7 @@ function LiveRHUPatientDetails() {
             {activeTab === "overview" &&
               (canViewHistory ? (
                 <PatientOverviewBoard
-                  left={<VitalsTiles records={records} isLoading={recordsLoading} />}
+                  left={<VitalsTiles records={records} isLoading={recordsLoading} infant={isInfantAt(patient)} />}
                   center={
                     <AnatomyFindingsPanel
                       key={patientId}

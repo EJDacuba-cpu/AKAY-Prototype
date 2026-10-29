@@ -485,14 +485,29 @@ class PatientBackground
         $changes = [];
         foreach ($sections as $section => $edited) {
             $before = self::slice($background, $section);
-            if ($user->isBhc() && $section === 'social' && array_key_exists('personalSocial', $edited)) {
+            if ($section === 'social' && array_key_exists('personalSocial', $edited)) {
                 $social = is_array($edited['personalSocial']) ? $edited['personalSocial'] : [];
-                // Education now belongs to demographics; past occupations are
-                // historical only. Neither a new form nor an old draft may
-                // erase or overwrite the original nested values at the BHC.
-                unset($social['education'], $social['pastOccupations']);
-                foreach (['education', 'pastOccupations'] as $key) {
-                    if (is_array($before['personalSocial']) && array_key_exists($key, $before['personalSocial'])) {
+                $preserve = [];
+                if ($user->isBhc()) {
+                    // Education now belongs to demographics; past occupations are
+                    // historical only. Neither a new form nor an old draft may
+                    // erase or overwrite the original nested values at the BHC.
+                    $preserve = ['education', 'pastOccupations'];
+                }
+                if (Patient::isInfantBirthdate($locked->birthdate, $date)) {
+                    $preserve = array_values(array_unique([
+                        ...$preserve,
+                        'education',
+                        'pastOccupations',
+                        'smoking',
+                        'alcohol',
+                        'diet',
+                        'sexual',
+                    ]));
+                }
+                foreach ($preserve as $key) {
+                    unset($social[$key]);
+                    if (is_array($before['personalSocial'] ?? null) && array_key_exists($key, $before['personalSocial'])) {
                         $social[$key] = $before['personalSocial'][$key];
                     }
                 }

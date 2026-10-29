@@ -30,6 +30,7 @@ import { updatePatient } from "../../services/patientService";
 import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking } from "../../utils/careTracking";
+import { isInfantAt } from "../../utils/infantVisibility";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
@@ -423,7 +424,7 @@ function LivePatientDetails() {
                   anatomyWorkspace
                   center={
                     <AnatomyFindingsPanel
-                      vitals={<VitalsTiles records={records} isLoading={recordsLoading} />}
+                      vitals={<VitalsTiles records={records} isLoading={recordsLoading} infant={isInfantAt(patient)} />}
                       key={patientId}
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}

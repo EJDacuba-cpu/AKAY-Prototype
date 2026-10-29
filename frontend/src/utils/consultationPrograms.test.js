@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
+import { visibleConsultationPrograms } from "./infantVisibility.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
   assert.deepEqual(toggleConsultationProgram(["Maternal", "EPI"], "Maternal", "Maternal"), { selectedPrograms: ["EPI"], primaryProgram: "EPI" });
@@ -17,6 +18,22 @@ test("server metadata restores primary and all selected programs", () => {
 
 test("the selectable programs", () => {
   assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
+});
+
+test("infant consultations hide Maternal and Family Planning and keep Child Health / EPI", () => {
+  const programs = Object.keys(PROGRAM_CLASSIFICATIONS);
+  assert.deepEqual(
+    visibleConsultationPrograms(programs, { birthdate: "2026-06-01" }, "2026-10-04"),
+    ["EPI"],
+  );
+  assert.deepEqual(
+    visibleConsultationPrograms(programs, { birthdate: "2021-01-01" }, "2026-10-04"),
+    programs,
+  );
+  assert.deepEqual(
+    visibleConsultationPrograms(programs, { birthdate: "1990-01-01" }, "2026-10-04"),
+    programs,
+  );
 });
 
 test("legacy classifications still work and explicit general visits stay general", () => {

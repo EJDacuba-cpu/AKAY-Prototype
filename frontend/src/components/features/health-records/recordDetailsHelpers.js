@@ -5,6 +5,7 @@ import {
 } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
+import { isInfantAt, shouldShowBmiDisplay } from "../../../utils/infantVisibility";
 import { formatFbs } from "../../../utils/recordCarePlan";
 import { labTestLabel, readLaboratoryEntries } from "../../../utils/prenatalForm";
 
@@ -568,7 +569,7 @@ export function getVitalSigns(record = {}, fallback = "") {
   return values.join(" | ") || fallback;
 }
 
-export function getVitalSignItems(record = {}) {
+export function getVitalSignItems(record = {}, patient = record.patient) {
   const vitalSigns = record?.vitalSigns || record?.vital_signs || {};
   const vitalObject =
     vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
@@ -617,16 +618,20 @@ export function getVitalSignItems(record = {}) {
   const cleanHeight = cleanVitalSignValue(heightValue);
   // Optional Additional Measurement; listed only when it was recorded.
   const fbsValue = formatFbs(record?.fbs ?? vitalObject.fbs);
+  const visitDate = getRecordDateValue(record);
+  const infantVisit = isInfantAt(patient, visitDate);
+  const bp = cleanVitalSignValue(bpValue);
+  const bmi = getBmiDisplayValue(record, cleanWeight, cleanHeight);
 
   return [
-    { label: "BP", value: cleanVitalSignValue(bpValue) },
+    ...((!infantVisit || bp) ? [{ label: "BP", value: bp }] : []),
     {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
     { label: "Weight", value: cleanWeight },
     { label: "Height", value: cleanHeight },
-    { label: "BMI", value: getBmiDisplayValue(record, cleanWeight, cleanHeight) },
+    ...(shouldShowBmiDisplay(patient, visitDate) ? [{ label: "BMI", value: bmi }] : []),
     ...(fbsValue ? [{ label: "FBS", value: fbsValue }] : []),
   ];
 }

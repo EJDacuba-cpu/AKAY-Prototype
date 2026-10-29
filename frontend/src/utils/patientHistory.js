@@ -8,6 +8,7 @@
  */
 
 import { calculateAgeInYears } from "./maternalRisk.js";
+import { isInfantPatient } from "./patientUtils.js";
 
 // Option lists. Plain strings are both the stored value and the label;
 // { value, label } entries are stored by `value` and shown by `label`.
@@ -153,6 +154,10 @@ export function defaultInformant(patient, today) {
 
 /** Which optional subsections start open. Unknown age counts as open. */
 export function sectionVisibility(patient, today) {
+  const asOf = today === undefined || today === null || today === "" ? new Date() : new Date(today);
+  if (isInfantPatient(patient?.birthdate || patient?.birthDate, asOf)) {
+    return { obstetric: "hidden", sexual: "hidden" };
+  }
   const age = calculateAgeInYears(patient?.birthdate, today);
   const isFemale = String(patient?.sex || "").trim().toLowerCase() === "female";
   const openAt = (threshold) => (age === null || age >= threshold ? "open" : "collapsed");

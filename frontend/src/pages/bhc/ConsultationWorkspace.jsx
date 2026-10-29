@@ -134,6 +134,8 @@ import {
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
+import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
+import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
 import { defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import {
   informantPayload,
@@ -268,6 +270,7 @@ import {
 import { consultationPatientQueryKey, getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { isConnectionError } from "../../services/apiClient";
 import { getCurrentUser } from "../../utils/auth";
+import { visibleEpiVaccineOptions } from "../../utils/epiApplicability";
 import {
   compileEpiHistory,
   getEpiCode,
@@ -1166,7 +1169,13 @@ export default function ConsultationWorkspace() {
   const recordsUnresolved = Boolean(selectedPatientId) && !Array.isArray(patientRecordsForHeight);
   const recordsLoading = recordsUnresolved && (bodyHistoryQuery.isPending || bodyHistoryQuery.isFetching);
   const hasFollowUpSelection = routeContinuedIds.followUpIds.length > 0;
-  const maternalResolving = isMaternalServiceResolving({
+  const infantAtVisit = isInfantAt(selectedPatient, dateOfVisit || new Date());
+  const historyUpdateForSave = canViewBackground
+    ? omitHiddenSocialFromUpdate(backgroundUpdate, selectedPatient, dateOfVisit, { includeBhcProfileFields: true })
+    : backgroundUpdate;
+  const maternalResolving = infantAtVisit
+    ? false
+    : isMaternalServiceResolving({
     continueRoute: routeContext.kind === "continue",
     hasFollowUpSelection,
     resolved: maternalFollowUpResolved,
@@ -1400,9 +1409,26 @@ export default function ConsultationWorkspace() {
       compileEpiHistory(epiHistoryRecords),
     [epiHistoryRecords],
   );
+  const patientBirthDate = getEffectivePatientBirthdate(selectedPatient);
   const epiCompletion = useMemo(
-    () => getEpiCompletionState(epiHistoryByCode, immunizationVaccineEntries),
-    [epiHistoryByCode, immunizationVaccineEntries],
+    () =>
+      getEpiCompletionState(epiHistoryByCode, immunizationVaccineEntries, {
+        birthDate: patientBirthDate,
+        visitDate: dateOfVisit,
+      }),
+    [epiHistoryByCode, immunizationVaccineEntries, patientBirthDate, dateOfVisit],
+  );
+  const epiVaccineOptions = useMemo(
+    () =>
+      visibleEpiVaccineOptions(CHILD_VACCINE_OPTIONS, {
+        birthDate: patientBirthDate,
+        visitDate: dateOfVisit,
+        historyLabels: [
+          ...CHILD_VACCINE_OPTIONS.filter((label) => epiHistoryByCode.has(getEpiCode(label))),
+          ...immunizationVaccineEntries.map((entry) => entry.vaccineName),
+        ],
+      }),
+    [patientBirthDate, dateOfVisit, epiHistoryByCode, immunizationVaccineEntries],
   );
   const canSaveCurrentDraft =
     (activeDraft?.reviewState !== "review" || (canFinalize && (currentUser?.permissions || []).includes("records.correct"))) &&
@@ -1430,7 +1456,7 @@ export default function ConsultationWorkspace() {
 
   function buildHealthRecordDraftPayload() {
     // Blank rows pruned like the record payload; half-filled rows stay (drafts may hold them).
-    const draftBackgroundUpdate = canViewBackground ? toDraftBackgroundUpdate(backgroundUpdate) : null;
+    const draftBackgroundUpdate = canViewBackground ? toDraftBackgroundUpdate(historyUpdateForSave) : null;
     return {
       receivingRhuId,
       // Rides in the payload so the encrypted device copy carries the same
@@ -2597,7 +2623,7 @@ export default function ConsultationWorkspace() {
 
     Object.assign(errors, vitalSignsErrors(currentVitalSigns()));
     if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
-    if (canViewBackground) Object.assign(errors, stagedHistoryErrors(backgroundUpdate));
+    if (canViewBackground) Object.assign(errors, stagedHistoryErrors(historyUpdateForSave));
     if (!finalizing) return errors;
     // Condition cards are optional for service-only visits. Added concerns
     // still need a name and clinical outcome. Reporting classification is optional.
@@ -3177,7 +3203,7 @@ export default function ConsultationWorkspace() {
     }
     if (!canFinalize) {
       if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
-      const historyErrors = canViewBackground ? stagedHistoryErrors(backgroundUpdate) : {};
+      const historyErrors = canViewBackground ? stagedHistoryErrors(historyUpdateForSave) : {};
       if (Object.keys(historyErrors).length) {
         if (!revealErrorStep(historyErrors)) setValidationErrorsAndFocus(historyErrors);
         return;
@@ -3502,7 +3528,7 @@ export default function ConsultationWorkspace() {
       // Sent whenever Monitoring Details includes the TB card (isTb).
       tbData: isTb ? tbData : null,
       // Only an old draft's staged Patient History edits, kept by the clinician.
-      backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(backgroundUpdate) : undefined,
+      backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(historyUpdateForSave) : undefined,
       // Per-visit history answers, saved on the record (null when not answered).
       ...visitAnswerRecordFields({ informant, similarIllness, allowed: canViewBackground }),
       // What this visit continues, starts and stops. validateCarePlan already
@@ -3905,7 +3931,7 @@ export default function ConsultationWorkspace() {
       const errors = {};
       if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
       if (canViewBackground) {
-        Object.assign(errors, stagedHistoryErrors(backgroundUpdate, { sections: ["family", "medical", "social"] }));
+        Object.assign(errors, stagedHistoryErrors(historyUpdateForSave, { sections: ["family", "medical", "social"] }));
       }
       if (Object.keys(errors).length) {
         setValidationErrorsAndFocus(errors);
@@ -3913,7 +3939,7 @@ export default function ConsultationWorkspace() {
       }
     }
     if (stepKey === programStepKey("Maternal") && canViewBackground) {
-      const obstetricErrors = stagedHistoryErrors(backgroundUpdate, { sections: ["obstetric"] });
+      const obstetricErrors = stagedHistoryErrors(historyUpdateForSave, { sections: ["obstetric"] });
       if (Object.keys(obstetricErrors).length) {
         setValidationErrorsAndFocus(obstetricErrors);
         return false;
@@ -3979,7 +4005,8 @@ export default function ConsultationWorkspace() {
 
   // ---- Wizard view models -------------------------------------------------
   // Services stay disabled until the patient they are restricted by has loaded.
-  const wizardPrograms = lockProgramsWhilePatientLoads(Object.entries(PROGRAM_CLASSIFICATIONS).map(([key, classification]) => {
+  const wizardPrograms = lockProgramsWhilePatientLoads(visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), selectedPatient, dateOfVisit).map((key) => {
+    const classification = PROGRAM_CLASSIFICATIONS[key];
     const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
       : key === "Family Planning" ? familyPlanningEligibility
       : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
@@ -4544,6 +4571,7 @@ export default function ConsultationWorkspace() {
           background={selectedPatient?.medicalBackground}
           update={backgroundUpdate}
           visibleSections={reviewHistorySections}
+          omitFields={infantHiddenSocialKeys(selectedPatient, dateOfVisit, { includeBhcProfileFields: true })}
         />
       ) : null,
     },
@@ -4854,7 +4882,9 @@ export default function ConsultationWorkspace() {
           <div className="anim-fade-up" style={stagger(2)}>
             {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label><div className="@xl:col-span-3"><MedicineAllocationFields medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))} quantity={entry.inventoryQuantity} value={entry} disabled={!(currentUser?.permissions || []).includes("items.dispense")} onChange={next => { updateVaccineInventory(index, "allocations", next.allocations); updateVaccineInventory(index, "override_reason", next.override_reason); }} /></div></fieldset>)}</section>}
             <ImmunizationVisitFields
-              vaccineOptions={CHILD_VACCINE_OPTIONS}
+              vaccineOptions={epiVaccineOptions}
+              birthDate={patientBirthDate}
+              visitDate={dateOfVisit}
               entries={immunizationVaccineEntries}
               epiHistoryByCode={epiHistoryByCode}
               epiCompletion={epiCompletion}
@@ -5019,7 +5049,9 @@ export default function ConsultationWorkspace() {
                     <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => changeVital("weight", event.target.value, setWeight)} onBlur={() => blurVital("weight")} placeholder="kg" />
                     <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => changeVital("height", event.target.value, setHeight)} onBlur={() => blurVital("height")} placeholder="cm" />
                     <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => changeVital("temp", event.target.value, setTemp)} onBlur={() => blurVital("temp")} placeholder="°C" />
-                    <BmiOutputField weight={weight} height={height} />
+                    {shouldShowBmiDisplay(selectedPatient, dateOfVisit) && (
+                      <BmiOutputField weight={weight} height={height} />
+                    )}
                   </div>
                   {areVitalSignsBlank(currentVitalSigns()) && (
                     <p className="mt-2 text-xs leading-relaxed text-[#6B7280]">{EMPTY_VITALS_REMINDER}</p>

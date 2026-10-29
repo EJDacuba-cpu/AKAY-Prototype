@@ -1,6 +1,7 @@
 import { historyFieldError } from "../../../../utils/backgroundValidation";
 import { formatEnvironment } from "../../../../utils/backgroundFormat";
 import { formatDisplayValue } from "../../../../utils/formatters";
+import { isInfantAt } from "../../../../utils/infantVisibility";
 import {
   EDUCATION_LEVELS,
   EXPOSURES,
@@ -90,7 +91,9 @@ export default function PersonalSocialSection({
   const exposures = Array.isArray(environment.exposures) ? environment.exposures : [];
   const smokes = smoking.status === "former" || smoking.status === "current";
   const pack = smokes ? packYears(smoking) : null;
-  const sexualCollapsed = sectionVisibility(patient, today).sexual === "collapsed";
+  const visibility = sectionVisibility(patient, today);
+  const sexualCollapsed = visibility.sexual === "collapsed";
+  const hideAdultLifestyle = isInfantAt(patient, today);
   const field = (path) => `${SOCIAL}.${path}`;
   const fieldError = (path) => historyFieldError(errors, field(path));
   const sexualHasError = Object.keys(errors).some((key) => key.startsWith(field("sexual")));
@@ -124,7 +127,7 @@ export default function PersonalSocialSection({
 
   return (
     <div className="space-y-5">
-      {showEducationAndOccupation && (
+      {showEducationAndOccupation && !hideAdultLifestyle && (
         <Block title="Education & Occupation">
           <FieldGrid>
             <SelectField label="Education level" value={education.level} options={EDUCATION_LEVELS} emptyLabel="Not recorded" onChange={(next) => set("education", { level: next })} />
@@ -138,80 +141,86 @@ export default function PersonalSocialSection({
         </Block>
       )}
 
-      <Block title="Smoking">
-        <FieldGrid>
-          <SelectField
-            label="Smoking status"
-            name={field("smoking.status")}
-            error={fieldError("smoking.status")}
-            value={smoking.status}
-            options={STATUSES}
-            emptyLabel="Not recorded"
-            onChange={changeSmoking}
-          />
-          {(smokes || fieldError("smoking.sticksPerDay") || fieldError("smoking.years")) && (
-            <>
-              <NumberField
-                label="Sticks per day"
-                name={field("smoking.sticksPerDay")}
-                error={fieldError("smoking.sticksPerDay")}
-                min={1}
-                max={100}
-                value={smoking.sticksPerDay}
-                onChange={(next) => set("smoking", { sticksPerDay: next })}
+      {!hideAdultLifestyle && (
+        <>
+          <Block title="Smoking">
+            <FieldGrid>
+              <SelectField
+                label="Smoking status"
+                name={field("smoking.status")}
+                error={fieldError("smoking.status")}
+                value={smoking.status}
+                options={STATUSES}
+                emptyLabel="Not recorded"
+                onChange={changeSmoking}
               />
-              <NumberField
-                label="Years smoked"
-                name={field("smoking.years")}
-                error={fieldError("smoking.years")}
-                min={0}
-                max={80}
-                value={smoking.years}
-                onChange={(next) => set("smoking", { years: next })}
-              />
-            </>
-          )}
-          {(smoking.status === "former" || fieldError("smoking.quitYear")) && (
-            <NumberField
-              label="Year quit"
-              name={field("smoking.quitYear")}
-              error={fieldError("smoking.quitYear")}
-              min={1900}
-              max={2100}
-              value={smoking.quitYear}
-              onChange={(next) => set("smoking", { quitYear: next })}
-            />
-          )}
-        </FieldGrid>
-        {pack !== null && <p className="text-[12.5px] text-gray-700">Pack-years: {pack}</p>}
-      </Block>
+              {(smokes || fieldError("smoking.sticksPerDay") || fieldError("smoking.years")) && (
+                <>
+                  <NumberField
+                    label="Sticks per day"
+                    name={field("smoking.sticksPerDay")}
+                    error={fieldError("smoking.sticksPerDay")}
+                    min={1}
+                    max={100}
+                    value={smoking.sticksPerDay}
+                    onChange={(next) => set("smoking", { sticksPerDay: next })}
+                  />
+                  <NumberField
+                    label="Years smoked"
+                    name={field("smoking.years")}
+                    error={fieldError("smoking.years")}
+                    min={0}
+                    max={80}
+                    value={smoking.years}
+                    onChange={(next) => set("smoking", { years: next })}
+                  />
+                </>
+              )}
+              {(smoking.status === "former" || fieldError("smoking.quitYear")) && (
+                <NumberField
+                  label="Year quit"
+                  name={field("smoking.quitYear")}
+                  error={fieldError("smoking.quitYear")}
+                  min={1900}
+                  max={2100}
+                  value={smoking.quitYear}
+                  onChange={(next) => set("smoking", { quitYear: next })}
+                />
+              )}
+            </FieldGrid>
+            {pack !== null && <p className="text-[12.5px] text-gray-700">Pack-years: {pack}</p>}
+          </Block>
 
-      <Block title="Alcohol">
-        <FieldGrid>
-          <SelectField label="Alcohol status" value={alcohol.status} options={STATUSES} emptyLabel="Not recorded" onChange={(next) => set("alcohol", { status: next, ...(next === "current" ? {} : { frequency: "" }) })} />
-          {alcohol.status === "current" && (
-            <SelectField label="Frequency" value={alcohol.frequency} options={FREQUENCIES} emptyLabel="Not recorded" onChange={(next) => set("alcohol", { frequency: next })} />
-          )}
-        </FieldGrid>
-      </Block>
+          <Block title="Alcohol">
+            <FieldGrid>
+              <SelectField label="Alcohol status" value={alcohol.status} options={STATUSES} emptyLabel="Not recorded" onChange={(next) => set("alcohol", { status: next, ...(next === "current" ? {} : { frequency: "" }) })} />
+              {alcohol.status === "current" && (
+                <SelectField label="Frequency" value={alcohol.frequency} options={FREQUENCIES} emptyLabel="Not recorded" onChange={(next) => set("alcohol", { frequency: next })} />
+              )}
+            </FieldGrid>
+          </Block>
 
-      <Block title="Diet">
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {DIET.map(([key, label]) => (
-            <CheckboxField key={key} label={label} checked={diet[key] === true} onChange={(next) => set("diet", { [key]: next })} />
-          ))}
-        </div>
-        <TextField label="Diet notes" value={diet.notes} onChange={(next) => set("diet", { notes: next })} />
-      </Block>
+          <Block title="Diet">
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {DIET.map(([key, label]) => (
+                <CheckboxField key={key} label={label} checked={diet[key] === true} onChange={(next) => set("diet", { [key]: next })} />
+              ))}
+            </div>
+            <TextField label="Diet notes" value={diet.notes} onChange={(next) => set("diet", { notes: next })} />
+          </Block>
+        </>
+      )}
 
-      <CollapsibleBlock title="Sexual History" collapsed={sexualCollapsed} forceOpen={sexualHasError}>
-        <Block title="Sexual History">
-          <FieldGrid>
-            <SelectField label="Sexually active" value={sexual.active} options={SEXUAL_ACTIVE} emptyLabel="Not recorded" onChange={(next) => set("sexual", { active: next })} />
-            <TextField label="Sexual history notes" value={sexual.notes} onChange={(next) => set("sexual", { notes: next })} />
-          </FieldGrid>
-        </Block>
-      </CollapsibleBlock>
+      {visibility.sexual !== "hidden" && (
+        <CollapsibleBlock title="Sexual History" collapsed={sexualCollapsed} forceOpen={sexualHasError}>
+          <Block title="Sexual History">
+            <FieldGrid>
+              <SelectField label="Sexually active" value={sexual.active} options={SEXUAL_ACTIVE} emptyLabel="Not recorded" onChange={(next) => set("sexual", { active: next })} />
+              <TextField label="Sexual history notes" value={sexual.notes} onChange={(next) => set("sexual", { notes: next })} />
+            </FieldGrid>
+          </Block>
+        </CollapsibleBlock>
+      )}
 
       <Block title="Household Environment">
         {prefill && prefillText && (

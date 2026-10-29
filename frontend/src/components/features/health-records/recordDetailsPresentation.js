@@ -11,13 +11,13 @@ const list = (value) => Array.isArray(value) ? value : [];
 export const taskStateLabel = (value) => text(value).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Not recorded";
 
 /** Zero alone is an old empty-field sentinel; no provenance exists to validate it. */
-export function recordedVitalItems(record = {}) {
+export function recordedVitalItems(record = {}, patient = record.patient) {
   const isRecorded = (value) => {
     const clean = text(value);
     return clean && !/^0+(?:\.0+)?(?:\s|\/|$)/.test(clean);
   };
   const units = { Temperature: "°C", Weight: "kg", Height: "cm" };
-  const items = getVitalSignItems(record).filter((item) => isRecorded(item.value)).map((item) => ({
+  const items = getVitalSignItems(record, patient).filter((item) => isRecorded(item.value)).map((item) => ({
     ...item, value: units[item.label] && !/[a-z°%]/i.test(item.value) ? formatMeasurement(item.value, units[item.label]) : item.value,
   }));
   const vitals = record.vital_signs || record.vitalSigns || {};

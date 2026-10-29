@@ -10,6 +10,7 @@ import { consultationPatientQueryKey } from "../../../services/consultationPatie
 import { savePatientBackground } from "../../../services/patientService";
 import { formatLongDate } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
+import { infantHiddenSocialKeys } from "../../../utils/infantVisibility";
 import { sectionStatus, sectionVisibility } from "../../../utils/patientHistory";
 import {
   BACKGROUND_SECTION_FIELDS,
@@ -73,9 +74,11 @@ function RhuConditionsBlock({ conditions }) {
 }
 
 /** The saved values of a section as label/value rows; `hideMoved` drops Education / Past Occupations. */
-function SectionFields({ background, section, hideMoved = false }) {
+function SectionFields({ background, section, hideMoved = false, hiddenSocialKeys = [] }) {
   const fields = BACKGROUND_SECTION_FIELDS[section].filter(
-    (field) => !(hideMoved && section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(field.key)),
+    (field) =>
+      !(hideMoved && section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(field.key)) &&
+      !(section === "social" && hiddenSocialKeys.includes(field.key)),
   );
   return (
     <FieldList
@@ -123,7 +126,12 @@ function ReadOnlyBackground({ patientId, patient, background, conditions }) {
         >
           {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
           {/* Education is Patient Information; Past Occupations is history only. */}
-          <SectionFields background={background} section={section} hideMoved />
+          <SectionFields
+            background={background}
+            section={section}
+            hideMoved
+            hiddenSocialKeys={infantHiddenSocialKeys(patient)}
+          />
         </ProfileSection>
       ))}
     </div>
@@ -131,9 +139,11 @@ function ReadOnlyBackground({ patientId, patient, background, conditions }) {
 }
 
 /** Shown with an edited section after a 409: latest saved vs. the typed values, and an explicit choice. */
-function SectionConflict({ conflict, edit, onResolve }) {
+function SectionConflict({ conflict, edit, onResolve, hiddenSocialKeys = [] }) {
   const rows = backgroundChangeRows(conflict.current, edit.value, edit.section).filter(
-    (row) => !(edit.section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(row.key)),
+    (row) =>
+      !(edit.section === "social" && BHC_HIDDEN_SOCIAL_FIELDS.includes(row.key)) &&
+      !(edit.section === "social" && hiddenSocialKeys.includes(row.key)),
   );
   return (
     <div role="alert" className="mb-4 rounded-lg border border-warning-100 border-l-4 border-l-warning-500 bg-warning-50 p-3">
@@ -217,7 +227,8 @@ function EditableBackground({ patientId, patient, background, conditions }) {
   const [errors, setErrors] = useState([]);
   const [conflict, setConflict] = useState(null);
   const [savedNotice, setSavedNotice] = useState(null);
-  const dirty = isSectionEditDirty(edit);
+  const hiddenSocialKeys = infantHiddenSocialKeys(patient);
+  const dirty = isSectionEditDirty(edit, { patient });
   const save = useMutation({ mutationFn: (payload) => savePatientBackground(patientId, payload) });
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
@@ -259,14 +270,14 @@ function EditableBackground({ patientId, patient, background, conditions }) {
       setErrors(["Choose Reload latest or Keep my changes first."]);
       return;
     }
-    if (!isSectionEditDirty(edit)) {
+    if (!isSectionEditDirty(edit, { patient })) {
       cancelEdit();
       return;
     }
     const { section } = edit;
     setErrors([]);
     try {
-      const saved = await save.mutateAsync(sectionSavePayload(edit));
+      const saved = await save.mutateAsync(sectionSavePayload(edit, { patient }));
       // The PATCH answers with the same serialization as GET /patients/{id}.
       queryClient.setQueryData(queryKeys.patientDetails("bhc", patientId), saved);
       setEdit(null);
@@ -337,7 +348,14 @@ function EditableBackground({ patientId, patient, background, conditions }) {
                     </ul>
                   </div>
                 )}
-                {conflict && <SectionConflict conflict={conflict} edit={edit} onResolve={resolveConflict} />}
+                {conflict && (
+                  <SectionConflict
+                    conflict={conflict}
+                    edit={edit}
+                    onResolve={resolveConflict}
+                    hiddenSocialKeys={hiddenSocialKeys}
+                  />
+                )}
                 <PatientBackgroundEditor
                   section={section}
                   value={edit.value}
@@ -349,7 +367,12 @@ function EditableBackground({ patientId, patient, background, conditions }) {
             ) : (
               <>
                 {section === "medical" && <RhuConditionsBlock conditions={conditions} />}
-                <SectionFields background={background} section={section} hideMoved />
+                <SectionFields
+                  background={background}
+                  section={section}
+                  hideMoved
+                  hiddenSocialKeys={hiddenSocialKeys}
+                />
               </>
             )}
           </ProfileSection>

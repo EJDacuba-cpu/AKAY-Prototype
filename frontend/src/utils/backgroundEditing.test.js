@@ -10,6 +10,7 @@ import {
   consultationBannerVisible,
   historyReferenceSections,
   isSectionEditDirty,
+  omitHiddenSocialFromUpdate,
   resolveSectionConflict,
   sectionConflict,
   sectionSavePayload,
@@ -87,6 +88,52 @@ test("hidden Education / Past Occupations never make a social edit dirty", () =>
     personalSocial: { ...edit.value.personalSocial, education: { level: "", completed: "" }, pastOccupations: "" },
   });
   assert.equal(isSectionEditDirty(typed), false);
+});
+
+test("the social payload never sends infant smoking, alcohol, diet, or sexual history", () => {
+  const edit = startSectionEdit(background, "social");
+  const infant = { birthdate: "2026-06-01" };
+  const social = sectionSavePayload(edit, { patient: infant, today: "2026-10-04" }).sections.social.personalSocial;
+  assert.equal(Object.hasOwn(social, "smoking"), false);
+  assert.equal(Object.hasOwn(social, "alcohol"), false);
+  assert.equal(Object.hasOwn(social, "diet"), false);
+  assert.equal(Object.hasOwn(social, "sexual"), false);
+  assert.equal(Object.hasOwn(social, "environment"), true);
+  assert.equal(background.personalSocial.smoking.status, "former");
+});
+
+test("a staged consultation update omits hidden infant social keys without emptying stored values", () => {
+  const infant = { birthdate: "2026-06-01" };
+  const update = {
+    sections: {
+      social: {
+        personalSocial: {
+          smoking: { status: "" },
+          environment: { waterSource: "Level III" },
+        },
+      },
+    },
+  };
+  const omitted = omitHiddenSocialFromUpdate(update, infant, "2026-10-04", { includeBhcProfileFields: true });
+  assert.equal(Object.hasOwn(omitted.sections.social.personalSocial, "smoking"), false);
+  assert.equal(omitted.sections.social.personalSocial.environment.waterSource, "Level III");
+  assert.equal(update.sections.social.personalSocial.smoking.status, "");
+});
+
+test("clearing hidden infant lifestyle fields does not make a social edit dirty", () => {
+  const infant = { birthdate: "2026-06-01" };
+  const today = "2026-10-04";
+  const edit = startSectionEdit(background, "social");
+  const typed = updateSectionEdit(edit, {
+    personalSocial: {
+      ...edit.value.personalSocial,
+      smoking: { status: "" },
+      alcohol: { status: "" },
+      diet: {},
+      sexual: { active: "" },
+    },
+  });
+  assert.equal(isSectionEditDirty(typed, { patient: infant, today }), false);
 });
 
 test("a 409 for this section is kept with the draft; other sections are ignored", () => {
@@ -229,6 +276,16 @@ test("Section V still shows when obstetric is collapsed for age", () => {
   const girl = { sex: "Female", birthdate: "2018-01-01" };
   const sections = historyReferenceSections(background, { patient: girl, today: "2026-10-29" });
   assert.ok(sections.find((section) => section.key === "obstetric"));
+});
+
+test("infant history reference keeps household environment and omits adult lifestyle rows", () => {
+  const infant = { sex: "Female", birthdate: "2026-06-01" };
+  const sections = historyReferenceSections(background, { patient: infant, today: "2026-10-04" });
+  assert.deepEqual(sections.map((section) => section.key), ["medical", "family", "social"]);
+  assert.deepEqual(
+    sections.find((section) => section.key === "social").rows.map((row) => row.key),
+    ["environment"],
+  );
 });
 
 test("missing reference data is blank (shown as Not recorded), never a negative answer", () => {
