@@ -1,6 +1,7 @@
 import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
 import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
+import VisitHistorySnapshot from "./VisitHistorySnapshot";
 import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
@@ -390,6 +391,8 @@ export default function BhcHealthRecordPrintDocument({
           <BodyFindingHistoryView {...bodyFindings} print />
         </Section>
       )}
+
+      <VisitHistorySnapshot record={record} print />
 
       {immunization && <EpiPrintSection record={record} />}
       {(maternal || postpartumOnly) && (
@@ -1118,6 +1121,14 @@ const documentStyles = `
     margin: 0 0 6px;
     color: var(--color-text);
     font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .bhc-print-subh {
+    margin: 8px 0 2px;
+    color: var(--color-text);
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;

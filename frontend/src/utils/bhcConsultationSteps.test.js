@@ -184,5 +184,12 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.match(prenatal, /showSimilarIllness=\{false\}\s+inline\s+errors=\{historyErrors\}/);
   const detailsView = readFileSync(join(here, "../components/features/health-records/VisitHistorySnapshot.jsx"), "utf8");
   assert.match(detailsView, /Historical patient history is unavailable for this record/);
+  assert.match(detailsView, /Similar illness in the family/);
+  assert.match(detailsView, /Patient History at This Visit/);
+  assert.doesNotMatch(detailsView, /Changes This Visit/);
   assert.doesNotMatch(detailsView, /medicalBackground/);
+  const recordWorkspace = readFileSync(join(here, "../components/features/health-records/BhcHealthRecordWorkspace.jsx"), "utf8");
+  assert.match(recordWorkspace, /VisitHistorySnapshot/);
+  const printDocument = readFileSync(join(here, "../components/features/health-records/BhcHealthRecordPrintDocument.jsx"), "utf8");
+  assert.match(printDocument, /VisitHistorySnapshot/);
 });

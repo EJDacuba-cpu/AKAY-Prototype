@@ -1,6 +1,7 @@
 import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
 import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
+import VisitHistorySnapshot from "./VisitHistorySnapshot";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "../../ui/button";
@@ -306,6 +307,8 @@ export default function BhcHealthRecordWorkspace({
           </div>
         </ProfileSection>
       )}
+
+      <VisitHistorySnapshot record={record} />
 
       {immunization && (
         <EpiProgramSection record={record} />

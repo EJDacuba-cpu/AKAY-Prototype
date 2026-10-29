@@ -337,14 +337,58 @@ class PatientBackgroundConsultationTest extends TestCase
         $id = $this->finalize(null)->assertCreated()->json('data.id');
         $frozen = HealthRecord::findOrFail($id)->history_snapshot;
 
-        $this->finalize([
+        $laterId = $this->finalize([
             'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Penicillin']]]]],
             'base_revisions' => ['medical' => 2],
-        ])->assertCreated();
+        ])->assertCreated()->json('data.id');
 
         $this->assertSame($frozen, HealthRecord::findOrFail($id)->fresh()->history_snapshot);
         $this->assertSame(self::DUST, $frozen['sections']['medical']['allergies']);
         $this->assertSame('Penicillin', $this->background()['allergies']['items'][0]['allergen']);
+        $later = HealthRecord::findOrFail($laterId)->history_snapshot;
+        $this->assertSame('Penicillin', $later['sections']['medical']['allergies']['items'][0]['allergen']);
+        $this->assertSame(self::MOTHER_ASTHMA, $later['sections']['family']['familyHistory']);
+        $this->assertNotSame($frozen, $later);
+    }
+
+    public function test_first_visit_without_history_edits_still_freezes_unchanged_sections(): void
+    {
+        $id = $this->finalize(null)->assertCreated()->json('data.id');
+
+        $snapshot = HealthRecord::findOrFail($id)->history_snapshot;
+        $this->assertSame(self::MOTHER_ASTHMA, $snapshot['sections']['family']['familyHistory']);
+        $this->assertSame(self::DUST, $snapshot['sections']['medical']['allergies']);
+        $this->assertSame(['smoking' => ['status' => 'never']], $snapshot['sections']['social']['personalSocial']);
+        $this->assertSame(['currentDiseases', 'allergies', 'hospitalizations'], array_keys($snapshot['sections']['medical']));
+        $this->assertArrayNotHasKey('obstetric', $snapshot['sections']);
+        $this->assertSame([], $snapshot['changes']);
+
+        $this->actingAs($this->encoder, 'sanctum')
+            ->getJson("/api/health-records/{$id}")
+            ->assertForbidden();
+    }
+
+    public function test_mixed_general_and_prenatal_visits_include_obstetric_in_the_snapshot(): void
+    {
+        $this->patient->update([
+            'medical_background' => [
+                ...$this->background(),
+                'obstetric' => ['menarcheAge' => 13, 'menstrualStatus' => 'menstruating'],
+            ],
+        ]);
+
+        $id = $this->finalize(null, [
+            'category' => 'Maternal',
+            'notes' => 'No vaccine this visit.',
+            'monitoring_data' => [
+                'selectedPrograms' => ['Maternal', 'EPI'],
+                'primaryProgram' => 'Maternal',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $snapshot = HealthRecord::findOrFail($id)->history_snapshot;
+        $this->assertSame(13, $snapshot['sections']['obstetric']['obstetric']['menarcheAge']);
+        $this->assertSame(self::DUST, $snapshot['sections']['medical']['allergies']);
     }
 
     private function draftPayload(array $extra = []): array

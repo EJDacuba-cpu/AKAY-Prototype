@@ -881,3 +881,171 @@ test("BHC workspace links to referral and follow-up modules without live status"
   assert.match(printed, /TRK-35/);
   assert.match(printed, /Needs review/);
 });
+
+const liveBackground = {
+  allergies: { items: [{ allergen: "LIVE-SHOULD-NOT-SHOW" }] },
+  familyHistory: { items: [{ condition: "Live Diabetes" }] },
+};
+
+const generalHistorySnapshot = {
+  sections: {
+    family: { familyHistory: { items: [{ condition: "Asthma", kind: "Chronic", relation: "Mother" }] } },
+    medical: {
+      currentDiseases: [{ name: "Hypertension" }],
+      allergies: { items: [{ allergen: "Dust" }] },
+      hospitalizations: { none: true },
+    },
+    social: {
+      personalSocial: {
+        smoking: { status: "never" },
+        alcohol: { status: "never" },
+        diet: { highSalt: true },
+        sexual: { active: "no" },
+        environment: { waterSource: "Piped" },
+        education: { level: "College" },
+      },
+    },
+  },
+  changes: [],
+};
+
+function historyRecord(extra = {}) {
+  return {
+    id: 90,
+    chiefComplaint: "Cough",
+    informant: { relation: "Mother", name: "Ana Cruz" },
+    similarIllness: { answer: "Yes", who: "Brother", note: "Cough" },
+    historySnapshot: generalHistorySnapshot,
+    medicalBackground: liveBackground,
+    ...extra,
+  };
+}
+
+function assertFrozenHistory(html, { obstetric = false, allergy = "Dust" } = {}) {
+  assert.match(html, /Patient History at This Visit/);
+  assert.match(html, /Informant/);
+  assert.match(html, /Mother · Ana Cruz/);
+  assert.match(html, /Family History/);
+  assert.match(html, /Similar illness in the family/);
+  assert.match(html, /Yes · Brother · Cough/);
+  assert.match(html, /Family Conditions/);
+  assert.match(html, /Asthma \(Chronic, Mother\)/);
+  assert.match(html, /Past Medical History/);
+  assert.match(html, /Patient-reported Conditions/);
+  assert.match(html, /Hypertension/);
+  assert.match(html, new RegExp(allergy));
+  assert.match(html, /Hospitalizations/);
+  assert.match(html, /Personal &amp; Social History/);
+  assert.match(html, /Never smoked/);
+  assert.match(html, /Does not drink/);
+  assert.match(html, /High salt/);
+  assert.match(html, /Not sexually active/);
+  assert.match(html, /Piped/);
+  assert.doesNotMatch(html, /College/);
+  assert.doesNotMatch(html, /LIVE-SHOULD-NOT-SHOW|Live Diabetes/);
+  assert.doesNotMatch(html, /Changes This Visit|No history fields were changed| changed to /);
+  if (obstetric) {
+    assert.match(html, /Obstetric &amp; Menstrual History/);
+    assert.match(html, /Menarche at 13/);
+  } else {
+    assert.doesNotMatch(html, /Obstetric &amp; Menstrual History|Menarche at 13/);
+  }
+}
+
+test("clinical details hide visit history without the clinical.history permission", () => {
+  const html = wrap(createElement(HealthRecordClinicalDetails, {
+    record: historyRecord(),
+  }));
+  assert.doesNotMatch(html, /Patient History at This Visit/);
+});
+
+for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
+  test(`${View.name}: shows the frozen visit history including unchanged sections`, () => {
+    const html = wrap(createElement(View, {
+      record: historyRecord(),
+      patient: { medicalBackground: liveBackground },
+      serviceType: "General Consultation",
+      title: "General Consultation Record",
+      recordId: "90",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assertFrozenHistory(html);
+  });
+
+  test(`${View.name}: follow-up shows this visit's values without previous-to-updated comparisons`, () => {
+    const html = wrap(createElement(View, {
+      record: historyRecord({
+        historySnapshot: {
+          ...generalHistorySnapshot,
+          sections: {
+            ...generalHistorySnapshot.sections,
+            medical: {
+              ...generalHistorySnapshot.sections.medical,
+              allergies: { items: [{ allergen: "Penicillin" }] },
+            },
+          },
+          changes: [{
+            section: "medical",
+            before: { allergies: { items: [{ allergen: "Dust" }] } },
+            after: { allergies: { items: [{ allergen: "Penicillin" }] } },
+          }],
+        },
+      }),
+      serviceType: "General Consultation",
+      title: "General Consultation Record",
+      recordId: "91",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assertFrozenHistory(html, { allergy: "Penicillin" });
+    assert.doesNotMatch(html, /Dust/);
+  });
+
+  test(`${View.name}: includes obstetric history only when the snapshot has it`, () => {
+    const html = wrap(createElement(View, {
+      record: historyRecord({
+        historySnapshot: {
+          sections: {
+            ...generalHistorySnapshot.sections,
+            obstetric: { obstetric: { menarcheAge: 13, menstrualStatus: "menstruating" } },
+          },
+          changes: [],
+        },
+        monitoringData: { selectedPrograms: ["Maternal", "EPI"] },
+      }),
+      serviceType: "Maternal / Prenatal",
+      title: "Maternal Record",
+      recordId: "92",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assertFrozenHistory(html, { obstetric: true });
+  });
+
+  test(`${View.name}: legacy records say history is unavailable instead of using live background`, () => {
+    const html = wrap(createElement(View, {
+      record: {
+        id: 93,
+        chiefComplaint: "Cough",
+        informant: { relation: "Patient" },
+        similarIllness: { answer: "No" },
+        medicalBackground: liveBackground,
+      },
+      patient: { medicalBackground: liveBackground },
+      serviceType: "General Consultation",
+      title: "General Consultation Record",
+      recordId: "93",
+      patientName: "Ana Cruz",
+      onBack() {},
+      onPrint() {},
+    }));
+    assert.match(html, /Historical patient history is unavailable for this record/);
+    assert.match(html, /Similar illness in the family/);
+    assert.match(html, />No</);
+    assert.doesNotMatch(html, /LIVE-SHOULD-NOT-SHOW|Live Diabetes|Family Conditions|Never smoked/);
+  });
+}

@@ -331,17 +331,40 @@ class PatientBackground
         return $slice;
     }
 
-    /** True when this visit includes Maternal Care / Prenatal. */
+    /** True when this visit includes Prenatal / Maternal Care. */
     public static function visitIncludesMaternal(array $data): bool
     {
-        $programs = $data['monitoring_data']['selectedPrograms'] ?? [];
-        if (is_array($programs) && in_array('Maternal', $programs, true)) {
+        $services = self::listValues(
+            $data['monitoring_data']['visitPurpose']['services']
+                ?? $data['visitPurpose']['services']
+                ?? []
+        );
+        if (in_array('Prenatal', $services, true)) {
+            return true;
+        }
+        if (in_array('Postpartum', $services, true) && ! in_array('Prenatal', $services, true)) {
+            return false;
+        }
+
+        $programs = self::listValues(
+            $data['monitoring_data']['selectedPrograms']
+                ?? $data['selectedPrograms']
+                ?? []
+        );
+        if (in_array('Maternal', $programs, true) || in_array('Prenatal', $programs, true)) {
             return true;
         }
 
         $category = (string) ($data['category'] ?? '');
 
         return $category === 'Maternal' || str_contains($category, 'Maternal');
+    }
+
+    /** @param  mixed  $value
+     *  @return array<int, mixed> */
+    private static function listValues(mixed $value): array
+    {
+        return is_array($value) ? array_values($value) : [];
     }
 
     /**

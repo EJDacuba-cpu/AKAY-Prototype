@@ -3,8 +3,7 @@
  * never fall back to live Patient Background when this is missing.
  */
 
-import { BACKGROUND_SECTION_LABELS, backgroundChangeRows } from "./backgroundUpdate.js";
-import { BHC_HIDDEN_SOCIAL_FIELDS } from "./backgroundEditing.js";
+import { informantPayload, similarIllnessPayload } from "./historyStep.js";
 
 export const VISIT_HISTORY_SECTION_ORDER = ["family", "medical", "social", "obstetric"];
 
@@ -19,14 +18,23 @@ export function visitHistorySnapshot(record) {
   };
 }
 
+function joinedLine(parts) {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(" · ");
+}
+
+/** Informant as stored on this visit, or "". */
+export function visitHistoryInformantLine(record) {
+  const informant = informantPayload(record?.informant);
+  return informant ? joinedLine([informant.relation, informant.name]) : "";
+}
+
+/** Similar illness in the family as stored on this visit, or "". */
+export function visitHistorySimilarIllnessLine(record) {
+  const similar = similarIllnessPayload(record?.similarIllness || record?.similar_illness);
+  return similar ? joinedLine([similar.answer, similar.who, similar.note]) : "";
+}
+
 export function visitHistorySectionKeys(snapshot) {
   if (!snapshot) return [];
   return VISIT_HISTORY_SECTION_ORDER.filter((key) => Object.prototype.hasOwnProperty.call(snapshot.sections, key));
-}
-
-export function visitHistoryChangeRows(change, { hideMovedSocialFields = true } = {}) {
-  if (!change || !BACKGROUND_SECTION_LABELS[change.section]) return [];
-  return backgroundChangeRows(change.before || {}, change.after || {}, change.section).filter(
-    (row) => !hideMovedSocialFields || change.section !== "social" || !BHC_HIDDEN_SOCIAL_FIELDS.includes(row.key),
-  );
 }
