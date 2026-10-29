@@ -14,6 +14,8 @@ import {
 
 import { RecordTabs } from "../../common";
 import PatientDetailItem from "../patients/PatientDetailItem";
+import VisitHistorySnapshot from "./VisitHistorySnapshot";
+import { getCurrentUser } from "../../../utils/auth";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
 import { formatRecordReporting, getMorbidityReportingStatus } from "../../../utils/diagnosisReporting";
@@ -156,17 +158,22 @@ function RecordDetailsBody({
   record,
   patient = {},
   linkedReferral = null,
+  omitVisitHistory = false,
 }) {
   if (!record) return null;
+
+  const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
+  const historyBlock = !omitVisitHistory && canViewHistory ? <VisitHistorySnapshot record={record} /> : null;
+  const withHistory = (inner) => (historyBlock ? <div className="space-y-5">{historyBlock}{inner}</div> : inner);
 
   const programs = getConsultationPrograms(record);
   const categories = [...new Set(programs.map(key => PROGRAM_CLASSIFICATIONS[key]))];
   if (categories.length > 1) {
-    return <div className="space-y-6">{categories.map(category => {
+    return withHistory(<div className="space-y-6">{categories.map(category => {
       const selected = programs.filter(key => PROGRAM_CLASSIFICATIONS[key] === category);
       const programRecord = { ...record, category, recordType: category, classification: category, patientClassification: category, selectedPrograms: selected };
-      return <section key={category}><h2 className="mb-3 text-sm font-semibold text-slate-900">{selected.join(" / ")}</h2><HealthRecordClinicalDetails record={programRecord} patient={patient} linkedReferral={linkedReferral} /></section>;
-    })}</div>;
+      return <section key={category}><h2 className="mb-3 text-sm font-semibold text-slate-900">{selected.join(" / ")}</h2><HealthRecordClinicalDetails record={programRecord} patient={patient} linkedReferral={linkedReferral} omitVisitHistory /></section>;
+    })}</div>);
   }
 
   const status = normalizeHealthRecordStatus(
@@ -252,11 +259,11 @@ function RecordDetailsBody({
     "";
 
   if (programs.includes("TB")) {
-    return <TbTreatmentCardForm value={normalizeTbData(record.tbData || record.tb_data)} readOnly recordId={record.id} />;
+    return withHistory(<TbTreatmentCardForm value={normalizeTbData(record.tbData || record.tb_data)} readOnly recordId={record.id} />);
   }
 
   if (isImmunizationRecord) {
-    return (
+    return withHistory(
       <EpiRecordDetails
         record={record}
         vaccineEntries={epiVaccineEntries}
@@ -270,7 +277,7 @@ function RecordDetailsBody({
   }
 
   if (isMaternalRecord) {
-    return (
+    return withHistory(
       <MaternalPrenatalRecordDetails
         record={record}
         dispensedMedicines={dispensedMedicines}
@@ -282,7 +289,7 @@ function RecordDetailsBody({
   }
 
   if (isFamilyPlanningRecord) {
-    return (
+    return withHistory(
       <FamilyPlanningRecordDetails
         record={record}
         details={familyPlanningDetails}
@@ -295,7 +302,7 @@ function RecordDetailsBody({
   }
 
   if (isGeneralConsultationRecord) {
-    return (
+    return withHistory(
       <GeneralConsultationRecordDetails
         record={record}
         vitalItems={generalVitalItems}
@@ -319,7 +326,7 @@ function RecordDetailsBody({
     );
   }
 
-  return (
+  return withHistory(
     <GenericRecordDetails
       record={record}
       hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}

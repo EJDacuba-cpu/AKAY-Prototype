@@ -331,6 +331,46 @@ class PatientBackground
         return $slice;
     }
 
+    /** True when this visit includes Maternal Care / Prenatal. */
+    public static function visitIncludesMaternal(array $data): bool
+    {
+        $programs = $data['monitoring_data']['selectedPrograms'] ?? [];
+        if (is_array($programs) && in_array('Maternal', $programs, true)) {
+            return true;
+        }
+
+        $category = (string) ($data['category'] ?? '');
+
+        return $category === 'Maternal' || str_contains($category, 'Maternal');
+    }
+
+    /**
+     * Frozen ITR history for Health Record Details: patient-reported section
+     * slices as they stand after apply(), plus this visit's change entries.
+     * Chart metadata (revisions / updatedAt / reviewedAt) is left off.
+     * Obstetric is included only for Maternal visits.
+     *
+     * @param  array<int, array>  $changes
+     * @return array{sections: array<string, array>, changes: array<int, array>}
+     */
+    public static function visitSnapshot(Patient $patient, array $changes, bool $includeObstetric): array
+    {
+        $background = is_array($patient->medical_background) ? $patient->medical_background : [];
+        $keys = ['family', 'medical', 'social'];
+        if ($includeObstetric) {
+            $keys[] = 'obstetric';
+        }
+        $sections = [];
+        foreach ($keys as $section) {
+            $sections[$section] = self::slice($background, $section);
+        }
+
+        return [
+            'sections' => $sections,
+            'changes' => array_values($changes),
+        ];
+    }
+
     public static function entry(
         string $section,
         string $source,

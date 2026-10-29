@@ -213,12 +213,12 @@ test("mergeMaternalData drops retired risk keys", () => {
   assert.equal("diabetes" in merged.riskAssessment, false);
 });
 
-test("the Prenatal form keeps obstetric fields and no longer embeds Patient History", () => {
+test("the Prenatal form keeps this-pregnancy fields and can mount Section V", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const form = readFileSync(join(here, "../components/features/health-records/PrenatalAssessmentForm.jsx"), "utf8");
   assert.match(form, /title="Pregnancy \/ Obstetric Information"/);
-  assert.match(form, /Previous pregnancies are in Patient History/);
+  assert.match(form, /includeObstetricHistory/);
+  assert.match(form, /sections=\{\["obstetric"\]\}/);
   assert.doesNotMatch(form, /PrenatalHistorySummary/);
-  assert.doesNotMatch(form, /title="Patient History"/);
-  assert.doesNotMatch(form, /\bhistory=/);
+  assert.doesNotMatch(form, /Previous pregnancies are in Patient History/);
 });

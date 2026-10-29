@@ -40,6 +40,7 @@ class HealthRecord extends Model
         'background_changes',
         'informant',
         'similar_illness',
+        'history_snapshot',
         'notes',
         'encoded_by', 'assessed_by', 'finalized_by', 'finalized_at', 'items_planned',
     ];
@@ -114,6 +115,7 @@ class HealthRecord extends Model
         'background_changes' => 'array',
         'informant' => 'array',
         'similar_illness' => 'array',
+        'history_snapshot' => 'array',
         'needs_referral' => 'boolean',
         'items_planned' => 'array',
         'finalized_at' => 'datetime',

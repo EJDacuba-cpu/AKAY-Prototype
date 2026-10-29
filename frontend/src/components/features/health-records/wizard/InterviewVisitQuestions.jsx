@@ -1,21 +1,15 @@
-import { SimilarIllnessBlock } from "../../patients/history/FamilySection";
 import { InformantBlock } from "../../patients/history/GeneralDataSection";
 
 /**
- * The visit's history questions on the BHC Patient Interview (they moved here
- * from the removed Patient History step): who gave the history and whether
- * anyone at home has a similar illness. Both are per visit; neither changes
- * the patient's background. Controlled; the workspace keeps the state, the
- * draft autosave and the record payload exactly as before.
+ * Who gave the history at this visit. Similar Illness lives under Family
+ * History with Family Conditions. Controlled; the workspace keeps the state,
+ * the draft autosave and the record payload exactly as before.
  *
- * `errors` are visitAnswerErrorMessages(...) lines from the last save, shown
- * right under the questions.
+ * `errors` are visitAnswerErrorMessages(...) lines for informant keys.
  */
 export default function InterviewVisitQuestions({
   informant,
   onInformantChange,
-  similarIllness,
-  onSimilarIllnessChange,
   errors = [],
 }) {
   return (
@@ -30,7 +24,6 @@ export default function InterviewVisitQuestions({
         </div>
       )}
       <InformantBlock informant={informant} onInformantChange={onInformantChange} />
-      <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />
     </div>
   );
 }

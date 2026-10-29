@@ -357,10 +357,16 @@ class HealthRecordController extends Controller
                         Carbon::parse($data['date_recorded'])->toDateString()
                     )
                     : [];
+                $patient->refresh();
                 $record = HealthRecord::create([
                     ...$data,
                     'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
                     'background_changes' => $backgroundChanges ?: null,
+                    'history_snapshot' => PatientBackground::visitSnapshot(
+                        $patient,
+                        $backgroundChanges,
+                        PatientBackground::visitIncludesMaternal($data)
+                    ),
                 ]);
                 // Discontinue first: a legacy row being discontinued must not be
                 // auto-linked by a confirmation of the same condition.

@@ -44,7 +44,6 @@ import {
   validatePatientForm,
 } from "../../utils/patientProfile";
 import { errorStateVariant } from "../../utils/errorStateVariant";
-import { canUpdateBackground } from "../../utils/backgroundEditing";
 import { registrationErrors } from "../../utils/householdData";
 
 // The profile fills the whole content area inside an even 12-16px margin.
@@ -66,9 +65,8 @@ function ProfileShell({ children }) {
  * background, referrals, follow-ups, programs and visits cards on the right).
  * Every other tab scrolls inside its own panel, so the header and tabs stay put.
  * Past Medical / Family / Personal & Social History have their own Patient
- * Background tab: read-only, or editable section by section for a BHC user
- * granted clinical.background.update. Overview has a read-only Patient History
- * reference whose Edit in Patient Background opens that tab.
+ * Background tab (read-only). Staff update them during a consultation; they
+ * apply on finalize. Overview has a read-only Patient History reference.
  */
 export default function PatientDetails() {
   return <LivePatientDetails />;
@@ -78,7 +76,6 @@ function LivePatientDetails() {
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const canRegister = (getCurrentUser()?.permissions || []).includes("patients.register");
   const canViewFamilies = (getCurrentUser()?.permissions || []).includes("families.view");
-  const canEditBackground = canUpdateBackground(getCurrentUser());
   const { patientId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -387,7 +384,6 @@ function LivePatientDetails() {
         patient={patient}
         background={patient.medicalBackground}
         conditions={conditions}
-        onEditBackground={canEditBackground ? () => setActiveTab("background") : undefined}
       />
     ) : null;
   // PatientBackgroundTab is keyed by patient below, so an open section edit is
@@ -506,7 +502,7 @@ function LivePatientDetails() {
                     background={patient.medicalBackground}
                     conditions={conditions}
                     basePath="/bhc"
-                    canEdit={canEditBackground}
+                    canEdit={false}
                   />
                 )}
 

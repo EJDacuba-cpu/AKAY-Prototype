@@ -7,6 +7,8 @@ import {
   OB_SCORE_TPAL_FIELDS,
   PRENATAL_IMMUNIZATION_OPTIONS,
 } from "../../../utils/prenatalForm";
+import PatientHistoryPanel from "../patients/history/PatientHistoryPanel";
+import { sectionVisibility } from "../../../utils/patientHistory";
 
 const MATERNAL_EYEBROW_CLASS =
   "mb-3 text-[11px] font-semibold uppercase tracking-wide text-[#DC2626]";
@@ -16,8 +18,10 @@ const MATERNAL_TABLE_INPUT_CLASS =
 /**
  * Prenatal enrollment and visit assessment shared by BHC and RHU.
  *
- * Registration and Patient Background stay outside this form. Only
- * pregnancy-specific fields are captured here.
+ * Current-pregnancy fields stay here. Longitudinal Section V (menstrual
+ * history and previous pregnancies) is staged on the same background update
+ * when `includeObstetricHistory` is set (BHC). RHU keeps Section V on its
+ * Patient History step.
  */
 export default function PrenatalAssessmentForm({
   maternalData,
@@ -30,12 +34,40 @@ export default function PrenatalAssessmentForm({
   onAogChange,
   locked = false,
   errors = {},
+  patient,
+  background,
+  backgroundUpdate,
+  onBackgroundUpdateChange,
+  historyErrors = [],
+  includeObstetricHistory = false,
 }) {
+  const showObstetricHistory =
+    includeObstetricHistory
+    && typeof onBackgroundUpdateChange === "function"
+    && sectionVisibility(patient).obstetric !== "hidden";
+
   return (
     <div className="space-y-4">
+      {showObstetricHistory && (
+        <PatientHistoryPanel
+          patient={patient}
+          background={background}
+          update={backgroundUpdate}
+          onUpdateChange={onBackgroundUpdateChange}
+          today={new Date()}
+          layout="section"
+          locked={locked}
+          showGeneral={false}
+          sections={["obstetric"]}
+          showSimilarIllness={false}
+          inline
+          errors={historyErrors}
+          initialSection="obstetric"
+        />
+      )}
       <FormSection
         title="Pregnancy / Obstetric Information"
-        subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment. Previous pregnancies are in Patient History."
+        subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment."
       >
         <LockedFormContent locked={locked}>
           <div className="space-y-5">

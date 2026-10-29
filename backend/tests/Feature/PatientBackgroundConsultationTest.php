@@ -291,6 +291,62 @@ class PatientBackgroundConsultationTest extends TestCase
         ])->assertCreated()->assertJsonMissingPath('data.background_changes');
     }
 
+    public function test_finalize_freezes_a_history_snapshot_including_unchanged_sections(): void
+    {
+        $fatherDiabetes = ['condition' => 'Diabetes', 'kind' => 'Hereditary', 'relation' => 'Father'];
+        $id = $this->finalize([
+            'sections' => ['family' => ['familyHistory' => ['items' => [...self::MOTHER_ASTHMA['items'], $fatherDiabetes]]]],
+            'base_revisions' => ['family' => 1],
+        ])->assertCreated()->json('data.id');
+
+        $snapshot = HealthRecord::findOrFail($id)->history_snapshot;
+        $this->assertSame($fatherDiabetes, $snapshot['sections']['family']['familyHistory']['items'][1]);
+        $this->assertSame(self::DUST, $snapshot['sections']['medical']['allergies']);
+        $this->assertSame(['smoking' => ['status' => 'never']], $snapshot['sections']['social']['personalSocial']);
+        $this->assertArrayNotHasKey('obstetric', $snapshot['sections']);
+        $this->assertArrayNotHasKey('revisions', $snapshot['sections']['medical']);
+        $this->assertCount(1, $snapshot['changes']);
+        $this->assertSame('family', $snapshot['changes'][0]['section']);
+
+        $this->actingAs($this->clinician, 'sanctum')
+            ->getJson("/api/health-records/{$id}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.background_changes')
+            ->assertJsonPath('data.history_snapshot.changes.0.section', 'family')
+            ->assertJsonPath('data.history_snapshot.sections.medical.allergies.items.0.allergen', 'Dust');
+    }
+
+    public function test_maternal_visits_include_obstetric_in_the_snapshot(): void
+    {
+        $this->patient->update([
+            'medical_background' => [
+                ...$this->background(),
+                'obstetric' => ['menarcheAge' => 13, 'menstrualStatus' => 'menstruating'],
+            ],
+        ]);
+
+        $id = $this->finalize(null, ['category' => 'Maternal'])->assertCreated()->json('data.id');
+
+        $snapshot = HealthRecord::findOrFail($id)->history_snapshot;
+        $this->assertSame(13, $snapshot['sections']['obstetric']['obstetric']['menarcheAge']);
+        $this->assertSame(self::DUST, $snapshot['sections']['medical']['allergies']);
+    }
+
+    public function test_a_later_background_update_does_not_rewrite_an_older_snapshot(): void
+    {
+        $id = $this->finalize(null)->assertCreated()->json('data.id');
+        $frozen = HealthRecord::findOrFail($id)->history_snapshot;
+
+        $this->finalize([
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Penicillin']]]]],
+            'base_revisions' => ['medical' => 2],
+        ])->assertCreated();
+
+        $this->assertSame($frozen, HealthRecord::findOrFail($id)->fresh()->history_snapshot);
+        $this->assertSame(self::DUST, $frozen['sections']['medical']['allergies']);
+        $this->assertSame('Penicillin', $this->background()['allergies']['items'][0]['allergen']);
+    }
+
     private function draftPayload(array $extra = []): array
     {
         return [

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -99,6 +102,10 @@ test("BHC: a server error on the informant routes back to Patient Interview, nev
   const errors = { chiefComplaint: "a", "informant.relation": "b", pulse: "c" };
   assert.deepEqual(Object.keys(pickErrorsForStep(errors, INTERVIEW_STEP, BHC)), ["chiefComplaint", "informant.relation"]);
   assert.deepEqual(Object.keys(pickErrorsForStep(errors, HISTORY_STEP, BHC)), []);
+  assert.equal(
+    getErrorOwnerStepKey("background_update.sections.obstetric.obstetric.menarcheAge", BHC),
+    MATERNAL,
+  );
 });
 
 test("BHC: a legacy draft saved on Patient History reopens on Patient Interview", () => {
@@ -136,4 +143,33 @@ test("the default sequence (RHU and every other caller) is unchanged", () => {
     phase: "form",
     formStep: HISTORY_STEP,
   });
+});
+
+test("BHC Interview mounts Family then Past Medical then Social, and keeps no History step", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const workspace = readFileSync(join(here, "../pages/bhc/ConsultationWorkspace.jsx"), "utf8");
+  const details = readFileSync(join(here, "../pages/bhc/PatientDetails.jsx"), "utf8");
+  const panel = readFileSync(join(here, "../components/features/patients/history/PatientHistoryPanel.jsx"), "utf8");
+  const prenatal = readFileSync(join(here, "../components/features/health-records/PrenatalAssessmentForm.jsx"), "utf8");
+  assert.match(workspace, /sections=\{interviewHistorySections\}/);
+  assert.match(workspace, /\["family", "medical", "social"\]/);
+  assert.match(workspace, /showGeneral=\{false\}/);
+  assert.match(workspace, /includeObstetricHistory=\{canViewBackground\}/);
+  assert.match(workspace, /title="Informant"/);
+  assert.doesNotMatch(workspace, /Informant & Similar Illness/);
+  assert.doesNotMatch(workspace, /showSimilarIllness=\{false\}/);
+  assert.match(workspace, /showEducationAndOccupation=\{false\}\s+inline\s+errors=\{historyPanelErrors\}/);
+  assert.doesNotMatch(workspace, /PatientHistoryReference/);
+  assert.doesNotMatch(workspace, /onEditBackground=/);
+  assert.match(details, /canEdit=\{false\}/);
+  assert.match(details, /PatientHistoryReference/);
+  assert.doesNotMatch(details, /onEditBackground=/);
+  assert.doesNotMatch(panel, /I\. General Data/);
+  assert.doesNotMatch(panel, /II\. Past Medical History/);
+  assert.doesNotMatch(panel, /III\. Family History/);
+  assert.match(panel, /inline = false/);
+  assert.match(prenatal, /showSimilarIllness=\{false\}\s+inline\s+errors=\{historyErrors\}/);
+  const detailsView = readFileSync(join(here, "../components/features/health-records/VisitHistorySnapshot.jsx"), "utf8");
+  assert.match(detailsView, /Historical patient history is unavailable for this record/);
+  assert.doesNotMatch(detailsView, /medicalBackground/);
 });

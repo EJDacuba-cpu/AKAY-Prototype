@@ -24,8 +24,7 @@ export function ConsultationActionBar({
   // The first screen has no previous step; it returns to the launching patient
   // or follow-up context, so the caller names that destination.
   previousLabel = "Previous",
-  // Optional, beside Previous (the BHC Patient History reference), so it
-  // stays reachable on every step without scrolling.
+  // Optional control beside Previous.
   leadingAction = null,
   secondaryAction = null,
   onContinue,

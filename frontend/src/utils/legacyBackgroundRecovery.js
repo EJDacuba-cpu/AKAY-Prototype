@@ -3,12 +3,9 @@
  * docs/superpowers/specs/2026-10-16-bhc-patient-background-design.md
  * ("Compatibility and recovery").
  *
- * New BHC consultations stage no background edits: the background is edited
- * in Patient Background. A draft saved before that change can still hold a
- * staged `backgroundUpdate`. It is never dropped or saved silently: the
- * workspace shows what it holds and the clinician either keeps it for this
- * consultation's own finalization (the existing record path, with its
- * stale-revision check and conflict choices) or discards it.
+ * BHC consultations stage Family / Past Medical / Social (and obstetric on
+ * Prenatal) in `backgroundUpdate`. An old draft's leftover Education /
+ * Past Occupations text can still be shown as a non-blocking notice.
  *
  * Education and Past Occupations are no longer background fields at the BHC
  * (Patient Information owns Education). Their staged values are shown as
@@ -74,11 +71,9 @@ export function legacyBackgroundRecovery(update, background) {
   return { sections, reviewed, removedText, hasClinicalChanges: sections.some((entry) => entry.rows.length > 0) };
 }
 
-/** Finalizing/submitting is never an implicit Keep choice. */
-export function legacyRecoveryErrors(update, acknowledged) {
-  return !acknowledged && (editedSectionKeys(update).length || reviewedSectionKeys(update).length)
-    ? { "background_update.recovery": "Choose Keep for this consultation or Discard changes for the earlier Patient History draft before continuing." }
-    : {};
+/** Staged background edits now belong on Interview; they never block finalize. */
+export function legacyRecoveryErrors() {
+  return {};
 }
 
 /** Correct only an already-staged section; retain the original conflict revisions. */

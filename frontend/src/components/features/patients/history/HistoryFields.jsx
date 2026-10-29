@@ -112,6 +112,30 @@ export function CheckboxField({ label, checked, onChange }) {
   );
 }
 
+/** Named radios. `value` "" leaves every option unchecked. */
+export function RadioChoice({ name, label, value, options, onChange }) {
+  return (
+    <fieldset>
+      {label ? <legend className={LABEL_CLASS}>{label}</legend> : null}
+      <div className={label ? "mt-1 space-y-1.5" : "space-y-1.5"}>
+        {normalizeOptions(options).map((option) => (
+          <label key={option.value} className="flex items-center gap-2 text-[12.5px] text-gray-800">
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onChange(option.value)}
+              className="size-3.5 border-gray-300 accent-red-600"
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 /** A titled group inside a section. */
 export function Block({ title, note, children }) {
   return (

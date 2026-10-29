@@ -22,9 +22,9 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *
  * Patient History is opt-out: every helper takes `{ includeHistory }`
  * (default true, so RHU and other callers keep it). The BHC workspace passes
- * BHC_STEP_OPTIONS: no History step, the visit questions (Informant, Similar
- * Illness) sit on Patient Interview, and the background is edited in Patient
- * Background - see docs/superpowers/specs/2026-10-16-bhc-patient-background-design.md.
+ * BHC_STEP_OPTIONS: no History step. Informant, Similar Illness, Family,
+ * Past Medical and Personal & Social sit on Patient Interview; Section V sits
+ * on the Prenatal form. Edits stage in the draft and apply on finalize.
  *
  * Two levels:
  *  - GLOBAL steps (one heading each). Health programs are never global steps
@@ -388,8 +388,11 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
     return INTERVIEW_STEP;
   }
   // Patient History: the staged background update and the per-visit informant.
-  // Without that step (BHC) they are shown on Patient Interview: the visit
-  // questions and an old draft's staged background recovery both live there.
+  // Without that step (BHC) Family / Past Medical / Social live on Interview;
+  // obstetric edits live on the Prenatal form.
+  if (includeHistory === false && key.startsWith("background_update.sections.obstetric")) {
+    return programStepKey("Maternal");
+  }
   if (key.startsWith("background_update") || key.startsWith("informant") || key.startsWith("similar_illness")) {
     return includeHistory === false ? INTERVIEW_STEP : HISTORY_STEP;
   }

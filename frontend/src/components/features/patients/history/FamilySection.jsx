@@ -1,6 +1,9 @@
+import { useId, useRef, useState } from "react";
+
+import { FAMILY_CONDITION_OPTIONS, familyConditionChoice, familyHistoryForChoice } from "../../../../utils/familyHistoryChoice";
 import { FAMILY_RELATIONS } from "../../../../utils/patientHistory";
 import { formatPatientName } from "../../../../utils/formatters";
-import { Block, FieldGrid, SelectField, TextField } from "./HistoryFields";
+import { Block, FieldGrid, RadioChoice, SelectField, TextField } from "./HistoryFields";
 import ListEditor from "./ListEditor";
 
 const ANSWERS = ["Yes", "No", "Unknown"];
@@ -24,7 +27,7 @@ function relativeOptions(relatives) {
 export function SimilarIllnessBlock({ value, onChange }) {
   const illness = value || { answer: "", who: "", note: "" };
   return (
-    <Block title="Similar Illness in the Family" note="Asked at this visit.">
+    <Block title="Similar Illness in the Family" note="Asked at this visit. It is not added to Family Conditions.">
       <FieldGrid>
         <SelectField
           label="Anyone with a similar illness?"
@@ -49,12 +52,11 @@ export function SimilarIllnessBlock({ value, onChange }) {
 }
 
 /**
- * Section III. `value` is the family slice { familyHistory }; `relatives` the
- * patient's linked family members. Picking a relative only identifies the
- * person - it never copies their conditions. Similar Illness is per visit and
- * has its own props; `showSimilarIllness={false}` leaves it out (Patient
- * Background and the BHC Patient Interview own it elsewhere). The default
- * keeps it for the RHU record form.
+ * Family History body. `value` is the family slice { familyHistory };
+ * `relatives` the patient's linked family members. Picking a relative only
+ * identifies the person - it never copies their conditions. Similar Illness is
+ * per visit; `showSimilarIllness={false}` leaves it out (Patient Background).
+ * `baseline` is the saved chart slice so Unsure never overwrites it.
  */
 export default function FamilySection({
   value,
@@ -63,10 +65,21 @@ export default function FamilySection({
   onSimilarIllnessChange,
   relatives,
   showSimilarIllness = true,
+  baseline,
 }) {
   const family = value?.familyHistory || {};
   const items = Array.isArray(family.items) ? family.items : [];
   const options = relativeOptions(relatives);
+  const radioName = useId();
+  const savedRef = useRef(baseline?.familyHistory ?? family);
+  if (baseline) savedRef.current = baseline.familyHistory ?? { noneKnown: false, items: [] };
+  const heldItemsRef = useRef(items);
+  const derived = familyConditionChoice(family);
+  const [choice, setChoice] = useState(() => derived || "");
+  // Unsure is local-only. Yes/None follow the stored slice when it has an
+  // answer, so Undo and a resumed draft show the chart, not a stale click.
+  const selected =
+    choice === "unsure" ? "unsure" : derived === "yes" || derived === "none" ? derived : choice;
 
   const columns = [
     { key: "condition", label: "Condition", type: "text", required: true },
@@ -86,30 +99,53 @@ export default function FamilySection({
       : []),
   ];
 
+  function stage(nextChoice, nextItems = items) {
+    if (items.length) heldItemsRef.current = items;
+    setChoice(nextChoice);
+    const yesItems = nextItems.length ? nextItems : heldItemsRef.current;
+    onChange({
+      ...value,
+      familyHistory: familyHistoryForChoice(nextChoice, {
+        items: nextChoice === "yes" ? yesItems : nextItems,
+        saved: savedRef.current,
+      }),
+    });
+  }
+
   return (
     <div className="space-y-5">
-      <Block title="Family Conditions" note="Conditions found in the patient's family.">
-        <ListEditor
-          label="family condition"
-          addLabel="Add condition"
-          items={items}
-          columns={columns}
-          newItem={NEW_ITEM}
-          noneLabel="None known"
-          noneChecked={family.noneKnown === true}
-          onNoneChange={(checked) =>
-            onChange({ ...value, familyHistory: { noneKnown: checked, items: checked ? [] : items } })
-          }
-          onChange={(next) =>
-            onChange({
-              ...value,
-              familyHistory: { noneKnown: next.length > 0 ? false : family.noneKnown === true, items: next },
-            })
-          }
-        />
-      </Block>
-
       {showSimilarIllness && <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />}
+
+      <Block
+        title="Family Conditions"
+        note={
+          showSimilarIllness
+            ? "Known conditions in the family. These stay on the chart across visits."
+            : "Conditions found in the patient's family."
+        }
+      >
+        <RadioChoice
+          name={radioName}
+          options={FAMILY_CONDITION_OPTIONS}
+          value={selected}
+          onChange={stage}
+        />
+        {selected === "yes" && (
+          <div className="mt-3">
+            <ListEditor
+              label="family condition"
+              addLabel="Add condition"
+              items={items}
+              columns={columns}
+              newItem={NEW_ITEM}
+              onChange={(next) => {
+                heldItemsRef.current = next;
+                onChange({ ...value, familyHistory: { noneKnown: false, items: next } });
+              }}
+            />
+          </div>
+        )}
+      </Block>
     </div>
   );
 }

@@ -131,12 +131,12 @@ test("only background_update 422 keys are reported as staged background errors",
   assert.deepEqual(backgroundUpdateErrorMessages(undefined), []);
 });
 
-test("legacy edits cannot finalize before Keep or Discard, even when restored on Review", () => {
+test("staged background edits never block finalize", () => {
   const update = legacyDraftUpdate((bg) => { bg.personalSocial.smoking.status = "current"; });
-  assert.ok(legacyRecoveryErrors(update, false)["background_update.recovery"]);
+  assert.deepEqual(legacyRecoveryErrors(update, false), {});
   assert.deepEqual(legacyRecoveryErrors(update, true), {});
   assert.deepEqual(legacyRecoveryErrors(null, false), {});
-  assert.ok(legacyRecoveryErrors({ sections: {}, reviewed: ["medical"] }, false)["background_update.recovery"]);
+  assert.deepEqual(legacyRecoveryErrors({ sections: {}, reviewed: ["medical"] }, false), {});
 });
 
 test("correcting an incomplete legacy row retains other sections and original revisions", () => {

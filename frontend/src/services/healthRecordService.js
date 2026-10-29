@@ -472,6 +472,9 @@ function normalizeRecord(record = {}) {
     followUpEpisode: normalizeFollowUpEpisode(
       record.follow_up_episode || record.followUpEpisode || {},
     ),
+    informant: record.informant || null,
+    similarIllness: record.similar_illness || record.similarIllness || null,
+    historySnapshot: record.history_snapshot || record.historySnapshot || null,
   };
 }
 

@@ -25,6 +25,7 @@ import {
 import FamilySection, { SimilarIllnessBlock } from "./FamilySection";
 import GeneralDataSection from "./GeneralDataSection";
 import HistorySectionSummary from "./HistorySectionSummary";
+import { BHC_HIDDEN_SOCIAL_FIELDS } from "../../../../utils/backgroundEditing";
 import { SMALL_BUTTON_CLASS } from "./HistoryFields";
 import ObstetricSection from "./ObstetricSection";
 import { LegacyPendingConditions } from "../MedicalConditionsGroups";
@@ -33,17 +34,17 @@ import PersonalSocialSection from "./PersonalSocialSection";
 import SectionNav, { statusText } from "./SectionNav";
 
 export const HISTORY_SECTION_TITLES = {
-  general: "I. General Data",
-  medical: "II. Past Medical History",
-  family: "III. Family History",
-  social: "IV. Personal & Social History",
-  obstetric: "V. Obstetric & Menstrual History",
+  general: "General Data",
+  medical: "Past Medical History",
+  family: "Family History",
+  social: "Personal & Social History",
+  obstetric: "Obstetric & Menstrual History",
 };
 
 const PRESSED_BUTTON_CLASS =
   "inline-flex items-center gap-1 rounded-none border border-gray-900 bg-gray-900 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-gray-700";
 
-/** One editable section (II-V): its status, No changes / Update, and the summary or the form. */
+/** One editable section: its status, No changes / Update, and the summary or the form. */
 function SectionFrame({ title, status, updated, reviewed, canReview, editing, onReview, onToggleEdit, onUndo, children }) {
   return (
     <section aria-label={title} className="border border-gray-200 bg-white">
@@ -84,12 +85,12 @@ function SectionFrame({ title, status, updated, reviewed, canReview, editing, on
 }
 
 /**
- * Patient History (ITR page 1, sections I-V): the one shared component for the
- * BHC consultation step (layout "screen": section list on the left, one
- * section on the right) and the RHU record form (layout "section": every
- * section stacked). Controlled; it holds no save logic. Edits are staged in
- * `update` through buildBackgroundUpdate, "No changes" marks a section
- * reviewed, and nothing here is ever required to continue.
+ * Patient History (ITR page 1): the one shared component for the BHC
+ * consultation (layout "section", `inline` to edit in place) and the RHU
+ * record form (layout "screen" or stacked, with Update / Done / No changes).
+ * Controlled; it holds no save logic. Edits are staged in `update` through
+ * buildBackgroundUpdate, "No changes" marks a section reviewed, and nothing
+ * here is ever required to continue.
  *
  * `errors` is historyErrorMessages(..., { withSection: true }) of the last
  * save: listed above the sections, and the first one's section is opened.
@@ -112,6 +113,11 @@ export default function PatientHistoryPanel({
   editLink,
   errors = [],
   initialSection = "general",
+  showGeneral = true,
+  sections,
+  showSimilarIllness = true,
+  showEducationAndOccupation = true,
+  inline = false,
 }) {
   const { registry } = useClinicalRegistry();
   const conditionsQuery = usePatientConditions(patient?.id, { enabled: !locked });
@@ -151,7 +157,10 @@ export default function PatientHistoryPanel({
   const updatedKeys = editedSectionKeys(update);
   const reviewedKeys = reviewedSectionKeys(update);
   const visibility = sectionVisibility(patient, today);
-  const editableKeys = EDITABLE_SECTION_KEYS.filter(
+  const requestedKeys = Array.isArray(sections) && sections.length
+    ? sections.filter((section) => EDITABLE_SECTION_KEYS.includes(section))
+    : EDITABLE_SECTION_KEYS;
+  const editableKeys = requestedKeys.filter(
     (section) => section !== "obstetric" || visibility.obstetric !== "hidden",
   );
   const conditionGroups = backgroundConditionGroups({
@@ -186,12 +195,12 @@ export default function PatientHistoryPanel({
   }
 
   const navSections = [
-    { key: "general", label: HISTORY_SECTION_TITLES.general, status: { kind: "auto" } },
-    ...EDITABLE_SECTION_KEYS.map((section) => ({
+    ...(showGeneral ? [{ key: "general", label: HISTORY_SECTION_TITLES.general, status: { kind: "auto" } }] : []),
+    ...editableKeys.map((section) => ({
       key: section,
       label: HISTORY_SECTION_TITLES[section],
       status: sectionStatus({ background, update, section, today }),
-      visible: editableKeys.includes(section),
+      visible: true,
     })),
   ];
 
@@ -202,15 +211,23 @@ export default function PatientHistoryPanel({
       return (
         <FamilySection
           {...props}
+          baseline={sliceOf(background, "family")}
           similarIllness={similarIllness}
           onSimilarIllnessChange={onSimilarIllnessChange}
           relatives={familyRelatives}
+          showSimilarIllness={showSimilarIllness}
         />
       );
     }
     if (section === "social") {
       return (
-        <PersonalSocialSection {...props} patient={patient} householdEnvironment={householdEnvironment} today={today} />
+        <PersonalSocialSection
+          {...props}
+          patient={patient}
+          householdEnvironment={householdEnvironment}
+          today={today}
+          showEducationAndOccupation={showEducationAndOccupation}
+        />
       );
     }
     return <ObstetricSection {...props} patient={patient} today={today} />;
@@ -227,13 +244,19 @@ export default function PatientHistoryPanel({
           </div>
         )}
         {recorded ? (
-          <HistorySectionSummary section={section} value={current} />
+          <HistorySectionSummary
+            section={section}
+            value={current}
+            omitFields={showEducationAndOccupation ? [] : BHC_HIDDEN_SOCIAL_FIELDS}
+          />
         ) : (
           <p className="text-[13px] text-gray-500">
             Nothing recorded yet. Use Update to record it; &ldquo;None known&rdquo; is an answer too.
           </p>
         )}
-        {section === "family" && <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />}
+        {section === "family" && showSimilarIllness && (
+          <SimilarIllnessBlock value={similarIllness} onChange={onSimilarIllnessChange} />
+        )}
       </div>
     );
   }
@@ -254,6 +277,24 @@ export default function PatientHistoryPanel({
               editLink={editLink}
               today={today}
             />
+          </div>
+        </section>
+      );
+    }
+    if (inline) {
+      return (
+        <section aria-label={HISTORY_SECTION_TITLES[section]} className="border border-gray-200 bg-white">
+          <header className="border-b border-gray-200 px-4 py-2.5">
+            <h3 className="text-[14px] font-bold leading-snug text-gray-900">{HISTORY_SECTION_TITLES[section]}</h3>
+          </header>
+          <div className="px-4 py-3">
+            {section === "medical" && (
+              <div className="mb-4 space-y-3">
+                <RhuConditions groups={conditionGroups} />
+                <LegacyPendingConditions rows={conditionGroups.legacyPending} />
+              </div>
+            )}
+            {sectionForm(section)}
           </div>
         </section>
       );
@@ -307,22 +348,23 @@ export default function PatientHistoryPanel({
     return (
       <div className="space-y-4">
         {errorList}
-        {["general", ...editableKeys].map((section) => (
+        {[...(showGeneral ? ["general"] : []), ...editableKeys].map((section) => (
           <div key={section}>{renderSection(section)}</div>
         ))}
-        <div className="max-w-xs">{markAll}</div>
+        {!inline && <div className="max-w-xs">{markAll}</div>}
       </div>
     );
   }
 
-  const shown = navSections.some((section) => section.key === active && section.visible !== false) ? active : "general";
+  const fallback = showGeneral ? "general" : editableKeys[0];
+  const shown = navSections.some((section) => section.key === active && section.visible !== false) ? active : fallback;
   return (
     <div className="@container/history space-y-4">
       {errorList}
       <div className="grid gap-4 @3xl/history:grid-cols-[13rem_minmax(0,1fr)] @3xl/history:items-start">
         <div className="space-y-3">
           <SectionNav sections={navSections} active={shown} onSelect={setActive} />
-          {markAll}
+          {!inline && markAll}
         </div>
         <div className="min-w-0">{renderSection(shown)}</div>
       </div>
