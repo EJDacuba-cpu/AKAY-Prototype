@@ -1,5 +1,4 @@
 import { DatePickerField } from "../../common/forms/DatePickerField";
-import PrenatalHistorySummary from "../patients/history/PrenatalHistorySummary";
 import { PREVIOUS_FP_METHOD_OPTIONS } from "../../../utils/familyPlanning";
 import {
   MATERNAL_LAB_TESTS,
@@ -29,21 +28,14 @@ export default function PrenatalAssessmentForm({
   onRiskChange,
   onExpectedDeliveryDateChange,
   onAogChange,
-  history,
   locked = false,
   errors = {},
 }) {
   return (
     <div className="space-y-4">
-      {history ? (
-        <FormSection title="Patient History" subtitle="Review the shared history before completing this prenatal assessment.">
-          <PrenatalHistorySummary {...history} />
-        </FormSection>
-      ) : null}
-
       <FormSection
         title="Pregnancy / Obstetric Information"
-        subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment. Previous pregnancies use the shared history above."
+        subtitle="Record and verify G/P, TPAL, and pregnancy information for this prenatal assessment. Previous pregnancies are in Patient History."
       >
         <LockedFormContent locked={locked}>
           <div className="space-y-5">

@@ -1025,14 +1025,6 @@ export default function RhuConsultationWorkspace() {
                     onAogChange={setAog}
                     locked={assessmentLocked}
                     errors={validationErrors}
-                    history={{
-                      background: canViewBackground ? patient?.medicalBackground : null,
-                      update: canViewBackground ? backgroundUpdate : null,
-                      locked: !canViewBackground,
-                      canReview: Boolean(patient) && !isPatientMale(patient),
-                      editLink: patientId ? `/rhu/patients/${patientId}` : undefined,
-                      onReview: () => goToStepKey(HISTORY_STEP),
-                    }}
                   />
                 </fieldset>
               )}

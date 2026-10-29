@@ -171,7 +171,7 @@ test("only a BHC user granted clinical.background.update (with history) may edit
   assert.equal(canUpdateBackground(null), false);
 });
 
-test("the history reference lists only the spec's fields, Obstetric excluded", () => {
+test("the history reference lists the spec's fields and omits obstetric without a visible Section V", () => {
   const sections = historyReferenceSections(background);
   assert.deepEqual(sections.map((section) => section.key), ["medical", "family", "social"]);
   const keys = sections.flatMap((section) => section.rows.map((row) => row.key));
@@ -188,6 +188,47 @@ test("the history reference lists only the spec's fields, Obstetric excluded", (
   ]);
   const social = sections.find((section) => section.key === "social");
   assert.match(social.rows.find((row) => row.key === "smoking").value, /Former smoker/);
+});
+
+test("Section V is read-only in the history reference for a female patient", () => {
+  const woman = { sex: "Female", birthdate: "1995-01-01" };
+  const recorded = normalizeBackground({
+    obstetric: {
+      menarcheAge: 12,
+      menstrualStatus: "menstruating",
+      symptoms: ["dysmenorrhea"],
+      pregnancies: [{ year: 2019, outcome: "liveBirth", delivery: "cesarean", note: "Recorded history note" }],
+    },
+  });
+  const sections = historyReferenceSections(recorded, { patient: woman });
+  assert.deepEqual(sections.map((section) => section.key), ["medical", "family", "social", "obstetric"]);
+  const obstetric = sections.find((section) => section.key === "obstetric");
+  assert.equal(obstetric.title, "Obstetric & Menstrual History");
+  assert.match(obstetric.rows.find((row) => row.key === "cycle").value, /Menarche at 12/);
+  assert.match(obstetric.rows.find((row) => row.key === "symptoms").value, /Dysmenorrhea/);
+  assert.match(obstetric.rows.find((row) => row.key === "pregnancies").value, /2019 live birth \(cesarean\)/);
+  assert.match(obstetric.rows.find((row) => row.key === "pregnancies").value, /Recorded history note/);
+});
+
+test("empty obstetric history is blank rows, not leftover pregnancies", () => {
+  const woman = { sex: "Female", birthdate: "1995-01-01" };
+  const obstetric = historyReferenceSections(normalizeBackground({}), { patient: woman })
+    .find((section) => section.key === "obstetric");
+  assert.ok(obstetric);
+  obstetric.rows.forEach((row) => assert.equal(row.value, "", row.key));
+});
+
+test("Section V is hidden for males and unknown sex", () => {
+  const keys = (patient) => historyReferenceSections(background, { patient }).map((section) => section.key);
+  assert.deepEqual(keys({ sex: "Male", birthdate: "1990-01-01" }), ["medical", "family", "social"]);
+  assert.deepEqual(keys({ sex: "", birthdate: "1990-01-01" }), ["medical", "family", "social"]);
+  assert.deepEqual(keys(undefined), ["medical", "family", "social"]);
+});
+
+test("Section V still shows when obstetric is collapsed for age", () => {
+  const girl = { sex: "Female", birthdate: "2018-01-01" };
+  const sections = historyReferenceSections(background, { patient: girl, today: "2026-10-29" });
+  assert.ok(sections.find((section) => section.key === "obstetric"));
 });
 
 test("missing reference data is blank (shown as Not recorded), never a negative answer", () => {

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -208,4 +211,14 @@ test("mergeMaternalData drops retired risk keys", () => {
   assert.equal(merged.lmp, "2026-03-01");
   assert.equal(merged.riskAssessment.previousCs, true);
   assert.equal("diabetes" in merged.riskAssessment, false);
+});
+
+test("the Prenatal form keeps obstetric fields and no longer embeds Patient History", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const form = readFileSync(join(here, "../components/features/health-records/PrenatalAssessmentForm.jsx"), "utf8");
+  assert.match(form, /title="Pregnancy \/ Obstetric Information"/);
+  assert.match(form, /Previous pregnancies are in Patient History/);
+  assert.doesNotMatch(form, /PrenatalHistorySummary/);
+  assert.doesNotMatch(form, /title="Patient History"/);
+  assert.doesNotMatch(form, /\bhistory=/);
 });

@@ -17,6 +17,7 @@ import {
   toRecordBackgroundUpdate,
 } from "./backgroundUpdate.js";
 import { historyErrorMessages } from "./historyStep.js";
+import { sectionVisibility } from "./patientHistory.js";
 
 export const BACKGROUND_UPDATE_PERMISSION = "clinical.background.update";
 
@@ -162,29 +163,43 @@ const REFERENCE_FIELDS = {
   medical: ["currentDiseases", "allergies", "hospitalizations"],
   family: ["familyHistory"],
   social: ["smoking", "alcohol", "diet", "sexual", "environment"],
+  obstetric: ["cycle", "symptoms", "pregnancies"],
 };
 
 export const REFERENCE_SECTION_TITLES = {
   medical: "Past Medical History",
   family: "Family Conditions",
   social: "Lifestyle & Environment",
+  obstetric: "Obstetric & Menstrual History",
 };
+
+function referenceRows(background, section, keys) {
+  return BACKGROUND_SECTION_FIELDS[section]
+    .filter((field) => keys.includes(field.key))
+    .map((field) => ({
+      key: field.key,
+      label: field.label,
+      value: String(field.read(background || {}) || "").trim(),
+    }));
+}
 
 /**
  * The reference's sections and rows: `value` is display text, "" when not
- * recorded. Obstetric & Menstrual History, Education and Past Occupations are
- * never included.
+ * recorded. Education and Past Occupations are never included. Obstetric &
+ * Menstrual History is included only when Section V is visible for the patient.
  */
-export function historyReferenceSections(background) {
-  return Object.entries(REFERENCE_FIELDS).map(([section, keys]) => ({
+export function historyReferenceSections(background, { patient, today } = {}) {
+  const sections = ["medical", "family", "social"].map((section) => ({
     key: section,
     title: REFERENCE_SECTION_TITLES[section],
-    rows: BACKGROUND_SECTION_FIELDS[section]
-      .filter((field) => keys.includes(field.key))
-      .map((field) => ({
-        key: field.key,
-        label: field.label,
-        value: String(field.read(background || {}) || "").trim(),
-      })),
+    rows: referenceRows(background, section, REFERENCE_FIELDS[section]),
   }));
+  if (sectionVisibility(patient, today).obstetric !== "hidden") {
+    sections.push({
+      key: "obstetric",
+      title: REFERENCE_SECTION_TITLES.obstetric,
+      rows: referenceRows(background, "obstetric", REFERENCE_FIELDS.obstetric),
+    });
+  }
+  return sections;
 }

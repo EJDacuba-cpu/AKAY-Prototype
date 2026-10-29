@@ -47,16 +47,16 @@ function RhuBlock({ conditions }) {
  * Patient History reference: a read-only, manually opened panel with the
  * patient's longitudinal history (Past Medical incl. locked RHU conditions,
  * Family Conditions, Smoking, Alcohol, Diet, Sexual History, Household
- * Environment). Demographics, Informant, Similar Illness, Education,
- * Occupations and Obstetric & Menstrual History are never shown here.
+ * Environment, and Obstetric & Menstrual History when Section V is visible).
+ * Demographics, Informant, Similar Illness, Education and Occupations are
+ * never shown here.
  *
  * Non-modal: it stays open while the page behind it is used (clicks and focus
  * outside do not close it); only its Close button, Escape or the trigger
  * close it. It scrolls on its own and fits narrow screens.
  *
  * Props:
- * - `patient` - the normalized patient; accepted for the shared contract, the
- *   panel itself shows no demographics, so it is not read.
+ * - `patient` - used only for Section V visibility (sex/age); no demographics.
  * - `background` - the normalized `patient.medicalBackground` (saved data only).
  * - `conditions` - usePatientConditionGroups(...) result ({ groups, isLoading, isError }).
  * - `onEditBackground` - optional; when given (only for users with
@@ -66,6 +66,7 @@ function RhuBlock({ conditions }) {
  * - `align`, `triggerClassName` - optional placement / styling of the trigger.
  */
 export default function PatientHistoryReference({
+  patient,
   background,
   conditions,
   onEditBackground,
@@ -77,7 +78,7 @@ export default function PatientHistoryReference({
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const unavailable = !loading && (error || !background);
-  const sections = historyReferenceSections(background);
+  const sections = historyReferenceSections(background, { patient });
 
   function editBackground() {
     setOpen(false);

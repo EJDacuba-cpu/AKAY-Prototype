@@ -130,11 +130,7 @@ import {
   toDraftBackgroundUpdate,
   toRecordBackgroundUpdate,
 } from "../../utils/backgroundUpdate";
-import {
-  EDITABLE_SECTION_KEYS,
-  defaultInformant,
-  sectionVisibility,
-} from "../../utils/patientHistory";
+import { defaultInformant } from "../../utils/patientHistory";
 import {
   informantPayload,
   similarIllnessPayload,
@@ -4361,11 +4357,6 @@ export default function ConsultationWorkspace() {
     return handleSave();
   }
 
-  // The background sections this patient has (V only for a female patient):
-  // the Prenatal panel's sex-verification guard reads it.
-  const historySections = EDITABLE_SECTION_KEYS.filter(
-    (section) => section !== "obstetric" || sectionVisibility(selectedPatient, dateOfVisit || new Date()).obstetric !== "hidden",
-  );
   // The visit questions' 422 lines (Patient Interview) and an old draft's
   // staged background: what it holds, and its 422 lines.
   const visitAnswerErrors = visitAnswerErrorMessages(validationErrors);
@@ -4835,16 +4826,6 @@ export default function ConsultationWorkspace() {
               onExpectedDeliveryDateChange={setExpectedDeliveryDate}
               onAogChange={setAog}
               locked={patientGateLocked}
-              history={{
-                background: canViewBackground ? selectedPatient?.medicalBackground : null,
-                update: canViewBackground ? backgroundUpdate : null,
-                locked: !canViewBackground,
-                canReview: historySections.includes("obstetric"),
-                editLink: selectedPatientId ? `${basePath}/patients/${selectedPatientId}` : undefined,
-                backgroundEditing: true,
-                onEditBackground: editBackground,
-                editBusy: leavingConsultation,
-              }}
             />
           </>
         )}
