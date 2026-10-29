@@ -55,7 +55,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
         return householdRegistry([...previous.filter(item=>item.id !== household.id),household]).households;
       });
     }
-    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:queryKeys.patients(role)}),client.invalidateQueries({queryKey:['patient-details',role]})]);
+    await Promise.all([client.invalidateQueries({queryKey:scope.key}),client.invalidateQueries({queryKey:queryKeys.patients(role)}),client.invalidateQueries({queryKey:['patient-details',role]}),client.invalidateQueries({queryKey:queryKeys.dashboardSummary('bhc')})]);
     return response;
   }
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending);

@@ -7,16 +7,6 @@ export function dashboardAccess(user = {}) {
   };
 }
 
-export async function loadAuthorizedDashboardCollections(user, loaders) {
-  const access = dashboardAccess(user);
-  const [patients, healthRecords, referrals] = await Promise.all([
-    access.patients ? loaders.patients() : [],
-    access.clinical ? loaders.healthRecords() : [],
-    access.clinical ? loaders.referrals() : [],
-  ]);
-  return { patients, healthRecords, referrals, access };
-}
-
 export function navigationAllowed(user, path = "") {
   if (user?.role === "admin") return true;
   const permissions = user?.permissions || [];

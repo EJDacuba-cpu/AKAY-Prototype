@@ -20,6 +20,7 @@ export default function MedicineActionDialog({ intent, user, role, onClose }) {
     await Promise.all([
       client.invalidateQueries({ queryKey: queryKeys.medicineAvailability(role, user) }),
       client.invalidateQueries({ queryKey: queryKeys.medicineTransactions(user, intent.medicineId) }),
+      client.invalidateQueries({ queryKey: queryKeys.dashboardSummary('bhc') }),
     ]);
     toast.success(`${STOCK_ACTION_LABELS[intent.mode]} recorded.`);
     onClose();

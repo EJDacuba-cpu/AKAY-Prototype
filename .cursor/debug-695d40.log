@@ -55,3 +55,4 @@
 {"sessionId":"695d40","runId":"pre-fix","hypothesisId":"E","location":"App.jsx:render","message":"App render","data":{"n":25,"path":"/bhc/reports","search":"?type=all"},"timestamp":1793298387651}
 {"sessionId":"695d40","runId":"pre-fix","hypothesisId":"E","location":"App.jsx:render","message":"App render","data":{"n":50,"path":"/bhc/reports","search":"?type=epi"},"timestamp":1793298491902}
 {"sessionId":"695d40","runId":"pre-fix","hypothesisId":"E","location":"App.jsx:render","message":"App render","data":{"n":75,"path":"/bhc/reports","search":"?type=family-planning"},"timestamp":1793298816969}
+{"sessionId":"695d40","runId":"pre-fix","hypothesisId":"E","location":"App.jsx:render","message":"App render","data":{"n":100,"path":"/bhc/families","search":""},"timestamp":1793299934175}

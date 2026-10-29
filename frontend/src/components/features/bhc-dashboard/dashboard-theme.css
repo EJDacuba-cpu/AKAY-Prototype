@@ -1,0 +1,226 @@
+/* BHC dashboard palette: soft red analytics, quiet ink actions, and local time ambience. */
+.bhc-dashboard-color {
+  --analytics-accent: var(--color-brand-700);
+  --analytics-card-start: var(--color-surface);
+  --analytics-card-end: color-mix(in srgb, var(--color-brand-50) 80%, var(--color-surface));
+  --analytics-border: color-mix(in srgb, var(--color-brand-200) 30%, var(--color-border));
+  --analytics-foreground: var(--color-ink-800);
+  --analytics-secondary: var(--color-ink-500);
+  --dashboard-chart-start: var(--analytics-accent);
+  --dashboard-chart-end: var(--dashboard-chart-start);
+}
+
+.bhc-dashboard-color .bhc-dashboard-kpi {
+  overflow: hidden;
+  border-color: var(--analytics-border);
+  color: var(--analytics-foreground);
+  background:
+    radial-gradient(circle 94px at calc(100% - 2px) -12px,
+      color-mix(in srgb, var(--color-brand-100) 62%, var(--color-surface)) 0 72%, transparent 73%),
+    radial-gradient(circle 118px at calc(100% - 16px) 116%,
+      color-mix(in srgb, var(--color-brand-100) 42%, var(--color-surface)) 0 76%, transparent 77%),
+    linear-gradient(128deg, var(--analytics-card-start) 20%, var(--analytics-card-end));
+  box-shadow: none;
+}
+
+.bhc-dashboard-color .bhc-kpi-label,
+.bhc-dashboard-color .bhc-kpi-description {
+  color: var(--analytics-secondary);
+}
+
+.bhc-dashboard-color .bhc-kpi-label {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bhc-dashboard-color .bhc-kpi-value {
+  color: var(--analytics-foreground);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.bhc-dashboard-color .bhc-kpi-icon {
+  background: var(--color-surface);
+  color: var(--color-ink-700);
+}
+
+.bhc-dashboard-color .bhc-consultation-chart {
+  background: var(--color-surface);
+}
+
+.bhc-dashboard-color .bhc-consultation-chart [data-slot="chart"] {
+  --color-count: var(--dashboard-chart-start);
+}
+
+.bhc-dashboard-color .bhc-quick-action {
+  background: linear-gradient(135deg, var(--color-surface) 28%,
+    color-mix(in srgb, var(--color-ink-100) 40%, var(--color-surface)));
+  border-color: var(--color-ink-200);
+  box-shadow: none;
+}
+
+.bhc-dashboard-color .bhc-quick-action:hover {
+  background: linear-gradient(135deg, var(--color-surface), var(--color-ink-50));
+  border-color: var(--color-ink-300);
+}
+
+.bhc-dashboard-color .bhc-quick-action:focus-visible {
+  outline: 2px solid var(--color-ink-500);
+  outline-offset: 3px;
+}
+
+.bhc-dashboard-color .bhc-quick-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--color-ink-50);
+  border: 1px solid var(--color-ink-100);
+  color: var(--color-ink-700);
+}
+
+.bhc-dashboard-color .bhc-quick-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
+}
+
+.bhc-dashboard-color .bhc-quick-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--color-ink-800);
+}
+
+.bhc-dashboard-color .bhc-quick-description {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-ink-500);
+}
+
+.bhc-dashboard-color [data-slot="card-title"] {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.bhc-dashboard-color .bhc-consultation-chart [role="group"] > div,
+.bhc-dashboard-color .bhc-consultation-chart [role="group"] button {
+  border-radius: 999px;
+}
+
+.bhc-dashboard-color .welcome-ambient-panel {
+  --ambient-background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-ink-100) 65%, var(--color-surface)),
+    var(--color-surface) 62%, var(--color-ink-50));
+  --ambient-foreground: var(--color-ink-800);
+  --ambient-secondary: var(--color-ink-500);
+  --ambient-icon: var(--color-ink-500);
+  --ambient-wave-back: var(--color-ink-100);
+  --ambient-wave-front: var(--color-ink-200);
+  --ambient-beam: var(--color-surface);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 22px;
+  border-radius: 16px;
+  background: var(--ambient-background);
+}
+
+.bhc-dashboard-color .welcome-ambient-panel[data-time-tone="day"] {
+  --ambient-background: linear-gradient(135deg, var(--color-surface),
+    var(--color-warning-50) 60%, color-mix(in srgb, var(--color-warning-100) 72%, var(--color-surface)));
+  --ambient-foreground: var(--color-ink-800);
+  --ambient-secondary: var(--color-ink-500);
+  --ambient-icon: var(--color-warning-700);
+  --ambient-wave-back: var(--color-warning-100);
+  --ambient-wave-front: color-mix(in srgb, var(--color-warning-500) 20%, var(--color-surface));
+}
+
+.bhc-dashboard-color .welcome-ambient-panel[data-time-tone="night"] {
+  --ambient-background: linear-gradient(145deg, var(--color-ink-800),
+    var(--color-ink-700) 68%, var(--color-ink-600));
+  --ambient-foreground: var(--color-surface);
+  --ambient-secondary: var(--color-ink-100);
+  --ambient-icon: var(--color-surface);
+  --ambient-wave-back: var(--color-ink-600);
+  --ambient-wave-front: var(--color-ink-500);
+}
+
+.bhc-dashboard-color .welcome-ambient-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.bhc-dashboard-color .welcome-ambient-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: var(--ambient-icon);
+}
+
+.bhc-dashboard-color .welcome-ambient-copy h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+  color: var(--ambient-foreground);
+  overflow-wrap: anywhere;
+}
+
+.bhc-dashboard-color .welcome-ambient-copy .bhc-welcome-facility {
+  font-size: 18px;
+  color: var(--ambient-secondary);
+}
+
+.bhc-dashboard-color .welcome-ambient-copy .bhc-welcome-date {
+  font-size: 15px;
+  color: var(--ambient-secondary);
+}
+
+.bhc-dashboard-color .welcome-ambient-copy .bhc-welcome-clock {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ambient-foreground);
+}
+
+.bhc-dashboard-color .welcome-ambient-waves {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 220px;
+  opacity: 0.54;
+}
+
+.bhc-dashboard-color .welcome-ambient-beam {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  inset: -30% -10%;
+  background: radial-gradient(ellipse at 8% 18%, var(--ambient-beam), transparent 58%);
+  opacity: 0.16;
+}
+
+@media (max-width: 1023px) {
+  .bhc-dashboard-color .welcome-ambient-panel {
+    min-height: 260px;
+    padding: 20px;
+  }
+  .bhc-dashboard-color .welcome-ambient-copy h1 { font-size: 28px; }
+  .bhc-dashboard-color .welcome-ambient-copy .bhc-welcome-facility { font-size: 16px; }
+}

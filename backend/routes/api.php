@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountInviteController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\BhcDashboardController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
 use App\Http\Controllers\Api\CareOverviewController;
@@ -179,6 +180,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
 
         Route::middleware('role:bhc')->group(function () {
+            Route::get('/bhc/dashboard', [BhcDashboardController::class, 'show']);
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
             Route::post('/referral-holds', [ReferralHoldController::class, 'store']);

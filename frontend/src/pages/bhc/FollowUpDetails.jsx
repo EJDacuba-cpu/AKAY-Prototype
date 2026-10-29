@@ -123,6 +123,9 @@ export default function FollowUpDetails({ role = "bhc" }) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.healthRecords(role),
       }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("bhc"),
+      }),
       relatedRecordId
         ? queryClient.invalidateQueries({
             queryKey: queryKeys.healthRecordData(role, relatedRecordId),

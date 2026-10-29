@@ -327,6 +327,9 @@ export default function FollowUps({ role = "bhc" }) {
     await queryClient.invalidateQueries({
       queryKey: queryKeys.healthRecords(role),
     });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboardSummary("bhc"),
+    });
   }
 
   function closeModal() {

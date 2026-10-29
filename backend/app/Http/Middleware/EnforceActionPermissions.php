@@ -15,6 +15,8 @@ class EnforceActionPermissions
         $path = $request->path();
         $read = $request->isMethod('get');
         $permission = match (true) {
+            // BHC dashboard sections are gated in the payload, not by a single duty.
+            str_contains($path, '/bhc/dashboard') => null,
             // Either consultations.encode or clinical.history; the controller checks.
             str_contains($path, '/care-overview') => null,
             str_contains($path, '/background-history') => 'clinical.history',
