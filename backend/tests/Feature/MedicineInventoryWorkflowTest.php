@@ -900,7 +900,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         }
     }
 
-    public function test_rhu_health_record_dispensing_is_rejected_and_rolled_back(): void
+    public function test_rhu_health_record_dispensing_uses_own_stock_and_facility_snapshot(): void
     {
         $patient = Patient::create([
             'first_name' => 'RHU',
@@ -909,27 +909,42 @@ class MedicineInventoryWorkflowTest extends TestCase
             'rural_health_unit_id' => $this->rhu->id,
         ]);
         $medicine = $this->medicine('RHU Inventory Item', 9, null, $this->rhu->id);
-        // Even an RHU account that may finalize and dispense reaches the BHC-only dispensing guard.
-        $this->rhuStaff->update(['permissions' => [...$this->rhuStaff->permissions, 'clinical.history', 'consultations.finalize']]);
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'created_by' => $this->rhuStaff->id,
+            'rural_health_unit_id' => $this->rhu->id, 'category' => 'General Consultation',
+            'monitoring_data' => ['consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1]]);
+        $this->track($medicine);
+        DB::transaction(fn () => app(MedicineStockService::class)->dispense(
+            $this->requestFor($this->rhuStaff), $record, [['medicine_id' => $medicine->id, 'quantity' => 2]]
+        ));
+        $this->assertSame(7, $medicine->fresh()->quantity);
+        $this->assertDatabaseHas('health_record_medicines', ['health_record_id' => $record->id,
+            'medicine_id' => $medicine->id, 'rural_health_unit_id' => $this->rhu->id,
+            'barangay_health_center_id' => null, 'dispensed_by' => $this->rhuStaff->id]);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id,
+            'transaction_type' => 'dispense', 'quantity_delta' => -2, 'source_id' => $record->id]);
+    }
 
-        $this->actingAs($this->rhuStaff, 'sanctum')
-            ->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/health-records', [
-                'patient_id' => $patient->id,
-                'category' => 'General Consultation',
-                'chief_complaint' => 'RHU dispensing guard check',
-                'dispensed_medicines' => [[
-                    'medicine_id' => $medicine->id,
-                    'confirmed_given' => true,
-                    'quantity' => 2,
-                ]],
-            ])
-            ->assertUnprocessable()
-            ->assertJsonPath('message', 'Medicine dispensing is only available for BHC visits.');
+    public function test_bhc_cannot_dispense_against_rhu_itr_for_its_patient(): void
+    {
+        $patient = Patient::create(['first_name' => 'Shared', 'last_name' => 'Patient',
+            'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id]);
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'created_by' => $this->rhuStaff->id,
+            'barangay_health_center_id' => $this->bhc->id, 'rural_health_unit_id' => $this->rhu->id,
+            'category' => 'General Consultation',
+            'monitoring_data' => ['consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1]]);
+        $medicine = $this->medicine('BHC stock', 5, $this->bhc->id);
+        $this->track($medicine);
 
-        $this->assertSame(9, $medicine->fresh()->quantity);
-        $this->assertDatabaseCount('health_records', 0);
-        $this->assertDatabaseCount('health_record_medicines', 0);
+        try {
+            DB::transaction(fn () => app(MedicineStockService::class)->dispense(
+                $this->requestFor($this->bhw), $record, [['medicine_id' => $medicine->id, 'quantity' => 1]]
+            ));
+            $this->fail('BHC must not dispense against an RHU consultation.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+        $this->assertSame(5, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('medicine_inventory_transactions', 0);
     }
 

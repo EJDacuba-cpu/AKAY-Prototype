@@ -52,7 +52,7 @@ const PARENT_TRAILS = [
   ],
   [
     "/rhu/medicine-management/add",
-    [{ label: "Medicine Management", path: "/rhu/medicine-management" }],
+    [{ label: "Health Commodities", path: "/rhu/medicine-management" }],
   ],
   ["/rhu/medicine-management/:medicineId", [{ label: "Health Commodities", path: "/rhu/medicine-management" }]],
 ];

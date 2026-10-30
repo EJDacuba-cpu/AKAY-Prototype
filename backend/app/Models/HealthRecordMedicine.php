@@ -48,6 +48,7 @@ class HealthRecordMedicine extends Model
         'remarks',
         'dispensed_by',
         'barangay_health_center_id',
+        'rural_health_unit_id',
     ];
 
     public function healthRecord(): BelongsTo

@@ -209,6 +209,16 @@ class AkayCacheService
         ));
     }
 
+    public function invalidateRhuMedicineDisplay(int $ruralHealthUnitId): void
+    {
+        $this->invalidateScope($this->scope(
+            self::DOMAIN_MEDICINE_AVAILABILITY,
+            User::ROLE_RHU,
+            'rhu',
+            $ruralHealthUnitId
+        ));
+    }
+
     public function invalidateReferralReports(Referral $referral): void
     {
         if ($referral->barangay_health_center_id !== null) {

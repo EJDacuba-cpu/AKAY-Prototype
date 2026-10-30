@@ -200,7 +200,7 @@ class HealthRecordRequest extends FormRequest
             $rules['prescribed_medicines.*.unit'] = ['nullable', 'string', 'max:50'];
             $rules['prescribed_medicines.*.instructions'] = ['nullable', 'string', 'max:2000'];
             $rules['referral'] = ['prohibited'];
-            $rules['dispensed_medicines'] = ['prohibited'];
+            $rules['dispensed_medicines'] = ['nullable', 'array'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];

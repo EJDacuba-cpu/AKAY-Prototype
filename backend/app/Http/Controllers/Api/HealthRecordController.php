@@ -573,7 +573,11 @@ class HealthRecordController extends Controller
         }
 
         if ($record->dispensedMedicines()->exists()) {
-            $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
+            if ($rhuItr) {
+                $this->cache->invalidateRhuMedicineDisplay((int) $record->rural_health_unit_id);
+            } else {
+                $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
+            }
         }
         foreach ($record->referrals()->get() as $referral) {
             $this->cache->invalidateReferralReports($referral);
@@ -702,9 +706,11 @@ class HealthRecordController extends Controller
             );
         });
         if (($data['dispensed_medicines'] ?? []) !== []) {
-            $this->cache->invalidateBhcMedicineDisplay(
-                (int) $healthRecord->barangay_health_center_id
-            );
+            if ($request->user()->isRhu()) {
+                $this->cache->invalidateRhuMedicineDisplay((int) $healthRecord->rural_health_unit_id);
+            } else {
+                $this->cache->invalidateBhcMedicineDisplay((int) $healthRecord->barangay_health_center_id);
+            }
         }
 
         return response()->json(['data' => $healthRecord->fresh()->load([

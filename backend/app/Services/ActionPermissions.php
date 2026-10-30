@@ -18,6 +18,7 @@ class ActionPermissions
         'followups.manage' => ['clinical.history'],
         'referrals.submit' => ['clinical.history'],
         'inventory.manage' => ['inventory.view'],
+        'items.dispense' => ['inventory.view'],
     ];
 
     /** Licensed clinical acts. Any role may be granted them; StaffRoles::licensedGrants flags them for non-licensed roles. */

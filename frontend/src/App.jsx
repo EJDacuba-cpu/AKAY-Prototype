@@ -81,7 +81,6 @@ import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
-import AddMedicineItem from "./pages/rhu/AddMedicineItem";
 import FeedbackReturnSlip from "./pages/rhu/FeedbackReturnSlip";
 import RHUReports from "./pages/rhu/RHUReports";
 
@@ -801,7 +800,7 @@ export default function App() {
         path="/rhu/medicine-management/add"
         element={
           <ProtectedPage allowedRole="rhu" module="inventoryManage">
-            <AddMedicineItem />
+            <Navigate to="/rhu/medicine-management" replace />
           </ProtectedPage>
         }
       />

@@ -130,7 +130,7 @@ export const menuByRole = {
       section: "Operations",
       items: [
         {
-          label: "Medicine Availability",
+          label: "Health Commodities",
           path: "/rhu/medicine-management",
           icon: Boxes,
         },

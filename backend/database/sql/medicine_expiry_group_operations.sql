@@ -113,7 +113,7 @@ BEGIN
     ELSIF p_action = 'dispense' THEN
         source_value := 'health_record';
         source_id_value := (p_options->>'source_id')::bigint;
-        IF p_facility_type <> 'bhc' OR source_id_value IS NULL OR NOT EXISTS (SELECT 1 FROM public.health_records WHERE id = source_id_value AND barangay_health_center_id = p_facility_id) THEN
+        IF source_id_value IS NULL OR NOT EXISTS (SELECT 1 FROM public.health_records WHERE id = source_id_value AND ((p_facility_type = 'bhc' AND barangay_health_center_id = p_facility_id AND COALESCE(monitoring_data->>'consultationWorkflow','') <> 'rhu_itr_v1') OR (p_facility_type = 'rhu' AND rural_health_unit_id = p_facility_id AND monitoring_data->>'consultationWorkflow' = 'rhu_itr_v1'))) THEN
             RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'MEDICINE_FACILITY_MISMATCH';
         END IF;
         remaining := p_quantity;
@@ -226,7 +226,7 @@ CREATE OR REPLACE FUNCTION public.akay_inventory_dispense_batch(
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $function$
 DECLARE entry jsonb; result jsonb;
 BEGIN
-    IF p_facility_type IS DISTINCT FROM 'bhc' OR p_source_type IS DISTINCT FROM 'health_record' OR p_source_id IS NULL
+    IF p_facility_type NOT IN ('bhc', 'rhu') OR p_source_type IS DISTINCT FROM 'health_record' OR p_source_id IS NULL
        OR p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) = 0 THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVALID_INVENTORY_OPERATION';
     END IF;

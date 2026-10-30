@@ -87,6 +87,7 @@ export default function DispensedMedicinesSection({
   error = "",
   onRetry,
   serviceHint = "",
+  facilityLabel = "BHC",
   pendingDraftError = "",
   onPendingDraftChange,
 }) {
@@ -217,7 +218,7 @@ export default function DispensedMedicinesSection({
     return (
       <div data-dispensed-medicines-section className="flex items-center gap-2 text-sm text-neutral-600">
         <LoaderCircle size={16} className="animate-spin" />
-        Loading BHC inventory…
+        Loading {facilityLabel} inventory…
       </div>
     );
   }
@@ -228,7 +229,7 @@ export default function DispensedMedicinesSection({
         <div className="flex gap-2 text-sm text-alert-700">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <div>
-            <p className="font-semibold">Unable to load BHC inventory.</p>
+            <p className="font-semibold">Unable to load {facilityLabel} inventory.</p>
             <p className="mt-0.5 text-xs text-neutral-600">Check your connection and try again.</p>
           </div>
         </div>
@@ -249,7 +250,7 @@ export default function DispensedMedicinesSection({
   if (!loading && availableInventory.length === 0) {
     return (
       <p data-dispensed-medicines-section className="text-sm text-neutral-600">
-        No medicines or supplies registered in BHC inventory.
+        No medicines or supplies registered in {facilityLabel} inventory.
       </p>
     );
   }
@@ -257,7 +258,7 @@ export default function DispensedMedicinesSection({
   return (
     <div data-dispensed-medicines-section className="space-y-4">
       <p className="text-xs leading-relaxed text-neutral-600">
-        Select an item and quantity, then click Confirm Dispensed/Given. Only items in the list below are saved and deducted from BHC inventory with this visit.
+        Select an item and quantity, then click Confirm Dispensed/Given. Only items in the list below are saved and deducted from {facilityLabel} inventory with this visit.
       </p>
       {serviceHint && (
         <p className="text-xs leading-relaxed text-neutral-600">{serviceHint}</p>

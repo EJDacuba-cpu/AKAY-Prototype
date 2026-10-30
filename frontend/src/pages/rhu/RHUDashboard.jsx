@@ -697,7 +697,7 @@ function MedicineAlertCard({ alerts = [], delay = 0 }) {
         to="/rhu/medicine-management"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-[#E8ECF0] bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#F9FAFB] hover:shadow-md active:scale-[0.98]"
       >
-        Manage Medicine Availability
+        Manage Health Commodities
         <ArrowRight size={13} />
       </Link>
     </section>
@@ -719,9 +719,10 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
 
   return (
     <div
-      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
-      style={{ borderTopColor: c.border, ...stagger(delay) }}
+      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
+      style={stagger(delay)}
     >
+      <div className="absolute inset-x-5 top-0 h-0.5" style={{ backgroundColor: c.border }} aria-hidden="true" />
       <div
         className="absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
         style={{

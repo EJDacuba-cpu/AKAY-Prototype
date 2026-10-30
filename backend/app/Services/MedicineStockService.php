@@ -229,11 +229,14 @@ class MedicineStockService
         }
 
         $user = $request->user();
-        abort_unless($user->isBhc(), 422, 'Medicine dispensing is only available for BHC visits.');
         $context = $this->facilityContext($user);
         abort_unless(
-            $context['type'] === 'bhc'
-                && (int) $record->barangay_health_center_id === $context['id'],
+            ($context['type'] === 'bhc'
+                && (int) $record->barangay_health_center_id === $context['id']
+                && ! $record->isRhuItrV1())
+            || ($context['type'] === 'rhu'
+                && (int) $record->rural_health_unit_id === $context['id']
+                && $record->isRhuItrV1()),
             403,
             'This resource is outside your assigned facility.'
         );
@@ -261,7 +264,8 @@ class MedicineStockService
                 'unit' => $item['unit'] ?: $medicine->unit,
                 'remarks' => $item['remarks'],
                 'dispensed_by' => $user->id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
+                'barangay_health_center_id' => $context['type'] === 'bhc' ? $context['id'] : null,
+                'rural_health_unit_id' => $context['type'] === 'rhu' ? $context['id'] : null,
             ]);
 
             $result = collect($results)->firstWhere('medicine_id', $medicine->id);
@@ -399,7 +403,7 @@ class MedicineStockService
             $this->inventoryError(
                 'MEDICINE_FACILITY_MISMATCH',
                 422,
-                'Please select a medicine from BHC inventory.'
+                'Please select a medicine from your facility inventory.'
             );
         }
 

@@ -56,12 +56,12 @@ class StaffRolesTest extends TestCase
 
     public function test_rhu_clinical_duties_are_available_and_not_default(): void
     {
-        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake', 'followups.manage'] as $duty) {
+        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake', 'followups.manage', 'inventory.manage', 'items.dispense'] as $duty) {
             $this->assertContains($duty, StaffRoles::available('rhu'));
             $this->assertNotContains($duty, StaffRoles::defaults('nurse'));
             $this->assertNotContains($duty, StaffRoles::defaults('doctor'));
         }
-        $this->assertNotContains('items.dispense', StaffRoles::available('rhu'));
+        $this->assertSame(['items.dispense' => ['inventory.view']], ActionPermissions::missingRequirements(['items.dispense']));
     }
 
     public function test_labels_and_defaults_for_unknown_roles(): void

@@ -27,7 +27,7 @@ export const PERMISSION_CATALOG = {
   "referrals.submit": { group: "referrals", label: "Submit referrals", requires: ["clinical.history"], note: "Can submit patient referrals to the RHU." },
   "inventory.view": { group: "inventory", label: "View medicines & supplies", note: "Can see medicine and supply availability." },
   "inventory.manage": { group: "inventory", label: "Manage stock", requires: ["inventory.view"], note: "Can add, restock and adjust medicines and supplies." },
-  "items.dispense": { group: "inventory", label: "Confirm dispensing", note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
+  "items.dispense": { group: "inventory", label: "Confirm dispensing", requires: ["inventory.view"], note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
   "reports.view": { group: "reports", label: "View reports", note: "Can view and export facility reports." },
   "rhu.manage": { group: "rhu", label: "Manage RHU referrals", note: "Can receive incoming referrals and send feedback. Does not grant doctor availability management." },
   "rhu.intake": { group: "rhu", label: "RHU intake", note: "Can open the QR Scanner and Incoming Referrals, identify an arrival and mark it Received. Sees only who arrived; clinical details need Health Records." },

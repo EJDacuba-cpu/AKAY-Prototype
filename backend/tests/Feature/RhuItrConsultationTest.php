@@ -122,6 +122,77 @@ class RhuItrConsultationTest extends TestCase
             ]);
     }
 
+    public function test_rhu_itr_confirmed_dispensing_deducts_only_rhu_stock(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $clinician->update(['permissions' => [...$clinician->permissions, 'items.dispense']]);
+        $uuid = $this->startVisit($clinician, $visit);
+        $medicine = Medicine::create(['name' => 'RHU stock', 'quantity' => 8, 'unit' => 'tablets',
+            'availability_status' => 'Available', 'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $clinician->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => 8, 'quarantined_quantity' => 0]);
+
+        $response = $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 2,
+                'confirmed_given' => true]],
+        ])->assertCreated();
+
+        $this->assertSame(6, $medicine->fresh()->quantity);
+        $this->assertDatabaseHas('health_record_medicines', ['health_record_id' => $response->json('data.id'),
+            'medicine_id' => $medicine->id, 'rural_health_unit_id' => $this->rhu->id,
+            'barangay_health_center_id' => null]);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id,
+            'transaction_type' => 'dispense', 'quantity_delta' => -2]);
+    }
+
+    public function test_rhu_itr_cannot_dispense_another_facility_medicine(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $clinician->update(['permissions' => [...$clinician->permissions, 'items.dispense']]);
+        $uuid = $this->startVisit($clinician, $visit);
+        $otherRhu = RuralHealthUnit::create(['name' => 'Other RHU', 'status' => 'active']);
+        $medicine = Medicine::create(['name' => 'Other RHU stock', 'quantity' => 8,
+            'availability_status' => 'Available', 'rural_health_unit_id' => $otherRhu->id,
+            'created_by' => $clinician->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => 8, 'quarantined_quantity' => 0]);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 2,
+                'confirmed_given' => true]],
+        ])->assertUnprocessable();
+        $this->assertSame(8, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
+    }
+
+    public function test_rhu_itr_dispensing_requires_mho_permission(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $clinician->update(['permissions' => array_values(array_diff($clinician->permissions, ['items.dispense']))]);
+        $uuid = $this->startVisit($clinician, $visit);
+        $medicine = Medicine::create(['name' => 'Permission gated stock', 'quantity' => 8,
+            'availability_status' => 'Available', 'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $clinician->id]);
+        $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => 8, 'quarantined_quantity' => 0]);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 2,
+                'confirmed_given' => true]],
+        ])->assertForbidden();
+        $this->assertSame(8, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_record_medicines', 0);
+    }
+
     public function test_encoder_can_save_a_draft_but_cannot_finalize(): void
     {
         $patient = $this->patient();

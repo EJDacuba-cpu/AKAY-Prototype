@@ -13,6 +13,6 @@ export const rolesData = {
   ],
   available: {
     bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "clinical.background.update", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"],
-    rhu: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "inventory.view", "reports.view", "rhu.manage", "rhu.intake", "rhu.providers.manage", "conditions.confirm", "families.view", "families.manage"],
+    rhu: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "inventory.view", "inventory.manage", "items.dispense", "reports.view", "rhu.manage", "rhu.intake", "rhu.providers.manage", "conditions.confirm", "families.view", "families.manage"],
   },
 };
