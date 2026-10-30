@@ -44,7 +44,11 @@ class AuthController extends Controller
             ], $exception->status());
         }
 
-        $user = User::where('email', $request->validated('email'))->first();
+        // LoginRequest normalizes the input; older accounts may retain mixed-case emails.
+        // Do not choose an identity if legacy rows collide after case normalization.
+        $matches = User::whereRaw('lower(email) = ?', [$request->validated('email')])
+            ->limit(2)->get();
+        $user = $matches->count() === 1 ? $matches->first() : null;
 
         $validRole = $user && in_array($user->role, [
             User::ROLE_ADMIN,

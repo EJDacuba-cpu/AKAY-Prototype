@@ -62,6 +62,45 @@ class TemporaryPasswordSignInTest extends TestCase
         $response->assertJsonPath('user.must_change_password', true);
     }
 
+    public function test_temporary_password_sign_in_finds_an_existing_mixed_case_email(): void
+    {
+        $this->user->update(['email' => 'JeyD@example.test']);
+        $this->assertTrue(Hash::check($this->temporary, $this->user->fresh()->password));
+
+        $response = $this->postJson('/api/auth/login', $this->withTurnstile([
+            'email' => 'JeyD@example.test',
+            'password' => $this->temporary,
+        ]))->assertOk()->assertJsonPath('user.must_change_password', true);
+
+        $this->app['auth']->forgetGuards();
+        $this->withToken($response->json('token'))->postJson('/api/auth/change-password', [
+            'current_password' => $this->temporary,
+            'password' => 'NewPersonalPassword42',
+            'password_confirmation' => 'NewPersonalPassword42',
+        ])->assertOk()->assertJsonPath('user.must_change_password', false);
+
+        $this->app['auth']->forgetGuards();
+        $this->postJson('/api/auth/login', $this->withTurnstile([
+            'email' => 'jeyd@example.test',
+            'password' => 'NewPersonalPassword42',
+        ]))->assertOk()->assertJsonPath('user.id', $this->user->id);
+    }
+
+    public function test_login_does_not_choose_between_accounts_with_case_colliding_emails(): void
+    {
+        $this->user->update(['email' => 'JeyD@example.test']);
+        $duplicate = $this->user->fresh()->replicate();
+        $duplicate->email = 'jeyd@example.test';
+        $duplicate->save();
+
+        $this->postJson('/api/auth/login', $this->withTurnstile([
+            'email' => 'JeyD@example.test',
+            'password' => $this->temporary,
+        ]))->assertUnprocessable()->assertJsonPath('code', 'LOGIN_FAILED');
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
     public function test_other_routes_are_blocked_until_the_password_changes(): void
     {
         [$token] = $this->signIn();
