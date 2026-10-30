@@ -146,7 +146,7 @@ test("the conditions payload is mapped to camelCase", () => {
         sourceType: "referral",
         sourceId: 12,
         bhcMonitoringRecommendedAt: "2026-10-02",
-        monitoring: { id: 6, startedAt: "2026-10-03" },
+        monitoring: { id: 6, startedAt: "2026-10-03", status: "active" },
         events: [
           {
             fromStatus: "under_evaluation",

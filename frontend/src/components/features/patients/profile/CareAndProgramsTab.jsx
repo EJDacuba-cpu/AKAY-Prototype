@@ -2,14 +2,14 @@ import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import CareTrackingCard from "./CareTrackingCard";
+import ClinicalTrackingPanel from "./ClinicalTrackingPanel";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import MaternalTrackingPanel from "./MaternalTrackingPanel";
-import TbTrackingChart from "../../health-records/TbTrackingChart";
 import { EmptyNote, FieldList } from "./ProfileSection";
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
 import { Input } from "../../../ui/input";
-import { getCareTracking } from "../../../../utils/careTracking";
+import { getCareTracking, isDiseaseTrackingKey } from "../../../../utils/careTracking";
 import { buildDispensedMedicineRows, buildMaternalTracking } from "../../../../utils/patientTrackingView";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import searchIcon from "../../../../assets/figma/search.svg";
@@ -25,6 +25,7 @@ export default function CareAndProgramsTab({
   patient,
   patientId,
   records = [],
+  conditions = [],
   isLoading = false,
   isError = false,
   onRetryRecords,
@@ -40,8 +41,10 @@ export default function CareAndProgramsTab({
   const detailRef = useRef(null);
 
   const careTracking = useMemo(
-    () => getCareTracking(patient || {}, records, new Date()).filter((entry) => entry.records.length > 0),
-    [patient, records],
+    () => getCareTracking(patient || {}, records, new Date(), { conditions }).filter((entry) => (
+      isDiseaseTrackingKey(entry.key) || entry.records.length > 0
+    )),
+    [patient, records, conditions],
   );
   const maternalSummary = useMemo(() =>
     buildMaternalTracking(careTracking.find((entry) => entry.key === "maternal")?.records || []),
@@ -49,7 +52,7 @@ export default function CareAndProgramsTab({
   );
   const medicineRows = useMemo(() => buildDispensedMedicineRows(records), [records]);
   const visibleTracking = careTracking.filter((entry) => {
-    const isDisease = entry.key === "tb";
+    const isDisease = isDiseaseTrackingKey(entry.key);
     return (typeFilter === "All" || (typeFilter === "Disease" ? isDisease : !isDisease)) &&
       entry.label.toLowerCase().includes(cardSearch.trim().toLowerCase());
   });
@@ -127,18 +130,12 @@ export default function CareAndProgramsTab({
         <div ref={detailRef} className="mt-5">
           {isError ? null : selectedEntry?.key === "maternal" ? (
             <MaternalTrackingPanel summary={maternalSummary} status={selectedEntry.status} onViewRecords={() => onViewProgramRecords?.("maternal")} />
-          ) : selectedEntry?.key === "tb" ? (
-            <Card className="rounded-lg border-neutral-200 p-5 shadow-none">
-              <h3 className="text-sm font-bold text-[#111827]">TB DOTS Tracking</h3>
-              <p className="mt-1 text-xs text-neutral-500">{selectedEntry.status} · read-only adherence from the treatment calendar</p>
-              <div className="mt-4">
-                <TbTrackingChart
-                  tbData={(selectedEntry.records || []).at(-1)?.tbData || (selectedEntry.records || []).at(-1)?.tb_data}
-                  caseNumber={selectedEntry.facts?.find((fact) => fact.label === "Case No.")?.value || ""}
-                />
-              </div>
-              <Button type="button" variant="link" size="sm" onClick={() => onViewProgramRecords?.("tb")} className="mt-4 h-auto rounded-lg p-0 text-xs">View health records</Button>
-            </Card>
+          ) : selectedEntry && isDiseaseTrackingKey(selectedEntry.key) ? (
+            <ClinicalTrackingPanel
+              entry={selectedEntry}
+              onViewRecords={onViewProgramRecords}
+              onViewRecord={onViewRecord}
+            />
           ) : selectedEntry ? (
             <Card className="rounded-lg border-neutral-200 p-5 shadow-none">
               <h3 className="text-sm font-bold text-[#111827]">{selectedEntry.label} Tracking</h3>

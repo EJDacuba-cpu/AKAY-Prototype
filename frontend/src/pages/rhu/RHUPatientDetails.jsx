@@ -20,6 +20,7 @@ import ClinicalOverviewColumn from "../../components/features/patients/profile/C
 import AnatomyFindingsPanel from "../../components/features/patients/profile/AnatomyFindingsPanel";
 import RegistrationSections from "../../components/features/patients/profile/RegistrationSections";
 import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
+import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
 import PatientReferralsTab from "../../components/features/patients/profile/PatientReferralsTab";
 import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
@@ -145,8 +146,8 @@ function LiveRHUPatientDetails() {
     ];
   }, [conditionalProgramAreas, specializedRecordPrograms]);
   const careTracking = useMemo(
-    () => (patient ? getCareTracking(patient, records) : []),
-    [patient, records],
+    () => (patient ? getCareTracking(patient, records, new Date(), { conditions: conditions.conditions || [] }) : []),
+    [patient, records, conditions.conditions],
   );
 
   const tabs = [
@@ -154,6 +155,11 @@ function LiveRHUPatientDetails() {
     { key: "patient-info", label: "Patient Information" },
     ...(canViewHistory
       ? [
+          {
+            key: "programs",
+            label: "Care & Programs",
+            count: careTracking.length || null,
+          },
           { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
           ...specializedRecordPrograms.map(({ key, label, count }) => ({
             key: `specialized:${key}`,
@@ -431,6 +437,21 @@ function LiveRHUPatientDetails() {
                     onChange={handleChange}
                     fieldErrors={fieldErrors}
                     saving={saving}
+                  />
+                )}
+
+                {activeTab === "programs" && canViewHistory && (
+                  <CareAndProgramsTab
+                    patient={patient}
+                    patientId={patientId}
+                    records={records}
+                    conditions={conditions.conditions || []}
+                    isLoading={recordsLoading}
+                    isError={Boolean(recordsError)}
+                    onRetryRecords={refetchRecords}
+                    basePath={BASE_PATH}
+                    onViewProgramRecords={() => setActiveTab("records")}
+                    onViewRecord={viewRecord}
                   />
                 )}
 

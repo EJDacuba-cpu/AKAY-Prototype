@@ -86,6 +86,13 @@ import {
   restoreRhuDiagnoses,
   restoreRhuFollowUpSchedules,
 } from "../../utils/rhuCarePlan";
+import {
+  diagnosesOpenDsTbTreatmentCard,
+  existingRegisteredTbCase,
+  isRecognizedTbDiagnosis,
+  tbCaseNumberRequired,
+} from "../../utils/rhuTbCaseManagement";
+import { focusedRhuFollowUp } from "../../utils/rhuFollowUpFocus";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
 import { getPatientConditions } from "../../services/patientConditionService";
 import { defaultInformant } from "../../utils/patientHistory";
@@ -183,8 +190,9 @@ export default function RhuConsultationWorkspace() {
   const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
-  const [includeTb, setIncludeTb] = useState(false);
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
+  const [conditionReferences, setConditionReferences] = useState([]);
+  const followUpFocusApplied = useRef(false);
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
@@ -322,21 +330,47 @@ export default function RhuConsultationWorkspace() {
   }, [height, selectedPrograms, weight]);
 
   useEffect(() => {
-    if (!followUpTaskId && !patientId) return;
+    followUpFocusApplied.current = false;
+    setConditionReferences([]);
+  }, [followUpTaskId]);
+
+  useEffect(() => {
+    if (!followUpTaskId || !patientId) return;
     getFollowUpTasks({ patient_id: patientId, active: true })
       .then((tasks) => {
-        const match = (followUpTaskId
-          ? tasks.find((task) => Number(task.id) === Number(followUpTaskId))
-          : null) || tasks[0];
-        if (match) {
-          setLinkedFollowUpTaskId(Number(match.id));
-          setParentHealthRecordId(Number(match.healthRecordId || match.originalHealthRecordId) || null);
+        const match = tasks.find((task) => Number(task.id) === Number(followUpTaskId));
+        if (!match) return;
+        setLinkedFollowUpTaskId(Number(match.id));
+        const parentId = Number(match.healthRecordId || match.originalHealthRecordId) || null;
+        setParentHealthRecordId(parentId);
+        const parentRecord = (patientRecords || []).find((record) => Number(record.id) === parentId) || null;
+        const focus = focusedRhuFollowUp({
+          task: match,
+          parentRecord,
+          conditions: openConditions,
+        });
+        setConditionReferences(focus.references);
+        if (focus.diagnoses.length && !followUpFocusApplied.current) {
+          setDiagnoses((current) => (current.length ? current : focus.diagnoses));
+          followUpFocusApplied.current = true;
         }
       })
       .catch(() => {});
-  }, [followUpTaskId, patientId, linkedFollowUpTaskId]);
+  }, [followUpTaskId, patientId, patientRecords, openConditions]);
 
   const consultationUuid = visit?.consultation_uuid || visit?.consultationUuid || "";
+  const existingTbCase = useMemo(() => existingRegisteredTbCase(patientRecords), [patientRecords]);
+  const includeTb = useMemo(() => {
+    if (diagnosesOpenDsTbTreatmentCard(diagnoses)) return true;
+    return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
+  }, [diagnoses, existingTbCase, registry]);
+  useEffect(() => {
+    if (!existingTbCase?.tbData) return;
+    setTbData((current) => {
+      if (String(current?.diagnosis?.tbCaseNumber || "").trim()) return current;
+      return normalizeTbData(existingTbCase.tbData);
+    });
+  }, [existingTbCase]);
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
@@ -500,7 +534,6 @@ export default function RhuConsultationWorkspace() {
     const programs = getConsultationPrograms(payload);
     setSelectedPrograms(programs);
     setPrimaryProgram(payload.primaryProgram || programs[0] || "");
-    setIncludeTb(Boolean(payload.includeTb || payload.tbData));
     if (payload.tbData) setTbData(normalizeTbData(payload.tbData));
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
@@ -579,9 +612,9 @@ export default function RhuConsultationWorkspace() {
         Object.assign(errors, stagedHistoryErrors(historyUpdateForSave(), { sections: ["obstetric"] }));
       }
     }
-    if (includeTb && currentStepKey === NEXT_STEP && canFinalize) {
-      if (!String(tbData.diagnosis?.tbCaseNumber || "").trim()) {
-        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required.";
+    if (includeTb && currentStepKey === TB_INTAKE_STEP && canFinalize) {
+      if (tbCaseNumberRequired(diagnoses, existingTbCase) && !String(tbData.diagnosis?.tbCaseNumber || "").trim()) {
+        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required to register this DS-TB treatment case.";
       }
     }
     if (currentStepKey === NEXT_STEP && canFinalize) {
@@ -614,10 +647,14 @@ export default function RhuConsultationWorkspace() {
   function handlePrevious() {
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(NEXT_STEP);
+      setNextScreen(includeTb ? TB_INTAKE_STEP : NEXT_STEP);
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
+      if (nextScreen === TB_INTAKE_STEP) {
+        setNextScreen(NEXT_STEP);
+        return;
+      }
       const previous = getPreviousStepKey(formSequence, formSequence[formSequence.length - 1]);
       setWizardPhase(WIZARD_FORM);
       setFormStep(previous === EXIT_STEP ? INTERVIEW_STEP : previous);
@@ -643,6 +680,10 @@ export default function RhuConsultationWorkspace() {
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
+      if (nextScreen === NEXT_STEP && includeTb) {
+        setNextScreen(TB_INTAKE_STEP);
+        return;
+      }
       setWizardPhase(WIZARD_REVIEW);
       return;
     }
@@ -1091,10 +1132,6 @@ export default function RhuConsultationWorkspace() {
                           <textarea rows={3} value={summaryOfPresentIllness} onChange={(event) => setSummaryOfPresentIllness(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
                         </label>
                       </div>
-                      <label className="mt-3 flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={includeTb} onChange={(event) => setIncludeTb(event.target.checked)} />
-                        TB pathway (intake fields on a later step)
-                      </label>
                     </div>
                   </section>
                   {canViewBackground && (
@@ -1305,7 +1342,18 @@ export default function RhuConsultationWorkspace() {
               )}
               {currentStepKey === TB_INTAKE_STEP && (
                 <fieldset disabled={assessmentLocked}>
-                  <TbTreatmentCardForm value={tbData} onChange={setTbData} mode="encode" readOnly={assessmentLocked} />
+                  {existingTbCase?.tbCaseNumber ? (
+                    <p className="mb-3 text-sm text-[#545F73]">
+                      Referencing registered TB case <span className="font-semibold text-[#0B1C30]">{existingTbCase.tbCaseNumber}</span>. A new case number is not requested.
+                    </p>
+                  ) : null}
+                  <TbTreatmentCardForm
+                    value={tbData}
+                    onChange={setTbData}
+                    mode="encode"
+                    readOnly={assessmentLocked}
+                    referenceCaseNumber={existingTbCase?.tbCaseNumber || ""}
+                  />
                 </fieldset>
               )}
               {currentStepKey === NEXT_STEP && (
@@ -1337,9 +1385,9 @@ export default function RhuConsultationWorkspace() {
                     catalogError={catalogError}
                     onRetryCatalog={() => catalogQuery.refetch()}
                     canPrescribe={canPrescribe}
-                    includeTb={includeTb}
-                    tbData={tbData}
-                    onTbDataChange={setTbData}
+                    registry={registry}
+                    existingTbCase={existingTbCase}
+                    conditionReferences={conditionReferences}
                     errors={validationErrors}
                     disabled={clinicalLocked}
                   />

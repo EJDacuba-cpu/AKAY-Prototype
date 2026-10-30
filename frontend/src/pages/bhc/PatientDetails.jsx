@@ -182,8 +182,8 @@ function LivePatientDetails() {
     ];
   }, [conditionalProgramAreas, records]);
   const careTracking = useMemo(
-    () => (patient ? getCareTracking(patient, records) : []),
-    [patient, records],
+    () => (patient ? getCareTracking(patient, records, new Date(), { conditions: conditions.conditions || [] }) : []),
+    [patient, records, conditions.conditions],
   );
 
   // Patient Information (registration: demographics, contact & address,
@@ -200,7 +200,7 @@ function LivePatientDetails() {
           {
             key: "programs",
             label: "Care & Programs",
-            count: careTracking.filter((entry) => entry.records.length > 0).length || null,
+            count: careTracking.length || null,
           },
           { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
           { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
@@ -512,6 +512,7 @@ function LivePatientDetails() {
                     patient={patient}
                     patientId={patientId}
                     records={records}
+                    conditions={conditions.conditions || []}
                     isLoading={recordsLoading}
                     isError={Boolean(recordsError)}
                     onRetryRecords={refetchRecords}

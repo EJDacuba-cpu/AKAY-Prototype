@@ -85,6 +85,7 @@ class PatientConditionReadTest extends TestCase
             ->assertJsonPath('data.conditions.0.source_type', 'rhu_feedback')
             ->assertJsonPath('data.conditions.0.source_id', 7)
             ->assertJsonPath('data.conditions.0.monitoring.id', $linked->id)
+            ->assertJsonPath('data.conditions.0.monitoring.status', 'active')
             ->assertJsonPath('data.conditions.0.events.0.to_status', 'active')
             ->assertJsonPath('data.conditions.0.events.0.from_status', 'under_evaluation')
             ->assertJsonPath('data.conditions.0.events.0.note', 'Confirmed on repeat BP')

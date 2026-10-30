@@ -78,7 +78,6 @@ class ConditionMonitoringService
             return collect();
         }
         $locked = PatientCondition::query()
-            ->where('patient_id', $patient->id)
             ->whereIn('id', $ids)
             ->orderBy('id')
             ->lockForUpdate()
@@ -87,7 +86,13 @@ class ConditionMonitoringService
 
         foreach ($ids as $index => $id) {
             $condition = $locked->get($id);
-            if ($condition === null || ! in_array($condition->status, PatientCondition::MONITORABLE_STATUSES, true)) {
+            $onThisPatient = $condition !== null && (int) $condition->patient_id === (int) $patient->id;
+            $viaHandoff = $condition !== null && $user !== null
+                ? app(MonitoringHandoffService::class)->startableHandoffFor($patient, $condition, $user)
+                : null;
+            if ($condition === null
+                || ! in_array($condition->status, PatientCondition::MONITORABLE_STATUSES, true)
+                || (! $onThisPatient && $viaHandoff === null)) {
                 throw ValidationException::withMessages([
                     "care_plan.start_monitoring_condition_ids.$index" => 'This condition is not confirmed as Active or Controlled for this patient.',
                 ]);

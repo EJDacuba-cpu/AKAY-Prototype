@@ -262,6 +262,69 @@ test("TB is absent without history even for an otherwise-eligible patient", () =
   assert.equal(entries.find((e) => e.key === "tb"), undefined);
 });
 
+test("confirmed Hypertension and Diabetes cards come from RHU conditions, not enrollment", () => {
+  const conditions = [
+    { id: 1, conditionName: "Hypertension", conditionIdentity: "hypertension", status: "active", monitoring: null },
+    { id: 2, conditionName: "Diabetes Mellitus", conditionIdentity: "diabetes_mellitus", status: "controlled", monitoring: { id: 9, startedAt: "2026-09-01", status: "active" } },
+  ];
+  const records = [
+    { id: 10, dateOfVisit: "2026-09-10", systolicBp: "138", diastolicBp: "86" },
+    { id: 11, dateOfVisit: "2026-09-17", fbs: "118" },
+  ];
+  const entries = getCareTracking(woman(), records, new Date("2026-09-20"), { conditions });
+  const htn = entry(entries, "hypertension");
+  const dm = entry(entries, "diabetes_mellitus");
+  assert.equal(htn.status, "Active");
+  assert.ok(htn.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Not Started"));
+  assert.ok(htn.facts.some((fact) => fact.label === "Latest BP" && String(fact.value).includes("138")));
+  assert.equal(dm.status, "Controlled");
+  assert.ok(dm.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Active"));
+  assert.ok(dm.facts.some((fact) => fact.label === "Latest FBS" && String(fact.value).includes("118")));
+});
+
+test("RHU confirmation alone does not mark Hypertension as under BHC monitoring", () => {
+  const entries = getCareTracking(woman(), [], new Date("2026-09-01"), {
+    conditions: [{ id: 1, conditionName: "Hypertension", conditionIdentity: "hypertension", status: "active" }],
+  });
+  const htn = entry(entries, "hypertension");
+  assert.equal(htn.status, "Active");
+  assert.ok(htn.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Not Started"));
+});
+
+test("a confirmed TB condition appears without duplicating a records-only TB card", () => {
+  const records = [{
+    id: 1,
+    dateOfVisit: "2026-08-01",
+    tbData: { diagnosis: { tbCaseNumber: "TB-2026-014" }, phases: { intensiveStart: "2026-08-02" } },
+  }];
+  const entries = getCareTracking(woman(), records, new Date("2026-09-01"), {
+    conditions: [{ id: 3, conditionName: "Tuberculosis", conditionIdentity: "tuberculosis", status: "active", monitoring: { id: 4, status: "active" } }],
+  });
+  const tbCards = entries.filter((item) => item.key === "tb" || item.key === "tuberculosis");
+  assert.equal(tbCards.length, 1);
+  assert.equal(tbCards[0].key, "tb");
+  assert.ok(tbCards[0].facts.some((fact) => fact.label === "Case No." && fact.value === "TB-2026-014"));
+  assert.ok(tbCards[0].facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Active"));
+});
+
+test("stopped monitoring and resolved conditions keep history without looking active", () => {
+  const entries = getCareTracking(woman(), [
+    { id: 1, dateOfVisit: "2026-08-01", systolicBp: "150", diastolicBp: "95" },
+  ], new Date("2026-09-01"), {
+    conditions: [{
+      id: 1,
+      conditionName: "Hypertension",
+      conditionIdentity: "hypertension",
+      status: "resolved",
+      monitoring: { id: 8, status: "stopped", startedAt: "2026-08-01" },
+    }],
+  });
+  const htn = entry(entries, "hypertension");
+  assert.equal(htn.status, "Resolved");
+  assert.ok(htn.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Stopped"));
+  assert.ok(htn.records.length > 0);
+});
+
 test("EPI shows Not started for an eligible child with no records", () => {
   const epi = entry(getCareTracking(child("2025-01-01"), [], new Date("2026-01-01")), "epi");
   assert.equal(epi.status, "Not started");

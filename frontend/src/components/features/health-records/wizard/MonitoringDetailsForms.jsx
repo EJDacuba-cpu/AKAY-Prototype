@@ -1,8 +1,27 @@
 import TbTreatmentCardForm from "../TbTreatmentCardForm";
 import { MONITORING_DETAILS } from "../../../../utils/monitoringDetails";
 
-function TbDotsDetails({ tbData, onTbDataChange, recordId }) {
-  return <TbTreatmentCardForm value={tbData} onChange={onTbDataChange} recordId={recordId} />;
+function TbDotsDetails({ tbData, onTbDataChange, recordId, referenceCaseNumber = "" }) {
+  const caseNumber = referenceCaseNumber || String(tbData?.diagnosis?.tbCaseNumber || "").trim();
+  return (
+    <div className="space-y-3">
+      {caseNumber ? (
+        <p className="text-xs text-[#545F73]">
+          Referencing registered TB case <span className="font-semibold text-[#0B1C30]">{caseNumber}</span>. RHU case-registration details are not re-entered here.
+        </p>
+      ) : (
+        <p className="text-xs text-[#545F73]">
+          Record treatment-support observations for this TB condition. A new RHU case number is not required to monitor.
+        </p>
+      )}
+      <TbTreatmentCardForm
+        value={tbData}
+        onChange={onTbDataChange}
+        recordId={recordId}
+        referenceCaseNumber={caseNumber}
+      />
+    </div>
+  );
 }
 
 /**

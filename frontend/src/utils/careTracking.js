@@ -7,6 +7,8 @@ import {
   normalizeVaccineName,
   getTbData,
 } from "./healthRecordPrograms.js";
+import { bloodPressureTrendPoints, fbsTrendPoints } from "./clinicalTrendSeries.js";
+import { conditionStatusLabel } from "./medicalConditions.js";
 import {
   isWomensHealthApplicable,
   isPediatricApplicable,
@@ -57,6 +59,49 @@ function getMonitoringData(record = {}) {
 function getVisitPurposeServices(record = {}) {
   const purpose = getMonitoringData(record).visitPurpose || {};
   return Array.isArray(purpose.services) ? purpose.services : [];
+}
+
+export const DISEASE_TRACKING_KEYS = Object.freeze(["tb", "hypertension", "diabetes_mellitus"]);
+
+export function isDiseaseTrackingKey(key) {
+  return DISEASE_TRACKING_KEYS.includes(key);
+}
+
+function conditionIdentityOf(condition) {
+  return String(condition?.conditionIdentity || condition?.condition_identity || "").trim();
+}
+
+function conditionByIdentity(conditions = [], identity) {
+  return (conditions || []).find((condition) => conditionIdentityOf(condition) === identity) || null;
+}
+
+function monitoringStatusLabel(condition) {
+  const status = String(condition?.monitoring?.status || "").trim().toLowerCase();
+  if (status === "stopped") return "Stopped";
+  if (status === "active" || condition?.monitoring?.id) return "Active";
+  return "Not Started";
+}
+
+function latestBpFact(records) {
+  const last = bloodPressureTrendPoints(records).at(-1);
+  if (!last) return null;
+  const systolic = last.systolic === null ? "—" : last.systolic;
+  const diastolic = last.diastolic === null ? "—" : last.diastolic;
+  return { label: "Latest BP", value: `${systolic}/${diastolic} mmHg`, type: "text" };
+}
+
+function latestFbsFact(records) {
+  const last = fbsTrendPoints(records).at(-1);
+  if (!last) return null;
+  return { label: "Latest FBS", value: `${last.value} ${last.unit}`, type: "text" };
+}
+
+function monitoringFact(condition) {
+  return { label: "BHC monitoring", value: monitoringStatusLabel(condition), type: "text" };
+}
+
+function clinicalStatusOf(condition, fallback = "") {
+  return conditionStatusLabel(condition?.status) || fallback;
 }
 
 function toDate(value) {
@@ -295,28 +340,29 @@ function buildFamilyPlanningEntry(patient, records, today) {
 // TB DOTS
 // ---------------------------------------------------------------------------
 
-function buildTbEntry(records, today) {
+function buildTbEntry(records, today, condition = null) {
   const tbRecords = recordsForProgram(records, "tb");
-  // TB has no eligibility window - it only ever appears once there is a case.
-  if (tbRecords.length === 0) return null;
+  if (tbRecords.length === 0 && !condition) return null;
 
   const sorted = sortRecordsByDateAsc(tbRecords);
   const latest = sorted[sorted.length - 1];
-  const rawData = latest.tbData || latest.tb_data || {};
-  const tb = getTbData(latest);
+  const rawData = latest ? (latest.tbData || latest.tb_data || {}) : {};
+  const tb = latest ? getTbData(latest) : {};
   const outcomeStatus = String(rawData.outcome?.status || "").trim();
 
   const facts = [];
   const flags = [];
   let status;
-  let statusTone;
+  let statusTone = "info";
 
-  if (outcomeStatus) {
+  if (condition) {
+    status = clinicalStatusOf(condition, "Active");
+    statusTone = condition.status === "resolved" || condition.status === "ruled_out" ? "neutral" : "info";
+  } else if (outcomeStatus) {
     status = TB_OUTCOME_LABELS[outcomeStatus] || outcomeStatus;
     statusTone = TB_POSITIVE_OUTCOMES.includes(outcomeStatus) ? "success" : "warning";
   } else {
     status = tb.phaseLabel || "Registered";
-    statusTone = "info";
     const continuationEnd = toDate(rawData.phases?.continuationEnd);
     if (continuationEnd && continuationEnd < today) {
       flags.push({ label: "Outcome not recorded", tone: "warning" });
@@ -330,20 +376,48 @@ function buildTbEntry(records, today) {
     });
   }
 
+  if (condition) facts.push(monitoringFact(condition));
   if (tb.tbCaseNumber) facts.push({ label: "Case No.", value: tb.tbCaseNumber, type: "text" });
   if (tb.registrationGroup) facts.push({ label: "Registration Group", value: tb.registrationGroup, type: "text" });
+  if (condition && (tb.phaseLabel || outcomeStatus)) {
+    facts.push({
+      label: "Treatment",
+      value: outcomeStatus ? (TB_OUTCOME_LABELS[outcomeStatus] || outcomeStatus) : tb.phaseLabel,
+      type: "text",
+    });
+  }
 
   return {
     key: "tb",
-    label: "TB DOTS",
+    label: "Tuberculosis",
     status,
     statusTone,
     facts,
-    lastVisit: getRecordDateValue(latest),
+    lastVisit: latest ? getRecordDateValue(latest) : "",
     nextVisit: "",
     flags,
     action: null,
     records: tbRecords,
+  };
+}
+
+function buildNcdEntry({ key, label, condition, records, measurementFact }) {
+  if (!condition) return null;
+  const facts = [monitoringFact(condition)];
+  const latest = measurementFact(records);
+  if (latest) facts.push(latest);
+  const past = condition.status === "resolved" || condition.status === "ruled_out";
+  return {
+    key,
+    label,
+    status: clinicalStatusOf(condition, "Active"),
+    statusTone: past ? "neutral" : "info",
+    facts,
+    lastVisit: records[0] ? getRecordDateValue(sortRecordsByDateAsc(records).at(-1)) : "",
+    nextVisit: "",
+    flags: [],
+    action: null,
+    records,
   };
 }
 
@@ -434,11 +508,27 @@ function buildEpiEntry(patient, records) {
  * `today` is injectable so status derivation (postpartum windows, overdue
  * appointments) is exercisable deterministically in tests.
  */
-export function getCareTracking(patient = {}, records = [], today = new Date()) {
+export function getCareTracking(patient = {}, records = [], today = new Date(), options = {}) {
+  const conditions = options.conditions || [];
+  const list = Array.isArray(records) ? records : [];
   return [
-    buildMaternalEntry(patient, records, today),
-    buildFamilyPlanningEntry(patient, records, today),
-    buildEpiEntry(patient, records),
-    buildTbEntry(records, today),
+    buildMaternalEntry(patient, list, today),
+    buildFamilyPlanningEntry(patient, list, today),
+    buildEpiEntry(patient, list),
+    buildNcdEntry({
+      key: "hypertension",
+      label: "Hypertension",
+      condition: conditionByIdentity(conditions, "hypertension"),
+      records: list,
+      measurementFact: latestBpFact,
+    }),
+    buildNcdEntry({
+      key: "diabetes_mellitus",
+      label: "Diabetes Mellitus",
+      condition: conditionByIdentity(conditions, "diabetes_mellitus"),
+      records: list,
+      measurementFact: latestFbsFact,
+    }),
+    buildTbEntry(list, today, conditionByIdentity(conditions, "tuberculosis")),
   ].filter(Boolean);
 }

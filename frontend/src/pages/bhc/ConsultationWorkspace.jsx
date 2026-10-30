@@ -2668,16 +2668,6 @@ export default function ConsultationWorkspace() {
     }
 
 
-    if (isTb) {
-      if (!String(tbData.diagnosis.tbCaseNumber || "").trim()) {
-        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required.";
-      }
-      if (!String(tbData.phases.intensiveStart || "").trim()) {
-        errors["tbData.phases.intensiveStart"] =
-          "Intensive phase start date is required.";
-      }
-    }
-
     if (!isImmunization && !isFamilyPlanning && !isMaternal && !isTb && !chiefComplaint.trim()) {
       errors.chiefComplaint = "Chief complaint is required.";
     }

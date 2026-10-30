@@ -330,6 +330,7 @@ export default function TbTreatmentCardForm({
   readOnly = false,
   recordId = null,
   mode = "full",
+  referenceCaseNumber = "",
 }) {
   const data = value || EMPTY_TB_DATA;
   const [downloading, setDownloading] = useState(false);
@@ -565,7 +566,8 @@ export default function TbTreatmentCardForm({
             label="TB Case Number"
             value={data.diagnosis.tbCaseNumber}
             onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
-            required
+            required={!referenceCaseNumber}
+            disabled={readOnly || Boolean(referenceCaseNumber)}
           />
           <TextField
             label="Attending Physician"

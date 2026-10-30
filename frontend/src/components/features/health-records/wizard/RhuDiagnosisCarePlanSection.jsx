@@ -4,7 +4,6 @@ import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
 import PrescribedMedicinesSection from "../PrescribedMedicinesSection";
-import TbTreatmentCardForm from "../TbTreatmentCardForm";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
@@ -17,6 +16,18 @@ import {
   matchingMonitorableCondition,
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
+import {
+  TB_DIAGNOSIS_TYPE_OPTIONS,
+  TB_DRUG_RESISTANCE_OPTIONS,
+} from "../TbTreatmentCardForm";
+import {
+  canOpenDsTbTreatmentCard,
+  isDrTb,
+  isRecognizedTbDiagnosis,
+  isTbInfection,
+  tbManagementFields,
+  tbManagementFor,
+} from "../../../../utils/rhuTbCaseManagement";
 
 function scheduleFor(entry, schedules) {
   const purposeKey = entryPurposeKey(entry?.id);
@@ -66,9 +77,90 @@ function DiagnosisFollowUp({ entry, schedule, errors, disabled, onFollowUpChange
   );
 }
 
+function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, onChange }) {
+  if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
+  const management = tbManagementFields(entry);
+  const blocked = isTbInfection(entry) || isDrTb(entry);
+  const canOpen = canOpenDsTbTreatmentCard(entry);
+  const registered = String(existingTbCase?.tbCaseNumber || "").trim();
+  return (
+    <fieldset disabled={disabled} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-3">
+      <div>
+        <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
+        <p className="mt-0.5 text-xs text-[#545F73]">
+          Evaluation does not register a treatment case. Opening Form 4B is a separate decision from confirming an Active Patient Condition.
+        </p>
+      </div>
+      {registered ? (
+        <p className="text-xs text-[#0B1C30]">
+          Registered treatment case <span className="font-semibold">{registered}</span> is referenced for this patient. A new TB case number is not requested.
+        </p>
+      ) : null}
+      <RadioChoiceGroup
+        label="TB classification"
+        name={`diagnoses.${entry.id}.tbManagement.diagnosisType`}
+        options={TB_DIAGNOSIS_TYPE_OPTIONS}
+        value={management.diagnosisType}
+        onChange={(value) => onChange(tbManagementFor(entry, { diagnosisType: value, openTreatmentCard: false }))}
+      />
+      {management.diagnosisType === "tb_disease" && (
+        <RadioChoiceGroup
+          label="Drug resistance"
+          name={`diagnoses.${entry.id}.tbManagement.drugResistance`}
+          options={TB_DRUG_RESISTANCE_OPTIONS}
+          value={management.drugResistance}
+          onChange={(value) => onChange(tbManagementFor(entry, { drugResistance: value, openTreatmentCard: false }))}
+        />
+      )}
+      {blocked && (
+        <p className="text-xs text-[#545F73]">
+          DS-TB Form 4B is not used for DR-TB or TB infection / TPT. Document evaluation here without opening a treatment card.
+        </p>
+      )}
+      {canOpen && !registered && (
+        <label className="flex cursor-pointer items-start gap-3 px-1 py-1">
+          <input
+            type="checkbox"
+            name={`diagnoses.${entry.id}.tbManagement.openTreatmentCard`}
+            checked={management.openTreatmentCard}
+            onChange={(event) => onChange(tbManagementFor(entry, { openTreatmentCard: event.target.checked }))}
+            className="mt-1 h-4 w-4 accent-[#B70011]"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-[#0B1C30]">Open DS-TB Treatment Card (Form 4B)</span>
+            <span className="mt-0.5 block text-xs text-[#545F73]">
+              Registers this confirmed drug-susceptible TB case. Leave off to evaluate without creating a treatment record.
+            </span>
+          </span>
+        </label>
+      )}
+    </fieldset>
+  );
+}
+
+function FollowUpConditionReferences({ references = [] }) {
+  if (!references.length) return null;
+  return (
+    <section className="border border-[#E5EEFF] bg-[#F8FAFF] p-4">
+      <h3 className="text-sm font-semibold text-[#0B1C30]">Other Active Patient Conditions</h3>
+      <p className="mt-0.5 text-xs text-[#545F73]">Shown for reference. They are not part of today&apos;s assessment unless added as a new concern.</p>
+      <ul className="mt-2 space-y-1 text-sm text-[#0B1C30]">
+        {references.map((condition) => (
+          <li key={condition.id || condition.conditionName}>
+            {condition.conditionName || condition.name}
+            <span className="ml-2 text-xs text-[#545F73]">
+              {condition.status === "controlled" ? "Controlled" : "Active"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function DiagnosisCard({
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
-  onChange, onFollowUpChange, onRemove,
+  registry, existingTbCase, onChange, onFollowUpChange, onRemove,
 }) {
   const action = diagnosisNextAction(entry);
   const confirmed = diagnosisActivateConfirmed(entry, conditions);
@@ -94,21 +186,28 @@ function DiagnosisCard({
         <input
           type="checkbox"
           name={`${key}.activate`}
-          checked={Boolean(entry.activate) || Boolean(existing)}
-          disabled={disabled || Boolean(existing)}
+          checked={Boolean(entry.activate) || Boolean(existing) || Boolean(entry.continued)}
+          disabled={disabled || Boolean(existing) || Boolean(entry.continued)}
           onChange={(event) => onChange({ ...entry, activate: event.target.checked })}
           className="mt-1 h-4 w-4 accent-[#B70011]"
         />
         <span>
           <span className="block text-sm font-semibold text-[#0B1C30]">Active Patient Condition</span>
           <span className="mt-0.5 block text-xs text-[#545F73]">
-            {existing
-              ? "This identity is already Active or Controlled. Choosing Manage to BHC will not change that status."
+            {existing || entry.continued
+              ? "This identity is already Active or Controlled. Continuing it does not create another confirmation."
               : "Confirm this diagnosis as an Active patient condition. Off by default."}
           </span>
         </span>
       </label>
       <FieldError error={errors[`${key}.activate`]} />
+      <TbCaseManagementSection
+        entry={entry}
+        registry={registry}
+        existingTbCase={existingTbCase}
+        disabled={disabled}
+        onChange={onChange}
+      />
       {showWalkInActions ? (
         <>
           <RadioChoiceGroup
@@ -202,9 +301,9 @@ export default function RhuDiagnosisCarePlanSection({
   catalogError = "",
   onRetryCatalog,
   canPrescribe = false,
-  includeTb = false,
-  tbData = null,
-  onTbDataChange,
+  registry = {},
+  existingTbCase = null,
+  conditionReferences = [],
   errors = {},
   disabled = false,
 }) {
@@ -256,11 +355,14 @@ export default function RhuDiagnosisCarePlanSection({
               conditions={conditions}
               catchmentBhcs={catchmentBhcs}
               isReferralVisit={isReferralVisit}
+              registry={registry}
+              existingTbCase={existingTbCase}
               onChange={(next) => onChangeDiagnosis?.(next)}
               onFollowUpChange={onFollowUpChange}
               onRemove={() => onRemoveDiagnosis?.(entry.id)}
             />
           ))}
+          <FollowUpConditionReferences references={conditionReferences} />
         </div>
         {errors.diagnoses && <div role="alert" className="mt-2"><FieldError error={errors.diagnoses} /></div>}
       </section>
@@ -294,11 +396,6 @@ export default function RhuDiagnosisCarePlanSection({
           </>
         )}
       />
-      {includeTb && (
-        <section aria-label="TB finalize">
-          <TbTreatmentCardForm value={tbData} onChange={onTbDataChange} mode="finalize" readOnly={disabled} />
-        </section>
-      )}
     </div>
   );
 }

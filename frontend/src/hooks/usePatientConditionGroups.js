@@ -34,5 +34,5 @@ export default function usePatientConditionGroups(patientId, currentDiseases, op
     [conditions, legacyMonitorings, currentDiseases],
   );
 
-  return { groups, isLoading: query.isLoading, isError: query.isError };
+  return { groups, conditions: conditions || [], isLoading: query.isLoading, isError: query.isError };
 }

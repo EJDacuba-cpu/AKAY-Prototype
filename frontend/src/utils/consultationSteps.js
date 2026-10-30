@@ -71,6 +71,12 @@ function tbIntakeKeys(options = {}) {
   return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
 }
 
+function rhuTbAfterDiagnosis(options = {}) {
+  return isRhuItr(options) && options.includeTb
+    ? [{ key: TB_INTAKE_STEP, phase: "next", label: "TB Case Management" }]
+    : [];
+}
+
 function historySteps(includeHistory) {
   return includeHistory === false ? [] : [HISTORY_STEP];
 }
@@ -168,10 +174,8 @@ export function buildConsultationSteps({
     ...(programSteps.length > 0
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
-    ...(rhuItr && includeTb
-      ? [{ key: TB_INTAKE_STEP, phase: "form", label: "TB Intake" }]
-      : []),
     { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis & Care Plan" : "Assessment & Care Plan" },
+    ...rhuTbAfterDiagnosis({ workflow, includeTb }),
     ...(includeOutcomeStep({ includeHistory, workflow })
       ? [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]
       : []),
@@ -230,7 +234,6 @@ export function getFormSequence(programSteps = [], options = {}) {
     ...historySteps(includeHistory),
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
-    ...tbIntakeKeys(options),
   ];
 }
 
@@ -243,8 +246,8 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     ...historySteps(includeHistory),
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
-    ...tbIntakeKeys(options),
     NEXT_STEP,
+    ...tbIntakeKeys(options),
     ...(includeOutcomeStep(options) ? [OUTCOME_STEP] : []),
     ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
@@ -367,21 +370,6 @@ export function resolveFormStep(current, formSequence, programSteps = []) {
  * Which screen shows the field behind a validation error. Null means the error
  * is not tied to a specific screen (the caller decides what to do with it).
  */
-const RHU_TB_FINALIZE_PREFIXES = [
-  "tbData.diagnosis",
-  "tbData.classification",
-  "tbData.regimen",
-  "tbData.phases",
-  "tbData.outcome",
-  "tbData.comorbidities.art",
-  "tbData.comorbidities.cpt",
-  "tbData.comorbidities.otherComorbidities",
-];
-
-function isRhuTbFinalizeError(key) {
-  return RHU_TB_FINALIZE_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix));
-}
-
 function carePlanOwnerStep(options = {}) {
   return includeOutcomeStep(options) ? OUTCOME_STEP : NEXT_STEP;
 }
@@ -416,10 +404,7 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
     return ASSESSMENT_STEP;
   }
   if (key.startsWith("tbData.")) {
-    if (workflow === "rhu_itr_v1") {
-      return isRhuTbFinalizeError(key) ? NEXT_STEP : TB_INTAKE_STEP;
-    }
-    return MONITORING_STEP;
+    return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");

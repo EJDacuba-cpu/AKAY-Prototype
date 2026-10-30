@@ -71,6 +71,24 @@ class CareOverviewController extends Controller
                 ->pluck('patient_condition_id')
                 ->all();
             $recommendations = $recommendations->reject(fn (PatientCondition $condition) => in_array($condition->id, $blocked, true))->values();
+            $already = $recommendations->pluck('id')->all();
+            $linkedStarts = MonitoringHandoffRequest::query()
+                ->with('patientCondition')
+                ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+                ->where('linked_patient_id', $patient->id)
+                ->where('status', MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT)
+                ->get()
+                ->map(fn (MonitoringHandoffRequest $handoff) => $handoff->patientCondition)
+                ->filter()
+                ->filter(fn (PatientCondition $condition) => in_array($condition->status, PatientCondition::MONITORABLE_STATUSES, true))
+                ->reject(fn (PatientCondition $condition) => in_array($condition->id, $already, true))
+                ->reject(fn (PatientCondition $condition) => ConditionMonitoring::query()
+                    ->where('patient_id', $patient->id)
+                    ->where('condition_identity', $condition->condition_identity)
+                    ->where('status', ConditionMonitoring::STATUS_ACTIVE)
+                    ->exists())
+                ->values();
+            $recommendations = $recommendations->concat($linkedStarts)->values();
         }
 
         return response()->json(['data' => [

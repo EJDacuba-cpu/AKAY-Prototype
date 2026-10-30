@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Models\PatientConditionEvent;
 use App\Services\FacilityAccessService;
+use App\Services\MonitoringHandoffService;
 use App\Services\PatientBackground;
 use Illuminate\Http\Request;
 
@@ -17,7 +18,10 @@ use Illuminate\Http\Request;
  */
 class PatientConditionController extends Controller
 {
-    public function __construct(private readonly FacilityAccessService $facilityAccess) {}
+    public function __construct(
+        private readonly FacilityAccessService $facilityAccess,
+        private readonly MonitoringHandoffService $handoffs,
+    ) {}
 
     public function index(Request $request, Patient $patient)
     {
@@ -28,12 +32,20 @@ class PatientConditionController extends Controller
             ->with([
                 'confirmedBy:id,name',
                 'events' => fn ($q) => $q->with('changedBy:id,name')->orderByDesc('changed_at')->orderByDesc('id'),
-                'monitorings' => fn ($q) => $q->where('status', ConditionMonitoring::STATUS_ACTIVE),
+                'monitorings' => fn ($q) => $q->orderByDesc('id'),
             ])
             ->where('patient_id', $patient->id)
             ->orderByDesc('confirmed_at')
             ->orderByDesc('id')
             ->get();
+        $linked = $this->handoffs->linkedConditionsFor($patient, $request->user());
+        $seen = $conditions->pluck('id')->all();
+        foreach ($linked as $condition) {
+            if (! in_array($condition->id, $seen, true)) {
+                $conditions->push($condition);
+                $seen[] = $condition->id;
+            }
+        }
 
         $legacy = ConditionMonitoring::query()
             ->where('patient_id', $patient->id)
@@ -43,8 +55,10 @@ class PatientConditionController extends Controller
             ->get();
 
         return response()->json(['data' => [
-            'conditions' => $conditions->map(function (PatientCondition $condition) {
-                $monitoring = $condition->monitorings->first();
+            'conditions' => $conditions->map(function (PatientCondition $condition) use ($patient) {
+                $monitoring = $condition->monitorings->first(
+                    fn (ConditionMonitoring $row) => (int) $row->patient_id === (int) $patient->id
+                );
 
                 return [
                     'id' => $condition->id,
@@ -59,6 +73,7 @@ class PatientConditionController extends Controller
                     'monitoring' => $monitoring === null ? null : [
                         'id' => $monitoring->id,
                         'started_at' => $monitoring->started_at?->toDateString(),
+                        'status' => $monitoring->status,
                     ],
                     'events' => $condition->events->map(fn (PatientConditionEvent $event) => [
                         'from_status' => $event->from_status,

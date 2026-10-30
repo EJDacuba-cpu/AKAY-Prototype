@@ -1,7 +1,7 @@
 <?php
 namespace Tests\Feature;
 
-use App\Models\{BarangayHealthCenter, RuralHealthUnit, Patient, PatientCondition, User, Medicine};
+use App\Models\{BarangayHealthCenter, RuralHealthUnit, Patient, User, Medicine};
 use App\Services\ActionPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -107,8 +107,10 @@ class ConsultationWorkflowRevisionTest extends TestCase
 
     public function test_incomplete_added_program_blocks_finalization(): void
     {
-        $condition = PatientCondition::create(['patient_id' => $this->patient->id, 'condition_name' => 'Tuberculosis', 'condition_identity' => 'tuberculosis', 'status' => 'active', 'confirmed_at' => now(), 'source_type' => PatientCondition::SOURCE_RHU_RECORD, 'source_id' => 1]);
-        $this->save(['care_plan' => ['start_monitoring_condition_ids' => [$condition->id]]])->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart']);
+        $this->save([
+            'monitoring_data' => ['selectedPrograms' => ['Family Planning']],
+            'family_planning_data' => ['methodUsed' => ''],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['family_planning_data.methodUsed']);
         $this->assertDatabaseCount('health_records', 0);
     }
 

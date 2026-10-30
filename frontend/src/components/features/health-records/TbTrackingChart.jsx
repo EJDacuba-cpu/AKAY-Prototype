@@ -5,6 +5,12 @@ import TbDoseCalendar from "./TbDoseCalendar";
  * Read-only TB tracking chart for an active BHC program: adherence and monthly
  * doses from tb_data.doseCalendar. Not an editor.
  */
+function recordedAdherencePercent(tbData) {
+  const raw = tbData?.doseCalendar?.adherencePercent;
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  return raw;
+}
+
 export default function TbTrackingChart({ tbData, caseNumber = "" }) {
   const data = normalizeTbData(tbData || {});
   const calendar = data.doseCalendar || { months: [], adherencePercent: 0 };
@@ -13,6 +19,7 @@ export default function TbTrackingChart({ tbData, caseNumber = "" }) {
     (sum, month) => sum + (Number(month.monthlyTotal) || 0),
     0,
   );
+  const adherencePercent = recordedAdherencePercent(tbData);
 
   return (
     <div className="space-y-4">
@@ -25,7 +32,11 @@ export default function TbTrackingChart({ tbData, caseNumber = "" }) {
         ) : null}
         <div className="border border-[#E5E7EB] bg-white px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Adherence</p>
-          <p className="mt-0.5 text-sm font-semibold text-[#111827]">{calendar.adherencePercent || 0}%</p>
+          <p className="mt-0.5 text-sm font-semibold text-[#111827]">
+            {adherencePercent === null || adherencePercent === undefined || adherencePercent === ""
+              ? "Not recorded"
+              : `${adherencePercent}%`}
+          </p>
         </div>
         <div className="border border-[#E5E7EB] bg-white px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Monthly doses</p>

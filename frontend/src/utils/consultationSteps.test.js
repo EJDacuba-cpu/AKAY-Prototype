@@ -190,12 +190,14 @@ test("RHU ITR: a draft saved on Prescription or Care and Outcome reopens on Diag
   });
 });
 
-test("RHU ITR TB intake sits after Physical Examination", () => {
+test("RHU ITR TB Form 4B sits after Diagnosis & Care Plan and before Review", () => {
   const options = { ...RHU_ITR_STEP_OPTIONS, includeTb: true };
   const steps = buildConsultationSteps(options);
   const keys = keysOf(steps);
-  assert.equal(keys[keys.indexOf(ASSESSMENT_STEP) + 1], TB_INTAKE_STEP);
-  assert.equal(getFormSequence([], options).at(-1), TB_INTAKE_STEP);
+  assert.equal(keys[keys.indexOf(NEXT_STEP) + 1], TB_INTAKE_STEP);
+  assert.equal(keys[keys.indexOf(TB_INTAKE_STEP) + 1], REVIEW_STEP);
+  assert.equal(getFormSequence([], options).includes(TB_INTAKE_STEP), false);
+  assert.deepEqual(getStepOrder([], [], options).slice(-3), [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP]);
 });
 
 test("the global steps read in the new order with the new names", () => {
@@ -386,7 +388,7 @@ test("each validation error is owned by the screen that shows its field", () => 
   );
   assert.equal(
     getErrorOwnerStepKey("tbData.diagnosis.tbCaseNumber", RHU_ITR_STEP_OPTIONS),
-    NEXT_STEP,
+    TB_INTAKE_STEP,
   );
   assert.equal(
     getErrorOwnerStepKey("tbData.comorbidities.hivStatus", RHU_ITR_STEP_OPTIONS),
@@ -394,7 +396,7 @@ test("each validation error is owned by the screen that shows its field", () => 
   );
   assert.equal(
     getErrorOwnerStepKey("tbData.comorbidities.artStatus", RHU_ITR_STEP_OPTIONS),
-    NEXT_STEP,
+    TB_INTAKE_STEP,
   );
   // Reporting entries (and any server diagnoses error) live on step 3.
   assert.equal(getErrorOwnerStepKey("diagnosis"), NEXT_STEP);

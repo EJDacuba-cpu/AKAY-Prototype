@@ -11,6 +11,8 @@ namespace App\Services;
 final class MonitoringDetails
 {
     public const REQUIRED_FIELDS = [
-        'tb_dots' => ['tb_data.diagnosis.tbCaseNumber', 'tb_data.phases.intensiveStart'],
+        // BHC monitoring records treatment support on the ITR. RHU case
+        // registration (Form 4B case number / intensive start) is not re-required.
+        'tb_dots' => [],
     ];
 }

@@ -263,14 +263,12 @@ class CarePlanSaveTest extends TestCase
         $this->assertSame('pending', $primary->fresh()->state);
     }
 
-    public function test_a_continued_tb_monitoring_record_requires_its_monitoring_details(): void
+    public function test_a_continued_tb_monitoring_record_does_not_require_rhu_case_registration_details(): void
     {
         $monitoring = $this->verifiedMonitoring('Tuberculosis', 'tuberculosis');
-        $before = HealthRecord::count();
 
-        $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])
-            ->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber']);
-        $this->assertSame($before, HealthRecord::count());
+        $this->save([], ['continued_monitoring_ids' => [$monitoring->id]])->assertCreated();
+        $this->assertSame('tuberculosis', $monitoring->fresh()->condition_key);
     }
 
     public function test_a_concurrent_start_of_the_same_monitoring_is_a_409_and_nothing_saves(): void

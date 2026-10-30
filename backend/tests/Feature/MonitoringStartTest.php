@@ -240,18 +240,11 @@ class MonitoringStartTest extends TestCase
         $this->assertNotFalse($patientLock);
         $this->assertLessThan($firstOf('patient_conditions'), $patientLock);
     }
-    public function test_starting_tb_requires_its_monitoring_details(): void
+    public function test_starting_tb_does_not_require_rhu_case_registration_details(): void
     {
         $condition = $this->condition('Tuberculosis', 'tuberculosis');
-        $before = HealthRecord::count();
 
-        $this->save(['start_monitoring_condition_ids' => [$condition->id]])
-            ->assertUnprocessable()->assertJsonValidationErrors(['tb_data.diagnosis.tbCaseNumber']);
-        $this->assertSame($before, HealthRecord::count());
-
-        $this->save(['start_monitoring_condition_ids' => [$condition->id]], [
-            'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-001'], 'phases' => ['intensiveStart' => now()->toDateString()]],
-        ])->assertCreated();
+        $this->save(['start_monitoring_condition_ids' => [$condition->id]])->assertCreated();
         $this->assertSame('tuberculosis', ConditionMonitoring::sole()->condition_key);
     }
 

@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
-import { maternalCareCardStatus } from "../../../../utils/careTracking";
+import { isDiseaseTrackingKey, maternalCareCardStatus } from "../../../../utils/careTracking";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
 const STATUS_TONE_STYLES = {
@@ -58,7 +58,7 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
     <Card className={`flex h-full min-w-0 flex-col rounded-xl p-4 shadow-card ${selected ? "border-ink-300 ring-1 ring-ink-200" : "border-neutral-200/80"}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
         <div>
-          <span className="text-xs font-medium text-neutral-500">{entry.key === "tb" ? "Disease" : "Program"}</span>
+          <span className="text-xs font-medium text-neutral-500">{isDiseaseTrackingKey(entry.key) ? "Disease" : "Program"}</span>
           <h3 className="mt-2 text-sm font-semibold text-neutral-900 font-sans!">{entry.label}</h3>
         </div>
         <StatusBadge
@@ -119,16 +119,16 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
           <span />
         )}
 
-        {hasRecords && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="link" size="sm" onClick={() => onOpen?.(entry.key)} aria-pressed={selected} className="h-auto rounded-lg p-0 text-xs no-underline hover:underline">
-              Open Tracking <ChevronRight size={12} aria-hidden="true" />
-            </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="link" size="sm" onClick={() => onOpen?.(entry.key)} aria-pressed={selected} className="h-auto rounded-lg p-0 text-xs no-underline hover:underline">
+            Open Tracking <ChevronRight size={12} aria-hidden="true" />
+          </Button>
+          {hasRecords ? (
             <Button type="button" variant="link" size="sm" onClick={() => onViewRecords?.(entry.key)} className="h-auto rounded-lg p-0 text-xs text-neutral-500 no-underline hover:underline">
               View records
             </Button>
-          </div>
-        )}
+          ) : null}
+        </div>
       </div>
     </Card>
   );

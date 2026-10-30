@@ -48,7 +48,11 @@ export function mapPatientConditions(data) {
       sourceType: c.source_type,
       sourceId: c.source_id,
       bhcMonitoringRecommendedAt: c.bhc_monitoring_recommended_at,
-      monitoring: c.monitoring ? { id: c.monitoring.id, startedAt: c.monitoring.started_at } : null,
+      monitoring: c.monitoring ? {
+        id: c.monitoring.id,
+        startedAt: c.monitoring.started_at,
+        status: c.monitoring.status || "active",
+      } : null,
       events: (c.events || []).map((e) => ({
         fromStatus: e.from_status,
         toStatus: e.to_status,

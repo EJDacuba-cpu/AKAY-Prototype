@@ -273,6 +273,59 @@ class MonitoringHandoffService
         return $handoff->fresh();
     }
 
+    public function startableHandoffFor(Patient $patient, PatientCondition $condition, User $user): ?MonitoringHandoffRequest
+    {
+        if (! $user->isBhc() || ! $user->barangay_health_center_id) {
+            return null;
+        }
+
+        return MonitoringHandoffRequest::query()
+            ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+            ->where('patient_condition_id', $condition->id)
+            ->where('linked_patient_id', $patient->id)
+            ->whereIn('status', MonitoringHandoffRequest::STARTABLE_STATUSES)
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * RHU-confirmed conditions the receiving BHC may see through a verified
+     * patient-linkage handoff, without copying those rows onto this patient.
+     *
+     * @return Collection<int, PatientCondition>
+     */
+    public function linkedConditionsFor(Patient $patient, User $user): Collection
+    {
+        if (! $user->isBhc() || ! $user->barangay_health_center_id) {
+            return collect();
+        }
+        $ids = MonitoringHandoffRequest::query()
+            ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+            ->where('linked_patient_id', $patient->id)
+            ->whereIn('status', [
+                MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+            ])
+            ->pluck('patient_condition_id')
+            ->filter()
+            ->unique()
+            ->values();
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return PatientCondition::query()
+            ->with([
+                'confirmedBy:id,name',
+                'events' => fn ($q) => $q->with('changedBy:id,name')->orderByDesc('changed_at')->orderByDesc('id'),
+                'monitorings' => fn ($q) => $q->orderByDesc('id'),
+            ])
+            ->whereIn('id', $ids)
+            ->orderByDesc('confirmed_at')
+            ->orderByDesc('id')
+            ->get();
+    }
+
     public function markMonitoringActive(Patient $patient, PatientCondition $condition, User $user): void
     {
         if (! $user->isBhc() || ! $user->barangay_health_center_id) {

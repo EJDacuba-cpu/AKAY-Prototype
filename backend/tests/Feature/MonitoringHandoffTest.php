@@ -214,6 +214,14 @@ class MonitoringHandoffTest extends TestCase
         $this->assertDatabaseCount('condition_monitorings', 0);
 
         $condition = PatientCondition::query()->where('patient_id', $patient->id)->sole();
+        $this->as($bhcStaff)->getJson("/api/patients/{$linked->id}/care-overview")
+            ->assertOk()
+            ->assertJsonPath('data.monitoring_recommendations.0.condition_id', $condition->id);
+        $this->as($bhcStaff)->getJson("/api/patients/{$linked->id}/conditions")
+            ->assertOk()
+            ->assertJsonPath('data.conditions.0.id', $condition->id)
+            ->assertJsonPath('data.conditions.0.monitoring', null);
+
         $this->as($bhcStaff)
             ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
             ->postJson('/api/health-records', [
@@ -222,31 +230,17 @@ class MonitoringHandoffTest extends TestCase
                 'chief_complaint' => 'Start monitoring',
                 'care_plan' => ['start_monitoring_condition_ids' => [$condition->id]],
             ])
-            ->assertUnprocessable();
-
-        $linkedCondition = PatientCondition::create([
-            'patient_id' => $linked->id,
-            'condition_name' => 'Hypertension',
-            'condition_identity' => $condition->condition_identity,
-            'status' => PatientCondition::STATUS_ACTIVE,
-            'confirmed_at' => now(),
-            'source_type' => PatientCondition::SOURCE_RHU_RECORD,
-            'source_id' => 1,
-            'bhc_monitoring_recommended_at' => now(),
-        ]);
-
-        $this->as($bhcStaff)
-            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
-            ->postJson('/api/health-records', [
-                'patient_id' => $linked->id,
-                'category' => 'General Consultation',
-                'chief_complaint' => 'Start monitoring',
-                'care_plan' => ['start_monitoring_condition_ids' => [$linkedCondition->id]],
-            ])
             ->assertCreated();
 
         $this->assertSame(1, ConditionMonitoring::count());
+        $this->assertSame($linked->id, ConditionMonitoring::sole()->patient_id);
+        $this->assertSame($condition->id, ConditionMonitoring::sole()->patient_condition_id);
+        $this->assertSame(1, PatientCondition::where('condition_identity', $condition->condition_identity)->count());
         $this->assertSame(MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE, $handoff->fresh()->status);
+        $this->as($bhcStaff)->getJson("/api/patients/{$linked->id}/conditions")
+            ->assertOk()
+            ->assertJsonPath('data.conditions.0.monitoring.id', ConditionMonitoring::sole()->id)
+            ->assertJsonPath('data.conditions.0.monitoring.status', 'active');
     }
 
     public function test_pending_request_cannot_start_and_legacy_recommend_still_can(): void
