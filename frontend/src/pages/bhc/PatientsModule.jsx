@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -7,6 +8,7 @@ import {
   ConnectionErrorState,
   LoadMoreButton,
   RefreshingIndicator,
+  SegmentedFilter,
 } from "../../components/common";
 import Drawer from "../../components/common/drawer/Drawer";
 import ModuleToolbar from "../../components/common/list/ModuleToolbar";
@@ -27,6 +29,9 @@ import {
 import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
 import { errorStateVariant } from "../../utils/errorStateVariant";
+import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffService";
+import { formatPatientName } from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -58,6 +63,14 @@ function Shell({ embedded, children, ...layoutProps }) {
 export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false } = {}) {
   const canRegister = useAccess().can("patients.register");
   const addPatientPath = `${basePath}/patients/add`;
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
+  const handoffsQuery = useQuery({
+    queryKey: queryKeys.monitoringHandoffs(),
+    queryFn: listMonitoringHandoffRequests,
+    enabled: showHandoffs,
+  });
   const {
     patients,
     filteredPatients,
@@ -239,7 +252,24 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
             heading={
               <div className="clinical-directory__heading min-w-0">
                 {!embedded && <h1 className="clinical-directory__title">Patients</h1>}
-                <p className="clinical-directory__count">{patientCountLabel}</p>
+                {role === "bhc" && (
+                  <div className="mt-2">
+                    <SegmentedFilter
+                      label="Patient directory"
+                      options={[
+                        { value: "patients", label: "All Patients" },
+                        { value: "monitoring-requests", label: "Monitoring Requests" },
+                      ]}
+                      value={showHandoffs ? "monitoring-requests" : "patients"}
+                      onChange={(next) => setParams(next === "monitoring-requests" ? { view: next } : {}, { replace: true })}
+                    />
+                  </div>
+                )}
+                <p className="clinical-directory__count">
+                  {showHandoffs
+                    ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
+                    : patientCountLabel}
+                </p>
               </div>
             }
             searchValue={filters.search}
@@ -293,7 +323,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   <RefreshingIndicator label="Updating patients..." />
                 </div>
               )}
-              {!showInitialLoading && (
+              {!showInitialLoading && !showHandoffs && (
                 <PatientDirectory
                   patients={visiblePatients}
                   canRegister={canRegister}
@@ -307,12 +337,19 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   addPatientPath={addPatientPath}
                 />
               )}
+              {showHandoffs && (
+                <MonitoringRequestList
+                  requests={handoffsQuery.data || []}
+                  loading={handoffsQuery.isLoading}
+                  onOpen={(id) => navigate(`/bhc/patients/monitoring-requests/${id}`)}
+                />
+              )}
             </div>
 
             {/* Below desktop the toolbar button is hidden and this floating one takes
                 over (one at a time). The anchor has no height, so the button floats
                 over the list's bottom-right corner and cards scroll beneath it. */}
-            {!showInitialLoading && !isDesktop && canRegister && (
+            {!showInitialLoading && !isDesktop && canRegister && !showHandoffs && (
               <div className="clinical-directory__fab-anchor">
                 <Link to={addPatientPath} className="patients-fab" aria-label="New Patient">
                   <Plus size={24} strokeWidth={2.25} aria-hidden="true" />
@@ -322,7 +359,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
             )}
           </div>
 
-          {isDesktop && !showInitialLoading && (
+          {isDesktop && !showInitialLoading && !showHandoffs && (
             <aside
               className="clinical-directory__details"
               data-open={panelOpen}
@@ -360,6 +397,44 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         )}
       </Drawer>
     </Shell>
+  );
+}
+
+function MonitoringRequestList({ requests, loading, onOpen }) {
+  if (loading && requests.length === 0) {
+    return <p className="px-6 py-10 text-sm text-neutral-500">Loading monitoring requests…</p>;
+  }
+  if (requests.length === 0) {
+    return (
+      <PatientDirectoryState
+        icon={<Users size={22} className="text-gray-400" />}
+        title="No monitoring requests."
+        description="RHU Manage to BHC requests for this Barangay Health Center will appear here."
+      />
+    );
+  }
+  return (
+    <ul className="divide-y divide-neutral-100 border border-neutral-200 bg-white">
+      {requests.map((request) => (
+        <li key={request.id}>
+          <button
+            type="button"
+            onClick={() => onOpen(request.id)}
+            className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-ink-900">{formatPatientName(request.source_patient) || "Patient"}</span>
+              <span className="mt-0.5 block text-xs text-neutral-600">
+                {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
+              </span>
+            </span>
+            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+              {String(request.status || "").replaceAll("_", " ")}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

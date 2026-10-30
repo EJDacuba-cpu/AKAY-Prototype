@@ -67,7 +67,13 @@ class RhuVisitQueueService
         }
 
         $patient = Patient::findOrFail($patientId);
-        $this->facilityAccess->authorizePatient($user, $patient);
+        if (! $this->facilityAccess->canAccessPatient($user, $patient)) {
+            abort_unless(
+                $referralId === null && $this->facilityAccess->isCatchmentBhcPatient($user, $patient),
+                403,
+                self::DENIED_MESSAGE
+            );
+        }
         if ($patient->status === 'inactive') {
             throw ValidationException::withMessages([
                 'patient_id' => ['An inactive patient cannot be checked in.'],
@@ -405,7 +411,7 @@ class RhuVisitQueueService
             return [];
         }
 
-        $patients = $this->facilityAccess->scopePatients(Patient::query(), $user)
+        $patients = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
             ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'));
         foreach ($tokens as $token) {
             // Lower-cased on both sides: PostgreSQL LIKE is case-sensitive, SQLite's is not.
@@ -435,7 +441,7 @@ class RhuVisitQueueService
             return [];
         }
 
-        $matches = $this->facilityAccess->scopePatients(Patient::query(), $user)
+        $matches = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
             ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
             ->whereRaw('lower(trim(first_name)) = ?', [mb_strtolower(trim($firstName))])
             ->whereRaw('lower(trim(last_name)) = ?', [mb_strtolower(trim($lastName))])

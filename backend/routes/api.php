@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\HealthRecordDraftController;
 use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
+use App\Http\Controllers\Api\MonitoringHandoffController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\PatientBackgroundController;
@@ -152,6 +153,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
 
         Route::middleware('role:rhu')->group(function () {
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
+            Route::get('/rhu/catchment-bhcs', [MonitoringHandoffController::class, 'catchmentBhcs']);
             Route::get('/rhu-visits', [RhuVisitController::class, 'index']);
             Route::post('/rhu-visits', [RhuVisitController::class, 'store']);
             Route::get('/rhu-visits/patient-search', [RhuVisitController::class, 'patientSearch']);
@@ -170,6 +172,11 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             ->middleware('throttle:health-record-drafts');
         Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
             ->middleware('throttle:health-record-drafts');
+        Route::get('/monitoring-handoff-requests', [MonitoringHandoffController::class, 'index']);
+        Route::get('/monitoring-handoff-requests/{id}', [MonitoringHandoffController::class, 'show'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/link', [MonitoringHandoffController::class, 'link'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/accept', [MonitoringHandoffController::class, 'accept'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/decline', [MonitoringHandoffController::class, 'decline'])->whereNumber('id');
         Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
         // Must be registered before the {followUpTask} route below, or
         // Laravel's implicit model binding tries to resolve "calendar" as an id.

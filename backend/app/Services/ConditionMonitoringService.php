@@ -71,7 +71,7 @@ class ConditionMonitoringService
      * @param  array<int, mixed>  $conditionIds
      * @return Collection<int, PatientCondition> keyed by id
      */
-    public function lockStarting(Patient $patient, array $conditionIds): Collection
+    public function lockStarting(Patient $patient, array $conditionIds, ?\App\Models\User $user = null): Collection
     {
         $ids = array_values(array_map('intval', $conditionIds));
         if ($ids === []) {
@@ -101,6 +101,9 @@ class ConditionMonitoringService
                 throw ValidationException::withMessages([
                     "care_plan.start_monitoring_condition_ids.$index" => 'This condition is already monitored at BHC.',
                 ]);
+            }
+            if ($user !== null) {
+                app(MonitoringHandoffService::class)->assertStartAllowed($patient, $condition, $user, $index);
             }
         }
 
@@ -147,6 +150,7 @@ class ConditionMonitoringService
             $this->history($monitoring, $record, ConditionMonitoringVisit::ACTION_STARTED, false);
             // The RHU's recommendation is acted on: it must not come back when this monitoring stops.
             $condition->update(['bhc_monitoring_recommended_at' => null, 'bhc_monitoring_recommended_by' => null]);
+            app(MonitoringHandoffService::class)->markMonitoringActive($patient, $condition, $user);
             $activeAfter->put($monitoring->id, $monitoring);
         }
 

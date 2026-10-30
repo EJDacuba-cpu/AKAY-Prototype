@@ -12,6 +12,27 @@ import {
   restoreDiagnoses,
 } from "./diagnoses.js";
 
+test("normalizeDiagnoses keeps RHU activate, nextAction and Manage to BHC fields", () => {
+  const result = normalizeDiagnoses([
+    {
+      id: "a",
+      name: "Hypertension",
+      activate: true,
+      nextAction: "manage_to_bhc",
+      receivingBhcId: "4",
+      monitoringRecommendation: "Weekly BP",
+    },
+    { id: "b", name: "URI", activate: false, nextAction: "none" },
+  ]);
+  assert.equal(result[0].activate, true);
+  assert.equal(result[0].nextAction, "manage_to_bhc");
+  assert.equal(result[0].receivingBhcId, "4");
+  assert.equal(result[0].monitoringRecommendation, "Weekly BP");
+  assert.equal(result[1].activate, false);
+  assert.equal(result[1].nextAction, "none");
+  assert.equal(result[1].manageToBhc, false);
+});
+
 test("normalizeDiagnoses drops blank names and never emits condition fields", () => {
   const result = normalizeDiagnoses([
     { id: "a", name: "  Asthma ", addToConditions: true, conditionStatus: "Controlled" },

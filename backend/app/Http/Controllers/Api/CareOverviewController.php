@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ConditionMonitoring;
 use App\Models\FollowUpTask;
+use App\Models\MonitoringHandoffRequest;
 use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Services\ActionPermissions;
@@ -62,6 +63,15 @@ class CareOverviewController extends Controller
             ->orderBy('bhc_monitoring_recommended_at')
             ->orderBy('id')
             ->get();
+        if ($user->isBhc()) {
+            $blocked = MonitoringHandoffRequest::query()
+                ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+                ->whereIn('patient_condition_id', $recommendations->pluck('id'))
+                ->whereIn('status', MonitoringHandoffRequest::BLOCKED_START_STATUSES)
+                ->pluck('patient_condition_id')
+                ->all();
+            $recommendations = $recommendations->reject(fn (PatientCondition $condition) => in_array($condition->id, $blocked, true))->values();
+        }
 
         return response()->json(['data' => [
             'pending_follow_ups' => $tasks->map(fn (FollowUpTask $task) => [

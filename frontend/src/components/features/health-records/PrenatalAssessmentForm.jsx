@@ -27,8 +27,7 @@ const MATERNAL_EYEBROW_CLASS =
  *
  * Current-pregnancy fields stay here. Longitudinal Section V (menstrual
  * history and previous pregnancies) is staged on the same background update
- * when `includeObstetricHistory` is set (BHC). RHU keeps Section V on its
- * Patient History step.
+ * when `includeObstetricHistory` is set (BHC and RHU ITR).
  */
 export default function PrenatalAssessmentForm({
   maternalData,

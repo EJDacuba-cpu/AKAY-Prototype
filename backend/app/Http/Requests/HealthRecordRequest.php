@@ -175,6 +175,16 @@ class HealthRecordRequest extends FormRequest
             $rules['diagnoses.*.referral'] = ['prohibited'];
             $rules['diagnoses.*.activate'] = ['nullable', 'boolean'];
             $rules['diagnoses.*.manageToBhc'] = ['nullable', 'boolean'];
+            $rules['diagnoses.*.nextAction'] = ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc'])];
+            $rules['diagnoses.*.receivingBhcId'] = ['nullable', 'integer', 'exists:barangay_health_centers,id'];
+            $rules['diagnoses.*.monitoringRecommendation'] = ['nullable', 'string', 'max:2000'];
+            $rules['monitoring_data.followUpSchedules'] = ['nullable', 'array', 'max:20'];
+            $rules['monitoring_data.followUpSchedules.*.purposeKey'] = ['required', 'string', 'max:64', 'distinct'];
+            $rules['monitoring_data.followUpSchedules.*.purpose'] = ['required', 'string', 'max:150'];
+            $rules['monitoring_data.followUpSchedules.*.date'] = ['required', 'date'];
+            $rules['monitoring_data.followUpSchedules.*.time'] = ['nullable', 'date_format:H:i'];
+            $rules['monitoring_data.followUpSchedules.*.predecessorTaskId'] = ['nullable', 'integer', 'exists:follow_up_tasks,id'];
+            $rules['monitoring_data.followUpSchedules.*.sourceEntryId'] = ['nullable', 'string', 'max:64'];
             $rules['care_plan.condition_cards'] = ['prohibited'];
             $rules['care_plan.shared_condition_referral'] = ['prohibited'];
             $rules['care_plan.bhc_follow_up'] = ['prohibited'];
@@ -704,7 +714,10 @@ class HealthRecordRequest extends FormRequest
 
             $v2 = $this->isBhcGeneralV2();
             $rhuItr = $this->isRhuItrV1();
-            if ($rhuItr && $this->boolean('care_plan.rhu_follow_up') && ! $date) {
+            $rhuSchedules = is_array($monitoringData)
+                ? \App\Services\FollowUpSchedules::fromMonitoringData($monitoringData)
+                : [];
+            if ($rhuItr && $this->boolean('care_plan.rhu_follow_up') && $rhuSchedules === [] && ! $date) {
                 $validator->errors()->add('monitoring_data.followUpDate', 'Set the RHU follow-up date.');
             }
             if (! $v2 && ! $rhuItr && ($needsReferral || $normalizedStatus === 'follow up required') && blank($this->input('diagnosis')) && ! $followUpOfMonitoring) {

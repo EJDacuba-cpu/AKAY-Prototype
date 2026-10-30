@@ -119,29 +119,75 @@ test("with services, Next from Physical Examination opens the first form and the
 
 /* ── Global steps ────────────────────────────────────────────────────── */
 
-test("RHU ITR steps include History, Diagnosis, Prescription and Care and Outcome", () => {
+test("RHU ITR steps skip History and combine Diagnosis, Prescription and Care into Diagnosis & Care Plan", () => {
+  assert.equal(RHU_ITR_STEP_OPTIONS.includeHistory, false);
   const steps = buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS });
   assert.deepEqual(
     steps.map((step) => step.label),
     [
       "Patient Interview",
-      "Patient History",
       "Physical Examination",
-      "Diagnosis",
-      "Prescription",
-      "Care and Outcome",
+      "Diagnosis & Care Plan",
       "Review & Finalize",
     ],
   );
   assert.deepEqual(getStepOrder([], [], RHU_ITR_STEP_OPTIONS), [
     INTERVIEW_STEP,
-    HISTORY_STEP,
     ASSESSMENT_STEP,
     NEXT_STEP,
-    PRESCRIPTION_STEP,
-    OUTCOME_STEP,
     REVIEW_STEP,
   ]);
+  assert.ok(!getStepOrder([], [], RHU_ITR_STEP_OPTIONS).includes(PRESCRIPTION_STEP));
+  assert.ok(!getStepOrder([], [], RHU_ITR_STEP_OPTIONS).includes(OUTCOME_STEP));
+  const sequence = getFormSequence([], RHU_ITR_STEP_OPTIONS);
+  assert.deepEqual(sequence, [INTERVIEW_STEP, ASSESSMENT_STEP]);
+  assert.equal(getNextStepKey(sequence, INTERVIEW_STEP), ASSESSMENT_STEP);
+  assert.equal(getPreviousStepKey(sequence, ASSESSMENT_STEP), INTERVIEW_STEP);
+  assert.equal(getNextStepKey(sequence, ASSESSMENT_STEP), NEXT_STEP);
+});
+
+test("RHU ITR Diagnosis & Care Plan owns care-plan, follow-up and prescription errors", () => {
+  assert.equal(getErrorOwnerStepKey("actionsTaken", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpDate", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("carePlanOwner", RHU_ITR_STEP_OPTIONS), null);
+  assert.equal(getErrorOwnerStepKey("prescribedMedicines", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("prescribedMedicines.0.quantity", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("diagnoses.0.nextAction", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("followUpSchedule.entry:abc.date", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("informant.relation", RHU_ITR_STEP_OPTIONS), INTERVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("similar_illness", RHU_ITR_STEP_OPTIONS), INTERVIEW_STEP);
+  assert.equal(
+    getErrorOwnerStepKey("background_update.sections.medical.hospitalizations.items.0.type", RHU_ITR_STEP_OPTIONS),
+    INTERVIEW_STEP,
+  );
+  assert.equal(
+    getErrorOwnerStepKey("background_update.sections.obstetric.obstetric.menarcheAge", RHU_ITR_STEP_OPTIONS),
+    MATERNAL,
+  );
+});
+
+test("RHU ITR: a draft saved on Patient History reopens on Patient Interview", () => {
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "form", formStep: HISTORY_STEP }, RHU_ITR_STEP_OPTIONS), {
+    phase: "form",
+    formStep: INTERVIEW_STEP,
+  });
+  assert.equal(resolveFormStep(HISTORY_STEP, getFormSequence([], RHU_ITR_STEP_OPTIONS)), INTERVIEW_STEP);
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "form", formStep: ASSESSMENT_STEP }, RHU_ITR_STEP_OPTIONS), {
+    phase: "form",
+    formStep: ASSESSMENT_STEP,
+  });
+  assert.equal(resolveRestoredPosition({ wizardPhase: "next", formStep: HISTORY_STEP }, RHU_ITR_STEP_OPTIONS).phase, "next");
+});
+
+test("RHU ITR: a draft saved on Prescription or Care and Outcome reopens on Diagnosis & Care Plan", () => {
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "next", formStep: PRESCRIPTION_STEP }, RHU_ITR_STEP_OPTIONS), {
+    phase: "next",
+    formStep: NEXT_STEP,
+  });
+  assert.deepEqual(resolveRestoredPosition({ wizardPhase: "next", formStep: OUTCOME_STEP }, RHU_ITR_STEP_OPTIONS), {
+    phase: "next",
+    formStep: NEXT_STEP,
+  });
 });
 
 test("RHU ITR TB intake sits after Physical Examination", () => {

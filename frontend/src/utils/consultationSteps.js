@@ -4,7 +4,6 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * Step model for the New Consultation workspace.
  *
  *   Patient Interview
- *       -> Patient History (ITR sections I-V; reviewed or updated per section)
  *       -> Physical Examination (Vital Signs, Physical Findings and the body map)
  *       -> Service Details: one screen per selected service (Prenatal / Family
  *          Planning / EPI), only when a service is selected
@@ -16,15 +15,16 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  * Interview; their forms follow Physical Examination, so the visit's vital
  * signs (height included) are known when a service form opens.
  *
- * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI; the
- * patient background lives on its own Patient History step (HISTORY_STEP).
+ * Vital Signs are recorded on the Physical Examination step; Patient Interview holds the Chief Complaint / HPI.
  * The interview step's key is INTERVIEW_STEP.
  *
  * Patient History is opt-out: every helper takes `{ includeHistory }`
- * (default true, so RHU and other callers keep it). The BHC workspace passes
- * BHC_STEP_OPTIONS: no History step. Informant, Similar Illness, Family,
- * Past Medical and Personal & Social sit on Patient Interview; Section V sits
- * on the Prenatal form. Edits stage in the draft and apply on finalize.
+ * (default true for generic callers). BHC and RHU ITR both pass
+ * `includeHistory: false`: Informant, Similar Illness, Family, Past Medical
+ * and Personal & Social sit on Patient Interview; Section V sits on the
+ * Prenatal form. Edits stage in the draft and apply on finalize. RHU ITR
+ * folds Diagnosis, Prescription and Care and Outcome into Diagnosis & Care
+ * Plan (`NEXT_STEP`).
  *
  * Two levels:
  *  - GLOBAL steps (one heading each). Health programs are never global steps
@@ -57,9 +57,9 @@ const PROGRAM_PREFIX = "program:";
 /** The BHC consultation: no Patient History step. */
 export const BHC_STEP_OPTIONS = Object.freeze({ includeHistory: false });
 
-/** RHU ITR consultation: History I–V, diagnosis, prescription, walk-in outcome. */
+/** RHU ITR consultation: no History step; Diagnosis & Care Plan then Review. */
 export const RHU_ITR_STEP_OPTIONS = Object.freeze({
-  includeHistory: true,
+  includeHistory: false,
   workflow: "rhu_itr_v1",
 });
 
@@ -73,6 +73,11 @@ function tbIntakeKeys(options = {}) {
 
 function historySteps(includeHistory) {
   return includeHistory === false ? [] : [HISTORY_STEP];
+}
+
+function includeOutcomeStep(options = {}) {
+  if (isRhuItr(options)) return false;
+  return options.includeHistory !== false;
 }
 
 const PROGRAM_STEP_DETAILS = {
@@ -166,9 +171,10 @@ export function buildConsultationSteps({
     ...(rhuItr && includeTb
       ? [{ key: TB_INTAKE_STEP, phase: "form", label: "TB Intake" }]
       : []),
-    { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis" : "Assessment & Care Plan" },
-    ...(rhuItr ? [{ key: PRESCRIPTION_STEP, phase: "next", label: "Prescription" }] : []),
-    ...(includeHistory === false ? [] : [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]),
+    { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis & Care Plan" : "Assessment & Care Plan" },
+    ...(includeOutcomeStep({ includeHistory, workflow })
+      ? [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]
+      : []),
     // Only when a monitored condition needs data the ITR does not hold (TB today).
     ...(!rhuItr && monitoringDetailKeys.length > 0
       ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
@@ -239,8 +245,7 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     ...programSteps.map((step) => step.key),
     ...tbIntakeKeys(options),
     NEXT_STEP,
-    ...(rhuItr ? [PRESCRIPTION_STEP] : []),
-    ...(includeHistory === false ? [] : [OUTCOME_STEP]),
+    ...(includeOutcomeStep(options) ? [OUTCOME_STEP] : []),
     ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
   ];
@@ -321,19 +326,23 @@ const NEXT_CARE_PHASE = "next";
  * Monitoring Details is saved as the next phase, so it resumes on
  * Medication, Treatment & Next Steps.
  *
- * Without the History step (BHC), a draft saved on Patient History reopens on
- * Patient Interview, where its visit questions now live.
+ * Without the History step (BHC and RHU ITR), a draft saved on Patient History
+ * reopens on Patient Interview, where its visit questions now live.
  */
-export function resolveRestoredPosition(payload = {}, { includeHistory = true } = {}) {
+export function resolveRestoredPosition(payload = {}, options = {}) {
+  const { includeHistory = true } = options;
   const phase = payload?.wizardPhase;
   const resumesOnNextCare = phase === NEXT_CARE_PHASE;
   const raw = typeof payload?.formStep === "string" ? payload.formStep : "";
+  const collapsedRhuNext = isRhuItr(options) && (raw === PRESCRIPTION_STEP || raw === OUTCOME_STEP);
   const stored =
     raw === LEGACY_VITALS_STEP || (raw === HISTORY_STEP && includeHistory === false)
       ? INTERVIEW_STEP
       : raw === LEGACY_TREATMENT_STEP
         ? ASSESSMENT_STEP
-        : raw;
+        : collapsedRhuNext
+          ? NEXT_STEP
+          : raw;
   const usable = phase !== LEGACY_CURRENT_VISIT_PHASE && stored;
 
   return {
@@ -374,7 +383,7 @@ function isRhuTbFinalizeError(key) {
 }
 
 function carePlanOwnerStep(options = {}) {
-  return options.includeHistory === false ? NEXT_STEP : OUTCOME_STEP;
+  return includeOutcomeStep(options) ? OUTCOME_STEP : NEXT_STEP;
 }
 
 export function getErrorOwnerStepKey(errorKey, options = {}) {
@@ -430,7 +439,8 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key.startsWith("reportingEntry.") && key.includes(".referral.")) return carePlanStep;
   if (key.startsWith("diagnoses.") && key.includes(".referral.")) return carePlanStep;
   if (key === "diagnosis" || key === "diagnoses" || key.startsWith("diagnoses.") || key.startsWith("reportingEntry.")) return NEXT_STEP;
-  // Actions Taken (and the medicines dispensed) sit on Assessment & Care Plan (BHC) or Care and Outcome (RHU).
+  // Actions Taken (and the medicines dispensed) sit on Assessment & Care Plan (BHC)
+  // or Diagnosis & Care Plan (RHU ITR).
   if (
     key === "dispensedMedicines" ||
     key === "careOutcome" ||
@@ -442,7 +452,9 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   ) {
     return carePlanStep;
   }
-  if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) return PRESCRIPTION_STEP;
+  if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) {
+    return isRhuItr(options) ? NEXT_STEP : PRESCRIPTION_STEP;
+  }
   if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return carePlanStep;
   if (key === "followUpAcknowledged" || key === "referralAcknowledged") return carePlanStep;
   // Server-only v2 next-action keys.

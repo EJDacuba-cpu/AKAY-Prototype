@@ -49,6 +49,7 @@ import {
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
 import PatientsModule from "./pages/bhc/PatientsModule";
+import MonitoringHandoffReview from "./pages/bhc/MonitoringHandoffReview";
 import ConsultationWorkspace from "./pages/bhc/ConsultationWorkspace";
 import AddPatient from "./pages/bhc/AddPatient";
 import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
@@ -561,6 +562,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="bhc" module="patients">
             <AddPatient />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/patients/monitoring-requests/:requestId"
+        element={
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
+            <MonitoringHandoffReview />
           </ProtectedPage>
         }
       />

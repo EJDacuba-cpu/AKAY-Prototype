@@ -78,6 +78,8 @@ export const queryKeys = {
   referralHolds: () => ["referral-holds"],
   clinicalRegistry: () => ["clinical-registry"],
   careOverview: (patientId) => ["care-overview", String(patientId)],
+  monitoringHandoffs: () => ["monitoring-handoff-requests"],
+  monitoringHandoff: (id) => ["monitoring-handoff-requests", String(id)],
   patientConditions: (patientId) => ["patient-conditions", String(patientId)],
   patientBackgroundHistory: (patientId) => ["patient-background-history", String(patientId)],
 };

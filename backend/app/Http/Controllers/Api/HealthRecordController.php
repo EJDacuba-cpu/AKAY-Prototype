@@ -143,15 +143,29 @@ class HealthRecordController extends Controller
             $prescribedMedicines = $data['prescribed_medicines'] ?? [];
             unset($data['prescribed_medicines'], $data['rhu_visit_id']);
             $this->assertRhuPrescribedMedicines($request->user(), $prescribedMedicines);
+            $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+            $schedules = \App\Services\FollowUpSchedules::fromMonitoringData($monitoringData);
+            $firstSchedule = $schedules[0] ?? null;
+            $rhuFollowUp = $schedules !== [] || (bool) (($data['care_plan']['rhu_follow_up'] ?? false));
             $data['monitoring_data'] = [
-                ...(is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : []),
+                ...$monitoringData,
                 'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
                 'prescribedMedicines' => $prescribedMedicines,
-                'rhuFollowUp' => (bool) (($data['care_plan']['rhu_follow_up'] ?? false)),
+                'rhuFollowUp' => $rhuFollowUp,
                 'manageToBhc' => (bool) (($data['care_plan']['manage_to_bhc'] ?? false)),
+                'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),
             ];
-            if (($data['care_plan']['rhu_follow_up'] ?? false) || filled($data['monitoring_data']['followUpDate'] ?? null)) {
+            if ($rhuFollowUp) {
                 $data['monitoring_data']['followUpStatus'] = 'Follow-up Required';
+                $data['monitoring_data']['follow_up_status'] = 'Follow-up Required';
+                if ($firstSchedule) {
+                    $data['monitoring_data']['followUpDate'] = $firstSchedule['date'];
+                    $data['monitoring_data']['follow_up_date'] = $firstSchedule['date'];
+                    $data['monitoring_data']['followUpTime'] = $firstSchedule['time'];
+                    $data['monitoring_data']['follow_up_time'] = $firstSchedule['time'];
+                    $data['monitoring_data']['followUpReason'] = $firstSchedule['purpose'];
+                    $data['monitoring_data']['follow_up_reason'] = $firstSchedule['purpose'];
+                }
             }
             $data['needs_referral'] = false;
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
@@ -182,7 +196,7 @@ class HealthRecordController extends Controller
         $conditionConfirmations = $data['condition_confirmations'] ?? [];
         unset($data['condition_confirmations']);
         if ($rhuItr && $conditionConfirmations === []) {
-            $conditionConfirmations = $this->confirmationsFromRhuDiagnoses($data['diagnoses'] ?? [], $carePlan);
+            $conditionConfirmations = $this->confirmationsFromRhuDiagnoses($data['diagnoses'] ?? [], $patient);
         }
         if ($conditionConfirmations !== [] && ! PatientConditions::canConfirm($request->user())) {
             abort(403, 'Only RHU staff can confirm a condition.');
@@ -297,6 +311,7 @@ class HealthRecordController extends Controller
                 $legacyReview,
                 $patientConditions,
                 $v2,
+                $rhuItr,
                 $visit
             ) {
                 $lockedDraft = $draftPublicId
@@ -347,7 +362,7 @@ class HealthRecordController extends Controller
                 // Continued rows first, then the conditions being started - each
                 // in id order, so concurrent saves lock in the same order.
                 $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
-                $startingConditions = $monitoring->lockStarting($patient, $carePlan['start_monitoring_condition_ids'] ?? []);
+                $startingConditions = $monitoring->lockStarting($patient, $carePlan['start_monitoring_condition_ids'] ?? [], $request->user());
                 // Background sections reviewed in this consultation go first: a
                 // stale edited section throws a 409 before anything is written.
                 $backgroundChanges = $backgroundUpdate !== null
@@ -381,8 +396,9 @@ class HealthRecordController extends Controller
                         $record->id
                     );
                 }
+                $confirmedConditions = collect();
                 if ($conditionConfirmations !== []) {
-                    $patientConditions->apply(
+                    $confirmedConditions = $patientConditions->apply(
                         $patient,
                         $conditionConfirmations,
                         $request->user(),
@@ -390,6 +406,16 @@ class HealthRecordController extends Controller
                         $record->id,
                         'condition_confirmations',
                         $request
+                    );
+                }
+                if ($rhuItr) {
+                    app(\App\Services\MonitoringHandoffService::class)->createFromFinalize(
+                        $request,
+                        $patient,
+                        $record,
+                        $data['diagnoses'] ?? [],
+                        $confirmedConditions,
+                        $visit
                     );
                 }
                 $monitoredNow = $monitoring->apply(
@@ -1220,29 +1246,48 @@ class HealthRecordController extends Controller
 
     /**
      * @param  array<int, array<string, mixed>>  $diagnoses
-     * @param  array<string, mixed>  $carePlan
      * @return array<int, array<string, mixed>>
      */
-    private function confirmationsFromRhuDiagnoses(array $diagnoses, array $carePlan): array
+    private function confirmationsFromRhuDiagnoses(array $diagnoses, \App\Models\Patient $patient): array
     {
-        $visitManage = filter_var($carePlan['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $registry = app(\App\Services\ClinicalRegistry::class);
         $confirmations = [];
         foreach ($diagnoses as $entry) {
             if (! is_array($entry)) {
                 continue;
             }
             $name = trim((string) ($entry['name'] ?? ''));
-            $activate = filter_var($entry['activate'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $manage = filter_var($entry['manageToBhc'] ?? $entry['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                || $visitManage;
-            if ($name === '' || (! $activate && ! $manage)) {
+            if ($name === '') {
                 continue;
             }
-            $confirmations[] = [
-                'name' => $name,
-                'status' => \App\Models\PatientCondition::STATUS_ACTIVE,
-                'recommend_bhc_monitoring' => $manage,
-            ];
+            $activate = filter_var($entry['activate'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $nextAction = (string) ($entry['nextAction'] ?? $entry['next_action'] ?? '');
+            $manage = $nextAction === 'manage_to_bhc'
+                || filter_var($entry['manageToBhc'] ?? $entry['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $match = $registry->matchCondition($name);
+            $identity = $registry->conditionIdentity($match['key'] ?? null, $name);
+            $existing = \App\Models\PatientCondition::query()
+                ->where('patient_id', $patient->id)
+                ->where('condition_identity', $identity)
+                ->open()
+                ->first();
+            $alreadyMonitorable = $existing !== null
+                && in_array($existing->status, \App\Models\PatientCondition::MONITORABLE_STATUSES, true);
+            if ($activate) {
+                $confirmations[] = [
+                    'name' => $name,
+                    'status' => \App\Models\PatientCondition::STATUS_ACTIVE,
+                    'recommend_bhc_monitoring' => $manage,
+                ];
+                continue;
+            }
+            if ($manage && $alreadyMonitorable) {
+                $confirmations[] = [
+                    'condition_id' => $existing->id,
+                    'status' => $existing->status,
+                    'recommend_bhc_monitoring' => true,
+                ];
+            }
         }
 
         return $confirmations;

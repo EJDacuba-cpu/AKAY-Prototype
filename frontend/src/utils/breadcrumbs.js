@@ -11,6 +11,7 @@ const PARENT_TRAILS = [
   // Barangay Health Center
   ["/bhc/medicine-availability/:medicineId", [{ label: "Health Commodities", path: "/bhc/medicine-availability" }]],
   ["/bhc/patients/add", [{ label: "Patients", path: "/bhc/patients" }]],
+  ["/bhc/patients/monitoring-requests/:requestId", [{ label: "Patients", path: "/bhc/patients?view=monitoring-requests" }]],
   ["/bhc/patients/:patientId", [{ label: "Patients", path: "/bhc/patients" }]],
   [
     "/bhc/health-records/add",

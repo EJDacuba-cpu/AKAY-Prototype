@@ -19,6 +19,17 @@ class EnforceActionPermissions
             str_contains($path, '/bhc/dashboard') => null,
             // Either consultations.encode or clinical.history; the controller checks.
             str_contains($path, '/care-overview') => null,
+            str_contains($path, '/catchment-bhcs') => (
+                ActionPermissions::allows($request->user(), 'consultations.encode')
+                || ActionPermissions::allows($request->user(), 'consultations.finalize')
+                || ActionPermissions::allows($request->user(), 'clinical.history')
+            ) ? null : 'consultations.encode',
+            str_contains($path, '/monitoring-handoff-requests') => $read
+                ? ((ActionPermissions::allows($request->user(), 'consultations.encode')
+                    || ActionPermissions::allows($request->user(), 'clinical.history'))
+                    ? null
+                    : 'clinical.history')
+                : 'consultations.encode',
             str_contains($path, '/background-history') => 'clinical.history',
             str_ends_with($path, '/background') => 'clinical.background.update',
             str_contains($path, '/conditions') => 'clinical.history',

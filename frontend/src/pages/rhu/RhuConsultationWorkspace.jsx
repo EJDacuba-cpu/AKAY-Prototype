@@ -6,8 +6,8 @@ import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import { SuccessModal } from "../../components/common";
-import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
+import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
 import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
@@ -18,7 +18,7 @@ import {
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
-import PrescribedMedicinesSection from "../../components/features/health-records/PrescribedMedicinesSection";
+import RhuDiagnosisCarePlanSection from "../../components/features/health-records/wizard/RhuDiagnosisCarePlanSection";
 import TbTreatmentCardForm, {
   EMPTY_TB_DATA,
   normalizeTbData,
@@ -57,11 +57,8 @@ import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
 import {
   ASSESSMENT_STEP,
   EXIT_STEP,
-  HISTORY_STEP,
   INTERVIEW_STEP,
   NEXT_STEP,
-  OUTCOME_STEP,
-  PRESCRIPTION_STEP,
   REVIEW_STEP,
   RHU_ITR_STEP_OPTIONS,
   TB_INTAKE_STEP,
@@ -80,7 +77,16 @@ import {
   resolveRestoredPosition,
   resolveStepHeading,
 } from "../../utils/consultationSteps";
-import { createDiagnosisId } from "../../utils/diagnoses";
+import { entryPurposeKey, followUpScheduleErrors, restoreFollowUpSchedules } from "../../utils/followUpSchedules";
+import {
+  diagnosesForRhuSave,
+  diagnosisNextAction,
+  rhuCarePlanErrors,
+  restoreRhuDiagnoses,
+  restoreRhuFollowUpSchedules,
+} from "../../utils/rhuCarePlan";
+import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
+import { getPatientConditions } from "../../services/patientConditionService";
 import { defaultInformant } from "../../utils/patientHistory";
 import {
   overlayBackgroundUpdate,
@@ -90,15 +96,17 @@ import {
 } from "../../utils/backgroundUpdate";
 import { resolveHistoricalFpMethod } from "../../utils/familyPlanning";
 import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
-import { canUpdateBackground, omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
-import { visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
+import { calculateBmi, formatBmi } from "../../utils/bmi";
+import { shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { areVitalSignsBlank, EMPTY_VITALS_REMINDER, vitalSignsErrors } from "../../utils/vitalSigns";
 import {
   historyErrorMessages,
   visitAnswerDraftFields,
+  visitAnswerErrorMessages,
   visitAnswerRecordFields,
   visitAnswerRows,
 } from "../../utils/historyStep";
-import { getCurrentUser } from "../../utils/auth";
 import { formatPatientName } from "../../utils/formatters";
 import { createIdempotencyKey } from "../../utils/idempotency";
 import { RHU_DRAFTS_ENABLED } from "../../utils/featureFlags";
@@ -109,7 +117,7 @@ import { listHealthRecordDrafts, getHealthRecordDraft } from "../../services/hea
 import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { getRhuMedicines, loadMedicineAvailability } from "../../services/medicineService";
-import { listRhuVisits } from "../../services/rhuVisitService";
+import { listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
 
 const WIZARD_FORM = "form";
@@ -131,7 +139,6 @@ export default function RhuConsultationWorkspace() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const access = useAccess();
-  const currentUser = getCurrentUser();
   const canEncode = access.can("consultations.encode");
   const canFinalize = access.can("consultations.finalize");
   const canViewBackground = access.can("clinical.history");
@@ -139,7 +146,6 @@ export default function RhuConsultationWorkspace() {
   const visitId = Number(params.get("visitId") || 0) || null;
   const patientId = String(params.get("patientId") || "");
   const followUpTaskId = Number(params.get("followUpTaskId") || 0) || null;
-  const canUpdateHistory = canUpdateBackground(currentUser);
 
   const [visit, setVisit] = useState(null);
   const [visitError, setVisitError] = useState("");
@@ -175,11 +181,9 @@ export default function RhuConsultationWorkspace() {
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
   const [prescribedMedicines, setPrescribedMedicines] = useState([]);
   const [treatmentNotes, setTreatmentNotes] = useState("");
-  const [rhuFollowUp, setRhuFollowUp] = useState(false);
-  const [manageToBhc, setManageToBhc] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState("");
-  const [followUpTime, setFollowUpTime] = useState("");
-  const [followUpReason, setFollowUpReason] = useState("");
+  const [followUpSchedules, setFollowUpSchedules] = useState([]);
+  const [catchmentBhcs, setCatchmentBhcs] = useState([]);
+  const [openConditions, setOpenConditions] = useState([]);
   const [linkedFollowUpTaskId, setLinkedFollowUpTaskId] = useState(followUpTaskId);
   const [parentHealthRecordId, setParentHealthRecordId] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
@@ -265,6 +269,20 @@ export default function RhuConsultationWorkspace() {
       })
       .catch((error) => setCatalogError(error?.message || "Unable to load medicines."));
   }, [canPrescribe]);
+
+  useEffect(() => {
+    if (!canFinalize) return;
+    listCatchmentBhcs()
+      .then((rows) => setCatchmentBhcs(Array.isArray(rows) ? rows : []))
+      .catch(() => setCatchmentBhcs([]));
+  }, [canFinalize]);
+
+  useEffect(() => {
+    if (!patientId || !canViewBackground) return;
+    getPatientConditions(patientId)
+      .then((payload) => setOpenConditions(payload?.conditions || []))
+      .catch(() => setOpenConditions([]));
+  }, [patientId, canViewBackground]);
 
   useEffect(() => {
     if (informant || !patient) return;
@@ -381,12 +399,13 @@ export default function RhuConsultationWorkspace() {
       diagnoses,
       prescribedMedicines,
       medication: treatmentNotes,
-      rhuFollowUp,
-      manageToBhc,
+      followUpSchedules,
+      rhuFollowUp: diagnoses.some((entry) => diagnosisNextAction(entry) === "rhu_follow_up") || followUpSchedules.some((item) => item.purposeKey === "visit"),
+      manageToBhc: diagnoses.some((entry) => diagnosisNextAction(entry) === "manage_to_bhc"),
       consultationWorkflow: "rhu_itr_v1",
-      followUpDate,
-      followUpTime,
-      followUpReason,
+      followUpDate: followUpSchedules[0]?.date || "",
+      followUpTime: followUpSchedules[0]?.time || "",
+      followUpReason: followUpSchedules[0]?.purpose || "",
       rhuVisitId: visit?.id,
     }),
     [
@@ -422,11 +441,7 @@ export default function RhuConsultationWorkspace() {
       diagnoses,
       prescribedMedicines,
       treatmentNotes,
-      rhuFollowUp,
-      manageToBhc,
-      followUpDate,
-      followUpTime,
-      followUpReason,
+      followUpSchedules,
       visit?.id,
     ],
   );
@@ -488,14 +503,12 @@ export default function RhuConsultationWorkspace() {
     if (payload.aog) setAog(payload.aog);
     if (payload.familyPlanningData) setFamilyPlanningData((current) => ({ ...current, ...payload.familyPlanningData }));
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
-    setDiagnoses(Array.isArray(payload.diagnoses) ? payload.diagnoses : []);
+    const restoredDiagnoses = restoreRhuDiagnoses(payload);
+    setDiagnoses(restoredDiagnoses);
     setPrescribedMedicines(Array.isArray(payload.prescribedMedicines) ? payload.prescribedMedicines : []);
     setTreatmentNotes(payload.medication || "");
-    setRhuFollowUp(Boolean(payload.rhuFollowUp));
-    setManageToBhc(Boolean(payload.manageToBhc));
-    setFollowUpDate(payload.followUpDate || "");
-    setFollowUpTime(payload.followUpTime || "");
-    setFollowUpReason(payload.followUpReason || "");
+    const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
+    setFollowUpSchedules(restoredSchedules.length ? restoredSchedules : restoreRhuFollowUpSchedules(payload, restoredDiagnoses));
     const restored = resolveRestoredPosition(payload, stepOptions);
     if (restored.phase === REVIEW_STEP || restored.phase === "review") {
       setWizardPhase(WIZARD_REVIEW);
@@ -526,20 +539,39 @@ export default function RhuConsultationWorkspace() {
     });
   }
 
+  function clearErrorsStartingWith(prefixes) {
+    setValidationErrors((current) => {
+      const keys = Object.keys(current).filter((key) => prefixes.some((prefix) => key.startsWith(prefix)));
+      if (!keys.length) return current;
+      const next = { ...current };
+      keys.forEach((key) => delete next[key]);
+      return next;
+    });
+  }
+
+  function historyUpdateForSave() {
+    return omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false });
+  }
+
   function validateCurrent() {
     const errors = {};
-    if (currentStepKey === INTERVIEW_STEP && !String(chiefComplaint).trim()) {
-      errors.chiefComplaint = "Chief complaint is required.";
+    if (currentStepKey === INTERVIEW_STEP) {
+      if (!String(chiefComplaint).trim()) {
+        errors.chiefComplaint = "Chief complaint is required.";
+      }
+      if (canViewBackground) {
+        Object.assign(errors, stagedHistoryErrors(historyUpdateForSave(), { sections: ["family", "medical", "social"] }));
+      }
     }
-    if (currentStepKey === HISTORY_STEP) {
-      Object.assign(
-        errors,
-        stagedHistoryErrors(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false })),
-      );
+    if (currentStepKey === ASSESSMENT_STEP) {
+      Object.assign(errors, vitalSignsErrors({ systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs }));
     }
     if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
       if (prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()) {
         errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
+      }
+      if (canViewBackground) {
+        Object.assign(errors, stagedHistoryErrors(historyUpdateForSave(), { sections: ["obstetric"] }));
       }
     }
     if (includeTb && currentStepKey === NEXT_STEP && canFinalize) {
@@ -547,8 +579,14 @@ export default function RhuConsultationWorkspace() {
         errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required.";
       }
     }
-    if (currentStepKey === OUTCOME_STEP && rhuFollowUp && visit?.source !== "referral" && !followUpDate) {
-      errors.followUpDate = "Set the RHU follow-up date.";
+    if (currentStepKey === NEXT_STEP && canFinalize) {
+      Object.assign(errors, rhuCarePlanErrors(diagnoses, {
+        schedules: followUpSchedules,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+        isReferralVisit: visit?.source === "referral",
+        conditions: openConditions,
+      }));
+      Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
     }
     setValidationErrors(errors);
     return errors;
@@ -559,9 +597,9 @@ export default function RhuConsultationWorkspace() {
       setWizardPhase(WIZARD_REVIEW);
       return;
     }
-    if (key === NEXT_STEP || key === PRESCRIPTION_STEP || key === OUTCOME_STEP) {
+    if (key === NEXT_STEP) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(key);
+      setNextScreen(NEXT_STEP);
       return;
     }
     setWizardPhase(WIZARD_FORM);
@@ -571,18 +609,10 @@ export default function RhuConsultationWorkspace() {
   function handlePrevious() {
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(OUTCOME_STEP);
+      setNextScreen(NEXT_STEP);
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
-      if (nextScreen === OUTCOME_STEP) {
-        setNextScreen(PRESCRIPTION_STEP);
-        return;
-      }
-      if (nextScreen === PRESCRIPTION_STEP) {
-        setNextScreen(NEXT_STEP);
-        return;
-      }
       const previous = getPreviousStepKey(formSequence, formSequence[formSequence.length - 1]);
       setWizardPhase(WIZARD_FORM);
       setFormStep(previous === EXIT_STEP ? INTERVIEW_STEP : previous);
@@ -608,14 +638,6 @@ export default function RhuConsultationWorkspace() {
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
-      if (nextScreen === NEXT_STEP) {
-        setNextScreen(PRESCRIPTION_STEP);
-        return;
-      }
-      if (nextScreen === PRESCRIPTION_STEP) {
-        setNextScreen(OUTCOME_STEP);
-        return;
-      }
       setWizardPhase(WIZARD_REVIEW);
       return;
     }
@@ -661,6 +683,61 @@ export default function RhuConsultationWorkspace() {
     const prefill = prenatalEnrollment.prefill;
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
     if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function handleDiagnosisChange(next) {
+    setDiagnoses((current) => current.map((row) => (row.id === next.id ? next : row)));
+    const action = diagnosisNextAction(next);
+    const purposeKey = entryPurposeKey(next.id);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (action !== "rhu_follow_up") return rest;
+      const existing = current.find((item) => item.purposeKey === purposeKey);
+      return [...rest, existing || {
+        purposeKey,
+        purpose: next.name || "RHU follow-up",
+        date: "",
+        time: "",
+        predecessorTaskId: null,
+        sourceEntryId: next.id,
+      }];
+    });
+  }
+
+  function handleDiagnosisFollowUp(entryId, next) {
+    const purposeKey = entryPurposeKey(entryId);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (!next) return rest;
+      return [...rest, {
+        purposeKey,
+        purpose: next.purpose || "",
+        date: next.date || "",
+        time: next.time || "",
+        predecessorTaskId: null,
+        sourceEntryId: entryId,
+      }];
+    });
+  }
+
+  function handleRemoveDiagnosis(id) {
+    setDiagnoses((current) => current.filter((row) => row.id !== id));
+    const purposeKey = entryPurposeKey(id);
+    setFollowUpSchedules((current) => current.filter((item) => item.purposeKey !== purposeKey));
+  }
+
+  function handleServiceNextAction(program, action) {
+    setFollowUpSchedules((current) => pruneServiceSchedules(applyServiceNextAction(program, action, current), selectedPrograms));
+  }
+
+  function handleServiceFollowUp(program, next) {
+    handleServiceNextAction(program, "schedule");
+    const purposeKey = `service:${String(program || "").trim().toLowerCase().replace(/\s+/g, "-")}`;
+    setFollowUpSchedules((current) => current.map((item) => (
+      item.purposeKey === purposeKey
+        ? { ...item, purpose: next.purpose || item.purpose, date: next.date || "", time: next.time || "" }
+        : item
+    )));
   }
 
   function handleProgramSelect(key) {
@@ -719,9 +796,23 @@ export default function RhuConsultationWorkspace() {
     const errors = {
       ...validateCurrent(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
+      ...(canViewBackground
+        ? stagedHistoryErrors(historyUpdateForSave(), { sections: ["family", "medical", "social"] })
+        : {}),
+      ...(selectedPrograms.includes("Maternal") && canViewBackground
+        ? stagedHistoryErrors(historyUpdateForSave(), { sections: ["obstetric"] })
+        : {}),
+      ...vitalSignsErrors({ systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs }),
       ...(selectedPrograms.includes("Maternal") && prenatalIntent === "enroll" && !String(maternalData.lmp || "").trim()
         ? { "maternalData.lmp": "Record the last menstrual period to enroll in Maternal Care." }
         : {}),
+      ...rhuCarePlanErrors(diagnoses, {
+        schedules: followUpSchedules,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+        isReferralVisit: visit?.source === "referral",
+        conditions: openConditions,
+      }),
+      ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
@@ -730,6 +821,12 @@ export default function RhuConsultationWorkspace() {
       return;
     }
     const isWalkIn = visit?.source === "walk_in";
+    const savedDiagnoses = diagnosesForRhuSave(diagnoses);
+    const hasRhuFollowUp = isWalkIn && (
+      savedDiagnoses.some((entry) => entry.nextAction === "rhu_follow_up")
+      || followUpSchedules.some((item) => item.purposeKey === "visit" || String(item.purposeKey || "").startsWith("entry:") || String(item.purposeKey || "").startsWith("service:"))
+    );
+    const firstSchedule = followUpSchedules.find((item) => item.date) || followUpSchedules[0];
     setSaving(true);
     try {
       const record = await createRhuHealthRecord(
@@ -753,12 +850,7 @@ export default function RhuConsultationWorkspace() {
           fbs,
           treatmentNotes,
           medication: treatmentNotes,
-          diagnoses: diagnoses.map((entry) => ({
-            id: entry.id,
-            name: entry.name,
-            activate: Boolean(entry.activate),
-            manageToBhc: Boolean(entry.manageToBhc) || manageToBhc,
-          })),
+          diagnoses: savedDiagnoses,
           prescribedMedicines,
           tbData: includeTb ? tbData : null,
           maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
@@ -775,16 +867,17 @@ export default function RhuConsultationWorkspace() {
           immunizationData: selectedPrograms.includes("EPI") ? { vaccineEntries: immunizationEntries } : null,
           selectedPrograms,
           primaryProgram,
-          followUpStatus: isWalkIn && rhuFollowUp ? "Follow-up Required" : "",
-          followUpDate: isWalkIn && rhuFollowUp ? followUpDate : "",
-          followUpTime: isWalkIn && rhuFollowUp ? followUpTime : "",
-          followUpReason: isWalkIn && rhuFollowUp ? followUpReason : "",
+          followUpSchedules: pruneServiceSchedules(followUpSchedules, selectedPrograms),
+          followUpStatus: hasRhuFollowUp ? "Follow-up Required" : "",
+          followUpDate: hasRhuFollowUp ? (firstSchedule?.date || "") : "",
+          followUpTime: hasRhuFollowUp ? (firstSchedule?.time || "") : "",
+          followUpReason: hasRhuFollowUp ? (firstSchedule?.purpose || "") : "",
           followUpTaskId: linkedFollowUpTaskId || undefined,
           visitType: linkedFollowUpTaskId ? "follow_up_visit" : "initial_consultation",
           parentHealthRecordId: linkedFollowUpTaskId ? parentHealthRecordId : undefined,
           carePlan: {
-            rhu_follow_up: Boolean(isWalkIn && rhuFollowUp),
-            manage_to_bhc: Boolean(manageToBhc),
+            rhu_follow_up: Boolean(hasRhuFollowUp),
+            manage_to_bhc: savedDiagnoses.some((entry) => entry.nextAction === "manage_to_bhc"),
             continued_follow_up_task_ids: linkedFollowUpTaskId ? [linkedFollowUpTaskId] : [],
           },
           backgroundUpdate: canViewBackground
@@ -836,20 +929,39 @@ export default function RhuConsultationWorkspace() {
     }),
     !patient,
   );
+  const interviewHistorySections = ["family", "medical", "social"];
+  const informantErrors = visitAnswerErrorMessages(
+    Object.fromEntries(Object.entries(validationErrors).filter(([key]) => key.startsWith("informant"))),
+  );
+  const similarIllnessErrors = historyErrorMessages(
+    Object.fromEntries(Object.entries(validationErrors).filter(([key]) => key.startsWith("similar_illness"))),
+    { withSection: true },
+  );
+  const backgroundUpdateErrors = Object.fromEntries(
+    Object.entries(validationErrors).filter(([key]) => key.startsWith("background_update")),
+  );
+  const historyPanelErrors = canViewBackground
+    ? [
+        ...historyErrorMessages(backgroundUpdateErrors, { withSection: true }).filter((error) => error.section !== "obstetric"),
+        ...similarIllnessErrors,
+      ]
+    : [];
+  const obstetricHistoryErrors = canViewBackground
+    ? historyErrorMessages(backgroundUpdateErrors, { withSection: true }).filter((error) => error.section === "obstetric")
+    : [];
   const stepHeading = resolveStepHeading({
     currentGlobalStepKey,
     activeProgramStep: programFormSteps.find((step) => step.key === activeFormStep),
     steps: consultationSteps,
     subtitles: {
-      [INTERVIEW_STEP]: "Chief complaint and present illness for this RHU encounter.",
-      [HISTORY_STEP]: "ITR History I–V. Review or update each section.",
-      [ASSESSMENT_STEP]: "Vital signs, findings, and the body map.",
+      [INTERVIEW_STEP]: canViewBackground
+        ? "Record the patient's reason for visit, present illness, and who gave the history."
+        : "Record the patient's reason for visit and present illness.",
+      [ASSESSMENT_STEP]: "Record the vital signs and examination findings for this visit.",
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
-      [NEXT_STEP]: "Named diagnoses, activation, and optional Manage to BHC.",
-      [PRESCRIPTION_STEP]: "RHU catalog search, quantity, and instruction. Stock is not deducted.",
-      [OUTCOME_STEP]: visit?.source === "referral"
-        ? "Referral stays on the Return Slip. This save only closes the visit."
-        : "Schedule an RHU follow-up and/or recommend BHC monitoring.",
+      [NEXT_STEP]: visit?.source === "referral"
+        ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
+        : "Named diagnoses, per-diagnosis next actions, selected services, treatment, and prescription. Stock is not deducted.",
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },
   });
@@ -890,30 +1002,27 @@ export default function RhuConsultationWorkspace() {
     includeTb ? { key: TB_INTAKE_STEP, title: "TB", stepKey: TB_INTAKE_STEP, rows: programReviewRows(tbData) } : null,
     {
       key: NEXT_STEP,
-      title: "Diagnosis",
+      title: "Diagnosis & Care Plan",
       stepKey: NEXT_STEP,
-      rows: diagnoses.map((entry) => ({
-        label: entry.name,
-        value: [entry.activate ? "Activate" : "", entry.manageToBhc || manageToBhc ? "Manage to BHC" : ""].filter(Boolean).join(" · "),
-      })),
-    },
-    {
-      key: PRESCRIPTION_STEP,
-      title: "Prescription",
-      stepKey: PRESCRIPTION_STEP,
-      rows: prescribedMedicines.map((line) => ({
-        label: line.medicineName || line.name,
-        value: `${line.quantity}${line.unit ? ` ${line.unit}` : ""}${line.instructions ? ` · ${line.instructions}` : ""}`,
-      })),
-    },
-    {
-      key: OUTCOME_STEP,
-      title: "Care and Outcome",
-      stepKey: OUTCOME_STEP,
       rows: [
+        ...diagnoses.map((entry) => ({
+          label: entry.name,
+          value: [
+            entry.activate ? "Active condition" : "",
+            diagnosisNextAction(entry) === "none" ? "No further follow-up" : "",
+            diagnosisNextAction(entry) === "rhu_follow_up" ? "Schedule RHU follow-up" : "",
+            diagnosisNextAction(entry) === "manage_to_bhc" ? "Manage to BHC" : "",
+          ].filter(Boolean).join(" · "),
+        })),
         { label: "Actions taken", value: treatmentNotes },
-        { label: "RHU follow-up", value: rhuFollowUp ? followUpDate : "" },
-        { label: "Manage to BHC", value: manageToBhc ? "Yes" : "" },
+        ...prescribedMedicines.map((line) => ({
+          label: line.medicineName || line.name,
+          value: `${line.quantity}${line.unit ? ` ${line.unit}` : ""}${line.instructions ? ` · ${line.instructions}` : ""}`,
+        })),
+        ...followUpSchedules.filter((item) => item.date).map((item) => ({
+          label: item.purpose || "Follow-up",
+          value: [item.date, item.time].filter(Boolean).join(" · "),
+        })),
       ],
     },
   ].filter(Boolean));
@@ -958,77 +1067,153 @@ export default function RhuConsultationWorkspace() {
             <div className="min-w-0 space-y-4">
               {currentStepKey === INTERVIEW_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
-                  <section className="border border-[#E5E7EB] bg-white p-4">
-                    <h3 className="text-sm font-bold">Chief Complaint & History of Present Illness</h3>
-                    <div className="mt-3 grid gap-3 @xl:grid-cols-2">
-                      <label className="block text-xs">
-                        <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Chief Complaint *</span>
-                        <textarea rows={3} value={chiefComplaint} onChange={(event) => { clearError("chiefComplaint"); setChiefComplaint(event.target.value); }} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
-                      </label>
-                      <label className="block text-xs">
-                        <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">History of Present Illness</span>
-                        <textarea rows={3} value={summaryOfPresentIllness} onChange={(event) => setSummaryOfPresentIllness(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
+                  <section className="rounded-none border border-[#E5E7EB] bg-white">
+                    <div className="border-b border-[#E5E7EB] px-4 py-2.5">
+                      <h2 className="text-[14px] font-bold leading-snug text-[#111827]">Chief Complaint & History of Present Illness</h2>
+                      <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">Why the patient is here today, in their own words and yours.</p>
+                    </div>
+                    <div className="p-4">
+                      <div className="grid gap-4 @xl:grid-cols-2">
+                        <label className="block text-xs">
+                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">Chief Complaint *</span>
+                          <textarea rows={3} value={chiefComplaint} onChange={(event) => { clearError("chiefComplaint"); setChiefComplaint(event.target.value); }} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
+                        </label>
+                        <label className="block text-xs">
+                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">History of Present Illness</span>
+                          <textarea rows={3} value={summaryOfPresentIllness} onChange={(event) => setSummaryOfPresentIllness(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
+                        </label>
+                      </div>
+                      <label className="mt-3 flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={includeTb} onChange={(event) => setIncludeTb(event.target.checked)} />
+                        TB pathway (intake fields on a later step)
                       </label>
                     </div>
-                    <label className="mt-3 flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={includeTb} onChange={(event) => setIncludeTb(event.target.checked)} />
-                      TB pathway (intake fields on a later step)
-                    </label>
                   </section>
-                </fieldset>
-              )}
-              {currentStepKey === HISTORY_STEP && (
-                <fieldset disabled={assessmentLocked}>
-                  <PatientHistoryPanel
-                    patient={patient}
-                    background={patient?.medicalBackground}
-                    update={backgroundUpdate}
-                    onUpdateChange={setBackgroundUpdate}
-                    informant={informant}
-                    onInformantChange={setInformant}
-                    similarIllness={similarIllness}
-                    onSimilarIllnessChange={setSimilarIllness}
-                    householdEnvironment={patient?.householdEnvironment}
-                    layout="section"
-                    locked={!canViewBackground || !canUpdateHistory}
-                    loading={patientQuery.isLoading}
-                    editLink={patientId ? `/rhu/patients/${patientId}` : undefined}
-                    errors={historyErrorMessages(validationErrors, { withSection: true })}
-                    fieldErrors={validationErrors}
-                  />
+                  {canViewBackground && (
+                    <section className="rounded-none border border-[#E5E7EB] bg-white">
+                      <div className="border-b border-[#E5E7EB] px-4 py-2.5">
+                        <h2 className="text-[14px] font-bold leading-snug text-[#111827]" title="Informant">Informant</h2>
+                        <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">Who gave this history at this visit.</p>
+                      </div>
+                      <div className="p-4">
+                        <InterviewVisitQuestions
+                          informant={informant}
+                          onInformantChange={(next) => { clearErrorsStartingWith(["informant"]); setInformant(next); }}
+                          errors={informantErrors}
+                        />
+                      </div>
+                    </section>
+                  )}
+                  {canViewBackground && (
+                    <PatientHistoryPanel
+                      patient={patient}
+                      background={patient?.medicalBackground}
+                      update={backgroundUpdate}
+                      onUpdateChange={(next) => {
+                        clearErrorsStartingWith(["background_update"]);
+                        setBackgroundUpdate(next);
+                      }}
+                      informant={informant}
+                      onInformantChange={setInformant}
+                      similarIllness={similarIllness}
+                      onSimilarIllnessChange={(next) => {
+                        clearErrorsStartingWith(["similar_illness"]);
+                        setSimilarIllness(next);
+                      }}
+                      householdEnvironment={patient?.householdEnvironment}
+                      today={new Date()}
+                      layout="section"
+                      loading={patientQuery.isLoading}
+                      showGeneral={false}
+                      sections={interviewHistorySections}
+                      showSimilarIllness
+                      showEducationAndOccupation={false}
+                      inline
+                      initialSection="family"
+                      errors={historyPanelErrors}
+                      fieldErrors={backgroundUpdateErrors}
+                    />
+                  )}
                 </fieldset>
               )}
               {currentStepKey === ASSESSMENT_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
-                  <section className="border border-[#E5E7EB] bg-white p-4">
-                    <h3 className="text-sm font-bold">Vital Signs</h3>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      {[
-                        ["Systolic BP", systolicBp, setSystolicBp],
-                        ["Diastolic BP", diastolicBp, setDiastolicBp],
-                        ["Temperature", temp, setTemp],
-                        ["Pulse", pulse, setPulse],
-                        ["SpO2", spo2, setSpo2],
-                        ["Weight (kg)", weight, setWeight],
-                        ["Height (cm)", height, setHeight],
-                        ["FBS", fbs, setFbs],
-                      ].map(([label, value, setter]) => (
-                        <label key={label} className="block text-xs">
-                          <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">{label}</span>
-                          <input value={value} onChange={(event) => setter(event.target.value)} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
-                        </label>
-                      ))}
+                  <section className="rounded-none border border-[#E5E7EB] bg-white p-4">
+                    <div>
+                      <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Vital Signs</h3>
+                      <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                        <BpInputGroup
+                          name="bloodPressure"
+                          systolic={systolicBp}
+                          diastolic={diastolicBp}
+                          error={validationErrors.bloodPressure || validationErrors.systolicBp || validationErrors.diastolicBp}
+                          onSystolicChange={(value) => { clearError("bloodPressure"); clearError("systolicBp"); setSystolicBp(value); }}
+                          onDiastolicChange={(value) => { clearError("bloodPressure"); clearError("diastolicBp"); setDiastolicBp(value); }}
+                        />
+                        <ExamField label="Pulse Rate" name="pulse" error={validationErrors.pulse} value={pulse} onChange={(value) => { clearError("pulse"); setPulse(value); }} placeholder="bpm" />
+                        <ExamField label="SpO₂" name="spo2" error={validationErrors.spo2} value={spo2} onChange={(value) => { clearError("spo2"); setSpo2(value); }} placeholder="%" />
+                        <ExamField label="Weight" name="weight" error={validationErrors.weight} value={weight} onChange={(value) => { clearError("weight"); setWeight(value); }} placeholder="kg" />
+                        <ExamField label="Height" name="height" error={validationErrors.height} value={height} onChange={(value) => { clearError("height"); setHeight(value); }} placeholder="cm" />
+                        <ExamField label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={(value) => { clearError("temp"); setTemp(value); }} placeholder="°C" />
+                        {shouldShowBmiDisplay(patient, visit?.consultationDate || visit?.date || new Date()) && (
+                          <BmiOutputField weight={weight} height={height} />
+                        )}
+                      </div>
+                      {areVitalSignsBlank({ systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs }) && (
+                        <p className="mt-2 text-xs leading-relaxed text-[#6B7280]">{EMPTY_VITALS_REMINDER}</p>
+                      )}
+                      <div className="mt-4">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
+                        <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                          <ExamField
+                            label="Fasting Blood Sugar (FBS) (mg/dL)"
+                            name="fbs"
+                            error={validationErrors["vital_signs.fbs"] || validationErrors.fbs}
+                            value={fbs}
+                            onChange={(value) => { clearError("fbs"); clearError("vital_signs.fbs"); setFbs(value); }}
+                            placeholder="mg/dL"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <label className="mt-3 block text-xs">
-                      <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Physical Findings</span>
-                      <textarea rows={4} value={physicalExam} onChange={(event) => setPhysicalExam(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
-                    </label>
-                    <div className="mt-3">
-                      <BodyFindingsList findings={bodyFindings} readOnly />
-                      <PreviousBodyFindings findings={previousBodyFindings} decisions={bodyFindingReassessments}
-                        onChange={changeBodyReassessments} loading={recordsQuery.isFetching} loadError={recordsQuery.isError}
-                        onRefresh={() => recordsQuery.refetch()} errors={validationErrors} readOnly={assessmentLocked || !canViewBackground || saving || Boolean(saveSuccess)} />
+                    <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                      <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Examination Findings</h3>
+                      <p className="mb-3 text-xs leading-relaxed text-[#6B7280]">
+                        Visit-level, non-localized findings (appearance, hydration, respiratory effort, etc.). Record location-specific findings on the body map.
+                      </p>
+                      <label className="block text-xs">
+                        <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">General Examination Findings</span>
+                        <textarea
+                          rows={4}
+                          value={physicalExam}
+                          onChange={(event) => setPhysicalExam(event.target.value)}
+                          placeholder="Appearance, hydration, respiratory effort, and other non-localized findings for this visit..."
+                          className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm"
+                        />
+                      </label>
                     </div>
+                    <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                      <BodyFindingsList
+                        findings={bodyFindings}
+                        readOnly={assessmentLocked || saving || Boolean(saveSuccess)}
+                        onEdit={(item) => {
+                          setBodyPreviewSide(item.side);
+                          setBodyDialog({ region: item.region, side: item.side, anchor: null, editingId: item.id });
+                        }}
+                        onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
+                      />
+                    </div>
+                    <PreviousBodyFindings
+                      title="Previous Findings Reassessment"
+                      findings={previousBodyFindings}
+                      decisions={bodyFindingReassessments}
+                      onChange={changeBodyReassessments}
+                      loading={recordsQuery.isFetching}
+                      loadError={recordsQuery.isError}
+                      onRefresh={() => recordsQuery.refetch()}
+                      errors={validationErrors}
+                      readOnly={assessmentLocked || !canViewBackground || saving || Boolean(saveSuccess)}
+                    />
                   </section>
                 </fieldset>
               )}
@@ -1075,6 +1260,16 @@ export default function RhuConsultationWorkspace() {
                     onAogChange={setAog}
                     locked={assessmentLocked}
                     errors={validationErrors}
+                    patient={patient}
+                    background={patient?.medicalBackground}
+                    backgroundUpdate={backgroundUpdate}
+                    onBackgroundUpdateChange={(next) => {
+                      clearErrorsStartingWith(["background_update"]);
+                      setBackgroundUpdate(next);
+                    }}
+                    historyErrors={obstetricHistoryErrors}
+                    fieldErrors={backgroundUpdateErrors}
+                    includeObstetricHistory={canViewBackground}
                     prenatalHistory={prenatalHistory}
                   />
                 </fieldset>
@@ -1106,102 +1301,40 @@ export default function RhuConsultationWorkspace() {
                 </fieldset>
               )}
               {currentStepKey === NEXT_STEP && (
-                <fieldset disabled={clinicalLocked} className="space-y-4">
-                  <section className="border border-[#E5E7EB] bg-white p-4">
-                    <h3 className="text-sm font-bold">Named diagnoses</h3>
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        value={diagnosisDraft}
-                        list="rhu-itr-conditions"
-                        onChange={(event) => setDiagnosisDraft(event.target.value)}
-                        placeholder="Hypertension, TB, diabetes…"
-                        className="h-9 flex-1 rounded-none border border-[#D1D5DB] px-3 text-sm"
-                      />
-                      <datalist id="rhu-itr-conditions">
-                        {monitoredNames.map((name) => (
-                          <option key={name} value={name} />
-                        ))}
-                      </datalist>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const name = diagnosisDraft.trim();
-                          if (!name) return;
-                          setDiagnoses((current) => [...current, { id: createDiagnosisId(), name, activate: true, manageToBhc: false }]);
-                          setDiagnosisDraft("");
-                        }}
-                        className="rounded-none border border-[#D1D5DB] px-3 text-xs font-semibold"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <ul className="mt-3 space-y-2">
-                      {diagnoses.map((entry, index) => (
-                        <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border border-[#E5E7EB] px-3 py-2 text-sm">
-                          <span className="font-semibold">{entry.name}</span>
-                          <label className="flex items-center gap-1 text-xs">
-                            <input type="checkbox" checked={Boolean(entry.activate)} onChange={(event) => setDiagnoses((current) => current.map((row, i) => (i === index ? { ...row, activate: event.target.checked } : row)))} />
-                            Activate
-                          </label>
-                          <label className="flex items-center gap-1 text-xs">
-                            <input type="checkbox" checked={Boolean(entry.manageToBhc)} onChange={(event) => setDiagnoses((current) => current.map((row, i) => (i === index ? { ...row, manageToBhc: event.target.checked } : row)))} />
-                            Manage to BHC
-                          </label>
-                          <button type="button" className="text-xs text-[#B91C1C]" onClick={() => setDiagnoses((current) => current.filter((row) => row.id !== entry.id))}>
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                  {includeTb && <TbTreatmentCardForm value={tbData} onChange={setTbData} mode="finalize" readOnly={clinicalLocked} />}
-                </fieldset>
-              )}
-              {currentStepKey === PRESCRIPTION_STEP && (
-                <fieldset disabled={clinicalLocked} className="border border-[#E5E7EB] bg-white p-4">
-                  <PrescribedMedicinesSection
+                <fieldset disabled={clinicalLocked} className="ehr-consult min-w-0">
+                  <RhuDiagnosisCarePlanSection
+                    diagnoses={diagnoses}
+                    diagnosisDraft={diagnosisDraft}
+                    onDiagnosisDraftChange={setDiagnosisDraft}
+                    onAddDiagnosis={(entry) => {
+                      setDiagnoses((current) => [...current, entry]);
+                      setDiagnosisDraft("");
+                    }}
+                    onChangeDiagnosis={handleDiagnosisChange}
+                    onRemoveDiagnosis={handleRemoveDiagnosis}
+                    monitoredNames={monitoredNames}
+                    schedules={followUpSchedules}
+                    onFollowUpChange={handleDiagnosisFollowUp}
+                    conditions={openConditions}
+                    catchmentBhcs={catchmentBhcs}
+                    isReferralVisit={visit?.source === "referral"}
+                    selectedPrograms={selectedPrograms}
+                    onServiceNextAction={handleServiceNextAction}
+                    onServiceFollowUp={handleServiceFollowUp}
+                    treatmentNotes={treatmentNotes}
+                    onTreatmentNotesChange={setTreatmentNotes}
+                    prescribedMedicines={prescribedMedicines}
+                    onPrescribedMedicinesChange={setPrescribedMedicines}
                     catalog={catalog}
-                    value={prescribedMedicines}
-                    onChange={setPrescribedMedicines}
-                    disabled={clinicalLocked || !canPrescribe}
-                    error={catalogError}
-                    onRetry={() => loadMedicineAvailability().then(() => setCatalog(getRhuMedicines()))}
+                    catalogError={catalogError}
+                    onRetryCatalog={() => loadMedicineAvailability().then(() => setCatalog(getRhuMedicines()))}
+                    canPrescribe={canPrescribe}
+                    includeTb={includeTb}
+                    tbData={tbData}
+                    onTbDataChange={setTbData}
+                    errors={validationErrors}
+                    disabled={clinicalLocked}
                   />
-                </fieldset>
-              )}
-              {currentStepKey === OUTCOME_STEP && (
-                <fieldset disabled={clinicalLocked} className="space-y-4 border border-[#E5E7EB] bg-white p-4">
-                  <label className="block text-xs">
-                    <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Actions taken</span>
-                    <textarea rows={4} value={treatmentNotes} onChange={(event) => setTreatmentNotes(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
-                  </label>
-                  {visit?.source === "referral" ? (
-                    <p className="text-sm text-neutral-600">This visit came from a referral. Completing the Return Slip is a separate step and is not done here.</p>
-                  ) : (
-                    <>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={rhuFollowUp} onChange={(event) => setRhuFollowUp(event.target.checked)} />
-                        Schedule RHU follow-up
-                      </label>
-                      {rhuFollowUp && (
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <DatePickerField label="Follow-up date" value={followUpDate} onChange={(value) => { clearError("followUpDate"); setFollowUpDate(value); }} />
-                          <label className="block text-xs">
-                            <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Time</span>
-                            <input type="time" value={followUpTime} onChange={(event) => setFollowUpTime(event.target.value)} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
-                          </label>
-                          <label className="block text-xs sm:col-span-2">
-                            <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Reason</span>
-                            <input value={followUpReason} onChange={(event) => setFollowUpReason(event.target.value)} className="h-9 w-full rounded-none border border-[#D1D5DB] px-3 text-sm" />
-                          </label>
-                        </div>
-                      )}
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={manageToBhc} onChange={(event) => setManageToBhc(event.target.checked)} />
-                        Manage to BHC (Active condition + recommend monitoring)
-                      </label>
-                    </>
-                  )}
                 </fieldset>
               )}
             </div>
@@ -1269,5 +1402,84 @@ export default function RhuConsultationWorkspace() {
         ]}
       />
     </DashboardLayout>
+  );
+}
+
+function ExamField({ label, name, error, value, onChange, placeholder }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">{label}</label>
+      <input
+        name={name}
+        value={value}
+        placeholder={placeholder}
+        aria-invalid={Boolean(error) || undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className={`h-9 w-full rounded-none border px-3 text-sm outline-none ${
+          error ? "border-[#DC2626] ring-2 ring-red-200" : "border-[#D1D5DB]"
+        }`}
+      />
+      {error ? <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p> : null}
+    </div>
+  );
+}
+
+function BpInputGroup({
+  systolic,
+  diastolic,
+  onSystolicChange,
+  onDiastolicChange,
+  error = "",
+  name,
+}) {
+  const inputClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white";
+  return (
+    <div data-field={name}>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+        Blood Pressure (mmHg)
+      </label>
+      <div className="flex items-center gap-0">
+        <input
+          name="systolicBp"
+          type="number"
+          placeholder="Systolic"
+          value={systolic}
+          aria-invalid={Boolean(error) || undefined}
+          onChange={(event) => onSystolicChange(event.target.value)}
+          className={`h-9 w-full rounded-none border px-3 text-sm outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
+        />
+        <div className="flex h-9 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
+          /
+        </div>
+        <input
+          name="diastolicBp"
+          type="number"
+          placeholder="Diastolic"
+          value={diastolic}
+          aria-invalid={Boolean(error) || undefined}
+          onChange={(event) => onDiastolicChange(event.target.value)}
+          className={`h-9 w-full rounded-none border px-3 text-sm outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
+        />
+      </div>
+      {error ? (
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
+      ) : (
+        <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
+      )}
+    </div>
+  );
+}
+
+function BmiOutputField({ weight, height }) {
+  const bmi = calculateBmi(weight, height);
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">BMI</label>
+      <div className="flex h-9 w-full items-center rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
+        <span className="text-sm font-bold text-gray-900">{bmi === null ? "—" : formatBmi(bmi)}</span>
+      </div>
+    </div>
   );
 }

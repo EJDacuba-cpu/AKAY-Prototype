@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BarangayHealthCenter;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Medicine;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 
 class FacilityAccessService
 {
-    private const DENIED_MESSAGE = 'This resource is outside your assigned facility.';
+    public const DENIED_MESSAGE = 'This resource is outside your assigned facility.';
 
     public function hasValidFacilityAssignment(User $user): bool
     {
@@ -73,6 +74,42 @@ class FacilityAccessService
                 ->orWhereHas('referrals', fn (Builder $referrals) => $referrals
                     ->where('rural_health_unit_id', $user->rural_health_unit_id));
         });
+    }
+
+    /**
+     * Walk-in search/check-in only: RHU-owned, referred, or an active patient
+     * whose BHC belongs to this RHU. Does not widen All Patients.
+     */
+    public function scopeRhuWalkInPatients(Builder|Relation $query, User $user): Builder|Relation
+    {
+        if (! $user->isRhu() || ! $this->hasValidFacilityAssignment($user)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $rhuId = $user->rural_health_unit_id;
+
+        return $query->where(function (Builder $query) use ($rhuId): void {
+            $query->where('rural_health_unit_id', $rhuId)
+                ->orWhereHas('referrals', fn (Builder $referrals) => $referrals
+                    ->where('rural_health_unit_id', $rhuId))
+                ->orWhereHas('barangayHealthCenter', fn (Builder $centers) => $centers
+                    ->where('rural_health_unit_id', $rhuId)
+                    ->where('status', 'active'));
+        });
+    }
+
+    public function isCatchmentBhcPatient(User $user, Patient $patient): bool
+    {
+        if (! $user->isRhu() || ! $this->hasValidFacilityAssignment($user) || $patient->status === 'inactive') {
+            return false;
+        }
+
+        return $patient->barangay_health_center_id
+            && BarangayHealthCenter::query()
+                ->whereKey($patient->barangay_health_center_id)
+                ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                ->where('status', 'active')
+                ->exists();
     }
 
     public function scopeHealthRecords(Builder|Relation $query, User $user): Builder|Relation
@@ -350,6 +387,12 @@ class FacilityAccessService
                         ->where('health_record_id', $record->id)
                         ->where('rural_health_unit_id', $user->rural_health_unit_id)
                         ->exists()
+                    || ($record->isRhuItrV1()
+                        && $this->sameAssignedId(
+                            $record->rural_health_unit_id,
+                            $user->rural_health_unit_id
+                        )
+                        && $this->isCatchmentBhcPatient($user, $record->patient))
                 )));
 
         abort_unless($allowed, 403, self::DENIED_MESSAGE);
@@ -474,7 +517,7 @@ class FacilityAccessService
             );
     }
 
-    private function sameAssignedId(mixed $resourceId, mixed $assignedId): bool
+    public function sameAssignedId(mixed $resourceId, mixed $assignedId): bool
     {
         return $resourceId !== null
             && $assignedId !== null

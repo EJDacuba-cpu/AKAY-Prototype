@@ -17,6 +17,7 @@
 import { normalizeReportAs } from "./diagnosisReporting.js";
 import { isCarePlanValue } from "./carePlan.js";
 import { conditionEntryFields, entryDestinations } from "./reportingEntries.js";
+import { isRhuNextAction, rhuDiagnosisFields } from "./rhuCarePlan.js";
 
 /** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
 export function normalizeNameKey(name) {
@@ -103,6 +104,12 @@ export function normalizeDiagnoses(list) {
       // The BHC follow-up flag belongs to a referral only.
       ...(item.carePlan === "refer" && item.bhcFollowUp === true ? { bhcFollowUp: true } : {}),
       ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
+      ...(Object.hasOwn(item, "activate") || Object.hasOwn(item, "nextAction") || item.manageToBhc === true
+        ? rhuDiagnosisFields(item)
+        : {}),
+      ...(isRhuNextAction(item.nextAction) || item.manageToBhc === true
+        ? { manageToBhc: rhuDiagnosisFields(item).nextAction === "manage_to_bhc" }
+        : {}),
     }));
 }
 

@@ -36,6 +36,12 @@ export async function startRhuVisit(visitId) {
   return response?.data ?? null;
 }
 
+/** Catchment BHCs of the signed-in RHU (Manage to BHC destinations). */
+export async function listCatchmentBhcs() {
+  const response = await apiRequest("/rhu/catchment-bhcs");
+  return response?.data ?? [];
+}
+
 export async function resumeRhuVisit(visitId) {
   const response = await apiRequest(`/rhu-visits/${visitId}/resume`, { method: "POST" });
   return response?.data ?? null;

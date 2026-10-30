@@ -131,9 +131,9 @@ test("BHC: a legacy draft saved on Patient History reopens on Patient Interview"
   assert.equal(resolveRestoredPosition({ wizardPhase: "next", formStep: HISTORY_STEP }, BHC).phase, "next");
 });
 
-/* ── RHU / default callers keep the History step ──────────────────────── */
+/* ── Default callers keep the History step ────────────────────────────── */
 
-test("the default sequence (RHU and every other caller) is unchanged", () => {
+test("the default sequence (callers that do not opt out) is unchanged", () => {
   assert.deepEqual(getFormSequence([]), [INTERVIEW_STEP, HISTORY_STEP, ASSESSMENT_STEP]);
   assert.deepEqual(getFormSequence([], { includeHistory: true }), [INTERVIEW_STEP, HISTORY_STEP, ASSESSMENT_STEP]);
   assert.deepEqual(
@@ -196,4 +196,50 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.match(recordWorkspace, /VisitHistorySnapshot/);
   const printDocument = readFileSync(join(here, "../components/features/health-records/BhcHealthRecordPrintDocument.jsx"), "utf8");
   assert.match(printDocument, /VisitHistorySnapshot/);
+});
+
+test("BHC Patients module adds Monitoring Requests only for role bhc", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const module = readFileSync(join(here, "../pages/bhc/PatientsModule.jsx"), "utf8");
+  assert.match(module, /role === "bhc"/);
+  assert.match(module, /Monitoring Requests/);
+  assert.match(module, /monitoring-requests/);
+  assert.match(module, /listMonitoringHandoffRequests/);
+});
+
+test("RHU ITR Diagnosis & Care Plan is one screen and does not mount BHC concern reporting", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const workspace = readFileSync(join(here, "../pages/rhu/RhuConsultationWorkspace.jsx"), "utf8");
+  assert.match(workspace, /RhuDiagnosisCarePlanSection/);
+  assert.match(workspace, /restoreRhuDiagnoses/);
+  assert.match(workspace, /restoreRhuFollowUpSchedules/);
+  assert.doesNotMatch(workspace, /PRESCRIPTION_STEP/);
+  assert.doesNotMatch(workspace, /OUTCOME_STEP/);
+  assert.doesNotMatch(workspace, /ConditionCardsSection/);
+  assert.doesNotMatch(workspace, /Refer to RHU/);
+});
+
+test("RHU ITR Interview mounts Family then Past Medical then Social, with no History step or background-update lock", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const workspace = readFileSync(join(here, "../pages/rhu/RhuConsultationWorkspace.jsx"), "utf8");
+  assert.match(workspace, /InterviewVisitQuestions/);
+  assert.match(workspace, /title="Informant"/);
+  assert.match(workspace, /Who gave this history at this visit/);
+  assert.match(workspace, /sections=\{interviewHistorySections\}/);
+  assert.match(workspace, /\["family", "medical", "social"\]/);
+  assert.match(workspace, /showGeneral=\{false\}/);
+  assert.match(workspace, /showEducationAndOccupation=\{false\}/);
+  assert.match(workspace, /includeObstetricHistory=\{canViewBackground\}/);
+  assert.match(workspace, /stagedHistoryErrors\([\s\S]*sections: \["family", "medical", "social"\]/);
+  assert.match(workspace, /stagedHistoryErrors\([\s\S]*sections: \["obstetric"\]/);
+  assert.match(workspace, /vitalSignsErrors/);
+  assert.match(workspace, /General Examination Findings/);
+  assert.match(workspace, /Blood Pressure \(mmHg\)/);
+  assert.match(workspace, /Fasting Blood Sugar \(FBS\) \(mg\/dL\)/);
+  assert.match(workspace, /Previous Findings Reassessment/);
+  assert.match(workspace, /EMPTY_VITALS_REMINDER/);
+  assert.doesNotMatch(workspace, /canUpdateBackground/);
+  assert.doesNotMatch(workspace, /canUpdateHistory/);
+  assert.doesNotMatch(workspace, /currentStepKey === HISTORY_STEP/);
+  assert.doesNotMatch(workspace, /locked=\{!canViewBackground/);
 });

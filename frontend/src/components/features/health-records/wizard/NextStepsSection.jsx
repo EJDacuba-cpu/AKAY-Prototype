@@ -289,6 +289,7 @@ export default function NextStepsSection({
   conditionReferred = false,
   selectedPrograms = [], followUpSchedules = [], serviceReferrals = [],
   onServiceNextAction, onServiceFollowUp,
+  hideReferToRhu = false,
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const referredIds = new Set(referrals.map(Number));
@@ -320,8 +321,10 @@ export default function NextStepsSection({
                       label="Next action"
                       name={`serviceNextAction.${program}`}
                       inline
-                      options={SERVICE_NEXT_ACTION_OPTIONS}
-                      value={action}
+                      options={hideReferToRhu
+                        ? SERVICE_NEXT_ACTION_OPTIONS.filter((option) => option.value !== "refer_to_rhu")
+                        : SERVICE_NEXT_ACTION_OPTIONS}
+                      value={hideReferToRhu && action === "refer_to_rhu" ? "none" : action}
                       onChange={(value) => onServiceNextAction?.(program, value)}
                     />
                     <p className="text-xs text-[#6B7280]">{serviceNextActionHint(action)}</p>
@@ -413,7 +416,7 @@ export default function NextStepsSection({
           </div>
         </section>
       )}
-      {hasReferralDecision && (
+      {hasReferralDecision && !hideReferToRhu && (
         <section aria-labelledby="shared-rhu-referral-title">
           <Card className="rounded-none border-slate-200 p-5 text-black shadow-sm">
             <h2 id="shared-rhu-referral-title" className={SECTION_HEADING_CLASS}>Refer to RHU</h2>

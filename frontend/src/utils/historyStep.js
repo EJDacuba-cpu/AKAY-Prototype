@@ -1,6 +1,6 @@
 /**
- * Glue between the visit's history questions (the RHU Patient History step,
- * the BHC Patient Interview) and the record / draft payloads:
+ * Glue between the visit's history questions (BHC and RHU ITR Patient
+ * Interview) and the record / draft payloads:
  * the per-visit informant and similar-illness answers in the shape the API
  * accepts, and the server's 422 keys turned into lines staff can act on.
  * Pure functions only - no React, no API.

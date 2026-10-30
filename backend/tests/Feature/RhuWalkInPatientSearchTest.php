@@ -128,9 +128,11 @@ class RhuWalkInPatientSearchTest extends TestCase
             'reason_for_referral' => 'Scope',
             'status' => Referral::STATUS_PENDING,
         ]);
-        $this->patient('Scope', 'Unreferred', ['rural_health_unit_id' => null, 'barangay_health_center_id' => $this->bhc->id]);
+        $unreferred = $this->patient('Scope', 'Unreferred', ['rural_health_unit_id' => null, 'barangay_health_center_id' => $this->bhc->id]);
+        $otherRhuBhc = BarangayHealthCenter::create(['name' => 'Other RHU BHC', 'status' => 'active', 'rural_health_unit_id' => $otherRhu->id]);
+        $this->patient('Scope', 'Foreign', ['rural_health_unit_id' => null, 'barangay_health_center_id' => $otherRhuBhc->id]);
 
-        $this->search('Scope')->assertOk()->assertJsonPath('data.*.id', [$own->id, $referred->id]);
+        $this->search('Scope')->assertOk()->assertJsonPath('data.*.id', [$own->id, $referred->id, $unreferred->id]);
     }
 
     public function test_result_limit_is_ten(): void

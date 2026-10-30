@@ -202,7 +202,10 @@ class RhuItrConsultationTest extends TestCase
             'diagnoses' => [[
                 'name' => 'Hypertension',
                 'activate' => true,
+                'nextAction' => 'manage_to_bhc',
                 'manageToBhc' => true,
+                'receivingBhcId' => $this->bhc->id,
+                'monitoringRecommendation' => 'Weekly blood pressure at the BHC.',
             ]],
             'prescribed_medicines' => [[
                 'medicine_id' => $medicine->id,
@@ -235,6 +238,13 @@ class RhuItrConsultationTest extends TestCase
         $this->assertSame('Hypertension', $condition->condition_name);
         $this->assertSame(PatientCondition::STATUS_ACTIVE, $condition->status);
         $this->assertNotNull($condition->bhc_monitoring_recommended_at);
+        $this->assertDatabaseHas('monitoring_handoff_requests', [
+            'patient_id' => $patient->id,
+            'patient_condition_id' => $condition->id,
+            'receiving_barangay_health_center_id' => $this->bhc->id,
+            'status' => 'pending_review',
+        ]);
+        $this->assertDatabaseCount('condition_monitorings', 0);
 
         $visit->refresh();
         $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $visit->status);
@@ -319,5 +329,73 @@ class RhuItrConsultationTest extends TestCase
 
         $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
         $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $returnVisit->fresh()->status);
+    }
+
+    public function test_manage_to_bhc_does_not_silent_activate_and_does_not_fan_out(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [
+                [
+                    'name' => 'Asthma',
+                    'activate' => false,
+                    'nextAction' => 'manage_to_bhc',
+                    'receivingBhcId' => $this->bhc->id,
+                    'monitoringRecommendation' => 'Peak flow at BHC.',
+                ],
+                [
+                    'name' => 'URI',
+                    'activate' => false,
+                    'nextAction' => 'none',
+                ],
+            ],
+            'care_plan' => ['manage_to_bhc' => true],
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('patient_conditions', 0);
+        $this->assertDatabaseCount('monitoring_handoff_requests', 0);
+    }
+
+    public function test_per_diagnosis_follow_up_and_service_only_save(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+        $dxId = (string) Str::uuid();
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'id' => $dxId,
+                'name' => 'Asthma',
+                'activate' => true,
+                'nextAction' => 'rhu_follow_up',
+            ]],
+            'monitoring_data' => [
+                'followUpSchedules' => [[
+                    'purposeKey' => 'entry:'.$dxId,
+                    'purpose' => 'Peak flow',
+                    'date' => now()->addDays(10)->toDateString(),
+                    'time' => '08:30',
+                    'sourceEntryId' => $dxId,
+                ]],
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseCount('patient_conditions', 1);
+        $this->assertDatabaseCount('monitoring_handoff_requests', 0);
+        $this->assertSame(FollowUpTask::STATE_PENDING, FollowUpTask::whereNull('rescheduled_to_id')->sole()->state);
+
+        $serviceVisit = $this->visit($patient);
+        $serviceUuid = $this->startVisit($clinician, $serviceVisit);
+        $this->postRecord($clinician, $patient, $serviceVisit, $serviceUuid, [
+            'diagnoses' => [],
+        ])->assertCreated();
+        $this->assertDatabaseCount('patient_conditions', 1);
+        $this->assertDatabaseCount('monitoring_handoff_requests', 0);
     }
 }
