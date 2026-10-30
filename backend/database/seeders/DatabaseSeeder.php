@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -12,21 +11,7 @@ class DatabaseSeeder extends Seeder
     {
         $now = now();
 
-        DB::table('users')->updateOrInsert(
-            ['email' => 'admin@akay.com'],
-            [
-                'name' => 'Municipal Health Officer',
-                'password' => Hash::make('akayadmin2026'),
-                'role' => 'admin',
-                'status' => 'active',
-                'barangay_health_center_id' => null,
-                'rural_health_unit_id' => null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]
-        );
-
-         // 2. The single receiving facility.
+        // 1. The single receiving facility.
         DB::table('rural_health_units')->updateOrInsert(
             ['name' => 'Rural Health Unit Bulakan'],
             [
@@ -42,7 +27,7 @@ class DatabaseSeeder extends Seeder
             ->where('name', 'Rural Health Unit Bulakan')
             ->value('id');
 
-            // 3. Barangay health centers - all 14 barangays of Bulakan, Bulacan.
+        // 2. Barangay health centers - all 14 barangays of Bulakan, Bulacan.
         $barangays = [
             'Bagumbayan',
             'Balubad',

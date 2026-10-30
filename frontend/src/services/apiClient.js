@@ -1,9 +1,12 @@
+import { API_ERROR_MESSAGES, serverErrorMessage } from "./apiErrorMessages";
 import { queryClient } from "../lib/queryClient";
 import { API_BASE_URL } from "../config/environment";
+import { fetchWithTimeout } from "./requestTimeout";
 import {
   clearSensitiveSessionState,
   isForcedSessionInvalidation,
 } from "../utils/sessionPrivacy";
+import { CHANGE_PASSWORD_PATH } from "../utils/passwordChange";
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
@@ -22,20 +25,7 @@ export function getStoredAuthUser() {
   return authenticatedUser;
 }
 
-export function mapRoleForFrontend(role) {
-  if (role === "bhw") return "bhc";
-  if (role === "rhu_staff") return "rhu";
-  return role || "";
-}
-
-export function mapRoleForBackend(role) {
-  if (role === "bhc" || role === "BHC" || role === "bhc_worker") return "bhw";
-  if (role === "rhu" || role === "RHU" || role === "rhu_staff") return "rhu_staff";
-  return String(role || "admin").toLowerCase();
-}
-
 export function normalizeUser(user = {}) {
-  const frontendRole = mapRoleForFrontend(user.role);
   const assignedFacility =
     user.facility && typeof user.facility === "object" ? user.facility : null;
   const bhc =
@@ -50,7 +40,8 @@ export function normalizeUser(user = {}) {
   return {
     ...user,
     id: user.id ? String(user.id) : "",
-    role: frontendRole,
+    // The API's account types (admin, bhc, rhu) are the app's route roles; no mapping is needed.
+    role: user.role || "",
     backendRole: user.role,
     name: user.name || user.fullName || "",
     fullName: user.fullName || user.name || "",
@@ -84,14 +75,42 @@ export function normalizeUser(user = {}) {
 
 export function storeAuthSession({ token, user }) {
   if (token) accessToken = token;
-  if (user) authenticatedUser = normalizeUser(user);
+  if (user) {
+    const normalized = normalizeUser(user);
+    const choices = normalized.authorized_facilities || [];
+    const key = normalized.working_facility_key || (authenticatedUser?.id === normalized.id ? authenticatedUser?.working_facility_key : null);
+    const selected = choices.find(f => f.key === key) || (choices.length === 1 ? choices[0] : null);
+    authenticatedUser = selected && normalized.role !== "admin" ? withFacility(normalized, selected) : normalized;
+    announceAuthChange();
+  }
 
   removeLegacyPersistedAuth();
+}
+
+// Lets permission guards (hooks/useAccess) re-read the in-memory user when it changes.
+function announceAuthChange() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("akay:auth-changed"));
+}
+
+function withFacility(user, facility) {
+  return { ...user, working_facility_key: facility.key, role: facility.type, permissions: facility.permissions, facility: facility.name, facilityId: facility.id,
+    barangayHealthCenterId: facility.type === "bhc" ? facility.id : "", ruralHealthUnitId: facility.type === "rhu" ? facility.id : "",
+    navigation: { home: `/${facility.type}/dashboard`, scope: facility.type } };
+}
+
+export async function selectWorkingFacility(key) {
+  const selected = authenticatedUser?.authorized_facilities?.find(f => f.key === key);
+  if (!selected) throw new Error("This facility assignment is unavailable.");
+  await clearSensitiveSessionState({ queryClient, reason: "facility-switched", broadcast: false, preserveAuthentication: true });
+  authenticatedUser = withFacility(authenticatedUser, selected);
+  announceAuthChange();
+  return authenticatedUser;
 }
 
 export function clearAuthSession() {
   accessToken = null;
   authenticatedUser = null;
+  announceAuthChange();
   removeLegacyPersistedAuth();
 }
 
@@ -109,9 +128,16 @@ function removeLegacyPersistedAuth() {
 }
 
 function createOfflineError() {
-  const error = new Error("You are offline. Please reconnect and try again.");
+  const error = new Error(API_ERROR_MESSAGES.offline);
   error.code = "OFFLINE";
   error.isOffline = true;
+  return error;
+}
+
+function createTimeoutError() {
+  const error = new Error(API_ERROR_MESSAGES.timeout);
+  error.code = "TIMEOUT";
+  error.isTimeout = true;
   return error;
 }
 
@@ -134,55 +160,42 @@ async function sendRequest(endpoint, options = {}) {
 
   if (accessToken && options.auth !== false) {
     headers.Authorization = `Bearer ${accessToken}`;
+    if (authenticatedUser?.working_facility_key) headers["X-Working-Facility"] = authenticatedUser.working_facility_key;
   }
 
-  const controller = new AbortController();
-  let timeoutId;
-  const timeoutError = new Error(
-    "The server took too long to respond. Please check the API connection and try again.",
-  );
-  timeoutError.code = "TIMEOUT";
-  timeoutError.isTimeout = true;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = window.setTimeout(() => {
-      controller.abort();
-      reject(timeoutError);
-    }, REQUEST_TIMEOUT_MS);
-  });
-  const requestPromise = fetch(url, {
-    ...options,
-    headers,
-    cache: options.cache || "no-store",
-    credentials: options.credentials || "omit",
-    signal: options.signal || controller.signal,
-    body:
-      options.body && !(options.body instanceof FormData)
-        ? JSON.stringify(options.body)
-        : options.body,
-  }).catch((error) => {
-    if (error.name === "AbortError") throw timeoutError;
+  const response = await fetchWithTimeout(
+    (signal) =>
+      fetch(url, {
+        ...options,
+        headers,
+        cache: options.cache || "no-store",
+        credentials: options.credentials || "omit",
+        signal,
+        body:
+          options.body && !(options.body instanceof FormData)
+            ? JSON.stringify(options.body)
+            : options.body,
+      }),
+    { signal: options.signal, timeoutMs: REQUEST_TIMEOUT_MS, createTimeoutError },
+  ).catch((error) => {
+    // Timeouts and the caller's own cancellations pass through untouched.
+    if (error.isTimeout || options.signal?.aborted) throw error;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       throw createOfflineError();
     }
 
+    // The browser's own text ("Failed to fetch") means nothing to a person.
+    error.message = API_ERROR_MESSAGES.unreachable;
     error.code ||= "NETWORK_ERROR";
     error.isNetworkError = true;
     throw error;
-  });
-  const response = await Promise.race([requestPromise, timeoutPromise]).finally(() => {
-    window.clearTimeout(timeoutId);
   });
 
   if (response.status === 204) return null;
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const firstValidationError = payload.errors
-      ? Object.values(payload.errors).flat()[0]
-      : null;
-    const error = new Error(
-      payload.message || firstValidationError || "API request failed.",
-    );
+    const error = new Error(serverErrorMessage(payload));
     error.status = response.status;
     error.code = payload.code || "";
     error.errors = payload.errors || {};
@@ -256,12 +269,40 @@ export async function apiRequest(endpoint, options = {}) {
       }
     }
 
+    // The account still has a temporary password: every protected call is refused until it is changed.
+    if (
+      error?.status === 403 &&
+      error?.code === "PASSWORD_CHANGE_REQUIRED" &&
+      typeof window !== "undefined" &&
+      window.location.pathname !== CHANGE_PASSWORD_PATH
+    ) {
+      window.location.assign(CHANGE_PASSWORD_PATH);
+    }
+
     if (isForcedSessionInvalidation(error?.status, error?.payload)) {
       await invalidateFrontendSession(error);
     }
 
     throw error;
   }
+}
+
+// Changing the password revokes every token, so the response carries a fresh session (like login) and its refresh cookie.
+export async function changePassword({ currentPassword, password, passwordConfirmation }) {
+  const response = await apiRequest(
+    "/auth/change-password",
+    sessionRequestOptions({
+      method: "POST",
+      body: {
+        current_password: currentPassword,
+        password,
+        password_confirmation: passwordConfirmation,
+      },
+    }),
+  );
+
+  storeAuthSession({ token: response.token, user: response.user });
+  return getStoredAuthUser();
 }
 
 export function sessionRequestOptions(options = {}) {

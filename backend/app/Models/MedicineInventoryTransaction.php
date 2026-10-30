@@ -15,6 +15,7 @@ class MedicineInventoryTransaction extends Model
         'actor_user_id',
         'transaction_type',
         'quantity_delta',
+        'discrepancy',
         'quantity_before',
         'quantity_after',
         'source_type',
@@ -44,5 +45,10 @@ class MedicineInventoryTransaction extends Model
     public function actor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'actor_user_id');
+    }
+
+    public function allocations()
+    {
+        return $this->hasMany(MedicineInventoryAllocation::class, 'transaction_id')->with('expiryGroup');
     }
 }

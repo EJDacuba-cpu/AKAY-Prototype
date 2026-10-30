@@ -17,10 +17,10 @@ class ReportController extends Controller
 {
     public function __construct(private readonly AkayCacheService $cache) {}
 
-    public function bhw(Request $request, AuditLogger $auditLogger)
+    public function bhc(Request $request, AuditLogger $auditLogger)
     {
         $query = Referral::where('referrals.barangay_health_center_id', $request->user()->barangay_health_center_id);
-        $auditLogger->log($request, 'generated', 'reports', 'Generated BHW report.');
+        $auditLogger->log($request, 'generated', 'reports', 'Generated BHC report.');
         $data = $this->cache->rememberForUser(
             AkayCacheService::DOMAIN_REPORT_AGGREGATE,
             $request->user(),

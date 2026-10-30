@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import ButtonSpinner from "../loading/ButtonSpinner";
 import ModalShell, { ModalButton } from "./ModalShell";
@@ -12,25 +13,31 @@ export default function ConfirmationModal({
   onCancel,
   loading = false,
   loadingText = "Saving...",
+  tone = "danger",
 }) {
+  const cancelRef = useRef(null);
+  const isDanger = tone === "danger";
+
   return (
     <ModalShell
       open={open}
       title={title}
-      icon={<AlertTriangle size={14} strokeWidth={2.2} />}
+      appearance={isDanger ? "default" : "plain"}
+      icon={isDanger ? <AlertTriangle size={14} strokeWidth={2.2} /> : undefined}
       size="sm"
       onClose={onCancel}
       closeDisabled={loading}
       dismissOnBackdrop={!loading}
       dismissOnEscape={!loading}
+      initialFocusRef={isDanger ? cancelRef : undefined}
       footer={
         <>
-          <ModalButton onClick={onCancel} disabled={loading}>
+          <ModalButton ref={cancelRef} onClick={onCancel} disabled={loading}>
             {cancelText}
           </ModalButton>
           <ModalButton
-            variant="primary"
-            primary
+            variant={isDanger ? "destructive" : "ink"}
+            primary={!isDanger}
             onClick={onConfirm}
             disabled={loading}
           >
@@ -40,7 +47,7 @@ export default function ConfirmationModal({
         </>
       }
     >
-      <p className="text-[13px] leading-5 text-slate-600">{description}</p>
+      <p className="text-[13px] leading-5 text-neutral-600">{description}</p>
     </ModalShell>
   );
 }

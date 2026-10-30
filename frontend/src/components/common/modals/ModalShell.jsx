@@ -7,6 +7,7 @@ const sizeClasses = {
   lg: "max-w-xl",
   xl: "max-w-2xl",
   "2xl": "max-w-3xl",
+  "3xl": "max-w-4xl",
   wide: "max-w-6xl",
 };
 
@@ -30,6 +31,7 @@ export default function ModalShell({
   ariaDescribedBy,
   hideClose = false,
   printHidden = false,
+  appearance = "default",
 }) {
   const generatedTitleId = useId();
   const generatedDescriptionId = useId();
@@ -147,9 +149,13 @@ export default function ModalShell({
         } ${panelClassName}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="flex shrink-0 items-start gap-3 bg-[#B91C1C] px-5 py-3.5 text-white">
+        <header className={`flex shrink-0 items-start gap-3 px-5 py-3.5 ${appearance === "plain" ? "border-b border-gray-200 bg-white text-gray-950" : "bg-[#B91C1C] text-white"}`}>
           {icon && (
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/15 text-white">
+            <span
+              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                appearance === "plain" ? "bg-brand-50 text-brand-700" : "bg-white/15 text-white"
+              }`}
+            >
               {icon}
             </span>
           )}
@@ -157,7 +163,7 @@ export default function ModalShell({
             {title && (
               <h2
                 id={titleId}
-                className="font-sans text-sm font-semibold leading-5 text-white"
+                className="font-sans text-sm font-semibold leading-5 text-inherit"
               >
                 {title}
               </h2>
@@ -165,7 +171,9 @@ export default function ModalShell({
             {subtitle && (
               <p
                 id={ariaDescribedBy ? undefined : generatedDescriptionId}
-                className="mt-0.5 text-xs leading-4 text-white/85"
+                className={`mt-0.5 text-xs leading-4 ${
+                  appearance === "plain" ? "text-neutral-500" : "text-white/85"
+                }`}
               >
                 {subtitle}
               </p>
@@ -177,7 +185,7 @@ export default function ModalShell({
               onClick={onClose}
               disabled={closeDisabled}
               aria-label="Close modal"
-              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40 disabled:pointer-events-none disabled:opacity-40"
+              className={`absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md transition focus:outline-none focus:ring-2 disabled:pointer-events-none disabled:opacity-40 ${appearance === "plain" ? "text-gray-500 hover:bg-gray-100 hover:text-black focus:ring-red-700/30" : "text-white/80 hover:bg-white/15 hover:text-white focus:ring-white/40"}`}
             >
               <X size={15} strokeWidth={2.2} />
             </button>
@@ -218,6 +226,8 @@ const buttonVariants = {
     "border-[#B91C1C] bg-[#B91C1C] text-white hover:border-[#991B1B] hover:bg-[#991B1B] active:border-[#7F1D1D] active:bg-[#7F1D1D]",
   destructive:
     "border-[#B91C1C] bg-[#B91C1C] text-white hover:border-[#991B1B] hover:bg-[#991B1B] active:border-[#7F1D1D] active:bg-[#7F1D1D]",
+  ink:
+    "border-ink-700 bg-ink-700 text-white hover:border-ink-600 hover:bg-ink-600 active:border-ink-800 active:bg-ink-800",
   secondary:
     "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
   ghost:
@@ -238,9 +248,9 @@ export function ModalButton({
       type={type}
       ref={ref}
       data-modal-primary={primary || variant === "primary" ? "true" : undefined}
-      className={`press-scale inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-[#B91C1C]/25 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-55 ${
-        buttonVariants[variant] || buttonVariants.secondary
-      } ${className}`}
+      className={`press-scale inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-55 ${
+        variant === "ink" ? "focus:ring-ink-400/30" : "focus:ring-[#B91C1C]/25"
+      } ${buttonVariants[variant] || buttonVariants.secondary} ${className}`}
       {...props}
     >
       {children}

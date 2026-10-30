@@ -37,15 +37,15 @@ class AkayApiTest extends TestCase
             'status' => User::STATUS_INACTIVE,
         ]);
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => 'active@example.test',
             'password' => 'password123',
-        ])->assertOk()->assertJsonStructure(['token', 'user']);
+        ]))->assertOk()->assertJsonStructure(['token', 'user']);
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => 'inactive@example.test',
             'password' => 'password123',
-        ])->assertUnprocessable()
+        ]))->assertUnprocessable()
             ->assertJsonPath('code', 'LOGIN_FAILED');
     }
 
@@ -55,7 +55,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -73,7 +73,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'bhw-scope@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $ownBhc->id,
         ]);
@@ -97,7 +97,8 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'medicine-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'permissions' => ['inventory.view', 'inventory.manage'],
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -123,6 +124,7 @@ class AkayApiTest extends TestCase
         $this->actingAs($bhw, 'sanctum')
             ->postJson("/api/medicines/{$medicineId}/adjust", [
                 'action' => 'adjustment_out',
+                'expiry_group_id' => Medicine::findOrFail($medicineId)->expiryGroups()->firstOrFail()->id,
                 'quantity' => 85,
                 'reason' => 'Issued through the controlled stock workflow.',
             ])
@@ -148,7 +150,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'medicine-scope-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $ownBhc->id,
         ]);
@@ -156,7 +158,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'medicine-scope-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -187,8 +189,31 @@ class AkayApiTest extends TestCase
             ->getJson('/api/medicines')
             ->assertOk()
             ->assertJsonFragment(['name' => 'Own BHC Medicine'])
-            ->assertJsonFragment(['name' => 'RHU Medicine'])
+            ->assertJsonMissing(['name' => 'RHU Medicine'])
+            ->assertJsonPath('data.total', 1)
             ->assertJsonMissing(['name' => 'Other BHC Medicine']);
+
+        $this->actingAs($rhuStaff, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $rhuMedicine->id);
+
+        $admin = User::create([
+            'name' => 'Medicine Admin',
+            'email' => 'medicine-scope-admin@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_ADMIN,
+            'status' => User::STATUS_ACTIVE,
+        ]);
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertJsonPath('data.total', 3);
+        $this->getJson('/api/medicines?barangay_health_center_id='.$otherBhc->id)
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $otherMedicine->id);
 
         $this->actingAs($bhw, 'sanctum')
             ->patchJson("/api/medicines/{$rhuMedicine->id}", ['quantity' => 5])
@@ -210,7 +235,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -261,7 +286,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'conditional-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -303,7 +328,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'child-profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -342,22 +367,15 @@ class AkayApiTest extends TestCase
         ]);
     }
 
-    public function test_epi_infant_patient_creation_preserves_household_fields_and_clears_adult_profile_fields(): void
+    public function test_infant_patient_creation_keeps_household_fields_and_does_not_assign_civil_status(): void
     {
         $bhc = BarangayHealthCenter::create(['name' => 'Infant Profile BHC']);
         $bhw = User::create([
             'name' => 'BHW',
             'email' => 'infant-profile-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $bhc->id,
-        ]);
-        $mother = Patient::create([
-            'first_name' => 'Infant',
-            'last_name' => 'Mother',
-            'sex' => 'Female',
-            'birthdate' => now()->subYears(25)->toDateString(),
             'barangay_health_center_id' => $bhc->id,
         ]);
 
@@ -369,21 +387,20 @@ class AkayApiTest extends TestCase
                 'birthdate' => now()->subMonths(6)->toDateString(),
                 'civil_status' => 'Married',
                 'registration_type' => 'child',
-                'occupation' => 'Should Clear',
+                'occupation' => 'Should Ignore',
                 'nhts_status' => 'NHTS',
                 'purok_area' => 'Purok 1',
-                'mother_patient_id' => $mother->id,
                 'mother_name' => 'Infant Mother',
                 'family_serial_number' => 'FSN-INFANT',
-                'spouse_name' => 'Should Clear',
-                'spouse_occupation' => 'Should Clear',
+                'spouse_name' => 'Should Ignore',
+                'spouse_occupation' => 'Should Ignore',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.civil_status', 'Single')
+            ->assertJsonPath('data.civil_status', null)
             ->assertJsonPath('data.occupation', null)
             ->assertJsonPath('data.nhts_status', null)
             ->assertJsonPath('data.purok_area', 'Purok 1')
-            ->assertJsonPath('data.mother_patient_id', $mother->id)
+            ->assertJsonPath('data.mother_patient_id', null)
             ->assertJsonPath('data.mother_name', 'Infant Mother')
             ->assertJsonPath('data.family_serial_number', 'FSN-INFANT')
             ->assertJsonPath('data.spouse_name', null)
@@ -391,16 +408,132 @@ class AkayApiTest extends TestCase
 
         $this->assertDatabaseHas('patients', [
             'first_name' => 'Infant',
-            'civil_status' => 'Single',
+            'civil_status' => null,
             'occupation' => null,
             'nhts_status' => null,
             'purok_area' => 'Purok 1',
-            'mother_patient_id' => $mother->id,
             'mother_name' => 'Infant Mother',
             'family_serial_number' => 'FSN-INFANT',
-            'spouse_name' => null,
-            'spouse_occupation' => null,
         ]);
+    }
+
+    public function test_infant_patient_creation_requires_a_reported_mother_name(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Mother BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-mother-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Infant',
+                'last_name' => 'Patient',
+                'sex' => 'Female',
+                'birthdate' => now()->subMonths(4)->toDateString(),
+                'registration_type' => 'child',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['mother_name']);
+    }
+
+    public function test_infant_patient_creation_allows_omitted_father_information(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Father BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-father-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->postJson('/api/patients', [
+                'first_name' => 'Infant',
+                'last_name' => 'Patient',
+                'sex' => 'Male',
+                'birthdate' => now()->subMonths(2)->toDateString(),
+                'registration_type' => 'child',
+                'mother_name' => 'Ana Cruz',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.mother_name', 'Ana Cruz')
+            ->assertJsonPath('data.father_name', null)
+            ->assertJsonPath('data.father_patient_id', null);
+    }
+
+    public function test_changing_adult_birthdate_to_infant_preserves_occupation_and_does_not_force_civil_status(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Dob Change BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'dob-change-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Adult',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'birthdate' => now()->subYears(25)->toDateString(),
+            'civil_status' => 'Married',
+            'occupation' => 'Farmer',
+            'nhts_status' => 'Non-NHTS',
+            'spouse_name' => 'Ben',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson('/api/patients/'.$patient->id, [
+                'birthdate' => now()->subMonths(6)->toDateString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.occupation', 'Farmer')
+            ->assertJsonPath('data.civil_status', 'Married')
+            ->assertJsonPath('data.nhts_status', 'Non-NHTS')
+            ->assertJsonPath('data.spouse_name', 'Ben');
+    }
+
+    public function test_infant_contact_update_does_not_clear_stored_occupation(): void
+    {
+        $bhc = BarangayHealthCenter::create(['name' => 'Infant Contact BHC']);
+        $bhw = User::create([
+            'name' => 'BHW',
+            'email' => 'infant-contact-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Infant',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'birthdate' => now()->subMonths(5)->toDateString(),
+            'occupation' => 'Kept',
+            'civil_status' => 'Single',
+            'mother_name' => 'Ana Cruz',
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+
+        $this->actingAs($bhw, 'sanctum')
+            ->patchJson('/api/patients/'.$patient->id, [
+                'contact_number' => '+639171234567',
+                'birthdate' => $patient->birthdate->toDateString(),
+                'civil_status' => 'Single',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.occupation', 'Kept')
+            ->assertJsonPath('data.civil_status', 'Single')
+            ->assertJsonPath('data.contact_number', '+639171234567');
     }
 
     public function test_referral_creation_generates_tracking_notification_and_audit_log(): void
@@ -413,7 +546,8 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'referral-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -421,7 +555,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -457,7 +591,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'notifications-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -465,7 +599,7 @@ class AkayApiTest extends TestCase
             'name' => 'Other RHU Staff',
             'email' => 'notifications-other@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -546,7 +680,8 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'idempotent-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -554,7 +689,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'idempotent-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -591,7 +726,8 @@ class AkayApiTest extends TestCase
         $this->assertDatabaseCount('referral_updates', 1);
         $this->assertDatabaseHas('notifications', ['type' => 'incoming_referral']);
         $this->assertDatabaseHas('notifications', ['type' => 'referral_submitted']);
-        $this->assertDatabaseCount('notifications', 2);
+        // One each: the seeded available doctor and the RHU staff (incoming), and the BHW (submitted).
+        $this->assertDatabaseCount('notifications', 3);
         $this->assertDatabaseCount('audit_logs', 1);
     }
 
@@ -604,7 +740,7 @@ class AkayApiTest extends TestCase
             'name' => 'RHU Staff',
             'email' => 'received-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhu->id,
         ]);
@@ -612,7 +748,7 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'received-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -665,7 +801,8 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'family-planning-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -723,13 +860,14 @@ class AkayApiTest extends TestCase
             'name' => 'BHW',
             'email' => 'empty-report@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
 
         $this->actingAs($bhw, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertJsonPath('data.total_referrals', 0)
             ->assertJsonPath('data.completed_referrals', 0);

@@ -1,76 +1,60 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Plus, Save, Stethoscope, UserMinus } from "lucide-react";
+import { Stethoscope } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { ConnectionErrorState, RefreshingIndicator, SuccessModal } from "../../components/common";
+import useAccess from "../../hooks/useAccess";
+import DoctorAvailabilityModal from "../../components/features/rhu/DoctorAvailabilityModal";
+import DoctorDayAbsencesModal from "../../components/features/rhu/DoctorDayAbsencesModal";
+import DoctorRosterPanel from "../../components/features/rhu/DoctorRosterPanel";
+import DoctorUnavailabilityCalendar from "../../components/features/rhu/DoctorUnavailabilityCalendar";
 import {
-  AVAILABILITY_STATUSES,
-  normalizeAvailabilityStatus,
-} from "../../services/doctorAvailability";
-import {
+  useAllProviderUnavailability,
   useProviderMutations,
   useRhuProviders,
 } from "../../hooks/useDoctorAvailability";
+import { errorStateVariant } from "../../utils/errorStateVariant";
+import {
+  AVAILABILITY_AVAILABLE,
+  AVAILABILITY_UNAVAILABLE,
+} from "../../services/doctorAvailability";
+import { CHANGE_KIND } from "../../utils/doctorAvailabilityChange";
+import { displayedAvailabilityStatus } from "../../utils/doctorRoster";
+import {
+  formatLongDate,
+  groupUnavailabilityByDay,
+  manilaCalendarDate,
+  manilaDateKey,
+  monthRange,
+  unavailabilityChipLabel,
+} from "../../utils/doctorAvailabilityCalendar";
 
-const DEFAULT_DESIGNATION = "General Practitioner";
+const MANAGE_PERMISSION = "rhu.providers.manage";
 
-const EMPTY_FORM = {
-  name: "",
-  specialization: DEFAULT_DESIGNATION,
-  availabilityStatus: "Available",
-  remarks: "",
-  expectedAvailableAt: "",
-};
-
-// datetime-local inputs need "YYYY-MM-DDTHH:mm" in local time; the server
-// sends/accepts an ISO timestamp.
-function toDatetimeLocalValue(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function errorMessage(caught, fallback) {
+  return (
+    caught?.payload?.errors?.local_date?.[0] ||
+    caught?.payload?.errors?.end_time?.[0] ||
+    caught?.payload?.errors?.name?.[0] ||
+    caught?.payload?.message ||
+    caught?.message ||
+    fallback
+  );
 }
 
-function formatDateTime(value) {
-  if (!value) return "Not updated yet";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function mapProviderToForm(provider) {
-  return {
-    name: provider?.name || "",
-    specialization: provider?.specialization || DEFAULT_DESIGNATION,
-    availabilityStatus: normalizeAvailabilityStatus(
-      provider?.availabilityStatus,
-    ),
-    remarks: provider?.remarks || "",
-    expectedAvailableAt: toDatetimeLocalValue(provider?.expectedAvailableAt),
-  };
-}
-
-/**
- * DOC-20 - the RHU manages its own roster. The list is scoped server-side by
- * FacilityAccessService (DOC-15), so this page no longer filters by facility
- * in the browser: an RHU simply cannot receive another RHU's providers.
- */
 export default function DoctorSchedule() {
-  const { providers, isLoading, error } = useRhuProviders();
-  const { create, update, deactivate } = useProviderMutations();
+  const access = useAccess();
+  const canManage = access.can(MANAGE_PERMISSION);
+  const { providers, isLoading, isFetching, error, refetch } = useRhuProviders();
+  const { update, createUnavailability, removeUnavailability } = useProviderMutations();
 
-  const [mode, setMode] = useState("add");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [errors, setErrors] = useState({});
-  const [savedNotice, setSavedNotice] = useState("");
+  const [monthDate, setMonthDate] = useState(() => manilaCalendarDate());
+  const [modal, setModal] = useState(null);
+  const [modalError, setModalError] = useState("");
+  const [dayDate, setDayDate] = useState("");
+  const [dayError, setDayError] = useState("");
+  const [successNotice, setSuccessNotice] = useState(null);
 
   const doctors = useMemo(
     () => (Array.isArray(providers) ? providers : []),
@@ -78,410 +62,240 @@ export default function DoctorSchedule() {
   );
   const selectedDoctor =
     doctors.find((doctor) => doctor.id === selectedDoctorId) || null;
-  const saving = create.isPending || update.isPending || deactivate.isPending;
+  const { rows: allUnavailabilityRows } = useAllProviderUnavailability(
+    doctors,
+    monthRange(monthDate),
+  );
+  const visibleUnavailability = useMemo(
+    () =>
+      selectedDoctor
+        ? allUnavailabilityRows.filter(
+            (row) => String(row.providerId) === String(selectedDoctor.id),
+          )
+        : allUnavailabilityRows,
+    [allUnavailabilityRows, selectedDoctor],
+  );
+  const groupedUnavailability = useMemo(
+    () => groupUnavailabilityByDay(visibleUnavailability),
+    [visibleUnavailability],
+  );
+  const saving =
+    update.isPending || createUnavailability.isPending || removeUnavailability.isPending;
 
-  // A provider deactivated in another tab must not stay selected here.
   useEffect(() => {
-    if (selectedDoctorId && !selectedDoctor && !isLoading) {
-      setSelectedDoctorId("");
-      setMode("add");
-      setForm(EMPTY_FORM);
-    }
+    if (selectedDoctorId && !selectedDoctor && !isLoading) setSelectedDoctorId("");
   }, [selectedDoctorId, selectedDoctor, isLoading]);
 
-  function showSavedNotice(message) {
-    setSavedNotice(message);
-    window.setTimeout(() => setSavedNotice(""), 2200);
+  function openAdd(date) {
+    setModalError("");
+    setModal({
+      nonce: Date.now(),
+      doctorId: selectedDoctorId,
+      date,
+      status: AVAILABILITY_UNAVAILABLE,
+    });
   }
 
-  function updateForm(field, value) {
-    setErrors((prev) => ({ ...prev, [field]: "" }));
-    setForm((prev) => ({ ...prev, [field]: value }));
+  function openManage(doctor) {
+    setModalError("");
+    setModal({
+      nonce: Date.now(),
+      doctorId: doctor.id,
+      date: manilaDateKey(),
+      status:
+        displayedAvailabilityStatus(doctor) === AVAILABILITY_AVAILABLE
+          ? AVAILABILITY_UNAVAILABLE
+          : AVAILABILITY_AVAILABLE,
+    });
   }
 
-  function startAddMode() {
-    setMode("add");
-    setSelectedDoctorId("");
-    setForm(EMPTY_FORM);
-    setErrors({});
+  function openDay(date) {
+    setDayError("");
+    setDayDate(date);
   }
 
-  function selectDoctor(doctor) {
-    setMode("update");
-    setSelectedDoctorId(doctor.id);
-    setForm(mapProviderToForm(doctor));
-    setErrors({});
-  }
+  async function submitChange(change) {
+    if (!canManage || saving) return;
+    setModalError("");
 
-  function validateForm() {
-    const nextErrors = {};
+    const notes = change.notes
+      ? {
+          remarks: change.notes.remarks,
+          internalNotes: change.notes.internalNotes,
+          expectedAvailableAt: change.notes.expectedAvailableAt,
+        }
+      : {};
 
-    if (mode === "add" && !form.name.trim()) {
-      nextErrors.name = "Doctor name is required.";
-    }
-
-    // The server holds the authoritative uniqueness rule (one active provider
-    // per name per RHU); this check only avoids a pointless round trip.
-    if (
-      mode === "add" &&
-      doctors.some(
-        (doctor) =>
-          doctor.name.trim().toLowerCase() === form.name.trim().toLowerCase(),
-      )
-    ) {
-      nextErrors.name = "A doctor with this name already exists.";
-    }
-
-    if (!AVAILABILITY_STATUSES.includes(form.availabilityStatus)) {
-      nextErrors.availabilityStatus = "Availability status is required.";
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }
-
-  function handleMutationError(error) {
-    const message =
-      error?.payload?.errors?.name?.[0] ||
-      error?.message ||
-      "The provider could not be saved. Please try again.";
-    setErrors((prev) => ({ ...prev, form: message }));
-  }
-
-  async function saveDoctor(event) {
-    event.preventDefault();
-    if (!validateForm() || saving) return;
+    const name = doctors.find((doctor) => doctor.id === change.doctorId)?.name || "The doctor";
 
     try {
-      const created = await create.mutateAsync({
-        name: form.name.trim(),
-        specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
-        availabilityStatus: form.availabilityStatus,
-        remarks: form.remarks.trim(),
-        expectedAvailableAt: form.expectedAvailableAt || null,
+      let notice;
+      if (change.kind === CHANGE_KIND.CONFIRM_AVAILABLE) {
+        await update.mutateAsync({
+          id: change.doctorId,
+          availabilityStatus: AVAILABILITY_AVAILABLE,
+        });
+        notice = {
+          title: "Doctor confirmed available",
+          description: `${name} is confirmed as on duty.`,
+        };
+      } else if (change.kind === CHANGE_KIND.MARK_UNAVAILABLE) {
+        await update.mutateAsync({
+          id: change.doctorId,
+          availabilityStatus: AVAILABILITY_UNAVAILABLE,
+          ...notes,
+        });
+        notice = {
+          title: "Doctor marked unavailable",
+          description: `${name} stays unavailable until you confirm Available.`,
+        };
+      } else {
+        // Notes first: that PATCH is safe to repeat, so a retry after a failed
+        // absence never duplicates anything.
+        if (change.notes) await update.mutateAsync({ id: change.doctorId, ...notes });
+        await createUnavailability.mutateAsync({
+          providerId: change.doctorId,
+          ...change.absence,
+        });
+        notice = {
+          title: "Absence scheduled",
+          description: `${name} · ${formatLongDate(change.absence.localDate)} · ${unavailabilityChipLabel(change.absence)}`,
+        };
+      }
+      setModal(null);
+      setSuccessNotice(notice);
+    } catch (caught) {
+      setModalError(errorMessage(caught, "The change could not be saved. Please try again."));
+    }
+  }
+
+  async function removeScheduledAbsence(row) {
+    if (!canManage) return;
+    setDayError("");
+    try {
+      await removeUnavailability.mutateAsync({ providerId: row.providerId, id: row.id });
+      setDayDate("");
+      setSuccessNotice({
+        title: "Absence removed",
+        description: `${row.doctorName || "The doctor"} · ${formatLongDate(row.localDate)} · ${unavailabilityChipLabel(row)}`,
       });
-
-      setMode("update");
-      setSelectedDoctorId(created.id);
-      setForm(mapProviderToForm(created));
-      setErrors({});
-      showSavedNotice("Doctor record saved.");
-    } catch (error) {
-      handleMutationError(error);
+    } catch (caught) {
+      setDayError(errorMessage(caught, "The absence could not be removed."));
     }
   }
 
-  async function saveAvailability(event) {
-    event.preventDefault();
-    if (!selectedDoctor || !validateForm() || saving) return;
-
-    try {
-      const updated = await update.mutateAsync({
-        id: selectedDoctor.id,
-        specialization: form.specialization.trim() || DEFAULT_DESIGNATION,
-        availabilityStatus: form.availabilityStatus,
-        remarks: form.remarks.trim(),
-        expectedAvailableAt: form.expectedAvailableAt || null,
-      });
-
-      setForm(mapProviderToForm(updated));
-      setErrors({});
-      showSavedNotice("Availability saved.");
-    } catch (error) {
-      handleMutationError(error);
-    }
-  }
-
-  async function deactivateDoctor() {
-    if (!selectedDoctor || saving) return;
-
-    const confirmed = window.confirm(
-      `Remove ${selectedDoctor.name} from the roster?\n\nPast referrals keep the details recorded at submission time.`,
-    );
-    if (!confirmed) return;
-
-    try {
-      await deactivate.mutateAsync(selectedDoctor.id);
-      startAddMode();
-      showSavedNotice("Doctor removed from the roster.");
-    } catch (error) {
-      handleMutationError(error);
-    }
-  }
+  const ready = !isLoading && !error && doctors.length > 0;
 
   return (
     <DashboardLayout role="rhu" title="Doctor Availability">
-      <div className="space-y-5">
-        {savedNotice && (
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
-            {savedNotice}
+      {/* From xl up the module fits the screen (no page scroll at 1366x768); the
+          min-height keeps it scrolling normally in a very short window. */}
+      <div className="flex flex-col gap-4 xl:h-full xl:min-h-[32rem]">
+        <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <h1 className="text-[17px] font-bold leading-tight tracking-tight text-ink-800">Doctor Availability</h1>
+            <p className="mt-0.5 text-[13px] text-neutral-600">
+              Set who is on duty and schedule absences. Referrals stay blocked after an absence until you confirm Available.
+            </p>
+          </div>
+          {isFetching && doctors.length > 0 ? (
+            <div className="shrink-0">
+              <RefreshingIndicator label="Updating roster..." />
+            </div>
+          ) : null}
+        </div>
+
+        {isLoading ? (
+          <div
+            className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]"
+            aria-hidden="true"
+          >
+            <div className="h-[28rem] animate-pulse rounded-card bg-neutral-100 xl:h-full" />
+            <div className="h-[26rem] animate-pulse rounded-card bg-neutral-100 xl:h-full" />
+          </div>
+        ) : error ? (
+          <div className="rounded-card border border-neutral-200 bg-white p-6">
+            <ConnectionErrorState
+              size="compact"
+              variant={errorStateVariant(error)}
+              onRetry={() => refetch()}
+              retrying={isFetching}
+            />
+          </div>
+        ) : !ready ? (
+          <div className="rounded-card border border-neutral-200 bg-white">
+            <EmptyRoster />
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]">
+            <DoctorUnavailabilityCalendar
+              monthDate={monthDate}
+              groupedByDay={groupedUnavailability}
+              scopeLabel={selectedDoctor ? selectedDoctor.name : "All doctors"}
+              showDoctorNames={!selectedDoctor}
+              canAdd={canManage}
+              onMonthChange={setMonthDate}
+              onAddAt={openAdd}
+              onOpenDay={openDay}
+            />
+            <div className="min-w-0 xl:min-h-0">
+              <DoctorRosterPanel
+                doctors={doctors}
+                selectedDoctorId={selectedDoctorId}
+                canManage={canManage}
+                onSelectDoctor={setSelectedDoctorId}
+                onManageDoctor={openManage}
+              />
+            </div>
           </div>
         )}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <main className="min-w-0">
-            <section className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-              <div className="border-b border-[#E2E8F0] px-5 py-4">
-                <h2 className="text-sm font-semibold text-[#0F172A]">
-                  RHU Doctors
-                </h2>
-                <p className="mt-1 text-xs text-[#64748B]">
-                  Select a doctor card to update availability.
-                </p>
-              </div>
+        {modal ? (
+          <DoctorAvailabilityModal
+            key={modal.nonce}
+            doctors={doctors}
+            initial={modal}
+            canManage={canManage}
+            saving={saving}
+            error={modalError}
+            onClose={() => setModal(null)}
+            onSubmit={submitChange}
+          />
+        ) : null}
 
-              {isLoading ? (
-                <div className="px-6 py-20 text-center text-[12px] text-[#94A3B8]">
-                  Loading roster...
-                </div>
-              ) : error ? (
-                <div className="px-6 py-20 text-center text-[12px] text-[#B91C1C]">
-                  The provider roster could not be loaded. Please retry.
-                </div>
-              ) : doctors.length === 0 ? (
-                <div className="px-6 py-20 text-center">
-                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F5F9] text-[#94A3B8]">
-                    <Stethoscope size={20} />
-                  </div>
-                  <p className="text-[13px] font-semibold text-[#334155]">
-                    No doctor records yet
-                  </p>
-                  <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-                    Add an RHU doctor record from Availability Controls.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-3 p-4 md:grid-cols-2">
-                  {doctors.map((doctor) => (
-                    <DoctorAvailabilityCard
-                      key={doctor.id}
-                      doctor={doctor}
-                      isSelected={doctor.id === selectedDoctorId}
-                      onSelect={() => selectDoctor(doctor)}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          </main>
+        <DoctorDayAbsencesModal
+          open={Boolean(dayDate)}
+          date={dayDate}
+          rows={dayDate ? groupedUnavailability.get(dayDate) || [] : []}
+          canManage={canManage}
+          saving={saving}
+          error={dayError}
+          onRemove={removeScheduledAbsence}
+          onClose={() => setDayDate("")}
+        />
 
-          <aside className="space-y-4 xl:sticky xl:top-5">
-            <section className="rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#0F172A]">
-                    Availability Controls
-                  </h3>
-                  <p className="mt-1 text-xs text-[#64748B]">
-                    Add doctors or update the selected doctor.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={startAddMode}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 text-[11px] font-semibold text-[#B91C1C] hover:bg-red-100"
-                >
-                  <Plus size={12} />
-                  Add
-                </button>
-              </div>
-
-              <form
-                onSubmit={mode === "add" ? saveDoctor : saveAvailability}
-                className="mt-4 space-y-4"
-              >
-                {mode === "add" ? (
-                  <FieldInput
-                    label="Doctor Name"
-                    required
-                    value={form.name}
-                    onChange={(event) => updateForm("name", event.target.value)}
-                    error={errors.name}
-                    placeholder="Example: Dr. Maria Santos"
-                  />
-                ) : (
-                  <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-3.5 py-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                      Selected Doctor
-                    </p>
-                    <p className="mt-1 truncate text-sm font-bold text-[#0F172A]">
-                      {selectedDoctor?.name || ""}
-                    </p>
-                  </div>
-                )}
-
-                <FieldInput
-                  label="Specialization"
-                  value={form.specialization}
-                  onChange={(event) =>
-                    updateForm("specialization", event.target.value)
-                  }
-                  placeholder={DEFAULT_DESIGNATION}
-                />
-
-                <FieldSelect
-                  label="Availability Status"
-                  required
-                  value={form.availabilityStatus}
-                  onChange={(event) =>
-                    updateForm("availabilityStatus", event.target.value)
-                  }
-                  error={errors.availabilityStatus}
-                >
-                  {AVAILABILITY_STATUSES.map((status) => (
-                    <option key={status}>{status}</option>
-                  ))}
-                </FieldSelect>
-
-                <FieldInput
-                  label="Remarks"
-                  value={form.remarks}
-                  onChange={(event) => updateForm("remarks", event.target.value)}
-                  error={errors.remarks}
-                  placeholder="Example: Covering provider, back Monday"
-                />
-
-                {form.availabilityStatus === "Unavailable" && (
-                  <FieldInput
-                    label="Expected Back (Optional Estimate)"
-                    type="datetime-local"
-                    value={form.expectedAvailableAt}
-                    onChange={(event) =>
-                      updateForm("expectedAvailableAt", event.target.value)
-                    }
-                    error={errors.expectedAvailableAt}
-                  />
-                )}
-
-                {errors.form && (
-                  <p className="text-[11px] font-medium text-[#B91C1C]">
-                    {errors.form}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={saving || (mode === "update" && !selectedDoctor)}
-                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#B91C1C] text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
-                >
-                  <Save size={13} />
-                  {saving
-                    ? "Saving..."
-                    : mode === "add"
-                      ? "Save Doctor"
-                      : "Save Availability"}
-                </button>
-
-                {mode === "update" && selectedDoctor && (
-                  <button
-                    type="button"
-                    onClick={deactivateDoctor}
-                    disabled={saving}
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#E5E7EB] bg-white text-xs font-semibold text-[#64748B] transition hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <UserMinus size={13} />
-                    Remove from roster
-                  </button>
-                )}
-              </form>
-            </section>
-          </aside>
-        </div>
+        <SuccessModal
+          open={Boolean(successNotice)}
+          title={successNotice?.title}
+          description={successNotice?.description}
+          buttonText="Continue"
+          onClose={() => setSuccessNotice(null)}
+        />
       </div>
     </DashboardLayout>
   );
 }
 
-function DoctorAvailabilityCard({ doctor, isSelected, onSelect }) {
-  const status = normalizeAvailabilityStatus(doctor.availabilityStatus);
-  const isAvailable = status === "Available";
-
+function EmptyRoster() {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`min-h-[136px] rounded-xl border bg-white p-4 text-left shadow-sm outline-none transition-all hover:-translate-y-0.5 hover:shadow-md focus:ring-2 focus:ring-[#B91C1C]/10 ${
-        isSelected
-          ? "border-[#B91C1C] ring-2 ring-[#B91C1C]/10"
-          : "border-[#E2E8F0] hover:border-red-100"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-[#0F172A]">
-            {doctor.name}
-          </p>
-          <p className="mt-1 text-xs font-medium text-[#64748B]">
-            {doctor.specialization || DEFAULT_DESIGNATION}
-          </p>
-        </div>
-        <StatusBadge status={status} remarks={doctor.remarks} />
+    <div className="px-6 py-16 text-center">
+      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-neutral-100 text-neutral-600">
+        <Stethoscope size={18} aria-hidden="true" />
       </div>
-
-      <div className="mt-4 space-y-1.5 border-t border-[#F1F5F9] pt-3">
-        <p className="flex items-center gap-1.5 text-[10.5px] text-[#94A3B8]">
-          <Clock size={11} />
-          Updated {formatDateTime(doctor.updatedAt)}
-        </p>
-        {!isAvailable && doctor.remarks && (
-          <p className="text-[11px] font-semibold text-[#B45309]">
-            {doctor.remarks}
-          </p>
-        )}
-      </div>
-    </button>
-  );
-}
-
-function StatusBadge({ status, remarks }) {
-  const isAvailable = status === "Available";
-
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        isAvailable
-          ? "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-          : "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
-      }`}
-      title={!isAvailable && remarks ? remarks : status}
-    >
-      {status}
-    </span>
-  );
-}
-
-function FieldInput({ label, error, required, ...props }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-        {label} {required && <span className="text-[#B91C1C]">*</span>}
-      </label>
-      <input
-        {...props}
-        className={`h-10 w-full rounded-lg border bg-white px-3.5 text-sm text-[#1F2937] outline-none transition placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
-        }`}
-      />
-      {error && <p className="mt-1 text-[11px] text-[#B91C1C]">{error}</p>}
-    </div>
-  );
-}
-
-function FieldSelect({ label, error, required, children, ...props }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-        {label} {required && <span className="text-[#B91C1C]">*</span>}
-      </label>
-      <select
-        {...props}
-        className={`h-10 w-full rounded-lg border bg-white px-3.5 text-sm text-[#1F2937] outline-none transition focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 ${
-          error ? "border-[#B91C1C]" : "border-[#E5E7EB]"
-        }`}
-      >
-        {children}
-      </select>
-      {error && <p className="mt-1 text-[11px] text-[#B91C1C]">{error}</p>}
+      <p className="text-[13px] font-semibold text-ink-800">No official doctors yet</p>
+      <p className="mx-auto mt-1 max-w-sm text-[12px] text-neutral-600">
+        Official doctors appear when Admin creates a Doctor account. With none, referrals stay blocked.
+      </p>
     </div>
   );
 }

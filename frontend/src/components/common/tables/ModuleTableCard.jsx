@@ -1,5 +1,7 @@
 import { stagger } from "../../../utils/animation";
 import RefreshingIndicator from "../loading/RefreshingIndicator";
+import FixedTable from "./FixedTable";
+import { TABLE_PAGE_SIZE } from "../../../utils/tablePaging";
 
 export default function ModuleTableCard({
   title,
@@ -15,6 +17,8 @@ export default function ModuleTableCard({
   refreshingLabel = "Updating...",
   showCount = false,
   actions = null,
+  fixedRows = false,
+  pageSize = TABLE_PAGE_SIZE,
 }) {
   const shouldShowCount = showCount && count !== undefined && count !== null;
 
@@ -47,15 +51,21 @@ export default function ModuleTableCard({
         Swipe sideways to view all columns.
       </div>
 
-      <div
-        className={`w-full min-w-0 flex-1 overflow-x-auto overflow-y-visible overscroll-x-contain scroll-smooth px-1 pb-2 transition-all duration-300 [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border [&::-webkit-scrollbar-thumb]:border-[#F8FAFC] [&::-webkit-scrollbar-thumb]:bg-[#D6DEE8] hover:[&::-webkit-scrollbar-thumb]:bg-[#B8C4D3] [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#F8FAFC] ${bodyMinHeight}`}
-      >
-        <table
-          className={`w-full ${minWidth} border-separate border-spacing-0 text-left`}
-        >
+      {fixedRows ? (
+        <FixedTable minWidth={minWidth} pageSize={pageSize}>
           {children}
-        </table>
-      </div>
+        </FixedTable>
+      ) : (
+        <div
+          className={`w-full min-w-0 flex-1 overflow-x-auto overflow-y-visible overscroll-x-contain scroll-smooth px-1 pb-2 transition-all duration-300 [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border [&::-webkit-scrollbar-thumb]:border-[#F8FAFC] [&::-webkit-scrollbar-thumb]:bg-[#D6DEE8] hover:[&::-webkit-scrollbar-thumb]:bg-[#B8C4D3] [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#F8FAFC] ${bodyMinHeight}`}
+        >
+          <table
+            className={`w-full ${minWidth} border-separate border-spacing-0 text-left`}
+          >
+            {children}
+          </table>
+        </div>
+      )}
 
       {footer ? <div className="mt-auto">{footer}</div> : null}
     </div>

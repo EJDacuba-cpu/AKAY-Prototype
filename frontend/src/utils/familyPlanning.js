@@ -97,6 +97,82 @@ export const FP_SOURCE_OPTIONS = ["Public", "Private"];
  * Method Used" on the prenatal record, across both the BHC and RHU pages - so
  * the same clinical answer is stored identically wherever it is captured.
  */
+export function formatFpMethodLabel(method, other = "") {
+  const value = String(method || "").trim();
+  if (!value) return "";
+  if (value === "Other") return String(other || "").trim() || "Other";
+  return value;
+}
+
+function obstetricHistoryFields(background = {}) {
+  const slice = background?.obstetric;
+  if (!slice || typeof slice !== "object") return {};
+  if (slice.previousFpMethod != null || slice.previousFpMethodOther != null || slice.menstrualStatus != null || slice.menarcheAge != null) {
+    return slice;
+  }
+  return slice.obstetric && typeof slice.obstetric === "object" ? slice.obstetric : {};
+}
+
+/**
+ * Longitudinal previous FP method: Patient History first, then this visit's
+ * leftover prenatal field, then the latest finalized maternal or FP record.
+ * Never writes history; callers snapshot the resolved value onto the record.
+ */
+export function resolveHistoricalFpMethod({
+  background,
+  maternalData,
+  records = [],
+} = {}) {
+  const history = obstetricHistoryFields(background);
+  const historyLabel = formatFpMethodLabel(history.previousFpMethod, history.previousFpMethodOther);
+  if (historyLabel) {
+    return {
+      method: String(history.previousFpMethod || "").trim(),
+      other: String(history.previousFpMethodOther || "").trim(),
+      label: historyLabel,
+    };
+  }
+
+  const maternalMethod = maternalData?.previousFpMethodUsed || maternalData?.previous_fp_method_used || "";
+  const maternalOther = maternalData?.previousFpMethodOther || maternalData?.previous_fp_method_other || "";
+  const maternalLabel = formatFpMethodLabel(maternalMethod, maternalOther);
+  if (maternalLabel) {
+    return {
+      method: String(maternalMethod).trim(),
+      other: String(maternalOther).trim(),
+      label: maternalLabel,
+    };
+  }
+
+  const list = Array.isArray(records) ? records : [];
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const record = list[index] || {};
+    const maternal = record.maternalData || record.maternal_data || {};
+    const fromMaternal = formatFpMethodLabel(
+      maternal.previousFpMethodUsed || maternal.previous_fp_method_used,
+      maternal.previousFpMethodOther || maternal.previous_fp_method_other,
+    );
+    if (fromMaternal) {
+      return {
+        method: String(maternal.previousFpMethodUsed || maternal.previous_fp_method_used || "").trim(),
+        other: String(maternal.previousFpMethodOther || maternal.previous_fp_method_other || "").trim(),
+        label: fromMaternal,
+      };
+    }
+    const familyPlanning = record.familyPlanningData || record.family_planning_data || {};
+    const fromFp = formatFpMethodLabel(familyPlanning.previousMethod || familyPlanning.previous_method);
+    if (fromFp) {
+      return {
+        method: String(familyPlanning.previousMethod || familyPlanning.previous_method || "").trim(),
+        other: "",
+        label: fromFp,
+      };
+    }
+  }
+
+  return { method: "", other: "", label: "" };
+}
+
 export const PREVIOUS_FP_METHOD_OPTIONS = [
   "NONE — None / New Acceptor",
   "FSTR/BTL — Female Sterilization / Bilateral Tubal Ligation",

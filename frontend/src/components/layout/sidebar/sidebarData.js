@@ -4,22 +4,23 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  House,
   KeyRound,
   LayoutGrid,
   QrCode,
   Users,
 } from "lucide-react";
 
-export const LOGO_SRC = "/akay-logo-only.svg";
+export const LOGO_SRC = "/akay-mark.png";
+export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
 
 export const reportNavItems = [
   { label: "Referral Tracking", slug: "referrals" },
   { label: "Family Planning Target Client List", slug: "family-planning" },
   { label: "Child Immunization (EPI) Target Client List", slug: "epi-target-client-list" },
   { label: "Morbidity and Notifiable Diseases", slug: "morbidity" },
-  { label: "Community-Based Disease Surveillance", slug: "community-based-surveillance" },
+  { label: "Surveillance Report", slug: "community-based-surveillance" },
   { label: "Follow-up and Monitoring", slug: "follow-ups" },
-  { label: "Hypertension and Diabetes Monitoring", slug: "ncd" },
   { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
   { label: "TB Program Register", slug: "tb" },
 ];
@@ -41,13 +42,15 @@ export const menuByRole = {
     },
     {
       section: "Management",
-      items: [{ label: "Users", path: "/admin/users", icon: Users }],
+      items: [{ label: "Users", path: "/admin/users", icon: Users },
+        { label: "Facilities", path: "/admin/facilities", icon: Boxes },
+        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays }],
     },
     {
       section: "Accountability",
       items: [
         {
-          label: "Password Resets",
+          label: "Password & Invites",
           path: "/admin/password-reset-requests",
           icon: KeyRound,
         },
@@ -65,11 +68,7 @@ export const menuByRole = {
       section: "Patient Care",
       items: [
         { label: "Patients", path: "/bhc/patients", icon: Users },
-        {
-          label: "Health Records",
-          path: "/bhc/health-records",
-          icon: FileText,
-        },
+        { label: "Families", path: "/bhc/families", icon: House },
         {
           label: "Follow-ups",
           path: "/bhc/follow-ups",
@@ -82,7 +81,7 @@ export const menuByRole = {
       section: "Coordination",
       items: [
         {
-          label: "Medicine Availability",
+          label: "Health Commodities",
           path: "/bhc/medicine-availability",
           icon: Boxes,
         },
@@ -114,10 +113,11 @@ export const menuByRole = {
       section: "Clinical Records",
       items: [
         { label: "Patients", path: "/rhu/patients", icon: Users },
+        { label: "Families", path: "/rhu/families", icon: House },
         {
-          label: "Health Records",
-          path: "/rhu/health-records",
-          icon: FileText,
+          label: "Follow-ups",
+          path: "/rhu/follow-ups",
+          icon: CalendarDays,
         },
         {
           label: "Doctor Availability",
@@ -130,7 +130,7 @@ export const menuByRole = {
       section: "Operations",
       items: [
         {
-          label: "Medicine Availability",
+          label: "Health Commodities",
           path: "/rhu/medicine-management",
           icon: Boxes,
         },

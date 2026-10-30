@@ -4,7 +4,7 @@ Run this only in an isolated development PostgreSQL database after reviewing and
 
 ## Dispensing Scope
 
-Medicine dispensing is intentionally BHC-only in the current AKAY product. Only BHW users see the health-record dispensing UI, the Laravel service rejects non-BHW actors, dispense snapshots are assigned to a BHC, and the stored batch function requires `p_facility_type = 'bhc'`. RHU staff may manage RHU inventory through restock and adjustment operations but cannot dispense RHU inventory through health records.
+Confirmed dispensing is available to BHC and RHU users with `items.dispense` permission for a health record and medicine owned by their facility. A prescription alone does not deduct stock. Dispense snapshots carry the issuing BHC or RHU owner. The stored batch function accepts `p_facility_type` of `bhc` or `rhu` and validates the matching source record and medicine. Re-run the functional, replay, and concurrency checks below for each facility type using separate disposable facility data. The 2026-10-30 RHU migration must be applied before RHU checks.
 
 ## Privileges
 

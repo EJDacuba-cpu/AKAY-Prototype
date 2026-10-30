@@ -5,17 +5,24 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PatientRequest;
 use App\Models\Patient;
+use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\Households;
+use App\Services\PatientDetail;
+use App\Services\PatientIdentity;
+use App\Services\PatientRelationships;
+use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PatientController extends Controller
 {
-    public function __construct(private readonly FacilityAccessService $facilityAccess)
-    {
-    }
+    public function __construct(
+        private readonly FacilityAccessService $facilityAccess
+    ) {}
 
     public function index(Request $request)
     {
@@ -71,37 +78,135 @@ class PatientController extends Controller
             }
         }
 
-        return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
+        $results = $query->latest()->paginate($request->integer('per_page', 25));
+        if (! $user->isAdmin() && ! ActionPermissions::allows($user, 'clinical.history')) {
+            $results->through(fn (Patient $patient) => PatientIdentity::response($patient));
+        }
+
+        return response()->json(['data' => $results]);
+    }
+
+    /**
+     * The household behind a Family Serial Number: every active patient the
+     * user can see who shares the serial, oldest first so the parents lead.
+     * Identity fields only - it is a picker for linking a child's parents.
+     */
+    public function household(Request $request)
+    {
+        $serial = trim((string) $request->validate([
+            'serial' => ['required', 'string', 'max:100'],
+        ])['serial']);
+
+        $members = $this->facilityAccess
+            ->scopePatients(Patient::query(), $request->user())
+            ->where('family_serial_number', $serial)
+            ->where(fn ($query) => $query
+                ->whereNull('status')
+                ->orWhere('status', '!=', 'inactive'))
+            ->orderByRaw('birthdate IS NULL, birthdate')
+            ->limit(50)
+            ->get()
+            ->map(fn (Patient $patient) => [
+                ...$patient->only(['id', 'first_name', 'middle_name', 'last_name', 'sex', 'age']),
+                'birthdate' => $patient->birthdate?->toDateString(),
+                'full_name' => $patient->full_name,
+            ]);
+
+        return response()->json(['data' => $members]);
     }
 
     public function store(PatientRequest $request, AuditLogger $auditLogger)
     {
         $data = $this->normalizeProfileFields($request->validated());
-        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
+        $this->authorizeParentLinks($request, $data);
         $user = $request->user();
+        $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
         $data['created_by'] = $user->id;
 
-        if ($user->isBhw()) {
+        // Check-in is a separate action. A leftover check_in field is ignored
+        // after duplicate detection, and never creates a queue visit here.
+        $checkIn = $data['check_in'] ?? null;
+        $confirmDuplicate = (bool) ($data['confirm_possible_duplicate'] ?? false);
+        unset($data['check_in'], $data['confirm_possible_duplicate']);
+        if ($checkIn !== null) {
+            abort_unless($user->isRhu(), 403, 'Only RHU staff can check a patient in.');
+        }
+        if ($user->isRhu()) {
+            $duplicates = $confirmDuplicate ? [] : app(RhuVisitQueueService::class)->findPossibleDuplicates(
+                $user,
+                (string) ($data['first_name'] ?? ''),
+                (string) ($data['last_name'] ?? ''),
+                $data['birthdate'] ?? null
+            );
+            if ($duplicates !== []) {
+                return response()->json([
+                    'message' => 'A patient with the same name and birthdate is already registered at this RHU.',
+                    'code' => 'POSSIBLE_DUPLICATE_PATIENT',
+                    'matches' => array_map(fn (array $row): array => [
+                        ...PatientIdentity::response($row['patient'], false),
+                        'active_visit_id' => $row['active_visit_id'],
+                    ], $duplicates),
+                ], 409);
+            }
+        }
+
+        if ($user->isBhc()) {
             unset($data['rural_health_unit_id']);
             $data['barangay_health_center_id'] = $user->barangay_health_center_id;
             $data['rural_health_unit_id'] = null;
         }
 
-        if ($user->isRhuStaff()) {
+        if ($user->isRhu()) {
             unset($data['barangay_health_center_id']);
             $data['barangay_health_center_id'] = null;
             $data['rural_health_unit_id'] = $user->rural_health_unit_id;
         }
 
-        $patient = Patient::create($data);
-        $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
+        $householdInput = $data['household'] ?? null;
+        unset($data['household'], $data['head_replacement']);
+        $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger) {
+            $user = $request->user();
+            if ($user->isBhc() || $user->isRhu()) {
+                $households = app(Households::class);
+                $owner = $households->owner($user);
+                $households->lock($owner);
+                $households->validateLegacySerial($owner, $data);
+            }
+            if ($householdInput) {
+                app(Households::class)->owner($request->user());
+                ActionPermissions::ensure($request->user(), 'patients.register');
+                if (! empty($data['family_serial_number'])) {
+                    throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
+                }
+            }
+            $patient = Patient::create($data);
+            if ($householdInput) {
+                app(Households::class)->attach($request, $patient, $householdInput);
+            }
+            $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
 
-        return response()->json(['data' => $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])], 201);
+            return $patient;
+        });
+
+        $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father', 'household']);
+        if (! $canAccessHistory) {
+            $response = $patient->makeHidden(['medical_background', 'mother', 'father'])->toArray();
+            $response['mother'] = $patient->mother ? PatientIdentity::response($patient->mother) : null;
+            $response['father'] = $patient->father ? PatientIdentity::response($patient->father) : null;
+
+            return response()->json(['data' => $response], 201);
+        }
+
+        return response()->json(['data' => $patient], 201);
     }
 
     public function show(Request $request, Patient $patient)
     {
         $this->facilityAccess->authorizePatient($request->user(), $patient);
+
+        if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
+            return response()->json(['data' => PatientIdentity::withParents($patient, $request->user())]);
+        }
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
             $data = StoredFunction::selectJson(
@@ -119,30 +224,20 @@ class PatientController extends Controller
             return response()->json(['data' => $data]);
         }
 
-        $user = $request->user();
-        $patient->load([
-            'healthRecords' => fn ($query) => $this->facilityAccess
-                ->scopePatientHealthRecords($query, $user),
-            'referrals' => fn ($query) => $this->facilityAccess
-                ->scopeReferrals($query, $user)
-                ->with('feedback'),
-            'mother' => fn ($query) => $this->facilityAccess
-                ->scopePatients($query, $user),
-        ]);
-        $patient->loadCount([
-            'healthRecords' => fn ($query) => $this->facilityAccess
-                ->scopePatientHealthRecords($query, $user),
-            'referrals' => fn ($query) => $this->facilityAccess
-                ->scopeReferrals($query, $user),
-        ]);
-
-        return response()->json(['data' => $patient]);
+        return response()->json(['data' => app(PatientDetail::class)->for($patient, $request->user())]);
     }
 
     public function update(PatientRequest $request, Patient $patient, AuditLogger $auditLogger)
     {
         $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         $data = $this->normalizeProfileFields($request->validated(), $patient);
+        $householdInput = $data['household'] ?? null;
+        $replacement = $data['head_replacement'] ?? null;
+        $parentBase = $data['parent_link_base'] ?? [];
+        unset($data['household'], $data['head_replacement'], $data['parent_link_base']);
+        if (! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')) {
+            $data = array_intersect_key($data, array_flip(PatientIdentity::FIELDS));
+        }
         if (! $request->user()->isAdmin()) {
             unset(
                 $data['barangay_health_center_id'],
@@ -150,11 +245,71 @@ class PatientController extends Controller
                 $data['facility_id']
             );
         }
-        $this->authorizeMotherLink($request, $data['mother_patient_id'] ?? null);
-        $patient->update($data);
-        $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
+        DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $parentBase, $auditLogger) {
+            $user = $request->user();
+            if ($user->isBhc() || $user->isRhu()) {
+                // Acquire the same facility lock before any patient row write;
+                // FSN corrections lock in this order too, avoiding deadlocks.
+                $households = app(Households::class);
+                $owner = $households->owner($user);
+                $households->lock($owner);
+                $patient->refresh();
+                if (! $patient->household_id) {
+                    $households->validateLegacySerial($owner, $data, $patient);
+                }
+            }
+            // Validate against the saved graph after acquiring the existing facility lock.
+            $parentChanges = [];
+            foreach (['mother_patient_id', 'father_patient_id'] as $field) {
+                if (! array_key_exists($field, $data)) {
+                    continue;
+                }
+                $before = $patient->{$field} === null ? null : (int) $patient->{$field};
+                $after = $data[$field] === null ? null : (int) $data[$field];
+                if (array_key_exists($field, $parentBase)) {
+                    $expected = $parentBase[$field] === null ? null : (int) $parentBase[$field];
+                    abort_if($before !== $expected, 409, 'This parent link changed. Reload the patient and review the saved connection.');
+                }
+                if ($before !== $after) {
+                    if (! $user->isAdmin()) {
+                        ActionPermissions::ensure($user, 'families.view');
+                        ActionPermissions::ensure($user, 'families.manage');
+                    }
+                    $parentChanges[] = $field.': '.($before ?? 'none').' -> '.($after ?? 'none');
+                }
+            }
+            $this->authorizeParentLinks($request, $data);
+            if ($householdInput) {
+                app(Households::class)->owner($request->user());
+                ActionPermissions::ensure($request->user(), 'patients.register');
+            }
+            if ($patient->household_id && array_key_exists('family_serial_number', $data) && $data['family_serial_number'] !== $patient->family_serial_number) {
+                throw ValidationException::withMessages(['family_serial_number' => 'Use Edit Family to correct the household FSN.']);
+            }
+            if ($patient->household_id && ! $householdInput) {
+                $this->guardHouseholdAddress($patient, $data);
+            }
+            if ($householdInput && ! empty($data['family_serial_number']) && ! $patient->household_id) {
+                throw ValidationException::withMessages(['family_serial_number' => 'Choose the FSN through the household selection.']);
+            }
+            $patient->update($data);
+            if ($householdInput) {
+                app(Households::class)->attach($request, $patient, $householdInput, $replacement);
+            }
+            app(Households::class)->validateHeadPatient($patient);
+            $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
+            if ($parentChanges) {
+                $auditLogger->log($request, 'parent_links_updated', 'patients', "Patient {$patient->id}: ".implode('; ', $parentChanges).'.');
+            }
+        });
 
-        return response()->json(['data' => $patient->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother'])]);
+        return response()->json(['data' => ! $request->user()->isAdmin() && ! ActionPermissions::allows($request->user(), 'clinical.history')
+            ? PatientIdentity::withParents($patient->fresh(), $request->user())
+            : $patient->fresh()->load([
+                'barangayHealthCenter', 'ruralHealthUnit', 'household',
+                'mother' => fn ($query) => $this->facilityAccess->scopePatients($query, $request->user())->select(PatientIdentity::PARENT_COLUMNS),
+                'father' => fn ($query) => $this->facilityAccess->scopePatients($query, $request->user())->select(PatientIdentity::PARENT_COLUMNS),
+            ])]);
     }
 
     public function destroy(Request $request, Patient $patient, AuditLogger $auditLogger)
@@ -166,29 +321,41 @@ class PatientController extends Controller
         return response()->json(['data' => $patient->fresh()]);
     }
 
-    private function authorizeMotherLink(Request $request, mixed $motherPatientId): void
+    /** A household member's address belongs to the household; only Edit Family (or a household move) changes it. */
+    private function guardHouseholdAddress(Patient $patient, array $data): void
     {
-        if (! $motherPatientId) {
-            return;
+        foreach (['street_address', 'purok_area', 'barangay', 'municipality'] as $field) {
+            if (array_key_exists($field, $data) && trim((string) $data[$field]) !== trim((string) $patient->{$field})) {
+                throw ValidationException::withMessages([$field => 'Use Edit Family to change the household address.']);
+            }
         }
+    }
 
-        $currentPatient = $request->route('patient');
-        abort_if(
-            $currentPatient instanceof Patient
-                && (string) $currentPatient->id === (string) $motherPatientId,
-            422,
-            'A patient cannot be linked as their own mother.'
-        );
+    /**
+     * A linked mother or father must be a registered patient the user can see,
+     * of the matching sex, and not the patient themself.
+     */
+    private function authorizeParentLinks(Request $request, array $data): void
+    {
+        foreach (['mother', 'father'] as $role) {
+            $parentId = $data["{$role}_patient_id"] ?? null;
+            if (! $parentId) {
+                continue;
+            }
 
-        $mother = Patient::find($motherPatientId);
-        abort_unless($mother, 422, 'Selected mother patient was not found.');
-        $this->facilityAccess->authorizePatient($request->user(), $mother);
+            $currentPatient = $request->route('patient');
+            $parent = Patient::find($parentId);
+            abort_unless($parent, 422, "Selected {$role} patient was not found.");
+            app(PatientRelationships::class)->assertParentCandidate($request, $currentPatient instanceof Patient ? $currentPatient : null, $parent, $role, "{$role}_patient_id");
+        }
     }
 
     private function normalizeProfileFields(array $data, ?Patient $patient = null): array
     {
         foreach ([
             'occupation',
+            'education_level',
+            'education_completed',
             'philhealth_status',
             'philhealth_number',
             'spouse_name',
@@ -197,6 +364,9 @@ class PatientController extends Controller
             'nhts_status',
             'family_serial_number',
             'mother_patient_id',
+            'father_patient_id',
+            'mother_birth_date',
+            'father_birth_date',
         ] as $field) {
             if (array_key_exists($field, $data) && $data[$field] === '') {
                 $data[$field] = null;
@@ -208,13 +378,6 @@ class PatientController extends Controller
         $effectivePhilhealthStatus =
             $data['philhealth_status'] ?? $patient?->philhealth_status;
 
-        $isEpiInfant = false;
-
-        if ($effectiveBirthdate) {
-            $isEpiInfant = Carbon::parse($effectiveBirthdate)
-                ->diffInMonths(now()) <= 12;
-        }
-
         if (
             array_key_exists('philhealth_status', $data)
             && $effectivePhilhealthStatus !== 'With PhilHealth'
@@ -222,20 +385,26 @@ class PatientController extends Controller
             $data['philhealth_number'] = null;
         }
 
+        if (Patient::isInfantBirthdate($effectiveBirthdate)) {
+            foreach ([
+                'civil_status',
+                'occupation',
+                'education_level',
+                'education_completed',
+                'nhts_status',
+                'spouse_name',
+                'spouse_occupation',
+            ] as $field) {
+                unset($data[$field]);
+            }
+
+            return $data;
+        }
+
         $profileDecisionChanged = $patient === null
             || array_key_exists('registration_type', $data)
             || array_key_exists('birthdate', $data)
             || array_key_exists('civil_status', $data);
-
-        if ($isEpiInfant && $profileDecisionChanged) {
-            $data['civil_status'] = 'Single';
-            $data['occupation'] = null;
-            $data['nhts_status'] = null;
-            $data['spouse_name'] = null;
-            $data['spouse_occupation'] = null;
-
-            return $data;
-        }
 
         if ($profileDecisionChanged && $effectiveCivilStatus !== 'Married') {
             $data['spouse_name'] = null;

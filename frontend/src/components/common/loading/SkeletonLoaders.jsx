@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { resolveSkeletonVariant } from "./skeletonVariant";
 
 const cardClass = "rounded-xl border border-slate-200 bg-white shadow-sm";
+
+// When the page's own header and toolbar stay on screen while it loads, the skeleton leaves its copies out.
+const SkeletonBodyOnlyContext = createContext(false);
 const skeletonBase = "akay-skeleton-block rounded-md bg-[#EEF2F7]";
 
 function SkeletonStyles() {
@@ -123,43 +127,8 @@ export function TopLoadingBar({
   );
 }
 
-export function inferLoadingSkeletonVariant(message = "") {
-  const text = String(message).toLowerCase();
-
-  if (text.includes("follow")) return "follow-ups";
-  if (text.includes("medicine")) return "medicine";
-  if (text.includes("report")) return "reports";
-  if (text.includes("patient details") || text.includes("patient profile")) {
-    return "patient-details";
-  }
-  if (text.includes("health records")) return "health-records";
-  if (text.includes("dashboard")) return "dashboard";
-  if (
-    text.includes("details") ||
-    text.includes("detail") ||
-    text.includes("feedback") ||
-    text.includes("return slip")
-  ) {
-    return "details";
-  }
-  if (text.includes("form") || text.includes("referral details")) {
-    return "form";
-  }
-  if (
-    text.includes("patients") ||
-    text.includes("records") ||
-    text.includes("referrals") ||
-    text.includes("accounts") ||
-    text.includes("requests") ||
-    text.includes("logs")
-  ) {
-    return "table";
-  }
-
-  return "module";
-}
-
 function SkeletonHeader({ compact = false }) {
+  if (useContext(SkeletonBodyOnlyContext)) return null;
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
@@ -175,6 +144,7 @@ function SkeletonHeader({ compact = false }) {
 }
 
 function ToolbarSkeleton({ action = true, filters = 2 }) {
+  if (useContext(SkeletonBodyOnlyContext)) return null;
   return (
     <div className={`${cardClass} p-3.5`}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -311,34 +281,55 @@ const reportColumns = [
 export function DashboardSkeleton({ message = "Loading dashboard..." }) {
   return (
     <SkeletonRoot message={message}>
-      <SkeletonHeader />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className={`${cardClass} p-4`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <SkeletonBlock className="h-3 w-20" />
-                <SkeletonBlock className="mt-3 h-7 w-24" />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className={`${cardClass} p-4`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <SkeletonBlock className="h-3 w-20" />
+                  <SkeletonBlock className="mt-3 h-7 w-24" />
+                </div>
+                <SkeletonBlock className="size-9 rounded-lg" />
               </div>
-              <SkeletonBlock className="h-10 w-10 rounded-xl" />
+              <SkeletonBlock className="mt-4 h-2.5 w-32" />
             </div>
-            <SkeletonBlock className="mt-4 h-2.5 w-32" />
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className={`${cardClass} p-4`}>
+          <SkeletonBlock className="h-6 w-48" />
+          <SkeletonBlock className="mt-3 h-4 w-40" />
+          <SkeletonBlock className="mt-6 h-4 w-28" />
+        </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
         <div className={`${cardClass} p-4`}>
           <SkeletonBlock className="h-4 w-40" />
-          <div className="mt-5 space-y-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <SkeletonBlock key={index} className="h-9 w-full rounded-lg" />
-            ))}
+          <SkeletonBlock className="mt-5 h-56 w-full rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className={`${cardClass} p-4`}>
+            <SkeletonBlock className="h-4 w-32" />
+            <div className="mt-5 flex flex-col gap-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <SkeletonBlock key={index} className="h-10 w-full rounded-lg" />
+              ))}
+            </div>
+          </div>
+          <div className={`${cardClass} p-4`}>
+            <SkeletonBlock className="h-4 w-28" />
+            <SkeletonBlock className="mt-5 h-24 w-full rounded-xl" />
           </div>
         </div>
-        <div className={`${cardClass} p-4`}>
-          <SkeletonBlock className="h-4 w-32" />
-          <SkeletonBlock className="mt-5 h-44 w-full rounded-xl" />
-        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className={`${cardClass} p-4`}>
+            <SkeletonBlock className="size-9 rounded-lg" />
+            <SkeletonBlock className="mt-3 h-4 w-28" />
+            <SkeletonBlock className="mt-2 h-3 w-36" />
+          </div>
+        ))}
       </div>
     </SkeletonRoot>
   );
@@ -399,6 +390,40 @@ export function MedicineInventorySkeleton({
         rows={7}
         minWidth="min-w-[1120px]"
       />
+    </SkeletonRoot>
+  );
+}
+
+export function FacilitiesSkeleton({ message = "Loading facilities..." }) {
+  return (
+    <SkeletonRoot message={message}>
+      <div className="flex flex-wrap items-center gap-2">
+        <SkeletonBlock className="h-10 w-36 rounded-lg" />
+        <SkeletonBlock className="h-10 w-36 rounded-lg" />
+        <SkeletonBlock className="ml-auto h-10 w-32 rounded-lg" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className={`${cardClass} p-5`}>
+            <div className="flex items-start justify-between gap-3">
+              <SkeletonBlock className="h-4 w-40" />
+              <SkeletonBlock className="h-5 w-14 rounded-full" />
+            </div>
+            <SkeletonBlock className="mt-3 h-3 w-full" />
+            <div className="mt-5 space-y-3">
+              <div>
+                <SkeletonBlock className="h-2.5 w-28" />
+                <SkeletonBlock className="mt-2 h-3.5 w-36" />
+              </div>
+              <div>
+                <SkeletonBlock className="h-2.5 w-28" />
+                <SkeletonBlock className="mt-2 h-3.5 w-44" />
+              </div>
+            </div>
+            <SkeletonBlock className="mt-5 h-4 w-24" />
+          </div>
+        ))}
+      </div>
     </SkeletonRoot>
   );
 }
@@ -637,29 +662,20 @@ export function ModuleSkeleton({ message = "Loading..." }) {
   );
 }
 
+/**
+ * The loading shape for a page. `skeleton` names it (see skeletonVariant.js; unknown names show `module`);
+ * `bodyOnly` leaves out the skeleton's header and toolbar when the page's own are already on screen.
+ */
 export function PageSkeletonLoader({
   message = "Loading...",
-  variant,
+  skeleton,
+  bodyOnly = false,
   className = "",
 }) {
-  const supportedVariants = [
-    "dashboard",
-    "table",
-    "details",
-    "form",
-    "module",
-    "follow-ups",
-    "medicine",
-    "reports",
-    "patient-details",
-    "health-records",
-  ];
-  const requestedVariant = variant || inferLoadingSkeletonVariant(message);
-  const skeletonVariant = supportedVariants.includes(requestedVariant)
-    ? requestedVariant
-    : "module";
+  const skeletonVariant = resolveSkeletonVariant(skeleton);
 
   return (
+    <SkeletonBodyOnlyContext.Provider value={bodyOnly}>
     <div className={`min-w-0 ${className}`}>
       {skeletonVariant === "dashboard" && <DashboardSkeleton message={message} />}
       {skeletonVariant === "table" && <TableSkeleton message={message} />}
@@ -677,6 +693,10 @@ export function PageSkeletonLoader({
       {skeletonVariant === "health-records" && (
         <HealthRecordsSkeleton message={message} />
       )}
+      {skeletonVariant === "facilities" && (
+        <FacilitiesSkeleton message={message} />
+      )}
     </div>
+    </SkeletonBodyOnlyContext.Provider>
   );
 }

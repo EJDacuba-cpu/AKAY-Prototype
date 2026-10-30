@@ -3,43 +3,84 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\PersistentSessionException;
+use App\Exceptions\TurnstileVerificationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Models\User;
+use App\Services\AccountActivationService;
+use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
-use App\Services\UserNotificationService;
+use App\Services\PasswordSetRecorder;
+use App\Services\PasswordSetService;
+use App\Services\TurnstileVerifier;
 use App\Services\UserSessionRevocationService;
+use App\Services\WorkingFacilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\Rules\Password as PasswordRule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
 {
     public function login(
         LoginRequest $request,
+        AccountActivationService $activation,
         AuditLogger $auditLogger,
         FacilityAccessService $facilityAccess,
-        UserSessionRevocationService $sessions
+        UserSessionRevocationService $sessions,
+        TurnstileVerifier $turnstile
     ) {
-        $user = User::where('email', $request->validated('email'))->first();
+        try {
+            $turnstile->verify(
+                (string) $request->validated('turnstile_token'),
+                $request->ip()
+            );
+        } catch (TurnstileVerificationException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->codeName(),
+            ], $exception->status());
+        }
+
+        // LoginRequest normalizes the input; older accounts may retain mixed-case emails.
+        // Do not choose an identity if legacy rows collide after case normalization.
+        $matches = User::whereRaw('lower(email) = ?', [$request->validated('email')])
+            ->limit(2)->get();
+        $user = $matches->count() === 1 ? $matches->first() : null;
 
         $validRole = $user && in_array($user->role, [
             User::ROLE_ADMIN,
-            User::ROLE_BHW,
-            User::ROLE_RHU_STAFF,
+            User::ROLE_BHC,
+            User::ROLE_RHU,
         ], true);
         $validAccount = $user
             && Hash::check($request->validated('password'), $user->password)
             && $user->isActive()
             && $validRole
-            && $facilityAccess->hasValidFacilityAssignment($user);
+            && ($user->isAdmin() || app(WorkingFacilityService::class)->available($user) !== []);
 
         if (! $validAccount) {
             return response()->json([
                 'message' => 'The provided credentials are incorrect.',
                 'code' => 'LOGIN_FAILED',
+            ], 422);
+        }
+
+        if (! $activation->isActivated($user)) {
+            return response()->json([
+                'message' => 'Finish account setup from the invitation sent to your email, or ask the Municipal Health Officer to resend it.',
+                'code' => 'ACCOUNT_SETUP_REQUIRED',
+            ], 403);
+        }
+
+        // Fail closed: a temporary password with no recorded expiry is treated as expired.
+        if ($user->must_change_password
+            && (! $user->temp_password_expires_at || $user->temp_password_expires_at->isPast())) {
+            return response()->json([
+                'message' => 'This temporary password has expired. Ask the MHO for a new one.',
+                'code' => 'TEMP_PASSWORD_EXPIRED',
             ], 422);
         }
 
@@ -102,49 +143,51 @@ class AuthController extends Controller
         ]);
     }
 
-    public function forgotPassword(Request $request, UserNotificationService $notifications)
-    {
-        $validated = $request->validate(['email' => ['required', 'email']]);
-        $status = Password::sendResetLink($validated);
-
-        if ($status === Password::RESET_LINK_SENT) {
-            $notifications->notifyUser(
-                User::where('email', $validated['email'])->first(),
-                'Password reset requested',
-                'A password reset request was created for your account.',
-                'password_reset'
-            );
-        }
-
-        return response()->json(['message' => __($status)]);
-    }
-
-    public function resetPassword(
+    public function changePassword(
         Request $request,
+        PasswordSetService $passwords,
+        AuditLogger $auditLogger,
         UserSessionRevocationService $sessions
     ) {
         $validated = $request->validate([
-            'token' => ['required', 'string'],
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'confirmed', 'different:current_password', PasswordRule::min(8)->mixedCase()->numbers()],
         ]);
 
-        $status = Password::reset(
-            $validated,
-            function (User $user, string $password) use ($sessions) {
-                $user->forceFill(['password' => $password])->save();
-                $sessions->revokeAllTokens($user, 'password-reset');
-            }
+        $user = $request->user();
+
+        if (! Hash::check($validated['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => 'The current password is incorrect.',
+            ]);
+        }
+
+        $wasTemporary = (bool) $user->must_change_password;
+
+        // Every session opened before the change (including any opened with the temporary password) ends.
+        // A voluntary change by a user who had no temporary password completes nothing.
+        $passwords->set(
+            $user,
+            $validated['password'],
+            $wasTemporary ? PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD : null,
+            'password-changed'
         );
 
-        return $status === Password::PASSWORD_RESET
-            ? response()->json(['message' => __($status)])
-            : response()->json(['message' => __($status)], 422);
+        $session = $sessions->issuePersistentSession($user);
+
+        $auditLogger->log($request, 'password changed', 'auth', 'User changed their password.');
+
+        return $this->sessionResponse($user->fresh(), $session, ['message' => 'Password changed.'])
+            ->withCookie($this->refreshCookie(
+                $session['refresh']->plainTextToken,
+                $session['refresh']->accessToken->expires_at
+            ));
     }
 
-    private function sessionResponse(User $user, array $session)
+    private function sessionResponse(User $user, array $session, array $extra = [])
     {
         return response()->json([
+            ...$extra,
             'token' => $session['access']->plainTextToken,
             'token_type' => 'Bearer',
             'expires_at' => $session['access']->accessToken->expires_at,
@@ -154,14 +197,15 @@ class AuthController extends Controller
 
     private function userPayload(User $user): array
     {
+        $choices = app(WorkingFacilityService::class)->available($user);
         $user->loadMissing(['barangayHealthCenter:id,name', 'ruralHealthUnit:id,name']);
-        $facility = $user->isBhw()
+        $facility = $user->isBhc()
             ? $user->barangayHealthCenter
-            : ($user->isRhuStaff() ? $user->ruralHealthUnit : null);
-        $facilityType = $user->isBhw() ? 'bhc' : ($user->isRhuStaff() ? 'rhu' : null);
+            : ($user->isRhu() ? $user->ruralHealthUnit : null);
+        $facilityType = $user->isBhc() ? 'bhc' : ($user->isRhu() ? 'rhu' : null);
         $homePath = match ($user->role) {
-            User::ROLE_BHW => '/bhc/dashboard',
-            User::ROLE_RHU_STAFF => '/rhu/dashboard',
+            User::ROLE_BHC => '/bhc/dashboard',
+            User::ROLE_RHU => '/rhu/dashboard',
             default => '/admin/dashboard',
         };
 
@@ -170,6 +214,12 @@ class AuthController extends Controller
             'name' => $user->name,
             'role' => $user->role,
             'status' => $user->status,
+            'email_verified_at' => $user->email_verified_at,
+            'must_change_password' => (bool) $user->must_change_password,
+            'staff_role' => $user->staff_role,
+            'contact_number' => $user->contact_number,
+            'permissions' => ActionPermissions::home($user),
+            'authorized_facilities' => $choices,
             'barangay_health_center_id' => $user->barangay_health_center_id,
             'rural_health_unit_id' => $user->rural_health_unit_id,
             'facility' => $facility ? [

@@ -3,26 +3,41 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\DraftFinalizationConflictException;
+use App\Exceptions\ReferralSubmissionBlockedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordRequest;
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\HealthRecordDraft;
 use App\Models\Patient;
+use App\Models\PatientCondition;
+use App\Models\User;
 use App\Services\AkayCacheService;
 use App\Services\AuditLogger;
+use App\Services\ClinicalRegistry;
+use App\Services\ConditionMonitoringService;
+use App\Services\ConditionCardReferrals;
 use App\Services\FacilityAccessService;
 use App\Services\FollowUpEpisodeService;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\HealthRecordIdempotencyService;
+use App\Services\LegacyMonitoringReview;
 use App\Services\MedicineStockService;
+use App\Services\PatientBackground;
+use App\Services\PatientConditions;
 use App\Services\ReferralCreationService;
+use App\Services\ReferralHoldService;
+use App\Services\ReferralRoutingService;
+use App\Services\ReportingEntries;
+use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class HealthRecordController extends Controller
 {
@@ -53,16 +68,28 @@ class HealthRecordController extends Controller
             return response()->json(['data' => StoredFunction::paginatedResponse($rows, $request)]);
         }
 
-        $query = $this->facilityAccess
-            ->scopeHealthRecords(HealthRecord::query(), $request->user())
-            ->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
+        if ($request->query('patient_id')) {
+            $patient = Patient::findOrFail($request->query('patient_id'));
+            $this->facilityAccess->authorizePatient($request->user(), $patient);
+            // Match the record history already exposed by PatientDetail,
+            // including referred BHC records for an authorized RHU patient.
+            $query = $this->facilityAccess->scopePatientHealthRecords(HealthRecord::query(), $request->user());
+        } else {
+            $query = $this->facilityAccess->scopeHealthRecords(HealthRecord::query(), $request->user());
+        }
+        $query->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
 
         if ($request->query('patient_id')) {
-            $query->where('patient_id', $request->query('patient_id'));
+            $query->where('patient_id', $request->query('patient_id'))
+                // The patient profile's Medications list; other lists stay lean.
+                ->with('dispensedMedicines.dispenser:id,name');
         }
 
-        if ($request->query('category')) {
-            $query->where('category', $request->query('category'));
+        if ($category = $request->query('category')) {
+            // New TB records are service/General Consultation with TB-DOTS data.
+            $category === 'TB DOTS / TB Monitoring'
+                ? $query->where(fn ($q) => $q->where('category', $category)->orWhereNotNull('tb_data'))
+                : $query->where('category', $category);
         }
 
         return response()->json(['data' => $query->latest('date_recorded')->paginate($request->integer('per_page', 25))]);
@@ -74,16 +101,110 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks,
         HealthRecordIdempotencyService $idempotency,
         ReferralCreationService $referralCreation,
-        HealthRecordDraftService $drafts
+        ConditionCardReferrals $conditionCardReferrals,
+        HealthRecordDraftService $drafts,
+        ClinicalRegistry $clinicalRegistry,
+        ConditionMonitoringService $monitoring,
+        PatientBackground $patientBackground,
+        PatientConditions $patientConditions,
+        LegacyMonitoringReview $legacyReview
     ) {
         $data = $request->validated();
         $patient = Patient::findOrFail($data['patient_id']);
-        $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        $rhuItr = $request->isRhuItrV1();
+        $visit = null;
+        if ($rhuItr) {
+            $visit = app(RhuVisitQueueService::class)->authorizeInConsultation(
+                $request->user(),
+                (int) $data['rhu_visit_id'],
+                (int) $patient->id,
+                $data['consultation_uuid'] ?? null
+            );
+        } else {
+            $this->facilityAccess->authorizePatientModification($request->user(), $patient);
+        }
+        // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
+        // A request without the discriminator runs every legacy step below unchanged.
+        $v2 = $request->isBhcGeneralV2();
+        unset($data['consultation_workflow']);
+        if ($v2) {
+            // Health-concern entries: stored exactly as typed, never resolved
+            // against the condition registry, never touching patient conditions.
+            $data['diagnoses'] = array_values(array_map(
+                fn (array $entry) => ReportingEntries::normalizeForSave($entry),
+                array_filter($data['diagnoses'] ?? [], 'is_array')
+            ));
+            $data['diagnosis'] = null;
+            $data['monitoring_data'] = [
+                ...(is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : []),
+                'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            ];
+        } elseif ($rhuItr) {
+            $prescriptionText = trim((string) ($data['prescription_text'] ?? ''));
+            unset($data['prescription_text'], $data['rhu_visit_id']);
+            $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+            $schedules = \App\Services\FollowUpSchedules::fromMonitoringData($monitoringData);
+            $firstSchedule = $schedules[0] ?? null;
+            $rhuFollowUp = $schedules !== [] || (bool) (($data['care_plan']['rhu_follow_up'] ?? false));
+            $data['monitoring_data'] = [
+                ...$monitoringData,
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'prescriptionText' => $prescriptionText,
+                'rhuFollowUp' => $rhuFollowUp,
+                'manageToBhc' => (bool) (($data['care_plan']['manage_to_bhc'] ?? false)),
+                'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),
+            ];
+            if ($rhuFollowUp) {
+                $data['monitoring_data']['followUpStatus'] = 'Follow-up Required';
+                $data['monitoring_data']['follow_up_status'] = 'Follow-up Required';
+                if ($firstSchedule) {
+                    $data['monitoring_data']['followUpDate'] = $firstSchedule['date'];
+                    $data['monitoring_data']['follow_up_date'] = $firstSchedule['date'];
+                    $data['monitoring_data']['followUpTime'] = $firstSchedule['time'];
+                    $data['monitoring_data']['follow_up_time'] = $firstSchedule['time'];
+                    $data['monitoring_data']['followUpReason'] = $firstSchedule['purpose'];
+                    $data['monitoring_data']['follow_up_reason'] = $firstSchedule['purpose'];
+                }
+            }
+            $data['needs_referral'] = false;
+            $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
+            $data['consultation_uuid'] = $visit->consultation_uuid;
+            $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
+                array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+            );
+        } else {
+            // conditionKey is always server-resolved from the diagnosis name here -
+            // any client-sent conditionKey is discarded and replaced, never trusted.
+            // A stale client may still send a falsy addToConditions; it is never stored.
+            $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
+                array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+            );
+        }
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
+        $carePlan = $data['care_plan'] ?? [];
+        unset($data['care_plan']);
+        $backgroundUpdate = $data['background_update'] ?? null;
+        unset($data['background_update']);
+        if ($backgroundUpdate !== null && ! PatientBackground::canAccess($request->user())) {
+            abort(403, 'You do not have permission to update the patient background.');
+        }
+        $conditionConfirmations = $data['condition_confirmations'] ?? [];
+        unset($data['condition_confirmations']);
+        if ($rhuItr && $conditionConfirmations === []) {
+            $conditionConfirmations = $this->confirmationsFromRhuDiagnoses($data['diagnoses'] ?? [], $patient);
+        }
+        if ($conditionConfirmations !== [] && ! PatientConditions::canConfirm($request->user())) {
+            abort(403, 'Only RHU staff can confirm a condition.');
+        }
+        $legacyDiscontinuations = $data['legacy_monitoring_discontinuations'] ?? [];
+        unset($data['legacy_monitoring_discontinuations']);
+        if ($legacyDiscontinuations !== [] && ! PatientConditions::canConfirm($request->user())) {
+            abort(403, 'Only RHU staff can review legacy monitoring.');
+        }
 
         if ($existing = HealthRecord::query()
             ->where('created_by', $request->user()->id)
@@ -99,25 +220,71 @@ class HealthRecordController extends Controller
             return $response;
         }
 
+        // Same consultation, different submission key: the encoder reloaded
+        // after a save that DID commit (its response was lost) and saved the
+        // recovered draft again. idempotency_key cannot catch this - it is new -
+        // but the consultation identity can. This is a 409, never a replay: the
+        // idempotency contract is per key, so a "success" here would vouch for
+        // content under a key that never submitted it.
+        // One canonical form, matching HealthRecordDraftService, so the draft
+        // and the record it becomes compare equal.
+        $consultationUuid = isset($data['consultation_uuid'])
+            ? strtolower(trim((string) $data['consultation_uuid'])) ?: null
+            : null;
+        $data['consultation_uuid'] = $consultationUuid;
+        if ($consultationUuid !== null && ($recorded = HealthRecord::query()
+            ->where('created_by', $request->user()->id)
+            ->where('consultation_uuid', $consultationUuid)
+            ->first())) {
+            return $this->consultationAlreadyRecordedResponse($recorded);
+        }
+
         unset($data['idempotency_key']);
         $referralData = $data['referral'] ?? null;
         unset($data['referral']);
 
-        if ($this->isReferralDisposition($data, $referralData)) {
-            $this->normalizeReferralDisposition($data);
+        if ($v2) {
+            // The visit-level follow-up first: normalizeReferralDisposition
+            // reads the bhcFollowUp it stores (CarePlan::keepsFollowUpWithReferral).
+            $this->applyV2NextActions($data, $carePlan);
+            if (! $this->isReferralDisposition($data, $referralData, true)) {
+                $referralData = null;
+            }
+            if ($this->isReferralDisposition($data, $referralData, true)) {
+                $this->normalizeReferralDisposition($data);
+            }
+        } elseif (! $rhuItr) {
+            $this->castBhcFollowUpFlags($data);
+            if ($this->isReferralDisposition($data, $referralData)) {
+                $this->normalizeReferralDisposition($data);
+            } else {
+                $this->requireConcernFollowUp($data);
+            }
         }
 
         $this->normalizeVisitTypeData($request, $data, true);
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
+        $this->normalizeSurveillanceData($data);
+        $this->normalizeDiagnosisReporting($data, $v2);
+        if (! $v2 && ! $rhuItr) {
+            $this->applyRecheckReason($data);
+            $this->normalizeConcernActions($data);
+        }
         $dispensedMedicines = $data['dispensed_medicines'] ?? [];
         unset($data['dispensed_medicines']);
 
         $data['created_by'] = $request->user()->id;
+        $data['assessed_by'] = $request->user()->id;
+        $data['finalized_by'] = $request->user()->id;
+        $data['finalized_at'] = now();
+        $data['items_planned'] = $dispensedMedicines;
         $data['idempotency_key'] = $idempotencyKey;
         $data['idempotency_hash'] = $idempotencyHash;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
-        $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
+        if (! $rhuItr) {
+            $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
+        }
         $data['date_recorded'] ??= now();
 
         try {
@@ -129,10 +296,22 @@ class HealthRecordController extends Controller
                 $request,
                 $followUpTasks,
                 $referralCreation,
+                $conditionCardReferrals,
                 $auditLogger,
                 $idempotencyKey,
                 $drafts,
-                $draftPublicId
+                $draftPublicId,
+                $monitoring,
+                $carePlan,
+                $backgroundUpdate,
+                $patientBackground,
+                $conditionConfirmations,
+                $legacyDiscontinuations,
+                $legacyReview,
+                $patientConditions,
+                $v2,
+                $rhuItr,
+                $visit
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -147,23 +326,168 @@ class HealthRecordController extends Controller
                     $patient,
                     $request->user()
                 );
-                $record = HealthRecord::create($data);
-                $this->medicineStock->dispense($request, $record, $dispensedMedicines);
+                $additionalTasks = $followUpTasks->lockAdditionalTasks(
+                    $carePlan['continued_follow_up_task_ids'] ?? [],
+                    $patient,
+                    $request->user(),
+                    $lockedFollowUpTask
+                );
+                if ($v2) {
+                    $tasks = $additionalTasks->values();
+                    if ($lockedFollowUpTask !== null) {
+                        $tasks->push($lockedFollowUpTask);
+                    }
+                    $concernIds = \App\Services\ContinuedConcerns::concernTaskIds($tasks);
+                    $decisions = \App\Services\ContinuedConcerns::withoutServiceDecisions($carePlan['continued_concerns'] ?? [], $tasks);
+                    $validator = \Illuminate\Support\Facades\Validator::make([], []);
+                    $validator->after(fn ($validator) => \App\Services\ContinuedConcerns::validate($validator, $concernIds, $decisions, \App\Services\FollowUpSchedules::fromMonitoringData($data['monitoring_data'])));
+                    $validator->validate();
+                    $data['monitoring_data']['continuedConcerns'] = \App\Services\ContinuedConcerns::snapshot($decisions, $tasks);
+                }
+                // A save that confirms conditions or changes monitoring locks the
+                // patient row first - the order PatientConditions::apply uses -
+                // so two such saves cannot deadlock on the rows below.
+                if (($data['monitoring_data']['bodyFindingReassessments'] ?? []) !== []
+                    || $conditionConfirmations !== []
+                    || $legacyDiscontinuations !== []
+                    || ($carePlan['continued_monitoring_ids'] ?? []) !== []
+                    || ($carePlan['start_monitoring_condition_ids'] ?? []) !== []) {
+                    Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
+                }
+                if (isset($data['monitoring_data']['bodyFindingReassessments'])) {
+                    $data['monitoring_data']['bodyFindingReassessments'] = app(\App\Services\BodyFindingReassessments::class)
+                        ->snapshots($patient, $request->user(), $data['monitoring_data']['bodyFindingReassessments']);
+                }
+                // Continued rows first, then the conditions being started - each
+                // in id order, so concurrent saves lock in the same order.
+                $continuedMonitorings = $monitoring->lockContinued($patient, $carePlan['continued_monitoring_ids'] ?? []);
+                $startingConditions = $monitoring->lockStarting($patient, $carePlan['start_monitoring_condition_ids'] ?? [], $request->user());
+                // Background sections reviewed in this consultation go first: a
+                // stale edited section throws a 409 before anything is written.
+                $backgroundChanges = $backgroundUpdate !== null
+                    ? $patientBackground->apply(
+                        $patient,
+                        $backgroundUpdate,
+                        $request->user(),
+                        Carbon::parse($data['date_recorded'])->toDateString()
+                    )
+                    : [];
+                $patient->refresh();
+                $record = HealthRecord::create([
+                    ...$data,
+                    'encoded_by' => $lockedDraft?->owner_user_id ?? $request->user()->id,
+                    'background_changes' => $backgroundChanges ?: null,
+                    'history_snapshot' => PatientBackground::visitSnapshot(
+                        $patient,
+                        $backgroundChanges,
+                        PatientBackground::visitIncludesMaternal($data)
+                    ),
+                ]);
+                // Discontinue first: a legacy row being discontinued must not be
+                // auto-linked by a confirmation of the same condition.
+                if ($legacyDiscontinuations !== []) {
+                    $legacyReview->discontinue(
+                        $request,
+                        $patient,
+                        $legacyDiscontinuations,
+                        PatientCondition::SOURCE_RHU_RECORD,
+                        $record->id,
+                        $record->id
+                    );
+                }
+                $confirmedConditions = collect();
+                if ($conditionConfirmations !== []) {
+                    $confirmedConditions = $patientConditions->apply(
+                        $patient,
+                        $conditionConfirmations,
+                        $request->user(),
+                        PatientCondition::SOURCE_RHU_RECORD,
+                        $record->id,
+                        'condition_confirmations',
+                        $request
+                    );
+                }
+                if ($rhuItr) {
+                    app(\App\Services\MonitoringHandoffService::class)->createFromFinalize(
+                        $request,
+                        $patient,
+                        $record,
+                        $data['diagnoses'] ?? [],
+                        $confirmedConditions,
+                        $visit
+                    );
+                }
+                $monitoredNow = $monitoring->apply(
+                    $patient,
+                    $record,
+                    $continuedMonitorings,
+                    $startingConditions,
+                    $carePlan['monitoring_stops'] ?? [],
+                    $request->user(),
+                    $carePlan['monitoring_referrals'] ?? []
+                );
+                $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
+                foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
+                    if (($entry['confirmedGiven'] ?? false) === true) {
+                        $confirmedItems[] = ['medicine_id' => $entry['medicineId'], 'quantity' => $entry['inventoryQuantity'], 'remarks' => 'Administered: '.($entry['vaccineName'] ?? 'vaccine'), ...(array_key_exists('allocations', $entry) ? ['allocations' => $entry['allocations'], 'override_reason' => $entry['override_reason'] ?? null] : [])];
+                    }
+                }
+                if ($confirmedItems !== []) {
+                    $this->medicineStock->dispense($request, $record, $confirmedItems);
+                }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
+                $followUpTasks->fulfillTasks($additionalTasks, $record, $request->user());
+                $monitoring->linkFollowUpTask($record, $monitoredNow);
 
+                if ($v2 && filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN) && is_array($referralData)) {
+                    // One referral covers only referred cards and referred monitorings;
+                    // the visit's full complaint and treatment remain context.
+                    $names = collect($data['diagnoses'] ?? [])
+                        ->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')
+                        ->merge(collect($data['monitoring_data']['continuedConcerns'] ?? [])->where('careOutcome', 'refer_to_rhu')->pluck('purpose'))
+                        ->merge($continuedMonitorings->only($carePlan['monitoring_referrals'] ?? [])->pluck('condition_name'))
+                        ->filter()->unique()->values();
+                    if ($names->isNotEmpty()) {
+                        $referralData['initial_diagnosis'] = $names->implode('; ');
+                    }
+                    $referralData['chief_complaint'] = $record->chief_complaint;
+                    $referralData['initial_action_taken'] = $record->treatment_notes;
+                }
                 if (is_array($referralData)) {
-                    $referral = $referralCreation->create($request, $patient, [
-                        ...$referralData,
-                        'client_submission_id' => "health-record:{$idempotencyKey}",
-                    ], $record);
-                    $record->update([
-                        'monitoring_data' => [
-                            ...($record->monitoring_data ?? []),
-                            'linkedTrackingId' => $referral->tracking_id,
-                            'referralTrackingId' => $referral->tracking_id,
-                        ],
-                    ]);
+                    try {
+                        $referral = $referralCreation->create($request, $patient, [
+                            ...$referralData,
+                            'client_submission_id' => "health-record:{$idempotencyKey}",
+                        ], $record);
+                        $record->update([
+                            'monitoring_data' => [
+                                ...($record->monitoring_data ?? []),
+                                'linkedTrackingId' => $referral->tracking_id,
+                                'referralTrackingId' => $referral->tracking_id,
+                            ],
+                        ]);
+                    } catch (ReferralSubmissionBlockedException $exception) {
+                        if ($exception->blockCode !== 'NO_PROVIDER_AVAILABLE') {
+                            throw $exception;
+                        }
+                        $route = app(ReferralRoutingService::class)->resolveForBhc($request->user(), $referralData['rural_health_unit_id'] ?? null);
+                        $hold = app(ReferralHoldService::class)->recordBlockedAttempt($request->user(), $patient, $route['bhc']->id, $route['rhu'], [...$referralData, 'health_record_id' => $record->id]);
+                        $record->update(['monitoring_data' => [...($record->monitoring_data ?? []), 'pendingReferral' => $referralData, 'referralHoldId' => $hold->id, 'referralStatus' => 'Awaiting Doctor Availability', 'submissionStatus' => 'Not Yet Submitted']]);
+                    } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                        if ($v2 && filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN) && $exception->getStatusCode() === 422) {
+                            throw \Illuminate\Validation\ValidationException::withMessages(['referral.rural_health_unit_id' => $exception->getMessage()]);
+                        }
+                        throw $exception;
+                    }
+                }
+
+                // After the referral or the hold exists, so a blocked referral is audited too.
+                if ($v2 && ! filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    $conditionCardReferrals->create($request, $patient, $record, $idempotencyKey);
+                }
+                if (is_array($referralData)) {
+                    $this->auditSharedReferral($request, $auditLogger, $record, $data['diagnoses'] ?? [], $carePlan, $continuedMonitorings, $v2);
                 }
 
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
@@ -177,6 +501,13 @@ class HealthRecordController extends Controller
                         $request,
                         $auditLogger,
                         $lockedDraft
+                    );
+                }
+                if ($visit !== null && filled($record->consultation_uuid)) {
+                    app(RhuVisitQueueService::class)->completeConsultation(
+                        $request->user(),
+                        $visit,
+                        (string) $record->consultation_uuid
                     );
                 }
 
@@ -199,6 +530,25 @@ class HealthRecordController extends Controller
 
             throw $exception;
         } catch (QueryException $exception) {
+            if ($this->isConsultationUuidConflict($exception)) {
+                // Lost the race to a concurrent save of this consultation, or
+                // the uuid belongs to another user. Only the caller's OWN record
+                // is ever identified; someone else's stays invisible.
+                $recorded = HealthRecord::query()
+                    ->where('created_by', $request->user()->id)
+                    ->where('consultation_uuid', $consultationUuid)
+                    ->first();
+
+                return $this->consultationAlreadyRecordedResponse($recorded);
+            }
+
+            if ($this->isMonitoringConflict($exception)) {
+                return response()->json([
+                    'message' => 'This condition was just put under monitoring by another save. Please save again.',
+                    'code' => 'CONDITION_MONITORING_CONFLICT',
+                ], 409);
+            }
+
             if (! $this->isIdempotencyConflict($exception)) {
                 throw $exception;
             }
@@ -221,14 +571,15 @@ class HealthRecordController extends Controller
             return $response;
         }
 
-        if ($dispensedMedicines !== []) {
-            $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
-        }
-        if (is_array($referralData)) {
-            $referral = $record->referrals()->first();
-            if ($referral !== null) {
-                $this->cache->invalidateReferralReports($referral);
+        if ($record->dispensedMedicines()->exists()) {
+            if ($rhuItr) {
+                $this->cache->invalidateRhuMedicineDisplay((int) $record->rural_health_unit_id);
+            } else {
+                $this->cache->invalidateBhcMedicineDisplay((int) $patient->barangay_health_center_id);
             }
+        }
+        foreach ($record->referrals()->get() as $referral) {
+            $this->cache->invalidateReferralReports($referral);
         }
 
         return $this->storeResponse($record, false, 201);
@@ -238,9 +589,12 @@ class HealthRecordController extends Controller
         Request $request,
         HealthRecord $healthRecord,
         FollowUpEpisodeService $episodes
-    )
-    {
-        $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
+    ) {
+        // Read-only detail uses the same access as the patient's history.
+        // Mutation endpoints retain their existing authorizeHealthRecord guard.
+        $this->facilityAccess->authorizePatient($request->user(), $healthRecord->patient);
+        abort_unless($this->facilityAccess->scopePatientHealthRecords(HealthRecord::query(), $request->user())
+            ->whereKey($healthRecord->id)->exists(), 403, 'This resource is outside your assigned facility.');
         $episode = $episodes->forRecord($healthRecord, $request->user());
 
         if (StoredFunction::available() && $request->user()->isAdmin()) {
@@ -286,7 +640,7 @@ class HealthRecordController extends Controller
 
         abort_unless(is_array($healthRecord->tb_data), 404, 'This record has no TB treatment card.');
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.tb-treatment-card', [
+        $pdf = Pdf::loadView('pdf.tb-treatment-card', [
             'record' => $healthRecord,
             'patient' => $healthRecord->patient,
             'tb' => $healthRecord->tb_data,
@@ -305,35 +659,7 @@ class HealthRecordController extends Controller
         FollowUpTaskSyncService $followUpTasks
     ) {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
-        $data = $request->validated();
-
-        if (
-            array_key_exists('patient_id', $data)
-            && (int) $data['patient_id'] !== (int) $healthRecord->patient_id
-        ) {
-            throw ValidationException::withMessages([
-                'patient_id' => 'A health record cannot be reassigned to another patient.',
-            ]);
-        }
-
-        unset($data['patient_id']);
-        $this->normalizeVisitTypeData($request, $data, false, $healthRecord);
-        $this->normalizeMaternalSupplements($request, $data);
-        $this->normalizeFamilyPlanningData($data, $healthRecord);
-        unset($data['dispensed_medicines']);
-
-        DB::transaction(function () use ($healthRecord, $data, $followUpTasks, $request, $auditLogger): void {
-            $healthRecord->update($data);
-            $followUpTasks->syncRecord($healthRecord->fresh(), $request->user());
-            $auditLogger->log($request, 'updated', 'health_records', "Updated health record {$healthRecord->id}.");
-        });
-
-        return response()->json(['data' => $healthRecord->fresh()->load([
-            'patient',
-            'creator:id,name',
-            'dispensedMedicines',
-            ...HealthRecord::OUTCOME_RELATIONS,
-        ])]);
+        abort(409, 'Finalized records are read-only. Add a documented correction instead.');
     }
 
     public function dispenseMedicines(Request $request, HealthRecord $healthRecord)
@@ -346,6 +672,10 @@ class HealthRecordController extends Controller
                 'dispensed_medicines.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
                 'dispensed_medicines.*.unit' => ['nullable', 'string', 'max:50'],
                 'dispensed_medicines.*.remarks' => ['nullable', 'string'],
+            'dispensed_medicines.*.allocations' => ['sometimes', 'array'],
+            'dispensed_medicines.*.allocations.*.expiry_group_id' => ['required', 'integer', 'min:1'],
+            'dispensed_medicines.*.allocations.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'dispensed_medicines.*.override_reason' => ['nullable', 'string', 'max:1000'],
             ],
             [
                 'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
@@ -375,9 +705,11 @@ class HealthRecordController extends Controller
             );
         });
         if (($data['dispensed_medicines'] ?? []) !== []) {
-            $this->cache->invalidateBhcMedicineDisplay(
-                (int) $healthRecord->barangay_health_center_id
-            );
+            if ($request->user()->isRhu()) {
+                $this->cache->invalidateRhuMedicineDisplay((int) $healthRecord->rural_health_unit_id);
+            } else {
+                $this->cache->invalidateBhcMedicineDisplay((int) $healthRecord->barangay_health_center_id);
+            }
         }
 
         return response()->json(['data' => $healthRecord->fresh()->load([
@@ -390,9 +722,7 @@ class HealthRecordController extends Controller
     public function destroy(Request $request, HealthRecord $healthRecord)
     {
         $this->facilityAccess->authorizeHealthRecord($request->user(), $healthRecord);
-        $healthRecord->delete();
-
-        return response()->json(status: 204);
+        abort(409, 'Finalized records cannot be deleted. Add a documented correction instead.');
     }
 
     private function normalizeVisitTypeData(
@@ -454,12 +784,76 @@ class HealthRecordController extends Controller
         ));
     }
 
+    /**
+     * Legacy clients only: derives the HFMD mirror fields from surveillanceTags.
+     * (hfmdSurveillance, surveillanceCategory, diseaseSurveillanceCategory and
+     * their snake_case aliases.) Current clients flag diagnoses[].includeInSurveillance
+     * and never send surveillanceTags, so this does nothing for them; a save
+     * with no surveillanceTags key leaves the legacy keys exactly as sent.
+     */
+    private function normalizeSurveillanceData(array &$data): void
+    {
+        if (! array_key_exists('monitoring_data', $data) || ! is_array($data['monitoring_data'])) {
+            return;
+        }
+        if (! array_key_exists('surveillanceTags', $data['monitoring_data'])) {
+            return;
+        }
+
+        $tags = $data['monitoring_data']['surveillanceTags'];
+        $tags = is_array($tags) ? array_values(array_unique(array_filter($tags, 'is_string'))) : [];
+        $data['monitoring_data']['surveillanceTags'] = $tags;
+
+        $hfmd = in_array('hfmd', $tags, true);
+        $category = $hfmd ? 'hfmd' : null;
+        $data['monitoring_data']['hfmdSurveillance'] = $hfmd;
+        $data['monitoring_data']['hfmd_surveillance'] = $hfmd;
+        $data['monitoring_data']['surveillanceCategory'] = $category;
+        $data['monitoring_data']['surveillance_category'] = $category;
+        $data['monitoring_data']['diseaseSurveillanceCategory'] = $category;
+        $data['monitoring_data']['disease_surveillance_category'] = $category;
+    }
+
+    /**
+     * When the diagnoses carry reportAs (the per-diagnosis Morbidity /
+     * Notifiable choice), they are authoritative: the visit-level mirrors
+     * (morbidityReportingStatus, includeInMorbidityReport, isNotifiableDisease
+     * and their snake_case aliases) are derived from them here - notifiable if
+     * any diagnosis is notifiable, else morbidity if any is morbidity, else
+     * not_included - so every existing reader keeps working. A save whose
+     * diagnoses carry no reportAs key at all (the follow-up form's free-text
+     * assessment, or an older client) leaves the visit-level keys exactly as
+     * the client sent them, mirroring normalizeSurveillanceData.
+     * A v2 save ($alwaysDerive) always writes the mirrors from its entries -
+     * with no entries that is not_included / false, never the client's value.
+     */
+    private function normalizeDiagnosisReporting(array &$data, bool $alwaysDerive = false): void
+    {
+        $diagnoses = array_values(array_filter($data['diagnoses'] ?? [], 'is_array'));
+        $reported = array_filter($diagnoses, fn (array $diagnosis) => array_key_exists('reportAs', $diagnosis));
+        if ($reported === [] && ! $alwaysDerive) {
+            return;
+        }
+
+        $status = ReportingEntries::visitStatus($reported);
+
+        $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+        $monitoringData['morbidityReportingStatus'] = $status;
+        $monitoringData['morbidity_reporting_status'] = $status;
+        $monitoringData['includeInMorbidityReport'] = $status !== 'not_included';
+        $monitoringData['include_in_morbidity_report'] = $status !== 'not_included';
+        $monitoringData['isNotifiableDisease'] = $status === 'notifiable';
+        $monitoringData['is_notifiable_disease'] = $status === 'notifiable';
+        $data['monitoring_data'] = $monitoringData;
+    }
+
     private function normalizeFamilyPlanningData(array &$data, ?HealthRecord $record = null): void
     {
         $category = $data['category'] ?? $record?->category;
         $categoryKey = strtolower(trim((string) $category));
 
-        if ($categoryKey !== 'family planning') {
+        $programs = $data['monitoring_data']['selectedPrograms'] ?? $record?->monitoring_data['selectedPrograms'] ?? [];
+        if ($categoryKey !== 'family planning' && ! in_array('Family Planning', $programs, true)) {
             if (array_key_exists('category', $data) || $record === null) {
                 $data['family_planning_data'] = null;
             }
@@ -510,23 +904,156 @@ class HealthRecordController extends Controller
 
     private function isReferralDisposition(
         array $data,
-        mixed $referralData
+        mixed $referralData,
+        bool $v2 = false
     ): bool {
+        if ($v2) {
+            return filter_var($data['needs_referral'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        }
+
         return ($data['needs_referral'] ?? false) === true
             || is_array($referralData);
+    }
+
+    /**
+     * The follow-up reason a Recheck concern implies ("Recheck: A; B"), with
+     * whatever the worker typed after it. Follow-up and Refer concerns add none.
+     */
+    private function applyRecheckReason(array &$data): void
+    {
+        $reason = \App\Services\CarePlan::recheckReason($data['diagnoses'] ?? []);
+        if ($reason === null) {
+            return;
+        }
+        $monitoringData = $data['monitoring_data'] ?? [];
+        $typed = trim((string) ($monitoringData['followUpReason'] ?? ''));
+        $data['monitoring_data'] = [
+            ...$monitoringData,
+            'followUpReason' => $typed === '' ? $reason : "$reason — $typed",
+        ];
+    }
+
+    /**
+     * The request's boolean rule accepts 1 / "1" / "true"; store and read
+     * bhcFollowUp as a real boolean from here on (CarePlan compares it strictly).
+     * Runs before anything that reads the flag.
+     */
+    private function castBhcFollowUpFlags(array &$data): void
+    {
+        if (! is_array($data['diagnoses'] ?? null)) {
+            return;
+        }
+        $data['diagnoses'] = array_map(
+            fn ($diagnosis) => is_array($diagnosis) && array_key_exists('bhcFollowUp', $diagnosis)
+                ? [...$diagnosis, 'bhcFollowUp' => filter_var($diagnosis['bhcFollowUp'], FILTER_VALIDATE_BOOLEAN)]
+                : $diagnosis,
+            $data['diagnoses']
+        );
+    }
+
+    /**
+     * Stored form of the per-concern actions: a stale tab's recheck becomes
+     * follow_up (its reason prefix is already applied), and bhcFollowUp is
+     * kept only on Refer to RHU.
+     */
+    private function normalizeConcernActions(array &$data): void
+    {
+        if (! is_array($data['diagnoses'] ?? null)) {
+            return;
+        }
+        $data['diagnoses'] = array_map(
+            fn ($diagnosis) => is_array($diagnosis) && ! \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)
+                ? Arr::except($diagnosis, ['bhcFollowUp'])
+                : $diagnosis,
+            \App\Services\CarePlan::normalizeTransitionValues($data['diagnoses'])
+        );
+    }
+
+    /**
+     * A concern that schedules a BHC follow-up promises a return visit, so a
+     * non-referral visit must read Follow-up Required - the status
+     * FollowUpTaskSyncService schedules a task from - whatever the client sent.
+     */
+    private function requireConcernFollowUp(array &$data): void
+    {
+        $returns = collect($data['diagnoses'] ?? [])->contains(
+            fn ($diagnosis) => \App\Services\CarePlan::schedulesBhcFollowUp($diagnosis)
+        );
+        if (! $returns) {
+            return;
+        }
+        $data['monitoring_data'] = [
+            ...($data['monitoring_data'] ?? []),
+            'followUpStatus' => 'Follow-up Required',
+            'follow_up_status' => 'Follow-up Required',
+        ];
+    }
+
+    /**
+     * v2 (bhc_general_v2) visit-level follow-up. The status is server-derived
+     * from care_plan.bhc_follow_up; the client's followUpStatus is never
+     * trusted. Without the checkbox the visit schedules nothing: every
+     * follow-up field is cleared (a service-proposed date such as the EPI next
+     * dose stays in its service record) and the status reads 'Completed', the
+     * value the BHC frontend already sends for no follow-up. Runs before
+     * normalizeReferralDisposition, which reads the stored bhcFollowUp and
+     * overrides the status to 'Needs Referral' for a referral.
+     *
+     * @param  array<string, mixed>  $carePlan
+     */
+    private function applyV2NextActions(array &$data, array $carePlan): void
+    {
+        $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+        $schedules = \App\Services\FollowUpSchedules::forV2Save($monitoringData, $carePlan);
+        $followUp = $schedules !== [];
+
+        $first = $schedules[0] ?? null;
+        $data['monitoring_data'] = $followUp
+            ? [
+                ...$monitoringData,
+                'bhcFollowUp' => true,
+                'followUpStatus' => 'Follow-up Required',
+                'follow_up_status' => 'Follow-up Required',
+                'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),
+                'followUpDate' => $first['date'],
+                'follow_up_date' => $first['date'],
+                'followUpTime' => $first['time'],
+                'follow_up_time' => $first['time'],
+                'followUpReason' => $first['purpose'],
+                'follow_up_reason' => $first['purpose'],
+            ]
+            : [
+                ...$monitoringData,
+                'bhcFollowUp' => false,
+                'followUpStatus' => 'Completed',
+                'follow_up_status' => 'Completed',
+                'followUpSchedules' => [],
+                'followUpDate' => null,
+                'follow_up_date' => null,
+                'followUpTime' => null,
+                'follow_up_time' => null,
+                'followUpReason' => null,
+                'follow_up_reason' => null,
+            ];
     }
 
     private function normalizeReferralDisposition(array &$data): void
     {
         $monitoringData = $data['monitoring_data'] ?? [];
+        // A concern that schedules a BHC follow-up, or a service visit with its next
+        // date set: the BHC still owns that next visit, so its follow-up
+        // survives the referral (CarePlan::keepsFollowUpWithReferral).
+        $keepsFollowUp = \App\Services\CarePlan::keepsFollowUpWithReferral($data['diagnoses'] ?? [], $monitoringData);
         $data['monitoring_data'] = [
             ...$monitoringData,
             'followUpStatus' => 'Needs Referral',
             'follow_up_status' => 'Needs Referral',
-            'followUpDate' => null,
-            'follow_up_date' => null,
-            'followUpTime' => null,
-            'follow_up_time' => null,
+            ...($keepsFollowUp ? [] : [
+                'followUpDate' => null,
+                'follow_up_date' => null,
+                'followUpTime' => null,
+                'follow_up_time' => null,
+            ]),
         ];
     }
 
@@ -554,8 +1081,16 @@ class HealthRecordController extends Controller
 
     private function storeResponse(HealthRecord $record, bool $replay, int $status)
     {
+        // One ITR can fulfil several continued follow-ups; the one reported is
+        // the parent record's task (the visit's primary follow-up), else the
+        // lowest id - never whatever row the database happens to return first.
         $completedFollowUpTaskId = FollowUpTask::query()
             ->where('fulfilled_by_health_record_id', $record->id)
+            ->orderByRaw(
+                'CASE WHEN health_record_id = ? THEN 0 ELSE 1 END',
+                [(int) $record->parent_health_record_id]
+            )
+            ->orderBy('id')
             ->value('id');
         $nextFollowUpTaskId = FollowUpTask::query()
             ->where('health_record_id', $record->id)
@@ -596,6 +1131,171 @@ class HealthRecordController extends Controller
 
         return in_array($sqlState, ['23505', '23000'], true)
             && str_contains($message, 'idempotency_key');
+    }
+
+    /**
+     * The partial unique index "one active monitoring per patient and
+     * condition" (condition_monitorings_one_active_idx). PostgreSQL names the
+     * index; SQLite names its columns instead ("UNIQUE constraint failed:
+     * condition_monitorings.patient_id, condition_monitorings.condition_identity").
+     */
+    private function isMonitoringConflict(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return in_array($exception->errorInfo[0] ?? null, ['23505', '23000'], true)
+            && (str_contains($message, 'condition_monitorings_one_active_idx')
+                || str_contains($message, 'condition_monitorings.condition_identity'));
+    }
+
+    private function isConsultationUuidConflict(QueryException $exception): bool
+    {
+        $sqlState = $exception->errorInfo[0] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23505', '23000'], true)
+            && str_contains($message, 'consultation_uuid');
+    }
+
+    /**
+     * One consultation, one official record. The caller's own record id is
+     * returned so the client can take the encoder to it; a record owned by
+     * anyone else is never identified.
+     */
+    private function consultationAlreadyRecordedResponse(?HealthRecord $record)
+    {
+        return response()->json([
+            'message' => 'This consultation has already been saved as a health record.',
+            'code' => 'CONSULTATION_ALREADY_RECORDED',
+            'health_record_id' => $record?->id,
+        ], 409);
+    }
+
+    /**
+     * Records that the worker confirmed one referral covers several items
+     * (the request already rejected an unconfirmed one). Not a clinical check.
+     *
+     * @param  array<int, mixed>  $diagnoses
+     * @param  array<string, mixed>  $carePlan
+     */
+    private function auditSharedReferral(
+        Request $request,
+        AuditLogger $auditLogger,
+        HealthRecord $record,
+        array $diagnoses,
+        array $carePlan,
+        \Illuminate\Support\Collection $continuedMonitorings,
+        bool $v2 = false
+    ): void {
+        $monitoringIds = $carePlan['monitoring_referrals'] ?? [];
+        $names = [];
+        $note = '';
+        if ($v2) {
+            $refers = filter_var($carePlan['refer_to_rhu'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $selectedPrograms = $record->monitoring_data['selectedPrograms'] ?? $request->input('monitoring_data.selectedPrograms', []);
+            $selectedPrograms = is_array($selectedPrograms) ? $selectedPrograms : [];
+            $count = \App\Services\CarePlan::v2ReferralSourceCount($diagnoses, $carePlan, $monitoringIds, is_array($selectedPrograms) ? $selectedPrograms : []);
+            if ($count < 2) {
+                return;
+            }
+            $cardNames = filter_var($carePlan['shared_condition_referral'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                ? collect($diagnoses)->where('clinicalOutcome', 'refer_to_rhu')->pluck('name')->filter()->all()
+                : [];
+            $serviceNames = collect(\App\Services\CarePlan::v2ServiceReferrals($carePlan, is_array($selectedPrograms) ? $selectedPrograms : []))
+                ->map(fn ($key) => $key === 'Maternal' ? 'Prenatal' : $key)
+                ->all();
+            $names = [...$cardNames, ...$serviceNames];
+            if ($names === [] && $refers) {
+                $names[] = 'General consultation';
+            }
+        } else {
+            $count = \App\Services\CarePlan::referralItemCount($diagnoses, $monitoringIds);
+            if ($count < 2) {
+                return;
+            }
+            foreach ($diagnoses as $diagnosis) {
+                if (is_array($diagnosis) && \App\Services\CarePlan::refers($diagnosis['carePlan'] ?? null)) {
+                    $names[] = trim((string) ($diagnosis['name'] ?? ''));
+                }
+            }
+        }
+        foreach (array_unique(array_map('intval', $monitoringIds)) as $id) {
+            $names[] = (string) $continuedMonitorings->get($id)?->condition_name;
+        }
+        $items = $count === 1 ? 'item' : 'items';
+        $auditLogger->log(
+            $request,
+            'acknowledged',
+            'referrals',
+            "Shared referral acknowledged for health record {$record->id}: {$count} {$items} (".implode('; ', array_filter($names)).").{$note} Not a clinical compatibility check."
+        );
+    }
+
+    /** @param  array<int, array<string, mixed>>  $medicines */
+    private function assertRhuPrescribedMedicines(User $user, array $medicines): void
+    {
+        $ids = collect($medicines)->pluck('medicine_id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+        $count = \App\Models\Medicine::query()
+            ->whereIn('id', $ids)
+            ->where('rural_health_unit_id', $user->rural_health_unit_id)
+            ->count();
+        if ($count !== $ids->count()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prescribed_medicines' => ['One or more selected medicines are not available at this RHU.'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $diagnoses
+     * @return array<int, array<string, mixed>>
+     */
+    private function confirmationsFromRhuDiagnoses(array $diagnoses, \App\Models\Patient $patient): array
+    {
+        $registry = app(\App\Services\ClinicalRegistry::class);
+        $confirmations = [];
+        foreach ($diagnoses as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $name = trim((string) ($entry['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $activate = filter_var($entry['activate'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $nextAction = (string) ($entry['nextAction'] ?? $entry['next_action'] ?? '');
+            $manage = $nextAction === 'manage_to_bhc'
+                || filter_var($entry['manageToBhc'] ?? $entry['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $match = $registry->matchCondition($name);
+            $identity = $registry->conditionIdentity($match['key'] ?? null, $name);
+            $existing = \App\Models\PatientCondition::query()
+                ->where('patient_id', $patient->id)
+                ->where('condition_identity', $identity)
+                ->open()
+                ->first();
+            $alreadyMonitorable = $existing !== null
+                && in_array($existing->status, \App\Models\PatientCondition::MONITORABLE_STATUSES, true);
+            if ($activate) {
+                $confirmations[] = [
+                    'name' => $name,
+                    'status' => \App\Models\PatientCondition::STATUS_ACTIVE,
+                    'recommend_bhc_monitoring' => $manage,
+                ];
+                continue;
+            }
+            if ($manage && $alreadyMonitorable) {
+                $confirmations[] = [
+                    'condition_id' => $existing->id,
+                    'status' => $existing->status,
+                    'recommend_bhc_monitoring' => true,
+                ];
+            }
+        }
+
+        return $confirmations;
     }
 
     private function auditDraftConsumed(

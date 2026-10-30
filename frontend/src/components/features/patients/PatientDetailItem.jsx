@@ -22,7 +22,7 @@ export default function PatientDetailItem({ label, value }) {
           mt-1
           text-sm
           font-medium
-          text-[#0F172A]
+          text-gray-900
         "
       >
         {displayValue}

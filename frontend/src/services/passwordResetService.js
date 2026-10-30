@@ -11,19 +11,10 @@ function dispatchUpdate() {
   }
 }
 
-export function formatPasswordResetStatus(status = "") {
-  const value = String(status || "pending").toLowerCase();
-  const map = {
-    pending: "Pending",
-    approved: "Approved",
-    rejected: "Rejected",
-    completed: "Completed",
-    expired: "Expired",
-  };
-
-  return map[value] || "Pending";
-}
-
+/**
+ * Keeps the API's raw fields (`status`, `delivery`, `completed_via`, `expires_at`, `user`) so
+ * `resetRequestStatus` can compute the shared status; adds camelCase aliases for display.
+ */
 export function normalizePasswordResetRequest(request = {}) {
   const user = request.user || {};
 
@@ -34,8 +25,6 @@ export function normalizePasswordResetRequest(request = {}) {
     userName: user.name || request.userName || "Unknown user",
     role: user.role || request.role || "",
     facility: user.facility || request.facility || "No facility assigned",
-    status: formatPasswordResetStatus(request.status),
-    rawStatus: request.status || "pending",
     requestedAt: request.requested_at || request.requestedAt || "",
     approvedAt: request.approved_at || request.approvedAt || "",
     rejectedAt: request.rejected_at || request.rejectedAt || "",
@@ -103,4 +92,24 @@ export async function rejectPasswordResetRequest(id, adminNote = "") {
   );
   dispatchUpdate();
   return normalizePasswordResetRequest(unwrapData(response));
+}
+
+/** Emails a fresh link (new token, a new 60-minute window). The previous link stops working. */
+export async function resendResetLink(id) {
+  const response = await apiRequest(
+    `/admin/password-reset-requests/${id}/resend`,
+    { method: "POST" },
+  );
+  dispatchUpdate();
+  return normalizePasswordResetRequest(unwrapData(response));
+}
+
+/** A fresh one-time link for the MHO to share another way. The emailed link stops working. */
+export async function copyResetLink(id) {
+  const response = await apiRequest(
+    `/admin/password-reset-requests/${id}/link`,
+    { method: "POST" },
+  );
+  dispatchUpdate();
+  return unwrapData(response)?.url || "";
 }

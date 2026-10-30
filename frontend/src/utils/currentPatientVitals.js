@@ -1,0 +1,106 @@
+const timeZone = "Asia/Manila";
+const dayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const vitalFields = [
+  "systolicBp", "diastolicBp", "temperature", "pulse", "spo2",
+  "weight", "height",
+];
+
+export function hasVitalValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+export function getVitalRecordDate(record = {}) {
+  // Prefer the full timestamp: dateOfVisit may be a sliced UTC date from
+  // the existing normalizer. Creation/update dates are not measurement dates.
+  const raw = String(
+    record.dateRecorded || record.date_recorded ||
+    record.dateOfVisit || record.date_of_visit || "",
+  ).trim();
+  if (!raw) return null;
+
+  let timestamp = raw.replace(" ", "T");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
+    timestamp += `T${record.timeOfVisit || "00:00"}`;
+  }
+  // A date/time without an offset is a clinic-local calendar value.
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(timestamp)) timestamp += "+08:00";
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function getCurrentVitalRecord(records = [], now = new Date()) {
+  const today = dayFormatter.format(now);
+  let latest = null;
+  let latestTime = -Infinity;
+
+  for (const record of records) {
+    if (!record || !vitalFields.some((key) => hasVitalValue(record[key]))) continue;
+    const date = getVitalRecordDate(record);
+    if (!date || dayFormatter.format(date) !== today) continue;
+    if (date.getTime() > latestTime) {
+      latest = record;
+      latestTime = date.getTime();
+    }
+  }
+
+  return latest;
+}
+
+/**
+ * The most recent record with any vital measurement, whatever day it was
+ * taken. The profile header shows this with its date so a reading from last
+ * week is never presented as today's; getCurrentVitalRecord stays the
+ * today-only source for screens that must not show stale values.
+ */
+export function getLatestVitalRecord(records = []) {
+  let latest = null;
+  let latestTime = -Infinity;
+
+  for (const record of records) {
+    if (!record || !vitalFields.some((key) => hasVitalValue(record[key]))) continue;
+    const date = getVitalRecordDate(record);
+    if (!date) continue;
+    if (date.getTime() > latestTime) {
+      latest = record;
+      latestTime = date.getTime();
+    }
+  }
+
+  return latest;
+}
+
+/**
+ * The patient's most recent usable height (finite, above 0), whatever day it
+ * was taken, with its clinic-local date. Prenatal risk uses it before this
+ * visit's own height has been measured.
+ */
+export function getLatestRecordedHeight(records = []) {
+  let latest = null;
+  let latestTime = -Infinity;
+
+  for (const record of records || []) {
+    if (!record || !hasVitalValue(record.height)) continue;
+    const value = Number(record.height);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    const date = getVitalRecordDate(record);
+    if (!date) continue;
+    if (date.getTime() > latestTime) {
+      latest = { value, date: dayFormatter.format(date) };
+      latestTime = date.getTime();
+    }
+  }
+
+  return latest;
+}
+
+/** True when the record's measurement was taken on the clinic's current day. */
+export function isVitalRecordToday(record, now = new Date()) {
+  const date = record ? getVitalRecordDate(record) : null;
+  return Boolean(date) && dayFormatter.format(date) === dayFormatter.format(now);
+}

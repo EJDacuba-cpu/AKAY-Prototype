@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\DraftConsultationExistsException;
 use App\Exceptions\DraftVersionConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\HealthRecordDraftRequest;
@@ -59,7 +60,10 @@ class HealthRecordDraftController extends Controller
             'Unable to open this draft safely. Please try again.',
             function () use ($request, $draft): array {
                 $record = $this->drafts->loadOwnedActive($request->user(), $draft);
-                $payload = $this->drafts->payload($record);
+                $payload = $this->drafts->withoutRestrictedFields(
+                    $request->user(),
+                    $this->drafts->payload($record)
+                );
 
                 return [
                     $record,
@@ -106,6 +110,13 @@ class HealthRecordDraftController extends Controller
         return response()->json(status: 204);
     }
 
+    public function transition(Request $request, string $draft)
+    {
+        $data = $request->validate(['action' => ['required', 'in:claim,takeover,submit,return'], 'version' => ['required', 'integer', 'min:1'], 'note' => ['nullable', 'string', 'max:2000']]);
+        $record = $this->drafts->transition($request->user(), $draft, $data['action'], $data['version'], $data['note'] ?? null);
+        return response()->json(['data' => $this->drafts->metadata($record)]);
+    }
+
     private function audit(
         AuditLogger $auditLogger,
         Request $request,
@@ -138,6 +149,7 @@ class HealthRecordDraftController extends Controller
             ValidationException|
             ModelNotFoundException|
             DraftVersionConflictException|
+            DraftConsultationExistsException|
             HttpExceptionInterface $exception
         ) {
             throw $exception;

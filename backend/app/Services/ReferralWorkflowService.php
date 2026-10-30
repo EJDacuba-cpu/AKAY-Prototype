@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ReferralWorkflowConflictException;
 use App\Models\AuditLog;
 use App\Models\Feedback;
+use App\Models\PatientCondition;
 use App\Models\Referral;
 use App\Models\ReferralUpdate;
 use App\Models\User;
@@ -18,7 +19,10 @@ class ReferralWorkflowService
         private readonly FacilityAccessService $facilityAccess,
         private readonly UserNotificationService $notifications,
         private readonly AuditLogger $auditLogger,
-        private readonly AkayCacheService $cache
+        private readonly AkayCacheService $cache,
+        private readonly PatientConditions $patientConditions,
+        private readonly LegacyMonitoringReview $legacyMonitoringReview,
+        private readonly RhuVisitQueueService $visitQueue
     ) {
     }
 
@@ -76,6 +80,8 @@ class ReferralWorkflowService
 
             if ($requested === Referral::STATUS_RECEIVED) {
                 $this->linkPatientToReceivingRhu($referral);
+                // D3: arrival enters today's queue in this same transaction.
+                $this->visitQueue->recordReferralArrival($request->user(), $referral);
                 $this->notifyReceived($referral, $lateArrival);
             }
 
@@ -101,7 +107,12 @@ class ReferralWorkflowService
         int $referralId,
         array $feedbackData
     ): Feedback {
-        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData): Feedback {
+        $confirmations = $feedbackData['condition_confirmations'] ?? [];
+        unset($feedbackData['condition_confirmations']);
+        $legacyDiscontinuations = $feedbackData['legacy_monitoring_discontinuations'] ?? [];
+        unset($feedbackData['legacy_monitoring_discontinuations']);
+
+        $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData, $confirmations, $legacyDiscontinuations): Feedback {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
             $current = $this->canonicalStatusOrConflict(
@@ -133,6 +144,32 @@ class ReferralWorkflowService
                 'created_by' => $request->user()->id,
                 'received_at' => $feedbackData['received_at'] ?? now(),
             ]);
+
+            // Discontinue first: a legacy row being discontinued must not be
+            // auto-linked by a confirmation of the same condition. A feedback
+            // has no health record, so only the audit row records the review.
+            if ($legacyDiscontinuations !== []) {
+                $this->legacyMonitoringReview->discontinue(
+                    $request,
+                    $referral->patient,
+                    $legacyDiscontinuations,
+                    PatientCondition::SOURCE_RHU_FEEDBACK,
+                    $feedback->id,
+                    null
+                );
+            }
+
+            if ($confirmations !== []) {
+                $this->patientConditions->apply(
+                    $referral->patient,
+                    $confirmations,
+                    $request->user(),
+                    PatientCondition::SOURCE_RHU_FEEDBACK,
+                    $feedback->id,
+                    'condition_confirmations',
+                    $request
+                );
+            }
 
             $referral->update(['status' => Referral::STATUS_COMPLETED]);
             $this->recordHistory(
@@ -264,6 +301,12 @@ class ReferralWorkflowService
     {
         $referral->loadMissing('patient');
 
+        // A BHC household member must keep exactly one owning facility
+        // (patients_household_facility_exclusive); RHU access comes from the referral.
+        if ($referral->patient?->household_id !== null && $referral->patient?->barangay_health_center_id !== null) {
+            return;
+        }
+
         if ($referral->patient
             && (int) $referral->patient->rural_health_unit_id !== (int) $referral->rural_health_unit_id) {
             $referral->patient->update([
@@ -330,7 +373,7 @@ class ReferralWorkflowService
     private function bhcUsers(Referral $referral)
     {
         return User::query()
-            ->where('role', User::ROLE_BHW)
+            ->where('role', User::ROLE_BHC)
             ->where('barangay_health_center_id', $referral->barangay_health_center_id)
             ->where('status', User::STATUS_ACTIVE)
             ->get();

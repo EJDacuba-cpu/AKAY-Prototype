@@ -1,6 +1,12 @@
 <?php
 
 return [
+    // Local-only request/query timing log (storage/logs/request-trace.log),
+    // for tracking down requests that hang. See TraceRequestTiming.
+    'request_trace' => [
+        'enabled' => (bool) env('AKAY_REQUEST_TRACE', false),
+    ],
+
     'scheduler' => [
         'no_show_overlap_minutes' => max(
             1,

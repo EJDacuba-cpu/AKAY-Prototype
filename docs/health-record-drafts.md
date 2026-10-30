@@ -98,10 +98,62 @@ authorized medicine display information with neutral review warnings.
 ## Manual save and resume UI
 
 The direct BHW Add Health Record setup screen lists active drafts in last-saved
-order. A BHW can resume or discard a draft, and the clinical form exposes a manual
+order. Saved Drafts shows server drafts and encrypted on-device drafts in one
+list: a device copy and a server draft are the same consultation when they share
+the consultation identity, else the draft id, and — for legacy drafts where
+neither side has an identity — the patient (see *Consultation identity* below).
+The newer of the two decides what Continue reopens. A device copy that is ahead is marked *On this device / Not yet
+synced* and is never displaced by an older server copy; an older device copy is
+still attached to the row so discarding removes both. A server failure is a
+notice above the list rather than a replacement for it, so on-device drafts stay
+reachable offline, and Retry is offered only when the server could actually
+answer. Reconnecting refetches server drafts, merges, and pushes eligible device
+copies up on its own — no manual Retry is needed to see drafts again.
+
+A BHW can resume or discard a draft, and the clinical form exposes a manual
 `Save Draft` / `Update Draft` action with the latest server timestamp. Saving does
 not move the page, clear fields, or validate official required fields. A failed
-request leaves React form state intact.
+request leaves React form state intact. Offline, that action updates the
+encrypted device copy instead and never reports a server save.
+
+The New Consultation wizard runs:
+
+```text
+Setup → Interview & Vital Signs → Clinical Assessment
+      → Program / Service Details (only when a program is selected)
+      → Treatment & Management → Next Care Decision → Review & Save
+```
+
+Interview and Vital Signs share the first step: two cards on one screen, with no
+Next between them. Next from that step proceeds only when both cards satisfy the
+existing validation.
+
+Setup answers only which patient and what type of visit. Programs and services
+are chosen at the end of Clinical Assessment, grouped as *Services* (Maternal,
+Family Planning, EPI) and *Condition Monitoring / Evaluation* (TB). Selecting
+none is a general consultation, and Program / Service Details is skipped.
+
+The Hypertension / Diabetes program was removed on 2026-09-27; migration
+2026_09_27_000001 stripped its data from records and drafts. With several, their existing forms follow one at a
+time, primary first, headed "Program 1 of N · <name>". Previous reverses the
+exact forward order.
+
+Interview is the first step, not a dead end: its left action is
+`Back to Setup`, which returns to the setup screen — and so to Saved Drafts —
+with the patient, visit type, programs, field values, server draft identity, and
+device draft identity all intact. It flushes pending edits into the same draft
+first, since autosave pauses on setup. Re-entering the same patient's
+consultation is not a new consultation and does not re-run the unfinished-draft
+conflict check.
+
+History of Present Illness remains required for a general consultation only.
+Because Interview now precedes the program decision, that requirement is
+enforced when Clinical Assessment is left, returning the encoder to Interview if
+it is missing. Chief Complaint is required on leaving Interview, as before.
+
+A draft reopens on the screen it was saved on, including Next Care Decision.
+Drafts from the previous wizard's Current Visit screen, and from the brief
+standalone Vital Signs screen, reopen on the first step.
 
 Resume fetches one detail response, restores known fields only, and rebuilds
 medicine labels and availability from the authorized server response. A stale,
@@ -153,23 +205,48 @@ every allowed active draft remains reachable.
 BHWs encode records at barangay health centers on connections that drop mid-form.
 Manual-only saving meant a failed request lost everything typed since the last
 save. The `useDraftAutosave` hook (`frontend/src/hooks/useDraftAutosave.js`) keeps
-unsaved input alive in memory and retries automatically when the link returns,
-surfaced to the encoder through `DraftSaveStatus`.
+unsaved input alive and retries automatically when the link returns. The encoder
+is told once, by the Connection Lost dialog, and then left alone: there is no
+persistent offline banner. A confirmed server sync shows a short `Draft synced`
+toast. The dialog reappears only after a confirmed save has proven the link is
+back and it drops again, so a single outage never interrupts twice.
 
-### Why in-memory rather than browser storage
+AKAY remains online-first. Only a consultation that is already open is protected;
+patient search, patient registration, inventory, referrals, reports, and every
+other server-backed module stay unavailable while offline and claim nothing else.
 
-Unsaved clinical input is held only in React state and refs — the queued payload
-lives in an in-memory `pendingSaveRef`, never in `localStorage`, `sessionStorage`,
-IndexedDB, a service-worker cache, or persisted TanStack Query storage. This is a
-deliberate privacy decision, not an oversight. BHW workstations are frequently
-shared, and PHI written to on-device storage would outlive the session, survive
-logout, and be readable by the next user or by anything with filesystem access.
-Keeping drafts in volatile memory means the sensitive-session-cleared event, a tab
-close, or a logout removes every trace of the unsaved data. The only durable copy
-of clinical content is the server-side ciphertext encrypted under `APP_KEY`, which
-inherits the existing key-custody, allowlist, and audit guarantees documented
-above. The autosave path adds no new persistence surface and no new place a draft
-can leak.
+### Where an unsaved draft lives
+
+While the server is reachable, unsaved clinical input is held only in React state
+and refs — the queued payload lives in an in-memory `pendingSaveRef` — and the
+single durable copy is the server-side ciphertext encrypted under `APP_KEY`.
+Nothing clinical is ever written to `localStorage`, `sessionStorage`, a
+service-worker cache, or persisted TanStack Query storage.
+
+When the connection drops, the same snapshot is additionally sealed into an
+encrypted IndexedDB vault (`frontend/src/services/localDraftVault.js`) so the
+consultation survives a refresh, a tab close, or a PC restart. The vault:
+
+- encrypts with AES-GCM 256 and a fresh 12-byte IV per write, using a key
+  generated `extractable: false`, so page script can encrypt and decrypt but can
+  never read the raw key bytes back out;
+- binds the record key in as additional authenticated data, so ciphertext cannot
+  be moved between slots or between users;
+- stores only SHA-256 tags, a timestamp, the IV, and the ciphertext in the clear —
+  no patient id, no classification, no account id;
+- keeps exactly one snapshot per (user, consultation) and overwrites it in place;
+- sweeps anything older than seven days on the next open;
+- is destroyed — rows *and* keys — by `clearSensitiveSessionState` on logout,
+  account switch, changed identity, forced invalidation, and cross-tab clear. The
+  one preserved case is the same account re-authenticating on the same device
+  (`reason: "login-initialized"`), which is what makes restart recovery work.
+
+The local copy is removed only after the server confirms the draft was stored. A
+failed request never deletes unsynced clinical data.
+
+If the browser context cannot encrypt — `crypto.subtle` is undefined on an
+insecure origin — the vault reports itself unavailable and the UI says so. It
+never falls back to plaintext storage.
 
 ### What this covers
 
@@ -186,20 +263,84 @@ field errors.
 
 ### What this does NOT cover
 
-Because the pending draft is intentionally memory-only, it does not survive events
-that discard the tab's memory: a browser or OS crash, a power loss, or closing the
-tab or window (a `beforeunload` guard warns before an intentional close, but cannot
-prevent a crash). It is not offline authoring — a draft that has never reached the
-server has no server copy, and if the tab dies before connectivity returns, that
-unsaved content is gone. Autosave narrows, but does not eliminate, the window in
-which unsynced input can be lost.
+It is not offline authoring. Only the consultation already open is protected: a
+new one cannot be started offline, because patient lookup and classification both
+need the server.
 
-### Deferred to future work
+The vault raises the ceiling from "as long as this tab stays open" to "as long as
+you stay signed in on this device", but it is not unconditional. Logging out,
+switching accounts, or a forced session invalidation destroys the vault keys and
+therefore any work that has not yet synced. Clearing browser site data does the
+same. Encoders should reconnect and let the draft sync before signing out.
 
-Encrypted on-device persistence — for example IndexedDB storage of drafts sealed
-with a server-issued, per-session derived key that is destroyed on logout and
-session clear — would let a draft survive a crash or power loss without leaving
-readable PHI at rest on a shared workstation. That approach requires a reviewed
-key-derivation and key-destruction design and is explicitly out of scope for this
-phase. Until it lands, the guarantee is: your work is safe as long as this tab
-stays open.
+### Residual risk
+
+The ciphertext and its key both live in the same browser profile, which is what
+lets the draft survive a restart without a server round trip. That defends against
+inspection of the profile on disk, a copied backup, and casual DevTools browsing
+of storage values. It does not defend against code executing on the AKAY origin in
+that signed-in profile, nor against a forensic extraction of the browser's own key
+store. A server-issued, per-session derived key would narrow this further at the
+cost of making restart recovery impossible; the trade was made deliberately in
+favour of recovery, bounded by the seven-day sweep and the session-clear purge.
+
+## Consultation identity (`consultation_uuid`)
+
+One consultation carries one stable identity from setup to the official record:
+
+```text
+Setup → Interview → server draft → encrypted device copy → reconnect → health record
+```
+
+It is **not** `idempotency_key`, which is unchanged. The two answer different
+questions:
+
+| Field | Identifies | Minted | Lifetime |
+|---|---|---|---|
+| `consultation_uuid` | one **consultation** | client, once, when setup hands over to Interview | the whole consultation |
+| `idempotency_key` | one final-save **attempt** | client, at final save | one submission, bound to one payload via `idempotency_hash` |
+
+`consultation_uuid` is excluded from `idempotency_hash`, alongside
+`idempotency_key` and `draft_public_id`, so the fingerprint is byte-identical to
+what it was before the column existed.
+
+**Lifecycle.** Minted by `ensureConsultationUuid()` only when there is none, so
+Next, Previous, Back to Setup, autosave, manual save, program changes, and
+reconnect all keep it. Resume and recovery use `adoptConsultationUuid()`, which
+always takes the draft's own identity; only a legacy draft with none is given
+one, and the server adopts it once on the next save and never reassigns it. It
+is cleared only when the consultation ends — saved, discarded, abandoned for a
+different patient, or on session clear.
+
+**Where it lives.** `health_record_drafts.consultation_uuid` (a real column),
+`payload.consultationUuid` inside the encrypted draft (so the device copy
+carries it), and `health_records.consultation_uuid`. It is hidden on the
+`HealthRecord` model like the idempotency fields and is never an authorization
+input — every lookup keeps its owner and BHC predicates.
+
+**Uniqueness.**
+
+- Drafts: unique on `(owner_user_id, consultation_uuid)` for **active** rows
+  only (partial index). Per owner because the value is client-supplied and only
+  meaningful within one user's drafts; active-only so a consumed draft can share
+  the value with its record and a discarded or expired row never blocks a
+  resume. Creating a draft for an identity that already has an active draft
+  returns `409 DRAFT_CONSULTATION_EXISTS` with that draft's `draft_id` and
+  `version`, and neither splits the consultation nor overwrites the server copy.
+- Records: globally unique, nullable. One consultation becomes at most one
+  record, even across a reload that mints a fresh idempotency key — that returns
+  `409 CONSULTATION_ALREADY_RECORDED`. The caller's own record id is returned;
+  anyone else's is never identified.
+
+**Device copies** are keyed `consultation:<uuid>`, scoped to the owner. There is
+no patient-keyed form for a new slot, so two consultations for one patient are
+two slots. Slots written before this change (`patient:<id>`) remain readable.
+
+**Saved Drafts matching**, in strict priority: consultation identity, then
+server draft id, then patient — the last only when **neither** side has an
+identity. Empty identities never match each other. A device copy with no server
+id that matches a server draft is reopened bound to that draft's id and current
+version, so autosave updates it under the normal version check rather than
+creating a duplicate.
+
+Existing rows keep `consultation_uuid = NULL` and are not backfilled.

@@ -60,9 +60,9 @@ class ReferralStatusStateMachineTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('Workflow BHW A', 'workflow-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->rhuStaffA = $this->user('Workflow RHU A', 'workflow-rhu-a@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('Workflow RHU B', 'workflow-rhu-b@example.test', User::ROLE_RHU_STAFF, null, $this->rhuB->id);
+        $this->bhwA = $this->user('Workflow BHW A', 'workflow-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->rhuStaffA = $this->user('Workflow RHU A', 'workflow-rhu-a@example.test', User::ROLE_RHU, null, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('Workflow RHU B', 'workflow-rhu-b@example.test', User::ROLE_RHU, null, $this->rhuB->id);
         $this->admin = $this->user('Workflow Admin', 'workflow-admin@example.test', User::ROLE_ADMIN);
         $this->patientA = Patient::create([
             'first_name' => 'Referral',
@@ -440,6 +440,7 @@ class ReferralStatusStateMachineTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

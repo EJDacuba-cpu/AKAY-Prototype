@@ -5,7 +5,12 @@ import {
   ClinicalFieldGroup,
   FieldInput,
   FieldTextarea,
+  RadioChoiceGroup,
 } from "./fields/ClinicalFields";
+import {
+  ATTENTION_LEVELS,
+  DEFAULT_ATTENTION,
+} from "../../../utils/referralAttention";
 import {
   NEXT_ACTION_NONE,
   NEXT_ACTION_REFERRAL,
@@ -17,13 +22,13 @@ function buildActionCards({ referralTitle, referralBody }) {
     {
       key: NEXT_ACTION_NONE,
       icon: CircleSlash,
-      title: "No Follow-up",
+      title: "No Follow-up or Referral Required",
       body: "No follow-up needed at this time.",
     },
     {
       key: NEXT_ACTION_SCHEDULE,
       icon: CalendarClock,
-      title: "Schedule Follow-up",
+      title: "Follow-up Required",
       body: "Schedule a return visit for this patient.",
     },
     {
@@ -89,10 +94,15 @@ export default function NextActionSection({
   action,
   followUpDate,
   followUpTime,
+  followUpReason = "",
+  showFollowUpReason = false,
   monitoringNotes,
   monitoringNotesLabel = "Monitoring and Follow-up Notes",
   monitoringNotesPlaceholder = "Write the monitoring plan or return-visit instructions...",
   referralForm = {},
+  // Receiving-facility picker plus its read-only availability panel; supplied
+  // by the page because it owns the facility state.
+  referralFacilityField = null,
   errors = {},
   disabled = false,
   requireFollowUpTime = false,
@@ -102,13 +112,14 @@ export default function NextActionSection({
   // the same card grid without inventing state it never submits.
   showReferralFields = true,
   showFollowUpTime = true,
-  referralTitle = "Referral",
+  referralTitle = "Refer to RHU",
   referralBody = "Refer to the RHU for further management.",
   scheduleNotice = null,
   legacyStatusNote = null,
   onActionChange,
   onFollowUpDateChange,
   onFollowUpTimeChange,
+  onFollowUpReasonChange,
   onMonitoringNotesChange,
   onReferralFieldChange,
 }) {
@@ -140,8 +151,8 @@ export default function NextActionSection({
 
       {scheduling && (
         <ClinicalFieldGroup
-          title="Follow-up Schedule"
-          subtitle="Set when this patient should return."
+          title="Follow-up Details"
+          subtitle="Set when and why this patient should return."
         >
           {scheduleNotice || (
             <>
@@ -167,26 +178,67 @@ export default function NextActionSection({
                   />
                 )}
               </div>
-              <div className="mt-4">
-                <FieldTextarea
-                  label={monitoringNotesLabel}
-                  value={monitoringNotes}
-                  onChange={(event) =>
-                    onMonitoringNotesChange(event.target.value)
-                  }
-                  placeholder={monitoringNotesPlaceholder}
-                  rows={3}
-                />
-              </div>
+              {showFollowUpReason && (
+                <div className="mt-4">
+                  <FieldTextarea
+                    label="Follow-up Reason"
+                    required
+                    name="followUpReason"
+                    value={followUpReason}
+                    error={errors.followUpReason}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onFollowUpReasonChange(event.target.value)
+                    }
+                    placeholder="Why should the patient return?"
+                    rows={2}
+                  />
+                </div>
+              )}
             </>
           )}
         </ClinicalFieldGroup>
       )}
 
-      {action === NEXT_ACTION_NONE && (
+      {referring && (
         <ClinicalFieldGroup
-          title="Visit Notes"
-          subtitle="Optional closing notes for this visit."
+          title="Referral Details"
+          subtitle="The RHU receives the referral and assigns the practitioner. RHU staff determine queue order."
+        >
+          <div className="space-y-4">
+            {referralFacilityField}
+            <RadioChoiceGroup
+              label="Referral Priority"
+              name="urgencyLevel"
+              required
+              inline
+              options={ATTENTION_LEVELS}
+              value={referralForm.urgencyLevel || DEFAULT_ATTENTION}
+              error={errors.urgencyLevel}
+              onChange={(value) => onReferralFieldChange("urgencyLevel", value)}
+              helperText="Workflow handling only. The RHU decides queue order."
+            />
+            <FieldTextarea
+              label="Reason for Referral"
+              required
+              name="reasonForReferral"
+              value={referralForm.reasonForReferral || ""}
+              error={errors.reasonForReferral}
+              disabled={disabled}
+              onChange={(event) =>
+                onReferralFieldChange("reasonForReferral", event.target.value)
+              }
+              placeholder="State the reason or concern requiring RHU review..."
+              rows={3}
+            />
+          </div>
+        </ClinicalFieldGroup>
+      )}
+
+      {action && (
+        <ClinicalFieldGroup
+          title="Additional Clinical Notes"
+          subtitle="Optional internal notes for this consultation."
         >
           <FieldTextarea
             label={monitoringNotesLabel}
@@ -195,50 +247,6 @@ export default function NextActionSection({
             placeholder={monitoringNotesPlaceholder}
             rows={3}
           />
-        </ClinicalFieldGroup>
-      )}
-
-      {referring && (
-        <ClinicalFieldGroup
-          title="Referral Details"
-          subtitle="Describe the case for the receiving RHU. Facility, urgency and preferred doctor are set on the next step."
-        >
-          <div className="space-y-4">
-            <FieldTextarea
-              label="Initial Diagnosis"
-              name="initialDiagnosis"
-              value={referralForm.initialDiagnosis || ""}
-              error={errors.initialDiagnosis}
-              onChange={(event) =>
-                onReferralFieldChange("initialDiagnosis", event.target.value)
-              }
-              placeholder="Enter initial diagnosis..."
-              rows={2}
-            />
-            <FieldTextarea
-              label="Initial Actions Taken"
-              name="initialActionsTaken"
-              value={referralForm.initialActionsTaken || ""}
-              error={errors.initialActionsTaken}
-              onChange={(event) =>
-                onReferralFieldChange("initialActionsTaken", event.target.value)
-              }
-              placeholder="Enter initial actions taken..."
-              rows={3}
-            />
-            <FieldTextarea
-              label="Reason for Referral"
-              required
-              name="reasonForReferral"
-              value={referralForm.reasonForReferral || ""}
-              error={errors.reasonForReferral}
-              onChange={(event) =>
-                onReferralFieldChange("reasonForReferral", event.target.value)
-              }
-              placeholder="State the reason or concern requiring RHU review..."
-              rows={3}
-            />
-          </div>
         </ClinicalFieldGroup>
       )}
     </div>

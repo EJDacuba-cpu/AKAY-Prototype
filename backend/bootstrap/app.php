@@ -3,11 +3,13 @@
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\EnforceProductionHttps;
 use App\Http\Middleware\EnsureAccessTokenAbility;
+use App\Http\Middleware\EnsureAccountIsActivated;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureTrustedSessionRequest;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\EnsureValidFacilityAssignment;
 use App\Http\Middleware\PreventSensitiveResponseCaching;
+use App\Http\Middleware\TraceRequestTiming;
 use App\Http\Middleware\TrustAkayProxies;
 use App\Services\UserSessionRevocationService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -33,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(ApplySecurityHeaders::class);
+        $middleware->prepend(TraceRequestTiming::class);
         $middleware->append(EnforceProductionHttps::class);
         $middleware->replace(
             TrustProxies::class,
@@ -47,7 +50,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
+            'account.activated' => EnsureAccountIsActivated::class,
+            'password.current' => \App\Http\Middleware\EnsurePasswordIsCurrent::class,
             'facility.assigned' => EnsureValidFacilityAssignment::class,
+            'actions.allowed' => \App\Http\Middleware\EnforceActionPermissions::class,
             'role' => EnsureRole::class,
             'sensitive.no-store' => PreventSensitiveResponseCaching::class,
             'auth.session-request' => EnsureTrustedSessionRequest::class,

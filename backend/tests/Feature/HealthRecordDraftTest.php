@@ -64,10 +64,10 @@ class HealthRecordDraftTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('Draft Owner', 'draft-owner@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwSameBhc = $this->user('Other Draft Owner', 'draft-other@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwB = $this->user('Draft BHW B', 'draft-b@example.test', User::ROLE_BHW, $this->bhcB->id);
-        $this->rhuStaff = $this->user('Draft RHU Staff', 'draft-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
+        $this->bhwA = $this->user('Draft Owner', 'draft-owner@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwSameBhc = $this->user('Other Draft Owner', 'draft-other@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwB = $this->user('Draft BHW B', 'draft-b@example.test', User::ROLE_BHC, $this->bhcB->id);
+        $this->rhuStaff = $this->user('Draft RHU Staff', 'draft-rhu@example.test', User::ROLE_RHU, null, $this->rhuA->id);
         $this->patientA = $this->patient('Clinical', 'Draft Patient', $this->bhcA->id);
         $this->patientB = $this->patient('Other', 'Facility Patient', $this->bhcB->id);
         $this->medicineA = $this->medicine('Draft Medicine A', 5, $this->bhcA->id, $this->bhwA->id);
@@ -146,13 +146,14 @@ class HealthRecordDraftTest extends TestCase
         );
     }
 
-    public function test_other_users_roles_and_invalid_facility_assignments_cannot_access_draft(): void
+    public function test_other_facilities_roles_and_invalid_facility_assignments_cannot_access_draft(): void
     {
         $publicId = $this->createDraft();
 
+        // A same-BHC colleague may open the shared encounter; edit leases govern writes.
         $this->actingAs($this->bhwSameBhc, 'sanctum')
             ->getJson("/api/health-record-drafts/{$publicId}")
-            ->assertNotFound();
+            ->assertOk();
         $this->actingAs($this->bhwB, 'sanctum')
             ->getJson("/api/health-record-drafts/{$publicId}")
             ->assertNotFound();
@@ -163,16 +164,16 @@ class HealthRecordDraftTest extends TestCase
         $inactive = $this->user(
             'Inactive Draft BHW',
             'inactive-draft@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             null,
             User::STATUS_INACTIVE
         );
-        $missing = $this->user('Missing Draft BHW', 'missing-draft@example.test', User::ROLE_BHW);
+        $missing = $this->user('Missing Draft BHW', 'missing-draft@example.test', User::ROLE_BHC);
         $mixed = $this->user(
             'Mixed Draft BHW',
             'mixed-draft@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             $this->rhuA->id
         );
@@ -386,7 +387,9 @@ class HealthRecordDraftTest extends TestCase
 
     public function test_official_failure_keeps_draft_active_and_successful_commit_consumes_it(): void
     {
-        $this->medicineA->update(['quantity' => 1, 'availability_status' => 'Low Stock']);
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $this->medicineA->update(['quantity' => 3]);
+        $this->medicineA->expiryGroups()->update(['available_quantity' => 3, 'expiration_date' => now()->subDay()->toDateString()]);
         $publicId = $this->createDraft($this->draftPayload('Official draft', 2));
         $idempotencyKey = (string) Str::uuid();
         $official = [
@@ -394,29 +397,34 @@ class HealthRecordDraftTest extends TestCase
             'category' => 'General Consultation',
             'chief_complaint' => 'Official save from draft.',
             'dispensed_medicines' => [[
-                'medicine_id' => $this->medicineA->id,
+                'allocations' => [['expiry_group_id' => $this->medicineA->expiryGroups()->firstOrFail()->id, 'quantity' => 2]], 'override_reason' => 'Selected actual package', 'medicine_id' => $this->medicineA->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ];
+        $version = fn (): string => (string) HealthRecordDraft::where('public_id', $publicId)->value('version');
 
         $this->actingAs($this->bhwA, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $idempotencyKey,
                 'X-Health-Record-Draft-ID' => $publicId,
+                'X-Draft-Version' => $version(),
             ])
             ->postJson('/api/health-records', $official)
-            ->assertConflict();
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
         $this->assertDatabaseHas('health_record_drafts', [
             'public_id' => $publicId,
             'status' => HealthRecordDraft::STATUS_ACTIVE,
         ]);
         $this->assertDatabaseCount('health_records', 0);
 
-        $this->medicineA->update(['quantity' => 3, 'availability_status' => 'Available']);
+        $this->medicineA->expiryGroups()->update(['expiration_date' => now()->addYear()->toDateString()]);
         $this->actingAs($this->bhwA, 'sanctum')
             ->withHeaders([
                 'Idempotency-Key' => $idempotencyKey,
                 'X-Health-Record-Draft-ID' => $publicId,
+                'X-Draft-Version' => $version(),
             ])
             ->postJson('/api/health-records', $official)
             ->assertCreated();
@@ -432,6 +440,148 @@ class HealthRecordDraftTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'draft_consumed',
             'module' => 'health_record_drafts',
+        ]);
+    }
+
+    /** The draft owner with clinical.history, so staged background edits are saved and shown. */
+    private function grantHistoryAccess(): void
+    {
+        $this->bhwA->update(['permissions' => \App\Services\StaffRoles::defaults('midwife')]);
+        $this->bhwA->refresh();
+    }
+
+    public function test_draft_autosave_accepts_half_filled_history_rows(): void
+    {
+        $this->grantHistoryAccess();
+        $payload = [...$this->draftPayload(), 'backgroundUpdate' => [
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => [['note' => 'Since childhood']],
+                    'allergies' => ['items' => [['reaction' => 'Hives']]],
+                    'hospitalizations' => ['items' => [['year' => 2019]]],
+                ],
+                'family' => ['familyHistory' => ['items' => [['relation' => 'Mother']]]],
+            ],
+            'baseRevisions' => ['medical' => 0, 'family' => 0],
+        ]];
+
+        $publicId = $this->createDraft($payload);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.reaction', 'Hives');
+    }
+
+    public function test_draft_autosave_still_checks_history_types_and_enums(): void
+    {
+        $this->grantHistoryAccess();
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftRequest([...$this->draftPayload(), 'backgroundUpdate' => [
+                'sections' => ['medical' => ['hospitalizations' => ['items' => [['type' => 'Confinement', 'year' => 1800]]]]],
+                'baseRevisions' => ['medical' => 0],
+            ]]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'payload.backgroundUpdate.sections.medical.hospitalizations.items.0.type',
+                'payload.backgroundUpdate.sections.medical.hospitalizations.items.0.year',
+            ]);
+    }
+
+    /** A draft row whose stored payload was written by an older bundle (bypassing today's sanitizer). */
+    private function storedDraft(array $payload): string
+    {
+        $publicId = $this->createDraft();
+        HealthRecordDraft::where('public_id', $publicId)->update([
+            'encrypted_payload' => \Illuminate\Support\Facades\Crypt::encryptString(json_encode($payload)),
+        ]);
+
+        return $publicId;
+    }
+
+    private function assertOpensWithoutBackgroundUpdate(array $backgroundUpdate): void
+    {
+        $this->grantHistoryAccess();
+        $publicId = $this->storedDraft([...$this->draftPayload('Kept diagnosis'), 'backgroundUpdate' => $backgroundUpdate]);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.diagnosis', 'Kept diagnosis')
+            ->assertJsonMissingPath('data.payload.backgroundUpdate');
+    }
+
+    public function test_stored_new_shape_background_update_is_returned_to_history_users(): void
+    {
+        $this->grantHistoryAccess();
+        $publicId = $this->storedDraft([...$this->draftPayload(), 'backgroundUpdate' => [
+            'sections' => ['medical' => ['allergies' => ['items' => [['allergen' => 'Dust']]]]],
+            'baseRevisions' => ['medical' => 0],
+        ]]);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson("/api/health-record-drafts/{$publicId}")
+            ->assertOk()
+            ->assertJsonPath('data.payload.backgroundUpdate.sections.medical.allergies.items.0.allergen', 'Dust');
+    }
+
+    public function test_full_pre_itr_draft_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => [
+                'medical' => [
+                    'currentDiseases' => [[
+                        'name' => 'Hypertension', 'note' => 'On meds', 'status' => 'Confirmed',
+                        'firstRecorded' => '2026-05-01', 'lastConfirmed' => '2026-06-01',
+                        'source' => 'Consultation', 'conditionKey' => 'hypertension',
+                    ], [
+                        'name' => 'Asthma', 'note' => '', 'status' => '',
+                        'firstRecorded' => '2026-05-05', 'lastConfirmed' => '',
+                        'source' => 'Patient-reported', 'conditionKey' => null,
+                    ]],
+                    'allergies' => 'Dust',
+                    'hospitalizations' => '',
+                    'surgeries' => 'Appendectomy 2020',
+                ],
+                'family' => [
+                    'familyHistory' => ['similarIllness' => '', 'chronicIllness' => 'Diabetes (mother)', 'hereditaryIllness' => ''],
+                ],
+                'social' => [
+                    'personalSocial' => ['diet' => 'Low salt', 'smoking' => 'Never', 'alcohol' => '', 'notes' => 'Farmer'],
+                ],
+            ],
+            'baseRevisions' => ['medical' => 1, 'family' => 0, 'social' => 0],
+        ]);
+    }
+
+    public function test_pre_itr_medical_slice_with_null_strings_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['medical' => [
+                'currentDiseases' => [['name' => 'Asthma', 'status' => 'Confirmed', 'conditionKey' => 'asthma', 'lastConfirmed' => '2026-06-01']],
+                'allergies' => null,
+                'hospitalizations' => null,
+                'surgeries' => null,
+            ]],
+            'baseRevisions' => ['medical' => 0],
+        ]);
+    }
+
+    public function test_pre_itr_social_notes_only_opens_with_its_background_update_dropped(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['social' => ['personalSocial' => ['notes' => 'x']]],
+            'baseRevisions' => ['social' => 0],
+        ]);
+    }
+
+    public function test_stored_background_update_that_no_longer_validates_is_dropped_not_the_draft(): void
+    {
+        $this->assertOpensWithoutBackgroundUpdate([
+            'sections' => ['medical' => [
+                'hospitalizations' => ['items' => [['type' => 'Confinement', 'year' => 2020]]],
+            ]],
+            'baseRevisions' => ['medical' => 0],
         ]);
     }
 
@@ -509,7 +659,7 @@ class HealthRecordDraftTest extends TestCase
 
     private function medicine(string $name, int $quantity, int $bhcId, int $creatorId): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Basic Medicines',
             'quantity' => $quantity,
@@ -519,6 +669,8 @@ class HealthRecordDraftTest extends TestCase
             'barangay_health_center_id' => $bhcId,
             'created_by' => $creatorId,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function user(
@@ -534,6 +686,7 @@ class HealthRecordDraftTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

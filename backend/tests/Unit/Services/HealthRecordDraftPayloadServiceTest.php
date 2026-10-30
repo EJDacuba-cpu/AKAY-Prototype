@@ -20,6 +20,22 @@ use Tests\TestCase;
  */
 class HealthRecordDraftPayloadServiceTest extends TestCase
 {
+    public function test_shared_referral_draft_keeps_its_mode_and_common_fields_on_repeated_sanitize(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = $this->fullFrontendPayload();
+        $payload['sharedConditionReferral'] = true;
+        $payload['receivingRhuId'] = '7';
+        $payload['referralForm']['urgencyLevel'] = 'Priority';
+        $payload['referralForm']['reasonForReferral'] = 'One referral for two concerns';
+        $payload['diagnoses'] = [['id' => 'c1', 'name' => 'Concern one', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'refer_to_rhu']];
+        $sanitized = $service->sanitize($payload);
+        $this->assertTrue($sanitized['sharedConditionReferral']);
+        $this->assertSame('7', $sanitized['receivingRhuId']);
+        $this->assertSame('One referral for two concerns', $sanitized['referralForm']['reasonForReferral']);
+        $this->assertSame($sanitized, $service->sanitize($sanitized));
+    }
+
     public function test_fully_populated_frontend_payload_survives_sanitization(): void
     {
         $service = new HealthRecordDraftPayloadService();
@@ -27,27 +43,174 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $sanitized = $service->sanitize($this->fullFrontendPayload());
 
         $this->assertIsArray($sanitized);
+        $this->assertSame('118', $sanitized['maternalData']['laboratoryEntries'][1]['result']);
     }
 
-    public function test_reverting_followup_time_and_preferred_doctor_naming_reproduces_the_original_bug(): void
+    /**
+     * Every new consultation sends tbData as the frontend's EMPTY_TB_DATA,
+     * including its empty treatment outcome - even when no TB form is open.
+     * Rejecting it fails every draft autosave, which then blocks finalizing.
+     */
+    public function test_untouched_tb_outcome_from_a_new_consultation_is_accepted(): void
     {
-        // Guards against the exact regression this test suite was written for:
-        // if these two field names ever drift back out of sync, this test
-        // (not just production) must fail.
         $service = new HealthRecordDraftPayloadService();
 
-        $withoutFollowUpTimeSupport = $this->fullFrontendPayload();
-        // Simulate the pre-fix backend by sending a payload shaped like the
-        // pre-fix frontend would never produce: renaming the fields back to
-        // what the broken schema expected shows the allowlist genuinely
-        // discriminates between the two names rather than accepting anything.
-        $withoutFollowUpTimeSupport['referralForm']['preferredDoctor'] =
-            $withoutFollowUpTimeSupport['referralForm']['preferredRhuDoctorId'];
-        unset($withoutFollowUpTimeSupport['referralForm']['preferredRhuDoctorId']);
+        $payload = $this->fullFrontendPayload();
+        $payload['tbData']['outcome'] = ['status' => '', 'date' => ''];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame(['status' => '', 'date' => ''], $sanitized['tbData']['outcome']);
+    }
+
+    public function test_draft_keeps_bhc_follow_up_flag(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [['id' => 'd1', 'name' => 'Cough', 'carePlan' => 'refer', 'bhcFollowUp' => true]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertTrue($sanitized['diagnoses'][0]['bhcFollowUp']);
+    }
+
+    public function test_v2_draft_keys_survive_sanitize_round_trip(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['consultationWorkflow'] = 'bhc_general_v2';
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportIn' => ['morbidity', 'surveillance'],
+        ]];
+        $payload['carePlan']['bhcFollowUp'] = true;
+        $payload['carePlan']['referToRhu'] = false;
+        $payload['carePlan']['referralMultipleIssues'] = true;
+        $payload['carePlan']['serviceReferrals'] = ['Maternal', 'EPI'];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('bhc_general_v2', $sanitized['consultationWorkflow']);
+        $this->assertSame(['morbidity', 'surveillance'], $sanitized['diagnoses'][0]['reportIn']);
+        $this->assertTrue($sanitized['carePlan']['bhcFollowUp']);
+        $this->assertFalse($sanitized['carePlan']['referToRhu']);
+        $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
+        $this->assertSame(['Maternal', 'EPI'], $sanitized['carePlan']['serviceReferrals']);
+        $payload['noInterventionPerformed'] = true;
+        $payload['noInterventionReason'] = 'Patient declined treatment';
+        $noIntervention = $service->sanitize($payload);
+        $this->assertTrue($noIntervention['noInterventionPerformed']);
+        $this->assertSame('Patient declined treatment', $noIntervention['noInterventionReason']);
+    }
+
+    public function test_draft_accepts_blank_and_invalid_vitals(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = $this->fullFrontendPayload();
+        $payload['systolicBp'] = '120';
+        $payload['diastolicBp'] = '';
+        $payload['temp'] = '123';
+        $payload['pulse'] = '3123';
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('120', $sanitized['systolicBp']);
+        $this->assertSame('', $sanitized['diastolicBp']);
+        $this->assertSame('123', $sanitized['temp']);
+        $this->assertSame('3123', $sanitized['pulse']);
+    }
+
+    public function test_condition_cards_and_outcome_screen_survive_draft_sanitization(): void
+    {
+        $payload = $this->fullFrontendPayload();
+        $payload['consultationWorkflow'] = 'bhc_general_v2';
+        $payload['nextScreen'] = 'outcome';
+        $payload['diagnoses'] = [[
+            'id' => 'card-1', 'name' => 'Suspected hypertension', 'reportIn' => ['morbidity'], 'clinicalOutcome' => 'refer_to_rhu',
+            'referral' => ['urgencyLevel' => 'Priority', 'receivingRhuId' => '7', 'reasonForReferral' => 'Physician assessment'],
+        ]];
+        $sanitized = (new HealthRecordDraftPayloadService())->sanitize($payload);
+        $this->assertSame('outcome', $sanitized['nextScreen']);
+        $this->assertSame($payload['diagnoses'], $sanitized['diagnoses']);
+    }
+
+    public function test_legacy_draft_with_care_plan_concerns_still_validates(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportAs' => 'morbidity',
+            'carePlan' => 'refer',
+            'bhcFollowUp' => true,
+            'includeInSurveillance' => false,
+        ]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame($payload['diagnoses'], $sanitized['diagnoses']);
+        $this->assertArrayNotHasKey('consultationWorkflow', $sanitized);
+    }
+
+    public function test_unknown_report_in_value_rejected(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [['id' => 'd1', 'name' => 'Cough', 'reportIn' => ['morbidity', 'bogus']]];
+
+        try {
+            $service->sanitize($payload);
+            $this->fail('Expected a ValidationException for the unknown reportIn value.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('payload.diagnoses.0.reportIn.1', $e->errors());
+            $this->assertArrayNotHasKey('payload.diagnoses.0.reportIn.0', $e->errors());
+        }
+    }
+
+    public function test_every_known_report_in_destination_is_accepted(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['diagnoses'] = [[
+            'id' => 'd1',
+            'name' => 'Cough',
+            'reportIn' => ['morbidity', 'notifiable', 'surveillance'],
+        ]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame(['morbidity', 'notifiable', 'surveillance'], $sanitized['diagnoses'][0]['reportIn']);
+    }
+
+    public function test_unknown_referral_form_fields_are_rejected(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['referralForm']['preferredDoctor'] = 'Dr. Anyone';
 
         $this->expectException(ValidationException::class);
 
-        $service->sanitize($withoutFollowUpTimeSupport);
+        $service->sanitize($payload);
+    }
+
+    public function test_retired_preferred_doctor_field_is_dropped_from_old_drafts(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['referralForm']['preferredRhuDoctorId'] = '42';
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertArrayNotHasKey('preferredRhuDoctorId', $sanitized['referralForm']);
     }
 
     private function fullFrontendPayload(): array
@@ -59,6 +222,8 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
             'summaryOfPresentIllness' => 'Onset three days ago',
             'diagnosis' => 'Upper respiratory tract infection',
             'medication' => 'Paracetamol',
+            'noInterventionPerformed' => false,
+            'noInterventionReason' => '',
             'attendingStaff' => 'Nurse Reyes',
             'consultationNotes' => 'Advised rest and hydration',
             'systolicBp' => '120',
@@ -124,6 +289,27 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'hiv' => 'Non-reactive',
                     'syphilis' => 'Non-reactive',
                     'urinalysis' => 'Normal',
+                ],
+                'laboratoryResultDates' => [
+                    'hemoglobin' => '2026-08-01',
+                    'cbc' => '2026-08-01',
+                    'hbsag' => '2026-08-01',
+                    'bloodType' => '2026-08-01',
+                    'hiv' => '2026-08-01',
+                    'syphilis' => '2026-08-01',
+                    'urinalysis' => '2026-08-01',
+                ],
+                'laboratoryEntries' => [
+                    [
+                        'test' => 'hemoglobin',
+                        'result' => '120',
+                        'datePerformed' => '2026-08-01',
+                    ],
+                    [
+                        'test' => 'hemoglobin',
+                        'result' => '118',
+                        'datePerformed' => '2026-08-15',
+                    ],
                 ],
                 'tetanusToxoidStatus' => [
                     'tt1' => '2026-01-01',
@@ -193,14 +379,6 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'concern' => '',
                 'findings' => '',
                 'adviceGiven' => 'Continue current method',
-            ],
-            'hypertensionDiabeticData' => [
-                'bp' => '130/85',
-                'fbs' => '95',
-                'conditionType' => 'Hypertension',
-                'clientStatus' => 'Controlled',
-                'dateOfLastConsultation' => '2026-08-01',
-                'treatmentActionTaken' => 'Continue current medication',
             ],
             'tbData' => [
                 'caseFinding' => [
@@ -307,6 +485,11 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                         ],
                     ],
                 ],
+                // Final NTP treatment outcome (TbTreatmentCardForm EMPTY_TB_DATA.outcome).
+                'outcome' => [
+                    'status' => 'cured',
+                    'date' => '2027-01-10',
+                ],
             ],
             'referralForm' => [
                 'urgencyLevel' => 'Routine',
@@ -318,7 +501,6 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'initialActionsTaken' => 'Symptomatic treatment given',
                 'reasonForReferral' => 'Needs further evaluation',
                 'clinicalSummary' => 'Stable, ambulatory patient',
-                'preferredRhuDoctorId' => '42',
             ],
             'dispensedMedicines' => [
                 [

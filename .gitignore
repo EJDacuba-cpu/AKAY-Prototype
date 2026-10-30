@@ -1,0 +1,5 @@
+
+# AKAY local environment and agent-generated artifacts
+/frontend/.env
+/.cursor/debug-*.log
+/.claude/data/healthcare/documents/*.sqlite*

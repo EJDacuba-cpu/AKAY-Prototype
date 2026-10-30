@@ -91,7 +91,7 @@ class AuthenticationPersistenceTest extends TestCase
 
         $response = $this->refresh($oldCookie->getValue())
             ->assertOk()
-            ->assertJsonPath('user.role', User::ROLE_BHW)
+            ->assertJsonPath('user.role', User::ROLE_BHC)
             ->assertJsonPath('user.facility.id', $this->bhc->id)
             ->assertJsonPath('user.navigation.home', '/bhc/dashboard');
         $newCookie = $this->refreshCookieFrom($response);
@@ -103,6 +103,92 @@ class AuthenticationPersistenceTest extends TestCase
         $this->assertNotNull(PersonalAccessToken::findToken($response->json('token')));
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('Cookie', (string) $response->headers->get('Vary'));
+    }
+
+    /**
+     * A session survives repeated rotation, in a timezone that is not UTC.
+     *
+     * The absolute session start is carried in the refresh token's name as a
+     * Unix timestamp and read back to re-derive the deadline. Reconstructed
+     * without an explicit zone it lands one UTC offset early, and since every
+     * stored datetime is a naive string in the app timezone, the rotated token
+     * inherited an expires_at that had already passed - so the FIRST rotation
+     * appeared to succeed and the next one 401'd, dropping a reloading user
+     * back to the login screen.
+     *
+     * Pinned to Asia/Manila: under UTC the offset is zero and the defect is
+     * invisible, so a UTC-only assertion would not hold this fix in place.
+     */
+    public function test_session_survives_repeated_rotation_outside_utc(): void
+    {
+        config()->set('app.timezone', 'Asia/Manila');
+        $restoreTimezone = date_default_timezone_get();
+        date_default_timezone_set('Asia/Manila');
+
+        try {
+            $login = $this->login($this->user)->assertOk();
+            $deadline = PersonalAccessToken::findToken(
+                $this->refreshCookieFrom($login)->getValue()
+            )->expires_at;
+
+            $cookie = $this->refreshCookieFrom($login)->getValue();
+
+            // Three rotations: the original defect died on the second one.
+            for ($rotation = 1; $rotation <= 3; $rotation++) {
+                $response = $this->refresh($cookie)
+                    ->assertOk("Rotation {$rotation} should keep the session alive.");
+
+                $cookie = $this->refreshCookieFrom($response)->getValue();
+                $token = PersonalAccessToken::findToken($cookie);
+
+                $this->assertFalse(
+                    $token->expires_at->isPast(),
+                    "Rotation {$rotation} issued an already-expired refresh token.",
+                );
+                // Rotation must neither shorten nor extend the absolute window.
+                $this->assertTrue(
+                    $deadline->equalTo($token->expires_at),
+                    "Rotation {$rotation} moved the absolute session deadline.",
+                );
+            }
+        } finally {
+            date_default_timezone_set($restoreTimezone);
+        }
+    }
+
+    /**
+     * Rotation must not be a way to stay signed in forever: once the absolute
+     * window that began at login has passed, no amount of refreshing revives
+     * the session, however recently it was used.
+     */
+    public function test_rotation_cannot_outlive_the_absolute_session_window(): void
+    {
+        config()->set('app.timezone', 'Asia/Manila');
+        $restoreTimezone = date_default_timezone_get();
+        date_default_timezone_set('Asia/Manila');
+
+        try {
+            $cookie = $this->refreshCookieFrom($this->login($this->user))->getValue();
+
+            // Refresh every 100 minutes: always inside the 120-minute idle
+            // window, so only the 480-minute absolute window can end this.
+            foreach ([100, 200, 300, 400] as $elapsed) {
+                $this->travelTo(now()->startOfMinute()->addMinutes(100));
+                $cookie = $this->refreshCookieFrom(
+                    $this->refresh($cookie)
+                        ->assertOk("An active session should still rotate at +{$elapsed} minutes.")
+                )->getValue();
+            }
+
+            // +500 minutes: still active, but past the window opened at login.
+            $this->travelTo(now()->startOfMinute()->addMinutes(100));
+            $this->refresh($cookie)
+                ->assertUnauthorized()
+                ->assertJsonPath('code', 'SESSION_EXPIRED');
+        } finally {
+            $this->travelBack();
+            date_default_timezone_set($restoreTimezone);
+        }
     }
 
     public function test_revoked_and_expired_refresh_sessions_cannot_restore(): void
@@ -177,19 +263,19 @@ class AuthenticationPersistenceTest extends TestCase
     public function test_origin_and_custom_header_protect_cookie_session_actions(): void
     {
         $this->withHeader('Origin', self::ORIGIN)
-            ->postJson('/api/auth/login', [
+            ->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => $this->user->email,
                 'password' => 'password123',
-            ])
+            ]))
             ->assertStatus(419);
 
         $this->withHeaders([
             'Origin' => 'https://malicious.example.test',
             'X-AKAY-Session' => '1',
-        ])->postJson('/api/auth/login', [
+        ])->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->user->email,
             'password' => 'password123',
-        ])->assertStatus(419);
+        ]))->assertStatus(419);
 
         $this->login($this->user)->assertOk();
     }
@@ -206,10 +292,10 @@ class AuthenticationPersistenceTest extends TestCase
 
     private function login(User $user)
     {
-        return $this->withHeaders($this->sessionHeaders())->postJson('/api/auth/login', [
+        return $this->withHeaders($this->sessionHeaders())->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $user->email,
             'password' => 'password123',
-        ]);
+        ]));
     }
 
     private function refresh(string $cookie)
@@ -234,13 +320,13 @@ class AuthenticationPersistenceTest extends TestCase
 
     private function newBhw(string $email): User
     {
-        return User::create([
+        return $this->markVerified(User::create([
             'name' => 'Persistent BHW',
             'email' => $email,
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
-        ]);
+        ]));
     }
 }

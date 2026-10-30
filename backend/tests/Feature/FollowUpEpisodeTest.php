@@ -8,6 +8,7 @@ use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\FollowUpEpisodeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -27,7 +28,8 @@ class FollowUpEpisodeTest extends TestCase
             'name' => 'Episode BHW',
             'email' => 'episode-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -78,6 +80,45 @@ class FollowUpEpisodeTest extends TestCase
                 'data.follow_up_episode.tasks.1.fulfilled_by_health_record_id',
                 $secondFollowUp->id
             );
+    }
+
+    public function test_episode_summary_exposes_only_the_v2_workflow_marker(): void
+    {
+        $rhu = RuralHealthUnit::create(['name' => 'Marker RHU']);
+        $bhc = BarangayHealthCenter::create(['name' => 'Marker BHC', 'rural_health_unit_id' => $rhu->id]);
+        $bhw = User::create([
+            'name' => 'Marker BHW',
+            'email' => 'marker-bhw@example.test',
+            'password' => Hash::make('password123'),
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
+            'status' => User::STATUS_ACTIVE,
+            'barangay_health_center_id' => $bhc->id,
+        ]);
+        $patient = Patient::create([
+            'first_name' => 'Marker',
+            'last_name' => 'Patient',
+            'sex' => 'Female',
+            'barangay_health_center_id' => $bhc->id,
+            'created_by' => $bhw->id,
+        ]);
+
+        $initial = $this->record($patient, $bhw, $bhc, null, '2026-07-01 08:00:00');
+        $initial->update(['monitoring_data' => ['followUpReason' => 'legacy']]);
+        $followUp = $this->record($patient, $bhw, $bhc, $initial, '2026-07-08 08:00:00');
+        $followUp->update(['monitoring_data' => [
+            'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'followUpReason' => 'not part of the episode summary',
+        ]]);
+
+        $episode = app(FollowUpEpisodeService::class)->forRecord($followUp->fresh(), $bhw);
+
+        $this->assertNull($episode['records'][0]['monitoring_data']);
+        $this->assertSame(
+            ['consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2],
+            $episode['records'][1]['monitoring_data']
+        );
+        $this->assertNull($episode['original_record']['monitoring_data']);
     }
 
     private function record(

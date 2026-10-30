@@ -6,7 +6,7 @@ import {
   verifyPasswordResetToken,
 } from "../services/passwordResetService";
 
-const LOGO_SRC = "/akay-logo-only.svg";
+const LOGO_SRC = "/akay-logo.png";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -99,18 +99,15 @@ export default function ResetPassword() {
     <div className="flex min-h-dvh items-center justify-center overflow-y-auto bg-[#F8FAFC] px-4 py-4 text-[#1F2937] sm:px-6">
       <main className="w-full max-w-[460px] rounded-3xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-xl shadow-slate-900/5 sm:px-9 sm:py-7">
         <div className="mb-5 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <h1>
             <img
               src={LOGO_SRC}
-              alt="AKAY Logo"
-              className="h-12 w-12 object-contain"
+              alt="AKAY — Medical EHR and Referral System"
+              className="mx-auto h-14 w-auto max-w-full object-contain"
               draggable="false"
             />
-          </div>
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#B91C1C]">
-            AKAY
           </h1>
-          <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF] sm:text-[10px]">
+          <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF] sm:text-[10px]">
             Secure Password Reset
           </p>
         </div>

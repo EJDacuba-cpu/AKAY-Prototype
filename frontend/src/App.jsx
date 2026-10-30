@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Navigate,
   Route,
@@ -8,7 +16,12 @@ import {
   useParams,
 } from "react-router";
 import Login from "./pages/Login";
+import Facilities from "./pages/admin/Facilities";
+import StaffAssignments from "./pages/admin/StaffAssignments";
 import ResetPassword from "./pages/ResetPassword";
+import AcceptInvite from "./pages/AcceptInvite";
+import ChangePassword from "./pages/ChangePassword";
+import { CHANGE_PASSWORD_PATH, needsPasswordChange } from "./utils/passwordChange";
 import {
   clearStoredAuthSession,
   getCurrentUser,
@@ -17,7 +30,13 @@ import {
 } from "./utils/auth";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
+import LockedModulePage from "./components/common/access/LockedModulePage";
+import useAccess from "./hooks/useAccess";
 import { AkayLoadingLifecycleProvider } from "./hooks/useAkayLoadingLifecycle";
+import {
+  getConsultationBackground,
+  locationToPath,
+} from "./utils/profileNavigation";
 import NotificationsPage from "./pages/bhc/NotificationsPage";
 import DesignTokens from "./pages/DesignTokens";
 import { queryClient } from "./lib/queryClient";
@@ -30,33 +49,39 @@ import {
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
 import PatientsModule from "./pages/bhc/PatientsModule";
-import HealthRecords from "./pages/bhc/HealthRecords";
-import AddHealthRecord from "./pages/bhc/AddHealthRecord";
+import MonitoringHandoffReview from "./pages/bhc/MonitoringHandoffReview";
+import ConsultationWorkspace from "./pages/bhc/ConsultationWorkspace";
 import AddPatient from "./pages/bhc/AddPatient";
+import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
+import BhcFamilyConnections from "./pages/bhc/BhcFamilyConnections";
 import FollowUps from "./pages/bhc/FollowUps";
+import BhcFollowUpRedirect from "./pages/bhc/BhcFollowUpRedirect";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
+import WaitingReferralDetails from "./pages/bhc/WaitingReferralDetails";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
 import MedicineAvailability from "./pages/bhc/MedicineAvailability";
+import MedicineDetailsPage from "./pages/shared/MedicineDetailsPage";
 import BHCReports from "./pages/bhc/BHCReports";
 import PatientDetails from "./pages/bhc/PatientDetails";
+import { EditPatientRegistration } from "./pages/bhc/AddPatient";
 import HealthRecordDetails from "./pages/bhc/HealthRecordDetails";
+
 
 // RHU Pages
 import RHUDashboard from "./pages/rhu/RHUDashboard";
 import IncomingReferrals from "./pages/rhu/IncomingReferrals";
 import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
-import RHUPatientsModule from "./pages/rhu/RHUPatientsModule";
+import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
+import RhuReferralSlip from "./pages/rhu/RhuReferralSlip";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
-import RHUHealthRecord from "./pages/rhu/RHUHealthRecords";
-import RHUAddHealthRecords from "./pages/rhu/RHUAddHealthRecords";
+import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
-import AddMedicineItem from "./pages/rhu/AddMedicineItem";
 import FeedbackReturnSlip from "./pages/rhu/FeedbackReturnSlip";
 import RHUReports from "./pages/rhu/RHUReports";
 
@@ -74,6 +99,7 @@ const PUBLIC_BOOT_ROUTES = new Set([
   "/",
   "/login",
   "/reset-password",
+  "/accept-invite",
   "/unauthorized",
   "/design-tokens",
 ]);
@@ -92,9 +118,10 @@ function shouldClearStoredSession(error) {
   return error?.status === 401 || error?.status === 403;
 }
 
-function ProtectedPage({ allowedRole, children }) {
+function ProtectedPage({ allowedRole, module, children }) {
   const location = useLocation();
   const { status, user } = useContext(AuthStateContext);
+  const access = useAccess();
 
   if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
   if (status === "unauthenticated" || !user) {
@@ -106,7 +133,10 @@ function ProtectedPage({ allowedRole, children }) {
       />
     );
   }
+  if (needsPasswordChange(user, location.pathname)) return <Navigate to={CHANGE_PASSWORD_PATH} replace />;
   if (user.role !== allowedRole) return <Navigate to="/unauthorized" replace />;
+  // A locked module keeps the page frame but never mounts the page, so none of its data is requested.
+  if (module && !access.canModule(module)) return <LockedModulePage role={allowedRole} module={module} />;
   return children;
 }
 
@@ -153,11 +183,20 @@ function NotificationRouteWrapper() {
       />
     );
   }
+  if (needsPasswordChange(user, location.pathname)) return <Navigate to={CHANGE_PASSWORD_PATH} replace />;
   return (
     <DashboardLayout role={user.role} title="Notifications">
       <NotificationsPage />
     </DashboardLayout>
   );
+}
+
+function ChangePasswordRoute() {
+  const { status, user } = useContext(AuthStateContext);
+
+  if (status === "restoring") return <FullScreenAkayLoader message="Restoring your secure session..." />;
+  if (status === "unauthenticated" || !user) return <Navigate to="/login" replace />;
+  return <ChangePassword />;
 }
 
 function useAuthBootLoaderReady(shouldRestoreStoredSession, retryKey) {
@@ -228,7 +267,7 @@ function SessionRestoreUnavailable({ onRetry }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm text-center">
-        <img src="/akay-logo-splash.svg" alt="" className="mx-auto h-24 w-24" />
+        <img src="/akay-logo.png" alt="AKAY" className="mx-auto h-16 w-auto max-w-full object-contain" />
         <h1 className="mt-5 text-lg font-bold text-slate-900">
           Unable to restore your secure session
         </h1>
@@ -272,6 +311,42 @@ export default function App() {
     () => ({ status: authStatus, user: authUser }),
     [authStatus, authUser],
   );
+
+  // "View Full Profile" during a consultation keeps that consultation mounted
+  // (hidden) underneath the profile, so returning resumes it exactly - no
+  // draft reload, no Unfinished Consultation prompt. It survives only a return
+  // to its own URL; leaving anywhere else remounts the page tree as usual.
+  const consultationBackground = getConsultationBackground(location);
+  const backgroundPath = locationToPath(consultationBackground);
+  const currentPath = locationToPath(location);
+  const mainTreeRef = useRef(null);
+  const [heldConsultation, setHeldConsultation] = useState({
+    path: "",
+    scrollTop: 0,
+    treeKey: 0,
+    restoreScroll: null,
+  });
+
+  if (backgroundPath !== heldConsultation.path) {
+    const leaving = Boolean(heldConsultation.path) && !backgroundPath;
+    const resumed = leaving && currentPath === heldConsultation.path;
+    setHeldConsultation({
+      path: backgroundPath,
+      scrollTop: backgroundPath ? Number(location.state?.scrollTop) || 0 : 0,
+      treeKey:
+        leaving && !resumed
+          ? heldConsultation.treeKey + 1
+          : heldConsultation.treeKey,
+      restoreScroll: resumed ? heldConsultation.scrollTop : null,
+    });
+  }
+
+  // The scroll container lost its offset while hidden; put it back.
+  useLayoutEffect(() => {
+    if (heldConsultation.restoreScroll === null) return;
+    const scroller = mainTreeRef.current?.querySelector(".akay-content-scroll");
+    if (scroller) scroller.scrollTop = heldConsultation.restoreScroll;
+  }, [heldConsultation.restoreScroll]);
 
   useEffect(() => {
     function handleSensitiveSessionCleared(event) {
@@ -378,9 +453,28 @@ export default function App() {
       <AkayLoadingLifecycleProvider
         hasCompletedInitialBoot={hasCompletedInitialBoot}
       >
-      <Routes>
+      <div
+        ref={mainTreeRef}
+        key={heldConsultation.treeKey}
+        hidden={Boolean(consultationBackground)}
+      >
+      <Routes location={consultationBackground || location}>
+      {["bhc", "rhu"].flatMap(role => [
+        <Route key={`${role}-families`} path={`/${role}/families`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamiliesDirectory role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyForm role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamilyDetails role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-family-edit`} path={`/${role}/families/:householdId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyForm role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-related-new`} path={`/${role}/families/:householdId/related/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcDeferredFamilyAction role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcAddMember role={role} /></ProtectedPage>} />,
+        <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyConnections role={role} /></ProtectedPage>} />,
+      ])}
+      <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
+      <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
+      <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
+      <Route path="/change-password" element={<ChangePasswordRoute />} />
 
       {/* Admin Routes */}
       <Route
@@ -454,32 +548,37 @@ export default function App() {
       <Route
         path="/bhc/patients"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
             <PatientsModule />
           </ProtectedPage>
         }
       />
       <Route
+        path="/bhc/patients/:patientId/edit"
+        element={<ProtectedPage allowedRole="bhc" module="patients"><EditPatientRegistration /></ProtectedPage>}
+      />
+      <Route
         path="/bhc/patients/add"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patients">
             <AddPatient />
           </ProtectedPage>
         }
       />
       <Route
-        path="/bhc/patients/edit/:patientId"
+        path="/bhc/patients/monitoring-requests/:requestId"
         element={
-          <ProtectedPage allowedRole="bhc">
-            <AddPatient />
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
+            <MonitoringHandoffReview />
           </ProtectedPage>
         }
       />
+
       <Route
         path="/bhc/health-records"
         element={
-          <ProtectedPage allowedRole="bhc">
-            <HealthRecords />
+          <ProtectedPage allowedRole="bhc" module="history">
+            <Navigate to="/bhc/patients" replace />
           </ProtectedPage>
         }
       />
@@ -487,14 +586,14 @@ export default function App() {
         path="/bhc/health-records/add"
         element={
           <ProtectedPage allowedRole="bhc">
-            <AddHealthRecord />
+            <ConsultationWorkspace />
           </ProtectedPage>
         }
       />
       <Route
         path="/bhc/follow-ups"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <FollowUps />
           </ProtectedPage>
         }
@@ -502,15 +601,15 @@ export default function App() {
       <Route
         path="/bhc/follow-ups/:taskId"
         element={
-          <ProtectedPage allowedRole="bhc">
-            <FollowUpDetails />
+          <ProtectedPage allowedRole="bhc" module="history">
+            <BhcFollowUpRedirect />
           </ProtectedPage>
         }
       />
       <Route
         path="/bhc/referrals"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <Referrals />
           </ProtectedPage>
         }
@@ -518,8 +617,16 @@ export default function App() {
       <Route
         path="/bhc/referrals/create"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="referrals">
             <CreateReferral />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/referrals/waiting/:holdId"
+        element={
+          <ProtectedPage allowedRole="bhc" module="referrals">
+            <WaitingReferralDetails />
           </ProtectedPage>
         }
       />
@@ -527,7 +634,7 @@ export default function App() {
       <Route
         path="/bhc/referrals/:trackingId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <ReferralDetails />
           </ProtectedPage>
         }
@@ -535,15 +642,19 @@ export default function App() {
       <Route
         path="/bhc/medicine-availability"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="inventory">
             <MedicineAvailability />
           </ProtectedPage>
         }
       />
       <Route
+        path="/bhc/medicine-availability/:medicineId"
+        element={<ProtectedPage allowedRole="bhc" module="inventory"><MedicineDetailsPage role="bhc" /></ProtectedPage>}
+      />
+      <Route
         path="/bhc/reports"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="reports">
             <BHCReports />
           </ProtectedPage>
         }
@@ -555,7 +666,7 @@ export default function App() {
       <Route
         path="/bhc/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="patientDirectory">
             <PatientDetails />
           </ProtectedPage>
         }
@@ -563,7 +674,7 @@ export default function App() {
       <Route
         path="/bhc/health-records/:recordId"
         element={
-          <ProtectedPage allowedRole="bhc">
+          <ProtectedPage allowedRole="bhc" module="history">
             <HealthRecordDetails />
           </ProtectedPage>
         }
@@ -580,7 +691,7 @@ export default function App() {
       <Route
         path="/rhu/incoming-referrals"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <IncomingReferrals />
           </ProtectedPage>
         }
@@ -588,7 +699,7 @@ export default function App() {
       <Route
         path="/rhu/referrals/:trackingId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <RHUReferralDetails />
           </ProtectedPage>
         }
@@ -596,7 +707,7 @@ export default function App() {
       <Route
         path="/rhu/qr-scanner"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="rhuIntake">
             <QRScanner />
           </ProtectedPage>
         }
@@ -604,23 +715,32 @@ export default function App() {
       <Route
         path="/rhu/patients"
         element={
-          <ProtectedPage allowedRole="rhu">
-            <RHUPatientsModule />
+          <ProtectedPage allowedRole="rhu" module="patientDirectory">
+            <RhuPatientsWorkspace />
           </ProtectedPage>
         }
       />
       <Route
         path="/rhu/patients/add"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="patients">
             <RHUAddPatient />
+          </ProtectedPage>
+        }
+      />
+
+      <Route
+        path="/rhu/patients/:patientId/referrals/:referralId"
+        element={
+          <ProtectedPage allowedRole="rhu" module="history">
+            <RhuReferralSlip />
           </ProtectedPage>
         }
       />
       <Route
         path="/rhu/patients/:patientId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="patientDirectory">
             <RHUPatientDetails />
           </ProtectedPage>
         }
@@ -628,8 +748,8 @@ export default function App() {
       <Route
         path="/rhu/health-records"
         element={
-          <ProtectedPage allowedRole="rhu">
-            <RHUHealthRecord />
+          <ProtectedPage allowedRole="rhu" module="history">
+            <Navigate to="/rhu/patients" replace />
           </ProtectedPage>
         }
       />
@@ -637,15 +757,31 @@ export default function App() {
         path="/rhu/health-records/add"
         element={
           <ProtectedPage allowedRole="rhu">
-            <RHUAddHealthRecords />
+            <RhuConsultationWorkspace />
           </ProtectedPage>
         }
       />
       <Route
         path="/rhu/health-records/:recordId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="history">
             <RHURecordDetails />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/follow-ups"
+        element={
+          <ProtectedPage allowedRole="rhu" module="followups">
+            <FollowUps role="rhu" />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/follow-ups/:taskId"
+        element={
+          <ProtectedPage allowedRole="rhu" module="followups">
+            <FollowUpDetails role="rhu" />
           </ProtectedPage>
         }
       />
@@ -664,7 +800,7 @@ export default function App() {
       <Route
         path="/rhu/medicine-management"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="inventory">
             <MedicineManagement />
           </ProtectedPage>
         }
@@ -672,17 +808,19 @@ export default function App() {
       <Route
         path="/rhu/medicine-management/add"
         element={
-          <ProtectedPage allowedRole="rhu">
-            <AddMedicineItem />
+          <ProtectedPage allowedRole="rhu" module="inventoryManage">
+            <Navigate to="/rhu/medicine-management" replace />
           </ProtectedPage>
         }
       />
+
+      <Route path="/rhu/medicine-management/:medicineId" element={<ProtectedPage allowedRole="rhu" module="inventory"><MedicineDetailsPage role="rhu" /></ProtectedPage>} />
 
       {/* NEW: Dynamic route with trackingId param */}
       <Route
         path="/rhu/feedback/:trackingId"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="rhu">
             <FeedbackReturnSlip />
           </ProtectedPage>
         }
@@ -690,7 +828,7 @@ export default function App() {
       <Route
         path="/rhu/reports"
         element={
-          <ProtectedPage allowedRole="rhu">
+          <ProtectedPage allowedRole="rhu" module="reports">
             <RHUReports />
           </ProtectedPage>
         }
@@ -707,7 +845,7 @@ export default function App() {
       />
       <Route
         path="/rhu/rhu-records"
-        element={<Navigate to="/rhu/health-records" replace />}
+        element={<Navigate to="/rhu/patients" replace />}
       />
       <Route
         path="/rhu/rhu-health-records/add"
@@ -736,6 +874,20 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+      </div>
+
+      {consultationBackground && (
+        <Routes>
+          <Route
+            path="/bhc/patients/:patientId"
+            element={
+              <ProtectedPage allowedRole="bhc" module="patients">
+                <PatientDetails />
+              </ProtectedPage>
+            }
+          />
+        </Routes>
+      )}
       </AkayLoadingLifecycleProvider>
     </AuthStateContext.Provider>
   );

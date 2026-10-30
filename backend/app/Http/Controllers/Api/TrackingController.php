@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\ReferralArrivalSummary;
 use Illuminate\Http\Request;
 
 class TrackingController extends Controller
@@ -21,7 +22,7 @@ class TrackingController extends Controller
 
         if (
             preg_match('/^AKY-\d{8}-[A-Z0-9]{6}$/D', $trackingId) !== 1
-            || (! $user->isBhw() && ! $user->isRhuStaff())
+            || (! $user->isBhc() && ! $user->isRhu())
         ) {
             return $this->lookupFailed();
         }
@@ -38,13 +39,14 @@ class TrackingController extends Controller
             'Resolved an authorized referral tracking ID.'
         );
 
-        $rolePath = $user->isBhw() ? 'bhc' : 'rhu';
+        $rolePath = $user->isBhc() ? 'bhc' : 'rhu';
 
         return response()->json(['data' => [
             'referral_id' => $referral->id,
             'tracking_id' => $referral->tracking_id,
             'status' => $referral->status,
             'display_url' => "/{$rolePath}/referrals/{$referral->tracking_id}",
+            ...(ReferralArrivalSummary::appliesTo($user) ? ['arrival' => ReferralArrivalSummary::for($referral)] : []),
         ]]);
     }
 

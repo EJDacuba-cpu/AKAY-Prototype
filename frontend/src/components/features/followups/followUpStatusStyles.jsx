@@ -1,5 +1,6 @@
 import { formatDisplayValue } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
+import { selectionToRoute } from "../../../utils/startConsultation";
 
 export const STATE_CONFIG = {
   due_today: {
@@ -22,9 +23,9 @@ export const STATE_CONFIG = {
   },
   rescheduled: {
     label: "Rescheduled",
-    badge: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    event: "border-l-[#3B82F6] bg-[#EFF6FF] text-[#1D4ED8]",
-    dot: "bg-[#3B82F6]",
+    badge: "border-[#CBD5E1] bg-[#F1F5F9] text-[#334155]",
+    event: "border-l-[#64748B] bg-[#F1F5F9] text-[#334155]",
+    dot: "bg-[#64748B]",
   },
   fulfilled: {
     label: "Completed",
@@ -37,6 +38,15 @@ export const STATE_CONFIG = {
     badge: "border-[#CBD5E1] bg-[#F8FAFC] text-[#64748B]",
     event: "border-l-[#94A3B8] bg-[#F8FAFC] text-[#64748B]",
     dot: "bg-[#94A3B8]",
+  },
+  // Calendar-only: a task a reschedule has since superseded, shown on its
+  // original due date (Part A.4.4 - "resolved", not "missed", since it was
+  // acted on in time, just moved rather than fulfilled in place).
+  superseded: {
+    label: "Rescheduled",
+    badge: "border-[#E2E8F0] bg-[#F8FAFC] text-[#94A3B8]",
+    event: "border-l-[#CBD5E1] bg-[#F8FAFC] text-[#94A3B8] opacity-75",
+    dot: "bg-[#CBD5E1]",
   },
 };
 
@@ -61,29 +71,43 @@ export function getEffectiveState(task) {
   return "upcoming";
 }
 
-export function buildTaskActions(task, handlers) {
-  const actions = [];
-
-  if (["due_today", "no_show", "upcoming", "rescheduled"].includes(task.effectiveState)) {
-    actions.push({
-      label: "Add Health Record",
-      onClick: handlers.onRecordVisit,
-    });
-    actions.push({
-      label: "Reschedule",
-      onClick: handlers.onReschedule,
-    });
-  }
-
-  actions.push({
-    label: "View Follow-up Details",
-    to: `/bhc/follow-ups/${task.id}`,
-  });
-  return actions;
+export function isTaskSuperseded(task) {
+  return Boolean(task.rescheduledToId);
 }
 
-export function getTaskNavigationTarget(task) {
-  return task.id ? `/bhc/follow-ups/${task.id}` : "";
+/**
+ * Calendar-only variant of getEffectiveState. The List view never sees a
+ * superseded row (the server excludes them), so getEffectiveState has no
+ * concept of one - but the Calendar deliberately keeps them visible on
+ * their original due date (Part A.4.4), and they must read as "resolved"
+ * there rather than as an active, actionable Rescheduled card.
+ */
+export function getCalendarEffectiveState(task) {
+  if (isTaskSuperseded(task)) return "superseded";
+  return getEffectiveState(task);
+}
+
+export function formatFollowUpId(task) {
+  return task?.id ? `FU-${task.id}` : "—";
+}
+
+/**
+ * Where "Record Visit" goes for a follow-up. Shared by every surface that
+ * offers it (the Follow-ups list/calendar and remaining follow-up actions)
+ * so they cannot drift apart: the standard step-flow consultation with this
+ * follow-up continued, exactly as if it were ticked in the Start Consultation
+ * modal.
+ */
+export function buildRecordFollowUpVisitPath(task, basePath = "/bhc") {
+  if (basePath === "/rhu") {
+    const params = new URLSearchParams({
+      patientId: String(task.patientId || ""),
+      followUpTaskId: String(task.id),
+      mode: "continue",
+    });
+    return `/rhu/health-records/add?${params.toString()}`;
+  }
+  return selectionToRoute({ patientId: task.patientId, followUpIds: [task.id] }, basePath);
 }
 
 export function normalizeFilterState(value) {
@@ -105,7 +129,17 @@ export function formatStateLabel(state) {
 
 export function normalizeDate(value) {
   if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  // Local calendar date, not toISOString(): in UTC+8 a local midnight is
+  // still the previous day in UTC, which put every calendar event one column
+  // late and moved "today" to tomorrow.
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
   return String(value).slice(0, 10);
 }
 
@@ -178,7 +212,6 @@ const CLASSIFICATION_STYLES = {
   "General Consultation": "bg-slate-100 text-slate-700",
   "Maternal / Prenatal": "bg-pink-50 text-pink-700",
   "Child Health / EPI": "bg-emerald-50 text-emerald-700",
-  "Hypertension / Diabetic Monitoring": "bg-blue-50 text-blue-700",
   "Family Planning": "bg-purple-50 text-purple-700",
   "TB DOTS / TB Monitoring": "bg-amber-50 text-amber-700",
 };

@@ -10,8 +10,10 @@ use App\Http\Requests\RescheduleReferralRequest;
 use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
+use App\Models\RhuVisitQueueEntry;
 use App\Services\AkayCacheService;
 use App\Services\FacilityAccessService;
+use App\Services\ReferralArrivalSummary;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRescheduleService;
@@ -33,12 +35,13 @@ class ReferralController extends Controller
 
     public function destination(Request $request)
     {
-        $route = $this->referralRouting->resolveForBhw($request->user());
+        $bhc = $this->referralRouting->resolveAssignedBhc($request->user());
 
         return response()->json([
             'data' => [
-                'referring_barangay_health_center' => $route['bhc']->only(['id', 'name', 'status']),
-                'receiving_rural_health_unit' => $route['rhu']->only(['id', 'name', 'status']),
+                'referring_barangay_health_center' => $bhc->only(['id', 'name', 'status']),
+                'receiving_rural_health_unit' => $bhc->ruralHealthUnit?->only(['id', 'name', 'status']),
+                'destinations' => $this->referralRouting->destinations($request->user()),
             ],
         ]);
     }
@@ -126,13 +129,16 @@ class ReferralController extends Controller
         } catch (ReferralSubmissionBlockedException $exception) {
             // Recorded only after the transaction above has already rolled
             // back, in its own fresh transaction - see ReferralHoldService.
-            if ($exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE) {
-                $route = $referralRouting->resolveForBhw($user);
+            // Resuming a waiting hold must not create a second hold.
+            if (
+                $exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE
+                && empty($data['resume_hold_id'])
+            ) {
+                $route = $referralRouting->resolveForBhc($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
 
                 $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
                     'health_record_id' => $record?->id,
                     'urgency_level' => $data['urgency_level'] ?? null,
-                    'preferred_provider_id' => $data['preferred_provider_id'] ?? null,
                 ]);
             }
 
@@ -153,7 +159,7 @@ class ReferralController extends Controller
 
         $this->cache->invalidateReferralReports($referral);
 
-        return $this->storeResponse($referral, 201);
+        return $this->storeResponse($referral, $referral->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(Request $request, Referral $referral)
@@ -193,8 +199,19 @@ class ReferralController extends Controller
             $data['remarks'] ?? null
         );
 
+        $referralData = $result['referral'];
+        if (ReferralArrivalSummary::appliesTo($request->user())) {
+            // Intake marked it Received without Health Records access: send back who arrived, not the referral.
+            $referralData = [
+                'id' => $referral->getKey(),
+                'tracking_id' => $result['referral']->tracking_id,
+                'status' => $result['referral']->status,
+                'arrival' => ReferralArrivalSummary::for($result['referral']),
+            ];
+        }
+
         return response()->json([
-            'data' => $result['referral'],
+            'data' => $referralData,
             'status_unchanged' => $result['status_unchanged'],
             'status' => $result['status'],
         ]);
@@ -222,6 +239,12 @@ class ReferralController extends Controller
     public function destroy(Request $request, Referral $referral)
     {
         $this->facilityAccess->authorizeReferral($request->user(), $referral);
+        if (RhuVisitQueueEntry::where('referral_id', $referral->id)->exists()) {
+            return response()->json([
+                'message' => 'This referral has a recorded RHU visit and cannot be deleted.',
+                'code' => 'REFERRAL_HAS_VISIT',
+            ], 409);
+        }
         $referral->delete();
         $this->cache->invalidateReferralReports($referral);
 

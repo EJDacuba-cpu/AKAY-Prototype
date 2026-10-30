@@ -1,5 +1,13 @@
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
+import { isTbRecord } from "./tbRecords.js";
+
+// The one TB detector (legacy TB category, legacy "TB" program, or non-empty
+// TB-DOTS data) lives in tbRecords.js; re-exported so importers keep working.
+export { isTbRecord };
+
 export const EPI_VACCINE_ROWS = [
   "Newborn Screening",
+  "CPAB",
   "BCG",
   "HEPA B",
   "OPV 1",
@@ -15,6 +23,7 @@ export const EPI_VACCINE_ROWS = [
   "IPV 2",
   "MCV 1",
   "MCV 2",
+  "HPV",
 ];
 
 const LEGACY_EPI_FIELD_MAP = {
@@ -163,17 +172,10 @@ export function normalizeServiceType(value = "") {
   ) {
     return "Family Planning";
   }
-  if (
-    normalized === "ncd" ||
-    normalized.includes("ncd monitoring") ||
-    normalized.includes("hypertension diabetic") ||
-    normalized.includes("hypertension and diabetic") ||
-    normalized.includes("hypertension") ||
-    normalized.includes("diabetic") ||
-    normalized.includes("diabetes") ||
-    normalized.includes("non communicable") ||
-    normalized.includes("senior citizen")
-  ) {
+  // RHU still has its own "Senior Citizen" record type, unrelated to and kept
+  // apart from the BHC Hypertension / Diabetes program that this module used
+  // to share this string with. Kept verbatim so RHU stays untouched.
+  if (normalized.includes("senior citizen")) {
     return "Hypertension / Diabetic Monitoring";
   }
   if (
@@ -197,6 +199,8 @@ export function formatServiceType(value = "", fallback = "Not recorded") {
 }
 
 export function getServiceTypeLabel(record = {}, fallback = "Not recorded") {
+  const programs = getConsultationPrograms(record);
+  if (programs.length > 1) return programs.join(" / ");
   const raw = String(getRecordClassificationText(record) || "").trim();
   if (!raw) return fallback;
 
@@ -224,12 +228,6 @@ export function getRecordSearchText(record = {}) {
   const familyPlanningData =
     record.familyPlanningData || record.family_planning_data || {};
   const monitoringData = record.monitoringData || record.monitoring_data || {};
-  const hypertensionDiabeticData =
-    monitoringData.hypertensionDiabeticData ||
-    monitoringData.hypertension_diabetic_data ||
-    record.hypertensionDiabeticData ||
-    record.hypertension_diabetic_data ||
-    {};
 
   return [
     getRecordClassificationText(record),
@@ -237,12 +235,12 @@ export function getRecordSearchText(record = {}) {
     record.chief_complaint,
     record.diagnosis,
     record.notes,
+    record.history_of_present_illness,
+    record.historyOfPresentIllness,
     record.medicalHistory,
     record.medical_history,
     monitoringData.conditionType,
     monitoringData.condition_type,
-    hypertensionDiabeticData.conditionType,
-    hypertensionDiabeticData.condition_type,
     maternalData.recordType,
     familyPlanningData.clientType,
     familyPlanningData.methodUsed,
@@ -296,6 +294,8 @@ export function getRecordVisitTypeLabel(record = {}) {
 }
 
 export function isEpiRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["EPI"].some(key => explicit.includes(key));
   return hasAnyTerm(record, [
     "immunization",
     "epi",
@@ -306,6 +306,8 @@ export function isEpiRecord(record = {}) {
 }
 
 export function isMaternalRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["Maternal"].some(key => explicit.includes(key));
   return hasAnyTerm(record, [
     "maternal",
     "prenatal",
@@ -315,144 +317,43 @@ export function isMaternalRecord(record = {}) {
 }
 
 export function isFamilyPlanningRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return ["Family Planning"].some(key => explicit.includes(key));
   return hasAnyTerm(record, ["family planning", "fp"]);
 }
 
-export function isNcdRecord(record = {}) {
-  return hasAnyTerm(record, [
-    "ncd",
-    "hypertension",
-    "diabetic",
-    "diabetes",
-    "non communicable",
-    "senior citizen",
-  ]);
+const TB_SERVICE_TYPE = "TB DOTS / TB Monitoring";
+
+/**
+ * Service-type filter shared by the Follow-ups page and the Follow-up report.
+ * `label` is the row's displayed service type. With a linked health record,
+ * the TB option is decided by isTbRecord alone (new TB records are General
+ * Consultation or a service category with tb_data); without one, it falls
+ * back to the label.
+ */
+export function matchesServiceTypeFilter(filter, record, label) {
+  if (!filter) return true;
+  if (filter === TB_SERVICE_TYPE && record) return isTbRecord(record);
+  const normalize = (value) => String(value || "").trim().toLowerCase();
+  return normalize(label) === normalize(filter);
 }
 
-function readFirstValue(source = {}, keys = []) {
-  for (const key of keys) {
-    const value = source?.[key];
-    if (value !== undefined && value !== null && value !== "") return value;
-  }
-
-  return "";
-}
-
-export function getHypertensionDiabeticData(record = {}) {
-  const monitoringData = record.monitoringData || record.monitoring_data || {};
-  const nested =
-    monitoringData.hypertensionDiabeticData ||
-    monitoringData.hypertension_diabetic_data ||
-    record.hypertensionDiabeticData ||
-    record.hypertension_diabetic_data ||
-    {};
-  const merged = {
-    ...monitoringData,
-    ...nested,
-    ...record,
-  };
-
-  return {
-    bp: readFirstValue(merged, ["bp", "bloodPressure", "blood_pressure"]) ||
-      formatBpFromParts(record),
-    fbs: readFirstValue(merged, [
-      "fbs",
-      "fastingBloodSugar",
-      "fasting_blood_sugar",
-      "bloodSugar",
-      "blood_sugar",
-    ]),
-    conditionType: normalizeHypertensionDiabeticCondition(
-      readFirstValue(merged, ["conditionType", "condition_type"]),
-    ),
-    clientStatus: normalizeHypertensionDiabeticClientStatus(
-      readFirstValue(merged, ["clientStatus", "client_status"]),
-    ),
-    dateOfLastConsultation: readFirstValue(merged, [
-      "dateOfLastConsultation",
-      "date_of_last_consultation",
-      "lastConsultationDate",
-      "last_consultation_date",
-    ]),
-    treatmentActionTaken: readFirstValue(merged, [
-      "treatmentActionTaken",
-      "treatment_action_taken",
-      "actionTaken",
-      "action_taken",
-      "treatment",
-      "medication",
-      "treatmentNotes",
-      "treatment_notes",
-      "initialActionsTaken",
-      "initial_actions_taken",
-    ]),
-  };
-}
-
-export function normalizeHypertensionDiabeticCondition(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
-    return "hpn";
-  }
-  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
-    return "dm";
-  }
-  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
-    return "both";
-  }
-  return normalized;
-}
-
-export function formatHypertensionDiabeticCondition(value = "") {
-  const normalized = normalizeHypertensionDiabeticCondition(value);
-  if (normalized === "hpn") return "HPN";
-  if (normalized === "dm") return "DM";
-  if (normalized === "both") return "BOTH";
-  return value || "";
-}
-
-export function normalizeHypertensionDiabeticClientStatus(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["new", "old"].includes(normalized)) return normalized;
-  return normalized;
-}
-
-export function formatHypertensionDiabeticClientStatus(value = "") {
-  const normalized = normalizeHypertensionDiabeticClientStatus(value);
-  if (normalized === "new") return "New";
-  if (normalized === "old") return "Old";
-  return value || "";
-}
-
-function formatBpFromParts(record = {}) {
-  const systolic =
-    record.systolicBp ||
-    record.systolic_bp ||
-    record.vitalSigns?.systolicBp ||
-    record.vitalSigns?.systolic_bp ||
-    record.vital_signs?.systolicBp ||
-    record.vital_signs?.systolic_bp;
-  const diastolic =
-    record.diastolicBp ||
-    record.diastolic_bp ||
-    record.vitalSigns?.diastolicBp ||
-    record.vitalSigns?.diastolic_bp ||
-    record.vital_signs?.diastolicBp ||
-    record.vital_signs?.diastolic_bp;
-
-  return systolic || diastolic ? `${systolic || "N/A"}/${diastolic || "N/A"}` : "";
-}
-
-export function isTbRecord(record = {}) {
-  return hasAnyTerm(record, ["tb", "tuberculosis", "dots"]);
+/**
+ * The Health Records page's Service Type filter for one (list-shaped) record:
+ * the TB option is isTbRecord; any other option matches a selected program's
+ * service type or the record's own classification.
+ */
+export function matchesClassificationFilter(filter, record = {}) {
+  if (!filter) return true;
+  if (filter === TB_SERVICE_TYPE) return isTbRecord(record);
+  const services = getConsultationPrograms(record).map((program) => formatServiceType(PROGRAM_CLASSIFICATIONS[program], ""));
+  return services.includes(filter) || formatServiceType(record.classification, "") === filter;
 }
 
 export function getSpecializedRecordType(record = {}) {
   if (isEpiRecord(record)) return "epi";
   if (isMaternalRecord(record)) return "maternal";
   if (isFamilyPlanningRecord(record)) return "familyPlanning";
-  if (isNcdRecord(record)) return "ncd";
   if (isTbRecord(record)) return "tb";
   return "";
 }
@@ -461,7 +362,6 @@ export const SPECIALIZED_RECORD_PROGRAMS = Object.freeze([
   Object.freeze({ key: "epi", label: "Immunization / EPI" }),
   Object.freeze({ key: "maternal", label: "Prenatal / Maternal" }),
   Object.freeze({ key: "familyPlanning", label: "Family Planning" }),
-  Object.freeze({ key: "ncd", label: "Hypertension / Diabetic" }),
   Object.freeze({ key: "tb", label: "TB DOTS" }),
 ]);
 
@@ -471,8 +371,10 @@ export function getSpecializedRecordPrograms(records = []) {
   );
 
   for (const record of Array.isArray(records) ? records : []) {
-    const programKey = getSpecializedRecordType(record);
-    groupedRecords.get(programKey)?.push(record);
+    const selected = getConsultationPrograms(record);
+    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning" })[key]))] : [getSpecializedRecordType(record)];
+    if (isTbRecord(record) && !keys.includes("tb")) keys.push("tb");
+    keys.forEach(key => groupedRecords.get(key)?.push(record));
   }
 
   return SPECIALIZED_RECORD_PROGRAMS.map(({ key, label }) => {

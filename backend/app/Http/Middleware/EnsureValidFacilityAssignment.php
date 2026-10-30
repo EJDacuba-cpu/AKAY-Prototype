@@ -22,15 +22,30 @@ class EnsureValidFacilityAssignment
 
         abort_unless($user, 401);
 
-        if (! $this->facilityAccess->hasValidFacilityAssignment($user)) {
-            $this->sessions->revokeAllTokens($user, 'invalid-facility-assignment');
+        if (! $user->isAdmin()) {
+            $workingFacility = app(\App\Services\WorkingFacilityService::class);
+            // No valid duty location at all is a changed context, not a selection
+            // mistake: revoke before select() can answer with a plain 403.
+            if ($workingFacility->available($user) === []) {
+                return $this->invalidContext($user);
+            }
+            $workingFacility->select($user, $request->header('X-Working-Facility'));
+        }
 
-            return response()->json([
-                'message' => 'Your facility access has changed. Please sign in again.',
-                'code' => 'SESSION_CONTEXT_INVALID',
-            ], 403);
+        if (! $this->facilityAccess->hasValidFacilityAssignment($user)) {
+            return $this->invalidContext($user);
         }
 
         return $next($request);
+    }
+
+    private function invalidContext(\App\Models\User $user): Response
+    {
+        $this->sessions->revokeAllTokens($user, 'invalid-facility-assignment');
+
+        return response()->json([
+            'message' => 'Your facility access has changed. Please sign in again.',
+            'code' => 'SESSION_CONTEXT_INVALID',
+        ], 403);
     }
 }

@@ -11,59 +11,61 @@
  */
 import toast from "react-hot-toast";
 
+const notification = {
+  show: (message) => {
+    return toast(message, {
+      style: {
+        background: "#B91C1C",
+        color: "#fff",
+        borderRadius: "8px",
+      },
+    });
+  },
+  success: (message) => {
+    return toast.success(message, {
+      style: {
+        background: "#10B981",
+        color: "#fff",
+        borderRadius: "8px",
+      },
+    });
+  },
+  error: (message) => {
+    return toast.error(message, {
+      style: {
+        background: "#EF4444",
+        color: "#fff",
+        borderRadius: "8px",
+      },
+    });
+  },
+  info: (message) => {
+    return toast(message, {
+      style: {
+        background: "#B91C1C",
+        color: "#fff",
+        borderRadius: "8px",
+      },
+    });
+  },
+  warning: (message) => {
+    return toast(message, {
+      style: {
+        background: "#D97706",
+        color: "#fff",
+        borderRadius: "8px",
+      },
+    });
+  },
+  promise: (promise, messages) => {
+    return toast.promise(promise, messages, {
+      style: {
+        borderRadius: "8px",
+      },
+    });
+  },
+};
+
 export default function useNotification() {
-  return {
-    show: (message) => {
-      return toast(message, {
-        style: {
-          background: "#B91C1C",
-          color: "#fff",
-          borderRadius: "8px",
-        },
-      });
-    },
-    success: (message) => {
-      return toast.success(message, {
-        style: {
-          background: "#10B981",
-          color: "#fff",
-          borderRadius: "8px",
-        },
-      });
-    },
-    error: (message) => {
-      return toast.error(message, {
-        style: {
-          background: "#EF4444",
-          color: "#fff",
-          borderRadius: "8px",
-        },
-      });
-    },
-    info: (message) => {
-      return toast(message, {
-        style: {
-          background: "#B91C1C",
-          color: "#fff",
-          borderRadius: "8px",
-        },
-      });
-    },
-    warning: (message) => {
-      return toast(message, {
-        style: {
-          background: "#D97706",
-          color: "#fff",
-          borderRadius: "8px",
-        },
-      });
-    },
-    promise: (promise, messages) => {
-      return toast.promise(promise, messages, {
-        style: {
-          borderRadius: "8px",
-        },
-      });
-    },
-  };
+  return notification;
 }

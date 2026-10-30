@@ -76,9 +76,7 @@ class AuditLogController extends Controller
     private function mapRoleFilter(string $role): ?string
     {
         return match (strtolower($role)) {
-            'admin' => 'admin',
-            'bhc' => 'bhw',
-            'rhu' => 'rhu_staff',
+            'admin', 'bhc', 'rhu' => strtolower($role),
             default => null,
         };
     }

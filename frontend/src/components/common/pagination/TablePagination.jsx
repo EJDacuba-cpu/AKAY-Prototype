@@ -62,12 +62,14 @@ export default function TablePagination({
   const isFirstPage = safeCurrentPage <= 1;
   const isLastPage = safeCurrentPage >= displayTotalPages;
 
+  if (displayTotalPages <= 1) return null;
+
   return (
-    <div className="flex flex-col gap-3 border-t border-[#F1F5F9] bg-white px-4 py-3 select-none sm:flex-row sm:items-center sm:justify-between">
-      <span className="text-xs font-medium text-[#6B7280]">
+    <div className="flex flex-col gap-3 border-t border-neutral-100 bg-white px-4 py-3 select-none sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs font-medium text-neutral-500">
         Page{" "}
-        <span className="font-bold text-[#B91C1C]">{safeCurrentPage}</span> of{" "}
-        <span className="font-bold text-[#0F172A]">{displayTotalPages}</span>
+        <span className="font-bold text-ink-700">{safeCurrentPage}</span> of{" "}
+        <span className="font-bold text-neutral-900">{displayTotalPages}</span>
       </span>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -75,7 +77,7 @@ export default function TablePagination({
           type="button"
           onClick={() => !isFirstPage && onPageChange(safeCurrentPage - 1)}
           disabled={isFirstPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
           aria-label="Previous page"
         >
           <ChevronLeft size={14} />
@@ -85,7 +87,7 @@ export default function TablePagination({
           pageNumber === "..." ? (
             <span
               key={`ellipsis-${index}`}
-              className="px-2 text-xs font-semibold text-[#9CA3AF]"
+              className="px-2 text-xs font-semibold text-neutral-400"
             >
               ...
             </span>
@@ -95,8 +97,8 @@ export default function TablePagination({
               type="button"
               onClick={() => onPageChange(pageNumber)}
               data-active={safeCurrentPage === pageNumber}
-              disabled={displayTotalPages <= 1}
-              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-2 text-xs font-semibold text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] data-[active=true]:border-[#B91C1C] data-[active=true]:bg-[#B91C1C] data-[active=true]:text-white data-[active=true]:shadow-none disabled:pointer-events-none disabled:opacity-60"
+              aria-current={safeCurrentPage === pageNumber ? "page" : undefined}
+              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-600 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 data-[active=true]:border-ink-700 data-[active=true]:bg-ink-700 data-[active=true]:text-white data-[active=true]:shadow-none"
             >
               {pageNumber}
             </button>
@@ -107,7 +109,7 @@ export default function TablePagination({
           type="button"
           onClick={() => !isLastPage && onPageChange(safeCurrentPage + 1)}
           disabled={isLastPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] disabled:pointer-events-none disabled:opacity-40"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
           aria-label="Next page"
         >
           <ChevronRight size={14} />

@@ -1,25 +1,41 @@
 <?php
 
+use App\Http\Controllers\Api\AccountInviteController;
+use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\BhcDashboardController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangayHealthCenterController;
+use App\Http\Controllers\Api\CareOverviewController;
+use App\Http\Controllers\Api\ClinicalRegistryController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\FollowUpTaskController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\HealthRecordDraftController;
+use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
+use App\Http\Controllers\Api\MonitoringHandoffController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
+use App\Http\Controllers\Api\PatientBackgroundController;
+use App\Http\Controllers\Api\PatientBackgroundHistoryController;
+use App\Http\Controllers\Api\PatientConditionController;
 use App\Http\Controllers\Api\PatientController;
+use App\Http\Controllers\Api\RecordCorrectionController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReferralHoldController;
 use App\Http\Controllers\Api\ReferralQrController;
 use App\Http\Controllers\Api\ReportController;
-use App\Http\Controllers\Api\RhuProviderController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
+use App\Http\Controllers\Api\RhuProviderController;
+use App\Http\Controllers\Api\RhuProviderUnavailabilityController;
+use App\Http\Controllers\Api\RhuToDispenseController;
+use App\Http\Controllers\Api\RhuVisitController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
+use App\Http\Controllers\Api\StaffAssignmentController;
+use App\Http\Controllers\Api\StaffRoleController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -36,26 +52,54 @@ Route::post('/auth/reset-password', [PasswordResetRequestController::class, 'com
 Route::post('/auth/password-reset/request', [PasswordResetRequestController::class, 'request'])->middleware('throttle:5,1');
 Route::get('/auth/password-reset/verify', [PasswordResetRequestController::class, 'verify'])->middleware('throttle:20,1');
 Route::post('/auth/password-reset/complete', [PasswordResetRequestController::class, 'complete'])->middleware('throttle:10,1');
+Route::get('/auth/invites/verify', [AccountInviteController::class, 'verify'])->middleware('throttle:20,1');
+Route::post('/auth/invites/accept', [AccountInviteController::class, 'accept'])->middleware('throttle:10,1');
 
-Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active'])->group(function () {
+Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active', 'account.activated', 'password.current'])->group(function () {
     Route::get('/auth/profile', [AuthController::class, 'profile']);
     Route::post('/auth/logout', [AuthController::class, 'logout'])
         ->middleware('auth.session-request');
-
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::get('/notifications/counts', [NotificationController::class, 'counts']);
-    Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
-    Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
-    Route::delete('/notifications', [NotificationController::class, 'clearAll']);
-    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
-    Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
-    Route::post('/notifications/{notification}/trash', [NotificationController::class, 'trash']);
-    Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
-    Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword'])
+        ->middleware('throttle:10,1');
 
     Route::middleware('facility.assigned')->group(function () {
+        Route::get('/clinical-registry', [ClinicalRegistryController::class, 'index']);
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::get('/notifications/counts', [NotificationController::class, 'counts']);
+        Route::get('/notifications/trash', [NotificationController::class, 'trashed']);
+        Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::delete('/notifications', [NotificationController::class, 'clearAll']);
+        Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+        Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread']);
+        Route::post('/notifications/{notification}/trash', [NotificationController::class, 'trash']);
+        Route::post('/notifications/{notification}/restore', [NotificationController::class, 'restore']);
+        Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
+
+    });
+
+    Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
+        foreach (['bhc', 'rhu'] as $householdNamespace) {
+            Route::prefix($householdNamespace)->group(function () use ($householdNamespace) {
+                Route::get('households/lookup', [HouseholdController::class, 'lookup'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households/candidates', [HouseholdController::class, 'candidates'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households', [HouseholdController::class, 'index'])->defaults('householdNamespace', $householdNamespace);
+                Route::get('households/{id}', [HouseholdController::class, 'show'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::post('households', [HouseholdController::class, 'store'])->defaults('householdNamespace', $householdNamespace);
+                Route::patch('households/{id}', [HouseholdController::class, 'update'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::post('households/{id}/relationships', [HouseholdController::class, 'storeRelationship'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+                Route::patch('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+                Route::delete('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+            });
+        }
+        Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
+        Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
+        Route::get('patients/{patient}/background-history', PatientBackgroundHistoryController::class);
+        Route::patch('patients/{patient}/background', PatientBackgroundController::class);
+        Route::get('patients/{patient}/conditions', [PatientConditionController::class, 'index']);
+        Route::get('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'index']);
+        Route::post('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
         Route::post('health-records/{healthRecord}/dispensed-medicines', [HealthRecordController::class, 'dispenseMedicines']);
         Route::post('/referrals/qr/resolve', [ReferralQrController::class, 'resolve'])
@@ -67,15 +111,18 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::post('/referrals/{referral}/qr/regenerate', [ReferralQrController::class, 'regenerate'])
             ->middleware('throttle:referral-qr-regenerate');
         Route::apiResource('referrals', ReferralController::class)->except(['store', 'update']);
-        Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhw');
-        Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu_staff');
+        Route::post('/referrals', [ReferralController::class, 'store'])->middleware('role:bhc');
+        Route::patch('/referrals/{referral}/status', [ReferralController::class, 'updateStatus'])->middleware('role:rhu');
         // D-1 FINAL - No-Show referrals only. Deliberately NOT a status
         // transition: the referral stays No-Show and TRK-02 gains no value.
-        Route::post('/referrals/{referral}/reschedule', [ReferralController::class, 'reschedule'])->middleware('role:rhu_staff');
+        Route::post('/referrals/{referral}/reschedule', [ReferralController::class, 'reschedule'])->middleware('role:rhu');
         Route::apiResource('feedback', FeedbackController::class)->only(['index', 'show']);
-        Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu_staff');
+        Route::post('/feedback', [FeedbackController::class, 'store'])->middleware('role:rhu');
         Route::post('/medicines/{medicine}/restock', [MedicineController::class, 'restock']);
+        Route::post('/medicines/{medicine}/deduct', [MedicineController::class, 'deduct']);
         Route::post('/medicines/{medicine}/adjust', [MedicineController::class, 'adjust']);
+        Route::post('/medicines/{medicine}/group-action', [MedicineController::class, 'groupAction']);
+        Route::post('/medicines/{medicine}/verify-stock', [MedicineController::class, 'verifyStock']);
         Route::get('/medicines/{medicine}/transactions', [MedicineController::class, 'transactions']);
         Route::apiResource('medicines', MedicineController::class);
         // DOC-01/DOC-19 - readable by BHW, RHU staff and admin; each sees only
@@ -86,43 +133,81 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         // DOC-20/DOC-22 - roster reads for RHU staff and admin, writes for the
         // owning RHU only (DOC-15: admin is intentionally read-only here).
         Route::get('/rhu-providers', [RhuProviderController::class, 'index'])
-            ->middleware('role:rhu_staff,admin');
+            ->middleware('role:rhu,admin');
         Route::post('/rhu-providers', [RhuProviderController::class, 'store'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
         Route::patch('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'update'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
         Route::delete('/rhu-providers/{rhuProvider}', [RhuProviderController::class, 'destroy'])
-            ->middleware('role:rhu_staff');
+            ->middleware('role:rhu');
+        Route::get('/rhu-providers/{rhuProvider}/unavailability', [RhuProviderUnavailabilityController::class, 'index'])
+            ->middleware('role:rhu,admin');
+        Route::post('/rhu-providers/{rhuProvider}/unavailability', [RhuProviderUnavailabilityController::class, 'store'])
+            ->middleware('role:rhu');
+        Route::patch('/rhu-providers/{rhuProvider}/unavailability/{unavailability}', [RhuProviderUnavailabilityController::class, 'update'])
+            ->middleware('role:rhu');
+        Route::delete('/rhu-providers/{rhuProvider}/unavailability/{unavailability}', [RhuProviderUnavailabilityController::class, 'destroy'])
+            ->middleware('role:rhu');
 
         Route::get('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'index']);
         Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
 
-        Route::middleware('role:rhu_staff')->group(function () {
+        Route::middleware('role:rhu')->group(function () {
+            Route::get('/rhu/to-dispense', [RhuToDispenseController::class, 'index']);
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
+            Route::get('/rhu/catchment-bhcs', [MonitoringHandoffController::class, 'catchmentBhcs']);
+            Route::get('/rhu-visits', [RhuVisitController::class, 'index']);
+            Route::post('/rhu-visits', [RhuVisitController::class, 'store']);
+            Route::get('/rhu-visits/patient-search', [RhuVisitController::class, 'patientSearch']);
+            Route::post('/rhu-visits/{visit}/close', [RhuVisitController::class, 'close'])->whereNumber('visit');
+            Route::post('/rhu-visits/{visit}/start', [RhuVisitController::class, 'start'])->whereNumber('visit');
+            Route::post('/rhu-visits/{visit}/resume', [RhuVisitController::class, 'resume'])->whereNumber('visit');
+            Route::get('/rhu-visits/{visit}', [RhuVisitController::class, 'show'])->whereNumber('visit');
             Route::get('/reports/rhu', [ReportController::class, 'rhu']);
         });
 
-        Route::middleware('role:bhw')->group(function () {
-            Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
-            Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
-            Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
-            Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
-                ->middleware('throttle:health-record-drafts');
-            Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
-                ->middleware('throttle:health-record-drafts');
+        Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
+        Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
+        Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
+        Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
+        Route::post('/health-record-drafts', [HealthRecordDraftController::class, 'store'])
+            ->middleware('throttle:health-record-drafts');
+        Route::put('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'update'])
+            ->middleware('throttle:health-record-drafts');
+        Route::get('/monitoring-handoff-requests', [MonitoringHandoffController::class, 'index']);
+        Route::get('/monitoring-handoff-requests/{id}', [MonitoringHandoffController::class, 'show'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/link', [MonitoringHandoffController::class, 'link'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/accept', [MonitoringHandoffController::class, 'accept'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/decline', [MonitoringHandoffController::class, 'decline'])->whereNumber('id');
+        Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
+        // Must be registered before the {followUpTask} route below, or
+        // Laravel's implicit model binding tries to resolve "calendar" as an id.
+        Route::get('/follow-up-tasks/calendar', [FollowUpTaskController::class, 'calendar']);
+        Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
+        Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
+        Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
+        Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
+
+        Route::middleware('role:bhc')->group(function () {
+            Route::get('/bhc/dashboard', [BhcDashboardController::class, 'show']);
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
+            Route::post('/referral-holds', [ReferralHoldController::class, 'store']);
+            Route::get('/referral-holds/{referralHold}', [ReferralHoldController::class, 'show']);
             Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
-            Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);
-            Route::get('/follow-up-tasks/{followUpTask}', [FollowUpTaskController::class, 'show']);
-            Route::patch('/follow-up-tasks/{followUpTask}/no-show', [FollowUpTaskController::class, 'markNoShow']);
-            Route::patch('/follow-up-tasks/{followUpTask}/reschedule', [FollowUpTaskController::class, 'reschedule']);
-            Route::patch('/follow-up-tasks/{followUpTask}/cancel', [FollowUpTaskController::class, 'cancel']);
-            Route::get('/reports/bhw', [ReportController::class, 'bhw']);
+            Route::get('/reports/bhc', [ReportController::class, 'bhc']);
         });
     });
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/admin/dashboard', [AdminDashboardController::class, 'show']);
+        Route::get('/staff-assignments', [StaffAssignmentController::class, 'index']);
+        Route::get('/staff-assignments/eligible-nurses', [StaffAssignmentController::class, 'eligible']);
+        Route::post('/staff-assignments', [StaffAssignmentController::class, 'store']);
+        Route::post('/staff-assignments/{staffAssignment}/revoke', [StaffAssignmentController::class, 'revoke']);
+        Route::get('/staff-roles', [StaffRoleController::class, 'index']);
+        // Registered before the resource so "email-available" is not read as a user id.
+        Route::get('/users/email-available', [UserController::class, 'emailAvailable']);
         Route::apiResource('users', UserController::class);
         Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
         Route::apiResource('rural-health-units', RuralHealthUnitController::class);
@@ -130,10 +215,20 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
         Route::post('/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/resend', [PasswordResetRequestController::class, 'resend']);
+        Route::post('/password-reset-requests/{passwordResetRequest}/link', [PasswordResetRequestController::class, 'link']);
         Route::get('/admin/password-reset-requests', [PasswordResetRequestController::class, 'index']);
         Route::get('/admin/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);
         Route::post('/admin/password-reset-requests/{passwordResetRequest}/reject', [PasswordResetRequestController::class, 'reject']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/resend', [PasswordResetRequestController::class, 'resend']);
+        Route::post('/admin/password-reset-requests/{passwordResetRequest}/link', [PasswordResetRequestController::class, 'link']);
+        Route::get('/account-invites', [AccountInviteController::class, 'index']);
+        Route::post('/account-invites/{invite}/resend', [AccountInviteController::class, 'resend']);
+        Route::patch('/account-invites/{invite}/email', [AccountInviteController::class, 'updateEmail']);
+        Route::post('/account-invites/{invite}/link', [AccountInviteController::class, 'link']);
+        Route::post('/account-invites/{invite}/temporary-password', [AccountInviteController::class, 'temporaryPassword']);
+        Route::get('/password-invites/summary', [AccountInviteController::class, 'summary']);
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
         Route::get('/reports/admin', [ReportController::class, 'admin']);
     });

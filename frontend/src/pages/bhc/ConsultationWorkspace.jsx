@@ -1,0 +1,5749 @@
+import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
+import MedicineAllocationFields from "../../components/features/medicine/MedicineAllocationFields";
+import { allocationIntent } from "../../utils/medicineExpiryGroups";
+import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
+import { Button } from "../../components/ui/button";
+import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import {
+  AlertCircle,
+  ClipboardList,
+  HeartPulse,
+  Loader2,
+  ShieldCheck,
+  Stethoscope,
+  Syringe,
+  Users,
+} from "lucide-react";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import "../../components/features/health-records/wizard/consultation-ehr.css";
+import {
+  ConfirmationModal,
+  ConnectionIssueModal,
+  NoticeModal,
+  SuccessModal,
+} from "../../components/common";
+import { DatePickerField } from "../../components/common/forms/DatePickerField";
+import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
+import healthRecordService, {
+  getHealthRecordById,
+  getHealthRecordsByPatient,
+} from "../../services/healthRecordService";
+import {
+  transitionDraft,
+  discardHealthRecordDraft,
+  getHealthRecordDraft,
+  listHealthRecordDrafts,
+} from "../../services/healthRecordDraftService";
+import {
+  deleteLocalDraft,
+  isLocalDraftVaultAvailable,
+  listLocalDrafts,
+} from "../../services/localDraftVault";
+import useDraftAutosave from "../../hooks/useDraftAutosave";
+import { getReferralDestination, isNoProviderAvailableError } from "../../services/referrals";
+import {
+  ATTENTION_LEVELS,
+  DEFAULT_ATTENTION,
+  isPriority,
+  normalizeAttention,
+} from "../../utils/referralAttention";
+import { consultationFinalizeLabel, unavailableReferralGuidance } from "../../utils/bhcReferralWorkspace";
+import { formatDisplayTime } from "../../utils/healthRecordPrograms";
+import {
+  FP_CLIENT_TYPE_OPTIONS,
+  FP_SOURCE_OPTIONS,
+  PREVIOUS_FP_METHOD_OPTIONS,
+  getApplicableFpMethods,
+  getFpMethodRestriction,
+  resolveHistoricalFpMethod,
+} from "../../utils/familyPlanning";
+import { calculateBmi, formatBmi } from "../../utils/bmi";
+import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
+import {
+  applyRiskFlags,
+  calculateAgeInYears,
+  getMaternalRiskFlags,
+  pendingRiskAnnouncements,
+} from "../../utils/maternalRisk";
+import UnfinishedConsultationModal from "../../components/features/health-records/UnfinishedConsultationModal";
+import {
+  bhcPatientRecordsPath,
+  buildPatientRecordDetailsState,
+  locationToPath,
+} from "../../utils/profileNavigation";
+import { PROGRAM_CLASSIFICATIONS, getConsultationPrograms, getPrimaryProgram, lockProgramsWhilePatientLoads, restoredClassification, toggleConsultationProgram } from "../../utils/consultationPrograms";
+import {
+  EMPTY_MATERNAL_DATA,
+  MATERNAL_RISK_KEYS,
+  applyRiskFactorChange,
+  collectPrenatalHistory,
+  applyPregnancyDating,
+  continueBhcPrenatalPrefill,
+  mergeMaternalData,
+  sanitizeRiskAssessment,
+  thisVisitDoseEntry,
+  maternalReviewFields,
+  withLaboratoryEntries,
+} from "../../utils/prenatalForm";
+import {
+  MATERNAL_CARE_MALE_ELIGIBILITY,
+  canCompleteMaternalFollowUpResolution,
+  continuedCareBlocksProgress,
+  getPrenatalEnrollment,
+  isMaternalServiceLoadFailed,
+  isMaternalServiceResolving,
+  maternalProgramControl,
+  prenatalEnrollmentModalCopy,
+  prenatalProgramCopy,
+  shouldPrefillPrenatalBaseline,
+  shouldSeedMaternalFromPrenatalFollowUp,
+} from "../../utils/prenatalEnrollment";
+import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
+import {
+  localConsultationKey,
+} from "../../utils/savedDrafts";
+import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
+import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
+import NextStepsSection from "../../components/features/health-records/wizard/NextStepsSection";
+import ConditionCardsSection from "../../components/features/health-records/wizard/ConditionCardsSection";
+import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
+import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
+import { concernFollowUpTaskIds, continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, linkedScheduledFollowUpReviewRows, pruneContinuedSchedules, setContinuedSchedule, stripServiceConcernSchedules } from "../../utils/continuedConcerns";
+import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
+import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
+import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
+import LegacyBackgroundRecoveryPanel from "../../components/features/health-records/wizard/LegacyBackgroundRecoveryPanel";
+import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
+import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
+import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
+import { saveDraftBeforeNavigation } from "../../utils/backgroundNavigation";
+import {
+  backgroundUpdateErrorMessages,
+  legacyBackgroundRecovery,
+  resolveLegacyRecovery,
+  correctLegacySection,
+} from "../../utils/legacyBackgroundRecovery";
+import {
+  overlayBackgroundUpdate,
+  readBackgroundConflicts,
+  resolveBackgroundConflicts,
+  restoreBackgroundUpdate,
+  toDraftBackgroundUpdate,
+  toRecordBackgroundUpdate,
+} from "../../utils/backgroundUpdate";
+import { backgroundUpdateErrors as stagedHistoryErrors } from "../../utils/backgroundValidation";
+import { omitHiddenSocialFromUpdate } from "../../utils/backgroundEditing";
+import { infantHiddenSocialKeys, isInfantAt, shouldShowBmiDisplay, visibleConsultationPrograms } from "../../utils/infantVisibility";
+import { defaultInformant, sectionVisibility } from "../../utils/patientHistory";
+import {
+  informantPayload,
+  similarIllnessPayload,
+  visitAnswerDraftFields,
+  visitAnswerErrorMessages,
+  visitAnswerRecordFields,
+  historyErrorMessages,
+  normalizeHistoryErrorKey,
+  normalizeHistoryErrors,
+  visitAnswerRows,
+} from "../../utils/historyStep";
+import {
+  buildCarePlanPayload,
+  buildReferralReason,
+  monitoredConditionKeys,
+  referredContinuingRows,
+  validateCarePlan,
+} from "../../utils/carePlan";
+import { monitoringDetailKeys as getMonitoringDetailKeys } from "../../utils/monitoringDetails";
+import {
+  carePlanDraftPayload,
+  carePlanReviewRows,
+  continuedVisitLink,
+  nextPhaseBackTarget,
+  nextPhaseForwardTarget,
+  restoreCarePlanDraft,
+  reviewBackTarget,
+  setMonitoringDecision,
+  setMonitoringStop,
+  shouldRegenerateReferralReason,
+} from "../../utils/carePlanWorkspace";
+import {
+  followUpReasonExempt,
+  initialNextActions,
+  nextActionErrors,
+  nextActionsDraft,
+  nextActionsPayload,
+  nextStepsReviewRows,
+  referralNeedsAcknowledgment,
+  referralSourceCount,
+  referralAcknowledgmentKey,
+  hasReferralDecision,
+  restoreNextActions,
+  serviceDateSuggestions,
+} from "../../utils/nextActions";
+import { actionsTakenErrors, restoreActionsTakenText } from "../../utils/actionsTaken";
+import {
+  extraScheduleRows,
+  followUpScheduleErrors,
+  followUpSchedulesPayload,
+  managedReturnRows,
+  entryPurposeKey,
+  servicePurposeKey,
+} from "../../utils/followUpSchedules";
+import {
+  applyServiceNextAction,
+  applyServiceReferral,
+  carePlanServiceLabel,
+  defaultServicePurpose,
+  pruneServiceReferrals,
+  pruneServiceSchedules,
+  restoreSelectedServiceSchedules,
+} from "../../utils/serviceNextActions";
+import {
+  reportingEntryDraft,
+  reportingEntryPayload,
+  restoreReportingEntries,
+} from "../../utils/reportingEntries";
+import { BHC_GENERAL_V2, continuedDraftNotes } from "../../utils/consultationWorkflow";
+import { convertLegacyDraft } from "../../utils/draftConversion";
+import {
+  droppedContinuedCareNotice,
+  keepStopsFor,
+  removeContinuedFollowUp,
+  resolveContinuedCare,
+  tbPrefillRecordId,
+} from "../../utils/continuedCare";
+import { getCareOverview } from "../../services/careOverviewService";
+import {
+  NextActionStep,
+  ConsultationReviewStep,
+} from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
+import ConsultationProgramPanel from "../../components/features/health-records/wizard/ConsultationProgramPanel";
+import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
+import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
+import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
+import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
+import { DRAFTS_ENABLED } from "../../utils/featureFlags";
+import { deriveReportingStatus } from "../../utils/diagnosisReporting";
+import useClinicalRegistry from "../../hooks/useClinicalRegistry";
+import {
+  ConsultationActionBar,
+  ConsultationStepHeading,
+  ConsultationWorkspaceBody,
+} from "../../components/features/health-records/wizard/ConsultationWorkflow";
+import {
+  ASSESSMENT_STEP,
+  BHC_STEP_OPTIONS,
+  INTERVIEW_STEP,
+  MONITORING_STEP,
+  NEXT_STEP,
+  OUTCOME_STEP,
+  PROGRAMS_STEP,
+  REVIEW_STEP,
+  EXIT_STEP,
+  buildConsultationSteps,
+  findFirstErrorStepKey,
+  remapServerErrorKeys,
+  getFormSequence,
+  getGlobalStepKey,
+  getNextStepKey,
+  getPreviousStepKey,
+  getProgramFormSteps,
+  getStepOrder,
+  pickErrorsForStep,
+  programStepKey,
+  resolveFormStep,
+  resolveRestoredPosition,
+  resolveStepHeading,
+} from "../../utils/consultationSteps";
+import {
+  EMPTY_TB_DATA,
+  normalizeTbData,
+} from "../../components/features/health-records/TbTreatmentCardForm";
+import {
+  BHC_MEDICINES_UPDATED_EVENT,
+  getBhcMedicines,
+  loadMedicineAvailability,
+  refreshRhuMedicines,
+} from "../../services/medicineService";
+import { consultationPatientQueryKey, getConsultationPatientQuery } from "../../services/consultationPatientQuery";
+import { isConnectionError } from "../../services/apiClient";
+import { getCurrentUser } from "../../utils/auth";
+import { visibleEpiVaccineOptions } from "../../utils/epiApplicability";
+import {
+  compileEpiHistory,
+  getEpiCode,
+  getEpiCompletionState,
+} from "../../utils/epiTracking";
+import {
+  formatDisplayValue,
+  formatFacilityName,
+  formatLongDate,
+  formatPatientName,
+  formatUserName,
+} from "../../utils/formatters";
+import { queryKeys } from "../../utils/queryKeys";
+import { createIdempotencyKey } from "../../utils/idempotency";
+import { continuedRouteIds, resolveBhcConsultationRoute } from "../../utils/consultationRoute";
+import {
+  EMPTY_VITALS_REMINDER,
+  VITAL_ERROR_KEYS,
+  areVitalSignsBlank,
+  mergeVitalFieldErrors,
+  vitalSignsErrors,
+} from "../../utils/vitalSigns";
+import {
+  adoptConsultationUuid,
+  ensureConsultationUuid,
+} from "../../utils/consultationIdentity";
+import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
+
+/* ═══════════════════════════════════════════════════════════════
+   KEYFRAMES
+   ═══════════════════════════════════════════════════════════════ */
+const keyframes = `
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes subtlePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    50%      { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.08); }
+  }
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim-fade-up    { animation: fadeUp 0.55s cubic-bezier(0.22,1,0.36,1) both; }
+  .anim-pulse-next { animation: subtlePulse 2.2s ease-in-out infinite; }
+  .anim-drop-in    { animation: dropIn 0.18s cubic-bezier(0.22,1,0.36,1) both; }
+`;
+const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
+
+// The one card every consultation step sits in.
+// Flat stack: each section inside it is its own bordered card (FormSection).
+const CONSULTATION_CARD_CLASS = "space-y-4";
+// An unticked shared-referral acknowledgment (H7), with the covers list it was ticked for.
+const NO_ACKNOWLEDGMENT = Object.freeze({ covers: "", checked: false });
+// The "Covers:" name of this visit's own referral (Refer to RHU).
+const GENERAL_CONSULTATION_COVER = "General consultation";
+// Sub-label inside the Actions Taken / Treatment slot.
+const TREATMENT_LABEL_CLASS = "mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]";
+
+
+const WIZARD_FORM = "form";
+const WIZARD_NEXT = "next";
+const WIZARD_REVIEW = "review";
+// Step "phase" (from utils/consultationSteps) -> this page's wizardPhase.
+const WIZARD_PHASE_FOR_STEP = {
+  form: WIZARD_FORM,
+  next: WIZARD_NEXT,
+  review: WIZARD_REVIEW,
+};
+
+const HEALTH_RECORD_CONNECTION_LOST_MESSAGE =
+  "The server did not confirm this submission. Your form remains available in this tab. Keep this page open, check the patient's recent records, and retry when the connection is stable.";
+const DRAFT_SUPPORTED_RECORD_TYPES = new Set([
+  "General Consultation",
+  "Immunization",
+  "Maternal",
+  "Family Planning",
+  "TB DOTS / TB Monitoring",
+]);
+
+function pickDraftFields(source = {}, keys = []) {
+  return Object.fromEntries(keys.map((key) => [key, source?.[key] ?? ""]));
+}
+
+/**
+ * Display copy for the Select Program step. The KEYS are the stored
+ * classification values and must not change - only the
+ * titles and descriptions shown to the user live here.
+ */
+const RECORD_TYPE_DETAILS = {
+  "General Consultation": {
+    title: "General Consultation",
+    description: "Common illnesses, checkups, and general complaints.",
+    icon: ClipboardList,
+  },
+  Immunization: {
+    title: "Extended Program For Immunization",
+    description: "For vaccines, child care, EPI entries, and growth monitoring.",
+    icon: ShieldCheck,
+  },
+  Maternal: {
+    title: "Maternal Care",
+    description: "For prenatal, pregnancy, postpartum, and maternal monitoring.",
+    icon: HeartPulse,
+  },
+  "Family Planning": {
+    title: "Family Planning",
+    description: "Contraceptive counselling and reproductive health.",
+    icon: Users,
+  },
+  "TB DOTS / TB Monitoring": {
+    title: "TB DOTS",
+    description: "Directly observed treatment for tuberculosis.",
+    icon: Syringe,
+  },
+};
+
+// Reporting is per entry (diagnoses[].reportIn, see utils/reportingEntries.js);
+// morbidity / notifiable / surveillance reads go through that normalizer.
+
+const EMPTY_FAMILY_PLANNING_DATA = {
+  clientType: "",
+  methodUsed: "",
+  previousMethod: "",
+  fpVisitType: "",
+  source: "",
+  dateRegistered: "",
+  dateOfVisit: "",
+  nextAppointmentDate: "",
+  remarks: "",
+  actionTaken: "",
+  hasClinicalConcern: "No",
+  concern: "",
+  findings: "",
+  adviceGiven: "",
+  medicinesSupplies: "",
+};
+
+function toDateInputValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function toTimeInputValue(date = new Date()) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
+
+const EMPTY_IMMUNIZATION_DATA = {
+  bcg_vaccine: false,
+  hepb_birth: false,
+  pentavalent_dose1: false,
+  pentavalent_dose2: false,
+  pentavalent_dose3: false,
+  opv_dose1: false,
+  opv_dose2: false,
+  opv_dose3: false,
+  ipv_dose1: false,
+  ipv_dose2: false,
+  pcv_dose1: false,
+  pcv_dose2: false,
+  pcv_dose3: false,
+  mmr_dose1: false,
+  mmr_dose2: false,
+  feeding_status: "",
+  vaccineEntries: [],
+  vaccinesGiven: [],
+  breastfeedingMonitoring: {
+    month1: "",
+    month2: "",
+    month3: "",
+    month4: "",
+    month5: "",
+    month6: "",
+  },
+};
+
+const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
+const CHILD_VACCINE_OPTIONS = [
+  "Newborn Screening",
+  "CPAB",
+  "BCG",
+  "HEPA B",
+  "OPV 1",
+  "OPV 2",
+  "OPV 3",
+  "PENTA 1",
+  "PENTA 2",
+  "PENTA 3",
+  "PCV 1",
+  "PCV 2",
+  "PCV 3",
+  "IPV 1",
+  "IPV 2",
+  "MCV 1",
+  "MCV 2",
+  "HPV",
+];
+const BREASTFEEDING_MONTHS = [
+  { key: "month1", label: "1 Month" },
+  { key: "month2", label: "2 Months" },
+  { key: "month3", label: "3 Months" },
+  { key: "month4", label: "4 Months" },
+  { key: "month5", label: "5 Months" },
+  { key: "month6", label: "6 Months" },
+];
+const EMPTY_VACCINE_ENTRY = {
+  vaccineName: "",
+  customVaccineName: "",
+  dose: "",
+  dateGiven: "",
+  weight: "",
+  height: "",
+  temperature: "",
+  nextScheduleDate: "",
+  siteRoute: "",
+  reason: "",
+  remarks: "",
+};
+
+function normalizeRecordType(value) {
+  const raw = String(value || "").trim();
+  const lower = raw.toLowerCase().replace(/[_-]+/g, " ");
+
+  if (!raw) return "";
+  if (lower.includes("immun")) return "Immunization";
+  if (lower.includes("maternal") || lower.includes("prenatal")) return "Maternal";
+  if (lower.includes("family") || lower.includes("planning")) return "Family Planning";
+  if (lower.includes("general") || lower.includes("consult")) {
+    return "General Consultation";
+  }
+
+  return raw;
+}
+
+function closeDateTimePopovers() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("akay:datetime-popover-close"));
+}
+
+function normalizePatientStatus(status) {
+  const value = String(status || "").trim();
+  const compact = value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!compact) return "Routine Monitoring";
+  if (["routine monitoring", "routine", "monitoring"].includes(compact)) {
+    return "Routine Monitoring";
+  }
+  if (["follow up", "follow up required", "follow up after 2 days"].includes(compact)) {
+    return "Follow-up Required";
+  }
+  if (
+    [
+      "completed",
+      "complete",
+      "recovered",
+      "closed",
+      "no further follow up required",
+    ].includes(compact)
+  ) {
+    return "Completed";
+  }
+  if (["needs referral", "for referral", "referral"].includes(compact)) {
+    return "Routine Monitoring";
+  }
+
+  return value || "Routine Monitoring";
+}
+
+function getPatientAgeInYears(patient, referenceDate) {
+  if (!patient) return null;
+  const birthdate = getEffectivePatientBirthdate(patient);
+  const ageFromBirthdate = calculateAgeInYears(birthdate, referenceDate);
+  if (ageFromBirthdate !== null) return ageFromBirthdate;
+
+  const ageText = String(patient.age || patient.ageSex || "").trim();
+  const ageMatch = ageText.match(/\d+(?:\.\d+)?/);
+  return ageMatch ? Number(ageMatch[0]) : null;
+}
+
+function getEffectivePatientBirthdate(...sources) {
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const direct =
+      source.birthdate ||
+      source.birthDate ||
+      source.dateOfBirth ||
+      source.date_of_birth ||
+      source.birth_date ||
+      source.dob;
+    if (direct) return direct;
+
+    const nested = getEffectivePatientBirthdate(
+      source.patient,
+      source.patientDetails,
+      source.patient_details,
+      source.healthRecord?.patient,
+      source.health_record?.patient,
+      source.originalRecord?.patient,
+      source.original_record?.patient,
+      source.followUpContext?.patient,
+      source.follow_up_context?.patient,
+    );
+    if (nested) return nested;
+  }
+
+  return "";
+}
+
+function getImmunizationPatientMode(patient, referenceDate, ...fallbackSources) {
+  const birthdate = getEffectivePatientBirthdate(patient, ...fallbackSources);
+  const agePatient = birthdate ? { ...(patient || {}), birthdate } : patient;
+  const age = getPatientAgeInYears(agePatient, referenceDate);
+  if (age === null) return { age: null, mode: "unknown" };
+  return {
+    age,
+    mode: age >= ADULT_IMMUNIZATION_MIN_AGE_YEARS ? "adult" : "child",
+  };
+}
+
+function getAdultImmunizationMessage(age) {
+  const ageText = Number.isFinite(age) ? `${age}` : "18 or more";
+  return `Immunization records are intended for child vaccination schedule entries. This patient is recorded as ${ageText} years old. Please choose another classification.`;
+}
+
+function getMaternalEligibility(patient) {
+  if (patient && isPatientMale(patient)) {
+    return {
+      eligible: false,
+      message: MATERNAL_CARE_MALE_ELIGIBILITY,
+    };
+  }
+
+  return { eligible: true, message: "" };
+}
+
+/**
+ * Whether Family Planning may be selected for this patient at all.
+ *
+ * Sex is deliberately NOT considered here. Condom and NSV are male methods, so
+ * blocking the whole classification for a male patient made them unreachable.
+ * The sex rule lives on the method instead - see getFpMethodRestriction.
+ */
+function getFamilyPlanningEligibility(patient, referenceDate) {
+  if (!patient) return { eligible: true };
+
+  const age = getPatientAgeInYears(patient, referenceDate);
+  if (age !== null && age < 10) {
+    return {
+      eligible: false,
+      message: `Family Planning records are intended for adolescent or adult reproductive health clients. This patient is recorded as ${age} years old. Please choose another classification.`,
+    };
+  }
+
+  return { eligible: true };
+}
+
+function getVaccineEntries(data) {
+  const entries = Array.isArray(data?.vaccineEntries)
+    ? data.vaccineEntries
+    : Array.isArray(data?.vaccinesGiven)
+      ? data.vaccinesGiven
+      : [];
+  return entries.filter((entry) => String(entry?.vaccineName || "").trim());
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMMUNIZATION — CONSTANTS & HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════ */
+export default function ConsultationWorkspace() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+
+  const currentUser = getCurrentUser();
+  const userRole = currentUser?.role || "rhu";
+  const canFinalize = (currentUser?.permissions || []).includes("consultations.finalize");
+  const currentUserName = formatUserName(currentUser, "");
+  const currentBhcFacilityId = String(
+    currentUser?.barangayHealthCenterId ||
+      currentUser?.bhcId ||
+      currentUser?.facilityId ||
+      "",
+  ).trim();
+  // ---- On-device safety net for an interrupted consultation --------------
+  // AKAY stays ONLINE-FIRST. The vault holds only consultations that were
+  // already open when the connection dropped, encrypted and scoped to this
+  // user. Nothing else - patient search, inventory, referrals, reports - works
+  // offline, and nothing else is ever written here.
+  const localVaultAvailable = useMemo(() => isLocalDraftVaultAvailable(), []);
+  const localDraftOwnerKey = String(currentUser?.id || "");
+  const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
+  const healthRecordsPath = `${basePath}/health-records`;
+  const patientsPath = `${basePath}/patients`;
+  const routeContext = resolveBhcConsultationRoute(searchParams);
+  const routeContinuedIds = continuedRouteIds(routeContext);
+  // "continue" (Start Consultation modal, Follow-ups "Record Visit") opens the
+  // same step-flow New Consultation as "new", then seeds step 3 from it.
+  const opensNewConsultation =
+    routeContext.kind === "new" || routeContext.kind === "continue";
+
+  const preselectedPatientId = routeContext.patientId || "";
+  const requestedDraftId = routeContext.kind === "draft" ? routeContext.draftId : "";
+  const preselectedClassification = normalizeRecordType(
+    searchParams.get("serviceType") ||
+      searchParams.get("classification") ||
+      searchParams.get("category") ||
+      searchParams.get("recordType") ||
+      searchParams.get("healthRecordType"),
+  );
+  const isDraftRouteEligible = DRAFTS_ENABLED && userRole === "bhc";
+
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(null);
+  const [noticeModal, setNoticeModal] = useState(null);
+  const [prenatalEnrollmentModal, setPrenatalEnrollmentModal] = useState(null);
+  const [connectionIssue, setConnectionIssue] = useState(null);
+  const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
+  const officialSubmissionRef = useRef(null);
+  const deferralConfirmedRef = useRef(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [selectedPatientId, setSelectedPatientId] = useState(preselectedPatientId);
+  // The wizard is a single ordered phase rather than a set of booleans so that
+  // "which screen am I on" has exactly one answer. Every entry opens on the form.
+  const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
+  const [consultationMode, setConsultationMode] = useState(
+    opensNewConsultation ? "general" : null,
+  );
+  const [selectedPrograms, setSelectedPrograms] = useState([]);
+  const [primaryProgram, setPrimaryProgram] = useState("");
+  // Which screen of the form phase is showing (a program form, Clinical
+  // Assessment or Treatment). UI position only - saved in the one draft.
+  const [formStep, setFormStep] = useState(
+    opensNewConsultation ? INTERVIEW_STEP : "",
+  );
+  const [correctionNote, setCorrectionNote] = useState("");
+  const resumedRouteDraft = useRef("");
+  const classificationRef = useRef(null);
+  const maternalFollowUpSeededRef = useRef(
+    !(routeContext.kind === "continue" && routeContinuedIds.followUpIds.length > 0),
+  );
+  const [maternalFollowUpResolved, setMaternalFollowUpResolved] = useState(
+    () => maternalFollowUpSeededRef.current,
+  );
+
+  const [dateOfVisit, setDateOfVisit] = useState(
+    (() => { const date = new Date(); return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-"); })(),
+  );
+  const [timeOfVisit, setTimeOfVisit] = useState(
+    new Date().toTimeString().split(" ")[0].slice(0, 5),
+  );
+  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [summaryOfPresentIllness, setSummaryOfPresentIllness] = useState("");
+  // Consultation condition cards: name, report destinations, outcome and referral,
+  // v2 diagnoses[]. The visit sends no plain-text diagnosis.
+  const [reportingEntries, setReportingEntries] = useState([]);
+  // Read-only: the text a converted earlier draft carries (sent as
+  // assessment_notes). There is no assessment-notes input any more.
+  const [assessmentNotes, setAssessmentNotes] = useState("");
+  // Physical examination findings. Persisted in the existing monitoring_data
+  // JSON column, so no health-record column was added for it.
+  const [physicalExam, setPhysicalExam] = useState("");
+  // Findings pinned on the assessment step's 2D body preview.
+  const [bodyFindings, setBodyFindings] = useState([]);
+  const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
+  // The body preview's input while open: { region, side, anchor, editingId }.
+  const [bodyFindingDialog, setBodyFindingDialog] = useState(null);
+  // Which side of the body figure is shown: "front" | "back".
+  const [bodyPreviewSide, setBodyPreviewSide] = useState("front");
+  const [medication, setMedication] = useState("");
+  const [attendingStaff, setAttendingStaff] = useState(currentUserName);
+  const [consultationNotes, setConsultationNotes] = useState("");
+  const [healthRecordType, setHealthRecordType] = useState(
+    preselectedClassification ||
+      (opensNewConsultation ? "General Consultation" : ""),
+  );
+  const { registry: clinicalRegistry } = useClinicalRegistry();
+
+  const [systolicBp, setSystolicBp] = useState("");
+  const [diastolicBp, setDiastolicBp] = useState("");
+  const [temp, setTemp] = useState("");
+  const [pulse, setPulse] = useState("");
+  const [spo2, setSpo2] = useState("");
+  const [weight, setWeight] = useState("");
+  const [height, setHeight] = useState("");
+  // Optional extra measurement. Recorded only - nothing reads it to flag,
+  // suggest or alert.
+  const [fbs, setFbs] = useState("");
+
+  // Step 3 next actions: { bhcFollowUp, referToRhu, serviceReferrals }.
+  // Multiple-issue coverage is derived from named referral sources.
+  const [nextActions, setNextActions] = useState(initialNextActions);
+  // The follow-up form. Kept while Schedule BHC Follow-up is unticked; only
+  // sent while it is ticked (nextActionsPayload).
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpReason, setFollowUpReason] = useState("");
+  const [followUpSchedules, setFollowUpSchedules] = useState([]);
+  // The H7 shared-referral acknowledgment: one facility and priority suit every
+  // listed item. The tick is kept with the covers list it was given for, so it
+  // counts as unticked once that list changes.
+  const [referralAcknowledgment, setReferralAcknowledgment] = useState(NO_ACKNOWLEDGMENT);
+  // Medication, Treatment & Next Steps: what this ITR continues (Start Consultation modal)
+  // and stops. Names come from care-overview; drafts store ids only.
+  const [continuedFollowUpTaskIds, setContinuedFollowUpTaskIds] = useState([]);
+  // { id, sourceHealthRecordId } per continued follow-up; the first one's
+  // source ITR becomes parent_health_record_id (display/compatibility only).
+  const [continuedFollowUps, setContinuedFollowUps] = useState([]);
+  const [continuedConcerns, setContinuedConcerns] = useState([]);
+  // Legacy conditions on the continued follow-ups: shown, never continued.
+  const [legacyConditionNames, setLegacyConditionNames] = useState([]);
+  // The same names per follow-up, so unlinking one can drop its names from the line.
+  const [legacyNamesByFollowUp, setLegacyNamesByFollowUp] = useState({});
+  const [continuedMonitorings, setContinuedMonitorings] = useState([]);
+  // True while a continued consultation is still reading the monitoring it
+  // continues (route entry from Start Consultation / Record Visit, or a resume).
+  const [continuedCareLoading, setContinuedCareLoading] = useState(
+    () => routeContext.kind === "continue" && Boolean(routeContext.patientId) && (
+      routeContinuedIds.followUpIds.length > 0
+      || routeContinuedIds.monitoringIds.length > 0
+      || routeContinuedIds.startConditionIds.length > 0
+    ),
+  );
+  const [continuedCareError, setContinuedCareError] = useState("");
+  // { [monitoringId]: reason } - a key present means "stop this monitoring".
+  const [monitoringStops, setMonitoringStops] = useState({});
+  // Followed conditions referred to the RHU (ids).
+  const [monitoringReferrals, setMonitoringReferrals] = useState([]);
+  // RHU-confirmed conditions BHC starts monitoring this visit (the care
+  // overview's monitoringRecommendations, chosen in Start Consultation).
+  const [startingConditions, setStartingConditions] = useState([]);
+  // The Next phase has two screens: Medication, Treatment & Next Steps, then Monitoring
+  // Details when a monitored condition needs it. UI position only.
+  const [nextScreen, setNextScreen] = useState(NEXT_STEP);
+  const [monitoringNotes, setMonitoringNotes] = useState("");
+  const [patientCondition, setPatientCondition] = useState("Improving");
+  // Same server-backed source the BHC dashboard and CreateReferral use.
+  const [receivingRhuId, setReceivingRhuId] = useState("");
+  const [referralForm, setReferralForm] = useState({
+    receivingFacility: "",
+    urgencyLevel: DEFAULT_ATTENTION,
+    dateOfReferral: toDateInputValue(),
+    timeOfReferral: toTimeInputValue(),
+    referringHci: "",
+    philHealthNumber: "",
+    referringPractitioner: currentUserName,
+    patientName: "",
+    birthDate: "",
+    address: "",
+    ageSexCivilStatus: "",
+    philHealthCategory: "",
+    chiefComplaint: "",
+    initialDiagnosis: "",
+    initialActionsTaken: "",
+    reasonForReferral: "",
+    clinicalSummary: "",
+  });
+
+  const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const inventoryCalendarDay = useFacilityCalendarDate();
+  const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
+  const [bhcMedicineInventoryLoading, setBhcMedicineInventoryLoading] =
+    useState(false);
+  const [bhcMedicineInventoryError, setBhcMedicineInventoryError] =
+    useState("");
+  const [bhcMedicineInventoryReloadKey, setBhcMedicineInventoryReloadKey] =
+    useState(0);
+  const [dispensedMedicines, setDispensedMedicines] = useState([]);
+  const [
+    hasPendingDispensedMedicineDraft,
+    setHasPendingDispensedMedicineDraft,
+  ] = useState(false);
+  const [healthRecordDrafts, setHealthRecordDrafts] = useState([]);
+  const [draftListLoading, setDraftListLoading] = useState(isDraftRouteEligible);
+  const [, setDraftListError] = useState("");
+  const [draftResumingId, setDraftResumingId] = useState("");
+  // Set only when starting a New Consultation would duplicate an unfinished
+  // draft for the same patient; page entry itself is never blocked.
+  const [draftDecision, setDraftDecision] = useState(null);
+  const [draftDecisionBusy, setDraftDecisionBusy] = useState(false);
+  const [draftDecisionError, setDraftDecisionError] = useState("");
+  const [activeDraft, setActiveDraft] = useState(null);
+  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const [draftMedicineWarnings, setDraftMedicineWarnings] = useState([]);
+  // The stable identity of THIS consultation, from route entry to the official
+  // record: carried by the server draft, the encrypted device copy, and the
+  // final health record. Minted once when the workspace opens;
+  // adopted (never re-minted) on resume or recovery; cleared only when this
+  // consultation ends - saved, discarded, or abandoned for another patient.
+  // Distinct from idempotencyKey, which names one final-save ATTEMPT.
+  const [consultationUuid, setConsultationUuid] = useState(() =>
+    opensNewConsultation ? ensureConsultationUuid("") : "",
+  );
+  // Encrypted on-device consultations belonging to this user are still loaded
+  // for route-scoped recovery after a refresh, close, or restart.
+  const [, setLocalDrafts] = useState([]);
+  const [, setLocalDraftsLoading] = useState(false);
+  const [localRecovery, setLocalRecovery] = useState(null);
+  // True from recovering that copy until the server confirms it. It tells
+  // autosave the restored form is NEWER than the server draft, so the content
+  // is pushed up instead of being mistaken for an already-saved baseline.
+  const [pendingLocalSync, setPendingLocalSync] = useState(false);
+  // Which offline transition the midwife has already dismissed, so the
+  // Connection Lost modal shows once per drop instead of on every retry.
+  const [dismissedOfflineEpoch, setDismissedOfflineEpoch] = useState(0);
+  const [offlineRetryNotice, setOfflineRetryNotice] = useState("");
+
+  const loadHealthRecordDrafts = useCallback(async () => {
+    if (!isDraftRouteEligible) return;
+    setDraftListLoading(true);
+    setDraftListError("");
+    try {
+      setHealthRecordDrafts(await listHealthRecordDrafts());
+    } catch (error) {
+      // Server drafts only. The drawer still lists on-device drafts, so this
+      // never becomes the whole state of Saved Drafts.
+      setDraftListError(
+        isConnectionError(error)
+          ? typeof navigator !== "undefined" && navigator.onLine === false
+            ? "Server drafts are unavailable while offline. Showing drafts saved on this device."
+            : "Server drafts could not be loaded. Showing drafts saved on this device."
+          : error?.message || "Unable to load server drafts right now.",
+      );
+    } finally {
+      setDraftListLoading(false);
+    }
+  }, [isDraftRouteEligible]);
+
+  // Reads the encrypted vault. Needs no connection, so it runs on every entry
+  // and alongside every server refresh.
+  const loadLocalDrafts = useCallback(async () => {
+    if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
+      setLocalDrafts([]);
+      return [];
+    }
+    setLocalDraftsLoading(true);
+    try {
+      const entries = await listLocalDrafts(localDraftOwnerKey);
+      setLocalDrafts(entries);
+      return entries;
+    } catch {
+      // An unreadable vault is treated as empty; nothing is fabricated.
+      setLocalDrafts([]);
+      return [];
+    } finally {
+      setLocalDraftsLoading(false);
+    }
+  }, [isDraftRouteEligible, localVaultAvailable, localDraftOwnerKey]);
+
+  useEffect(() => {
+    void loadHealthRecordDrafts();
+  }, [loadHealthRecordDrafts]);
+
+  useEffect(() => {
+    void loadLocalDrafts();
+  }, [loadLocalDrafts]);
+
+  const draftConflictCheckedRef = useRef(false);
+  useEffect(() => {
+    if (
+      draftConflictCheckedRef.current ||
+      !opensNewConsultation ||
+      draftListLoading ||
+      !selectedPatientId
+    ) {
+      return;
+    }
+    draftConflictCheckedRef.current = true;
+    const conflicting = [...healthRecordDrafts]
+      .filter(
+        (draft) =>
+          String(draft.patient?.id || "") === String(selectedPatientId) &&
+          draft.id !== activeDraft?.id,
+      )
+      .sort((a, b) => new Date(b.lastSavedAt) - new Date(a.lastSavedAt))[0];
+    if (conflicting) {
+      setDraftDecisionError("");
+      setDraftDecision(conflicting);
+    }
+  }, [
+    activeDraft?.id,
+    draftListLoading,
+    healthRecordDrafts,
+    opensNewConsultation,
+    selectedPatientId,
+  ]);
+
+  useEffect(() => {
+    function clearInMemorySubmissionState() {
+      officialSubmissionRef.current = null;
+      setConsultationUuid("");
+      setLastFailedSubmit(null);
+      setConnectionIssue(null);
+      setHealthRecordDrafts([]);
+      setActiveDraft(null);
+      setDraftSavedAt("");
+      setDraftMedicineWarnings([]);
+    }
+
+    window.addEventListener(
+      SENSITIVE_SESSION_CLEARED_EVENT,
+      clearInMemorySubmissionState,
+    );
+    return () =>
+      window.removeEventListener(
+        SENSITIVE_SESSION_CLEARED_EVENT,
+        clearInMemorySubmissionState,
+      );
+  }, []);
+  const [familyPlanningData, setFamilyPlanningData] = useState(
+    EMPTY_FAMILY_PLANNING_DATA,
+  );
+  const [tbData, setTbData] = useState(EMPTY_TB_DATA);
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
+  const [aog, setAog] = useState("");
+
+  const [immunizationData, setImmunizationData] = useState(
+    EMPTY_IMMUNIZATION_DATA,
+  );
+  const [epiHistoryRecords, setEpiHistoryRecords] = useState([]);
+  const [epiHistoryLoading, setEpiHistoryLoading] = useState(false);
+  const [epiHistoryError, setEpiHistoryError] = useState("");
+
+  // DOC-14 is computed by the server; the client only mirrors it.
+  const noProviderMessage =
+    "The receiving Rural Health Unit has no available doctor right now. This referral cannot be submitted until the RHU marks a doctor available.";
+
+
+  useEffect(() => {
+    if (routeContext.kind === "redirect") {
+      navigate(patientsPath, { replace: true });
+    }
+  }, [navigate, patientsPath, routeContext.kind]);
+
+  useEffect(() => {
+    let active = true;
+
+    function getScopedBhcMedicines(medicines = []) {
+      return medicines.filter((item) => {
+        if (item.ruralHealthUnitId) return false;
+        const itemBhcId = String(
+          item.barangayHealthCenterId ||
+            item.barangay_health_center_id ||
+            item.bhcId ||
+            "",
+        ).trim();
+        return Boolean(currentBhcFacilityId && itemBhcId && itemBhcId === currentBhcFacilityId);
+      });
+    }
+
+    async function loadMedicines() {
+      setBhcMedicineInventoryLoading(true);
+      setBhcMedicineInventoryError("");
+
+      try {
+        const medicines = await loadMedicineAvailability();
+        if (active) {
+          setBhcMedicineInventory(getScopedBhcMedicines(medicines));
+        }
+      } catch (error) {
+        if (active) {
+          setBhcMedicineInventoryError(
+            isConnectionError(error)
+              ? "Unable to load BHC inventory. Please check your connection and try again."
+              : error?.message ||
+                  "Unable to load BHC inventory. Please check your connection and try again.",
+          );
+        }
+      } finally {
+        if (active) setBhcMedicineInventoryLoading(false);
+      }
+    }
+
+    function syncFromCache() {
+      setBhcMedicineInventory(getScopedBhcMedicines(getBhcMedicines()));
+    }
+
+    syncFromCache();
+    loadMedicines();
+    window.addEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
+
+    return () => {
+      active = false;
+      window.removeEventListener(BHC_MEDICINES_UPDATED_EVENT, syncFromCache);
+    };
+  }, [bhcMedicineInventoryReloadKey, currentBhcFacilityId, inventoryCalendarDay]);
+
+  useEffect(() => {
+    if (currentUserName && !attendingStaff) {
+      setAttendingStaff(currentUserName);
+    }
+  }, [currentUserName, attendingStaff]);
+
+  const {
+    data: selectedPatientDetails,
+    isLoading: selectedPatientLoading,
+  } = useQuery({
+    ...getConsultationPatientQuery(selectedPatientId),
+    enabled: Boolean(selectedPatientId),
+  });
+  const selectedPatient = selectedPatientDetails || null;
+  // RHU-confirmed conditions for leftover background recovery (clinical.history only).
+  const patientConditionGroups = usePatientConditionGroups(
+    selectedPatientId,
+    selectedPatient?.medicalBackground?.currentDiseases,
+  );
+
+  // The BHC consultation has no separate Patient History step. Family, Past
+  // Medical and Personal & Social are edited on Interview; Section V is on
+  // the Prenatal form. Changes stage in `backgroundUpdate` and apply on
+  // finalize. Without clinical.history nothing is shown or sent.
+  const canViewBackground = (currentUser?.permissions || []).includes("clinical.history");
+  const [backgroundUpdate, setBackgroundUpdate] = useState(null);
+  // The recovery panel stays open until the clinician keeps or discards.
+  const [legacyRecoveryExpanded, setLegacyRecoveryExpanded] = useState(true);
+  const [legacyRecoveryAcknowledged, setLegacyRecoveryAcknowledged] = useState(false);
+  // Per visit, saved on the record: who gave the history, and whether anyone
+  // at home has a similar illness. The informant gets its default once, when
+  // the patient loads, unless a resumed draft already brought one.
+  const [informant, setInformant] = useState(null);
+  const [similarIllness, setSimilarIllness] = useState(null);
+  const informantSeededRef = useRef(false);
+  useEffect(() => {
+    if (informantSeededRef.current || !selectedPatient || !canViewBackground) return;
+    informantSeededRef.current = true;
+    setInformant(
+      defaultInformant(
+        {
+          birthdate: getEffectivePatientBirthdate(selectedPatient),
+          motherPatientId: selectedPatient.motherPatientId,
+          motherName: selectedPatient.motherName || formatPatientName(selectedPatient.motherPatient, ""),
+          guardianName: selectedPatient.guardianName,
+          name: getPatientName(selectedPatient),
+          id: selectedPatient.id,
+        },
+        dateOfVisit || new Date(),
+      ),
+    );
+  }, [selectedPatient, canViewBackground, dateOfVisit]);
+  // The 409 conflicts from the last save, until the clinician applies a choice per section.
+  const [backgroundConflicts, setBackgroundConflicts] = useState(null);
+
+  const normalizedHealthRecordType = normalizeRecordType(healthRecordType);
+  const recordTypeKey = normalizedHealthRecordType.toLowerCase();
+  const isImmunization = recordTypeKey === "immunization" || selectedPrograms.includes("EPI");
+  const isMaternal = recordTypeKey === "maternal" || selectedPrograms.includes("Maternal");
+
+  // Prenatal age and height risk are computed, not ticked, and announced when
+  // the Prenatal form opens. The last recorded height covers a visit whose own
+  // height was not measured; this visit's height wins once it is entered.
+  const bodyHistoryQuery = useQuery({
+    queryKey: ["patient-records-height", selectedPatientId],
+    queryFn: () => getHealthRecordsByPatient(selectedPatientId),
+    enabled: Boolean(selectedPatientId),
+  });
+  const patientRecordsForHeight = bodyHistoryQuery.data;
+  const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecordsForHeight, "ongoing").findings, [patientRecordsForHeight]);
+  function changeBodyReassessments(next) {
+    setBodyFindingReassessments(next);
+    setValidationErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("monitoring_data.bodyFindingReassessments"))));
+  }
+  const recordedHeight = useMemo(
+    () => getLatestRecordedHeight(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
+    [patientRecordsForHeight],
+  );
+  const prenatalEnrollment = useMemo(
+    () => getPrenatalEnrollment(
+      selectedPatient || {},
+      Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : [],
+    ),
+    [selectedPatient, patientRecordsForHeight],
+  );
+  const prenatalHistory = useMemo(
+    () => collectPrenatalHistory(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
+    [patientRecordsForHeight],
+  );
+  const historicalFpMethod = useMemo(
+    () => resolveHistoricalFpMethod({
+      background: overlayBackgroundUpdate(selectedPatient?.medicalBackground, backgroundUpdate),
+      maternalData,
+      records: Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : [],
+    }),
+    [selectedPatient?.medicalBackground, backgroundUpdate, maternalData, patientRecordsForHeight],
+  );
+  const recordsUnresolved = Boolean(selectedPatientId) && !Array.isArray(patientRecordsForHeight);
+  const recordsLoading = recordsUnresolved && (bodyHistoryQuery.isPending || bodyHistoryQuery.isFetching);
+  const hasFollowUpSelection = routeContinuedIds.followUpIds.length > 0;
+  const infantAtVisit = isInfantAt(selectedPatient, dateOfVisit || new Date());
+  const historyUpdateForSave = canViewBackground
+    ? omitHiddenSocialFromUpdate(backgroundUpdate, selectedPatient, dateOfVisit, { includeBhcProfileFields: true })
+    : backgroundUpdate;
+  const maternalResolving = infantAtVisit
+    ? false
+    : isMaternalServiceResolving({
+    continueRoute: routeContext.kind === "continue",
+    hasFollowUpSelection,
+    resolved: maternalFollowUpResolved,
+    patientLoading: selectedPatientLoading,
+    recordsLoading,
+    followUpsLoading: continuedCareLoading,
+  }) || recordsLoading;
+  const maternalLoadFailed = isMaternalServiceLoadFailed({
+    continueRoute: routeContext.kind === "continue",
+    hasFollowUpSelection,
+    resolved: maternalFollowUpResolved,
+    resolving: maternalResolving,
+    recordsError: recordsUnresolved && bodyHistoryQuery.isError,
+    followUpsError: Boolean(continuedCareError),
+  }) || (recordsUnresolved && bodyHistoryQuery.isError && !recordsLoading);
+  const maternalReadonlyActive = prenatalEnrollment.enrolled && !maternalResolving && !maternalLoadFailed;
+  const continuedCareUnresolved = continuedCareBlocksProgress({
+    followUpsLoading: continuedCareLoading,
+    resolving: maternalResolving,
+    loadFailed: maternalLoadFailed,
+  });
+  const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
+  const riskFlags = useMemo(
+    () => getMaternalRiskFlags({
+      birthdate: getEffectivePatientBirthdate(selectedPatient),
+      visitHeight: height,
+      recordedHeight,
+      referenceDate: dateOfVisit,
+    }),
+    [selectedPatient, height, recordedHeight, dateOfVisit],
+  );
+  // Flags already announced this consultation, and the announcement on show.
+  const [acknowledgedRiskFlags, setAcknowledgedRiskFlags] = useState([]);
+  const [riskModal, setRiskModal] = useState(null);
+  function announceRiskFlags() {
+    const items = pendingRiskAnnouncements(riskFlags, acknowledgedRiskFlags);
+    if (items.length) setRiskModal({ items });
+  }
+  function closeRiskModal() {
+    const shown = riskModal?.items.map((item) => item.key) || [];
+    setAcknowledgedRiskFlags((previous) => [...new Set([...previous, ...shown])]);
+    setRiskModal(null);
+  }
+  const isFamilyPlanning = recordTypeKey === "family planning" || selectedPrograms.includes("Family Planning");
+  // Followed conditions the worker refers back to the RHU (not stopped). Their
+  // names are the referral's initial diagnosis; the visit sends none of its own.
+  const referredMonitoringRows = referredContinuingRows(
+    continuedMonitorings, monitoringStops, monitoringReferrals,
+  );
+  const monitoringReferralIds = referredMonitoringRows.map((monitoring) => Number(monitoring.id));
+  const monitoringDetailKeys = useMemo(
+    () => getMonitoringDetailKeys(
+      monitoredConditionKeys(continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry),
+      clinicalRegistry,
+    ),
+    [continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry],
+  );
+  // Some condition stays monitored after this visit (H6 reason exemption).
+  const monitorsAny = monitoredConditionKeys(
+    continuedMonitorings, startingConditions, monitoringStops, clinicalRegistry,
+  ).length > 0;
+  // A service visit: programs selected, and sent (see the payload's
+  // consultationMode guard) - the server's monitoring_data.selectedPrograms.
+  const carePlanHasService = Boolean(consultationMode) && selectedPrograms.length > 0;
+  // ---- Next Actions. Per-concern outcomes plus selected-service next actions. ----
+  const concernTaskIds = concernFollowUpTaskIds(continuedFollowUpTaskIds, continuedFollowUps);
+  const continuedDecisions = continuedConcernPayload(concernTaskIds, continuedConcerns);
+  const continuedReferrals = continuedFollowUps.filter(task => continuedDecisions.some(item => item.taskId === Number(task.id) && item.careOutcome === "refer_to_rhu"));
+  const conditionReferrals = [
+    ...reportingEntries.filter((entry) => namedConcern(entry) && entry.clinicalOutcome === "refer_to_rhu"),
+    ...continuedReferrals.map(task => ({ id: `continued:${task.id}`, name: task.purpose || task.reason || "Follow-up visit" })),
+  ];
+  const referredConcernNames = [...conditionReferrals.map((entry) => entry.name), ...referredMonitoringRows.map((monitoring) => monitoring.conditionName)].join("; ");
+  const managedReturns = managedReturnRows(reportingEntries, followUpSchedules);
+  const extraSchedules = extraScheduleRows(stripServiceConcernSchedules(followUpSchedules, continuedFollowUps));
+  const scheduledReturns = followUpSchedulesPayload({
+    managedReturns,
+    extraSchedules,
+    continuedFollowUps,
+  });
+  const namedServiceReferrals = pruneServiceReferrals(nextActions.serviceReferrals, selectedPrograms);
+  const referralCount = referralSourceCount({
+    conditionReferrals,
+    serviceReferrals: namedServiceReferrals,
+    monitoringReferralIds,
+    legacyReferToRhu: nextActions.referToRhu === true,
+  });
+  const effectiveNextActions = {
+    ...nextActions,
+    bhcFollowUp: scheduledReturns.length > 0,
+    referToRhu: conditionReferrals.length > 0 || namedServiceReferrals.length > 0 || nextActions.referToRhu,
+    referralMultipleIssues: referralCount >= 2,
+    serviceReferrals: namedServiceReferrals,
+  };
+  const needsReferral = hasReferralDecision({
+    referToRhu: namedServiceReferrals.length > 0 || nextActions.referToRhu,
+    conditionReferred: conditionReferrals.length > 0,
+    monitoringReferralIds,
+  });
+  const { data: referralDestination } = useQuery({
+    queryKey: ["approved-referral-destinations", currentUser?.id, currentUser?.working_facility_key],
+    queryFn: getReferralDestination,
+    enabled: Boolean(needsReferral && userRole === "bhc"),
+    staleTime: 30_000,
+    refetchInterval: needsReferral ? 30_000 : false,
+  });
+  const selectedReferralDestination = (referralDestination?.destinations || []).find(
+    (item) => String(item.id) === String(receivingRhuId),
+  );
+  const referralDoctorAvailable = selectedReferralDestination
+    ? Boolean(selectedReferralDestination.availability?.can_submit_referral)
+    : true;
+  const availableReferralAlternatives = (referralDestination?.destinations || []).filter(
+    (item) =>
+      String(item.id) !== String(receivingRhuId) &&
+      item.availability?.can_submit_referral,
+  );
+  const followUpStatus = scheduledReturns.length > 0 ? "Follow-up Required" : "Completed";
+  const followUpReasonIsExempt = followUpReasonExempt({
+    selectedPrograms: carePlanHasService ? selectedPrograms : [],
+    monitorsAny,
+  });
+  // Service-proposed return dates stay in their service records. They are
+  // offered as "Use this date" only, and warned about when a dated return exists.
+  const followUpSuggestions = serviceDateSuggestions({
+    immunizationNextDate: isImmunization
+      ? getVaccineEntries(immunizationData).find((entry) => entry.nextScheduleDate)?.nextScheduleDate || ""
+      : "",
+    familyPlanningNextDate: isFamilyPlanning ? familyPlanningData.nextAppointmentDate || "" : "",
+  });
+  // What the one referral covers: referred concerns, selected services, then
+  // followed conditions referred back. A legacy visit-level Refer with no
+  // named source still uses the general-consultation cover.
+  const referralCoverage = [
+    ...conditionReferrals.map((entry) => entry.name),
+    ...namedServiceReferrals.map((program) => carePlanServiceLabel(program)),
+    ...(conditionReferrals.length === 0 && namedServiceReferrals.length === 0 && nextActions.referToRhu ? [GENERAL_CONSULTATION_COVER] : []),
+    ...referredMonitoringRows.map((monitoring) => monitoring.conditionName),
+  ];
+  const referralAcknowledgmentRequired = referralNeedsAcknowledgment({ count: referralCount });
+  const referralCoversKey = referralAcknowledgmentKey({
+    coverage: referralCoverage,
+    receivingRhuId,
+    urgencyLevel: referralForm.urgencyLevel,
+  });
+  const referralAcknowledged =
+    referralAcknowledgment.checked && referralAcknowledgment.covers === referralCoversKey;
+  const patientGateLocked = !selectedPatientId;
+  const workspaceLocked = activeDraft?.reviewState === "review" && !(canFinalize && (currentUser?.permissions || []).includes("records.correct"));
+  const conditionFieldsLocked = patientGateLocked || workspaceLocked;
+
+  // ---- Step-based consultation -------------------------------------------
+  // Every consultation (new, continued or resumed) walks Patient Interview ->
+  // Physical Examination -> each selected service's form -> Conditions ->
+  // Care and Outcome (-> Monitoring Details) -> Review & Finalize - see
+  // utils/consultationSteps.
+  // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
+  // whose Monitoring Details include the TB card.
+  const isTb = monitoringDetailKeys.includes("tb_dots");
+  // What this visit reports: a mirror of the Reporting entries. The server
+  // re-derives the same value from the diagnoses on save.
+  const effectiveReportingStatus = deriveReportingStatus(reportingEntries);
+  // The service forms, primary first: screens of their own after Physical
+  // Examination, chosen in the Barangay Health Services panel.
+  const programFormSteps = useMemo(
+    () => getProgramFormSteps(selectedPrograms, primaryProgram),
+    [selectedPrograms, primaryProgram],
+  );
+  const consultationSteps = useMemo(
+    () => buildConsultationSteps({ programSteps: programFormSteps, monitoringDetailKeys, ...BHC_STEP_OPTIONS }),
+    [programFormSteps, monitoringDetailKeys],
+  );
+  const formSequence = useMemo(() => getFormSequence(programFormSteps, BHC_STEP_OPTIONS), [programFormSteps]);
+  const stepOrder = getStepOrder(programFormSteps, monitoringDetailKeys, BHC_STEP_OPTIONS);
+  const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
+  // Interview, Vital Signs, Clinical Assessment, each program form, and
+  // Treatment are all screens of the one form phase; formStep says which.
+  const currentStepKey =
+    wizardPhase === WIZARD_FORM
+      ? activeFormStep
+      : wizardPhase === WIZARD_NEXT
+        ? nextScreen
+        : wizardPhase === WIZARD_REVIEW
+          ? REVIEW_STEP
+          : "";
+  const currentGlobalStepKey = getGlobalStepKey(currentStepKey);
+
+  // Monitoring Details disappears when nothing monitored needs it any more.
+  useEffect(() => {
+    if (monitoringDetailKeys.length === 0 && nextScreen === MONITORING_STEP) {
+      setNextScreen(NEXT_STEP);
+    }
+  }, [monitoringDetailKeys.length, nextScreen]);
+
+  // Pre-fill the referral reason ("Referred for: ...") from the followed
+  // conditions referred back, and keep it in step when that set changes - but
+  // only while the text is empty or still exactly the last pre-fill. Once the
+  // worker edits it (or it came back from a draft) it is never overwritten.
+  // A general referral is never pre-filled (not from the Chief Complaint or HPI).
+  const lastAutoReferralReasonRef = useRef("");
+  const currentReferralReason = referralForm.reasonForReferral || "";
+  useEffect(() => {
+    if (!needsReferral) return;
+    const next = buildReferralReason([], continuedMonitorings, monitoringReferrals);
+    if (!shouldRegenerateReferralReason({
+      current: currentReferralReason,
+      lastAuto: lastAutoReferralReasonRef.current,
+      next,
+    })) return;
+    lastAutoReferralReasonRef.current = next;
+    setReferralForm((prev) => ({ ...prev, reasonForReferral: next }));
+  }, [needsReferral, continuedMonitorings, monitoringReferrals, currentReferralReason]);
+
+  const activeProgramStep =
+    programFormSteps.find((step) => step.key === activeFormStep) || null;
+  // Each program's own fields render only on its own step.
+  const showProgramBlock = (classification) =>
+    wizardPhase === WIZARD_FORM &&
+    activeFormStep === programStepKey(classification);
+  const selectedPatientIsMale = isPatientMale(selectedPatient);
+  const selectedPatientSexMissing =
+    Boolean(selectedPatientId) &&
+    !hasPatientSex(selectedPatient);
+  const showMaternalPatientWarning = isMaternal && selectedPatientSexMissing;
+  const normalizedPatientStatus = normalizePatientStatus(followUpStatus);
+  const showFollowUpMonitoringFields =
+    normalizedPatientStatus === "Follow-up Required" && !needsReferral;
+  const immunizationPatientInfo = getImmunizationPatientMode(
+    selectedPatient,
+    dateOfVisit,
+  );
+  // Sex restricts the METHOD, not the classification: a male client can be
+  // recorded under Condom or NSV, but not under a female-only method.
+  const applicableFamilyPlanningMethods = getApplicableFpMethods(
+    PREVIOUS_FP_METHOD_OPTIONS,
+    { isMale: selectedPatientIsMale },
+  );
+  const familyPlanningMethodRestriction = getFpMethodRestriction({
+    method: familyPlanningData.methodUsed,
+    isMale: selectedPatientIsMale,
+  });
+  const familyPlanningEligibility = getFamilyPlanningEligibility(
+    selectedPatient,
+    dateOfVisit,
+  );
+  const immunizationVaccineEntries = getVaccineEntries(immunizationData);
+  const epiHistoryByCode = useMemo(
+    () =>
+      compileEpiHistory(epiHistoryRecords),
+    [epiHistoryRecords],
+  );
+  const patientBirthDate = getEffectivePatientBirthdate(selectedPatient);
+  const epiCompletion = useMemo(
+    () =>
+      getEpiCompletionState(epiHistoryByCode, immunizationVaccineEntries, {
+        birthDate: patientBirthDate,
+        visitDate: dateOfVisit,
+      }),
+    [epiHistoryByCode, immunizationVaccineEntries, patientBirthDate, dateOfVisit],
+  );
+  const epiVaccineOptions = useMemo(
+    () =>
+      visibleEpiVaccineOptions(CHILD_VACCINE_OPTIONS, {
+        birthDate: patientBirthDate,
+        visitDate: dateOfVisit,
+        historyLabels: [
+          ...CHILD_VACCINE_OPTIONS.filter((label) => epiHistoryByCode.has(getEpiCode(label))),
+          ...immunizationVaccineEntries.map((entry) => entry.vaccineName),
+        ],
+      }),
+    [patientBirthDate, dateOfVisit, epiHistoryByCode, immunizationVaccineEntries],
+  );
+  const canSaveCurrentDraft =
+    (activeDraft?.reviewState !== "review" || (canFinalize && (currentUser?.permissions || []).includes("records.correct"))) &&
+    isDraftRouteEligible &&
+    Boolean(selectedPatientId) &&
+    DRAFT_SUPPORTED_RECORD_TYPES.has(normalizedHealthRecordType) &&
+    !saveSuccess && Boolean(consultationUuid);
+
+  function handleDispensedMedicinesChange(nextMedicines) {
+    setDispensedMedicines(nextMedicines);
+    setDraftMedicineWarnings([]);
+  }
+
+  const handlePendingDispensedMedicineChange = useCallback((pending) => {
+    setHasPendingDispensedMedicineDraft(pending);
+    if (!pending) {
+      setValidationErrors((current) => {
+        if (!current.dispensedMedicines) return current;
+        const next = { ...current };
+        delete next.dispensedMedicines;
+        return next;
+      });
+    }
+  }, []);
+
+  function buildHealthRecordDraftPayload() {
+    // Blank rows pruned like the record payload; half-filled rows stay (drafts may hold them).
+    const draftBackgroundUpdate = canViewBackground ? toDraftBackgroundUpdate(historyUpdateForSave) : null;
+    return {
+      receivingRhuId,
+      // Rides in the payload so the encrypted device copy carries the same
+      // identity as the server draft. Omitted rather than sent empty.
+      ...(consultationUuid ? { consultationUuid } : {}),
+      selectedPrograms,
+      primaryProgram,
+      prenatalIntent,
+      consultationMode,
+      // Review & Save has no phase of its own in a draft; it resumes on Next Step.
+      wizardPhase,
+      // The exact screen the user is on, so a resumed or recovered draft
+      // opens there. Never a new wizardPhase value: the draft allowlist
+      // accepts only program / form / next.
+      formStep: activeFormStep,
+      nextScreen,
+      // Every draft written here is a v2 General Consultation draft.
+      consultationWorkflow: BHC_GENERAL_V2,
+      dateOfVisit,
+      timeOfVisit,
+      chiefComplaint,
+      summaryOfPresentIllness,
+      physicalExam,
+      bodyFindings,
+      bodyFindingReassessments,
+      // Reporting entries with reportIn (always an array).
+      diagnoses: reportingEntryDraft(reportingEntries),
+      assessmentNotes,
+      medication,
+      noInterventionPerformed: false,
+      noInterventionReason: "",
+      attendingStaff,
+      consultationNotes,
+      systolicBp,
+      diastolicBp,
+      temp,
+      pulse,
+      spo2,
+      weight,
+      height,
+      fbs,
+      followUpStatus,
+      followUpDate,
+      followUpTime,
+      followUpReason,
+      followUpSchedules,
+      monitoringNotes,
+      patientCondition,
+      morbidityReportingStatus: effectiveReportingStatus,
+      needsReferral,
+      expectedDeliveryDate,
+      aog,
+      maternalData: {
+        ...pickDraftFields(maternalData, [
+          "lmp",
+          "pmp",
+          "cycleDuration",
+          "gravida",
+          "para",
+          "term",
+          "preterm",
+          "abortion",
+          "living",
+          "bmi",
+          "fht",
+          "treatment",
+          "previousFpMethodUsed",
+          "previousFpMethodOther",
+        ]),
+        previousPregnancyHistory: Array.isArray(
+          maternalData.previousPregnancyHistory,
+        )
+          ? maternalData.previousPregnancyHistory.map((item) =>
+              pickDraftFields(item, [
+                "pregnancyNo",
+                "placeOfDelivery",
+                "year",
+                "notes",
+              ]),
+            )
+          : [],
+        riskAssessment: pickDraftFields(maternalData.riskAssessment, MATERNAL_RISK_KEYS),
+        ...withLaboratoryEntries(maternalData.laboratoryEntries),
+        immunizationThisVisit: pickDraftFields(
+          maternalData.immunizationThisVisit,
+          ["type", "doseStatus", "dateGiven"],
+        ),
+        tetanusToxoidStatus: pickDraftFields(
+          maternalData.tetanusToxoidStatus,
+          ["tt1", "tt2", "tt3", "tt4", "tt5"],
+        ),
+        tetanusDiphtheriaStatus: pickDraftFields(
+          maternalData.tetanusDiphtheriaStatus,
+          ["td1", "td2", "td3", "td4", "td5"],
+        ),
+        ultrasound: pickDraftFields(maternalData.ultrasound, [
+          "result",
+          "dateDone",
+        ]),
+      },
+      immunizationData: {
+        ...pickDraftFields(immunizationData, [
+          "bcg_vaccine",
+          "hepb_birth",
+          "pentavalent_dose1",
+          "pentavalent_dose2",
+          "pentavalent_dose3",
+          "opv_dose1",
+          "opv_dose2",
+          "opv_dose3",
+          "ipv_dose1",
+          "ipv_dose2",
+          "pcv_dose1",
+          "pcv_dose2",
+          "pcv_dose3",
+          "mmr_dose1",
+          "mmr_dose2",
+          "feeding_status",
+        ]),
+        vaccineEntries: getVaccineEntries(immunizationData).map((entry) =>
+          pickDraftFields(entry, [
+            "vaccineName",
+            "customVaccineName",
+            "medicineId", "inventoryQuantity", "confirmedGiven", "allocations", "override_reason", "overrideReason",
+            "dose",
+            "dateGiven",
+            "weight",
+            "height",
+            "temperature",
+            "nextScheduleDate",
+            "siteRoute",
+            "reason",
+            "remarks",
+          ]),
+        ),
+        breastfeedingMonitoring: pickDraftFields(
+          immunizationData.breastfeedingMonitoring,
+          ["month1", "month2", "month3", "month4", "month5", "month6"],
+        ),
+      },
+      familyPlanningData: pickDraftFields(familyPlanningData, [
+        "clientType",
+        "methodUsed",
+        "previousMethod",
+        "fpVisitType",
+        "source",
+        "dateRegistered",
+        "dateOfVisit",
+        "nextAppointmentDate",
+        "remarks",
+        "actionTaken",
+        "hasClinicalConcern",
+        "concern",
+        "findings",
+        "adviceGiven",
+        "medicinesSupplies",
+      ]),
+      tbData,
+      // Only an old draft's staged edits (kept until finalized or discarded).
+      ...(draftBackgroundUpdate ? { backgroundUpdate: draftBackgroundUpdate } : {}),
+      // The visit questions (Patient Interview); sent only once they are answered.
+      ...visitAnswerDraftFields({ informant, similarIllness, allowed: canViewBackground }),
+      // Ids and stops only; condition names are re-read from care-overview.
+      // Plus the two Next Actions checkboxes (the hidden forms stay in the
+      // draft: followUpDate/Time/Reason and referralForm above and below).
+      carePlan: {
+        continuedConcerns: continuedDecisions,
+        ...carePlanDraftPayload({
+          continuedFollowUpTaskIds,
+          continuedMonitorings,
+          monitoringStops,
+          monitoringReferrals,
+          startingConditions,
+        }),
+        // Persist explicit intent only; concern referrals are derived on resume.
+        ...nextActionsDraft(nextActions),
+      },
+      sharedConditionReferral: true,
+      referralForm: pickDraftFields(referralForm, [
+        "urgencyLevel",
+        "dateOfReferral",
+        "timeOfReferral",
+        "referringPractitioner",
+        "chiefComplaint",
+        "initialDiagnosis",
+        "initialActionsTaken",
+        "reasonForReferral",
+        "clinicalSummary",
+      ]),
+      dispensedMedicines: dispensedMedicines.map((item) => ({
+        ...allocationIntent(item),
+        medicineId: Number(item.medicineId),
+        confirmedGiven: item.confirmedGiven === true,
+        quantity: Number(item.quantity),
+        remarks: item.remarks || "",
+      })),
+    };
+  }
+
+  // ---- Care overview: what this consultation continues ------------------
+  // Read fresh for the patient whenever a consultation opens. From a
+  // "continue" route it seeds the Start Consultation selection (once); for a
+  // resumed draft it re-hydrates the stored ids (names, registry keys, each
+  // follow-up's source ITR) and drops ids that are no longer active, which the
+  // server would reject. Either way it lists the patient's active monitoring
+  // for the "Monitored at BHC" note. A newer load (a draft resumed
+  // over a seeded route) supersedes one still in flight.
+  const careOverviewRequestRef = useRef(0);
+  async function loadContinuedCare(patientId, selection = null) {
+    if (!patientId) return;
+    const request = ++careOverviewRequestRef.current;
+    const isCurrent = () => request === careOverviewRequestRef.current;
+    const hasSelection = Boolean(
+      selection && (
+        (selection.followUpIds ?? []).length
+        || (selection.monitoringIds ?? []).length
+        || (selection.startConditionIds ?? []).length
+      ),
+    );
+    // The form waits for what it continues instead of opening half filled.
+    const finishLoading = () => {
+      if (isCurrent()) setContinuedCareLoading(false);
+    };
+    if (hasSelection) {
+      setContinuedCareLoading(true);
+      setContinuedCareError("");
+    }
+    let overview;
+    try {
+      overview = await queryClient.fetchQuery({
+        queryKey: queryKeys.careOverview(patientId),
+        queryFn: () => getCareOverview(patientId),
+        // Start Consultation just read it; reuse that instead of fetching again.
+        staleTime: 30_000,
+      });
+    } catch {
+      if (isCurrent() && hasSelection) {
+        setContinuedCareError(
+          selection.restored
+            ? "Unable to load this patient's follow-ups and monitoring. Continued items show without their condition names until the page is reloaded."
+            : "Unable to load this patient's follow-ups and monitoring. This consultation was opened without them.",
+        );
+        toast.error(
+          selection.restored
+            ? "Unable to load this patient's follow-ups and monitoring. Continued items show without their condition names until the page is reloaded."
+            : "Unable to load this patient's follow-ups and monitoring. This consultation was opened without them.",
+          { id: "continued-care-unavailable" },
+        );
+      }
+      finishLoading();
+      return;
+    }
+    if (!isCurrent()) return;
+
+    if (!selection) return;
+
+    const resolved = resolveContinuedCare(overview, {
+      followUpIds: selection.followUpIds,
+      monitoringIds: selection.monitoringIds,
+      startConditionIds: selection.startConditionIds,
+      includeFollowUpConditions: !selection.restored,
+      includeLinkedFollowUps: false,
+    });
+    setContinuedFollowUpTaskIds(resolved.continuedFollowUpTaskIds);
+    setContinuedFollowUps(resolved.continuedFollowUps);
+    setContinuedConcerns(current => continuedConcernPayload(
+      concernFollowUpTaskIds(resolved.continuedFollowUpTaskIds, resolved.continuedFollowUps),
+      current,
+    ));
+    setFollowUpSchedules(current => stripServiceConcernSchedules(
+      pruneContinuedSchedules(current, resolved.continuedFollowUpTaskIds),
+      resolved.continuedFollowUps,
+    ));
+    setLegacyConditionNames(resolved.legacyConditionNames);
+    setLegacyNamesByFollowUp(resolved.legacyNamesByFollowUp);
+    setContinuedMonitorings(resolved.continuedMonitorings);
+    setMonitoringStops((current) => keepStopsFor(current, resolved.continuedMonitorings));
+    const stillContinued = new Set(resolved.continuedMonitorings.map((monitoring) => Number(monitoring.id)));
+    setMonitoringReferrals((current) => current.filter((id) => stillContinued.has(Number(id))));
+    setStartingConditions(resolved.startingConditions);
+    const notice = droppedContinuedCareNotice(resolved);
+    if (notice) toast(notice, { id: "continued-care-dropped", duration: 8000 });
+    finishLoading();
+
+    // Continuing TB fills the TB-DOTS card from its last ITR, as the old
+    // follow-up form did. A resumed draft keeps the card it saved.
+    if (selection.restored) return;
+    const tbRecordId = tbPrefillRecordId(
+      resolved.continuedMonitorings,
+      queryClient.getQueryData(queryKeys.clinicalRegistry()) || clinicalRegistry,
+    );
+    if (!tbRecordId) return;
+    try {
+      const record = await getHealthRecordById(tbRecordId);
+      if (!isCurrent()) return;
+      setTbData((current) =>
+        current === EMPTY_TB_DATA ? normalizeTbData(record?.tbData || record?.tb_data) : current,
+      );
+    } catch {
+      // The card simply starts empty.
+    }
+  }
+
+  function retryMaternalServiceResolution() {
+    if (!selectedPatientId) return;
+    if (recordsUnresolved && bodyHistoryQuery.isError) {
+      void bodyHistoryQuery.refetch();
+    }
+    if (!continuedCareError) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(selectedPatientId) });
+    const restored = Boolean(activeDraft);
+    void loadContinuedCare(selectedPatientId, {
+      followUpIds: continuedFollowUpTaskIds.length ? continuedFollowUpTaskIds : routeContinuedIds.followUpIds,
+      monitoringIds: continuedMonitorings.length
+        ? continuedMonitorings.map((monitoring) => monitoring.id)
+        : routeContinuedIds.monitoringIds,
+      startConditionIds: startingConditions.length
+        ? startingConditions.map((condition) => condition.id || condition.conditionId)
+        : routeContinuedIds.startConditionIds,
+      restored,
+    });
+  }
+
+  function restoreHealthRecordDraft(draft) {
+    // A draft saved before the v2 model is converted once, here, before any
+    // state is set from it: the first autosave then writes the converted
+    // content (every autosave stamps consultationWorkflow, so an unconverted
+    // legacy draft would lose its concerns for good).
+    maternalFollowUpSeededRef.current = true;
+    setMaternalFollowUpResolved(true);
+    const payload = convertLegacyDraft(draft.payload || {});
+    const restoredReferral = restoreSharedReferralDraft(payload);
+    setReceivingRhuId(restoredReferral.receivingRhuId);
+    setSelectedPatientId(draft.patient.id);
+    // Adopt the consultation's existing identity - never mint a fresh one for
+    // a consultation that already has it. A legacy draft saved before
+    // identities existed has none, so it gains one now; the server adopts it
+    // on the next save (and never reassigns one that is already set).
+    setConsultationUuid(adoptConsultationUuid(draft));
+    const restoredPrograms = getConsultationPrograms({ ...payload, classification: draft.classification });
+    const restoredPrimary = getPrimaryProgram({ ...payload, classification: draft.classification });
+    setHealthRecordType(normalizeRecordType(restoredClassification(draft.classification, restoredPrimary)));
+    setSelectedPrograms(restoredPrograms);
+    setPrimaryProgram(restoredPrimary);
+    setConsultationMode(restoredPrograms.length ? payload.consultationMode || (draft.classification === "General Consultation" ? "general" : "program") : "general");
+    setDateOfVisit(payload.dateOfVisit || toDateInputValue());
+    setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
+    setChiefComplaint(payload.chiefComplaint || "");
+    setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
+    setPhysicalExam(payload.physicalExam || "");
+    setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
+    setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
+    // Reporting entries are the diagnoses that carry reportIn. A legacy draft
+    // was already converted above: its unreported concerns are in assessmentNotes.
+    setReportingEntries(restoreReportingEntries(payload.diagnoses));
+    setAssessmentNotes(typeof payload.assessmentNotes === "string" ? payload.assessmentNotes : "");
+    setNextActions(restoreNextActions(payload.carePlan, { selectedPrograms: restoredPrograms }));
+    setMedication(restoreActionsTakenText({
+      treatmentNotes: payload.medication,
+      noInterventionPerformed: payload.noInterventionPerformed === true,
+      noInterventionReason: payload.noInterventionReason,
+    }));
+    setAttendingStaff(payload.attendingStaff || currentUserName);
+    setConsultationNotes(payload.consultationNotes || "");
+    setSystolicBp(payload.systolicBp || "");
+    setDiastolicBp(payload.diastolicBp || "");
+    setTemp(payload.temp || "");
+    setPulse(payload.pulse || "");
+    setSpo2(payload.spo2 || "");
+    setWeight(payload.weight || "");
+    setHeight(payload.height || "");
+    setFbs(payload.fbs === undefined || payload.fbs === null ? "" : String(payload.fbs));
+    setFollowUpSchedules(restoreSelectedServiceSchedules(payload.followUpSchedules, restoredPrograms, {
+      bhcFollowUp: payload.carePlan?.bhcFollowUp === true,
+      date: payload.followUpDate,
+      time: payload.followUpTime,
+      purpose: payload.followUpReason,
+    }));
+    setFollowUpDate(payload.followUpDate || "");
+    setFollowUpTime(payload.followUpTime || "");
+    setFollowUpReason(payload.followUpReason || "");
+    // The acknowledgment is not stored: the worker confirms it again.
+    setReferralAcknowledgment(NO_ACKNOWLEDGMENT);
+    setMonitoringNotes(payload.monitoringNotes || "");
+    setPatientCondition(payload.patientCondition || "Improving");
+    setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
+    setAog(payload.aog || "");
+    setMaternalData(mergeMaternalData(payload.maternalData));
+    setImmunizationData({
+      ...EMPTY_IMMUNIZATION_DATA,
+      ...(payload.immunizationData || {}),
+      vaccineEntries: payload.immunizationData?.vaccineEntries || [],
+      vaccinesGiven: payload.immunizationData?.vaccineEntries || [],
+      breastfeedingMonitoring: {
+        ...EMPTY_IMMUNIZATION_DATA.breastfeedingMonitoring,
+        ...(payload.immunizationData?.breastfeedingMonitoring || {}),
+      },
+    });
+    setFamilyPlanningData({
+      ...EMPTY_FAMILY_PLANNING_DATA,
+      ...(payload.familyPlanningData || {}),
+    });
+    setTbData(normalizeTbData(payload.tbData));
+    // The server never sends it to a user without clinical.history. A draft
+    // saved before the ITR shapes has its staged edits dropped (null).
+    setBackgroundUpdate(restoreBackgroundUpdate(payload.backgroundUpdate));
+    {
+      const restoredInformant = informantPayload(payload.informant);
+      if (restoredInformant) {
+        informantSeededRef.current = true;
+        setInformant(restoredInformant);
+      }
+      setSimilarIllness(similarIllnessPayload(payload.similarIllness));
+    }
+    setBackgroundConflicts(null);
+    setLegacyRecoveryExpanded(true);
+    setLegacyRecoveryAcknowledged(false);
+    setReferralForm((current) => ({
+      ...current,
+      ...restoredReferral.referralForm,
+    }));
+    {
+      // Names (and each follow-up's source record) are filled in from
+      // care-overview once it loads (loadContinuedCare); until then placeholders.
+      const restoredCarePlan = restoreCarePlanDraft(payload.carePlan);
+      setContinuedConcerns(continuedConcernPayload(restoredCarePlan.continuedFollowUpTaskIds, payload.carePlan?.continuedConcerns));
+      setContinuedFollowUpTaskIds(restoredCarePlan.continuedFollowUpTaskIds);
+      setContinuedFollowUps([]);
+      setLegacyConditionNames([]);
+      setLegacyNamesByFollowUp({});
+      setContinuedMonitorings(restoredCarePlan.continuedMonitorings);
+      setMonitoringStops(restoredCarePlan.monitoringStops);
+      setMonitoringReferrals(restoredCarePlan.monitoringReferrals);
+      // Placeholders keep the ids in autosaved drafts until the overview names them.
+      setStartingConditions(
+        restoredCarePlan.startConditionIds.map((id) => ({ id, conditionId: id, conditionName: "Recommended condition", confirmedAt: "" })),
+      );
+      setNextScreen(NEXT_STEP);
+      void loadContinuedCare(draft.patient.id, {
+        followUpIds: restoredCarePlan.continuedFollowUpTaskIds,
+        monitoringIds: restoredCarePlan.continuedMonitorings.map((monitoring) => monitoring.id),
+        startConditionIds: restoredCarePlan.startConditionIds,
+        restored: true,
+      });
+    }
+
+    const warnings = [];
+    setDispensedMedicines(
+      (draft.medicineSelections || []).map((selection) => {
+        if (selection.warning) warnings.push(selection.warning);
+        const medicine = selection.medicine;
+        return {
+          ...allocationIntent(payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id)) || selection),
+          medicineId: String(selection.medicine_id),
+          confirmedGiven: payload.dispensedMedicines?.find(item => String(item.medicineId) === String(selection.medicine_id))?.confirmedGiven === true,
+          medicineName: medicine?.name || "Unavailable medicine",
+          category: medicine?.category || "Unavailable",
+          availableStock: medicine?.quantity ?? 0,
+          quantity: selection.quantity,
+          unit: medicine?.unit || "",
+          remarks: selection.remarks || "",
+        };
+      }),
+    );
+    setDraftMedicineWarnings(Array.from(new Set(warnings)));
+    // A recovered on-device copy may never have reached the server, in which
+    // case there is no draft to update yet - autosave must create one.
+    setActiveDraft(draft.id ? { id: draft.id, version: draft.version, reviewState: draft.reviewState, returnNote: draft.returnNote } : null);
+    setDraftSavedAt(draft.id ? draft.lastSavedAt || "" : "");
+    // Restored content matches whatever it was restored from. Recovering an
+    // on-device copy sets this back to true right after, because that copy IS
+    // ahead of the server; reloading after a conflict deliberately is not.
+    setPendingLocalSync(false);
+    // Back to the exact screen the user left on - see resolveRestoredPosition.
+    // A draft saved on the old Patient History step reopens on Patient Interview.
+    const restored = resolveRestoredPosition(payload, BHC_STEP_OPTIONS);
+    {
+      const restoredScreen = payload.nextScreen === OUTCOME_STEP ? NEXT_STEP : payload.nextScreen;
+      setNextScreen([NEXT_STEP, MONITORING_STEP].includes(restoredScreen) ? restoredScreen : NEXT_STEP);
+    }
+    setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
+    setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
+    setValidationErrors({});
+  }
+
+  // New / continue routes load the overview once for the route's patient.
+  const routeCareLoadedRef = useRef(false);
+  useEffect(() => {
+    if (routeCareLoadedRef.current || !opensNewConsultation || !preselectedPatientId) return;
+    routeCareLoadedRef.current = true;
+    void loadContinuedCare(
+      preselectedPatientId,
+      routeContext.kind === "continue"
+        ? {
+            followUpIds: routeContinuedIds.followUpIds,
+            monitoringIds: routeContinuedIds.monitoringIds,
+            startConditionIds: routeContinuedIds.startConditionIds,
+          }
+        : null,
+    );
+    // Loaded once per opened consultation; a resumed draft runs its own load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opensNewConsultation, preselectedPatientId]);
+
+  const handleDraftAutosaved = useCallback((saved) => {
+    setActiveDraft({ id: saved.id, version: saved.version, reviewState: saved.reviewState });
+    setDraftSavedAt(saved.lastSavedAt || "");
+    // The server has it, so the recovered copy is no longer ahead of it.
+    setPendingLocalSync(false);
+    setHealthRecordDrafts((current) => [
+      saved,
+      ...current.filter((item) => item.id !== saved.id),
+    ]);
+  }, []);
+
+  // In-memory autosave payload: rebuilt each render only while a draft can be
+  // saved, and never written to browser storage (privacy requirement).
+  const draftAutosavePayload = canSaveCurrentDraft
+    ? buildHealthRecordDraftPayload()
+    : null;
+  // Entering the referral/care-decision sub-steps flushes an immediate save.
+  const draftAutosaveSectionKey = `${normalizedHealthRecordType}|${wizardPhase}|${activeFormStep}|${needsReferral}`;
+  const draftIdentity = useMemo(
+    () =>
+      activeDraft
+        ? {
+            id: activeDraft.id,
+            version: activeDraft.version,
+            lastSavedAt: draftSavedAt || null,
+          }
+        : null,
+    [activeDraft, draftSavedAt],
+  );
+
+  const localDraftIdentity = useMemo(() => {
+    if (
+      !canSaveCurrentDraft ||
+      !localVaultAvailable ||
+      !localDraftOwnerKey ||
+      !consultationUuid
+    ) {
+      return null;
+    }
+    // One slot per CONSULTATION, scoped to this user. Keyed on the stable
+    // consultation identity - never the patient - so two consultations for the
+    // same patient are two slots and neither can overwrite the other. Nor is
+    // it keyed on the server draft id or classification, which can appear or
+    // change mid-visit and would orphan the earlier snapshot. With no identity
+    // there is no slot: a new slot never falls back to the patient.
+    return {
+      ownerKey: localDraftOwnerKey,
+      consultationKey: localConsultationKey(consultationUuid),
+    };
+  }, [
+    canSaveCurrentDraft,
+    localVaultAvailable,
+    localDraftOwnerKey,
+    consultationUuid,
+  ]);
+
+  // Rebuilt on demand at the moment of an offline write. Plain function, not
+  // memoized: the hook reads it from a ref refreshed on every render, so it
+  // always closes over the newest form state.
+  function buildLocalDraftRecord() {
+    return {
+      draft: {
+        id: activeDraft?.id || "",
+        consultationUuid,
+        version: Number(activeDraft?.version || 0),
+        patient: {
+          id: String(selectedPatientId || ""),
+          label: getPatientName(selectedPatient) || "Patient",
+        },
+        classification: normalizedHealthRecordType,
+        lastSavedAt: draftSavedAt || "",
+        payload: buildHealthRecordDraftPayload(),
+        // Names are kept for display on recovery only. Stock is re-checked
+        // against the server before the official save - see the warning
+        // raised by handleRecoverLocalDraft.
+        medicineSelections: dispensedMedicines.map((item) => ({
+          ...allocationIntent(item),
+          medicine_id: item.medicineId,
+          quantity: item.quantity,
+          remarks: item.remarks || "",
+          medicine: {
+            name: item.medicineName,
+            category: item.category,
+            quantity: item.availableStock,
+            unit: item.unit,
+          },
+          warning: "",
+        })),
+      },
+    };
+  }
+
+  const draftAutosave = useDraftAutosave({
+    enabled: canSaveCurrentDraft,
+    patientId: selectedPatientId,
+    classification: normalizedHealthRecordType,
+    payload: draftAutosavePayload,
+    draft: draftIdentity,
+    sectionKey: draftAutosaveSectionKey,
+    onDraftSaved: handleDraftAutosaved,
+    consultationUuid,
+    localDraft: localDraftIdentity,
+    buildLocalRecord: buildLocalDraftRecord,
+    unsyncedRecovery: pendingLocalSync,
+  });
+
+  const {
+    status: draftAutosaveStatus,
+    conflict: draftConflict,
+    error: draftAutosaveError,
+    localStatus: draftLocalStatus,
+    syncStatus: draftSyncStatus,
+    offlineEpoch: draftOfflineEpoch,
+    saveNow: saveDraftNow,
+    flushBeforeLeave: flushDraftBeforeLeave,
+    persistLocalNow: protectLocalRecovery,
+    completeConsultation: completeDraftRecovery,
+    getDraftIdentity,
+    resolveConflict: resolveDraftConflict,
+    acknowledgeSync: acknowledgeDraftSync,
+  } = draftAutosave;
+
+  // Confirmed sync is a one-off confirmation, not a status to live with: a
+  // short toast, then nothing. Offline itself is announced once by the
+  // Connection Lost dialog and then stays silent while the midwife works.
+  useEffect(() => {
+    if (draftSyncStatus !== "synced") return;
+    toast.success("Saved automatically", { id: "consultation-draft-synced" });
+    acknowledgeDraftSync();
+  }, [draftSyncStatus, acknowledgeDraftSync]);
+
+  // The Connection Lost dialog interrupts once per drop. A later drop raises a
+  // new epoch, so it can appear again - but typing is never interrupted twice
+  // for the same outage.
+  const connectionLostOpen =
+    canSaveCurrentDraft &&
+    draftAutosaveStatus === "offline" &&
+    draftOfflineEpoch > dismissedOfflineEpoch;
+
+  useEffect(() => {
+    if (draftAutosaveStatus !== "offline") setOfflineRetryNotice("");
+  }, [draftAutosaveStatus]);
+
+  function dismissConnectionLost() {
+    setDismissedOfflineEpoch(draftOfflineEpoch);
+    setOfflineRetryNotice("");
+  }
+
+  async function handleOfflineDraftRetry() {
+    setOfflineRetryNotice("");
+    const synced = await saveDraftNow();
+    if (!synced) {
+      setOfflineRetryNotice(
+        "Synchronization has not completed. Keep this page open until your progress is secured.",
+      );
+    }
+  }
+
+  // Offer back a consultation this device kept through a refresh, tab close,
+  // or restart. Checked once, and only on a fresh entry - never over an open
+  // consultation, which would replace live work with an older snapshot.
+  const localRecoveryCheckedRef = useRef(false);
+  useEffect(() => {
+    if (localRecoveryCheckedRef.current) return undefined;
+    if (!isDraftRouteEligible || !localVaultAvailable || !localDraftOwnerKey) {
+      return undefined;
+    }
+    if (!opensNewConsultation || !selectedPatientId) return undefined;
+    localRecoveryCheckedRef.current = true;
+
+    let active = true;
+    listLocalDrafts(localDraftOwnerKey)
+      .then((entries) => {
+        if (!active) return;
+        const recoverable = entries.find(
+          (entry) =>
+            String(entry.record?.draft?.patient?.id || "") ===
+            String(selectedPatientId),
+        );
+        if (recoverable) setLocalRecovery(recoverable);
+      })
+      .catch(() => {
+        // An unreadable vault is treated as empty; nothing is fabricated.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    isDraftRouteEligible,
+    localVaultAvailable,
+    localDraftOwnerKey,
+    selectedPatientId,
+    opensNewConsultation,
+  ]);
+
+  /**
+   * Reopen an encrypted on-device consultation: the same patient, programs,
+   * fields, medicines, and wizard step, continuing the SAME draft. Never
+   * creates a second consultation - the restored server draft id (when the
+   * copy had one) is what autosave keeps updating.
+   */
+  function recoverLocalDraft(entry) {
+    if (!entry?.record?.draft) return;
+
+    restoreHealthRecordDraft(entry.record.draft);
+    // Autosave now treats the restored form as ahead of the server and pushes
+    // it up on the next connection; the on-device copy stays until it lands.
+    setPendingLocalSync(true);
+    setLocalRecovery(null);
+    if (entry.record.draft.medicineSelections?.length) {
+      setDraftMedicineWarnings((current) => [
+        ...current,
+        "Medicine availability was not re-checked while this consultation was offline. Confirm stock before saving.",
+      ]);
+    }
+  }
+
+  function handleRecoverLocalDraft() {
+    recoverLocalDraft(localRecovery);
+  }
+
+  // Deleting unsynced clinical work is irreversible, so it is confirmed on its
+  // own. "Keep It" puts the recovery offer back rather than silently dropping.
+  function handleDiscardLocalRecovery() {
+    const entry = localRecovery;
+    setNoticeModal({
+      title: "Discard Offline Consultation?",
+      message:
+        "The consultation kept on this device will be permanently deleted. It never reached the server, so it cannot be recovered afterwards.",
+      actions: [
+        {
+          label: "Delete Permanently",
+          variant: "destructive",
+          onClick: async () => {
+            if (entry?.consultationKey && localDraftOwnerKey) {
+              await deleteLocalDraft({
+                ownerKey: localDraftOwnerKey,
+                consultationKey: entry.consultationKey,
+              }).catch(() => {});
+            }
+            setLocalRecovery(null);
+          },
+        },
+        {
+          label: "Keep It",
+          variant: "secondary",
+          onClick: () => setLocalRecovery(entry),
+        },
+      ],
+    });
+  }
+
+  // Non-destructive conflict dialog: never silently overwrite a newer draft.
+  useEffect(() => {
+    if (!draftConflict) return;
+    setNoticeModal({
+      title: "Unfinished Consultation Updated Elsewhere",
+      message:
+        "This unfinished consultation was updated in another tab or device. Reload the latest version (your unsaved edits here will be discarded) or keep editing without saving.",
+      actions: [
+        {
+          label: "Reload Latest",
+          onClick: async () => {
+            if (draftConflict.draftId) {
+              await handleResumeDraft(draftConflict.draftId);
+            }
+            resolveDraftConflict("reload");
+          },
+        },
+        {
+          label: "Keep Editing",
+          variant: "secondary",
+          onClick: () => resolveDraftConflict("keep"),
+        },
+      ],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftConflict]);
+
+  // Surface allowlist/validation rejections; the retry loop has already stopped.
+  useEffect(() => {
+    if (!draftAutosaveError) return;
+    if (draftAutosaveError.type === "validation") {
+      const remapped = normalizeHistoryErrors(draftAutosaveError.fieldErrors);
+      setValidationErrors((current) => ({
+        ...current,
+        ...remapped,
+      }));
+      const historyLines = historyErrorMessages(remapped);
+      setNoticeModal({
+        title: "Consultation Not Saved",
+        message:
+          historyLines[0] ||
+          draftAutosaveError.message ||
+          "Some entries could not be saved. Your form remains available on this page.",
+      });
+      return;
+    }
+    setNoticeModal({
+      title: "Consultation Not Saved",
+      message:
+        draftAutosaveError.message ||
+        "Some entries could not be saved. Your form remains available on this page.",
+    });
+  }, [draftAutosaveError]);
+
+  // Warn before leaving while unsaved changes are still only in memory.
+  useEffect(() => {
+    if (!canSaveCurrentDraft || saveSuccess) return undefined;
+    function handleBeforeUnload(event) {
+      event.preventDefault();
+      event.returnValue = "";
+      return "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () =>
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [canSaveCurrentDraft, saveSuccess]);
+
+  // Leaving mid-consultation (sidebar, header links, browser Back) saves the
+  // draft first and then goes - no "discard?" prompt, the draft protects the
+  // work. Trips to this page's own path (Back from Patient Profile) and View
+  // Full Profile itself are exempt: the consultation stays mounted for those.
+  const pageLocation = useLocation();
+  const bypassLeaveGuardRef = useRef(false);
+  const leaveBlocker = useBlocker(
+    ({ nextLocation }) =>
+      !bypassLeaveGuardRef.current &&
+      canSaveCurrentDraft &&
+      !saveSuccess &&
+      locationToPath(nextLocation) !== locationToPath(pageLocation),
+  );
+  const leaveBlockerRef = useRef(leaveBlocker);
+  useEffect(() => {
+    leaveBlockerRef.current = leaveBlocker;
+  });
+
+  const [leavingConsultation, setLeavingConsultation] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+  // The Leave & Resume Later save: sync the draft, or else keep a protected
+  // copy on this device. "" when the work is safe to leave, else the error.
+  async function secureDraftBeforeLeaving(requireServer = false) {
+    return saveDraftBeforeNavigation({
+      flush: flushDraftBeforeLeave,
+      protectLocal: protectLocalRecovery,
+      notifyLocal: () => toast("Saved securely on this device; not yet synced. Resume on this device."),
+      requireServer,
+    });
+  }
+  async function leaveAndResumeLater() {
+    if (leavingConsultation || saving) return;
+    setLeavingConsultation(true);
+    setLeaveError("");
+    try {
+      const error = await secureDraftBeforeLeaving();
+      if (error) {
+        setLeaveError(error);
+        return;
+      }
+      leaveBlockerRef.current.proceed?.();
+    } finally {
+      setLeavingConsultation(false);
+    }
+  }
+
+
+  useEffect(() => {
+    if (!requestedDraftId || !isDraftRouteEligible || resumedRouteDraft.current === requestedDraftId) return;
+    resumedRouteDraft.current = requestedDraftId;
+    void handleResumeDraft(requestedDraftId);
+    // A route draft is restored once; autosave changes must not replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedDraftId, isDraftRouteEligible]);
+
+  async function handleResumeDraft(draftId) {
+    if (!draftId || draftResumingId) return;
+    setDraftResumingId(draftId);
+    try {
+      const draft = await getHealthRecordDraft(draftId);
+      if (!draft?.patient?.id) {
+        setNoticeModal({
+          title: "Consultation Patient Missing",
+          message:
+            "This unfinished consultation has no patient context and cannot be resumed safely.",
+          actions: [
+            {
+              label: "Return to Patients",
+              variant: "primary",
+              onClick: () => navigate(patientsPath, { replace: true }),
+            },
+          ],
+        });
+        return;
+      }
+      restoreHealthRecordDraft(draft);
+    } catch (error) {
+      setNoticeModal({
+        title: "Unable to Resume Consultation",
+        message: isConnectionError(error)
+          ? "Unable to reach the server. Please check your connection and try again."
+          : error?.message || "This unfinished consultation is no longer available.",
+      });
+      void loadHealthRecordDrafts();
+    } finally {
+      setDraftResumingId("");
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadEpiHistory() {
+      if (!isImmunization || !selectedPatientId) {
+        setEpiHistoryRecords([]);
+        setEpiHistoryError("");
+        setEpiHistoryLoading(false);
+        return;
+      }
+
+      setEpiHistoryLoading(true);
+      setEpiHistoryError("");
+
+      try {
+        const records = await getHealthRecordsByPatient(selectedPatientId);
+        if (!active) return;
+        setEpiHistoryRecords((Array.isArray(records) ? records : []).filter(Boolean));
+      } catch (error) {
+        if (!active) return;
+        setEpiHistoryError(
+          isConnectionError(error)
+            ? "Unable to load previous EPI history. Please check your connection and try again."
+            : error?.message ||
+                "Unable to load previous EPI history. Please check your connection and try again.",
+        );
+      } finally {
+        if (active) setEpiHistoryLoading(false);
+      }
+    }
+
+    loadEpiHistory();
+
+    return () => {
+      active = false;
+    };
+  }, [isImmunization, selectedPatientId]);
+
+
+  const formattedBp = (() => {
+    const sys = systolicBp || "N/A";
+    const dia = diastolicBp || "N/A";
+    return systolicBp || diastolicBp ? `${sys}/${dia}` : "N/A";
+  })();
+
+  const consultationVitalSigns =
+    `BP: ${formattedBp} | Temp: ${temp || "N/A"}°C | ` +
+    `PR: ${pulse || "N/A"} bpm | SpO2: ${spo2 || "N/A"}% | ` +
+    `Weight: ${weight || "N/A"} kg | Height: ${height || "N/A"} cm`;
+
+  /**
+   * Step 3's own blocking rules: a stop reason per stopped monitoring, the
+   * Next Actions (follow-up date / reason, referral reason, the shared-referral
+   * acknowledgment) and the Reporting entries. Date-mismatch warnings are never
+   * errors. Nothing entered is cleared or chosen.
+   */
+  function getNextStepErrors() {
+    return {
+      ...validateCarePlan({ continuedMonitorings, stops: monitoringStops }),
+      ...nextActionErrors({
+        state: { ...effectiveNextActions, bhcFollowUp: false, referToRhu: needsReferral },
+        followUp: { date: followUpDate, reason: followUpReason },
+        referral: { reason: referralForm.reasonForReferral },
+        reasonExempt: followUpReasonIsExempt,
+        acknowledged: referralAcknowledged,
+        count: referralCount,
+      }),
+      ...followUpScheduleErrors({
+        managedReturns,
+        extraSchedules: extraSchedules.filter(item => !item.purposeKey.startsWith("continued:")),
+        reasonExempt: followUpReasonIsExempt,
+      }),
+      ...conditionCardErrors(reportingEntries, { schedules: followUpSchedules }),
+      ...continuedConcernErrors(concernTaskIds, continuedDecisions, followUpSchedules),
+      ...(needsReferral && !receivingRhuId ? { receivingRhuId: "Select an authorized RHU." } : {}),
+      ...(needsReferral && !ATTENTION_LEVELS.includes(referralForm.urgencyLevel) ? { urgencyLevel: "Choose a referral priority." } : {}),
+      ...(needsReferral && !referralForm.reasonForReferral?.trim() ? { reasonForReferral: "Reason for referral is required." } : {}),
+      ...actionsTakenErrors({
+        treatmentNotes: medication || maternalData.treatment || familyPlanningData.actionTaken || "",
+      }),
+    };
+  }
+
+  function handleReportingEntriesChange(next) {
+    const rows = Array.isArray(next) ? next : [];
+    setReportingEntries(rows);
+    const ids = new Set(rows.map((entry) => String(entry.id)));
+    setFollowUpSchedules((current) => current.filter((item) => {
+      const key = String(item.purposeKey || "");
+      const source = String(item.sourceEntryId || "");
+      if (!key.startsWith("entry:") && !source) return true;
+      return ids.has(source) || ids.has(key.slice("entry:".length));
+    }));
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => key !== "diagnoses" && !key.startsWith("reportingEntry.") && !key.startsWith("diagnoses.") && !key.startsWith("followUpSchedule.entry:")),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function clearContinuedErrors(id) {
+    setValidationErrors(current => Object.fromEntries(Object.entries(current).filter(([key]) =>
+      key !== `continuedConcern.${id}.careOutcome` && key !== 'care_plan.continued_concerns' &&
+      !key.startsWith(`followUpSchedule.${continuedPurposeKey(id)}.`)
+    )));
+  }
+
+  function handleContinuedSchedule(id, schedule) {
+    setFollowUpSchedules(current => setContinuedSchedule(current, id, schedule));
+    clearContinuedErrors(id);
+  }
+
+  function handleContinuedOutcome(id, outcome) {
+    setContinuedConcerns(current => [...current.filter(item => Number(item.taskId) !== Number(id)), { taskId: Number(id), careOutcome: outcome }]);
+    const task = continuedFollowUps.find(item => Number(item.id) === Number(id));
+    const existing = followUpSchedules.find(item => item.purposeKey === continuedPurposeKey(id));
+    handleContinuedSchedule(id, outcome === 'bhc_follow_up' ? existing || { date: '', time: '', purpose: task?.purpose || task?.reason || '' } : null);
+  }
+
+  function handleConcernFollowUp(entryId, followUp) {
+    const purposeKey = entryPurposeKey(entryId);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (!followUp) return rest;
+      const existing = current.find((item) => item.purposeKey === purposeKey);
+      return [...rest, {
+        purposeKey,
+        purpose: followUp.purpose || existing?.purpose || "BHC follow-up",
+        date: followUp.date ?? existing?.date ?? "",
+        time: followUp.time ?? existing?.time ?? "",
+        sourceEntryId: String(entryId),
+        predecessorTaskId: existing?.predecessorTaskId || null,
+      }];
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.${purposeKey}`)),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function handleServiceFollowUp(program, followUp) {
+    const purposeKey = servicePurposeKey(program);
+    setFollowUpSchedules((current) => {
+      const rest = current.filter((item) => item.purposeKey !== purposeKey);
+      if (!followUp) return rest;
+      const existing = current.find((item) => item.purposeKey === purposeKey);
+      return [...rest, {
+        purposeKey,
+        purpose: followUp.purpose || existing?.purpose || defaultServicePurpose(program),
+        date: followUp.date ?? existing?.date ?? "",
+        time: followUp.time ?? existing?.time ?? "",
+        predecessorTaskId: existing?.predecessorTaskId || null,
+        sourceEntryId: existing?.sourceEntryId || null,
+      }];
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.${purposeKey}`)),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function handleServiceNextAction(program, action) {
+    ["reasonForReferral", "receivingRhuId", "urgencyLevel", "referralAcknowledged", "care_plan.refer_to_rhu", "needs_referral"].forEach(clearValidationError);
+    setFollowUpSchedules((current) => applyServiceNextAction(program, action, current));
+    setNextActions((current) => {
+      const serviceReferrals = applyServiceReferral(program, action, current.serviceReferrals);
+      return {
+        ...current,
+        serviceReferrals,
+        referToRhu: serviceReferrals.length > 0,
+        referralMultipleIssues: false,
+      };
+    });
+    setValidationErrors((current) => {
+      const kept = Object.fromEntries(
+        Object.entries(current).filter(([key]) => !key.startsWith(`followUpSchedule.service:`) && !key.startsWith("extraFollowUp.")),
+      );
+      return Object.keys(kept).length === Object.keys(current).length ? current : kept;
+    });
+  }
+
+  function clearValidationError(field) {
+    setValidationErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function showServerValidationErrors(error) {
+    if (error?.status !== 422 || !error?.errors) return false;
+    const errors = remapServerErrorKeys(Object.fromEntries(
+      Object.entries(error.errors).map(([field, messages]) => [
+        normalizeHistoryErrorKey(field),
+        Array.isArray(messages) ? messages[0] : String(messages),
+      ]),
+    ), reportingEntries, { continuedConcerns: continuedDecisions, schedules: scheduledReturns });
+    if (!Object.keys(errors).length) return false;
+    clearOfficialSubmission();
+    if (!revealErrorStep(errors)) setValidationErrorsAndFocus(errors);
+    return true;
+  }
+
+  function setValidationErrorsAndFocus(errors) {
+    const nextErrors = Object.fromEntries(
+      Object.entries(errors).filter(([, value]) => Boolean(value)),
+    );
+    setValidationErrors(nextErrors);
+
+    const firstField = Object.keys(nextErrors)[0];
+    if (!firstField) return false;
+
+    window.requestAnimationFrame(() => {
+      const selector =
+        firstField === "dispensedMedicines"
+          ? "[data-dispensed-medicines-section]"
+          : `[name="${firstField}"], [data-field="${firstField}"]`;
+      const element = document.querySelector(selector);
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof element?.focus === "function") {
+        element.focus({ preventScroll: true });
+      }
+    });
+
+    return true;
+  }
+
+  function currentVitalSigns(overrides = {}) {
+    return { systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs, ...overrides };
+  }
+
+  function changeVital(field, value, setter) {
+    setter(value);
+    const nextErrors = vitalSignsErrors(currentVitalSigns({ [field]: value }));
+    setValidationErrors((current) => mergeVitalFieldErrors(current, nextErrors, field));
+  }
+
+  function blurVital(field) {
+    const nextErrors = vitalSignsErrors(currentVitalSigns());
+    setValidationErrors((current) => mergeVitalFieldErrors(current, nextErrors, field, { reveal: true }));
+  }
+
+  function getClinicalValidationErrors({ finalizing = canFinalize } = {}) {
+    const errors = {};
+
+    Object.assign(errors, vitalSignsErrors(currentVitalSigns()));
+    if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
+    if (canViewBackground) Object.assign(errors, stagedHistoryErrors(historyUpdateForSave));
+    if (!finalizing) return errors;
+    // Condition cards are optional for service-only visits. Added concerns
+    // still need a name and clinical outcome. Reporting classification is optional.
+    // The same step 3 rules Continue checks. validateCarePlan (inside) must run
+    // before buildCarePlanPayload, which drops blank-reason stops. The
+    // acknowledgment is never stored in a draft, so a draft resumed onto
+    // Review is asked again - revealErrorStep goes back to step 3.
+    Object.assign(errors, getNextStepErrors());
+
+    if (hasPendingDispensedMedicineDraft) {
+      errors.dispensedMedicines =
+        'Click "Confirm Dispensed/Given" before saving so this item is included in the visit.';
+    }
+    if (isImmunization) {
+      const preparedEntries = immunizationVaccineEntries.map((entry) => ({
+        ...entry,
+        dateGiven: entry.dateGiven || dateOfVisit,
+      }));
+      const duplicateEntry = preparedEntries.find((entry) =>
+        epiCompletion.alreadyGivenCodes.has(getEpiCode(entry.vaccineName)),
+      );
+
+      if (preparedEntries.length === 0 && !consultationNotes.trim()) {
+        errors.vaccineEntries =
+          "Select at least one vaccine or enter remarks if no vaccine was given.";
+      }
+      if (duplicateEntry) {
+        errors.vaccineEntries =
+          "This vaccine/service was already recorded for this patient.";
+      }
+      // The EPI next dose is a suggestion only: no return date is required
+      // unless Schedule BHC Follow-up is ticked (nextActionErrors).
+
+    }
+
+    if (isFamilyPlanning) {
+      if (!String(familyPlanningData.methodUsed || "").trim()) {
+        errors.familyPlanningMethodUsed = "Method used / accepted is required.";
+      } else if (familyPlanningMethodRestriction) {
+        errors.familyPlanningMethodUsed = familyPlanningMethodRestriction;
+      }
+    }
+
+
+    if (!isImmunization && !isFamilyPlanning && !isMaternal && !isTb && !chiefComplaint.trim()) {
+      errors.chiefComplaint = "Chief complaint is required.";
+    }
+
+    if (
+      finalizing &&
+      isMaternal &&
+      prenatalIntent === "enroll" &&
+      !String(maternalData.lmp || "").trim()
+    ) {
+      errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
+    }
+
+    return errors;
+  }
+
+
+
+  function handleReferralFormChange(field, value) {
+    clearValidationError(field);
+    setReferralForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
+  useEffect(() => {
+    const next = applyPregnancyDating({
+      lmp: maternalData.lmp,
+      edc: expectedDeliveryDate,
+      aog,
+      visitDate: dateOfVisit,
+      previousAutoEdd: pregnancyDatingRef.current.autoEdd,
+      previousAutoAog: pregnancyDatingRef.current.autoAog,
+    });
+    pregnancyDatingRef.current = { autoEdd: next.autoEdd, autoAog: next.autoAog };
+    if (next.edc !== expectedDeliveryDate) setExpectedDeliveryDate(next.edc);
+    if (next.aog !== aog) setAog(next.aog);
+  }, [maternalData.lmp, expectedDeliveryDate, aog, dateOfVisit]);
+
+  useEffect(() => {
+    if (!isMaternal || !weight || !height) return;
+
+    const parsedWeight = Number(weight);
+    const parsedHeight = Number(height);
+    if (!Number.isFinite(parsedWeight) || !Number.isFinite(parsedHeight)) return;
+    if (parsedWeight <= 0 || parsedHeight <= 0) return;
+
+    const heightInMeters = parsedHeight / 100;
+    const nextBmi = (parsedWeight / (heightInMeters * heightInMeters)).toFixed(1);
+    setMaternalData((prev) =>
+      prev.bmi === nextBmi ? prev : { ...prev, bmi: nextBmi },
+    );
+  }, [height, isMaternal, weight]);
+
+  function handleBreastfeedingChange(monthKey, value) {
+    setImmunizationData((prev) => ({
+      ...prev,
+      breastfeedingMonitoring: {
+        ...(prev.breastfeedingMonitoring || {}),
+        [monthKey]: value,
+      },
+    }));
+  }
+
+  function updateVaccineInventory(index, field, value) {
+    setImmunizationData(current => {
+      const entries = getVaccineEntries(current).map((entry, i) => {
+        if (i !== index) return entry;
+        const next = { ...entry, [field]: value };
+        if (field === "medicineId") { delete next.allocations; delete next.override_reason; delete next.overrideReason; }
+        return next;
+      });
+      return { ...current, vaccineEntries: entries, vaccinesGiven: entries };
+    });
+  }
+
+  function handleVaccineToggle(vaccineName, checked) {
+    const vaccineCode = getEpiCode(vaccineName);
+    if (vaccineCode && epiCompletion.alreadyGivenCodes.has(vaccineCode)) return;
+
+    clearValidationError("vaccineEntries");
+    setImmunizationData((prev) => {
+      const existingEntries = getVaccineEntries(prev);
+      const entries = checked
+        ? [
+            ...existingEntries,
+            {
+              ...EMPTY_VACCINE_ENTRY,
+              vaccineName,
+              dateGiven: dateOfVisit,
+            },
+          ]
+        : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleMaternalChange(field, value) {
+    clearValidationError(field);
+    setMaternalData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  /**
+   * Toggle one risk-code checkbox.
+   *
+   * Unchecking a parent (Risk Code D or E) also clears its children, so a
+   * sub-condition can never stay set while hidden and be submitted with the
+   * record.
+   */
+  // Every risk factor is its own checkbox; Risk Code D / E flags are kept in
+  // step by applyRiskFactorChange (utils/prenatalForm).
+  function handleRiskAssessmentChange(key, checked) {
+    setMaternalData((previous) => ({
+      ...previous,
+      riskAssessment: applyRiskFactorChange(previous.riskAssessment, key, checked),
+    }));
+  }
+
+  function handleNestedMaternalChange(group, field, value) {
+    clearValidationError(`${group}.${field}`);
+    setMaternalData((prev) => ({
+      ...prev,
+      [group]: {
+        ...(prev[group] || EMPTY_MATERNAL_DATA[group] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+
+
+
+  function handleFamilyPlanningChange(field, value) {
+    // The FP next appointment stays in family_planning_data. It is offered on
+    // step 3 as "Use this date" only, never copied into the follow-up.
+    setFamilyPlanningData((prev) => ({
+      ...prev,
+      [field]: value,
+      ...(field === "hasClinicalConcern" && value !== "Yes"
+        ? { concern: "", findings: "", adviceGiven: "" }
+        : {}),
+    }));
+  }
+
+  function beginOfficialSubmission(formData) {
+    if (!officialSubmissionRef.current) {
+      officialSubmissionRef.current = {
+        idempotencyKey: createIdempotencyKey(),
+        payload: JSON.parse(JSON.stringify(formData)),
+      };
+    }
+
+    return officialSubmissionRef.current;
+  }
+
+  function clearOfficialSubmission() {
+    officialSubmissionRef.current = null;
+  }
+
+  function isIdempotencyPayloadMismatch(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
+    );
+  }
+
+  function isFollowUpAlreadyProcessed(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "FOLLOW_UP_ALREADY_PROCESSED"
+    );
+  }
+
+  function isInsufficientStock(error) {
+    return (
+      Number(error?.status) === 409 &&
+      error?.payload?.code === "INSUFFICIENT_STOCK"
+    );
+  }
+
+  /**
+   * A 409 because an edited Patient History section changed since it was
+   * opened. Nothing was saved; the draft already holds the clinician's edits.
+   * Refetches the patient so the panel compares against the latest version.
+   */
+  function showBackgroundConflict(error) {
+    const conflicts = readBackgroundConflicts(error);
+    if (!conflicts) return false;
+    clearOfficialSubmission();
+    setConnectionIssue(null);
+    setLastFailedSubmit(null);
+    setBackgroundConflicts(conflicts);
+    queryClient.invalidateQueries({ queryKey: consultationPatientQueryKey(selectedPatientId) });
+    goToStepKey(REVIEW_STEP);
+    return true;
+  }
+
+  function applyBackgroundConflictChoices(choices) {
+    setBackgroundUpdate(resolveBackgroundConflicts(backgroundUpdate, backgroundConflicts, choices));
+    setBackgroundConflicts(null);
+    toast.success("Patient History choices applied. Save again to finalize.");
+  }
+
+  function refreshMedicineStock() {
+    setBhcMedicineInventoryReloadKey((current) => current + 1);
+  }
+
+  function reviewDispensedMedicines() {
+    window.requestAnimationFrame(() => {
+      const section = document.querySelector(
+        "[data-dispensed-medicines-section]",
+      );
+      section?.scrollIntoView({ behavior: "smooth", block: "center" });
+      section?.querySelector("select, input, button")?.focus();
+    });
+  }
+
+  function showMedicineStockConflict(error) {
+    const affectedItems = Array.isArray(error?.payload?.items)
+      ? error.payload.items
+      : [];
+    const itemDetails = affectedItems
+      .map(
+        (item) =>
+          `${item.medicine_name || "Medicine or supply"}\nRequested: ${item.requested_quantity}\nAvailable: ${item.available_quantity}`,
+      )
+      .join("\n\n");
+
+    setConnectionIssue(null);
+    setLastFailedSubmit(null);
+    clearOfficialSubmission();
+    refreshMedicineStock();
+    setNoticeModal({
+      title: "Medicine Stock Changed",
+      message: [
+        "One or more selected medicines no longer have enough available stock. No health record was created.",
+        itemDetails,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      actions: [
+        {
+          label: "Review Medicines",
+          variant: "secondary",
+          onClick: reviewDispensedMedicines,
+        },
+        { label: "Refresh Stock", onClick: refreshMedicineStock },
+        { label: "Close", variant: "secondary" },
+      ],
+    });
+  }
+
+  function showSubmissionConflict() {
+    setConnectionIssue(null);
+    setNoticeModal({
+      title: "Submission Conflict",
+      message:
+        "This submission key was already used for different health-record information. Your current form has not been submitted. Review the patient's health-record history before trying again.",
+    });
+  }
+
+  async function refreshFollowUpConflictState() {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords(userRole),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.followUpTasks("bhc"),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
+      }),
+    ]);
+  }
+
+  function showFollowUpAlreadyProcessed(error) {
+    const latestRecordId = error?.payload?.health_record_id || "";
+    setConnectionIssue(null);
+    void refreshFollowUpConflictState();
+    setNoticeModal({
+      title: "Follow-up Already Processed",
+      message:
+        "This follow-up was already completed through another health-record submission. No new record was created from this attempt.",
+      actions: [
+        ...(latestRecordId
+          ? [
+              {
+                label: "View Latest Health Record",
+                onClick: () =>
+                  navigate(`${healthRecordsPath}/${latestRecordId}`),
+              },
+            ]
+          : []),
+        {
+          label: "Return to Follow-ups",
+          variant: "secondary",
+          onClick: () => navigate("/bhc/follow-ups"),
+        },
+        {
+          label: "Refresh",
+          variant: "secondary",
+          onClick: () => void refreshFollowUpConflictState(),
+        },
+      ],
+    });
+  }
+
+  async function saveHealthRecord(formData, submission = null) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      await protectLocalRecovery();
+      throw new Error("Reconnect before completing this consultation. Your progress remains available here.");
+    }
+    if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) {
+      await protectLocalRecovery();
+      throw new Error("The latest changes have not synced. Keep this consultation open and retry synchronization before completing it.");
+    }
+    const finalDraftId = getDraftIdentity()?.id || activeDraft?.id;
+    let finalDraftVersion = getDraftIdentity()?.version || activeDraft?.version;
+    const savedRecord = await healthRecordService.createHealthRecord(formData, "bhc", {
+      idempotencyKey: submission?.idempotencyKey,
+      draftId: finalDraftId,
+      draftVersion: finalDraftVersion,
+      // The SAME identity the consultation has carried since entry -
+      // never minted here. Retries keep it; only idempotencyKey is
+      // per-attempt.
+      consultationUuid,
+    });
+    bypassLeaveGuardRef.current = true;
+    try { await completeDraftRecovery(); }
+    catch { toast.error("The record was saved, but device recovery cleanup failed. Sign out when finished to clear protected session data."); }
+    queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
+    queryClient.invalidateQueries({ queryKey: ["patient-records-height", selectedPatientId] });
+    queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(selectedPatientId)] });
+    queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records"] });
+    if (formData.needsReferral || formData.needs_referral) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("rhu") });
+    }
+    if (activeDraft?.id) {
+      setHealthRecordDrafts((current) =>
+        current.filter((item) => item.id !== activeDraft.id),
+      );
+      setActiveDraft(null);
+      setDraftSavedAt("");
+    }
+    // The consultation is now an official record, so its identity is spent.
+    // The next consultation started on this page is a new one and mints its
+    // own at entry. Reached only after the create resolved - a failed save
+    // throws above and keeps the identity for its retry.
+    setConsultationUuid("");
+    const savedId =
+      savedRecord?.id ||
+      savedRecord?._id ||
+      savedRecord?.data?.id ||
+      savedRecord?.data?._id;
+
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.healthRecords(userRole),
+    });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.familyPlanningRecords(userRole),
+    });
+    if (userRole === "bhc") {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.followUpTasks("bhc"),
+      });
+    }
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.dashboardSummary(userRole),
+    });
+    if (selectedPatientId) {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientDetails(userRole, selectedPatientId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientConditions(selectedPatientId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.patientBackgroundHistory(selectedPatientId),
+      });
+    }
+    if (savedId) {
+      queryClient.setQueryData(
+        queryKeys.healthRecordData(userRole, savedId),
+        savedRecord,
+      );
+      queryClient.setQueryData(
+        queryKeys.healthRecordDetails(userRole, savedId),
+        {
+          record: savedRecord,
+          patient:
+            savedRecord?.patient ||
+            selectedPatient ||
+            null,
+          linkedReferral: savedRecord?.referrals?.[0] || null,
+        },
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails(userRole, savedId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordData(userRole, savedId),
+      });
+    }
+    await refreshRhuMedicines();
+    const dispensedMedicineIds = Array.from(
+      new Set(
+        [...dispensedMedicines, ...getVaccineEntries(immunizationData)]
+          .map((item) => String(item?.medicineId || item?.medicine_id || ""))
+          .filter(Boolean),
+      ),
+    );
+    await Promise.all(
+      dispensedMedicineIds.map((medicineId) =>
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.medicineTransactions(
+            currentUser,
+            medicineId,
+          ),
+        }),
+      ),
+    );
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.medicineAvailability("bhc", currentUser) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() }),
+    ]);
+    return { savedRecord, savedId };
+  }
+
+  async function handleRetryFailedHealthRecord() {
+    const failedFormData = lastFailedSubmit?.formData;
+    if (!failedFormData || saving) return;
+    setSaving(true);
+    try {
+      const submission = {
+        idempotencyKey: lastFailedSubmit.idempotencyKey,
+        payload: failedFormData,
+      };
+      officialSubmissionRef.current = submission;
+      const { savedRecord, savedId } = await saveHealthRecord(
+        submission.payload,
+        submission,
+      );
+      const savedRecordId =
+        savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        "";
+      setConnectionIssue(null);
+      setLastFailedSubmit(null);
+      clearOfficialSubmission();
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: normalizePatientStatus(
+          savedRecord?.followUpStatus ||
+            savedRecord?.status ||
+            failedFormData.followUpStatus,
+        ),
+        needsReferral: failedFormData.needs_referral === true,
+        referralSubmitted: Boolean(savedRecord?.officialResult?.referral_id),
+        referralTrackingId:
+          savedRecord?.referrals?.[0]?.tracking_id ||
+          savedRecord?.referrals?.[0]?.trackingId ||
+          "",
+        ...savedReferralSummary(savedRecord),
+      });
+    } catch (error) {
+      if (showBackgroundConflict(error)) {
+        // Shown on Review & Confirm.
+      } else if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+      } else if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
+      } else if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+      } else if (showServerValidationErrors(error)) {
+        setConnectionIssue(null);
+      } else if (isConnectionError(error)) {
+        setConnectionIssue({
+          title: "Connection Lost",
+          message: HEALTH_RECORD_CONNECTION_LOST_MESSAGE,
+        });
+      } else {
+        clearOfficialSubmission();
+        setConnectionIssue(null);
+        setNoticeModal({
+          title: "Save Failed",
+          message:
+            error?.message ||
+            "Unable to save the health record. Please review the form and try again.",
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSave(event) {
+    event?.preventDefault();
+    if (saving) return;
+    if (continuedCareUnresolved) {
+      toast.error(
+        maternalLoadFailed
+          ? "Retry loading Maternal Care before saving."
+          : "Wait until this visit's care records finish loading.",
+      );
+      goToStepKey(INTERVIEW_STEP);
+      return;
+    }
+    if (backgroundConflicts?.length) {
+      toast.error("Choose which Patient History version to keep before saving.");
+      goToStepKey(REVIEW_STEP);
+      return;
+    }
+    if (!canFinalize) {
+      if (!chiefComplaint.trim()) { setValidationErrorsAndFocus({ chiefComplaint: "Chief complaint is required." }); goToStepKey(INTERVIEW_STEP); return; }
+      const historyErrors = canViewBackground ? stagedHistoryErrors(historyUpdateForSave) : {};
+      if (Object.keys(historyErrors).length) {
+        if (!revealErrorStep(historyErrors)) setValidationErrorsAndFocus(historyErrors);
+        return;
+      }
+      setSaving(true);
+      try {
+        if (!(await flushDraftBeforeLeave())) throw new Error("Save the latest changes before submitting for review.");
+        const identity = getDraftIdentity() || activeDraft;
+        if (!identity?.id) throw new Error("Save a draft before submitting for review.");
+        await transitionDraft(identity.id, "submit", identity.version);
+        bypassLeaveGuardRef.current = true;
+        toast.success("Consultation submitted for review.");
+        queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
+        navigate("/bhc/patients/" + selectedPatientId);
+      } catch (error) { toast.error(error.message); } finally { setSaving(false); }
+      return;
+    }
+    if (needsReferral && !(currentUser?.permissions || []).includes("referrals.submit")) { toast.error("Finalize Consultation and Submit Referral permissions are both required."); return; }
+    closeDateTimePopovers();
+
+    const shouldSubmitSharedReferral =
+      needsReferral &&
+      userRole === "bhc";
+
+    if (!selectedPatientId) {
+      setValidationErrorsAndFocus({
+        selectedPatientId: "Please select a patient first.",
+      });
+      return;
+    }
+
+    const effectiveHealthRecordType = normalizedHealthRecordType;
+
+    if (!effectiveHealthRecordType) {
+      setValidationErrorsAndFocus({
+        healthRecordType: "Select a classification first.",
+      });
+      return;
+    }
+
+    const clientErrors = getClinicalValidationErrors();
+
+    if (revealErrorStep(clientErrors)) return;
+    if (setValidationErrorsAndFocus(clientErrors)) return;
+
+    if (
+      effectiveHealthRecordType === "Maternal" &&
+      selectedPatientIsMale
+    ) {
+      setNoticeModal({
+        title: "Invalid Classification",
+        message:
+          "Maternal records cannot be created for a patient recorded as male. Please choose another classification.",
+      });
+      return;
+    }
+
+    if (
+      effectiveHealthRecordType === "Immunization" &&
+      immunizationPatientInfo.mode === "adult"
+    ) {
+      setHealthRecordType("");
+      setNoticeModal({
+        title: "Invalid Classification",
+        message: getAdultImmunizationMessage(immunizationPatientInfo.age),
+        onClose: () => classificationRef.current?.focus(),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
+
+    if (
+      effectiveHealthRecordType === "Family Planning" &&
+      !familyPlanningEligibility.eligible
+    ) {
+      setHealthRecordType("");
+      setNoticeModal({
+        title: "Invalid Classification",
+        message: familyPlanningEligibility.message,
+        onClose: () => classificationRef.current?.focus(),
+        buttonLabel: "Okay",
+      });
+      return;
+    }
+
+    const preparedVaccineEntries = immunizationVaccineEntries.map((entry) => ({
+      ...entry,
+      vaccineName:
+        entry.vaccineName === "Other"
+          ? entry.customVaccineName || entry.vaccineName
+          : entry.vaccineName,
+      dateGiven: entry.dateGiven || dateOfVisit,
+    }));
+    const preparedImmunizationData = {
+      ...immunizationData,
+      patientAgeYears: immunizationPatientInfo.age,
+      immunizationFormType: "child",
+      vaccineEntries: preparedVaccineEntries,
+      vaccinesGiven: preparedVaccineEntries,
+    };
+
+    if (effectiveHealthRecordType === "Immunization") {
+      if (preparedVaccineEntries.length === 0 && !consultationNotes.trim()) {
+        setValidationErrorsAndFocus({
+          vaccineEntries:
+            "Select at least one vaccine or enter remarks if no vaccine was given.",
+        });
+        return;
+      }
+    }
+
+    // The visit's Next Actions (v2): only what is ticked is sent. The EPI next
+    // dose and the FP next appointment stay in their service data; they never
+    // become the follow-up date or a follow-up task by themselves.
+    const nextActionsFragments = nextActionsPayload(effectiveNextActions, {
+      followUp: {
+        status: "Follow-up Required",
+        date: followUpDate,
+        time: followUpTime,
+        reason: followUpReason.trim(),
+      },
+      monitoringReferralIds,
+      followUpSchedules: scheduledReturns,
+      conditionReferred: conditionReferrals.length > 0,
+      conditionReferralCount: conditionReferrals.length,
+      referralCount,
+    });
+    const finalNeedsReferral = nextActionsFragments.needs_referral === true;
+    // Continued follow-ups (Start Consultation modal): the visit is a
+    // follow-up visit of the first one's source record. Every continued task
+    // is fulfilled through care_plan either way.
+    const continuedLink = continuedVisitLink(continuedFollowUpTaskIds, continuedFollowUps);
+    const effectiveVisitType = continuedLink
+      ? continuedLink.visitType
+      : "initial_consultation";
+    const linkedParentRecordId = continuedLink
+      ? continuedLink.parentHealthRecordId
+      : "";
+    const submittedFollowUpTaskId = continuedLink
+      ? continuedLink.followUpTaskId
+      : "";
+    const nextActionsMonitoring = nextActionsFragments.monitoring_data;
+
+    const finalChiefComplaint =
+      isImmunization && !chiefComplaint
+          ? "Vaccination Visit"
+          : effectiveHealthRecordType === "Family Planning" && !chiefComplaint
+            ? familyPlanningData.fpVisitType === "Side-effect Concern"
+              ? familyPlanningData.concern || "Family Planning Concern"
+              : "Family Planning Visit"
+          : effectiveHealthRecordType === "Maternal" && !chiefComplaint
+            ? "Prenatal Visit"
+          : effectiveHealthRecordType === "TB DOTS / TB Monitoring" &&
+              !chiefComplaint
+            ? "TB DOTS / TB Monitoring Visit"
+          : chiefComplaint;
+
+    // The dose given at this visit is also filed under its TT/Td schedule,
+    // so the existing TT/Td history stays complete - see thisVisitDoseEntry.
+    const thisVisitImmunization = {
+      ...EMPTY_MATERNAL_DATA.immunizationThisVisit,
+      ...(maternalData.immunizationThisVisit || {}),
+    };
+
+    const recordMaternalData = {
+      ...maternalData,
+      expectedDeliveryDate,
+      aog,
+      bmi: maternalData.bmi || "",
+      treatment: maternalData.treatment || medication || "",
+      previousFpMethodUsed: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previous_fp_method_used: historicalFpMethod.method || maternalData.previousFpMethodUsed || "",
+      previousFpMethodOther: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
+      previous_fp_method_other: historicalFpMethod.other || maternalData.previousFpMethodOther || "",
+      previousPregnancyHistory: Array.isArray(
+        maternalData.previousPregnancyHistory,
+      )
+        ? maternalData.previousPregnancyHistory
+        : [],
+      previous_pregnancy_history: Array.isArray(
+        maternalData.previousPregnancyHistory,
+      )
+        ? maternalData.previousPregnancyHistory
+        : [],
+      riskAssessment: applyRiskFlags(
+        {
+          ...EMPTY_MATERNAL_DATA.riskAssessment,
+          ...sanitizeRiskAssessment(maternalData.riskAssessment),
+        },
+        riskFlags,
+      ),
+      ...withLaboratoryEntries(maternalData.laboratoryEntries),
+      immunizationThisVisit: thisVisitImmunization,
+      tetanusToxoidStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusToxoidStatus,
+        ...(maternalData.tetanus_toxoid_status || {}),
+        ...(maternalData.tetanusToxoidStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusToxoidStatus"),
+      },
+      tetanusDiphtheriaStatus: {
+        ...EMPTY_MATERNAL_DATA.tetanusDiphtheriaStatus,
+        ...(maternalData.tetanus_diphtheria_status || {}),
+        ...(maternalData.tetanusDiphtheriaStatus || {}),
+        ...thisVisitDoseEntry(thisVisitImmunization, "tetanusDiphtheriaStatus"),
+      },
+      ultrasound: {
+        ...EMPTY_MATERNAL_DATA.ultrasound,
+        ...(maternalData.ultrasound || {}),
+      },
+      tpal: [
+        maternalData.term || 0,
+        maternalData.preterm || 0,
+        maternalData.abortion || 0,
+        maternalData.living || 0,
+      ].join("-"),
+    };
+
+    const recordFamilyPlanningData = {
+      ...familyPlanningData,
+      client_type: familyPlanningData.clientType || "",
+      method_used: familyPlanningData.methodUsed || "",
+      previousMethod: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+      previous_method: historicalFpMethod.label || familyPlanningData.previousMethod || "",
+      fp_visit_type: familyPlanningData.fpVisitType || "",
+      visitType: familyPlanningData.fpVisitType || "",
+      visit_type: familyPlanningData.fpVisitType || "",
+      source: familyPlanningData.source || "",
+      dateRegistered: familyPlanningData.dateRegistered || dateOfVisit,
+      date_registered: familyPlanningData.dateRegistered || dateOfVisit,
+      dateOfVisit: familyPlanningData.dateOfVisit || dateOfVisit,
+      date_of_visit: familyPlanningData.dateOfVisit || dateOfVisit,
+      next_appointment_date: familyPlanningData.nextAppointmentDate || "",
+      remarks: familyPlanningData.remarks || "",
+      action_taken: familyPlanningData.actionTaken || "",
+      hasClinicalConcern: familyPlanningData.hasClinicalConcern === "Yes",
+      has_clinical_concern: familyPlanningData.hasClinicalConcern === "Yes",
+      concern: familyPlanningData.concern || "",
+      findings: familyPlanningData.findings || "",
+      advice_given: familyPlanningData.adviceGiven || "",
+      medicinesSupplies: familyPlanningData.medicinesSupplies || "",
+      medicines_supplies: familyPlanningData.medicinesSupplies || "",
+    };
+
+    // "" while Schedule BHC Follow-up is unticked: keep the existing default.
+    const finalPatientStatus = nextActionsMonitoring.followUpStatus || "Completed";
+    const formData = {
+      // Every consultation from this workspace is a v2 BHC General Consultation.
+      consultationWorkflow: BHC_GENERAL_V2,
+      patientId: selectedPatientId,
+      patientName: getPatientName(selectedPatient),
+      category: effectiveHealthRecordType,
+      recordType: effectiveHealthRecordType,
+      patientClassification: effectiveHealthRecordType,
+      visitType: effectiveVisitType,
+      visit_type: effectiveVisitType,
+      parentHealthRecordId: linkedParentRecordId || null,
+      parent_health_record_id: linkedParentRecordId || null,
+      previousRecordId: linkedParentRecordId || "",
+      followUpTaskId: submittedFollowUpTaskId || null,
+      follow_up_task_id: submittedFollowUpTaskId || null,
+      dateOfVisit: dateOfVisit || toDateInputValue(),
+      timeOfVisit: timeOfVisit || toTimeInputValue(),
+      chiefComplaint: finalChiefComplaint,
+      summaryOfPresentIllness,
+      physicalExam,
+      bodyFindings,
+      bodyFindingReassessments,
+      // Reporting entries only; v2 sends no plain-text `diagnosis`.
+      diagnoses: reportingEntryPayload(sharedConditionEntries(reportingEntries)),
+      // A converted earlier draft's read-only text, if any.
+      assessmentNotes,
+      vitalSigns: consultationVitalSigns,
+      systolicBp: systolicBp || null,
+      diastolicBp: diastolicBp || null,
+      temperature: temp || null,
+      pulse: pulse || null,
+      spo2: spo2 || null,
+      weight: weight || null,
+      height: height || null,
+      fbs: fbs === "" ? null : Number(fbs),
+      medication: effectiveHealthRecordType === "Maternal"
+        ? recordMaternalData.treatment || medication
+        : medication,
+      noInterventionPerformed: false,
+      noInterventionReason: "",
+      attendingStaff: attendingStaff || currentUserName,
+      consultationNotes,
+      followUpStatus: finalPatientStatus,
+      followUpDate: nextActionsMonitoring.followUpDate,
+      followUpTime: nextActionsMonitoring.followUpTime,
+      followUpReason: nextActionsMonitoring.followUpReason,
+      followUpSchedules: nextActionsMonitoring.followUpSchedules || scheduledReturns,
+      monitoringNotes,
+      patientCondition:
+        nextActionsMonitoring.followUpDate ? patientCondition : "",
+      // healthRecordService derives the legacy include/notifiable flags from
+      // this; the server re-derives all three from diagnoses[].reportIn.
+      morbidityReportingStatus: effectiveReportingStatus,
+      needsReferral: finalNeedsReferral,
+      needs_referral: finalNeedsReferral,
+      referralReason: "",
+      referralCategory: null,
+      referralAssessmentStatus: null,
+      maternalData: recordMaternalData,
+      lmp: recordMaternalData.lmp || null,
+      pmp: recordMaternalData.pmp || null,
+      cycleDuration: recordMaternalData.cycleDuration || null,
+      gravida: recordMaternalData.gravida || null,
+      para: recordMaternalData.para || null,
+      term: recordMaternalData.term || null,
+      preterm: recordMaternalData.preterm || null,
+      abortion: recordMaternalData.abortion || null,
+      living: recordMaternalData.living || null,
+      tpal: recordMaternalData.tpal || null,
+      expectedDeliveryDate,
+      aog,
+      immunizationData: preparedImmunizationData,
+      familyPlanningData:
+        isFamilyPlanning
+          ? recordFamilyPlanningData
+          : null,
+      // Sent whenever Monitoring Details includes the TB card (isTb).
+      tbData: isTb ? tbData : null,
+      // Only an old draft's staged Patient History edits, kept by the clinician.
+      backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(historyUpdateForSave) : undefined,
+      // Per-visit history answers, saved on the record (null when not answered).
+      ...visitAnswerRecordFields({ informant, similarIllness, allowed: canViewBackground }),
+      // What this visit continues, starts and stops. validateCarePlan already
+      // ran in getClinicalValidationErrors above (this payload drops blank
+      // stops). A condition's status is the RHU's to set: never sent from here.
+      // Plus the visit's Next Actions: bhc_follow_up, refer_to_rhu,
+      // derived referral_multiple_issues, and service_referrals.
+      carePlan: {
+        continued_concerns: continuedDecisions,
+        ...buildCarePlanPayload({
+          continuedFollowUpTaskIds,
+          continuedMonitorings,
+          startingConditions,
+          stops: monitoringStops,
+          referrals: monitoringReferrals,
+          sharedReferralAcknowledged: referralAcknowledged,
+        }),
+        ...nextActionsFragments.care_plan,
+        condition_cards: true,
+        shared_condition_referral: true,
+      },
+      ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
+      ...(isMaternal ? { prenatalIntent } : {}),
+      monitoringData: {
+        ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
+        ...(isMaternal ? { prenatalIntent } : {}),
+        ...nextActionsMonitoring,
+      },
+      createdByRole: userRole,
+      linkedTrackingId: "",
+      dispensedMedicines,
+    };
+
+    if (shouldSubmitSharedReferral) {
+      setReferralForm((prev) => ({
+        ...prev,
+        urgencyLevel: normalizeAttention(prev.urgencyLevel),
+        dateOfReferral: prev.dateOfReferral || dateOfVisit || toDateInputValue(),
+        timeOfReferral: prev.timeOfReferral || timeOfVisit || toTimeInputValue(),
+        referringHci:
+          prev.referringHci || getReferringFacilityName(currentUser),
+        philHealthNumber:
+          prev.philHealthNumber || getPatientPhilHealthNumber(selectedPatient),
+        referringPractitioner:
+          prev.referringPractitioner || attendingStaff || currentUserName,
+        patientName: prev.patientName || getPatientName(selectedPatient),
+        birthDate: prev.birthDate || getPatientBirthDate(selectedPatient),
+        address: prev.address || getPatientAddress(selectedPatient),
+        ageSexCivilStatus:
+          prev.ageSexCivilStatus ||
+          getPatientAgeSexCivilStatus(selectedPatient),
+        philHealthCategory:
+          prev.philHealthCategory || getPatientPhilHealthCategory(selectedPatient),
+        chiefComplaint: prev.chiefComplaint || finalChiefComplaint,
+        initialDiagnosis: referredConcernNames || prev.initialDiagnosis,
+        initialActionsTaken: prev.initialActionsTaken || medication,
+        // Required before saving (never pre-filled from the Chief Complaint).
+        reasonForReferral: prev.reasonForReferral,
+        clinicalSummary:
+          prev.clinicalSummary ||
+          [summaryOfPresentIllness, consultationNotes].filter(Boolean).join("\n\n"),
+      }));
+      // The approved flow saves the referral straight from Next Action, so the
+      // logistics that used to be collected on a dedicated step are defaulted
+      // above (facility is assigned server-side from the patient's BHC,
+      // urgency falls back to the default; the RHU assigns the doctor).
+      //
+      // The DOC-14 no-provider gate is NOT bypassed by this: it is enforced by
+      // ReferralSubmissionGate inside the same server transaction, so a blocked
+      // submission still fails closed and is reported through the gate error
+      // handling in submitHealthRecordWithReferral.
+      if (userRole === "bhc" && !referralDoctorAvailable && !deferralConfirmedRef.current) {
+        const guidance = unavailableReferralGuidance({
+          facilityName: selectedReferralDestination?.name || "the receiving RHU",
+          isPriority: isPriority(referralForm.urgencyLevel),
+          alternativeNames: availableReferralAlternatives.map((item) => item.name),
+        });
+        setNoticeModal({
+          title: "Save Referral for Later?",
+          message: `${guidance.headline} ${guidance.body}`,
+          actions: [
+            {
+              label: "Back",
+              variant: "secondary",
+              onClick: () => setNoticeModal(null),
+            },
+            {
+              label: "Finalize Consultation & Save Referral for Later",
+              onClick: () => {
+                deferralConfirmedRef.current = true;
+                setNoticeModal(null);
+                void handleSave();
+              },
+            },
+          ],
+        });
+        return;
+      }
+      await submitHealthRecordWithReferral({
+        formData,
+        referralOverrides: {
+          chiefComplaint: referralForm.chiefComplaint || finalChiefComplaint,
+          initialDiagnosis: referredConcernNames || referralForm.initialDiagnosis,
+          initialActionsTaken:
+            referralForm.initialActionsTaken || medication,
+          reasonForReferral: referralForm.reasonForReferral,
+          referringPractitioner: attendingStaff || currentUserName,
+          dateOfReferral: dateOfVisit || toDateInputValue(),
+          timeOfReferral: timeOfVisit || toTimeInputValue(),
+          clinicalSummary: [summaryOfPresentIllness, consultationNotes]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      });
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const submission = beginOfficialSubmission(formData);
+      const { savedRecord, savedId } = await saveHealthRecord(
+        submission?.payload || formData,
+        submission,
+      );
+      const savedRecordId =
+        savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        "";
+      const savedStatus = normalizePatientStatus(
+        savedRecord?.followUpStatus ||
+          savedRecord?.status ||
+          savedRecord?.data?.followUpStatus ||
+          savedRecord?.data?.status ||
+          formData.followUpStatus,
+      );
+
+      setLastFailedSubmit(null);
+      clearOfficialSubmission();
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: savedStatus,
+        needsReferral: formData.needs_referral === true,
+        ...savedReferralSummary(savedRecord),
+      });
+    } catch (error) {
+      if (showBackgroundConflict(error)) return;
+      if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+        return;
+      }
+      if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
+        return;
+      }
+      if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+        return;
+      }
+      if (showServerValidationErrors(error)) return;
+      if (isConnectionError(error)) {
+        const submission = officialSubmissionRef.current;
+        setLastFailedSubmit({
+          formData: submission?.payload || formData,
+          idempotencyKey: submission?.idempotencyKey,
+        });
+        setConnectionIssue({
+          title: "Connection Lost",
+          message: HEALTH_RECORD_CONNECTION_LOST_MESSAGE,
+        });
+        return;
+      }
+      clearOfficialSubmission();
+      setNoticeModal({
+        title: "Save Failed",
+        message:
+          error?.message ||
+          "Unable to save the health record. Please review the form and try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * Save the health record and its referral in one submission.
+   *
+   * Takes the record payload explicitly rather than reading pendingReferralDraft,
+   * because Next Action now saves in the same tick it builds the payload and
+   * would otherwise race React state.
+   */
+  async function submitHealthRecordWithReferral({
+    formData,
+    referralOverrides = {},
+  } = {}) {
+    closeDateTimePopovers();
+
+    const attempt = { formData, referralOverrides };
+
+    if (!attempt.formData) {
+      setNoticeModal({
+        title: "Health Record Draft Missing",
+        message:
+          "The health record draft is no longer available. Please review the health record form again.",
+      });
+      return;
+    }
+
+    const referral = { ...referralForm, ...attempt.referralOverrides };
+
+    if (!String(referral.reasonForReferral || "").trim()) {
+      setValidationErrorsAndFocus({
+        reasonForReferral: "Reason for referral is required.",
+      });
+      return;
+    }
+
+    const referralUrgency = normalizeAttention(referral.urgencyLevel);
+    const referralRemarks = referral.clinicalSummary || "";
+    const officialPayload = {
+      ...attempt.formData,
+      referral: {
+        ruralHealthUnitId: receivingRhuId,
+        referralCategory: attempt.formData.category,
+        urgencyLevel: referralUrgency,
+        reasonForReferral: referral.reasonForReferral,
+        chiefComplaint:
+          referral.chiefComplaint || attempt.formData.chiefComplaint,
+        initialDiagnosis: referral.initialDiagnosis || null,
+        initialActionsTaken:
+          referral.initialActionsTaken || attempt.formData.medication,
+        referringPractitioner:
+          referral.referringPractitioner || attempt.formData.attendingStaff,
+        referralDate: referral.dateOfReferral,
+        referralTime: referral.timeOfReferral,
+        remarks: referralRemarks || null,
+      },
+    };
+    const submission = beginOfficialSubmission(officialPayload);
+
+    setSaving(true);
+
+    try {
+      const result = await saveHealthRecord(submission.payload, submission);
+      const savedRecord = result.savedRecord;
+      const savedRecordId =
+        result.savedId ||
+        savedRecord?.id ||
+        savedRecord?._id ||
+        savedRecord?.data?.id ||
+        savedRecord?.data?._id ||
+        "";
+
+      if (!savedRecordId) throw new Error("Saved health record ID was not returned.");
+
+      const referral = savedRecord?.referrals?.[0] || null;
+      const referralTrackingId =
+        referral?.tracking_id || referral?.trackingId || "";
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.incomingReferrals("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecords(userRole),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.followUpTasks("bhc"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary(userRole),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("rhu"),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordDetails(userRole, savedRecordId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.healthRecordData(userRole, savedRecordId),
+      });
+
+      setLastFailedSubmit(null);
+      clearOfficialSubmission();
+      deferralConfirmedRef.current = false;
+      setSaveSuccess({
+        recordId: savedRecordId,
+        patientId: selectedPatientId,
+        status: normalizePatientStatus(
+          savedRecord?.followUpStatus ||
+            savedRecord?.status ||
+            attempt.formData.followUpStatus,
+        ),
+        needsReferral: true,
+        referralSubmitted: Boolean(referral),
+        awaitingDoctor: !referral,
+        referralTrackingId,
+        ...savedReferralSummary(savedRecord),
+      });
+    } catch (error) {
+      // DOC-14 - unconditional. No override affordance is offered.
+      if (isNoProviderAvailableError(error)) {
+        clearOfficialSubmission();
+        setNoticeModal({
+          title: "Referral Submission Unavailable",
+          message: error?.message || noProviderMessage,
+        });
+        return;
+      }
+      if (showBackgroundConflict(error)) return;
+      if (showServerValidationErrors(error)) return;
+      if (isFollowUpAlreadyProcessed(error)) {
+        showFollowUpAlreadyProcessed(error);
+        return;
+      }
+      if (isInsufficientStock(error)) {
+        showMedicineStockConflict(error);
+        return;
+      }
+      if (isIdempotencyPayloadMismatch(error)) {
+        showSubmissionConflict();
+        return;
+      }
+      if (isConnectionError(error)) {
+        setLastFailedSubmit({
+          formData: submission.payload,
+          idempotencyKey: submission.idempotencyKey,
+        });
+        setConnectionIssue({
+          title: "Connection Lost",
+          message: HEALTH_RECORD_CONNECTION_LOST_MESSAGE,
+        });
+        return;
+      }
+      clearOfficialSubmission();
+      setNoticeModal({
+        title: "Save Failed",
+        message:
+          error?.message ||
+          "Unable to save the health record and referral. Please review the form and try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const pageTitle = "New Consultation";
+  const monitoringNotesLabel =
+    normalizedPatientStatus === "Completed"
+      ? "Additional Notes"
+      : showFollowUpMonitoringFields
+        ? "Monitoring and Follow-up Notes"
+        : "Monitoring Notes";
+  const monitoringNotesPlaceholder =
+    normalizedPatientStatus === "Completed"
+      ? "Write final outcome notes or closing instructions..."
+      : showFollowUpMonitoringFields
+        ? "Write the monitoring plan or return-visit instructions..."
+        : "Write monitoring notes if useful...";
+  // A converted legacy draft whose text did not fit one field keeps the rest in
+  // monitoringNotes (draftConversion.js). Without a monitoring card to edit it
+  // there, it shows read-only in step 3 and in Review; it is saved as entered.
+  const earlierDraftContinued =
+    continuedMonitorings.length || startingConditions.length ? "" : continuedDraftNotes(monitoringNotes);
+
+  const wizardVisitDate = dateOfVisit
+    ? new Date(`${dateOfVisit}T00:00:00`).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "Not set";
+  const wizardVisitTime = formatDisplayTime(timeOfVisit, "Not set");
+
+  // ---- Step navigation (New Consultation) --------------------------------
+  function scrollWorkflowToTop() {
+    window.requestAnimationFrame(() => {
+      // Pinned layout scrolls the form column; stacked layout scrolls the page.
+      for (const selector of ["[data-consult-scroll]", ".akay-content-scroll"]) {
+        document.querySelector(selector)?.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  }
+
+  /**
+   * Accepts either a screen key (a program form, assessment, treatment) or a
+   * global progress-bar key; "Service Details" opens the first service.
+   */
+  function goToStepKey(key, { scroll = true } = {}) {
+    const target = key === PROGRAMS_STEP ? programFormSteps[0]?.key : key;
+    const phase = formSequence.includes(target)
+      ? "form"
+      : consultationSteps.find((item) => item.key === target)?.phase;
+    if (!phase) return;
+
+    closeDateTimePopovers();
+    // The Prenatal form follows Physical Examination, so the visit's height is
+    // usually known by the time it opens.
+    if (target === programStepKey("Maternal")) announceRiskFlags();
+    if (phase === "form") setFormStep(target);
+    // Step 3 and Monitoring Details are the two screens of the Next phase.
+    if (phase === "next") setNextScreen(target);
+    goToWizardPhase(WIZARD_PHASE_FOR_STEP[phase]);
+    if (scroll) scrollWorkflowToTop();
+  }
+
+  /**
+   * Whether the user may leave a step going forward. Only the step's own
+   * fields block it; anything owned by an EARLIER step means that screen was
+   * left incomplete (e.g. a restored draft), so the user is sent back there.
+   * Entered history values are checked here so an invalid sticks-per-day (or
+   * similar) cannot reach finalization; blank optional fields still pass.
+   */
+  function checkStepGate(stepKey) {
+    if (continuedCareUnresolved) {
+      toast.error(
+        maternalLoadFailed
+          ? "Retry loading Maternal Care before continuing."
+          : "Wait until this visit's care records finish loading.",
+      );
+      return false;
+    }
+    if (stepKey === INTERVIEW_STEP) {
+      const errors = {};
+      if (!chiefComplaint.trim()) errors.chiefComplaint = "Chief complaint is required.";
+      if (canViewBackground) {
+        Object.assign(errors, stagedHistoryErrors(historyUpdateForSave, { sections: ["family", "medical", "social"] }));
+      }
+      if (Object.keys(errors).length) {
+        setValidationErrorsAndFocus(errors);
+        return false;
+      }
+    }
+    if (stepKey === programStepKey("Maternal") && canViewBackground) {
+      const obstetricErrors = stagedHistoryErrors(historyUpdateForSave, { sections: ["obstetric"] });
+      if (Object.keys(obstetricErrors).length) {
+        setValidationErrorsAndFocus(obstetricErrors);
+        return false;
+      }
+    }
+    if (stepKey === ASSESSMENT_STEP) {
+      const vitalsErrors = vitalSignsErrors(currentVitalSigns());
+      if (Object.keys(vitalsErrors).length > 0) {
+        setValidationErrorsAndFocus({
+          ...pickErrorsForStep(validationErrors, ASSESSMENT_STEP, BHC_STEP_OPTIONS),
+          ...vitalsErrors,
+        });
+        return false;
+      }
+      setValidationErrors((current) => {
+        const next = { ...current };
+        for (const key of VITAL_ERROR_KEYS) delete next[key];
+        return next;
+      });
+      return true;
+    }
+    // Program completion, disposition and referral requirements apply only at finalization.
+    setValidationErrorsAndFocus({});
+    return true;
+  }
+
+  // Same idea for Save: an error that belongs to another screen is shown there.
+  function revealErrorStep(errors) {
+    const target = findFirstErrorStepKey(errors, stepOrder, BHC_STEP_OPTIONS);
+    if (!target || target === currentStepKey) return false;
+    setValidationErrorsAndFocus(errors);
+    goToStepKey(target, { scroll: false });
+    return true;
+  }
+
+  function handleFormStepNext(event) {
+    event?.preventDefault();
+    closeDateTimePopovers();
+    // Service forms still do not block Next for unfinished optional fields.
+    // Invalid entered history (Interview / Prenatal Section V) does.
+    if (!checkStepGate(activeFormStep)) return;
+    goToStepKey(getNextStepKey(formSequence, activeFormStep));
+  }
+
+  // Previous reverses the form order. From the first screen it returns to the
+  // fixed patient's profile; the leave guard flushes the current draft.
+  function handleFormStepPrevious() {
+    closeDateTimePopovers();
+    const target = getPreviousStepKey(formSequence, activeFormStep);
+    if (target === EXIT_STEP) {
+      navigate(`${basePath}/patients/${selectedPatientId}`);
+      return;
+    }
+    goToStepKey(target);
+  }
+
+  function handleNextActionContinue() {
+    closeDateTimePopovers();
+    if (!checkStepGate(NEXT_STEP)) return;
+    if (setValidationErrorsAndFocus(getNextStepErrors())) return;
+    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP ? NEXT_STEP : nextScreen, monitoringDetailKeys));
+  }
+
+  // ---- Wizard view models -------------------------------------------------
+  // Services stay disabled until the patient they are restricted by has loaded.
+  const wizardPrograms = lockProgramsWhilePatientLoads(visibleConsultationPrograms(Object.keys(PROGRAM_CLASSIFICATIONS), selectedPatient, dateOfVisit).map((key) => {
+    const classification = PROGRAM_CLASSIFICATIONS[key];
+    const eligibility = key === "Maternal" ? getMaternalEligibility(selectedPatient)
+      : key === "Family Planning" ? familyPlanningEligibility
+      : key === "EPI" && immunizationPatientInfo.mode === "adult" ? { eligible: false, message: getAdultImmunizationMessage(immunizationPatientInfo.age) }
+      : { eligible: true, message: "" };
+    const maternalIncluded = selectedPrograms.includes("Maternal");
+    const maternalCopy = key === "Maternal"
+      ? prenatalProgramCopy({
+          enrolled: prenatalEnrollment.enrolled,
+          included: maternalIncluded,
+          resolving: maternalResolving,
+          loadFailed: maternalLoadFailed,
+          hideAction: maternalReadonlyActive,
+        })
+      : null;
+    const maternalControl = key === "Maternal"
+      ? maternalProgramControl({
+          resolving: maternalResolving,
+          loadFailed: maternalLoadFailed,
+          hideAction: maternalReadonlyActive,
+        })
+      : null;
+    return {
+      key,
+      title: key === "Maternal" ? maternalCopy.title : key,
+      description: key === "Maternal"
+        ? maternalCopy.description
+        : key === "EPI"
+          ? "Immunization and child vaccination services."
+          : RECORD_TYPE_DETAILS[classification]?.description,
+      icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
+      disabled: !eligibility.eligible || Boolean(maternalControl?.disabled),
+      disabledReason: !eligibility.eligible ? eligibility.message : (maternalControl?.disabledReason || eligibility.message),
+      disabledNote: eligibility.eligible ? maternalControl?.disabledNote : undefined,
+      busy: Boolean(maternalControl?.busy),
+      actionLabel: maternalControl?.actionLabel,
+      hideAction: Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
+      enrollLabel: maternalCopy?.enrollLabel,
+      statusLabel: maternalCopy?.statusLabel,
+      statusTone: maternalCopy?.statusTone,
+    };
+  }), selectedPatientLoading);
+
+  function closeDraftDecision() {
+    if (draftDecisionBusy) return;
+    setDraftDecision(null);
+    setDraftDecisionError("");
+  }
+
+  async function discardConflictingDraftAndStart() {
+    setDraftDecisionBusy(true);
+    setDraftDecisionError("");
+    try {
+      await discardHealthRecordDraft(draftDecision.id);
+      setHealthRecordDrafts((current) =>
+        current.filter((item) => item.id !== draftDecision.id),
+      );
+      setDraftDecision(null);
+    } catch (error) {
+      setDraftDecisionError(
+        isConnectionError(error)
+          ? "Unable to reach the server. Please check your connection and try again."
+          : error?.message || "Unable to discard this unfinished consultation. Please try again.",
+      );
+    } finally {
+      setDraftDecisionBusy(false);
+    }
+  }
+
+  async function continueConflictingDraft() {
+    const draftId = draftDecision.id;
+    setDraftDecision(null);
+    await handleResumeDraft(draftId);
+  }
+
+  function applyBhcPrenatalPrefill() {
+    if (!shouldPrefillPrenatalBaseline({
+      continueRoute: routeContext.kind === "continue",
+      followUps: continuedFollowUps,
+      enrolled: prenatalEnrollment.enrolled,
+      latestRecord: prenatalEnrollment.latestRecord,
+    })) return;
+    const prefill = continueBhcPrenatalPrefill(prenatalEnrollment.latestRecord);
+    setMaternalData((current) => (current.lmp ? current : prefill));
+    if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
+    if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function applyProgramSelect(option) {
+    const next = toggleConsultationProgram(selectedPrograms, primaryProgram, option);
+    setSelectedPrograms(next.selectedPrograms);
+    setPrimaryProgram(next.primaryProgram);
+    // No separate general/program toggle any more: selecting nothing IS a
+    // general consultation. consultationMode still records it, because the
+    // draft payload and the saved record read it exactly as before.
+    setConsultationMode(next.selectedPrograms.length ? "program" : "general");
+    setHealthRecordType(PROGRAM_CLASSIFICATIONS[next.primaryProgram] || "General Consultation");
+    setFollowUpSchedules((current) => pruneServiceSchedules(current, next.selectedPrograms));
+    setNextActions((current) => {
+      const serviceReferrals = pruneServiceReferrals(current.serviceReferrals, next.selectedPrograms);
+      return {
+        ...current,
+        serviceReferrals,
+        referToRhu: serviceReferrals.length > 0,
+        referralMultipleIssues: false,
+      };
+    });
+    if (option === "Maternal" && next.selectedPrograms.includes("Maternal")) {
+      applyBhcPrenatalPrefill();
+    }
+  }
+
+  function handleProgramSelect(option) {
+    if (option === "Maternal" && maternalLoadFailed) {
+      retryMaternalServiceResolution();
+      return;
+    }
+    const program = wizardPrograms.find((item) => item.key === option);
+    if (program?.hideAction) return;
+    if (program?.disabled) return;
+    if (option === "Maternal" && prenatalEnrollment.enrolled) return;
+    if (option === "Maternal" && !selectedPrograms.includes("Maternal")) {
+      setPrenatalEnrollmentModal("enroll");
+      return;
+    }
+    applyProgramSelect(option);
+  }
+
+  function confirmPrenatalEnrollment() {
+    setPrenatalEnrollmentModal(null);
+    applyProgramSelect("Maternal");
+  }
+
+  // A continued prenatal follow-up includes existing Maternal Care once, without
+  // the confirmation modal. Draft resume keeps whatever the draft saved. The
+  // resolved flag is set even when nothing is seeded so a late response cannot
+  // re-add Maternal Care after staff removed it.
+  useEffect(() => {
+    if (!canCompleteMaternalFollowUpResolution({
+      resolved: maternalFollowUpResolved,
+      resolving: maternalResolving,
+      loadFailed: maternalLoadFailed,
+    })) return;
+    const skipSeed = maternalFollowUpSeededRef.current;
+    maternalFollowUpSeededRef.current = true;
+    if (
+      !skipSeed
+      && routeContext.kind === "continue"
+      && getMaternalEligibility(selectedPatient).eligible
+      && shouldSeedMaternalFromPrenatalFollowUp({
+        followUps: continuedFollowUps,
+        alreadyIncluded: selectedPrograms.includes("Maternal"),
+        enrolled: prenatalEnrollment.enrolled,
+      })
+    ) {
+      applyProgramSelect("Maternal");
+    }
+    setMaternalFollowUpResolved(true);
+    // Resolved once when continued follow-ups and enrollment have settled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
+
+  // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
+  // Details when a condition monitored in this visit needs it.
+  const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP, BHC_STEP_OPTIONS)).filter(Boolean);
+  // Unlink a follow-up before saving; saving is what completes the rest.
+  function removeFollowUpLink(id) {
+    clearContinuedErrors(id);
+    setContinuedConcerns(current => current.filter(item => Number(item.taskId) !== Number(id)));
+    setFollowUpSchedules(current => setContinuedSchedule(current, id, null));
+    const next = removeContinuedFollowUp(
+      {
+        continuedFollowUpTaskIds,
+        continuedFollowUps,
+        continuedMonitorings,
+        monitoringStops,
+        monitoringReferrals,
+        legacyNamesByFollowUp,
+      },
+      id,
+    );
+    setContinuedFollowUpTaskIds(next.continuedFollowUpTaskIds);
+    setContinuedFollowUps(next.continuedFollowUps);
+    setLegacyNamesByFollowUp(next.legacyNamesByFollowUp);
+    setLegacyConditionNames(next.legacyConditionNames);
+    setContinuedMonitorings(next.continuedMonitorings);
+    setMonitoringStops(next.monitoringStops);
+    setMonitoringReferrals(next.monitoringReferrals);
+  }
+  const isGeneralOnly =
+    !isImmunization &&
+    !isFamilyPlanning &&
+    !isMaternal &&
+    !isTb;
+
+  // The Treatment step has ONE "Treatment / Action Taken" field. It keeps writing
+  // exactly what each selected program's own field wrote before (Maternal also
+  // mirrors into `medication`, as it always did), so saved
+  // records and drafts keep the same shape. The first binding - the primary
+  // program's - supplies the value that is displayed.
+  const treatmentBindingFor = {
+    Maternal: {
+      value: maternalData.treatment,
+      set: (value) => {
+        handleMaternalChange("treatment", value);
+        setMedication(value);
+      },
+    },
+    "Family Planning": {
+      value: familyPlanningData.actionTaken,
+      set: (value) => handleFamilyPlanningChange("actionTaken", value),
+    },
+  };
+  const programTreatmentBindings = programFormSteps
+    .map((step) => treatmentBindingFor[step.classification])
+    .filter(Boolean);
+  const treatmentBindings = isGeneralOnly || programTreatmentBindings.length === 0
+    ? [{ value: medication, set: setMedication }]
+    : programTreatmentBindings;
+  const treatmentValue = medication || treatmentBindings[0]?.value || "";
+  const handleTreatmentChange = (value) => {
+    clearValidationError("actionsTaken");
+    setMedication(value);
+    treatmentBindings.forEach((binding) => binding.set(value));
+  };
+
+  // Step 3's Actions Taken / Treatment: the same fields, handlers and
+  // items.dispense gate as before, moved from Physical Examination. Flat
+  // (no cards): NextStepsSection draws the section heading and rules.
+  const canDispenseItems = (currentUser?.permissions || []).includes("items.dispense");
+  const treatmentSlot = (
+    <LockedFormContent locked={patientGateLocked}>
+      <div className="space-y-4">
+        {treatmentBindings.length > 0 ? (
+          <FieldTextarea
+            label="Actions Taken"
+            name="actionsTaken"
+            required
+            error={validationErrors.actionsTaken}
+            value={treatmentValue}
+            onChange={(event) => handleTreatmentChange(event.target.value)}
+            placeholder="Treatment, wound care, counseling, or other interventions..."
+            rows={4}
+          />
+        ) : null}
+        {isFamilyPlanning && (
+          <FieldTextarea
+            label="Family Planning Medicines / Supplies"
+            value={familyPlanningData.medicinesSupplies}
+            onChange={(event) =>
+              handleFamilyPlanningChange(
+                "medicinesSupplies",
+                event.target.value,
+              )
+            }
+            placeholder="List items dispensed..."
+            rows={3}
+          />
+        )}
+        <div>
+          <p className={TREATMENT_LABEL_CLASS}>Medicines / Supplies Dispensed</p>
+          <p className="mb-2 text-xs text-[#6B7280]">
+            Optional medicines or supplies given from BHC inventory during this visit.
+          </p>
+          <DispensedMedicinesSection
+            inventory={bhcMedicineInventory}
+            value={dispensedMedicines}
+            onChange={handleDispensedMedicinesChange}
+            pendingDraftError={validationErrors.dispensedMedicines}
+            onPendingDraftChange={handlePendingDispensedMedicineChange}
+            disabled={!canDispenseItems}
+            loading={bhcMedicineInventoryLoading}
+            error={bhcMedicineInventoryError}
+            onRetry={() =>
+              setBhcMedicineInventoryReloadKey((key) => key + 1)
+            }
+          />
+        </div>
+      </div>
+    </LockedFormContent>
+  );
+
+  const renderCarePlanScreen = () => nextScreen === MONITORING_STEP ? (
+    <LockedFormContent locked={patientGateLocked}>
+      {monitoringDetailErrors.length > 0 && (
+        <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
+          {monitoringDetailErrors.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
+      <MonitoringDetailsForms
+        detailKeys={monitoringDetailKeys}
+        tbData={tbData}
+        onTbDataChange={(next) => {
+          setTbData(next);
+          setValidationErrors((current) => Object.fromEntries(
+            Object.entries(current).filter(([key]) => !key.startsWith("tbData.")),
+          ));
+        }}
+        recordId={null}
+      />
+    </LockedFormContent>
+  ) : (
+    <div className="ehr-consult__care-plan">
+    <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
+    <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
+    <NextStepsSection
+      selectedPrograms={selectedPrograms}
+      followUpSchedules={followUpSchedules}
+      serviceReferrals={namedServiceReferrals}
+      onServiceNextAction={handleServiceNextAction}
+      onServiceFollowUp={handleServiceFollowUp}
+      continuedMonitorings={continuedMonitorings}
+      startingConditions={startingConditions}
+      stops={monitoringStops}
+      referrals={monitoringReferrals}
+      errors={validationErrors}
+      disabled={conditionFieldsLocked}
+      onStopChange={(monitoringId, reason) => {
+        clearValidationError(`carePlanStop.${monitoringId}`);
+        setMonitoringStops((current) => setMonitoringStop(current, monitoringId, reason));
+      }}
+      onMonitoringDecision={(monitoringId, decision) => {
+        clearValidationError(`carePlanStop.${monitoringId}`);
+        const next = setMonitoringDecision({ stops: monitoringStops, referrals: monitoringReferrals }, monitoringId, decision);
+        setMonitoringStops(next.stops);
+        setMonitoringReferrals(next.referrals);
+      }}
+      monitoringNotes={monitoringNotes}
+      notesLabel={monitoringNotesLabel}
+      notesPlaceholder={monitoringNotesPlaceholder}
+      onMonitoringNotesChange={setMonitoringNotes}
+      treatmentSlot={treatmentSlot}
+      nextActions={effectiveNextActions}
+      conditionReferred={conditionReferrals.length > 0}
+      suggestions={followUpSuggestions}
+      referral={{ reason: referralForm.reasonForReferral, urgencyLevel: referralForm.urgencyLevel }}
+      referralFacilityField={
+        <ReferralFacilityField
+          label="Refer to RHU"
+          value={receivingRhuId}
+          error={validationErrors.receivingRhuId}
+          disabled={conditionFieldsLocked}
+          urgencyLevel={referralForm.urgencyLevel}
+          onChange={(id) => {
+            clearValidationError("receivingRhuId");
+            setReceivingRhuId(id);
+          }}
+        />
+      }
+      onReferralChange={(field, value) =>
+        handleReferralFormChange(field === "reason" ? "reasonForReferral" : field, value)
+      }
+      coverage={referralCoverage}
+      acknowledgmentRequired={referralAcknowledgmentRequired}
+      referralAcknowledged={referralAcknowledged}
+      onAcknowledgeChange={(checked) => {
+        clearValidationError("referralAcknowledged");
+        setReferralAcknowledgment({ covers: referralCoversKey, checked });
+      }}
+      earlierDraftNotes={assessmentNotes}
+      earlierDraftContinued={earlierDraftContinued}
+    />
+    </div>
+  );
+
+
+  const autosaveStatus = canSaveCurrentDraft ? (
+    <span role="status" aria-live="polite" className="text-xs text-gray-500">
+      {draftSyncStatus === "syncing" ? "Syncing..." : draftAutosaveStatus === "saving" ? "Saving..." : draftAutosaveStatus === "saved" ? "Saved automatically" : ""}
+    </span>
+  ) : null;
+
+  // ---- Consultation workspace (screen 2) ---------------------------------
+  const inConsultationWorkspace =
+    [WIZARD_FORM, WIZARD_NEXT, WIZARD_REVIEW].includes(wizardPhase);
+  const isReviewStep = wizardPhase === WIZARD_REVIEW;
+  const isFirstConsultationStep =
+    wizardPhase === WIZARD_FORM &&
+    activeFormStep === INTERVIEW_STEP;
+
+  // Interview is the first step: Back returns to the fixed patient's profile,
+  // while the leave guard flushes the current draft.
+  function handleWorkspacePrevious() {
+    handleStepBack();
+  }
+
+  function handleWorkspaceContinue() {
+    if (activeDraft?.reviewState === "review" && !canFinalize) return;
+    if (wizardPhase === WIZARD_FORM) return handleFormStepNext();
+    if (wizardPhase === WIZARD_NEXT) return handleNextActionContinue();
+    return handleSave();
+  }
+
+  // Informant 422 lines stay with the Informant card. Similar Illness lines
+  // join Family History because that question now lives in that section.
+  const informantErrors = visitAnswerErrorMessages(
+    Object.fromEntries(Object.entries(validationErrors).filter(([key]) => key.startsWith("informant"))),
+  );
+  const similarIllnessErrors = historyErrorMessages(
+    Object.fromEntries(Object.entries(validationErrors).filter(([key]) => key.startsWith("similar_illness"))),
+    { withSection: true },
+  );
+  const recoveredBackground = canViewBackground
+    ? legacyBackgroundRecovery(backgroundUpdate, selectedPatient?.medicalBackground)
+    : null;
+  const leftoverEducationRecovery = recoveredBackground?.removedText?.length ? recoveredBackground : null;
+  const backgroundUpdateErrors = Object.fromEntries(
+    Object.entries(validationErrors).filter(([key]) => key.startsWith("background_update")),
+  );
+  const historyPanelErrors = canViewBackground
+    ? [
+        ...historyErrorMessages(backgroundUpdateErrors, { withSection: true }).filter((error) => error.section !== "obstetric"),
+        ...similarIllnessErrors,
+      ]
+    : [];
+  const obstetricHistoryErrors = canViewBackground
+    ? historyErrorMessages(backgroundUpdateErrors, { withSection: true }).filter((error) => error.section === "obstetric")
+    : [];
+  const interviewHistorySections = ["family", "medical", "social"];
+  const reviewHistorySections = isMaternal && sectionVisibility(selectedPatient, dateOfVisit || new Date()).obstetric !== "hidden"
+    ? [...interviewHistorySections, "obstetric"]
+    : interviewHistorySections;
+  const legacyRecoveryErrors = backgroundUpdateErrorMessages(validationErrors);
+
+  function clearErrorsStartingWith(prefixes) {
+    setValidationErrors((current) => {
+      const keys = Object.keys(current).filter((key) => prefixes.some((prefix) => key.startsWith(prefix)));
+      if (!keys.length) return current;
+      const next = { ...current };
+      keys.forEach((key) => delete next[key]);
+      return next;
+    });
+  }
+
+  function keepLegacyBackground() {
+    setLegacyRecoveryAcknowledged(true);
+    clearErrorsStartingWith(["background_update.recovery"]);
+    setLegacyRecoveryExpanded(false);
+  }
+
+  function correctLegacyBackground(section, value) {
+    if (workspaceLocked) return;
+    setBackgroundUpdate((current) => correctLegacySection(current, section, value));
+    setLegacyRecoveryAcknowledged(false);
+    clearErrorsStartingWith([`background_update.sections.${section}`, "background_update.recovery"]);
+  }
+
+  // Discarding staged clinical changes is confirmed on its own.
+  function confirmDiscardLegacyBackground() {
+    setNoticeModal({
+      title: "Discard Patient History Changes?",
+      message:
+        "The Patient History changes from the earlier draft will be removed from this consultation and will not be saved. The Patient Background stays as it is.",
+      actions: [
+        {
+          label: "Discard Changes",
+          variant: "destructive",
+          onClick: () => {
+            setBackgroundUpdate(resolveLegacyRecovery(backgroundUpdate, "discard").update);
+            setLegacyRecoveryAcknowledged(true);
+            setBackgroundConflicts(null);
+            clearErrorsStartingWith(["background_update"]);
+            setNoticeModal(null);
+          },
+        },
+        { label: "Keep Them", variant: "secondary", onClick: () => setNoticeModal(null) },
+      ],
+    });
+  }
+
+  // Heading for the current screen. The wizard still knows its position; that
+  // position is simply not shown while the progress UI is switched off.
+  const stepSubtitles = {
+    [INTERVIEW_STEP]: canViewBackground
+      ? "Record the patient's reason for visit, present illness, and who gave the history."
+      : "Record the patient's reason for visit and present illness.",
+    [ASSESSMENT_STEP]:
+      "Record the vital signs and examination findings for this visit.",
+    [NEXT_STEP]:
+      "Record each health concern, optional reporting classification, and its own care outcome.",
+    [OUTCOME_STEP]:
+      "Record each health concern, optional reporting classification, and its own care outcome.",
+    [MONITORING_STEP]:
+      "Details a monitored condition needs beyond this consultation record.",
+    [REVIEW_STEP]: "Confirm the consultation details below before saving.",
+  };
+  // Every screen keeps its own heading whatever programs are selected; only
+  // the Program / Service Details step shows a program-specific title.
+  const stepHeading = resolveStepHeading({
+    currentGlobalStepKey,
+    activeProgramStep,
+    steps: consultationSteps,
+    subtitles: stepSubtitles,
+  });
+  // The fixed right-hand column changes with the step: Barangay Health Services
+  // (the visit's service context) is chosen during Interview;
+  // Physical Examination shows the body preview; Care and Outcome shows a
+  // read-only list of this consultation's conditions grouped by outcome.
+  const sidePanelAllowed =
+    wizardPhase === WIZARD_FORM &&
+    !(activeDraft?.reviewState === "review" && !canFinalize);
+  const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
+  const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
+  const showSidePanel = showProgramPanel || showBodyPanel;
+  // Same lock the whole form used to sit under: a review awaiting a finalizer
+  // who cannot correct records is read-only.
+  const programPanel = (
+    <ConsultationProgramPanel
+      programs={wizardPrograms}
+      selected={selectedPrograms}
+      primary={primaryProgram}
+      onSelect={handleProgramSelect}
+      onPrimaryChange={(key) => {
+        setPrimaryProgram(key);
+        setHealthRecordType(PROGRAM_CLASSIFICATIONS[key]);
+      }}
+    />
+  );
+
+  const stepIndicator = (
+    <ConsultationStepHeading
+      title={stepHeading.title}
+      subtitle={stepHeading.subtitle}
+    />
+  );
+  // The main consultation screens share a header above their clinical sheets.
+  // Other headings stay in the form; empty slots prevent duplicate titles.
+  const stepHeadingSlot = <></>;
+
+  // Read-only recap for Review & Save, built from the page's existing state.
+  const vitalsSummary = [
+    (systolicBp || diastolicBp) &&
+      `BP ${systolicBp || "?"}/${diastolicBp || "?"} mmHg`,
+    pulse && `Pulse ${pulse} bpm`,
+    temp && `Temp ${temp}`,
+    spo2 && `SpO2 ${spo2}%`,
+    weight && `Weight ${weight} kg`,
+    height && `Height ${height} cm`,
+    fbs && `FBS ${fbs} mg/dL`,
+  ]
+    .filter(Boolean)
+    .join(" \u00b7 ");
+  // Three compact groups (Patient Interview, Physical Examination, Medication,
+  // Treatment & Next Steps), each with an Edit shortcut back to the screen that
+  // owns it. Background updates and service forms follow the Interview group
+  // with their own Edit links. Every value is read from the page's own state and
+  // compactReviewSections drops the rows and groups with no value.
+  const reviewSections = compactReviewSections([
+    {
+      key: INTERVIEW_STEP,
+      title: "Patient Interview",
+      stepKey: INTERVIEW_STEP,
+      rows: [
+        patientReviewRow({ name: getPatientName(selectedPatient), id: selectedPatientId }),
+        { label: "Chief Complaint", value: chiefComplaint },
+        { label: "History of Present Illness", value: summaryOfPresentIllness },
+        // The visit questions; only the answered ones (unanswered are left out).
+        ...(canViewBackground ? visitAnswerRows({ informant, similarIllness }) : []),
+      ],
+      content: canViewBackground ? (
+        <PatientHistoryReview
+          background={selectedPatient?.medicalBackground}
+          update={backgroundUpdate}
+          visibleSections={reviewHistorySections}
+          omitFields={infantHiddenSocialKeys(selectedPatient, dateOfVisit, { includeBhcProfileFields: true })}
+        />
+      ) : null,
+    },
+    // Present only when a program was chosen. Edit opens the first program
+    // form; Next from there walks the rest in order.
+    ...programFormSteps.map(step => ({
+      key: step.key, title: step.label, stepKey: step.key,
+      rows: programReviewRows({
+        Maternal: maternalReviewFields({ ...maternalData, riskAssessment: applyRiskFlags(maternalData.riskAssessment, riskFlags) }),
+        Immunization: { vaccineEntries: immunizationVaccineEntries, breastfeedingMonitoring: immunizationData.breastfeedingMonitoring },
+        "Family Planning": familyPlanningData,
+        "TB DOTS / TB Monitoring": tbData,
+      }[step.classification]),
+    })),
+    {
+      key: ASSESSMENT_STEP,
+      title: "Physical Examination",
+      stepKey: ASSESSMENT_STEP,
+      rows: [
+        { label: "Vital Signs", value: vitalsSummary || EMPTY_VITALS_REMINDER },
+        { label: "General Examination Findings", value: physicalExam },
+        { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
+        { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
+      ],
+    },
+    {
+      key: NEXT_STEP,
+      title: "Assessment & Care Plan",
+      stepKey: NEXT_STEP,
+      rows: [
+        ...conditionCardReviewRows(sharedConditionEntries(reportingEntries), followUpSchedules),
+        ...linkedScheduledFollowUpReviewRows(continuedFollowUps),
+        ...continuedConcernReviewRows(continuedFollowUps.filter((task) => concernTaskIds.includes(Number(task.id))), continuedDecisions),
+        { label: "Actions Taken", value: treatmentValue },
+        { label: "Medicines / Supplies", value: dispensedMedicines.map(item => item.medicineName + " · " + item.quantity + " " + item.unit + " · " + (item.confirmedGiven ? "Dispensed/Given" : "Planned")).join("\n") },
+        // Continued, starting and stopped monitoring only (no concerns, no
+        // referral / follow-up rows: those come from nextStepsReviewRows).
+        ...carePlanReviewRows({
+          continuedFollowUps,
+          continuedMonitorings,
+          startingConditions,
+          stops: monitoringStops,
+          referrals: monitoringReferrals,
+        }).filter((row) => row.label !== "Next Steps"),
+        // The Additional Clinical Notes entered with Condition Monitoring.
+        ...(continuedMonitorings.length || startingConditions.length
+          ? [{ label: "Monitoring Notes", value: monitoringNotes }]
+          : []),
+        // BHC Follow-up, RHU Referral (also for a monitoring referral alone),
+        // Covers, Reporting and, for a converted draft, Earlier draft notes.
+        // The continued follow-ups are listed above.
+        ...nextStepsReviewRows({
+          state: { ...effectiveNextActions, referToRhu: needsReferral, bhcFollowUp: scheduledReturns.length > 0 },
+          followUp: {
+            date: followUpDate && formatLongDate(followUpDate, ""),
+            time: followUpTime && formatDisplayTime(followUpTime),
+            reason: followUpReason,
+          },
+          followUpSchedules: scheduledReturns.map((item) => ({
+            ...item,
+            date: item.date && formatLongDate(item.date, item.date),
+            time: item.time && formatDisplayTime(item.time),
+          })),
+          referral: {
+            priority: normalizeAttention(referralForm.urgencyLevel),
+            reason: referralForm.reasonForReferral,
+          },
+          coverage: referralCoverage,
+          entries: [],
+          continuedLink: null,
+          earlierDraftNotes: assessmentNotes,
+          earlierDraftContinued,
+        }),
+      ],
+    },
+    ...(monitoringDetailKeys.includes("tb_dots")
+      ? [{
+          key: MONITORING_STEP,
+          title: "Monitoring Details · TB-DOTS Treatment Card",
+          stepKey: MONITORING_STEP,
+          rows: programReviewRows(tbData),
+        }]
+      : []),
+  ]);
+  const reviewErrorMessages = Object.values(validationErrors).filter(Boolean);
+
+  /**
+   * Walk one screen back through the wizard.
+   *
+   * Every supported entry opens on the form with patient context already fixed,
+   * so Back from the first screen leaves the workspace.
+   */
+  function goToWizardPhase(phase) {
+    closeDateTimePopovers();
+    setWizardPhase(phase);
+  }
+
+  function handleStepBack() {
+    closeDateTimePopovers();
+
+    if (wizardPhase === WIZARD_REVIEW) {
+      goToStepKey(reviewBackTarget(monitoringDetailKeys));
+      return;
+    }
+    if (wizardPhase === WIZARD_NEXT) {
+      goToStepKey(nextPhaseBackTarget(nextScreen) || formSequence[formSequence.length - 1]);
+      return;
+    }
+    if (wizardPhase === WIZARD_FORM) {
+      handleFormStepPrevious();
+      return;
+    }
+
+    navigate(`${basePath}/patients/${selectedPatientId}`);
+  }
+
+  return (
+    <DashboardLayout role={userRole} title={pageTitle}>
+      <div className={`ehr-consult${inConsultationWorkspace ? " ehr-consult--pinned" : ""}`}>
+      <style>{keyframes}</style>
+      <UnfinishedConsultationModal
+        draft={draftDecision}
+        selectedPatientName={getPatientName(selectedPatient)}
+        busy={draftDecisionBusy || Boolean(draftResumingId)}
+        error={draftDecisionError}
+        onCancel={closeDraftDecision}
+        onDiscardAndStart={discardConflictingDraftAndStart}
+        onContinue={continueConflictingDraft}
+      />
+
+
+
+      <div className="ehr-consult__stage">
+      <ConsultationWorkspaceBody>
+      {inConsultationWorkspace && [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, REVIEW_STEP].includes(currentStepKey) && (
+        <header className={`ehr-consult__header${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__header--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__header--care-plan" : currentStepKey === REVIEW_STEP ? " ehr-consult__header--review" : ""}`}>
+          {stepIndicator}
+        </header>
+      )}
+      {/* Barangay Health Services (Interview step) or the Body Preview (Assessment
+          step) lives in a fixed column to the right of the form.
+          From 1024px this column stays put and only the form column
+          scrolls below the shared step header (see consultation-ehr.css); below that everything
+          stacks and the page scrolls. Notices scroll with the form and sit
+          outside the fieldset so a locked review does not disable them. */}
+      <div className={`ehr-consult__grid${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__grid--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__grid--care-plan" : ""}${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:items-start lg:gap-4" : ""}`}>
+      <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
+      {inConsultationWorkspace && ![NEXT_STEP, INTERVIEW_STEP, ASSESSMENT_STEP, REVIEW_STEP].includes(currentStepKey) && stepIndicator}
+      {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
+      {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
+      {draftMedicineWarnings.length > 0 && (
+        <div
+          className="mb-4 ml-0 mr-auto flex w-full max-w-7xl items-start gap-3 rounded-none border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900"
+          role="status"
+        >
+          <AlertCircle size={17} className="mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-semibold">Review resumed medicine selections</p>
+            {draftMedicineWarnings.map((warning) => (
+              <p key={warning} className="mt-1 text-xs leading-5 text-amber-800">
+                {warning}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {leftoverEducationRecovery && (isReviewStep || legacyRecoveryExpanded || isFirstConsultationStep) && (
+        <LegacyBackgroundRecoveryPanel
+          recovery={leftoverEducationRecovery}
+          errors={legacyRecoveryErrors}
+          expanded={isReviewStep || legacyRecoveryExpanded}
+          disabled={workspaceLocked}
+          canKeep={!workspaceLocked || canFinalize}
+          update={backgroundUpdate}
+          patient={selectedPatient}
+          conditions={patientConditionGroups}
+          today={dateOfVisit || new Date()}
+          onCorrect={correctLegacyBackground}
+          onKeep={keepLegacyBackground}
+          onDiscard={confirmDiscardLegacyBackground}
+          onShow={() => setLegacyRecoveryExpanded(true)}
+        />
+      )}
+      <fieldset disabled={workspaceLocked} className="min-w-0">
+      {continuedCareLoading && !isFirstConsultationStep ? (
+        <p role="status" aria-live="polite" className="ml-0 mr-auto flex w-full max-w-5xl items-center gap-2 border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-6 text-sm text-[#374151]">
+          <Loader2 size={16} className="animate-spin text-[#DC2626]" aria-hidden="true" />
+          Loading monitoring records…
+        </p>
+      ) : wizardPhase === WIZARD_NEXT ? (
+        <NextActionStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          showVisitOverview={nextScreen === MONITORING_STEP}
+          unboxed={nextScreen === NEXT_STEP}
+          saving={false}
+          saveLabel="Save Record"
+          savingLabel="Saving health record..."
+          title=""
+          subtitle=""
+          indicator={stepHeadingSlot}
+        >
+          {renderCarePlanScreen()}
+        </NextActionStep>
+      ) : wizardPhase === WIZARD_REVIEW ? (
+        <ConsultationReviewStep
+          visitDate={wizardVisitDate}
+          visitTime={wizardVisitTime}
+          sections={reviewSections}
+          errors={reviewErrorMessages}
+          onEditStep={key => {
+            if (activeDraft?.reviewState === "review" && !(currentUser?.permissions || []).includes("records.correct")) return;
+            goToStepKey(key);
+          }}
+          indicator={stepHeadingSlot}
+          notice={canViewBackground && backgroundConflicts?.length ? (
+            <BackgroundConflictPanel
+              key={backgroundConflicts.map((conflict) => `${conflict.section}:${conflict.revision}`).join("|")}
+              conflicts={backgroundConflicts}
+              update={backgroundUpdate}
+              onApply={applyBackgroundConflictChoices}
+              hideMovedSocialFields
+            />
+          ) : null}
+        />
+      ) : (
+      <form
+        onSubmit={handleFormStepNext}
+        noValidate
+        className="relative ml-0 mr-auto w-full max-w-5xl pb-16"
+      >
+        {isFirstConsultationStep ? (
+          // Patient Interview: CC / HPI, informant, similar illness, then
+          // Family → Past Medical → Personal & Social (staged until finalize).
+          <section className={CONSULTATION_CARD_CLASS}>
+            {/* HPI is optional. */}
+            <FormSection title="Chief Complaint & History of Present Illness" subtitle="Why the patient is here today, in their own words and yours." delay={3}>
+            <div className="grid gap-4 @xl:grid-cols-2">
+              <div>
+                <FieldTextarea label="Chief Complaint" required name="chiefComplaint" error={validationErrors.chiefComplaint} value={chiefComplaint} onChange={event => { clearValidationError("chiefComplaint"); setChiefComplaint(event.target.value); }} placeholder="Describe the patient's chief complaint..." rows={3} />
+                <p className="mt-1 text-xs text-[#6B7280]">Reason for the visit — symptoms or a service, e.g. Initial prenatal checkup.</p>
+              </div>
+              <FieldTextarea label="History of Present Illness" name="summaryOfPresentIllness" error={validationErrors.summaryOfPresentIllness} value={summaryOfPresentIllness} onChange={event => { clearValidationError("summaryOfPresentIllness"); setSummaryOfPresentIllness(event.target.value); }}  rows={3} />
+            </div>
+            </FormSection>
+
+            {/* Per visit, saved on the record; they never change the background. */}
+            {canViewBackground && (
+              <div className="mt-4">
+                <FormSection title="Informant" subtitle="Who gave this history at this visit." delay={4}>
+                  <InterviewVisitQuestions
+                    informant={informant}
+                    onInformantChange={(next) => { clearErrorsStartingWith(["informant"]); setInformant(next); }}
+                    errors={informantErrors}
+                  />
+                </FormSection>
+              </div>
+            )}
+
+            {canViewBackground && (
+              <div className="mt-4">
+                <PatientHistoryPanel
+                  key={selectedPatientId}
+                  patient={selectedPatient}
+                  background={selectedPatient?.medicalBackground}
+                  update={backgroundUpdate}
+                  onUpdateChange={(next) => {
+                    clearErrorsStartingWith(["background_update"]);
+                    setBackgroundUpdate(next);
+                  }}
+                  informant={informant}
+                  onInformantChange={setInformant}
+                  similarIllness={similarIllness}
+                  onSimilarIllnessChange={(next) => {
+                    clearErrorsStartingWith(["similar_illness"]);
+                    setSimilarIllness(next);
+                  }}
+                  householdEnvironment={selectedPatient?.householdEnvironment}
+                  today={dateOfVisit || new Date()}
+                  layout="section"
+                  loading={selectedPatientLoading}
+                  showGeneral={false}
+                  sections={interviewHistorySections}
+                  showSimilarIllness
+                  showEducationAndOccupation={false}
+                  inline
+                  errors={historyPanelErrors}
+                  fieldErrors={backgroundUpdateErrors}
+                  initialSection="family"
+                />
+              </div>
+            )}
+
+          </section>
+        ) : (
+        <div className={CONSULTATION_CARD_CLASS}>
+        {showMaternalPatientWarning && activeFormStep === programStepKey("Maternal") && (
+          <div className="anim-fade-up" style={stagger(2)}>
+            <div className="pb-4">
+              <MaternalClassificationWarning />
+            </div>
+          </div>
+        )}
+
+
+        {/* ImmunizationVisitFields renders its own titled sections, so it is
+            placed directly in the card rather than inside a FormSection. */}
+        {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
+          <div className="anim-fade-up" style={stagger(2)}>
+            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label><div className="@xl:col-span-3"><MedicineAllocationFields medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))} quantity={entry.inventoryQuantity} value={entry} disabled={!(currentUser?.permissions || []).includes("items.dispense")} onChange={next => { updateVaccineInventory(index, "allocations", next.allocations); updateVaccineInventory(index, "override_reason", next.override_reason); }} /></div></fieldset>)}</section>}
+            <ImmunizationVisitFields
+              vaccineOptions={epiVaccineOptions}
+              birthDate={patientBirthDate}
+              visitDate={dateOfVisit}
+              entries={immunizationVaccineEntries}
+              epiHistoryByCode={epiHistoryByCode}
+              epiCompletion={epiCompletion}
+              epiHistoryLoading={epiHistoryLoading}
+              epiHistoryError={epiHistoryError}
+              temperature={temp}
+              pulse={pulse}
+              spo2={spo2}
+              weight={weight}
+              height={height}
+              breastfeedingMonitoring={immunizationData.breastfeedingMonitoring}
+              breastfeedingMonths={BREASTFEEDING_MONTHS}
+              consultationNotes={consultationNotes}
+              hideBasicMonitoring
+              errors={validationErrors}
+              onTemperatureChange={setTemp}
+              onPulseChange={setPulse}
+              onSpo2Change={setSpo2}
+              onWeightChange={setWeight}
+              onHeightChange={setHeight}
+              onBreastfeedingChange={handleBreastfeedingChange}
+              onToggleVaccine={handleVaccineToggle}
+              onNotesChange={setConsultationNotes}
+              medicinesSlot={null}
+            />
+          </div>
+        )}
+
+
+        {!patientGateLocked && isMaternal && !selectedPatientIsMale && showProgramBlock("Maternal") && (
+          <>
+            {showMaternalPatientWarning && <MaternalClassificationWarning />}
+            <PrenatalAssessmentForm
+              maternalData={maternalData}
+              expectedDeliveryDate={expectedDeliveryDate}
+              aog={aog}
+              onMaternalChange={handleMaternalChange}
+              onNestedChange={handleNestedMaternalChange}
+              onRiskChange={handleRiskAssessmentChange}
+              onExpectedDeliveryDateChange={setExpectedDeliveryDate}
+              onAogChange={setAog}
+              locked={patientGateLocked}
+              patient={selectedPatient}
+              background={selectedPatient?.medicalBackground}
+              backgroundUpdate={backgroundUpdate}
+              onBackgroundUpdateChange={(next) => {
+                clearErrorsStartingWith(["background_update"]);
+                setBackgroundUpdate(next);
+              }}
+              historyErrors={obstetricHistoryErrors}
+              fieldErrors={backgroundUpdateErrors}
+              includeObstetricHistory={canViewBackground}
+              prenatalHistory={prenatalHistory}
+            />
+          </>
+        )}
+
+        {!patientGateLocked && isFamilyPlanning && showProgramBlock("Family Planning") && (
+          <FormSection
+            title="Family Planning Details"
+            subtitle="Record client type, method, and visit details."
+            delay={3}
+          >
+            <LockedFormContent locked={patientGateLocked}>
+              <div className="grid gap-4 @xl:grid-cols-2">
+                <FieldSelect
+                  label="Type of Client"
+                  required
+                  value={familyPlanningData.clientType}
+                  onChange={(event) =>
+                    handleFamilyPlanningChange("clientType", event.target.value)
+                  }
+                >
+                  <option value="">Select type of client...</option>
+                  {FP_CLIENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </FieldSelect>
+                <RadioChoiceGroup
+                  label="Source"
+                  name="familyPlanningSource"
+                  inline
+                  value={familyPlanningData.source}
+                  options={FP_SOURCE_OPTIONS}
+                  onChange={(value) =>
+                    handleFamilyPlanningChange("source", value)
+                  }
+                />
+
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#374151]">Previous Method</p>
+                  <p className="text-sm text-[#111827]">{historicalFpMethod.label || "Not recorded"}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                    From Patient History. This visit records Method Used / Accepted.
+                  </p>
+                </div>
+
+                <FieldSelect
+                  label="Method Used / Accepted"
+                  required
+                  name="familyPlanningMethodUsed"
+                  error={validationErrors.familyPlanningMethodUsed}
+                  value={familyPlanningData.methodUsed}
+                  onChange={(event) => {
+                    clearValidationError("familyPlanningMethodUsed");
+                    handleFamilyPlanningChange(
+                      "methodUsed",
+                      event.target.value,
+                    );
+                  }}
+                >
+                  <option value="">Select method used / accepted...</option>
+                  {applicableFamilyPlanningMethods.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                  {/* A stored method that the current filter excludes stays
+                      selectable so editing a record does not blank it. */}
+                  {familyPlanningData.methodUsed &&
+                    !applicableFamilyPlanningMethods.includes(
+                      familyPlanningData.methodUsed,
+                    ) && (
+                      <option key={familyPlanningData.methodUsed}>
+                        {familyPlanningData.methodUsed}
+                      </option>
+                    )}
+                </FieldSelect>
+                {selectedPatientIsMale && (
+                  <p className="text-[11px] leading-relaxed text-gray-500 sm:col-span-2">
+                    This patient is recorded as male, so only male-applicable
+                    methods are listed.
+                  </p>
+                )}
+
+              </div>
+            </LockedFormContent>
+          </FormSection>
+        )}
+
+        {/* Clinical Assessment: one screen for every consultation. */}
+        {activeFormStep === ASSESSMENT_STEP && (
+          <>
+            <FormSection delay={3}>
+              <LockedFormContent locked={patientGateLocked}>
+                {/* Vital Signs: recorded once, here. Program forms do not repeat
+                    them. Three columns on desktop: BP | Pulse | SpO2, then
+                    Weight | Height | Temperature, then BMI. */}
+                <div>
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Vital Signs</h3>
+                  <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                    <BpInputGroup
+                      name="bloodPressure"
+                      systolic={systolicBp}
+                      diastolic={diastolicBp}
+                      error={validationErrors.bloodPressure || validationErrors.systolicBp || validationErrors.diastolicBp}
+                      onSystolicChange={(value) => changeVital("systolicBp", value, setSystolicBp)}
+                      onDiastolicChange={(value) => changeVital("diastolicBp", value, setDiastolicBp)}
+                      onSystolicBlur={() => blurVital("systolicBp")}
+                      onDiastolicBlur={() => blurVital("diastolicBp")}
+                    />
+                    <FieldInput label="Pulse Rate" name="pulse" error={validationErrors.pulse} type="number" value={pulse} onChange={event => changeVital("pulse", event.target.value, setPulse)} onBlur={() => blurVital("pulse")} placeholder="bpm" />
+                    <FieldInput label="SpO₂" name="spo2" error={validationErrors.spo2} type="number" value={spo2} onChange={event => changeVital("spo2", event.target.value, setSpo2)} onBlur={() => blurVital("spo2")} placeholder="%" />
+                    <FieldInput label="Weight" name="weight" error={validationErrors.weight} type="number" value={weight} onChange={event => changeVital("weight", event.target.value, setWeight)} onBlur={() => blurVital("weight")} placeholder="kg" />
+                    <FieldInput label="Height" name="height" error={validationErrors.height} type="number" value={height} onChange={event => changeVital("height", event.target.value, setHeight)} onBlur={() => blurVital("height")} placeholder="cm" />
+                    <FieldInput label="Temperature" name="temp" error={validationErrors.temp} value={temp} onChange={event => changeVital("temp", event.target.value, setTemp)} onBlur={() => blurVital("temp")} placeholder="°C" />
+                    {shouldShowBmiDisplay(selectedPatient, dateOfVisit) && (
+                      <BmiOutputField weight={weight} height={height} />
+                    )}
+                  </div>
+                  {areVitalSignsBlank(currentVitalSigns()) && (
+                    <p className="mt-2 text-xs leading-relaxed text-[#6B7280]">{EMPTY_VITALS_REMINDER}</p>
+                  )}
+                  <div className="mt-4">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#374151]">Additional Measurements</p>
+                    <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
+                      <FieldInput label="Fasting Blood Sugar (FBS) (mg/dL)" name="fbs" data-field="vital_signs.fbs" error={validationErrors["vital_signs.fbs"] || validationErrors.fbs} type="number" inputMode="decimal" min={0} max={1000} step="any" value={fbs} onChange={event => changeVital("fbs", event.target.value, setFbs)} onBlur={() => blurVital("fbs")} placeholder="mg/dL" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                  <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Examination Findings</h3>
+                  <p className="mb-3 text-xs leading-relaxed text-[#6B7280]">
+                    Visit-level, non-localized findings (appearance, hydration, respiratory effort, etc.). Record location-specific findings on the body map.
+                  </p>
+                  <FieldTextarea
+                    label="General Examination Findings"
+                    value={physicalExam}
+                    onChange={(event) => setPhysicalExam(event.target.value)}
+                    placeholder="Appearance, hydration, respiratory effort, and other non-localized findings for this visit..."
+                    rows={4}
+                  />
+                </div>
+                <div className="mt-6 border-t border-[#E5E7EB] pt-4">
+                  <BodyFindingsList
+                    findings={bodyFindings}
+                    readOnly={workspaceLocked}
+                    onEdit={(item) => {
+                      // Show the finding's side first; the dialog anchors to that side's dot.
+                      setBodyPreviewSide(item.side);
+                      setBodyFindingDialog({ region: item.region, side: item.side, anchor: null, editingId: item.id });
+                    }}
+                    onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
+                  />
+                </div>
+                <PreviousBodyFindings
+                  title="Previous Findings Reassessment"
+                  findings={previousBodyFindings}
+                  decisions={bodyFindingReassessments}
+                  onChange={changeBodyReassessments}
+                  loading={bodyHistoryQuery.isFetching}
+                  loadError={bodyHistoryQuery.isError}
+                  onRefresh={() => bodyHistoryQuery.refetch()}
+                  errors={validationErrors}
+                  readOnly={workspaceLocked}
+                />
+              </LockedFormContent>
+            </FormSection>
+
+          </>
+        )}
+
+
+
+
+        </div>
+        )}
+      </form>
+      )}
+      </fieldset>
+      </div>
+      {showSidePanel && (showProgramPanel ? (
+        <fieldset disabled={workspaceLocked} className="contents">
+          {programPanel}
+        </fieldset>
+      ) : (
+        // Outside the locked fieldset so the flip button still works in a
+        // locked review; the panel enforces readOnly itself.
+        <BodyPreviewPanel
+          findings={bodyFindings}
+          previousFindings={previousBodyFindings}
+          reassessments={bodyFindingReassessments}
+          onReassess={changeBodyReassessments}
+          reassessmentDisabled={bodyHistoryQuery.isFetching || bodyHistoryQuery.isError}
+          onChange={setBodyFindings}
+          readOnly={workspaceLocked || patientGateLocked}
+          dialog={bodyFindingDialog}
+          onDialogChange={setBodyFindingDialog}
+          sex={selectedPatient?.sex}
+          birthDate={getEffectivePatientBirthdate(selectedPatient)}
+          side={bodyPreviewSide}
+          onSideChange={setBodyPreviewSide}
+        />
+      ))}
+      </div>
+      </ConsultationWorkspaceBody>
+
+      {inConsultationWorkspace && (
+        <ConsultationActionBar
+          onPrevious={handleWorkspacePrevious}
+          previousLabel={
+            currentStepKey === INTERVIEW_STEP ? "Back to Patient" : "Previous"
+          }
+          // Autosave status stays visible throughout the consultation.
+          // Review, where Save Consultation is the one action that commits.
+          secondaryAction={autosaveStatus}
+          onContinue={handleWorkspaceContinue}
+          continueLabel={isReviewStep ? consultationFinalizeLabel({
+            canFinalize,
+            needsReferral,
+            doctorAvailable: referralDoctorAvailable,
+          }) : "Next"}
+          continueDisabled={activeDraft?.reviewState === "review" && !canFinalize}
+          continueBusy={isReviewStep ? saving : false}
+          continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
+        />
+      )}
+
+      </div>
+      <SuccessModal
+        open={Boolean(saveSuccess)}
+        title={
+          saveSuccess?.referralSubmitted && !saveSuccess?.awaitingDoctor
+              ? `Health Record and Referral${saveSuccess.submittedReferralCount === 1 ? "" : "s"} Submitted`
+            : "Health Record Saved"
+        }
+        description={
+          saveSuccess?.awaitingDoctor
+              ? `Consultation finalized. Referrals: ${saveSuccess.submittedReferralCount || 0} submitted; ${saveSuccess.heldReferralCount || 0} awaiting doctor availability. Authorized BHC staff will be notified to review and manually submit pending referrals when a doctor is available.`
+            : saveSuccess?.referralSubmitted
+              ? `The health record was saved with ${saveSuccess.submittedReferralCount || 1} referral${saveSuccess.submittedReferralCount === 1 ? "" : "s"} linked for RHU review.`
+              : "The record is available in this patient's Health Records tab. You can view it, print it, or open the patient profile."
+        }
+        onClose={() => navigate(userRole === "bhc" ? bhcPatientRecordsPath(selectedPatientId) : healthRecordsPath)}
+        actions={[
+          {
+            label: "View Health Record",
+            variant: "primary",
+            onClick: () =>
+              navigate(
+                saveSuccess?.recordId
+                  ? `${healthRecordsPath}/${saveSuccess.recordId}`
+                  : userRole === "bhc" ? bhcPatientRecordsPath(selectedPatientId) : healthRecordsPath,
+                userRole === "bhc" ? { state: buildPatientRecordDetailsState({ pathname: `/bhc/patients/${selectedPatientId}`, search: "?tab=records" }) } : undefined,
+              ),
+          },
+          ...(saveSuccess?.recordId
+            ? [
+                {
+                  label: "Print Record",
+                  onClick: () =>
+                    navigate(
+                      `${healthRecordsPath}/${saveSuccess.recordId}?print=1`,
+                      userRole === "bhc" ? { state: buildPatientRecordDetailsState({ pathname: `/bhc/patients/${selectedPatientId}`, search: "?tab=records" }) } : undefined,
+                    ),
+                },
+              ]
+            : []),
+          {
+            label: "Open Patient",
+            onClick: () => navigate(`${basePath}/patients/${selectedPatientId}`),
+          },
+          ...(saveSuccess?.awaitingDoctor
+            ? [
+                {
+                  label: "Open Waiting to Submit",
+                  onClick: () => navigate("/bhc/referrals?tab=waiting"),
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <NoticeModal
+        open={leaveBlocker.state === "blocked"}
+        title="Leave Consultation?"
+        message={leaveError || "Your progress is saved automatically and can be resumed later."}
+        closeDisabled={leavingConsultation || saving}
+        onClose={() => {}}
+        dismissOnBackdrop={false}
+        actions={[
+          { label: "Continue Consultation", variant: "secondary", disabled: leavingConsultation || saving,
+            onClick: () => { setLeaveError(""); leaveBlocker.reset?.(); } },
+          { label: leavingConsultation ? "Saving..." : "Leave & Resume Later", disabled: leavingConsultation || saving,
+            onClick: leaveAndResumeLater },
+        ]}
+      />
+      <NoticeModal
+        open={Boolean(noticeModal)}
+        title={noticeModal?.title}
+        message={noticeModal?.message}
+        buttonText={noticeModal?.buttonLabel || "OK"}
+        actions={
+          noticeModal
+            ? noticeModal.actions?.length
+              ? noticeModal.actions
+              : [
+                  {
+                    label: noticeModal.buttonLabel || "OK",
+                    variant: "primary",
+                    onClick: noticeModal.onClose,
+                  },
+                ]
+            : []
+        }
+        onClose={() => setNoticeModal(null)}
+      />
+      <ConfirmationModal
+        open={Boolean(prenatalEnrollmentModal)}
+        title={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).title}
+        description={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).description}
+        confirmText={prenatalEnrollmentModalCopy({ enrolled: prenatalEnrollmentModal === "continue" }).confirmText}
+        cancelText="Cancel"
+        tone="plain"
+        onConfirm={confirmPrenatalEnrollment}
+        onCancel={() => setPrenatalEnrollmentModal(null)}
+      />
+      {/* Prenatal age / height risk: states the fact only, no advice. */}
+      <NoticeModal
+        open={Boolean(riskModal)}
+        title="Pregnancy risk"
+        onClose={closeRiskModal}
+      >
+        <div className="space-y-2 text-[13px] leading-5 text-slate-600">
+          {riskModal?.items.map((item) => (
+            <p key={item.key}>{item.message}</p>
+          ))}
+        </div>
+      </NoticeModal>
+      {/* Connection lost mid-consultation. Reuses the existing modal rather
+          than adding another: the work is already protected on this device,
+          so the choice is simply keep going or try the server again now. */}
+      <ConnectionIssueModal
+        open={connectionLostOpen}
+        title="Connection Lost"
+        message={[
+          draftLocalStatus === "saved"
+            ? "Your current consultation is secured on this device."
+            : "Your current consultation is not yet secured on this device. Keep this page open and reconnect.",
+          offlineRetryNotice,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        detail={null}
+        retryLabel="Retry"
+        retryLoadingLabel="Syncing..."
+        onContinue={dismissConnectionLost}
+        onRetry={handleOfflineDraftRetry}
+      />
+
+      {/* Offered once on a fresh entry. "Not Now" leaves the encrypted copy
+          in place, so declining never destroys unsynced clinical work. */}
+      <NoticeModal
+        open={Boolean(localRecovery)}
+        title="Unfinished Consultation on This Device"
+        message={`A consultation for ${localRecovery?.record?.draft?.patient?.label || "a patient"} was kept on this device when the connection dropped and has not reached the server yet. Recover it to continue where you left off.`}
+        onClose={() => setLocalRecovery(null)}
+        actions={[
+          {
+            label: "Recover Consultation",
+            variant: "primary",
+            onClick: handleRecoverLocalDraft,
+          },
+          {
+            label: "Not Now",
+            variant: "secondary",
+            onClick: () => setLocalRecovery(null),
+          },
+          {
+            label: "Discard",
+            variant: "destructive",
+            onClick: handleDiscardLocalRecovery,
+          },
+        ]}
+      />
+
+      <ConnectionIssueModal
+        open={Boolean(connectionIssue)}
+        title={connectionIssue?.title}
+        message={connectionIssue?.message}
+        retryDisabled={
+          saving || (typeof navigator !== "undefined" && navigator.onLine === false)
+        }
+        retryLabel="Retry Save"
+        retryLoading={saving}
+        onContinue={() => setConnectionIssue(null)}
+        onRetry={handleRetryFailedHealthRecord}
+      />
+      </div>
+    </DashboardLayout>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORM SUB-COMPONENTS
+   ═══════════════════════════════════════════════════════════════ */
+function FormSection({ title, subtitle, children, delay = 0, accent }) {
+  return (
+    <section
+      className={`anim-fade-up rounded-none border border-[#E5E7EB] bg-white ${
+        accent === "pink" ? "border-l-4 border-l-[#DC2626]" : ""
+      }`}
+      style={stagger(delay)}
+    >
+      {title ? (
+        <div className="border-b border-[#E5E7EB] px-4 py-2.5">
+          <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
+            {title}
+          </h2>
+
+          {subtitle && (
+            <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
+
+function LockedFormContent({ locked, children }) {
+  if (!locked) return children;
+
+  return (
+    <fieldset disabled className="space-y-4">
+      <div className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+        Select a patient first to continue.
+      </div>
+      <div className="pointer-events-none opacity-60">{children}</div>
+    </fieldset>
+  );
+}
+
+
+
+
+function MaternalClassificationWarning() {
+  return (
+    <div className="mt-4 flex items-start gap-3 rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+      <p className="text-xs leading-relaxed">
+        Please verify the selected patient before creating a maternal record.
+      </p>
+    </div>
+  );
+}
+
+function FieldInput({
+  label,
+  required,
+  error,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
+  const inputClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
+
+  return (
+    <div className={wrapperClassName}>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        {...props}
+        aria-invalid={Boolean(error)}
+        className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:opacity-60 ${inputClass} ${className}`}
+      />
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
+      )}
+    </div>
+  );
+}
+
+function FieldSelect({
+  label,
+  required,
+  error,
+  children,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
+  const selectClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
+
+  return (
+    <div className={wrapperClassName}>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <select
+        {...props}
+        aria-invalid={Boolean(error)}
+        className={`h-9 w-full appearance-none rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60 ${selectClass} ${className}`}
+      >
+        {children}
+      </select>
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
+      )}
+    </div>
+  );
+}
+
+function FieldTextarea({
+  label,
+  required,
+  error,
+  rows = 3,
+  className = "",
+  wrapperClassName = "",
+  ...props
+}) {
+  const textareaClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
+
+  return (
+    <div className={wrapperClassName}>
+      {label && (
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
+      <textarea
+        {...props}
+        aria-invalid={Boolean(error)}
+        rows={rows}
+        className={`w-full resize-none rounded-none border px-3 py-2 text-sm leading-relaxed text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] ${textareaClass} ${className}`}
+      />
+      {error && (
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
+      )}
+    </div>
+  );
+}
+
+function BpInputGroup({
+  systolic,
+  diastolic,
+  onSystolicChange,
+  onDiastolicChange,
+  onSystolicBlur,
+  onDiastolicBlur,
+  required = false,
+  error = "",
+  name,
+}) {
+  const inputClass = error
+    ? "border-[#DC2626] bg-white ring-2 ring-red-200"
+    : "border-[#D1D5DB] bg-white focus:border-[#DC2626] focus:ring-2 focus:ring-red-200";
+
+  return (
+    <div data-field={name} tabIndex={error ? -1 : undefined}>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+        Blood Pressure (mmHg) {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="flex items-center gap-0">
+        <input
+          name="systolicBp"
+          type="number"
+          placeholder="Systolic"
+          value={systolic}
+          aria-invalid={Boolean(error) || undefined}
+          onChange={(event) => onSystolicChange(event.target.value)}
+          onBlur={onSystolicBlur}
+          className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
+        />
+        <div className="flex h-9 w-10 shrink-0 items-center justify-center border-y border-[#E5E7EB] bg-[#F9FAFB] text-sm font-bold text-[#6B7280]">
+          /
+        </div>
+        <input
+          name="diastolicBp"
+          type="number"
+          placeholder="Diastolic"
+          value={diastolic}
+          aria-invalid={Boolean(error) || undefined}
+          onChange={(event) => onDiastolicChange(event.target.value)}
+          onBlur={onDiastolicBlur}
+          className={`h-9 w-full rounded-none border px-3 text-sm text-[#111827] outline-none transition-colors duration-150 placeholder:text-[#9CA3AF] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${inputClass}`}
+        />
+      </div>
+      {error ? (
+        <p className="mt-1 text-[11px] font-medium text-[#DC2626]">{error}</p>
+      ) : (
+        <p className="mt-1 text-[9px] text-[#BFBFBF]">Systolic / Diastolic</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Read-only BMI derived from the weight and height already captured in Vital
+ * Signs. It is display-only and never submitted: the record stores the two
+ * measurements, so a stored BMI could only ever disagree with them.
+ */
+/**
+ * A risk-code checklist column.
+ *
+ * An option with `children` renders them indented beneath it and only while the
+ * parent is checked, matching the prenatal record where the sub-conditions
+ * qualify the code rather than standing on their own.
+ */
+/**
+ * A row of small number inputs that together make up one clinical score, with
+ * the assembled shorthand shown beneath so the clinician can read back what
+ * they entered without re-parsing the boxes.
+ */
+function BmiOutputField({ weight, height }) {
+  const bmi = calculateBmi(weight, height);
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#374151]">
+        BMI
+      </label>
+      <div className="flex h-9 w-full items-center rounded-none border border-[#E5E7EB] bg-[#F9FAFB] px-3">
+        <span className="text-sm font-bold text-gray-900">
+          {bmi === null ? "—" : formatBmi(bmi)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMMUNIZATION SUB-COMPONENTS
+   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════
+   PATIENT DISPLAY HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+function getPatientName(patient = {}) {
+  return formatPatientName(patient, "Unnamed Patient");
+}
+
+function getReferringFacilityName(user = {}) {
+  return formatFacilityName(
+    user.barangayHealthCenter ||
+      user.barangay_health_center ||
+      user.assignedBarangayHealthCenter ||
+      user.facility ||
+      user.facilityName ||
+      user.facility_name,
+    "Barangay Health Center",
+  );
+}
+
+function getPatientBirthDate(patient = {}) {
+  return (
+    patient.birthdate ||
+    patient.birthDate ||
+    patient.dateOfBirth ||
+    patient.date_of_birth ||
+    patient.dob ||
+    ""
+  );
+}
+
+function getPatientAddress(patient = {}) {
+  return formatDisplayValue(
+    patient.address ||
+      patient.streetAddress ||
+      patient.street_address ||
+      [
+        patient.purokArea || patient.purok_area,
+        patient.barangay || patient.patientBarangay,
+        patient.municipality,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    "",
+  );
+}
+
+function getPatientPhilHealthNumber(patient = {}) {
+  return formatDisplayValue(
+    patient.philHealthNumber ||
+      patient.philhealthNumber ||
+      patient.philhealth_number,
+    "",
+  );
+}
+
+function getPatientPhilHealthCategory(patient = {}) {
+  return formatDisplayValue(
+    patient.philHealthCategory ||
+      patient.philhealthCategory ||
+      patient.philhealth_category ||
+      patient.philHealthStatus ||
+      patient.philhealthStatus ||
+      patient.philhealth_status,
+    "",
+  );
+}
+
+function getPatientAgeSexCivilStatus(patient = {}) {
+  const display = getPatientDisplay(patient);
+  const age = display.age;
+  const civilStatus = formatDisplayValue(
+    patient.civilStatus || patient.civil_status,
+    "",
+  );
+
+  return [age, civilStatus].filter(Boolean).join(" / ");
+}
+
+function getPatientDisplay(patient = {}) {
+  const name = getPatientName(patient);
+  const age = formatDisplayValue(
+    patient.ageSex ||
+      (patient.age
+        ? `${patient.age} yrs${patient.sex ? ` / ${patient.sex}` : ""}`
+        : patient.sex),
+    "",
+  );
+  const cls = formatDisplayValue(
+    patient.patientClassification || patient.category,
+    "",
+  );
+  const contact = formatDisplayValue(
+    patient.contactNumber || patient.contact,
+    "",
+  );
+  const barangay = formatDisplayValue(
+    patient.barangay || patient.patientBarangay,
+    "",
+  );
+  const id = formatDisplayValue(patient.patientId || patient.id, "");
+
+  return { name, age, cls, contact, barangay, id };
+}
+
+function getPatientSexText(patient = {}) {
+  const source = patient || {};
+
+  return String(
+    source.sex ||
+      source.gender ||
+      source.patientSex ||
+      source.patientGender ||
+      source.ageSex ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function hasPatientSex(patient = {}) {
+  return Boolean(getPatientSexText(patient || {}));
+}
+
+function isPatientMale(patient = {}) {
+  const sexText = getPatientSexText(patient || {});
+
+  return sexText === "m" || /\bmale\b/.test(sexText);
+}

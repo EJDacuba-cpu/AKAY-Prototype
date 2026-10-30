@@ -1,5 +1,8 @@
+import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
+import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { bhcPatientRecordsPath, buildProfileReturnState } from "../../utils/profileNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -24,8 +27,6 @@ import {
 } from "../../components/common";
 import {
   isNoProviderAvailableError,
-  isPreferredProviderInvalidError,
-  isPreferredProviderUnavailableError,
   createReferral,
   getReferralDestination,
   getReferralByHealthRecordId,
@@ -42,7 +43,6 @@ import { getReferralHoldById } from "../../services/referralHolds";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
 import { getCurrentUser } from "../../utils/auth";
 import ReferralQrCode from "../../components/features/referrals/ReferralQrCode";
-import RhuProviderSelect from "../../components/features/referrals/RhuProviderSelect";
 import ReferralPrintSlip from "../../components/features/referrals/ReferralPrintSlip";
 import { queryKeys } from "../../utils/queryKeys";
 import {
@@ -71,6 +71,7 @@ const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const resumeHoldParam = searchParams.get("resume_hold");
@@ -109,7 +110,6 @@ export default function CreateReferral() {
     preferredVisitDate: "",
     preferredVisitTime: "",
     urgencyLevel: DEFAULT_ATTENTION,
-    preferredRhuDoctorId: "",
     philHealthNumber: "",
     philHealthCategory: "",
     reasonForReferral: "",
@@ -124,15 +124,12 @@ export default function CreateReferral() {
   const [referralDestination, setReferralDestination] = useState(null);
   const [destinationLoading, setDestinationLoading] = useState(true);
   const [destinationError, setDestinationError] = useState("");
-  const [showUnavailableDoctorModal, setShowUnavailableDoctorModal] =
-    useState(false);
-  const [unavailableDoctorNotice, setUnavailableDoctorNotice] = useState(null);
   const [generatedTrackingId, setGeneratedTrackingId] = useState("");
   const [successReferral, setSuccessReferral] = useState(null);
   const [offlineDraftNotice, setOfflineDraftNotice] = useState(null);
   const [retryingDraft, setRetryingDraft] = useState(false);
   const officialHealthRecordSubmissionRef = useRef(null);
-  const { availability: rhuDoctorAvailability } = useDoctorAvailability();
+  const { availability: rhuDoctorAvailability } = useDoctorAvailability({ rhuId: form.ruralHealthUnitId });
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -203,7 +200,7 @@ export default function CreateReferral() {
 
   // Resuming a DOC-14 blocked attempt (plan 4.3): the notification link is
   // /bhc/referrals/create?resume_hold={id}. The hold only carries intent
-  // (health_record_id, urgency_level, preferred_provider_id) - the BHW
+  // (health_record_id, urgency_level) - the BHW
   // reviews and submits normally, same as any other referral.
   useEffect(() => {
     let cancelled = false;
@@ -233,11 +230,10 @@ export default function CreateReferral() {
 
     setForm((previous) => ({
       ...previous,
+      ruralHealthUnitId: resumeHold.ruralHealthUnitId || previous.ruralHealthUnitId,
       urgencyLevel: resumeHold.urgencyLevel
         ? normalizeAttention(resumeHold.urgencyLevel)
         : previous.urgencyLevel,
-      preferredRhuDoctorId:
-        resumeHold.preferredProviderId || previous.preferredRhuDoctorId,
     }));
   }, [resumeHold]);
 
@@ -265,6 +261,9 @@ export default function CreateReferral() {
 
     if (foundRecord) {
       setRecord(foundRecord);
+      const monitoring = foundRecord.monitoringData || foundRecord.monitoring_data || {};
+      const pending = monitoring.conditionReferralOutcomes?.find((outcome) => String(outcome.holdId) === String(resumeHold?.id))?.pendingReferral || monitoring.pendingReferral;
+      if (pending) setForm(current => ({ ...current, reasonForReferral: pending.reason_for_referral || "", urgencyLevel: pending.urgency_level || "Routine", initialDiagnosis: pending.initial_diagnosis || foundRecord.diagnosis || "", initialActionsTaken: pending.initial_action_taken || "" }));
 
       const foundPatient = patients.find((p) => p.id === foundRecord.patientId);
       if (foundPatient) setPatient(foundPatient);
@@ -276,6 +275,7 @@ export default function CreateReferral() {
     targetRecordId,
     patients,
     healthRecords,
+    resumeHold?.id,
   ]);
 
   useEffect(() => {
@@ -328,23 +328,11 @@ export default function CreateReferral() {
     return "General Consultation";
   }, [referralClassification]);
 
-  const receivingRhu = referralDestination?.receivingRuralHealthUnit || null;
+  const receivingRhu = (referralDestination?.destinations || []).find(r => String(r.id) === String(form.ruralHealthUnitId)) || (!form.ruralHealthUnitId ? referralDestination?.receivingRuralHealthUnit : null);
   const destinationReady = Boolean(receivingRhu?.id && receivingRhu?.name);
 
   // The roster arrives already scoped to this BHC's mapped receiving RHU
   // (DOC-01, DOC-15), so no browser-side facility filtering is applied.
-  const rhuDoctors = useMemo(
-    () =>
-      (rhuDoctorAvailability.providers || []).map((doctor) => ({
-        id: doctor.id,
-        name: doctor.name,
-        role: doctor.specialization || "General Practitioner",
-        status: doctor.availabilityStatus,
-        note: doctor.remarks || "",
-        updatedAt: doctor.updatedAt || null,
-      })),
-    [rhuDoctorAvailability],
-  );
 
   // DOC-19 counts are computed by the server and read straight through; the
   // browser must never re-derive the DOC-14 rule.
@@ -358,42 +346,10 @@ export default function CreateReferral() {
   const noProviderMessage =
     "The receiving Rural Health Unit has no available doctor right now. This referral cannot be submitted until the RHU marks a doctor available.";
   const doctorAvailabilitySummary = `${availableDoctorCount} of ${totalDoctorCount} doctors available`;
-  const selectedRhuDoctor = rhuDoctors.find(
-    (doctor) => doctor.id === form.preferredRhuDoctorId,
-  );
-  const preferredRhuDoctorLabel = selectedRhuDoctor
-    ? `${selectedRhuDoctor.name} · ${selectedRhuDoctor.status}`
-    : "RHU to assign";
 
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function handleDoctorPreferenceChange(e) {
-    const doctorId = e.target.value;
-    const nextDoctor = rhuDoctors.find((doctor) => doctor.id === doctorId);
-
-    setForm((prev) => ({ ...prev, preferredRhuDoctorId: doctorId }));
-
-    if (nextDoctor?.status === "Unavailable") {
-      setUnavailableDoctorNotice(nextDoctor);
-      setShowUnavailableDoctorModal(true);
-    }
-  }
-
-  function handleChooseAnotherDoctor() {
-    setForm((prev) => ({ ...prev, preferredRhuDoctorId: "" }));
-    setUnavailableDoctorNotice(null);
-    setShowUnavailableDoctorModal(false);
-  }
-
-  function handleContinueWithUnavailableDoctor() {
-    setShowUnavailableDoctorModal(false);
-    // Resubmit carrying the acknowledgment. The server re-checks DOC-14 again
-    // on this attempt, so continuing past the warning still cannot bypass the
-    // hard block if the last available provider went away in between.
-    void confirmReferralSubmission({ acknowledgeUnavailable: true });
   }
 
   async function findExistingReferralForRecord() {
@@ -466,7 +422,7 @@ export default function CreateReferral() {
     navigate(`/bhc/referrals/${referralTarget}`);
   }
 
-  async function confirmReferralSubmission({ acknowledgeUnavailable = false } = {}) {
+  async function confirmReferralSubmission() {
     if (submitting) return;
 
     if (!destinationReady) {
@@ -516,6 +472,7 @@ export default function CreateReferral() {
 
       // Receiving facility for the BHC → RHU referral.
       receivingFacility: receivingRhu.name,
+      ruralHealthUnitId: receivingRhu.id,
       referredFacility: receivingRhu.name,
       destinationFacility: receivingRhu.name,
 
@@ -537,22 +494,9 @@ export default function CreateReferral() {
       doctorAvailabilityUpdatedAt: rhuDoctorAvailability?.updatedAt || null,
       doctorAvailabilitySnapshot: availabilitySnapshot,
 
-      // REF-SLIP-05b - the preference is advisory; the RHU still assigns.
-      // REF-SLIP-05c - set only after the BHW saw the warning and chose to
-      // continue; the server records preference_acknowledged_at from it.
-      acknowledgedUnavailablePreference: acknowledgeUnavailable,
-
       // Set only when this submission resumes a DOC-14 blocked attempt; the
       // server resolves that referral_holds row on success.
       resumeHoldId: resumeHold?.id || "",
-
-      // BHC may indicate a preferred RHU doctor, but RHU can still reassign.
-      preferredRhuDoctorId: selectedRhuDoctor?.id || "",
-      preferredRhuDoctorName: selectedRhuDoctor?.name || "RHU to assign",
-      preferredRhuDoctorRole:
-        selectedRhuDoctor?.role || "General Practitioner",
-      preferredRhuDoctorStatus: selectedRhuDoctor?.status || "",
-      preferredRhuDoctorNote: selectedRhuDoctor?.note || "",
 
       // Optional supporting patient information.
       philHealthNumber: form.philHealthNumber.trim(),
@@ -678,30 +622,6 @@ export default function CreateReferral() {
         return;
       }
 
-      // REF-SLIP-05c (Decision A) - warn, then let the BHW continue or reselect.
-      if (isPreferredProviderUnavailableError(error)) {
-        setShowConfirmModal(false);
-        setUnavailableDoctorNotice({
-          id: error.payload?.provider?.id,
-          name: error.payload?.provider?.name,
-          role: error.payload?.provider?.specialization,
-          note: error.payload?.provider?.remarks,
-          alternatives: error.payload?.available_alternatives || [],
-        });
-        setShowUnavailableDoctorModal(true);
-        return;
-      }
-
-      if (isPreferredProviderInvalidError(error)) {
-        setShowConfirmModal(false);
-        setForm((prev) => ({ ...prev, preferredRhuDoctorId: "" }));
-        setSubmissionErrorNotice(
-          error?.message ||
-            "The selected doctor is no longer available at the receiving RHU. Please choose another.",
-        );
-        return;
-      }
-
       if (
         Number(error?.status) === 409 &&
         error?.payload?.code === "IDEMPOTENCY_KEY_PAYLOAD_MISMATCH"
@@ -794,12 +714,12 @@ export default function CreateReferral() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="form"
           isLoading
           message="Loading referral details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -872,16 +792,6 @@ export default function CreateReferral() {
         referral.referralDateTime ||
         sourcePayload.referralDateTime ||
         `${form.dateOfReferral} ${form.timeOfReferral || "00:00"}`,
-      preferredRhuDoctorName:
-        referral.preferredRhuDoctorName ||
-        sourcePayload.preferredRhuDoctorName ||
-        selectedRhuDoctor?.name ||
-        "RHU to assign",
-      preferredRhuDoctorStatus:
-        referral.preferredRhuDoctorStatus ||
-        sourcePayload.preferredRhuDoctorStatus ||
-        selectedRhuDoctor?.status ||
-        "",
       philHealthNumber:
         referral.philHealthNumber ||
         referral.patientPhilHealthNumber ||
@@ -901,12 +811,12 @@ export default function CreateReferral() {
   if (draftRecordData && !record) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="form"
           isLoading
           message="Preparing referral draft..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-[#E8ECF0] bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -927,10 +837,10 @@ export default function CreateReferral() {
             and click &quot;Submit Referral&quot;.
           </p>
           <Link
-            to="/bhc/health-records"
+            to={bhcPatientRecordsPath(patient?.id || record?.patientId || draftPatientId)}
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
           >
-            Go to Health Records
+            Go to Patients
           </Link>
         </div>
       </DashboardLayout>
@@ -1022,10 +932,6 @@ export default function CreateReferral() {
               />
               <Info label="Urgency" value={form.urgencyLevel} />
               <Info
-                label="Preferred RHU Doctor (Optional)"
-                value={preferredRhuDoctorLabel}
-              />
-              <Info
                 label="PhilHealth"
                 value={
                   form.philHealthNumber
@@ -1076,15 +982,6 @@ export default function CreateReferral() {
       }
     : null;
   const successTrackingId = submittedReferral?.trackingId || "";
-  const successPreferredDoctor =
-    submittedReferral?.preferredRhuDoctorName &&
-    submittedReferral.preferredRhuDoctorName !== "RHU to assign"
-      ? `${submittedReferral.preferredRhuDoctorName}${
-          submittedReferral.preferredRhuDoctorStatus
-            ? ` · ${submittedReferral.preferredRhuDoctorStatus}`
-            : ""
-        }`
-      : preferredRhuDoctorLabel;
   const successPhilHealth = submittedReferral?.philHealthNumber
     ? `${submittedReferral.philHealthNumber}${
         submittedReferral.philHealthCategory
@@ -1219,10 +1116,6 @@ export default function CreateReferral() {
           />
           <Info label="Receiving Facility" value={form.receivingFacility} />
           <Info label="Urgency" value={form.urgencyLevel} highlight />
-          <Info
-            label="Preferred RHU Doctor (Optional)"
-            value={preferredRhuDoctorLabel}
-          />
           <Info label="Consultation Record" value={recordIdDisplay} mono />
           <div className="sm:col-span-2">
             <Info
@@ -1232,74 +1125,6 @@ export default function CreateReferral() {
           </div>
         </div>
 
-        {selectedRhuDoctor?.status === "Unavailable" && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-              Doctor Availability Notice
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-700">
-              <span className="font-semibold text-slate-900">
-                {selectedRhuDoctor.name}
-              </span>{" "}
-              is currently unavailable
-              {selectedRhuDoctor.note
-                ? ` — ${selectedRhuDoctor.note}`
-                : " — No note provided."}
-            </p>
-            <p className="mt-1.5 text-[11px] font-medium text-slate-500">
-              RHU may assign another available doctor upon receiving the
-              patient. Referral submission is still allowed.
-            </p>
-          </div>
-        )}
-      </ModalShell>
-
-      {/* ─── Unavailable Doctor Notice Modal ─── */}
-      <ModalShell
-        open={showUnavailableDoctorModal && Boolean(unavailableDoctorNotice)}
-        title="Doctor Currently Unavailable"
-        subtitle="RHU staff marked this doctor as unavailable."
-        icon={<AlertTriangle size={14} />}
-        size="md"
-        onClose={handleChooseAnotherDoctor}
-        footer={
-          <>
-            <ModalButton onClick={handleChooseAnotherDoctor}>
-              Choose Another Doctor
-            </ModalButton>
-            <ModalButton
-              variant="primary"
-              onClick={handleContinueWithUnavailableDoctor}
-            >
-              Continue Anyway
-            </ModalButton>
-          </>
-        }
-      >
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-bold text-slate-900">
-            {unavailableDoctorNotice?.name}
-          </p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {unavailableDoctorNotice?.role || "General Practitioner"}
-          </p>
-
-          <div className="mt-3 rounded-lg bg-white/70 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-              Expected Available At
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-700">
-              {unavailableDoctorNotice?.note
-                ? unavailableDoctorNotice.note
-                : "Not specified."}
-            </p>
-          </div>
-        </div>
-
-        <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          You may choose another doctor, or continue anyway. RHU staff may
-          assign another available doctor after receiving the patient.
-        </p>
       </ModalShell>
 
       {/* ─── Page Content ─── */}
@@ -1380,10 +1205,6 @@ export default function CreateReferral() {
                     value={submittedReferral.receivingFacility}
                     highlight
                   />
-                  <Info
-                    label="Preferred RHU Doctor (Optional)"
-                    value={successPreferredDoctor}
-                  />
                   <Info label="PhilHealth" value={successPhilHealth} />
                 </div>
               </div>
@@ -1436,7 +1257,7 @@ export default function CreateReferral() {
         {/* Header */}
         <div className="anim-fade-up mb-3" style={stagger(0)}>
           <Link
-            to="/bhc/health-records"
+            to={bhcPatientRecordsPath(patient?.id || record?.patientId || draftPatientId)}
             className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0F172A]"
           >
             <ArrowLeft size={15} /> Back to Health Records
@@ -1499,19 +1320,16 @@ export default function CreateReferral() {
             </div>
 
             <SectionDivider label="Receiving Facility & RHU Coordination" />
+            <ReferralDestinationPicker value={form.ruralHealthUnitId} patientId={patient?.id} recordId={record?.id} onChange={id => setForm(f => ({ ...f, ruralHealthUnitId: id }))} />
             <div className="grid gap-4 pt-3 pb-1 lg:grid-cols-2">
               <ReferralDestinationStatus
-                destination={referralDestination}
+                destination={referralDestination ? { ...referralDestination, receivingRuralHealthUnit: receivingRhu } : null}
                 isLoading={destinationLoading}
                 error={destinationError}
                 onRetry={loadReferralDestination}
               />
 
-              <RhuProviderSelect
-                providers={rhuDoctors}
-                selectedProviderId={form.preferredRhuDoctorId}
-                onChange={handleDoctorPreferenceChange}
-              />
+              <p className="text-sm text-slate-600">RHU staff will assign the receiving practitioner after submission.</p>
             </div>
 
             {/* DOC-14 / USB-02 - state the block plainly and up front rather
@@ -1549,6 +1367,7 @@ export default function CreateReferral() {
             headerRight={
               <Link
                 to={`/bhc/patients/${patient?.id}`}
+                state={buildProfileReturnState(location)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:border-red-200 hover:text-[#B91C1C]"
               >
                 <ExternalLink size={11} /> Open Patient Details
@@ -1650,13 +1469,18 @@ export default function CreateReferral() {
               />
             </div>
 
-            <SectionDivider label="Initial Diagnosis" />
-            <div className="pt-3">
-              <NarrativeField
-                value={record.diagnosis || record.assessment}
-                emptyText="No initial diagnosis recorded."
-              />
-            </div>
+            {/* A v2 consultation has no diagnosis: its assessment is the Chief Complaint above. */}
+            {showsDiagnosisRow(record, record.diagnosis || record.assessment) && (
+              <>
+                <SectionDivider label="Initial Diagnosis" />
+                <div className="pt-3">
+                  <NarrativeField
+                    value={record.diagnosis || record.assessment}
+                    emptyText="No initial diagnosis recorded."
+                  />
+                </div>
+              </>
+            )}
 
             <SectionDivider label="Initial Actions Taken" />
             <div className="pt-3 pb-1">

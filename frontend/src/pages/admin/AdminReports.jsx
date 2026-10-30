@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -28,10 +28,11 @@ import {
 import { Bar, Chart, Doughnut } from "react-chartjs-2";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ListToolbar } from "../../components/common";
-import { refreshAdminAccounts } from "../../services/adminAccountsService";
+import { ListToolbar, PageStateWrapper } from "../../components/common";
+import useNotification from "../../hooks/useNotification";
+import { loadAdminAccounts } from "../../services/adminAccountsService";
 import { getHealthRecords } from "../../services/healthRecordService";
-import { refreshRhuMedicines } from "../../services/medicineService";
+import { loadMedicineAvailability } from "../../services/medicineService";
 import { getPatients } from "../../services/patientService";
 import { getReferrals } from "../../services/referrals";
 
@@ -173,11 +174,20 @@ const printStyles = `
 export default function AdminReports() {
   const [dataVersion, setDataVersion] = useState(0);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const notify = useNotification();
   const [reportSource, setReportSource] = useState(EMPTY_REPORT_SOURCE);
-  const [loadError, setLoadError] = useState("");
+  // The first load shows the page's loading or failure state; a later failed reload keeps the figures and toasts.
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const loadedRef = useRef(false);
+  // loadAdminAccounts / loadMedicineAvailability announce their own update events while this page loads;
+  // reacting to those would start the load again, forever. A count, not a flag: loads can overlap (a reload
+  // starting before the last one settles, or React's double effect run in development).
+  const selfLoadingRef = useRef(0);
 
   useEffect(() => {
     function refreshReports() {
+      if (selfLoadingRef.current > 0) return;
       setDataVersion((current) => current + 1);
     }
 
@@ -218,16 +228,16 @@ export default function AdminReports() {
     let active = true;
 
     async function loadReportSource() {
+      selfLoadingRef.current += 1;
       try {
-        setLoadError("");
-
         const [referrals, patients, healthRecords, medicines, users] =
           await Promise.all([
             getReferrals(),
             getPatients(),
             getHealthRecords("admin"),
-            refreshRhuMedicines(),
-            refreshAdminAccounts(),
+            // The throwing loaders: a failed /medicines or /users must fail the page, not show zero figures.
+            loadMedicineAvailability(),
+            loadAdminAccounts(),
           ]);
 
         if (!active) return;
@@ -244,10 +254,19 @@ export default function AdminReports() {
             String(user.position || "").toLowerCase().includes("doctor"),
           ),
         });
+        loadedRef.current = true;
+        setLoadError(null);
+        setLoading(false);
       } catch (error) {
         if (!active) return;
-        setLoadError(error?.message || "Unable to load report data.");
-        setReportSource(EMPTY_REPORT_SOURCE);
+        if (loadedRef.current) {
+          notify.error(error?.message || "Unable to load report data.");
+        } else {
+          setLoadError(error);
+          setLoading(false);
+        }
+      } finally {
+        selfLoadingRef.current -= 1;
       }
     }
 
@@ -256,7 +275,7 @@ export default function AdminReports() {
     return () => {
       active = false;
     };
-  }, [dataVersion]);
+  }, [dataVersion, notify]);
 
   const dropdownOptions = useMemo(
     () => buildFilterOptions(reportSource),
@@ -373,7 +392,20 @@ export default function AdminReports() {
     <DashboardLayout role="admin" title="MHO Reports">
       <style>{printStyles}</style>
 
-      <div className="no-print space-y-4">
+      <PageStateWrapper
+        skeleton="reports"
+        isLoading={loading}
+        isError={Boolean(loadError)}
+        hasData={!loading && !loadError}
+        error={loadError}
+        onRetry={() => {
+          setLoadError(null);
+          setLoading(true);
+          setDataVersion((current) => current + 1);
+        }}
+        loadingMessage="Loading reports..."
+      >
+      <div className="no-print mx-auto w-full max-w-[1500px] space-y-4">
         <MhoReportHeader />
 
         <ListToolbar
@@ -397,11 +429,6 @@ export default function AdminReports() {
           }
         />
 
-        {loadError && (
-          <div className="rounded-lg border border-red-100 bg-red-50/70 px-4 py-3 text-sm font-semibold text-[#B91C1C]">
-            {loadError}
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
@@ -564,6 +591,7 @@ export default function AdminReports() {
         barangayReports={barangayReports}
         rhuSummary={rhuSummary}
       />
+      </PageStateWrapper>
     </DashboardLayout>
   );
 }

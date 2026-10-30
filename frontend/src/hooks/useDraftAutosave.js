@@ -4,23 +4,37 @@ import {
   createHealthRecordDraft as defaultCreateDraft,
   updateHealthRecordDraft as defaultUpdateDraft,
 } from "../services/healthRecordDraftService";
+import * as defaultLocalDraftVault from "../services/localDraftVault";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../utils/sessionPrivacy";
 
 /**
- * Offline-resilient, in-memory autosave for encrypted health-record drafts.
+ * Online-first autosave for encrypted health-record drafts, with an on-device
+ * safety net for a consultation that is already open.
  *
- * Privacy contract: this hook never writes clinical data to browser storage.
- * Unsaved input lives only in React state on the calling page; the queued
- * payload is held in `pendingSaveRef` (module-scoped React ref, cleared on
- * unmount and on the sensitive-session-cleared event). No localStorage,
- * sessionStorage, IndexedDB, service worker, or persisted query cache is used.
+ * The server draft API stays the system of record: every save goes there first
+ * and the local copy exists only while the server cannot be reached.
+ *
+ * Privacy contract: this hook never writes clinical data to browser storage in
+ * the clear. Unsaved input lives in React state on the calling page and in the
+ * in-memory `pendingSaveRef`. When the connection drops, the same snapshot is
+ * additionally sealed into the encrypted IndexedDB vault (`localDraftVault`),
+ * which is keyed to the authenticated user and destroyed by session cleanup.
+ * No localStorage, sessionStorage, service worker, or persisted query cache is
+ * ever used for clinical data.
  */
 
 const DEFAULT_DEBOUNCE_MS = 20_000;
 // 20s debounce keeps writes at most 3/min, well under the 30/min server limit.
 // Do not lower this without raising the corresponding backend rate limit.
 const BACKOFF_SCHEDULE_MS = [5_000, 10_000, 30_000, 60_000];
+// Local writes touch no network and no rate limit, so an offline consultation
+// is checkpointed far more eagerly than the server debounce allows.
+const LOCAL_PERSIST_DEBOUNCE_MS = 1_500;
 const DRAFT_VERSION_CONFLICT_CODE = "DRAFT_VERSION_CONFLICT";
+// The server already has a draft for this consultation_uuid (another tab, or a
+// device that reconnected first). Resolved exactly like a version conflict:
+// the newer server copy is never silently overwritten.
+const DRAFT_CONSULTATION_EXISTS_CODE = "DRAFT_CONSULTATION_EXISTS";
 
 function serializePayload(payload) {
   if (!payload) return "";
@@ -59,8 +73,20 @@ function getInitialStatus() {
  * @param {number}   [options.debounceMs]      Override debounce window (defaults to 20s).
  * @param {Function} [options.createDraft]     Injected create API (defaults to service).
  * @param {Function} [options.updateDraft]     Injected update API (defaults to service).
+ * @param {string}   [options.consultationUuid] Stable identity of the consultation,
+ *        sent with every create/update so reconnect can find the right draft.
+ * @param {{ownerKey: string, consultationKey: string}|null} [options.localDraft]
+ *        Identity of the encrypted on-device snapshot. Null disables the vault.
+ * @param {() => object|null} [options.buildLocalRecord]
+ *        Builds the restorable snapshot, called only when writing locally.
+ * @param {boolean}  [options.unsyncedRecovery] The form was just restored from
+ *        the on-device vault and is NEWER than the server draft.
+ * @param {object}   [options.vault]           Injected local vault (defaults to service).
  * @returns {{ status: string, lastSavedAt: string|null, hasPendingChanges: boolean,
- *            conflict: object|null, error: object|null, saveNow: Function, resolveConflict: Function }}
+ *            conflict: object|null, error: object|null, localStatus: string,
+ *            syncStatus: string, offlineEpoch: number, saveNow: Function,
+ *            flushBeforeLeave: Function, resolveConflict: Function,
+ *            acknowledgeSync: Function }}
  */
 export default function useDraftAutosave({
   enabled = false,
@@ -73,12 +99,25 @@ export default function useDraftAutosave({
   debounceMs = DEFAULT_DEBOUNCE_MS,
   createDraft = defaultCreateDraft,
   updateDraft = defaultUpdateDraft,
+  consultationUuid = "",
+  rhuVisitId = null,
+  localDraft = null,
+  buildLocalRecord = null,
+  unsyncedRecovery = false,
+  vault = defaultLocalDraftVault,
 } = {}) {
   const [status, setStatus] = useState(getInitialStatus);
   const [lastSavedAt, setLastSavedAt] = useState(() => draft?.lastSavedAt || null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [conflict, setConflict] = useState(null);
   const [error, setError] = useState(null);
+  // Encrypted on-device copy: "idle" | "saved" | "unavailable" | "failed".
+  const [localStatus, setLocalStatus] = useState("idle");
+  // Server reconciliation of that copy: "idle" | "syncing" | "synced".
+  const [syncStatus, setSyncStatus] = useState("idle");
+  // Increments once per NEW offline transition, so the page can show the
+  // Connection Lost modal once instead of interrupting every failed retry.
+  const [offlineEpoch, setOfflineEpoch] = useState(0);
 
   // Latest render values, read by timers/listeners to avoid stale closures.
   const paramsRef = useRef({});
@@ -98,6 +137,14 @@ export default function useDraftAutosave({
   const retryTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const runSaveRef = useRef(null);
+  // True between entering offline and the next confirmed server save.
+  const offlineRef = useRef(false);
+  // True while an encrypted snapshot exists on this device awaiting sync.
+  const hasLocalCopyRef = useRef(false);
+  const lastLocalSerializedRef = useRef("");
+  const localWriteSeqRef = useRef(0);
+  const localWritesRef = useRef(Promise.resolve());
+  const finalizedRef = useRef(false);
 
   const clearDebounceTimer = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -111,6 +158,78 @@ export default function useDraftAutosave({
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+  }, []);
+
+  /**
+   * Seal the current snapshot into the encrypted on-device vault. Never called
+   * while the server is reachable: the server copy is the system of record.
+   * Returns false (and reports "unavailable") when this browser context cannot
+   * encrypt, so the UI can say so instead of implying the work is protected.
+   */
+  const persistLocalNow = useCallback(async () => {
+    const params = paramsRef.current;
+    const target = params.localDraft;
+    if (!target?.ownerKey || !target?.consultationKey) return false;
+
+    if (!params.vault.isLocalDraftVaultAvailable()) {
+      if (isMountedRef.current) setLocalStatus("unavailable");
+      return false;
+    }
+
+    const record = params.buildLocalRecord?.();
+    if (!record || finalizedRef.current) return false;
+    if (record.draft && draftRef.current) {
+      record.draft.id = draftRef.current.id;
+      record.draft.version = draftRef.current.version;
+    }
+
+    const serializedAtWrite = serializePayload(latestPayloadRef.current);
+    const sequence = (localWriteSeqRef.current += 1);
+    try {
+      const write = localWritesRef.current.catch(() => {}).then(() =>
+        params.vault.saveLocalDraft({
+          ownerKey: target.ownerKey,
+          consultationKey: target.consultationKey,
+          record,
+        }),
+      );
+      localWritesRef.current = write;
+      await write;
+      hasLocalCopyRef.current = true;
+      lastLocalSerializedRef.current = serializedAtWrite;
+      // A newer write already landed; do not report this stale one.
+      if (isMountedRef.current && sequence === localWriteSeqRef.current) {
+        setLocalStatus("saved");
+      }
+      return true;
+    } catch {
+      if (isMountedRef.current && sequence === localWriteSeqRef.current) {
+        setLocalStatus("failed");
+      }
+      return false;
+    }
+  }, []);
+
+  // Stop autosave before deleting recovery, so a late timer cannot recreate it.
+  const completeConsultation = useCallback(async () => {
+    finalizedRef.current = true;
+    clearDebounceTimer();
+    clearRetryTimer();
+    const target = paramsRef.current.localDraft;
+    await localWritesRef.current.catch(() => {});
+    if (target?.ownerKey && target?.consultationKey) {
+      await paramsRef.current.vault.deleteLocalDraft(target);
+    }
+    hasLocalCopyRef.current = false;
+    pendingSaveRef.current = null;
+    if (isMountedRef.current) setHasPendingChanges(false);
+  }, [clearDebounceTimer, clearRetryTimer]);
+
+  /** Mark a NEW offline transition (once per drop, not once per failed retry). */
+  const enterOfflineMode = useCallback(() => {
+    if (offlineRef.current) return;
+    offlineRef.current = true;
+    if (isMountedRef.current) setOfflineEpoch((epoch) => epoch + 1);
   }, []);
 
   const scheduleRetry = useCallback(
@@ -128,6 +247,9 @@ export default function useDraftAutosave({
     (err) => {
       const httpStatus = Number(err?.status);
       const code = err?.code || err?.payload?.code || "";
+      // Nothing was confirmed, so no attempt is still "syncing". Every branch
+      // below decides what to show instead; none may leave it hanging.
+      if (isMountedRef.current) setSyncStatus("idle");
 
       if (isConnectionError(err)) {
         const attempts = (pendingSaveRef.current?.attempts ?? 0) + 1;
@@ -136,15 +258,22 @@ export default function useDraftAutosave({
           version: draftRef.current?.version ?? null,
           attempts,
         };
+        enterOfflineMode();
         if (isMountedRef.current) {
           setStatus("offline");
           setHasPendingChanges(true);
         }
+        // The server could not take it, so protect it on this device instead.
+        void persistLocalNow();
         scheduleRetry(attempts);
         return;
       }
 
-      if (httpStatus === 409 && code === DRAFT_VERSION_CONFLICT_CODE) {
+      if (
+        httpStatus === 409 &&
+        (code === DRAFT_VERSION_CONFLICT_CODE ||
+          code === DRAFT_CONSULTATION_EXISTS_CODE)
+      ) {
         pausedRef.current = true;
         pendingSaveRef.current = null;
         clearRetryTimer();
@@ -152,7 +281,10 @@ export default function useDraftAutosave({
         if (isMountedRef.current) {
           setStatus("conflict");
           setConflict({
-            draftId: draftRef.current?.id || "",
+            // A consultation-exists conflict names the draft the server holds;
+            // Reload opens THAT one rather than a draft this tab never had.
+            draftId:
+              err?.payload?.draft_id || draftRef.current?.id || "",
             message: err?.message || "This draft was updated elsewhere.",
           });
         }
@@ -193,6 +325,8 @@ export default function useDraftAutosave({
       }
 
       // Unexpected error: stop retrying, surface it, keep form data intact.
+      // An on-device copy made while offline is deliberately left in place -
+      // only a confirmed server save may remove it.
       pendingSaveRef.current = null;
       clearRetryTimer();
       if (isMountedRef.current) {
@@ -205,15 +339,21 @@ export default function useDraftAutosave({
         });
       }
     },
-    [clearDebounceTimer, clearRetryTimer, scheduleRetry],
+    [
+      clearDebounceTimer,
+      clearRetryTimer,
+      enterOfflineMode,
+      persistLocalNow,
+      scheduleRetry,
+    ],
   );
 
   const runSave = useCallback(
-    async (reason) => {
+    async () => {
       const params = paramsRef.current;
-      if (!params.enabled) return;
+      if (!params.enabled || finalizedRef.current) return;
       // Conflict/validation pause halts autosave until reload; manual save overrides.
-      if (pausedRef.current && reason !== "manual") return;
+      if (pausedRef.current) return;
       if (inFlightRef.current) {
         rerunRef.current = true;
         return;
@@ -233,6 +373,13 @@ export default function useDraftAutosave({
         return;
       }
 
+      if (!isOnline()) {
+        enterOfflineMode();
+        if (isMountedRef.current) { setStatus("offline"); setHasPendingChanges(true); }
+        await persistLocalNow();
+        return;
+      }
+
       clearDebounceTimer();
       inFlightRef.current = true;
       const current = draftRef.current;
@@ -242,12 +389,18 @@ export default function useDraftAutosave({
         attempts: pendingSaveRef.current?.attempts ?? 0,
       };
 
-      if (isMountedRef.current) setStatus("saving");
+      if (isMountedRef.current) {
+        setStatus("saving");
+        // A pending on-device copy means this attempt IS the sync.
+        if (hasLocalCopyRef.current) setSyncStatus("syncing");
+      }
 
       const request = {
+        consultationUuid: params.consultationUuid || "",
         patientId: Number(params.patientId),
         classification: params.classification,
         payload: payloadToSave,
+        ...(params.rhuVisitId ? { rhuVisitId: Number(params.rhuVisitId) } : {}),
       };
 
       try {
@@ -263,7 +416,13 @@ export default function useDraftAutosave({
         lastSavedAtRef.current = saved.lastSavedAt || null;
         pendingSaveRef.current = null;
         pausedRef.current = false;
+        offlineRef.current = false;
         clearRetryTimer();
+
+        // The server has CONFIRMED this draft, so the on-device copy has done
+        // its job and may finally be removed.
+        const hadLocalCopy = hasLocalCopyRef.current;
+        // Recovery is retained until the official Health Record is confirmed.
 
         if (isMountedRef.current) {
           setLastSavedAt(saved.lastSavedAt || null);
@@ -271,6 +430,7 @@ export default function useDraftAutosave({
           setError(null);
           setHasPendingChanges(false);
           setStatus("saved");
+          setSyncStatus(hadLocalCopy ? "synced" : "idle");
         }
         params.onDraftSaved?.(saved);
       } catch (err) {
@@ -290,7 +450,7 @@ export default function useDraftAutosave({
         }
       }
     },
-    [clearDebounceTimer, clearRetryTimer, handleSaveError],
+    [clearDebounceTimer, clearRetryTimer, enterOfflineMode, handleSaveError, persistLocalNow],
   );
 
   useEffect(() => {
@@ -305,9 +465,14 @@ export default function useDraftAutosave({
       enabled,
       patientId,
       classification,
+      consultationUuid,
+      rhuVisitId,
       onDraftSaved,
       createDraft,
       updateDraft,
+      localDraft,
+      buildLocalRecord,
+      vault,
     };
     latestPayloadRef.current = enabled ? payload : null;
   });
@@ -390,6 +555,18 @@ export default function useDraftAutosave({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
+  // A draft restored from the on-device vault is NEWER than anything the
+  // server holds, so it must not be mistaken for an already-saved baseline.
+  // Declared AFTER the identity and enable effects so it wins on the render
+  // they all fire, then pushes the recovered content up immediately.
+  useEffect(() => {
+    if (!unsyncedRecovery) return;
+    lastSavedSerializedRef.current = "";
+    hasLocalCopyRef.current = true;
+    if (isMountedRef.current) setHasPendingChanges(true);
+    void runSaveRef.current?.("recovered");
+  }, [unsyncedRecovery]);
+
   // Debounced change detection.
   useEffect(() => {
     if (!enabled || !serialized) {
@@ -414,7 +591,8 @@ export default function useDraftAutosave({
     return clearDebounceTimer;
   }, [serialized, enabled, debounceMs, clearDebounceTimer]);
 
-  // Immediate save on step/section change.
+  // Immediate save on step/section change. While offline there is no server to
+  // reach, so the step change checkpoints the on-device copy instead.
   const sectionKeyRef = useRef(sectionKey);
   useEffect(() => {
     if (sectionKeyRef.current === sectionKey) return;
@@ -424,9 +602,23 @@ export default function useDraftAutosave({
       serializePayload(latestPayloadRef.current) !==
       lastSavedSerializedRef.current
     ) {
+      if (offlineRef.current) void persistLocalNow();
       void runSaveRef.current?.("section");
     }
-  }, [sectionKey, enabled]);
+  }, [sectionKey, enabled, persistLocalNow]);
+
+  // While offline, checkpoint edits on this device quickly. This is what makes
+  // a refresh, tab close, or PC restart survivable; the 20s server debounce is
+  // far too slow to rely on, and no request is being made anyway.
+  useEffect(() => {
+    if (!enabled || !serialized || finalizedRef.current) return undefined;
+    if (serialized === lastLocalSerializedRef.current) return undefined;
+
+    const timer = setTimeout(() => {
+      void persistLocalNow();
+    }, LOCAL_PERSIST_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [serialized, enabled, status, persistLocalNow]);
 
   // Flush immediately when the connection returns, bypassing backoff.
   useEffect(() => {
@@ -434,20 +626,25 @@ export default function useDraftAutosave({
       clearRetryTimer();
       const stillDirty =
         pendingSaveRef.current ||
+        hasLocalCopyRef.current ||
         serializePayload(latestPayloadRef.current) !==
           lastSavedSerializedRef.current;
       if (paramsRef.current.enabled && !pausedRef.current && stillDirty) {
+        if (isMountedRef.current && hasLocalCopyRef.current) {
+          setSyncStatus("syncing");
+        }
         void runSaveRef.current?.("online");
       }
     }
 
     function handleOffline() {
-      const stillDirty =
-        pendingSaveRef.current ||
-        serializePayload(latestPayloadRef.current) !==
-          lastSavedSerializedRef.current;
-      if (isMountedRef.current && paramsRef.current.enabled && stillDirty) {
-        setStatus("offline");
+      if (paramsRef.current.enabled && !finalizedRef.current) {
+        enterOfflineMode();
+        if (isMountedRef.current) {
+          setStatus("offline");
+          setSyncStatus("idle");
+        }
+        void persistLocalNow();
       }
     }
 
@@ -457,7 +654,22 @@ export default function useDraftAutosave({
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [clearRetryTimer]);
+  }, [clearRetryTimer, enterOfflineMode, persistLocalNow]);
+
+  useEffect(() => {
+    const checkpoint = () => {
+      if (!paramsRef.current.enabled || finalizedRef.current) return;
+      void persistLocalNow();
+      void runSaveRef.current?.("pagehide");
+    };
+    const onVisibility = () => { if (document.visibilityState === "hidden") checkpoint(); };
+    window.addEventListener("pagehide", checkpoint);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", checkpoint);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [persistLocalNow]);
 
   // Reset every trace of draft state when the sensitive session is cleared.
   useEffect(() => {
@@ -472,12 +684,19 @@ export default function useDraftAutosave({
       rerunRef.current = false;
       pausedRef.current = false;
       enabledRef.current = false;
+      offlineRef.current = false;
+      // Session cleanup purges the vault itself (and destroys its keys), so the
+      // hook only drops its view of a copy that no longer exists.
+      hasLocalCopyRef.current = false;
+      lastLocalSerializedRef.current = "";
       if (isMountedRef.current) {
         setStatus(getInitialStatus());
         setLastSavedAt(null);
         setHasPendingChanges(false);
         setConflict(null);
         setError(null);
+        setLocalStatus("idle");
+        setSyncStatus("idle");
       }
     }
 
@@ -500,9 +719,47 @@ export default function useDraftAutosave({
     };
   }, [clearDebounceTimer, clearRetryTimer]);
 
-  const saveNow = useCallback(() => {
+  /**
+   * Force an immediate save. Resolves TRUE only when the latest edits are
+   * genuinely on the server, so a caller can report the outcome honestly
+   * instead of assuming the attempt worked.
+   */
+  const saveNow = useCallback(async () => {
     clearDebounceTimer();
-    return runSaveRef.current?.("manual") ?? Promise.resolve();
+    await runSaveRef.current?.("manual");
+    return (
+      serializePayload(latestPayloadRef.current) ===
+      lastSavedSerializedRef.current
+    );
+  }, [clearDebounceTimer]);
+
+  /**
+   * Save before the page is left. Unlike saveNow, this settles only once any
+   * in-flight write is done and resolves true only when the latest edits are
+   * actually on the server - so a caller can decide whether leaving is safe.
+   * A conflict/validation pause resolves false: those edits cannot be saved
+   * without the user's decision, and the existing notice already asked for it.
+   */
+  const flushBeforeLeave = useCallback(async () => {
+    if (!paramsRef.current.enabled) return true;
+    clearDebounceTimer();
+
+    const isSaved = () =>
+      serializePayload(latestPayloadRef.current) ===
+      lastSavedSerializedRef.current;
+    const waitForInFlight = async () => {
+      for (let waited = 0; inFlightRef.current && waited < 15_000; waited += 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    };
+
+    await waitForInFlight();
+    if (isSaved()) return true;
+    if (pausedRef.current) return false;
+
+    await runSaveRef.current?.("leave");
+    await waitForInFlight();
+    return isSaved();
   }, [clearDebounceTimer]);
 
   const resolveConflict = useCallback((mode) => {
@@ -521,13 +778,26 @@ export default function useDraftAutosave({
     }
   }, []);
 
+  /** Dismiss the transient "Draft synced" confirmation. */
+  const acknowledgeSync = useCallback(() => {
+    setSyncStatus((current) => (current === "synced" ? "idle" : current));
+  }, []);
+
   return {
     status,
     lastSavedAt,
     hasPendingChanges,
     conflict,
     error,
+    localStatus,
+    syncStatus,
+    offlineEpoch,
     saveNow,
+    flushBeforeLeave,
+    persistLocalNow,
+    completeConsultation,
+    getDraftIdentity: () => draftRef.current,
     resolveConflict,
+    acknowledgeSync,
   };
 }

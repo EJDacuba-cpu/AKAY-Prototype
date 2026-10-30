@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BarangayHealthCenter extends Model
 {
+    public function alternativeRhus(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(RuralHealthUnit::class, 'bhc_referral_destinations');
+    }
+
     protected $fillable = [
         'name',
         'rural_health_unit_id',

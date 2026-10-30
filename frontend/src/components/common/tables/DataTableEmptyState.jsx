@@ -5,7 +5,7 @@ export default function DataTableEmptyState({
   icon,
   title = "No records found.",
   description = "Try adjusting your search or filter criteria.",
-  minHeight = "min-h-[260px]",
+  minHeight = "min-h-[var(--akay-empty-h,260px)]",
 }) {
   return (
     <tr>

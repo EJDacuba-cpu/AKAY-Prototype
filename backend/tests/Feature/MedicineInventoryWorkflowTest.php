@@ -42,14 +42,15 @@ class MedicineInventoryWorkflowTest extends TestCase
             'name' => 'Other Inventory BHC',
             'rural_health_unit_id' => $this->rhu->id,
         ]);
-        $this->bhw = $this->user('Inventory BHW', 'inventory-bhw@example.test', User::ROLE_BHW, $this->bhc->id);
-        $this->otherBhw = $this->user('Other BHW', 'other-inventory-bhw@example.test', User::ROLE_BHW, $this->otherBhc->id);
-        $this->rhuStaff = $this->user('Inventory RHU', 'inventory-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhu->id);
+        $this->bhw = $this->user('Inventory BHW', 'inventory-bhw@example.test', User::ROLE_BHC, $this->bhc->id);
+        $this->otherBhw = $this->user('Other BHW', 'other-inventory-bhw@example.test', User::ROLE_BHC, $this->otherBhc->id);
+        $this->rhuStaff = $this->user('Inventory RHU', 'inventory-rhu@example.test', User::ROLE_RHU, null, $this->rhu->id);
     }
 
     public function test_creation_derives_facility_and_records_only_positive_opening_balance(): void
     {
         $positive = $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Opening Balance Medicine',
             'category' => 'Basic Medicines',
             'quantity' => 12,
@@ -73,12 +74,14 @@ class MedicineInventoryWorkflowTest extends TestCase
         ]);
 
         $zero = $this->actingAs($this->rhuStaff, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Zero Opening Medicine',
             'quantity' => 0,
             'rural_health_unit_id' => 999999,
         ])->assertUnprocessable();
 
         $this->actingAs($this->rhuStaff, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Zero Opening Medicine',
             'quantity' => 0,
         ])->assertCreated();
@@ -92,11 +95,13 @@ class MedicineInventoryWorkflowTest extends TestCase
     public function test_negative_opening_balance_and_client_facility_override_fail_validation(): void
     {
         $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Negative Opening',
             'quantity' => -1,
         ])->assertUnprocessable();
 
         $this->actingAs($this->bhw, 'sanctum')->postJson('/api/medicines', [
+                'expiration_date' => now()->addYear()->toDateString(),
             'name' => 'Overridden Facility',
             'quantity' => 1,
             'barangay_health_center_id' => $this->otherBhc->id,
@@ -113,6 +118,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->actingAs($this->bhw, 'sanctum')
             ->postJson("/api/medicines/{$bhcMedicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 6,
                 'reason' => 'Monthly BHC replenishment',
             ])
@@ -124,6 +130,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
         $this->actingAs($this->rhuStaff, 'sanctum')
             ->postJson("/api/medicines/{$rhuMedicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 3,
                 'reason' => 'RHU delivery receipt',
             ])
@@ -138,10 +145,12 @@ class MedicineInventoryWorkflowTest extends TestCase
         $medicine = $this->medicine('Restricted Restock', 2, $this->bhc->id);
 
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/medicines/{$medicine->id}/restock", ['quantity' => 1])
+            ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),'quantity' => 1])
             ->assertUnprocessable();
         $this->actingAs($this->otherBhw, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 1,
                 'reason' => 'Unauthorized attempt',
             ])
@@ -237,6 +246,243 @@ class MedicineInventoryWorkflowTest extends TestCase
         $this->assertSame('Updated Metadata Medicine', $medicine->fresh()->name);
     }
 
+    public function test_bhc_and_rhu_metadata_edits_preserve_stock_reconciliation_and_history(): void
+    {
+        foreach ([$this->bhw, $this->rhuStaff] as $user) {
+            $medicine = $this->medicine('Metadata With History', 11, $user->barangay_health_center_id, $user->rural_health_unit_id);
+            $this->actingAs($user, 'sanctum')
+                ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
+                    'quantity' => 2,
+                    'reason' => 'Received inventory delivery',
+                ])
+                ->assertOk();
+            $medicine->refresh()->update(['reconciliation_required' => true]);
+            $history = $medicine->inventoryTransactions()->get()->toArray();
+            $auditHistory = DB::table('audit_logs')->orderBy('id')->get()->toArray();
+
+            $this->patchJson("/api/medicines/{$medicine->id}", [
+                'name' => 'Updated Item Details',
+                'description' => 'Metadata edit while stock verification is pending',
+                'low_stock_threshold' => 15,
+            ])
+                ->assertOk()
+                ->assertJsonPath('data.name', 'Updated Item Details')
+                ->assertJsonPath('data.quantity', 13)
+                ->assertJsonPath('data.reconciliation_required', true)
+                ->assertJsonPath('data.availability_status', 'Low Stock');
+
+            $this->assertSame($history, $medicine->inventoryTransactions()->get()->toArray());
+            $this->assertEquals($auditHistory, DB::table('audit_logs')
+                ->whereIn('id', array_column($auditHistory, 'id'))->orderBy('id')->get()->toArray());
+            $this->assertDatabaseHas('audit_logs', [
+                'user_id' => $user->id,
+                'action' => 'medicine_updated',
+                'module' => 'medicines',
+            ]);
+        }
+    }
+
+    public function test_bhc_and_rhu_corrections_retain_permission_reason_and_audit_checks(): void
+    {
+        foreach ([$this->bhw, $this->rhuStaff] as $user) {
+            $medicine = $this->medicine('Protected Correction', 11, $user->barangay_health_center_id, $user->rural_health_unit_id, [
+                'reconciliation_required' => true,
+            ]);
+            foreach ([['quantity' => 8], ['quantity' => 8, 'reason' => '   ']] as $payload) {
+                $this->actingAs($user, 'sanctum')
+                    ->patchJson("/api/medicines/{$medicine->id}", $payload)
+                    ->assertUnprocessable()
+                    ->assertJsonValidationErrors('reason');
+            }
+
+            $permissions = $user->permissions;
+            $user->update(['permissions' => ['inventory.view']]);
+            $this->actingAs($user, 'sanctum')
+                ->patchJson("/api/medicines/{$medicine->id}", ['quantity' => 8, 'reason' => 'Physical stock verification'])
+                ->assertForbidden();
+            $this->assertSame(11, $medicine->fresh()->quantity);
+            $this->assertTrue($medicine->fresh()->reconciliation_required);
+            $this->assertSame(0, $medicine->inventoryTransactions()->count());
+
+            $user->update(['permissions' => $permissions]);
+            $this->actingAs($user, 'sanctum')
+                ->patchJson("/api/medicines/{$medicine->id}", ['quantity' => 8, 'reason' => 'Physical stock verification'])
+                ->assertOk()
+                ->assertJsonPath('data.quantity', 8)
+                ->assertJsonPath('data.reconciliation_required', false);
+            $this->assertDatabaseHas('medicine_inventory_transactions', [
+                'medicine_id' => $medicine->id,
+                'actor_user_id' => $user->id,
+                'transaction_type' => 'physical_count',
+                'quantity_before' => 11,
+                'quantity_after' => 8,
+                'quantity_delta' => -3,
+                'reason' => 'Physical stock verification',
+            ]);
+            $this->assertDatabaseHas('audit_logs', [
+                'user_id' => $user->id,
+                'action' => 'inventory_corrected',
+                'module' => 'medicines',
+            ]);
+        }
+    }
+
+    public function test_quantity_correction_requires_reason_and_writes_a_ledger_row(): void
+    {
+        $medicine = $this->medicine('Correctable Medicine', 11, $this->bhc->id);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'name' => 'Corrected Medicine',
+                'quantity' => 8,
+                'reason' => 'Physical count mismatch',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Corrected Medicine')
+            ->assertJsonPath('data.quantity', 8);
+
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $medicine->id,
+            'transaction_type' => 'physical_count',
+            'quantity_before' => 11,
+            'quantity_after' => 8,
+            'quantity_delta' => -3,
+            'reason' => 'Physical count mismatch',
+            'source_type' => 'correction',
+        ]);
+        $this->assertSame(1, $medicine->inventoryTransactions()->count());
+    }
+
+    public function test_matching_quantity_with_reason_clears_reconciliation_with_verification_history(): void
+    {
+        $medicine = $this->medicine('Reconcile Confirm', 3, $this->bhc->id, null, [
+            'reconciliation_required' => true,
+        ]);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'quantity' => 3,
+                'reason' => 'Verified remaining stock',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.quantity', 3)
+            ->assertJsonPath('data.reconciliation_required', false);
+
+        $this->assertFalse($medicine->fresh()->reconciliation_required);
+        $this->assertSame(1, $medicine->inventoryTransactions()->count());
+    }
+
+    public function test_deduct_requires_reason_decrements_stock_and_rejects_negative_or_cross_facility(): void
+    {
+        $medicine = $this->medicine('Deductible Medicine', 6, $this->bhc->id);
+        $expired = $this->medicine('Expired Deductible', 4, $this->bhc->id, null, [
+            'expiration_date' => now()->subDay()->toDateString(),
+        ]);
+
+        $this->track($medicine);
+        $this->track($expired);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 2])
+            ->assertUnprocessable();
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
+                'quantity' => 2,
+                'reason' => 'Unauthorized deduction',
+            ])
+            ->assertForbidden();
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->patchJson("/api/medicines/{$medicine->id}", [
+                'quantity' => 1,
+                'reason' => 'Unauthorized correction',
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
+                'quantity' => 2,
+                'reason' => 'Damaged during storage',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.medicine.quantity', 4)
+            ->assertJsonPath('data.transaction.transaction_type', 'adjustment_out')
+            ->assertJsonPath('data.transaction.quantity_delta', -2);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$expired->id}/deduct", ['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id,
+                'quantity' => 1,
+                'reason' => 'Expired stock removed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.medicine.quantity', 3);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->postJson("/api/medicines/{$medicine->id}/deduct", ['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id,
+                'quantity' => 9,
+                'reason' => 'Excessive deduction',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_CONFLICT');
+
+        $this->assertSame(4, $medicine->fresh()->quantity);
+        $this->assertDatabaseHas('medicine_inventory_transactions', [
+            'medicine_id' => $medicine->id,
+            'transaction_type' => 'adjustment_out',
+            'reason' => 'Damaged during storage',
+            'source_type' => 'manual_adjustment',
+        ]);
+    }
+
+    public function test_duplicate_http_idempotency_key_applies_restock_and_deduct_once(): void
+    {
+        $restock = $this->medicine('Http Restock Once', 5, $this->bhc->id);
+        $deduct = $this->medicine('Http Deduct Once', 8, $this->bhc->id);
+        $restockKey = (string) Str::uuid();
+        $deductKey = (string) Str::uuid();
+
+        $this->track($deduct);
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $restockKey)
+            ->postJson("/api/medicines/{$restock->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
+                'quantity' => 4,
+                'reason' => 'Delivery receipt',
+            ])
+            ->assertOk();
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $restockKey)
+            ->postJson("/api/medicines/{$restock->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
+                'quantity' => 4,
+                'reason' => 'Delivery receipt',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_OPERATION_ALREADY_APPLIED');
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $deductKey)
+            ->postJson("/api/medicines/{$deduct->id}/deduct", ['expiry_group_id' => $deduct->expiryGroups()->firstOrFail()->id,
+                'quantity' => 3,
+                'reason' => 'Lost during transfer',
+            ])
+            ->assertOk();
+        $this->actingAs($this->bhw, 'sanctum')
+            ->withHeader('Idempotency-Key', $deductKey)
+            ->postJson("/api/medicines/{$deduct->id}/deduct", ['expiry_group_id' => $deduct->expiryGroups()->firstOrFail()->id,
+                'quantity' => 3,
+                'reason' => 'Lost during transfer',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'INVENTORY_OPERATION_ALREADY_APPLIED');
+
+        $this->assertSame(9, $restock->fresh()->quantity);
+        $this->assertSame(5, $deduct->fresh()->quantity);
+        $this->assertSame(1, MedicineInventoryTransaction::query()
+            ->where('operation_key', $restockKey)
+            ->count());
+        $this->assertSame(1, MedicineInventoryTransaction::query()
+            ->where('operation_key', $deductKey)
+            ->count());
+    }
+
     public function test_used_medicine_is_archived_while_unused_zero_stock_can_be_deleted(): void
     {
         $used = $this->medicine('Used Medicine', 1, $this->bhc->id);
@@ -271,6 +517,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         foreach ([1, 2] as $quantity) {
             $this->actingAs($this->bhw, 'sanctum')
                 ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                     'quantity' => $quantity,
                     'reason' => "History restock {$quantity}",
                 ])->assertOk();
@@ -364,9 +611,11 @@ class MedicineInventoryWorkflowTest extends TestCase
         foreach ($rows as $row) {
             $this->assertSame([
                 'transaction_type',
+                'allocations',
                 'quantity_before',
                 'quantity_delta',
                 'quantity_after',
+                'discrepancy',
                 'reason',
                 'source_type',
                 'created_at',
@@ -407,7 +656,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $formerStaff = $this->user(
             'Former Inventory Staff',
             'former-inventory-staff@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhc->id
         );
         $transaction = MedicineInventoryTransaction::create([
@@ -445,6 +694,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $medicine = $this->medicine('RHU History Medicine', 8, null, $this->rhu->id);
         $this->actingAs($this->rhuStaff, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 2,
                 'reason' => 'RHU history verification',
             ])
@@ -467,7 +717,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         $otherRhuStaff = $this->user(
             'Other Inventory RHU Staff',
             'other-inventory-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $otherRhu->id
         );
@@ -571,6 +821,8 @@ class MedicineInventoryWorkflowTest extends TestCase
         $service = app(MedicineStockService::class);
         $operationKey = "health-record:{$record->id}:dispense";
 
+        $this->track($first);
+        $this->track($second);
         DB::transaction(fn () => $service->dispense($request, $record, $items));
 
         $this->assertInventoryError(
@@ -648,7 +900,7 @@ class MedicineInventoryWorkflowTest extends TestCase
         }
     }
 
-    public function test_rhu_health_record_dispensing_is_rejected_and_rolled_back(): void
+    public function test_rhu_health_record_dispensing_uses_own_stock_and_facility_snapshot(): void
     {
         $patient = Patient::create([
             'first_name' => 'RHU',
@@ -657,23 +909,42 @@ class MedicineInventoryWorkflowTest extends TestCase
             'rural_health_unit_id' => $this->rhu->id,
         ]);
         $medicine = $this->medicine('RHU Inventory Item', 9, null, $this->rhu->id);
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'created_by' => $this->rhuStaff->id,
+            'rural_health_unit_id' => $this->rhu->id, 'category' => 'General Consultation',
+            'monitoring_data' => ['consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1]]);
+        $this->track($medicine);
+        DB::transaction(fn () => app(MedicineStockService::class)->dispense(
+            $this->requestFor($this->rhuStaff), $record, [['medicine_id' => $medicine->id, 'quantity' => 2]]
+        ));
+        $this->assertSame(7, $medicine->fresh()->quantity);
+        $this->assertDatabaseHas('health_record_medicines', ['health_record_id' => $record->id,
+            'medicine_id' => $medicine->id, 'rural_health_unit_id' => $this->rhu->id,
+            'barangay_health_center_id' => null, 'dispensed_by' => $this->rhuStaff->id]);
+        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id,
+            'transaction_type' => 'dispense', 'quantity_delta' => -2, 'source_id' => $record->id]);
+    }
 
-        $this->actingAs($this->rhuStaff, 'sanctum')
-            ->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/api/health-records', [
-                'patient_id' => $patient->id,
-                'category' => 'General Consultation',
-                'dispensed_medicines' => [[
-                    'medicine_id' => $medicine->id,
-                    'quantity' => 2,
-                ]],
-            ])
-            ->assertUnprocessable()
-            ->assertJsonPath('message', 'Medicine dispensing is only available for BHC visits.');
+    public function test_bhc_cannot_dispense_against_rhu_itr_for_its_patient(): void
+    {
+        $patient = Patient::create(['first_name' => 'Shared', 'last_name' => 'Patient',
+            'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id]);
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'created_by' => $this->rhuStaff->id,
+            'barangay_health_center_id' => $this->bhc->id, 'rural_health_unit_id' => $this->rhu->id,
+            'category' => 'General Consultation',
+            'monitoring_data' => ['consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1]]);
+        $medicine = $this->medicine('BHC stock', 5, $this->bhc->id);
+        $this->track($medicine);
 
-        $this->assertSame(9, $medicine->fresh()->quantity);
-        $this->assertDatabaseCount('health_records', 0);
-        $this->assertDatabaseCount('health_record_medicines', 0);
+        try {
+            DB::transaction(fn () => app(MedicineStockService::class)->dispense(
+                $this->requestFor($this->bhw), $record, [['medicine_id' => $medicine->id, 'quantity' => 1]]
+            ));
+            $this->fail('BHC must not dispense against an RHU consultation.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+        $this->assertSame(5, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('medicine_inventory_transactions', 0);
     }
 
@@ -692,6 +963,11 @@ class MedicineInventoryWorkflowTest extends TestCase
             ->assertJsonValidationErrors('direction');
 
         $this->assertSame(5, $medicine->fresh()->quantity);
+    }
+
+    private function track(Medicine $medicine): void
+    {
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
     }
 
     private function medicine(
@@ -729,6 +1005,7 @@ class MedicineInventoryWorkflowTest extends TestCase
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
+            'permissions' => ['inventory.view', 'inventory.manage', 'items.dispense'],
         ]);
     }
 
@@ -758,7 +1035,7 @@ class MedicineInventoryWorkflowTest extends TestCase
 
     private function requestFor(User $user): Request
     {
-        $request = Request::create('/api/medicines', 'POST');
+        $request = Request::create('/api/medicines', 'POST', ['expiration_date' => now()->addYear()->toDateString()]);
         $request->setUserResolver(fn (): User => $user);
 
         return $request;

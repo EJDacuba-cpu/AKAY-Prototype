@@ -10,6 +10,7 @@ class LoginRequest extends FormRequest
     {
         $this->merge([
             'email' => strtolower(trim((string) $this->input('email'))),
+            'turnstile_token' => trim((string) $this->input('turnstile_token')),
         ]);
     }
 
@@ -23,6 +24,15 @@ class LoginRequest extends FormRequest
         return [
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'turnstile_token' => ['required', 'string', 'max:2048'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'turnstile_token.required' => 'Complete the bot check before signing in.',
+            'turnstile_token.max' => 'Complete the bot check before signing in.',
         ];
     }
 }

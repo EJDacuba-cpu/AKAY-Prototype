@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Controllers\Api\HouseholdController;
+use App\Models\Patient;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,6 +18,8 @@ class PatientRequest extends FormRequest
     {
         $aliases = [
             'civilStatus' => 'civil_status',
+            'educationLevel' => 'education_level',
+            'educationCompleted' => 'education_completed',
             'philHealthStatus' => 'philhealth_status',
             'philHealthNumber' => 'philhealth_number',
             'spouseName' => 'spouse_name',
@@ -24,6 +28,9 @@ class PatientRequest extends FormRequest
             'husbandOccupation' => 'spouse_occupation',
             'purokArea' => 'purok_area',
             'motherPatientId' => 'mother_patient_id',
+            'fatherPatientId' => 'father_patient_id',
+            'motherBirthDate' => 'mother_birth_date',
+            'fatherBirthDate' => 'father_birth_date',
         ];
 
         $mapped = [];
@@ -44,6 +51,26 @@ class PatientRequest extends FormRequest
         $required = $this->isMethod('post') ? 'required' : 'sometimes';
 
         return [
+            'household' => ['sometimes', 'required', 'array:kind,household_id,relationship,version,serial_mode,serial_number,address,relationship_link'],
+            'household.relationship_link' => ['sometimes', 'nullable', 'array:type'],
+            'household.relationship_link.type' => ['required_with:household.relationship_link', 'in:spouse,sibling,mother,father'],
+            'household.kind' => ['required_with:household', 'in:existing,new'],
+            'household.household_id' => ['required_if:household.kind,existing', 'integer'],
+            'household.relationship' => ['required_if:household.kind,existing', 'string', 'max:100'],
+            'household.version' => ['sometimes', 'integer', 'min:1'],
+            'household.serial_mode' => ['required_if:household.kind,new', 'in:auto,manual'],
+            'household.serial_number' => ['required_if:household.serial_mode,manual', 'nullable', 'string', 'max:100'],
+            ...HouseholdController::addressRules('household.'),
+            'head_replacement' => ['sometimes', 'array:household_id,head_patient_id,relationships,version'],
+            'head_replacement.household_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.head_patient_id' => ['required_with:head_replacement', 'integer'],
+            'head_replacement.relationships' => ['present_with:head_replacement', 'array'],
+            'head_replacement.relationships.*' => ['required', 'string', 'max:100'],
+            'head_replacement.version' => ['required_with:head_replacement', 'integer', 'min:1'],
+            // Legacy field: registration no longer creates a visit. Rejected junk still 422.
+            'check_in' => ['sometimes', 'required', 'array:key'],
+            'check_in.key' => ['required_with:check_in', 'string', 'max:100'],
+            'confirm_possible_duplicate' => ['sometimes', 'boolean'],
             'first_name' => [$required, 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
@@ -56,13 +83,26 @@ class PatientRequest extends FormRequest
             'purok_area' => ['nullable', 'string', 'max:255'],
             'civil_status' => ['nullable', 'string', 'max:100'],
             'occupation' => ['nullable', 'string', 'max:255'],
+            'education_level' => ['nullable', Rule::in(['None', 'Elementary', 'High School', 'Senior High School', 'Vocational', 'College', 'Postgraduate'])],
+            'education_completed' => ['nullable', Rule::in(['Level', 'Graduate'])],
             'philhealth_status' => ['nullable', 'string', 'max:255'],
             'spouse_name' => ['nullable', 'string', 'max:255'],
             'spouse_occupation' => ['nullable', 'string', 'max:255'],
             'registration_type' => ['nullable', Rule::in(['general', 'child'])],
-            'mother_patient_id' => ['nullable', 'exists:patients,id'],
-            'mother_name' => ['nullable', 'string', 'max:255'],
+            'mother_patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'father_patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'parent_link_base' => ['sometimes', 'array:mother_patient_id,father_patient_id'],
+            'parent_link_base.mother_patient_id' => ['nullable', 'integer'],
+            'parent_link_base.father_patient_id' => ['nullable', 'integer'],
+            'mother_name' => [
+                Rule::requiredIf(fn () => $this->isMethod('post') && Patient::isInfantBirthdate($this->input('birthdate'))),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'mother_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'father_name' => ['nullable', 'string', 'max:255'],
+            'father_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'guardian_name' => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
             'guardian_contact_number' => ['nullable', 'string', 'max:50'],
@@ -75,6 +115,9 @@ class PatientRequest extends FormRequest
             'philhealth_number' => ['nullable', 'string', 'max:100'],
             'philhealth_category' => ['nullable', 'string', 'max:100'],
             'patient_category' => ['nullable', 'string', 'max:100'],
+            // medical_background is deliberately absent: it is not accepted on
+            // create or update, so validated() drops it. The background only
+            // changes through PatientBackground's audited clinical paths.
             'status' => ['sometimes', 'string', 'max:100'],
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],

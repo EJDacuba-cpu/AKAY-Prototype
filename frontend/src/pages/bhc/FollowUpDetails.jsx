@@ -22,11 +22,10 @@ import { FollowUpEpisodeContent } from "../../components/features/health-records
 import { DispensedMedicinesList } from "../../components/features/health-records/HealthRecordClinicalDetails";
 import {
   StateBadge,
+  buildRecordFollowUpVisitPath,
   formatDate,
-  formatStateLabel,
   formatTimeLabel,
   getEffectiveState,
-  getTaskClassification,
   getTaskServiceTypeLabel,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
 import {
@@ -34,11 +33,11 @@ import {
   rescheduleFollowUp,
 } from "../../services/followUpTaskService";
 import { getHealthRecordById } from "../../services/healthRecordService";
-import { isConnectionError } from "../../services/apiClient";
 import {
   formatDisplayValue,
   formatLongDate,
 } from "../../utils/formatters";
+import useNotification from "../../hooks/useNotification";
 import { queryKeys } from "../../utils/queryKeys";
 import {
   getDispensedMedicines,
@@ -54,16 +53,18 @@ import {
   getVitalSignItems,
   normalizeHealthRecordStatus,
 } from "../../components/features/health-records/recordDetailsHelpers";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const ACTIVE_STATES = ["due_today", "no_show", "upcoming", "rescheduled"];
 
-export default function FollowUpDetails() {
+export default function FollowUpDetails({ role = "bhc" }) {
   const { taskId } = useParams();
   const navigate = useNavigate();
+  const basePath = `/${role}`;
   const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const notify = useNotification();
 
   const {
     data,
@@ -72,7 +73,7 @@ export default function FollowUpDetails() {
     isFetching,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
+    queryKey: queryKeys.followUpTaskDetails(role, taskId),
     queryFn: () => getFollowUpTask(taskId),
     enabled: Boolean(taskId),
     retry: false,
@@ -99,8 +100,8 @@ export default function FollowUpDetails() {
     isLoading: relatedRecordLoading,
     refetch: refetchRelatedRecord,
   } = useQuery({
-    queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
-    queryFn: () => getHealthRecordById(relatedRecordId, "bhc"),
+    queryKey: queryKeys.healthRecordData(role, relatedRecordId),
+    queryFn: () => getHealthRecordById(relatedRecordId, role),
     enabled: Boolean(relatedRecordId),
     retry: false,
   });
@@ -114,17 +115,20 @@ export default function FollowUpDetails() {
   async function refreshTaskData() {
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
+        queryKey: queryKeys.followUpTaskDetails(role, taskId),
       }),
       queryClient.invalidateQueries({
-        queryKey: queryKeys.followUpTasks("bhc"),
+        queryKey: queryKeys.followUpTasks(role),
       }),
       queryClient.invalidateQueries({
-        queryKey: queryKeys.healthRecords("bhc"),
+        queryKey: queryKeys.healthRecords(role),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary("bhc"),
       }),
       relatedRecordId
         ? queryClient.invalidateQueries({
-            queryKey: queryKeys.healthRecordData("bhc", relatedRecordId),
+            queryKey: queryKeys.healthRecordData(role, relatedRecordId),
           })
         : Promise.resolve(),
     ]);
@@ -132,33 +136,24 @@ export default function FollowUpDetails() {
 
   function recordFollowUpVisit() {
     if (!task) return;
-
-    const params = new URLSearchParams({
-      mode: "followup",
-      followUpId: task.id,
-      patientId: task.patientId,
-      serviceType:
-        getTaskClassification(task) || getTaskServiceTypeLabel(task),
-      followUpStatus: formatStateLabel(task.effectiveState),
-      followUpDate: task.dueDate || "",
-    });
-
-    if (task.healthRecordId) {
-      params.set("recordId", task.healthRecordId);
-    }
-
-    navigate(`/bhc/health-records/add?${params.toString()}`);
+    navigate(buildRecordFollowUpVisitPath(task, basePath));
   }
 
   async function handleReschedule(selectedTask, payload) {
     setSavingAction(true);
-    setActionError("");
     try {
-      await rescheduleFollowUp(selectedTask.id, payload);
+      // A reschedule now supersedes this task with a new row rather than
+      // moving this one's date, so the page must follow the caller onto the
+      // replacement - refetching this id would leave them on the superseded
+      // entry, which no longer accepts any action.
+      const replacement = await rescheduleFollowUp(selectedTask.id, payload);
       setModal(null);
       await refreshTaskData();
+      if (replacement?.id && String(replacement.id) !== String(selectedTask.id)) {
+        navigate(`${basePath}/follow-ups/${replacement.id}`, { replace: true });
+      }
     } catch (requestError) {
-      setActionError(
+      notify.error(
         requestError?.status === 409
           ? "This follow-up has already changed. The latest details have been loaded."
           : requestError?.message || "Unable to reschedule this follow-up.",
@@ -174,13 +169,13 @@ export default function FollowUpDetails() {
 
   if (loading) {
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
-        <SoftLoadingArea
+      <DashboardLayout role={role} title="Follow-up Details">
+        <SoftLoadingArea skeleton="details"
           isLoading
           message="Loading follow-up details..."
           minHeight="min-h-[520px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -189,7 +184,7 @@ export default function FollowUpDetails() {
   if (notFound || error?.status === 403) {
     const forbidden = error?.status === 403;
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
+      <DashboardLayout role={role} title="Follow-up Details">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-[#B91C1C]">
             <XCircle size={26} />
@@ -203,7 +198,7 @@ export default function FollowUpDetails() {
               : "This follow-up schedule does not exist or is no longer available."}
           </p>
           <Link
-            to="/bhc/follow-ups"
+            to={`${basePath}/follow-ups`}
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#7F1D1D]"
           >
             <ArrowLeft size={14} />
@@ -216,18 +211,12 @@ export default function FollowUpDetails() {
 
   if (hasConnectionError) {
     return (
-      <DashboardLayout role="bhc" title="Follow-up Details">
+      <DashboardLayout role={role} title="Follow-up Details">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetch()}
           retrying={isFetching}
-          variant={
-            error?.isTimeout
-              ? "timeout"
-              : isConnectionError(error)
-                ? "offline"
-                : "error"
-          }
+          variant={errorStateVariant(error)}
         />
       </DashboardLayout>
     );
@@ -235,7 +224,11 @@ export default function FollowUpDetails() {
 
   if (!task) return null;
 
-  const active = ACTIVE_STATES.includes(task.effectiveState);
+  // A task a later reschedule superseded is history: the server refuses every
+  // action on it (FollowUpTaskSyncService::isProcessable), so the page must
+  // not offer them either - it points at the replacement instead.
+  const isSuperseded = Boolean(task.rescheduledToId);
+  const active = !isSuperseded && ACTIVE_STATES.includes(task.effectiveState);
   const detailTabs = [
     {
       id: "clinical",
@@ -260,18 +253,7 @@ export default function FollowUpDetails() {
           Loading visit chain...
         </div>
       ) : relatedRecordError ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 p-5 text-center">
-          <p className="text-sm font-semibold text-red-700">
-            Unable to load this follow-up&apos;s visit chain.
-          </p>
-          <button
-            type="button"
-            onClick={() => refetchRelatedRecord()}
-            className="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-          >
-            Try Again
-          </button>
-        </div>
+        <ConnectionErrorState size="compact" variant="error" onRetry={() => refetchRelatedRecord()} />
       ) : (
         <FollowUpEpisodeContent
           episode={relatedRecord?.followUpEpisode}
@@ -284,7 +266,7 @@ export default function FollowUpDetails() {
   ];
 
   return (
-    <DashboardLayout role="bhc" title="Follow-up Details">
+    <DashboardLayout role={role} title="Follow-up Details">
       <FollowUpActionModal
         modal={modal}
         saving={savingAction}
@@ -320,12 +302,23 @@ export default function FollowUpDetails() {
               <p className="mt-1 text-[11px] font-semibold text-slate-500">
                 Linked to record #{formatDisplayValue(task.healthRecordId)}
               </p>
+              {isSuperseded && (
+                <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600">
+                  Rescheduled - this entry was replaced.
+                  <Link
+                    to={`${basePath}/follow-ups/${task.rescheduledToId}`}
+                    className="font-bold text-[#B91C1C] underline-offset-2 hover:underline"
+                  >
+                    View current follow-up #{task.rescheduledToId}
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div className="flex shrink-0 flex-wrap gap-2">
               {task.effectiveState === "fulfilled" && completedRecordId && (
                 <Link
-                  to={`/bhc/health-records/${completedRecordId}`}
+                  to={`${basePath}/health-records/${completedRecordId}`}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
                 >
                   <History size={14} />
@@ -380,12 +373,6 @@ export default function FollowUpDetails() {
           </div>
         </header>
 
-        {actionError && (
-          <div className="mb-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {actionError}
-          </div>
-        )}
-
         <RecordTabs
           key={`${task.id}-${completedRecordId || "pending"}`}
           tabs={detailTabs}
@@ -427,18 +414,7 @@ function FollowUpClinicalDetails({ task, record, loading, error, onRetry }) {
 
   if (error || !record) {
     return (
-      <div className="rounded-xl border border-red-100 bg-red-50 p-5 text-center">
-        <p className="text-sm font-semibold text-red-700">
-          Unable to load the recorded follow-up visit.
-        </p>
-        <button
-          type="button"
-          onClick={() => onRetry?.()}
-          className="mt-3 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-        >
-          Try Again
-        </button>
-      </div>
+      <ConnectionErrorState size="compact" variant="error" onRetry={onRetry ? () => onRetry() : undefined} />
     );
   }
 

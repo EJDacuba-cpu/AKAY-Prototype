@@ -29,9 +29,10 @@ class ReferralCreationService
         ?HealthRecord $healthRecord = null
     ): Referral {
         $user = $request->user();
-        abort_unless($user?->isBhw(), 403, 'Only BHW accounts can create referrals.');
+        abort_unless($user?->isBhc(), 403, 'Only BHW accounts can create referrals.');
 
-        $route = $this->referralRouting->resolveForBhw($user);
+        ActionPermissions::ensure($user, 'referrals.submit');
+        $route = $this->referralRouting->resolveForBhc($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
         $this->facilityAccess->authorizePatientModification($user, $patient);
 
         if ($healthRecord) {
@@ -45,12 +46,17 @@ class ReferralCreationService
             );
         }
 
-        // DOC-14 then REF-SLIP-05c. Placed here rather than in the
+        $hold = $this->lockResumableHold($data, $patient, $route['bhc']->id);
+        if ($hold?->status === ReferralHold::STATUS_RESUBMITTED && $hold->resolved_referral_id) {
+            return Referral::query()->findOrFail($hold->resolved_referral_id);
+        }
+
+        // DOC-14. Placed here rather than in the
         // controllers so both submission paths are covered by one call site,
         // and so it sits after the client_submission_id replay checks: a retry
         // of an already-created referral must not be blocked by an availability
         // change that happened after the original submission.
-        $gate = $this->submissionGate->assertCanSubmit($route['rhu'], $data);
+        $gate = $this->submissionGate->assertCanSubmit($route['rhu']);
 
         $referral = Referral::create([
             ...$data,
@@ -64,7 +70,8 @@ class ReferralCreationService
             'created_by' => $user->id,
             'status' => Referral::STATUS_PENDING,
             'urgency_level' => $data['urgency_level'] ?? Referral::ATTENTION_ROUTINE,
-            'referral_datetime' => $data['referral_datetime'] ?? now(),
+            'referral_datetime' => now(),
+            'referring_practitioner' => $this->referringPractitioner($data, $healthRecord, $user),
         ]);
 
         ReferralUpdate::create([
@@ -79,7 +86,7 @@ class ReferralCreationService
         $bhcName = $referral->barangayHealthCenter?->name ?: 'BHC';
 
         $this->notifications->notifyUsersOnce(
-            User::where('role', User::ROLE_RHU_STAFF)
+            User::where('role', User::ROLE_RHU)
                 ->where('rural_health_unit_id', $referral->rural_health_unit_id)
                 ->where('status', User::STATUS_ACTIVE)
                 ->get(),
@@ -93,7 +100,7 @@ class ReferralCreationService
         );
 
         $this->notifications->notifyUsersOnce(
-            User::where('role', User::ROLE_BHW)
+            User::where('role', User::ROLE_BHC)
                 ->where('barangay_health_center_id', $referral->barangay_health_center_id)
                 ->where('status', User::STATUS_ACTIVE)
                 ->get(),
@@ -113,22 +120,82 @@ class ReferralCreationService
             "Submitted referral {$referral->tracking_id}."
         );
 
-        // Scoped to created_by/waiting so a BHW cannot resolve someone
-        // else's hold or double-resolve one. Runs inside the same
-        // transaction as referral creation on purpose - if creation is
-        // rolled back, resolving the hold must roll back with it.
-        if (! empty($data['resume_hold_id'])) {
-            $hold = ReferralHold::query()
-                ->where('id', $data['resume_hold_id'])
-                ->where('created_by', $user->id)
-                ->where('status', ReferralHold::STATUS_WAITING)
-                ->first();
+        if ($hold) {
+            app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
+            $recordToUpdate = $healthRecord ?? $hold->healthRecord;
+            if ($recordToUpdate) {
+                $monitoring = $recordToUpdate->monitoring_data ?? [];
+                $outcomes = array_map(function ($outcome) use ($hold, $referral) {
+                    if ((int) ($outcome['holdId'] ?? 0) !== (int) $hold->id) {
+                        return $outcome;
+                    }
 
-            if ($hold) {
-                app(ReferralHoldService::class)->markResubmitted($hold, $referral->id);
+                    return ['entryId' => $outcome['entryId'], 'referralId' => $referral->id, 'trackingId' => $referral->tracking_id];
+                }, $monitoring['conditionReferralOutcomes'] ?? []);
+                $recordToUpdate->update([
+                    'monitoring_data' => [
+                        ...$monitoring,
+                        ...($outcomes !== [] ? ['conditionReferralOutcomes' => $outcomes] : []),
+                        'referralStatus' => 'Submitted',
+                        'submissionStatus' => 'Submitted',
+                        'linkedTrackingId' => $referral->tracking_id,
+                    ],
+                ]);
             }
         }
 
         return $referral;
+    }
+
+    private function lockResumableHold(array $data, Patient $patient, int $bhcId): ?ReferralHold
+    {
+        if (empty($data['resume_hold_id'])) {
+            return null;
+        }
+
+        $hold = ReferralHold::query()
+            ->where('id', $data['resume_hold_id'])
+            ->where('barangay_health_center_id', $bhcId)
+            ->lockForUpdate()
+            ->first();
+
+        abort_unless($hold, 404);
+        abort_unless(
+            (int) $hold->patient_id === (int) $patient->id,
+            422,
+            'This waiting referral belongs to a different patient.'
+        );
+
+        if ($hold->status === ReferralHold::STATUS_RESUBMITTED && $hold->resolved_referral_id) {
+            return $hold;
+        }
+
+        abort_unless(
+            $hold->status === ReferralHold::STATUS_WAITING,
+            422,
+            'This waiting referral is already resolved.'
+        );
+
+        return $hold;
+    }
+
+    private function referringPractitioner(array $data, ?HealthRecord $healthRecord, User $user): ?string
+    {
+        $fromRequest = trim((string) ($data['referring_practitioner'] ?? ''));
+        if ($fromRequest !== '') {
+            return $fromRequest;
+        }
+
+        $monitoring = is_array($healthRecord?->monitoring_data) ? $healthRecord->monitoring_data : [];
+        foreach (['attendingStaff', 'attending_staff'] as $key) {
+            $value = trim((string) ($monitoring[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+
+        return $name !== '' ? $name : null;
     }
 }

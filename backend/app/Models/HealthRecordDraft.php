@@ -17,8 +17,11 @@ class HealthRecordDraft extends Model
 
     protected $fillable = [
         'public_id',
+        'consultation_uuid',
         'owner_user_id',
         'barangay_health_center_id',
+        'rural_health_unit_id',
+        'rhu_visit_id',
         'patient_id',
         'classification',
         'encrypted_payload',
@@ -27,12 +30,15 @@ class HealthRecordDraft extends Model
         'consumed_health_record_id',
         'expires_at',
         'last_saved_at',
+        'review_state', 'editor_user_id', 'editor_expires_at', 'last_editor_user_id', 'return_note',
     ];
 
     protected $hidden = [
         'id',
         'owner_user_id',
         'barangay_health_center_id',
+        'rural_health_unit_id',
+        'rhu_visit_id',
         'patient_id',
         'encrypted_payload',
         'consumed_health_record_id',
@@ -42,6 +48,7 @@ class HealthRecordDraft extends Model
         'version' => 'integer',
         'expires_at' => 'datetime',
         'last_saved_at' => 'datetime',
+        'editor_expires_at' => 'datetime',
     ];
 
     public function owner(): BelongsTo
@@ -49,9 +56,24 @@ class HealthRecordDraft extends Model
         return $this->belongsTo(User::class, 'owner_user_id');
     }
 
+    public function editor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'editor_user_id');
+    }
+
     public function barangayHealthCenter(): BelongsTo
     {
         return $this->belongsTo(BarangayHealthCenter::class);
+    }
+
+    public function ruralHealthUnit(): BelongsTo
+    {
+        return $this->belongsTo(RuralHealthUnit::class);
+    }
+
+    public function rhuVisit(): BelongsTo
+    {
+        return $this->belongsTo(RhuVisitQueueEntry::class, 'rhu_visit_id');
     }
 
     public function patient(): BelongsTo

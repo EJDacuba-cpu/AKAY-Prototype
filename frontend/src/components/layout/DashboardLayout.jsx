@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu } from "lucide-react";
+import WorkingFacility from "./WorkingFacility";
+import TopBarBreadcrumbs from "./TopBarBreadcrumbs";
+import { getBreadcrumbs } from "../../utils/breadcrumbs";
+import { navigationAllowed } from "../../utils/dashboardAccess";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
 import {
@@ -38,6 +42,9 @@ export default function DashboardLayout({
   title,
   children,
   hideSidebar = false,
+  // Replaces the default content padding, for pages that manage their own
+  // edge spacing (e.g. a full-bleed board that fills the viewport).
+  contentClassName = "px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 lg:p-6",
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,7 +75,10 @@ export default function DashboardLayout({
   const { shouldShowRouteLoading } = useAkayLoadingLifecycle();
   const routeKey = location.pathname;
 
-  const menuSections = menuByRole[role] || [];
+  // Unassigned modules stay listed but locked, so every account keeps the same navigation layout.
+  const menuSections = (menuByRole[role] || []).map(section => ({ ...section,
+    items: section.items.map(item => ({ ...item, locked: !navigationAllowed(getCurrentUser(), item.path) })),
+  }));
   const user = getCurrentUser() || {
     name: "AKAY User",
     position: "Personnel",
@@ -253,7 +263,7 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="relative flex h-dvh overflow-hidden bg-[#F8FAFC] text-[#0F172A]">
+    <div className="relative flex h-dvh overflow-hidden bg-[var(--color-shell)] text-neutral-900">
       <style>
         {`
           .akay-sidebar-scroll {
@@ -267,7 +277,7 @@ export default function DashboardLayout({
 
           .akay-content-scroll {
             scrollbar-width: thin;
-            scrollbar-color: #E5E7EB transparent;
+            scrollbar-color: var(--color-neutral-300) transparent;
           }
 
           .akay-content-scroll::-webkit-scrollbar {
@@ -279,7 +289,7 @@ export default function DashboardLayout({
           }
 
           .akay-content-scroll::-webkit-scrollbar-thumb {
-            background-color: #D1D5DB;
+            background-color: var(--color-neutral-300);
             border-radius: 999px;
           }
         `}
@@ -299,7 +309,7 @@ export default function DashboardLayout({
           {mobileDrawerOpen && (
             <div
               onClick={() => setMobileDrawerOpen(false)}
-              className="fixed inset-0 z-40 bg-slate-950/25 backdrop-blur-sm transition-opacity md:hidden"
+              className="fixed inset-0 z-40 bg-gray-950/25 transition-opacity md:hidden"
             />
           )}
 
@@ -315,45 +325,46 @@ export default function DashboardLayout({
       )}
 
       <main
-        className={`flex h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out ${
-          hideSidebar ? "" : sidebarExpanded ? "md:ml-60" : "md:ml-[72px]"
+        className={`flex h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-300 ease-in-out md:p-2 ${
+          hideSidebar ? "" : sidebarExpanded ? "md:ml-60 md:pl-0" : "md:ml-[72px] md:pl-0"
         }`}
       >
-<header className="no-print relative z-30 shrink-0 border-b border-[#E5E7EB] bg-white/95 backdrop-blur-xl">
-  <div className="flex h-14 items-center justify-between px-3.5 sm:h-[62px] sm:px-5">
+        {/* The content canvas: a rounded sheet inset in the tinted shell. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)] md:rounded-xl md:border md:border-neutral-200/80 md:shadow-xs">
+<header className="no-print relative z-30 shrink-0 border-b border-neutral-200/80 bg-white font-sans antialiased">
+  <div className="flex h-14 items-center justify-between px-3.5 sm:px-5">
 <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
   {!hideSidebar && (
     <button
       type="button"
       onClick={() => setMobileDrawerOpen(true)}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#B91C1C] shadow-sm transition hover:bg-[#FEF2F2] md:hidden"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 shadow-xs transition-colors hover:bg-neutral-50 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:hidden"
       aria-label="Open sidebar"
     >
-      <Menu size={17} />
+      <Menu size={16} />
     </button>
   )}
 
-  <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-    <span className="h-5 w-1 shrink-0 rounded-full bg-[#B91C1C] sm:h-6" />
-
-    <h2 className="truncate text-sm font-black tracking-tight text-[#0F172A] sm:text-base">
-      {title}
-    </h2>
-  </div>
+  <TopBarBreadcrumbs crumbs={getBreadcrumbs(location.pathname, title, location.search)} />
 </div>
 
             <div className="flex items-center gap-2">
+              <WorkingFacility />
               <div className="relative z-[100]">
                 <button
                   type="button"
                   onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#64748B] shadow-sm transition hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#B91C1C] sm:h-9 sm:w-9 sm:rounded-lg"
-                  aria-label="Notifications"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
+                  aria-label={
+                    unreadCount > 0
+                      ? `Notifications, ${unreadCount} unread`
+                      : "Notifications"
+                  }
                 >
-                  <Bell size={15} />
+                  <Bell size={16} />
                   {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#B91C1C] text-[8px] font-bold text-white ring-2 ring-white">
-                      {unreadCount}
+                    <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink-700 px-1 text-[10px] font-semibold leading-none text-white tabular-nums ring-2 ring-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
                   )}
                 </button>
@@ -376,9 +387,10 @@ export default function DashboardLayout({
         />
         <TopLoadingBar active={routeLoading} complete={routeLoadingComplete} />
 
-        <section className="akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-5">
+        <section className={`akay-content-scroll min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${contentClassName}`}>
           {children}
         </section>
+        </div>
       </main>
 
       <NotificationModal

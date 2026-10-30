@@ -1,0 +1,532 @@
+/* Consultation surfaces use the app's shared radius, shadow and color tokens.
+   Rules stay inside .ehr-consult so other clinical modules retain their styles. */
+.ehr-consult {
+  --consult-panel-width: 320px;
+  --consult-gap: 16px;
+}
+
+/* RHU uses the same clinical sheets as BHC through shadcn Card primitives.
+   Explicit sheet roles keep nested history and program controls untouched. */
+.ehr-consult .ehr-consult__sheet {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-modal);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult .ehr-consult__sheet--headed > div:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  padding: 16px 20px;
+}
+.ehr-consult .ehr-consult__sheet--headed > div:nth-child(2) {
+  padding: 20px;
+}
+.ehr-consult--rhu .ehr-consult__grid--assessment .ehr-consult__form h3 {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 16px;
+}
+/* Shared service forms own their sections; only their outer sheets receive
+   the consultation finish, without adding a second card around them. */
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] {
+  border-radius: var(--radius-modal);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] > div:first-child[class~="border-b"] {
+  padding: 16px 20px;
+}
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] > div:first-child[class~="border-b"] + div {
+  padding: 20px;
+}
+
+.ehr-consult__header {
+  flex: none;
+  margin-bottom: var(--consult-gap);
+}
+.ehr-consult__header > div {
+  margin-bottom: 0;
+}
+
+.ehr-consult .rounded {
+  border-radius: var(--radius-input);
+}
+.ehr-consult [class~="rounded-full"],
+.ehr-consult button,
+.ehr-consult .ehr-consult__grid > fieldset > aside span {
+  border-radius: var(--radius-pill);
+}
+.ehr-consult input[type="checkbox"] {
+  border-radius: 2px;
+}
+.ehr-consult [class*="backdrop-blur"] {
+  backdrop-filter: none;
+}
+
+/* Top-level form sheets and the services panel share the accepted soft finish. */
+.ehr-consult .ehr-consult__form section.anim-fade-up[class~="border"],
+.ehr-consult .ehr-consult__grid > fieldset > aside {
+  border-radius: var(--radius-modal);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult .ehr-consult__form section.anim-fade-up[class~="border"] > div:first-child,
+.ehr-consult .ehr-consult__grid > fieldset > aside > div:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside > div:last-child {
+  border-end-start-radius: inherit;
+  border-end-end-radius: inherit;
+}
+.ehr-consult .ehr-consult__form section.anim-fade-up[class~="border"] > div:first-child {
+  padding: 16px 20px;
+}
+.ehr-consult .ehr-consult__form section.anim-fade-up[class~="border"] > div:nth-child(2) {
+  padding: 20px;
+}
+.ehr-consult .ehr-consult__form form {
+  max-width: none;
+}
+.ehr-consult .ehr-consult__form > div:first-child {
+  margin-bottom: var(--consult-gap);
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside > div:first-child {
+  padding: 16px;
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside > div:nth-child(2) > div {
+  padding: 18px 20px;
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside button {
+  padding-inline: 16px;
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside button[aria-pressed="false"]:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+.ehr-consult .ehr-consult__grid > fieldset > aside button[aria-pressed="false"]:not(:disabled):hover {
+  background: var(--color-surface-2);
+}
+
+/* Physical Examination shares Interview's surfaces without changing the
+   form's @container, which owns the responsive Vital Signs columns. */
+.ehr-consult__header--assessment {
+  margin-bottom: 20px;
+}
+.ehr-consult [data-body-preview] {
+  border-radius: var(--radius-modal);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult [data-body-preview] > div:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  padding: 20px;
+}
+.ehr-consult [data-body-preview] > p:last-of-type {
+  border-end-start-radius: inherit;
+  border-end-end-radius: inherit;
+}
+.ehr-consult [data-body-preview] > div:first-child > span {
+  border-radius: var(--radius-pill);
+}
+.ehr-consult .ehr-consult__grid--assessment .ehr-consult__form section.anim-fade-up[class~="border"] > div:first-child {
+  padding: 20px 24px;
+}
+.ehr-consult .ehr-consult__grid--assessment .ehr-consult__form h3 {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 16px;
+}
+.ehr-consult [data-field="bloodPressure"] > p {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.ehr-consult [data-field="bloodPressure"] > div > input:first-of-type {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.ehr-consult [data-field="bloodPressure"] > div > input:last-of-type {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.ehr-consult .ehr-consult__form div[class~="h-9"][class~="border"] {
+  border-radius: var(--radius-input);
+}
+
+/* Care Plan keeps one page heading and distinct clinical sheets. The existing
+   components continue to own all reporting, referrals and medicine actions. */
+.ehr-consult__header--care-plan {
+  margin-bottom: 20px;
+}
+.ehr-consult .ehr-consult__form > fieldset > section:has(.ehr-consult__care-plan) {
+  max-width: none;
+}
+.ehr-consult__care-plan {
+  display: grid;
+  gap: 20px;
+}
+.ehr-consult__care-plan > [data-field="diagnoses"],
+.ehr-consult__care-plan > .divide-y > section {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-modal);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+.ehr-consult__care-plan > .divide-y {
+  display: contents;
+}
+.ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] label {
+  color: var(--color-text-secondary);
+}
+.ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] input[data-slot="input"] {
+  height: 36px;
+  font-size: 14px;
+}
+.ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] input[data-slot="input"]:not([aria-invalid="true"]):not(:focus) {
+  border-color: var(--color-border-strong);
+}
+
+/* Persistent navigation uses the same compact pill controls as module toolbars. */
+.ehr-consult .consultation-actions button {
+  min-height: 36px;
+  height: 36px;
+  padding-inline: 16px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+}
+.ehr-consult .consultation-actions__leading > button[aria-haspopup] {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  box-shadow: none;
+}
+.ehr-consult .consultation-actions__trailing {
+  min-width: 0;
+  max-width: 100%;
+}
+.ehr-consult .consultation-actions__continue {
+  min-width: 104px;
+  max-width: 100%;
+  height: auto;
+  padding-block: 8px;
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 479px) {
+  .ehr-consult .consultation-actions {
+    gap: 8px;
+  }
+  .ehr-consult .consultation-actions button {
+    padding-inline: 12px;
+  }
+}
+
+/* Read-only recap: one shared header, then the same clinical sheets. */
+.ehr-consult__header--review {
+  margin-bottom: 20px;
+}
+.ehr-consult .ehr-consult__review {
+  max-width: none;
+}
+.ehr-consult__review .ehr-consult__visit-overview {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+.ehr-consult__review .ehr-consult__visit-overview > span:empty {
+  display: none;
+}
+.ehr-consult__review .ehr-consult__visit-overview > div {
+  width: auto;
+  align-items: flex-start;
+}
+.ehr-consult__review :is(.lucide-calendar-days, .lucide-clock) {
+  color: var(--color-text-muted);
+}
+.ehr-consult__review-sections {
+  display: grid;
+  gap: 12px;
+}
+.ehr-consult__review-card {
+  min-width: 0;
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult__review-card-header {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  background: var(--color-surface);
+}
+.ehr-consult__review-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ehr-consult__review-card dt {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text-secondary);
+}
+.ehr-consult__review-card dd {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+.ehr-consult__review-card dd > span[class~="text-[#9CA3AF]"] {
+  color: var(--color-text-muted);
+}
+@media (min-width: 1280px) {
+  .ehr-consult__review-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .ehr-consult__review-card:first-child {
+    grid-column: 1 / -1;
+  }
+  .ehr-consult__review-card:not(:first-child) .ehr-consult__review-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* Hide only the scrollbar chrome; wheel, touch and keyboard scrolling remain. */
+.akay-content-scroll:has(.ehr-consult),
+.ehr-consult .ehr-consult__form,
+.ehr-consult .ehr-consult__grid > fieldset > aside,
+.ehr-consult [data-body-preview] {
+  scrollbar-width: none;
+}
+.akay-content-scroll:has(.ehr-consult)::-webkit-scrollbar,
+.ehr-consult .ehr-consult__form::-webkit-scrollbar,
+.ehr-consult .ehr-consult__grid > fieldset > aside::-webkit-scrollbar,
+.ehr-consult [data-body-preview]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ── One red ────────────────────────────────────────────────────────────── */
+/* Shared components hard-code the app's #B91C1C. Exact-token matches (`~=`)
+   so `hover:` / `focus:` variants are not caught by accident. */
+.ehr-consult [class~="text-[#B91C1C]"] {
+  color: #dc2626;
+}
+.ehr-consult [class~="bg-[#B91C1C]"] {
+  background-color: #dc2626;
+}
+.ehr-consult [class~="border-[#B91C1C]"] {
+  border-color: #dc2626;
+}
+.ehr-consult [class~="accent-[#B91C1C]"] {
+  accent-color: #dc2626;
+}
+.ehr-consult [class~="focus:border-[#B91C1C]"]:focus {
+  border-color: #dc2626;
+}
+.ehr-consult [class~="hover:text-[#B91C1C]"]:hover {
+  color: #dc2626;
+}
+.ehr-consult [class~="hover:bg-[#FEF2F2]"]:hover {
+  background-color: #fee2e2;
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+/* Keep the shared field shape and a visible ink focus ring. */
+.ehr-consult :is(input, select, textarea):not([type="checkbox"], [type="radio"]) {
+  border-color: #d1d5db;
+  border-radius: var(--radius-input);
+}
+.ehr-consult
+  :is(input, select, textarea):not([type="checkbox"], [type="radio"]):focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+.ehr-consult
+  :is(input, select, textarea)[aria-invalid="true"]:not(:focus) {
+  border-color: #dc2626;
+  box-shadow: none;
+}
+
+/* Field labels: uppercase, semibold, readable gray (was 10px #9CA3AF). */
+.ehr-consult label[class*="uppercase"],
+.ehr-consult p[class*="uppercase"][class*="text-[#9CA3AF]"] {
+  color: #374151;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────────────── */
+/* ModalShell paints a solid red header bar. In this system red marks the
+   action and the alert, not every dialog's chrome: a white header with a
+   hairline rule, dark title, and the primary button carrying the red. */
+.ehr-consult section[role="dialog"] > header {
+  background-color: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+}
+.ehr-consult section[role="dialog"] > header h2 {
+  color: #111827;
+  font-weight: 700;
+}
+.ehr-consult section[role="dialog"] > header p {
+  color: #6b7280;
+}
+.ehr-consult section[role="dialog"] > header > span {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+.ehr-consult section[role="dialog"] > header button {
+  color: #6b7280;
+}
+.ehr-consult section[role="dialog"] > header button:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+.ehr-consult section[role="dialog"] {
+  border-color: #d1d5db;
+}
+
+/* ── Pinned layout (1024px and up) ──────────────────────────────────────────
+   Same idea as the patient directory: the page no longer scrolls. The program
+   panel stays on the right at a fixed height, the action bar stays at the
+   bottom, and only the form column on the left scrolls. Interview and Physical Examination share a
+   header above both columns; other step headings scroll with their form. Below 1024px the
+   panel stacks under the form and the page scrolls as before (the breakpoint
+   matches the panel's lg:grid-cols in ConsultationWorkspace).
+
+   Everything keys off `.ehr-consult--pinned`, which the workspace sets only
+   while a consultation screen is showing, so loading and legacy screens keep
+   normal page scrolling. */
+@media (min-width: 1024px) {
+  .ehr-consult__header {
+    padding-inline: 2px;
+  }
+  .akay-content-scroll:has(.ehr-consult--pinned) {
+    overflow-y: hidden;
+  }
+  .ehr-consult--pinned {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .ehr-consult--pinned > * {
+    flex: none;
+  }
+  /* The step content: everything between the title and the action bar. */
+  .ehr-consult--pinned > .ehr-consult__stage {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ehr-consult--pinned > .ehr-consult__stage[hidden] {
+    display: none;
+  }
+  .ehr-consult--pinned .ehr-consult__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .ehr-consult--pinned .ehr-consult__grid {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+  /* The one scroll area. */
+  .ehr-consult--pinned .ehr-consult__form {
+    align-self: stretch;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 4px 8px 2px;
+  }
+  .ehr-consult--pinned .ehr-consult__grid--panel {
+    grid-template-columns: minmax(0, 1fr) clamp(288px, var(--consult-panel-width), 34%);
+    column-gap: var(--consult-gap);
+  }
+  /* The panel is pinned in place at the full height of the workspace; it only
+     scrolls itself if the list is taller than that. */
+  .ehr-consult--pinned .ehr-consult__grid--assessment > .ehr-consult__form,
+  .ehr-consult--pinned .ehr-consult__grid--care-plan > .ehr-consult__form {
+    padding-top: 0;
+  }
+  .ehr-consult--pinned .ehr-consult__grid > fieldset > aside,
+  .ehr-consult--pinned .ehr-consult__grid > [data-body-preview] {
+    align-self: stretch;
+    max-height: none;
+    overflow-y: auto;
+    position: static;
+  }
+  .ehr-consult--pinned .ehr-consult__actionbar {
+    position: static;
+    margin-top: 0;
+  }
+}
+
+/* ── Body Preview hover callout (desktop only) ──────────────────────────────
+   A dot with findings fades in a callout card; an empty dot just fades in
+   a plain label. Kept minimal and skipped
+   entirely under prefers-reduced-motion. */
+@keyframes bp-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.ehr-consult .bp-callout-card {
+  animation: bp-fade-in 140ms ease-out 60ms backwards;
+}
+.ehr-consult .bp-tooltip {
+  animation: bp-fade-in 100ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ehr-consult .bp-callout-card,
+  .ehr-consult .bp-tooltip {
+    animation: none;
+  }
+}
+
+/* Reporting and care choices reveal once when a named concern mounts them.
+   Typing additional letters keeps this element mounted, so motion does not replay. */
+.ehr-consult .concern-reveal {
+  animation: consultation-choice-reveal 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes consultation-choice-reveal {
+  from {
+    opacity: 0.4;
+    clip-path: inset(0 0 60% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0);
+  }
+}
+@keyframes consultation-choice-feedback {
+  from { opacity: 0.85; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ehr-consult .concern-reveal {
+    animation: consultation-choice-feedback 80ms linear;
+  }
+}

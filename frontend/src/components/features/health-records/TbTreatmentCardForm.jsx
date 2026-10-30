@@ -3,6 +3,7 @@ import { Download, Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { DatePickerField } from "../../common/forms/DatePickerField";
 import { downloadTbCardPdf } from "../../../services/healthRecordService";
+import { TB_OUTCOMES } from "../../../utils/careTrackingConfig";
 import TbDoseCalendar, {
   createEmptyMonth,
   normalizeMonth,
@@ -63,6 +64,27 @@ export const TB_LOCATION_OF_TREATMENT_OPTIONS = [
   { value: "facility", label: "Facility-based" },
   { value: "community", label: "Community-based" },
   { value: "home_based", label: "Home-based" },
+];
+
+// Form 8 clinical data, not iClinicSys-territory general history - see
+// Forms Finalization Checklist 3.3.
+export const TB_HIV_STATUS_OPTIONS = [
+  { value: "reactive", label: "Reactive / PLHIV" },
+  { value: "non_reactive", label: "Non-reactive" },
+  { value: "not_done", label: "Not Done" },
+  { value: "unknown", label: "Unknown" },
+];
+
+export const TB_ART_STATUS_OPTIONS = [
+  { value: "on_art", label: "On ART" },
+  { value: "not_on_art", label: "Not on ART" },
+  { value: "not_applicable", label: "Not Applicable" },
+];
+
+export const TB_CPT_STATUS_OPTIONS = [
+  { value: "on_cpt", label: "On CPT" },
+  { value: "not_on_cpt", label: "Not on CPT" },
+  { value: "not_applicable", label: "Not Applicable" },
 ];
 
 const LAB_TESTS = [
@@ -129,6 +151,17 @@ export const EMPTY_TB_DATA = {
     drugResistance: "",
     registrationGroup: "",
   },
+  // Form 8 - used by both BHC and RHU, not iClinicSys-territory general
+  // history, so it stays in scope here (Forms Finalization Checklist 3.3).
+  comorbidities: {
+    hivStatus: "",
+    hivTestDate: "",
+    artStatus: "",
+    artStartDate: "",
+    cptStatus: "",
+    cptStartDate: "",
+    otherComorbidities: "",
+  },
   regimen: { rows: [createEmptyRegimenRow()] },
   treatmentSupporter: {
     locationOfTreatment: "",
@@ -147,6 +180,10 @@ export const EMPTY_TB_DATA = {
   },
   adverseEvents: [],
   doseCalendar: { months: [createEmptyMonth(0)], adherencePercent: 0 },
+  // Final NTP treatment outcome. Optional and set once treatment closes -
+  // until then, the patient's Care & Programs tab shows the latest treatment
+  // phase instead of guessing an outcome from dates.
+  outcome: { status: "", date: "" },
 };
 
 function mergeGroup(empty, source) {
@@ -181,6 +218,10 @@ export function normalizeTbData(source) {
       EMPTY_TB_DATA.classification,
       data.classification,
     ),
+    comorbidities: mergeGroup(
+      EMPTY_TB_DATA.comorbidities,
+      data.comorbidities,
+    ),
     regimen: {
       rows: rawRows.length
         ? rawRows.map((row) => mergeGroup(createEmptyRegimenRow(), row))
@@ -196,6 +237,7 @@ export function normalizeTbData(source) {
       : [],
     // Recompute totals on load so stored/derived values are always consistent.
     doseCalendar: recomputeCalendar(months),
+    outcome: mergeGroup(EMPTY_TB_DATA.outcome, data.outcome),
   };
 }
 
@@ -213,7 +255,7 @@ function FieldLabel({ label, required }) {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
-function TextField({ label, value, onChange, required, placeholder }) {
+function TextField({ label, value, onChange, required, placeholder, disabled = false, error }) {
   return (
     <div className="min-w-0">
       <FieldLabel label={label} required={required} />
@@ -221,21 +263,25 @@ function TextField({ label, value, onChange, required, placeholder }) {
         type="text"
         value={value ?? ""}
         placeholder={placeholder}
+        disabled={disabled}
+        aria-invalid={Boolean(error)}
         onChange={(e) => onChange(e.target.value)}
-        className={inputClass}
+        className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
       />
+      {error && <p role="alert" className="mt-1 text-[11px] font-medium text-[var(--color-danger)]">{error}</p>}
     </div>
   );
 }
 
-function SelectField({ label, value, onChange, options, required, placeholder }) {
+function SelectField({ label, value, onChange, options, required, placeholder, disabled = false }) {
   return (
     <div className="min-w-0">
       <FieldLabel label={label} required={required} />
       <select
         value={value ?? ""}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className={`${inputClass} cursor-pointer`}
+        className={`${inputClass} cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
       >
         <option value="">{placeholder || "Select…"}</option>
         {options.map((opt) => (
@@ -285,6 +331,9 @@ export default function TbTreatmentCardForm({
   onChange,
   readOnly = false,
   recordId = null,
+  mode = "full",
+  referenceCaseNumber = "",
+  errors = {},
 }) {
   const data = value || EMPTY_TB_DATA;
   const [downloading, setDownloading] = useState(false);
@@ -367,8 +416,15 @@ export default function TbTreatmentCardForm({
     onChange({ ...data, doseCalendar: nextCalendar });
   };
 
+  const showEncode = mode === "full" || mode === "encode";
+  const showFinalize = mode === "full" || mode === "finalize";
+  const showDots = mode === "full" || mode === "dots";
+  const showChart = mode === "chart" || mode === "dots";
+  const fieldsLocked = readOnly || mode === "chart";
+
   return (
     <div className="space-y-4">
+      <fieldset disabled={fieldsLocked} className="space-y-4">
       {recordId && (
         <div className="flex justify-end">
           <button
@@ -384,6 +440,7 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* I. Case Finding / Notification */}
+      {showEncode && (
       <SectionCard
         title="I. Case Finding / Notification"
         subtitle="Diagnosing facility and screening details."
@@ -428,8 +485,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* Laboratory Tests */}
+      {showEncode && (
       <SectionCard
         title="Laboratory Tests"
         subtitle="Collection / examination dates and results."
@@ -484,8 +543,10 @@ export default function TbTreatmentCardForm({
           </div>
         </div>
       </SectionCard>
+      )}
 
       {/* Diagnosis */}
+      {showFinalize && (
       <SectionCard title="Diagnosis">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -506,9 +567,11 @@ export default function TbTreatmentCardForm({
           />
           <TextField
             label="TB Case Number"
+            error={errors["tbData.diagnosis.tbCaseNumber"] || errors["tb_data.diagnosis.tbCaseNumber"]}
             value={data.diagnosis.tbCaseNumber}
             onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
-            required
+            required={!referenceCaseNumber}
+            disabled={readOnly || Boolean(referenceCaseNumber)}
           />
           <TextField
             label="Attending Physician"
@@ -522,8 +585,10 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
 
       {/* TB Disease Classification */}
+      {showFinalize && (
       <SectionCard title="TB Disease Classification">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -563,8 +628,81 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
+
+      {/* Encode: HIV baseline. Finalize: ART/CPT and comorbidity treatment. */}
+      {showEncode && (
+      <SectionCard title="HIV/PLHIV Baseline">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <SelectField
+            label="HIV Test Result"
+            value={data.comorbidities.hivStatus}
+            onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+            options={TB_HIV_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="Date of HIV Test"
+            value={data.comorbidities.hivTestDate}
+            onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+          />
+        </div>
+      </SectionCard>
+      )}
+      {showFinalize && (
+      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Treatment">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {mode === "full" ? (
+            <>
+              <SelectField
+                label="HIV Test Result"
+                value={data.comorbidities.hivStatus}
+                onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+                options={TB_HIV_STATUS_OPTIONS}
+              />
+              <DatePickerField
+                label="Date of HIV Test"
+                value={data.comorbidities.hivTestDate}
+                onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+              />
+            </>
+          ) : null}
+          <SelectField
+            label="ART Status"
+            value={data.comorbidities.artStatus}
+            onChange={(v) => setGroupField("comorbidities", "artStatus", v)}
+            options={TB_ART_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="ART Start Date"
+            value={data.comorbidities.artStartDate}
+            onChange={(v) => setGroupField("comorbidities", "artStartDate", v)}
+          />
+          <SelectField
+            label="CPT Status"
+            value={data.comorbidities.cptStatus}
+            onChange={(v) => setGroupField("comorbidities", "cptStatus", v)}
+            options={TB_CPT_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="CPT Start Date"
+            value={data.comorbidities.cptStartDate}
+            onChange={(v) => setGroupField("comorbidities", "cptStartDate", v)}
+          />
+          <div className="sm:col-span-2 lg:col-span-3">
+            <TextField
+              label="Other Comorbidities"
+              value={data.comorbidities.otherComorbidities}
+              onChange={(v) =>
+                setGroupField("comorbidities", "otherComorbidities", v)
+              }
+            />
+          </div>
+        </div>
+      </SectionCard>
+      )}
 
       {/* Drug Regimen */}
+      {showFinalize && (
       <SectionCard
         title="Drug Regimen"
         subtitle="Encircle a regimen change on the paper card. Add a row per date-start."
@@ -656,8 +794,10 @@ export default function TbTreatmentCardForm({
           </button>
         )}
       </SectionCard>
+      )}
 
-      {/* Treatment Supporter + Phases */}
+      {/* Encode: supporter / location / DAT. Finalize: phase dates. */}
+      {showEncode && (
       <SectionCard title="Administration of Drugs">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectField
@@ -715,7 +855,11 @@ export default function TbTreatmentCardForm({
             DAT-supported
           </label>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      </SectionCard>
+      )}
+      {showFinalize && (
+      <SectionCard title="Treatment Phases">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <DateField
             label="Intensive Phase Start"
             value={data.phases.intensiveStart}
@@ -739,8 +883,33 @@ export default function TbTreatmentCardForm({
           />
         </div>
       </SectionCard>
+      )}
+
+      {/* Treatment Outcome */}
+      {showFinalize && (
+      <SectionCard
+        title="Treatment Outcome"
+        subtitle="Optional - set once treatment closes. Until recorded, the patient's Care & Programs tab shows the latest treatment phase instead."
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Outcome"
+            value={data.outcome.status}
+            onChange={(v) => setGroupField("outcome", "status", v)}
+            options={TB_OUTCOMES}
+            placeholder="Not yet recorded"
+          />
+          <DateField
+            label="Outcome Date"
+            value={data.outcome.date}
+            onChange={(v) => setGroupField("outcome", "date", v)}
+          />
+        </div>
+      </SectionCard>
+      )}
 
       {/* Dose Calendar */}
+      {(showDots || showChart) && (
       <SectionCard
         title="Administration of Drugs — Dose Calendar"
         subtitle="Mark each supervised dose with the Tx supporter's initials. Totals and adherence auto-compute."
@@ -748,11 +917,13 @@ export default function TbTreatmentCardForm({
         <TbDoseCalendar
           value={data.doseCalendar}
           onChange={setCalendar}
-          readOnly={readOnly}
+          readOnly={readOnly || mode === "chart"}
         />
       </SectionCard>
+      )}
 
       {/* Adverse Events */}
+      {showDots && (
       <SectionCard
         title="Serious Adverse Events / AEs of Special Interest"
         subtitle="Record any adverse event and its FDA report date."
@@ -809,6 +980,8 @@ export default function TbTreatmentCardForm({
           </button>
         )}
       </SectionCard>
+      )}
+      </fieldset>
     </div>
   );
 }

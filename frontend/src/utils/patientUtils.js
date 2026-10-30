@@ -24,12 +24,12 @@ export const calculateAge = (birthDate) => {
 /**
  * Calculates full months elapsed from date of birth.
  * @param {string} birthDate - ISO date string
+ * @param {Date} [today] - reference date, defaults to now
  * @returns {number|string} Age in months or empty string
  */
-export const calculateAgeInMonths = (birthDate) => {
+export const calculateAgeInMonths = (birthDate, today = new Date()) => {
   if (!birthDate) return "";
 
-  const today = new Date();
   const dob = new Date(birthDate);
   if (Number.isNaN(dob.getTime()) || dob > today) return "";
 
@@ -42,6 +42,19 @@ export const calculateAgeInMonths = (birthDate) => {
   }
 
   return Math.max(months, 0);
+};
+
+/** Last completed month of age that still counts as an infant. */
+export const INFANT_MAX_MONTHS = 12;
+
+/**
+ * Infants are aged from birth through 12 completed months. Missing, invalid,
+ * or future birth dates are not infants — the caller still has to collect
+ * adult fields until a usable date of birth is present.
+ */
+export const isInfantPatient = (birthDate, today = new Date()) => {
+  const months = calculateAgeInMonths(birthDate, today);
+  return months !== "" && months <= INFANT_MAX_MONTHS;
 };
 
 /**
@@ -125,4 +138,23 @@ export const formatFullName = (firstName, middleName, lastName) => {
  */
 export const formatTpal = (term, preterm, abortion, living) => {
   return `${term || 0}-${preterm || 0}-${abortion || 0}-${living || 0}`;
+};
+
+/**
+ * A patient's sex, for filtering and grouping.
+ *
+ * Reads the stored `sex` field first. `ageSex` is a display string built for
+ * the UI ("34 yrs / Female"), so it is only a fallback for rows that reached
+ * the client without `sex` - matching against that string's punctuation is
+ * what made the patient list's sex filter return nothing.
+ */
+export const getPatientSex = (patient = {}) => {
+  if (!patient) return "";
+  if (patient.sex) return String(patient.sex).trim();
+
+  const ageSex = String(patient.ageSex || "").toLowerCase();
+  if (ageSex.includes("female")) return "Female";
+  if (ageSex.includes("male")) return "Male";
+
+  return "";
 };

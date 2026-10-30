@@ -16,8 +16,6 @@ class AkayCacheService
 {
     public const DOMAIN_MEDICINE_AVAILABILITY = 'medicine-availability';
 
-    public const DOMAIN_MEDICINE_RHU_FEED = 'medicine-rhu-feed';
-
     public const DOMAIN_REPORT_AGGREGATE = 'report-aggregate';
 
     private const KEY_PREFIX = 'akay:v1';
@@ -174,22 +172,12 @@ class AkayCacheService
         return $value;
     }
 
-    public function medicineRhuFeedDependency(): array
-    {
-        return $this->scope(
-            self::DOMAIN_MEDICINE_RHU_FEED,
-            User::ROLE_BHW,
-            'bhc',
-            0
-        );
-    }
-
     public function invalidateMedicine(Medicine $medicine): void
     {
         if ($medicine->barangay_health_center_id !== null) {
             $this->invalidateScope($this->scope(
                 self::DOMAIN_MEDICINE_AVAILABILITY,
-                User::ROLE_BHW,
+                User::ROLE_BHC,
                 'bhc',
                 (int) $medicine->barangay_health_center_id
             ));
@@ -204,11 +192,10 @@ class AkayCacheService
         $rhuId = (int) $medicine->rural_health_unit_id;
         $this->invalidateScope($this->scope(
             self::DOMAIN_MEDICINE_AVAILABILITY,
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             'rhu',
             $rhuId
         ));
-        $this->invalidateScope($this->medicineRhuFeedDependency());
         $this->invalidateRhuReport($rhuId);
     }
 
@@ -216,9 +203,19 @@ class AkayCacheService
     {
         $this->invalidateScope($this->scope(
             self::DOMAIN_MEDICINE_AVAILABILITY,
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             'bhc',
             $barangayHealthCenterId
+        ));
+    }
+
+    public function invalidateRhuMedicineDisplay(int $ruralHealthUnitId): void
+    {
+        $this->invalidateScope($this->scope(
+            self::DOMAIN_MEDICINE_AVAILABILITY,
+            User::ROLE_RHU,
+            'rhu',
+            $ruralHealthUnitId
         ));
     }
 
@@ -227,7 +224,7 @@ class AkayCacheService
         if ($referral->barangay_health_center_id !== null) {
             $this->invalidateScope($this->scope(
                 self::DOMAIN_REPORT_AGGREGATE,
-                User::ROLE_BHW,
+                User::ROLE_BHC,
                 'bhc',
                 (int) $referral->barangay_health_center_id
             ));
@@ -242,7 +239,7 @@ class AkayCacheService
     {
         $this->invalidateScope($this->scope(
             self::DOMAIN_REPORT_AGGREGATE,
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             'rhu',
             $ruralHealthUnitId
         ));
@@ -310,23 +307,23 @@ class AkayCacheService
 
     private function scopeForUser(User $user): ?array
     {
-        if ($user->isBhw()
+        if ($user->isBhc()
             && $user->barangay_health_center_id !== null
             && $user->rural_health_unit_id === null) {
             return $this->scope(
                 '',
-                User::ROLE_BHW,
+                User::ROLE_BHC,
                 'bhc',
                 (int) $user->barangay_health_center_id
             );
         }
 
-        if ($user->isRhuStaff()
+        if ($user->isRhu()
             && $user->rural_health_unit_id !== null
             && $user->barangay_health_center_id === null) {
             return $this->scope(
                 '',
-                User::ROLE_RHU_STAFF,
+                User::ROLE_RHU,
                 'rhu',
                 (int) $user->rural_health_unit_id
             );

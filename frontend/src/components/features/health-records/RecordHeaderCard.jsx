@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
 import { RefreshingIndicator, ReferralIndicatorBadge } from "../../common";
 import { formatDisplayValue } from "../../../utils/formatters";
+import RecordOutcomeBadge from "../records/RecordOutcomeBadge";
 
 export default function RecordHeaderCard({
   title,
@@ -20,6 +21,12 @@ export default function RecordHeaderCard({
   isFollowUpVisit = false,
   parentRecordId,
   parentRecordLink,
+  parentRecordNavigable = true,
+  // The record itself, when the resolved Outcome should be shown beside the
+  // title. Passing the record rather than a label keeps the badge reading the
+  // server's value instead of one this component derived.
+  outcomeRecord = null,
+  nextActionLabel = "",
 }) {
   return (
     <>
@@ -54,6 +61,8 @@ export default function RecordHeaderCard({
                 </span>
               )}
 
+              {outcomeRecord && <RecordOutcomeBadge record={outcomeRecord} />}
+
               {isUpdating && (
                 <RefreshingIndicator label="Updating health record details..." />
               )}
@@ -64,12 +73,18 @@ export default function RecordHeaderCard({
             </p>
 
             {isFollowUpVisit && parentRecordId && (
-              <Link
-                to={parentRecordLink || `/bhc/health-records/${parentRecordId}`}
-                className="mt-1 inline-block text-[11px] font-semibold text-indigo-600 underline-offset-2 hover:underline"
-              >
-                Follow-up of record #{parentRecordId}
-              </Link>
+              parentRecordNavigable ? (
+                <Link
+                  to={parentRecordLink || `/bhc/health-records/${parentRecordId}`}
+                  className="mt-1 inline-block text-[11px] font-semibold text-indigo-600 underline-offset-2 hover:underline"
+                >
+                  Follow-up of record #{parentRecordId}
+                </Link>
+              ) : (
+                <p className="mt-1 text-[11px] font-semibold text-indigo-700">
+                  Follow-up of record #{parentRecordId}
+                </p>
+              )
             )}
           </div>
 
@@ -105,6 +120,10 @@ export default function RecordHeaderCard({
             label="Name of Practitioner"
             value={practitioner}
           />
+
+          {nextActionLabel && (
+            <MetadataItem label="Next Action" value={nextActionLabel} />
+          )}
         </div>
       </header>
 

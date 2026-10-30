@@ -1,0 +1,102 @@
+import { matchPath } from "react-router";
+
+// Parent trails for nested pages. The last crumb is always the page's own
+// `title`, so this map only lists ancestors. Legacy /rhu/rhu-* aliases redirect
+// to the canonical routes below, so they are intentionally absent.
+const PARENT_TRAILS = [
+  // Admin
+  ["/admin/users/add", [{ label: "Users", path: "/admin/users" }]],
+  ["/admin/doctors/add", [{ label: "Users", path: "/admin/users" }]],
+
+  // Barangay Health Center
+  ["/bhc/medicine-availability/:medicineId", [{ label: "Health Commodities", path: "/bhc/medicine-availability" }]],
+  ["/bhc/patients/add", [{ label: "Patients", path: "/bhc/patients" }]],
+  ["/bhc/patients/monitoring-requests/:requestId", [{ label: "Patients", path: "/bhc/patients?view=monitoring-requests" }]],
+  ["/bhc/patients/:patientId", [{ label: "Patients", path: "/bhc/patients" }]],
+  [
+    "/bhc/health-records/add",
+    [{ label: "Patients", path: "/bhc/patients" }],
+  ],
+  [
+    "/bhc/health-records/:recordId",
+    [{ label: "Patients", path: "/bhc/patients" }],
+  ],
+  ["/bhc/programs/:programId", [{ label: "Programs", path: "/bhc/programs" }]],
+  ["/bhc/referrals/create", [{ label: "Referrals", path: "/bhc/referrals" }]],
+  ["/bhc/referrals/:trackingId", [{ label: "Referrals", path: "/bhc/referrals" }]],
+  ["/bhc/reports/:reportSlug", [{ label: "Reports", path: "/bhc/reports" }]],
+
+  // Rural Health Unit
+  ["/rhu/patients/add", [{ label: "Patients", path: "/rhu/patients" }]],
+  ["/rhu/patients/:patientId", [{ label: "Patients", path: "/rhu/patients" }]],
+  [
+    "/rhu/patients/:patientId/referrals/:referralId",
+    [{ label: "Patients", path: "/rhu/patients" }],
+  ],
+  [
+    "/rhu/health-records/add",
+    [{ label: "Patients", path: "/rhu/patients" }],
+  ],
+  ["/rhu/follow-ups/:taskId", [{ label: "Follow-ups", path: "/rhu/follow-ups" }]],
+  [
+    "/rhu/health-records/:recordId",
+    [{ label: "Patients", path: "/rhu/patients" }],
+  ],
+  [
+    "/rhu/referrals/:trackingId",
+    [{ label: "Incoming Referrals", path: "/rhu/incoming-referrals" }],
+  ],
+  [
+    "/rhu/feedback/:trackingId",
+    [{ label: "Incoming Referrals", path: "/rhu/incoming-referrals" }],
+  ],
+  [
+    "/rhu/medicine-management/add",
+    [{ label: "Health Commodities", path: "/rhu/medicine-management" }],
+  ],
+  ["/rhu/medicine-management/:medicineId", [{ label: "Health Commodities", path: "/rhu/medicine-management" }]],
+];
+
+// A consultation opened for a specific patient lives under that patient, even
+// though its route is /health-records/add; the patient comes from ?patientId=.
+function getPatientConsultationTrail(pathname, search) {
+  const match = matchPath(
+    { path: "/:facility/health-records/add", end: true },
+    pathname,
+  );
+  if (!match || !["bhc", "rhu"].includes(match.params.facility)) return null;
+
+  const patientId = new URLSearchParams(search).get("patientId")?.trim();
+  if (!patientId) return null;
+
+  const base = `/${match.params.facility}`;
+  return [
+    { label: "Patients", path: `${base}/patients` },
+    {
+      label: "Patient Profile",
+      path: `${base}/patients/${encodeURIComponent(patientId)}`,
+    },
+  ];
+}
+
+/**
+ * Returns [{ label, path? }] for the top bar. Ancestors carry a `path` (link);
+ * the final crumb is the current page and has none.
+ */
+export function getBreadcrumbs(pathname, title, search = "") {
+  const current = { label: title };
+  const family = matchPath({ path: "/:role/families/*", end: true }, pathname);
+  if (family && ["bhc", "rhu"].includes(family.params.role)) {
+    const base = `/${family.params.role}/families`;
+    const [householdId, action] = family.params["*"].split("/");
+    if (householdId) return [{ label: "Families", path: base }, ...(householdId !== "new" && action ? [{ label: "Family", path: `${base}/${householdId}` }] : []), current];
+  }
+  const patientTrail = getPatientConsultationTrail(pathname, search);
+  if (patientTrail) return [...patientTrail, current];
+
+  const match = PARENT_TRAILS.find(([pattern]) =>
+    matchPath({ path: pattern, end: true }, pathname),
+  );
+
+  return match ? [...match[1], current] : [current];
+}

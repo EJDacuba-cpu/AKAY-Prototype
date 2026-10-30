@@ -63,13 +63,13 @@ class ReferralRoutingSecurityTest extends TestCase
         $this->bhwA = $this->createUser(
             'Routing BHW A',
             'routing-bhw-a@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id
         );
         $this->rhuStaffA = $this->createUser(
             'Routing RHU Staff A',
             'routing-rhu-a@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuA->id
         );
@@ -157,13 +157,26 @@ class ReferralRoutingSecurityTest extends TestCase
         $this->assertSame($this->rhuA->id, $this->rhuStaffA->fresh()->rural_health_unit_id);
     }
 
-    public function test_client_destination_overrides_are_ignored(): void
+    public function test_unapproved_client_destination_is_rejected(): void
+    {
+        // A BHC may pick its default or an approved alternative RHU; any other destination is refused.
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/referrals', [
+                ...$this->referralPayload(),
+                'rural_health_unit_id' => $this->rhuB->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'The selected RHU is not an approved destination for this BHC.');
+
+        $this->assertDatabaseMissing('referrals', ['rural_health_unit_id' => $this->rhuB->id]);
+    }
+
+    public function test_client_facility_and_author_overrides_are_ignored(): void
     {
         $response = $this->actingAs($this->bhwA, 'sanctum')
             ->postJson('/api/referrals', [
                 ...$this->referralPayload(),
                 'barangay_health_center_id' => $this->bhcB->id,
-                'rural_health_unit_id' => $this->rhuB->id,
                 'receiving_rhu_id' => $this->rhuB->id,
                 'destination_facility_id' => $this->rhuB->id,
                 'created_by' => $this->admin->id,
@@ -184,7 +197,7 @@ class ReferralRoutingSecurityTest extends TestCase
         $bhw = $this->createUser(
             'Unmapped BHW',
             'unmapped-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->unmappedBhc->id
         );
         $patient = $this->createPatient('Unmapped', 'Patient', $this->unmappedBhc);
@@ -252,6 +265,7 @@ class ReferralRoutingSecurityTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

@@ -8,6 +8,7 @@ use App\Models\PasswordResetRequest;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -63,7 +64,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->bhw = $this->user(
             'Session BHW',
             'security-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id
         );
     }
@@ -91,7 +92,7 @@ class AuthenticationSessionSecurityTest extends TestCase
     public function test_login_failures_are_generic_for_credentials_status_role_and_facility(): void
     {
         $inactive = $this->user('Inactive', 'inactive-session@example.test', User::ROLE_ADMIN, null, null, User::STATUS_INACTIVE);
-        $unassigned = $this->user('Unassigned', 'unassigned-session@example.test', User::ROLE_BHW);
+        $unassigned = $this->user('Unassigned', 'unassigned-session@example.test', User::ROLE_BHC);
         $invalidRole = $this->user('Invalid Role', 'invalid-role-session@example.test', 'legacy_role');
 
         $attempts = [
@@ -103,7 +104,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         ];
 
         foreach ($attempts as [$email, $password]) {
-            $this->postJson('/api/auth/login', compact('email', 'password'))
+            $this->postJson('/api/auth/login', $this->withTurnstile(compact('email', 'password')))
                 ->assertUnprocessable()
                 ->assertExactJson([
                     'message' => 'The provided credentials are incorrect.',
@@ -115,16 +116,16 @@ class AuthenticationSessionSecurityTest extends TestCase
     public function test_login_is_throttled_by_normalized_email_and_ip(): void
     {
         for ($attempt = 1; $attempt <= 5; $attempt++) {
-            $this->postJson('/api/auth/login', [
+            $this->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => strtoupper($this->bhw->email),
                 'password' => 'WrongPassword9',
-            ])->assertUnprocessable();
+            ]))->assertUnprocessable();
         }
 
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'password123',
-        ])->assertTooManyRequests()->assertExactJson([
+        ]))->assertTooManyRequests()->assertExactJson([
             'message' => 'Too many login attempts. Please wait briefly and try again.',
             'code' => 'LOGIN_THROTTLED',
         ]);
@@ -276,10 +277,10 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->assertNull(PersonalAccessToken::findToken($tokenA));
         $this->assertNull(PersonalAccessToken::findToken($tokenB));
         $this->usingToken($tokenA)->getJson('/api/auth/profile')->assertUnauthorized();
-        $this->postJson('/api/auth/login', [
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'NewSecurePassword9',
-        ])->assertOk();
+        ]))->assertOk();
     }
 
     public function test_failed_password_reset_does_not_revoke_tokens(): void
@@ -295,7 +296,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($token)->getJson('/api/auth/profile')->assertOk();
     }
 
-    public function test_admin_password_change_revokes_existing_sessions(): void
+    public function test_admin_cannot_change_a_password_and_sessions_stay_open(): void
     {
         $token = $this->token($this->bhw);
         $adminToken = $this->token($this->admin);
@@ -303,13 +304,14 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($adminToken)
             ->patchJson("/api/users/{$this->bhw->id}", [
                 'password' => 'AdminChangedPassword9',
-            ])->assertOk();
+                'password_confirmation' => 'AdminChangedPassword9',
+            ])->assertUnprocessable()->assertJsonValidationErrors('password');
 
-        $this->assertNull(PersonalAccessToken::findToken($token));
-        $this->postJson('/api/auth/login', [
+        $this->usingToken($token)->getJson('/api/auth/profile')->assertOk();
+        $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $this->bhw->email,
             'password' => 'AdminChangedPassword9',
-        ])->assertOk();
+        ]))->assertUnprocessable();
     }
 
     public function test_role_and_facility_change_revokes_tokens_and_new_login_uses_new_context(): void
@@ -319,7 +321,10 @@ class AuthenticationSessionSecurityTest extends TestCase
 
         $this->usingToken($adminToken)
             ->patchJson("/api/users/{$this->bhw->id}", [
-                'role' => User::ROLE_RHU_STAFF,
+                'role' => User::ROLE_RHU,
+                'staff_role' => 'nurse',
+                'permissions' => StaffRoles::defaults('nurse'),
+                'permissions_confirmed' => true,
                 'barangay_health_center_id' => null,
                 'rural_health_unit_id' => $this->rhuB->id,
             ])->assertOk();
@@ -328,7 +333,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($token)->getJson('/api/auth/profile')->assertUnauthorized();
         $this->login($this->bhw->fresh())
             ->assertOk()
-            ->assertJsonPath('user.role', User::ROLE_RHU_STAFF)
+            ->assertJsonPath('user.role', User::ROLE_RHU)
             ->assertJsonPath('user.rural_health_unit_id', $this->rhuB->id);
     }
 
@@ -338,7 +343,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $rhuUser = $this->user(
             'Session RHU Staff',
             'security-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             null,
             $this->rhuA->id
         );
@@ -363,7 +368,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         $mixed = $this->user(
             'Mixed Assignment',
             'mixed-session@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             $this->rhuA->id
         );
@@ -425,14 +430,15 @@ class AuthenticationSessionSecurityTest extends TestCase
 
         $this->assertStringNotContainsString($plainTextToken, $descriptions);
         $this->assertStringNotContainsString('password123', $descriptions);
+        $this->assertStringNotContainsString(self::TEST_TURNSTILE_TOKEN, $descriptions);
     }
 
     private function login(User $user)
     {
-        return $this->postJson('/api/auth/login', [
+        return $this->postJson('/api/auth/login', $this->withTurnstile([
             'email' => $user->email,
             'password' => 'password123',
-        ]);
+        ]));
     }
 
     private function token(User $user): string
@@ -455,7 +461,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         ?int $rhuId = null,
         string $status = User::STATUS_ACTIVE
     ): User {
-        return User::create([
+        return $this->markVerified(User::create([
             'name' => $name,
             'email' => $email,
             'password' => Hash::make('password123'),
@@ -463,6 +469,6 @@ class AuthenticationSessionSecurityTest extends TestCase
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
-        ]);
+        ]));
     }
 }

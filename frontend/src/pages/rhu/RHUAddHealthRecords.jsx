@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
   ChevronDown,
+  ClipboardList,
   Clock,
   HeartPulse,
   Lock,
   Save,
   Search,
+  ShieldCheck,
   Stethoscope,
   Syringe,
   User,
@@ -35,13 +37,25 @@ import TbTreatmentCardForm, {
   normalizeTbData,
 } from "../../components/features/health-records/TbTreatmentCardForm";
 import { getPatientDetailsListByRole } from "../../services/patientService";
+import { getRhuPatientProfileQueries } from "../../services/patientProfileQueries";
 import { getCurrentUser } from "../../utils/auth";
+import { can } from "../../utils/actionPermissions";
 import {
   formatDisplayValue,
   formatPatientName,
   formatUserName,
 } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { patientRecordsPath } from "../../utils/profileNavigation";
+import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
+import {
+  buildConditionConfirmations,
+  buildLegacyDiscontinuations,
+  mapConditionConfirmationErrors,
+  mapLegacyDiscontinuationErrors,
+  validateConditionConfirmations,
+  validateLegacyDecisions,
+} from "../../utils/conditionConfirmations";
 import {
   FP_CLIENT_TYPE_OPTIONS,
   FP_SOURCE_OPTIONS,
@@ -58,6 +72,22 @@ import {
   getNextActionPatch,
   isLegacyFollowUpStatus,
 } from "../../utils/nextAction";
+import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
+import PatientHistoryReview from "../../components/features/patients/history/PatientHistoryReview";
+import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
+import { AllergyChip } from "../../components/features/patients/PatientAlertChips";
+import {
+  readBackgroundConflicts,
+  resolveBackgroundConflicts,
+  toRecordBackgroundUpdate,
+} from "../../utils/backgroundUpdate";
+import {
+  historyErrorMessages,
+  informantPayload,
+  similarIllnessPayload,
+  visitAnswerRows,
+} from "../../utils/historyStep";
+import { EDITABLE_SECTION_KEYS, defaultInformant, sectionVisibility } from "../../utils/patientHistory";
 import { createIdempotencyKey } from "../../utils/idempotency";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../../utils/sessionPrivacy";
 
@@ -298,6 +328,9 @@ function normalizePatientStatus(status) {
   return value || "Routine Monitoring";
 }
 
+// Validation keys the server uses for Patient History; shown beside the panel.
+const HISTORY_ERROR_KEY = /^(background_update|informant|similar_illness)/;
+
 function calculateAgeInYears(birthdate, referenceDate = new Date()) {
   if (!birthdate) return null;
   const birth = new Date(birthdate);
@@ -315,6 +348,17 @@ function calculateAgeInYears(birthdate, referenceDate = new Date()) {
     age -= 1;
   }
   return age;
+}
+
+function getPatientBirthdate(patient) {
+  return (
+    patient?.birthdate ||
+    patient?.birthDate ||
+    patient?.dateOfBirth ||
+    patient?.date_of_birth ||
+    patient?.dob ||
+    null
+  );
 }
 
 function getPatientAgeInYears(patient, referenceDate) {
@@ -435,8 +479,12 @@ export default function AddHealthRecord() {
   }, []);
   const [noticeModal, setNoticeModal] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
+  const [conditionRows, setConditionRows] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const recordsReturnPath = (patientId = selectedPatientId) =>
+    patientId ? patientRecordsPath(patientId, basePath) : `${basePath}/patients`;
   const [setupComplete, setSetupComplete] = useState(
     Boolean(recordId) || Boolean(preselectedPatientId && preselectedClassification),
   );
@@ -494,11 +542,17 @@ export default function AddHealthRecord() {
     setNoticeModal({
       title: "Original Record Required",
       message:
-        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Health Records.",
+        "Follow-up visits must start from an existing Follow-up Required health record. Redirecting back to Patients.",
     });
-    const timer = window.setTimeout(() => navigate(healthRecordsPath), 2200);
+    const timer = window.setTimeout(() => {
+      navigate(
+        preselectedPatientId
+          ? patientRecordsPath(preselectedPatientId, basePath)
+          : `${basePath}/patients`,
+      );
+    }, 2200);
     return () => window.clearTimeout(timer);
-  }, [healthRecordsPath, isOrphanFollowUpRequest, navigate]);
+  }, [basePath, isOrphanFollowUpRequest, navigate, preselectedPatientId]);
 
   useEffect(() => {
     let active = true;
@@ -710,6 +764,11 @@ export default function AddHealthRecord() {
     followUpRecord?.patientId ||
     followUpRecord?.patient_id ||
     "Not recorded";
+  // The patient this record is saved for: a follow-up may carry the patient on
+  // the follow-up record rather than in the picker.
+  const savedPatientId =
+    selectedPatientId ||
+    (isFollowUp && followUpPatientId !== "Not recorded" ? followUpPatientId : "");
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -794,6 +853,8 @@ export default function AddHealthRecord() {
   function selectPatient(id) {
     clearValidationError("selectedPatientId");
     if (id !== selectedPatientId) {
+      setConditionRows([]);
+      setLegacyRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -807,6 +868,8 @@ export default function AddHealthRecord() {
 
   function clearSelectedPatient() {
     setSelectedPatientId("");
+    setConditionRows([]);
+    setLegacyRows([]);
     resetClassificationSpecificState();
     setSetupComplete(false);
     setCareDecisionStep(false);
@@ -819,6 +882,8 @@ export default function AddHealthRecord() {
   function handlePatientSearchChange(event) {
     if (selectedPatientId) {
       setSelectedPatientId("");
+      setConditionRows([]);
+      setLegacyRows([]);
       resetClassificationSpecificState();
       setSetupComplete(false);
       setCareDecisionStep(false);
@@ -867,9 +932,74 @@ export default function AddHealthRecord() {
   const showsLegacyFollowUpStatus =
     nextAction === NEXT_ACTION_NONE && isLegacyFollowUpStatus(followUpStatus);
   const usesCareDecisionStep = false;
+
+  // Patient History (ITR page 1, sections I-V) on every new record. Edits and
+  // "No changes" reviews are staged here and sent with the record; the server
+  // applies them when it saves. Without clinical.history the panel is locked
+  // and nothing is staged or sent. See
+  // docs/superpowers/specs/2026-10-16-itr-patient-history-design.md.
+  const canViewBackground = can(currentUser, "clinical.history");
+  const showPatientHistory = !isFollowUp && !patientGateLocked;
+  const historyEnabled = showPatientHistory && canViewBackground;
+  const [backgroundUpdate, setBackgroundUpdate] = useState(null);
+  // Per visit, saved on the record: who gave the history, and whether anyone
+  // at home has a similar illness. The informant gets its default once per
+  // patient, when the patient's details load.
+  const [informant, setInformant] = useState(null);
+  const [similarIllness, setSimilarIllness] = useState(null);
+  // The 409 conflicts from the last save, until a choice is applied per section.
+  const [backgroundConflicts, setBackgroundConflicts] = useState(null);
+  const informantSeededForRef = useRef(null);
+  // The patient list payload may omit the background, so load the full details
+  // with the same query the patient profile uses.
+  const patientDetailsQuery = useQuery({
+    ...getRhuPatientProfileQueries(selectedPatientId).patient,
+    enabled: historyEnabled && Boolean(selectedPatientId),
+  });
+  const historyPatient = patientDetailsQuery.data || null;
+
+  useEffect(() => {
+    setBackgroundUpdate(null);
+    setInformant(null);
+    setSimilarIllness(null);
+    setBackgroundConflicts(null);
+    informantSeededForRef.current = null;
+  }, [selectedPatientId]);
+
+  useEffect(() => {
+    if (!historyEnabled || !historyPatient) return;
+    if (informantSeededForRef.current === selectedPatientId) return;
+    informantSeededForRef.current = selectedPatientId;
+    setInformant(
+      defaultInformant(
+        {
+          birthdate: getPatientBirthdate(historyPatient),
+          motherPatientId: historyPatient.motherPatientId,
+          motherName:
+            historyPatient.motherName ||
+            formatPatientName(historyPatient.motherPatient, ""),
+          guardianName: historyPatient.guardianName,
+          name: getPatientName(historyPatient),
+          id: historyPatient.id,
+        },
+        dateOfVisit || new Date(),
+      ),
+    );
+  }, [historyEnabled, historyPatient, selectedPatientId, dateOfVisit]);
+
+  // The editable sections this patient has (V only for a female patient) and
+  // the last save's 422 errors that belong to Patient History.
+  const historySections = EDITABLE_SECTION_KEYS.filter(
+    (section) =>
+      section !== "obstetric" ||
+      sectionVisibility(historyPatient, dateOfVisit || new Date()).obstetric !== "hidden",
+  );
+  const historyErrors = historyErrorMessages(validationErrors, { withSection: true });
+  // The answered per-visit questions, for the history review block.
+  const visitAnswers = visitAnswerRows({ informant, similarIllness });
   const monitoringNotesLabel =
     normalizedPatientStatus === "Completed"
-      ? "Outcome Notes"
+      ? "Additional Notes"
       : showFollowUpMonitoringFields
         ? "Monitoring and Follow-up Notes"
         : "Monitoring Notes";
@@ -1218,6 +1348,74 @@ export default function AddHealthRecord() {
     return errors;
   }
 
+  function scrollToHistory(selector) {
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(selector)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function clearHistoryErrors() {
+    setValidationErrors((current) => {
+      const keys = Object.keys(current).filter((key) => HISTORY_ERROR_KEY.test(key));
+      if (!keys.length) return current;
+      const next = { ...current };
+      keys.forEach((key) => delete next[key]);
+      return next;
+    });
+  }
+
+  // A history edit changes what is sent, so a retry after a failed save must
+  // not reuse the earlier snapshot: the next save is a new submission.
+  function changeBackgroundUpdate(next) {
+    clearHistoryErrors();
+    officialSubmissionRef.current = null;
+    setBackgroundUpdate(next);
+  }
+
+  function changeInformant(next) {
+    clearHistoryErrors();
+    officialSubmissionRef.current = null;
+    setInformant(next);
+  }
+
+  function changeSimilarIllness(next) {
+    clearHistoryErrors();
+    officialSubmissionRef.current = null;
+    setSimilarIllness(next);
+  }
+
+  /**
+   * A 409 because a Patient History section changed since it was opened.
+   * Nothing was saved. The panel keeps the staff's edits; the details are
+   * refetched so it compares against the latest version.
+   */
+  function showBackgroundConflict(error) {
+    const conflicts = readBackgroundConflicts(error);
+    if (!conflicts?.length) return false;
+    officialSubmissionRef.current = null;
+    setBackgroundConflicts(conflicts);
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+    });
+    scrollToHistory("[data-history-conflict]");
+    return true;
+  }
+
+  function applyBackgroundConflictChoices(choices) {
+    // The choices change what is sent, so the next save is a new submission.
+    officialSubmissionRef.current = null;
+    setBackgroundUpdate(
+      resolveBackgroundConflicts(backgroundUpdate, backgroundConflicts, choices),
+    );
+    setBackgroundConflicts(null);
+    setNoticeModal({
+      title: "Patient History choices applied",
+      message: "Your choices were applied. Review the record, then save it again.",
+    });
+  }
+
   async function handleSave(event) {
     event.preventDefault();
     closeDateTimePopovers();
@@ -1278,7 +1476,11 @@ export default function AddHealthRecord() {
       return;
     }
 
-    const clientErrors = getClinicalValidationErrors();
+    const clientErrors = {
+      ...getClinicalValidationErrors(),
+      ...validateConditionConfirmations(conditionRows),
+      ...validateLegacyDecisions(legacyRows),
+    };
 
     if (setValidationErrorsAndFocus(clientErrors)) return;
 
@@ -1491,6 +1693,16 @@ export default function AddHealthRecord() {
             ? tbData
             : null,
         linkedTrackingId,
+        conditionConfirmations: buildConditionConfirmations(conditionRows),
+        legacyMonitoringDiscontinuations: buildLegacyDiscontinuations(legacyRows),
+        // Patient History: only for a new record, and only when the user may see it.
+        ...(showPatientHistory && canViewBackground
+          ? {
+              backgroundUpdate: toRecordBackgroundUpdate(backgroundUpdate),
+              informant: informantPayload(informant),
+              similarIllness: similarIllnessPayload(similarIllness),
+            }
+          : {}),
         previousRecordId: isFollowUp ? recordId : "",
         status: finalPatientStatus,
         recordedBy: attendingStaff || "RHU Staff",
@@ -1540,9 +1752,15 @@ export default function AddHealthRecord() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.dashboardSummary("rhu"),
       });
-      if (selectedPatientId) {
+      if (savedPatientId) {
         queryClient.invalidateQueries({
-          queryKey: queryKeys.patientDetails("rhu", selectedPatientId),
+          queryKey: queryKeys.patientDetails("rhu", savedPatientId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.patientConditions(savedPatientId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.careOverview(savedPatientId),
         });
       }
       if (savedId) {
@@ -1561,6 +1779,7 @@ export default function AddHealthRecord() {
         isFollowUp,
       });
     } catch (error) {
+      if (showBackgroundConflict(error)) return;
       if (
         Number(error?.status) === 409 &&
         error?.payload?.code === "FOLLOW_UP_ALREADY_PROCESSED"
@@ -1589,9 +1808,9 @@ export default function AddHealthRecord() {
                 ]
               : []),
             {
-              label: "Back to Health Records",
+              label: "Back to Patient",
               variant: "secondary",
-              onClick: () => navigate(healthRecordsPath),
+              onClick: () => navigate(recordsReturnPath()),
             },
             {
               label: "Refresh",
@@ -1619,13 +1838,22 @@ export default function AddHealthRecord() {
       }
       if (error?.status === 422 && error?.errors) {
         officialSubmissionRef.current = null;
-        const backendErrors = Object.fromEntries(
-          Object.entries(error.errors).map(([field, messages]) => [
-            field,
-            Array.isArray(messages) ? messages[0] : String(messages),
-          ]),
-        );
-        if (setValidationErrorsAndFocus(backendErrors)) return;
+        const backendErrors = {
+          ...Object.fromEntries(
+            Object.entries(error.errors).map(([field, messages]) => [
+              field,
+              Array.isArray(messages) ? messages[0] : String(messages),
+            ]),
+          ),
+          ...mapConditionConfirmationErrors(error.errors, conditionRows),
+          ...mapLegacyDiscontinuationErrors(error.errors, legacyRows),
+        };
+        if (setValidationErrorsAndFocus(backendErrors)) {
+          if (HISTORY_ERROR_KEY.test(Object.keys(backendErrors)[0] || "")) {
+            scrollToHistory("[data-patient-history]");
+          }
+          return;
+        }
       }
       if ([403, 404, 422].includes(Number(error?.status))) {
         officialSubmissionRef.current = null;
@@ -1710,7 +1938,7 @@ export default function AddHealthRecord() {
       return;
     }
 
-    navigate(healthRecordsPath);
+    navigate(recordsReturnPath());
   }
 
   return (
@@ -1808,6 +2036,13 @@ export default function AddHealthRecord() {
         className="relative ml-0 mr-auto w-full max-w-6xl"
       >
         <div className="space-y-5 rounded-2xl border border-[#E8ECF0] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
+        {/* Whose record this is, with the allergy line in view (from the history details). */}
+        {historyEnabled && selectedPatient && (
+          <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+            <span className="font-semibold text-gray-900">{getPatientName(selectedPatient)}</span>
+            {historyPatient && <AllergyChip allergies={historyPatient.medicalBackground?.allergies} />}
+          </div>
+        )}
         {isFollowUp && (
           <FollowUpContextCard
             patientName={followUpPatientName}
@@ -2010,6 +2245,8 @@ export default function AddHealthRecord() {
           <div className="anim-fade-up" style={stagger(2)}>
             <ImmunizationVisitFields
               vaccineOptions={CHILD_VACCINE_OPTIONS}
+              birthDate={getPatientBirthdate(selectedPatient)}
+              visitDate={dateOfVisit}
               entries={immunizationVaccineEntries}
               temperature={temp}
               weight={weight}
@@ -2439,6 +2676,65 @@ export default function AddHealthRecord() {
           </FormSection>
         )}
 
+        {showPatientHistory && (
+          <FormSection
+            title="Patient History"
+            subtitle="Review the history with the patient: No changes if it still holds, Update if something is new. Optional. Changes save with this record."
+            icon={<ClipboardList size={14} />}
+            delay={3}
+          >
+            {/* Enter in a history field must not save the whole record. */}
+            <div
+              data-patient-history
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && event.target.tagName === "INPUT") {
+                  event.preventDefault();
+                }
+              }}
+            >
+              {canViewBackground &&
+              !patientDetailsQuery.isLoading &&
+              !historyPatient ? (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"
+                >
+                  <span>The patient&apos;s history could not be loaded.</span>
+                  <button
+                    type="button"
+                    onClick={() => patientDetailsQuery.refetch()}
+                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <PatientHistoryPanel
+                  patient={historyPatient}
+                  background={historyPatient?.medicalBackground}
+                  update={backgroundUpdate}
+                  onUpdateChange={changeBackgroundUpdate}
+                  informant={informant}
+                  onInformantChange={changeInformant}
+                  similarIllness={similarIllness}
+                  onSimilarIllnessChange={changeSimilarIllness}
+                  householdEnvironment={historyPatient?.householdEnvironment}
+                  today={dateOfVisit || new Date()}
+                  layout="section"
+                  locked={!canViewBackground}
+                  loading={patientDetailsQuery.isLoading}
+                  editLink={
+                    selectedPatientId
+                      ? `${basePath}/patients/${selectedPatientId}`
+                      : undefined
+                  }
+                  errors={historyErrors}
+                />
+              )}
+            </div>
+          </FormSection>
+        )}
+
         {!isFollowUp && !isImmunization && !isFamilyPlanning && !isTb && (
           <>
             <FormSection
@@ -2494,6 +2790,66 @@ export default function AddHealthRecord() {
           </>
         )}
 
+        {!patientGateLocked && !isEditingRecord && can(currentUser, "conditions.confirm") && (
+          <FormSection
+            title="Confirm Conditions"
+            subtitle="Set the clinical status of the patient's conditions from this visit."
+            icon={<ShieldCheck size={14} />}
+            delay={6}
+          >
+            <ConfirmConditionsBlock
+              patientId={savedPatientId}
+              rows={conditionRows}
+              onChange={setConditionRows}
+              legacyRows={legacyRows}
+              onLegacyChange={setLegacyRows}
+              errors={validationErrors}
+              context={[{ label: "Diagnosis", value: diagnosis }]}
+            />
+          </FormSection>
+        )}
+
+        {showPatientHistory &&
+          canViewBackground &&
+          (historyPatient || backgroundConflicts?.length) && (
+            <FormSection
+              title="Patient History Review"
+              subtitle="What this record will save for the history. Nothing here is required."
+              icon={<ClipboardList size={14} />}
+              delay={6}
+            >
+              {backgroundConflicts?.length ? (
+                <div data-history-conflict>
+                  <BackgroundConflictPanel
+                    key={backgroundConflicts
+                      .map((conflict) => `${conflict.section}:${conflict.revision}`)
+                      .join("|")}
+                    conflicts={backgroundConflicts}
+                    update={backgroundUpdate}
+                    onApply={applyBackgroundConflictChoices}
+                  />
+                </div>
+              ) : null}
+              {visitAnswers.length > 0 && (
+                <dl className="mb-3 space-y-1 text-xs">
+                  {visitAnswers.map(({ label, value }) => (
+                    <div key={label} className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-[#6B7280]">{label}</dt>
+                      <dd className="m-0 text-[#1A1A1A]">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {historyPatient ? (
+                <PatientHistoryReview
+                  background={historyPatient.medicalBackground}
+                  update={backgroundUpdate}
+                  visibleSections={historySections}
+                />
+              ) : null}
+            </FormSection>
+          )}
+
         <div
           className="anim-fade-up flex items-center justify-end gap-3 pt-1 pb-4"
           style={stagger(7)}
@@ -2501,7 +2857,7 @@ export default function AddHealthRecord() {
           {!usesCareDecisionStep && (
             <button
               type="button"
-              onClick={() => navigate(healthRecordsPath)}
+              onClick={() => navigate(recordsReturnPath())}
               className="rounded-xl border border-[#E8ECF0] bg-white px-5 py-2.5 text-sm font-semibold text-[#6B7280] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-md active:scale-[0.97]"
             >
               Cancel
@@ -2542,9 +2898,9 @@ export default function AddHealthRecord() {
         description={
           saveSuccess?.isFollowUp
             ? "The follow-up visit has been saved and linked to the original health record."
-            : "The record has been added to this patient's history. You can print a copy or return to the record list."
+            : "The record is available in this patient's Health Records tab. You can view it, print it, or open the patient profile."
         }
-        onClose={() => navigate(healthRecordsPath)}
+        onClose={() => navigate(recordsReturnPath())}
         actions={[
           {
             label: "View Health Record",
@@ -2553,7 +2909,7 @@ export default function AddHealthRecord() {
               navigate(
                 saveSuccess?.recordId
                   ? `${healthRecordsPath}/${saveSuccess.recordId}`
-                  : healthRecordsPath,
+                  : recordsReturnPath(),
               ),
           },
           ...(saveSuccess?.recordId
@@ -2568,8 +2924,8 @@ export default function AddHealthRecord() {
               ]
             : []),
           {
-            label: "Back to Health Records",
-            onClick: () => navigate(healthRecordsPath),
+            label: "Back to Patient",
+            onClick: () => navigate(recordsReturnPath()),
           },
         ]}
       />

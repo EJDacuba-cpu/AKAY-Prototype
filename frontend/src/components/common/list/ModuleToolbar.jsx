@@ -44,6 +44,7 @@ function getResetValues(fields) {
 }
 
 export default function ModuleToolbar({
+  heading = null,
   searchValue = "",
   onSearchChange,
   searchPlaceholder = "Search...",
@@ -64,14 +65,23 @@ export default function ModuleToolbar({
   onPrimaryAction,
   actions = null,
   disabled = false,
+  variant,
 }) {
   const [searchOpen, setSearchOpen] = useState(Boolean(searchValue));
+  // The clinical variant keeps a permanent full-width search that only filters
+  // when submitted (Enter or the Search button), so the draft is local.
+  const isClinical = variant === "clinical";
+  const [searchDraft, setSearchDraft] = useState(searchValue);
   const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
   const [draft, setDraft] = useState(() => getInitialValues(filters));
   const toolbarRef = useRef(null);
   const searchInputRef = useRef(null);
   const filtersOpen = controlledFiltersOpen ?? internalFiltersOpen;
   const shouldShowFilters = showFilters && (filters.length > 0 || onFilterClick);
+
+  useEffect(() => {
+    setSearchDraft(searchValue);
+  }, [searchValue]);
 
   useEffect(() => {
     if (!disabled) return;
@@ -120,6 +130,19 @@ export default function ModuleToolbar({
 
   function handleSearchBlur() {
     if (!searchValue) setSearchOpen(false);
+  }
+
+  function submitSearch(event) {
+    event.preventDefault();
+    if (disabled) return;
+    onSearchChange?.(searchDraft.trim());
+  }
+
+  function clearClinicalSearch() {
+    if (disabled) return;
+    setSearchDraft("");
+    onSearchChange?.("");
+    searchInputRef.current?.focus();
   }
 
   function openFilters() {
@@ -183,9 +206,43 @@ export default function ModuleToolbar({
     );
   }
   return (
-    <div ref={toolbarRef} className="relative z-20 mb-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <div className="flex min-w-0 items-center justify-end gap-2">
+    <div ref={toolbarRef} data-variant={variant} className="module-toolbar relative z-20 mb-4">
+      <div
+        className={`module-toolbar__row flex flex-col gap-3 sm:flex-row sm:items-center ${
+          heading ? "sm:justify-between" : "sm:justify-end"
+        }`}
+      >
+        {heading}
+        <div className="module-toolbar__controls flex min-w-0 items-center justify-end gap-2 sm:ml-auto">
+          {isClinical ? (
+            <form className="clinical-search" role="search" onSubmit={submitSearch}>
+              <Search size={16} className="clinical-search__icon" aria-hidden="true" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder.replace(/\.{3}$/, "")}
+                disabled={disabled}
+                className="clinical-search__input"
+              />
+              {(searchDraft || searchValue) && (
+                <button
+                  type="button"
+                  onClick={clearClinicalSearch}
+                  disabled={disabled}
+                  className="clinical-search__clear"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <button type="submit" disabled={disabled} className="clinical-search__submit">
+                Search
+              </button>
+            </form>
+          ) : (
           <div
             className={`group relative flex h-10 items-center rounded-xl border border-[#E5E7EB] bg-white shadow-sm transition-all duration-300 ${
               searchOpen
@@ -230,6 +287,7 @@ export default function ModuleToolbar({
               </button>
             )}
           </div>
+          )}
 
           {shouldShowFilters && (
             <button

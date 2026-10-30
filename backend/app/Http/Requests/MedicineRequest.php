@@ -8,10 +8,19 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class MedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (filled($this->header('Idempotency-Key'))) {
+            $this->merge([
+                'idempotency_key' => $this->header('Idempotency-Key'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
-        if (! $user || ! ($user->isBhw() || $user->isRhuStaff() || $user->isAdmin())) {
+        if (! $user || ! ($user->isBhc() || $user->isRhu() || $user->isAdmin())) {
             return false;
         }
 
@@ -28,16 +37,21 @@ class MedicineRequest extends FormRequest
         $isCreate = $this->isMethod('post');
 
         return [
+            'idempotency_key' => ['nullable', 'uuid'],
             'name' => [$isCreate ? 'required' : 'sometimes', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'quantity' => $isCreate
                 ? ['required', 'integer', 'min:0', 'max:2147483647']
-                : ['prohibited'],
+                : ['sometimes', 'integer', 'min:0', 'max:2147483647'],
+            'reason' => $isCreate
+                ? ['prohibited']
+                : ['required_with:quantity', 'nullable', 'string', 'max:1000'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'unit' => ['nullable', 'string', 'max:50'],
             'availability_status' => ['prohibited'],
-            'expiration_date' => ['nullable', 'date'],
+            'item_type' => $isCreate ? ['sometimes', 'in:medicine,health_supply'] : ['prohibited'],
+            ...($isCreate ? \App\Services\MedicineExpiryStockService::expiryRules($this->input('item_type', 'medicine'), $this->boolean('expiry_not_applicable')) : ['expiration_date' => ['prohibited'], 'expiry_not_applicable' => ['prohibited']]),
             'rural_health_unit_id' => ['prohibited'],
             'barangay_health_center_id' => ['prohibited'],
         ];

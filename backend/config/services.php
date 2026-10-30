@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    'turnstile' => [
+        'site_key' => env('TURNSTILE_SITE_KEY', ''),
+        'secret' => env('TURNSTILE_SECRET_KEY', ''),
+        'url' => env('TURNSTILE_SITEVERIFY_URL', 'https://challenges.cloudflare.com/turnstile/v0/siteverify'),
+        'timeout' => max(1, (int) env('TURNSTILE_TIMEOUT_SECONDS', 5)),
+        'action' => 'login',
+        'ca_bundle' => env('AKAY_TLS_CA_BUNDLE') ?: base_path('certs/cacert.pem'),
+        'expected_hostnames' => array_values(array_filter([
+            parse_url((string) env('FRONTEND_URL'), PHP_URL_HOST),
+            parse_url((string) env('APP_URL'), PHP_URL_HOST),
+        ])),
+    ],
+
 ];

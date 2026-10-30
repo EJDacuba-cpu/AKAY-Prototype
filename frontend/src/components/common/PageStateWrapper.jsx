@@ -1,6 +1,6 @@
 import ConnectionErrorState from "./ConnectionErrorState";
 import PageLoadingFallback from "./PageLoadingFallback";
-import { isConnectionError } from "../../services/apiClient";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 
 export default function PageStateWrapper({
   isLoading,
@@ -10,12 +10,14 @@ export default function PageStateWrapper({
   error,
   onRetry,
   loadingMessage = "Loading...",
+  skeleton,
+  bodyOnly = false,
   errorTitle,
   errorMessage,
   children,
 }) {
   if (isLoading && !hasData) {
-    return <PageLoadingFallback message={loadingMessage} />;
+    return <PageLoadingFallback message={loadingMessage} skeleton={skeleton} bodyOnly={bodyOnly} />;
   }
 
   if (isError && !hasData) {
@@ -26,13 +28,7 @@ export default function PageStateWrapper({
         message={errorMessage}
         onRetry={onRetry}
         retrying={isFetching}
-        variant={
-          error?.isTimeout
-            ? "timeout"
-            : isConnectionError(error)
-              ? "offline"
-              : "error"
-        }
+        variant={errorStateVariant(error)}
       />
     );
   }

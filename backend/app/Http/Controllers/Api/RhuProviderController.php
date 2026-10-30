@@ -9,6 +9,7 @@ use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\ProviderAvailabilityService;
 use App\Services\ReferralHoldService;
+use App\Services\RhuDoctorRosterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -31,9 +32,11 @@ class RhuProviderController extends Controller
     {
         $providers = $this->facilityAccess
             ->scopeRhuProviders(RhuProvider::query(), $request->user())
-            ->active()
+            ->eligibleRoster()
+            ->with('unavailability')
             ->orderBy('name')
             ->get();
+        $providers->each(fn (RhuProvider $provider) => $provider->makeVisible(['internal_notes']));
 
         return response()->json(['data' => $providers]);
     }
@@ -44,6 +47,12 @@ class RhuProviderController extends Controller
      */
     public function availability(Request $request)
     {
+        if ($request->user()->isBhc() && $request->filled('rural_health_unit_id')) {
+            $validated = $request->validate(['rural_health_unit_id' => ['required', 'integer']]);
+            $route = app(\App\Services\ReferralRoutingService::class)->resolveForBhc($request->user(), (int) $validated['rural_health_unit_id']);
+            $providers = RhuProvider::where('rural_health_unit_id', $route['rhu']->id)->eligibleRoster()->with('unavailability')->get();
+            return response()->json(['data' => $this->availability->summarize($providers, (int) $route['rhu']->id)]);
+        }
         $ruralHealthUnitId = $this->facilityAccess
             ->resolveVisibleRuralHealthUnitId($request->user());
 
@@ -56,7 +65,8 @@ class RhuProviderController extends Controller
 
         $providers = $this->facilityAccess
             ->scopeRhuProviders(RhuProvider::query(), $request->user())
-            ->active()
+            ->eligibleRoster()
+            ->with('unavailability')
             ->orderBy('name')
             ->get();
 
@@ -65,34 +75,10 @@ class RhuProviderController extends Controller
         ]);
     }
 
-    public function store(RhuProviderRequest $request, AuditLogger $auditLogger)
+    public function store(RhuProviderRequest $request)
     {
-        $user = $request->user();
-        $this->facilityAccess->authorizeProviderManagement($user);
-        $data = $request->validated();
-
-        $provider = DB::transaction(function () use ($data, $user, $request, $auditLogger): RhuProvider {
-            $provider = RhuProvider::create([
-                ...$data,
-                'rural_health_unit_id' => $user->rural_health_unit_id,
-                'availability_status' => $data['availability_status']
-                    ?? RhuProvider::STATUS_AVAILABLE,
-                'is_active' => true,
-                'created_by' => $user->id,
-                'updated_by' => $user->id,
-            ]);
-
-            $auditLogger->log(
-                $request,
-                'provider_created',
-                'providers',
-                "Added provider {$provider->name} to the RHU roster."
-            );
-
-            return $provider;
-        });
-
-        return response()->json(['data' => $provider], 201);
+        $this->facilityAccess->authorizeProviderManagement($request->user());
+        abort(422, RhuDoctorRosterService::COVERING_CREATE_DISABLED);
     }
 
     public function update(
@@ -116,17 +102,27 @@ class RhuProviderController extends Controller
                 ->firstOrFail();
 
             $this->facilityAccess->authorizeProviderManagement($user, $provider);
+            abort_unless($provider->isOfficial(), 422, RhuDoctorRosterService::COVERING_LOCKED);
             abort_unless($provider->is_active, 422, 'This provider record is no longer active.');
 
+            if (array_key_exists('name', $data) && $data['name'] !== $provider->name) {
+                abort(422, RhuDoctorRosterService::NAME_MANAGED);
+            }
+
             $previousStatus = $provider->availability_status;
+            $wasEffective = $provider->isEffectivelyAvailable();
+            if (array_key_exists('availability_status', $data)) {
+                $data['availability_status_set_at'] = now();
+            }
             $provider->update([...$data, 'updated_by' => $user->id]);
+            $provider->load('unavailability');
 
             // SCR-06 - an availability flip is its own audited event, because it
             // is the change that can block referral submission under DOC-14.
             $statusChanged = array_key_exists('availability_status', $data)
                 && $data['availability_status'] !== $previousStatus;
 
-            if ($statusChanged && $provider->availability_status === RhuProvider::STATUS_AVAILABLE) {
+            if (! $wasEffective && $provider->isEffectivelyAvailable()) {
                 app(ReferralHoldService::class)->notifyWaitingHolds($provider->ruralHealthUnit);
             }
 
@@ -142,37 +138,26 @@ class RhuProviderController extends Controller
             return $provider;
         });
 
-        return response()->json(['data' => $provider]);
+        return response()->json(['data' => $provider->makeVisible(['internal_notes'])]);
     }
 
     /**
-     * Soft delete (DOC-20). The row is retained because referrals may carry a
-     * submission-time snapshot referencing this provider (REL-01).
+     * Roster rows are retained for REL-01 snapshots. Official identity is
+     * Admin-owned; covering/legacy rows are historical and cannot be removed.
      */
-    public function destroy(
-        Request $request,
-        RhuProvider $rhuProvider,
-        AuditLogger $auditLogger
-    ) {
+    public function destroy(Request $request, RhuProvider $rhuProvider)
+    {
         $user = $request->user();
 
-        DB::transaction(function () use ($rhuProvider, $user, $request, $auditLogger): void {
+        DB::transaction(function () use ($rhuProvider, $user): void {
             $provider = RhuProvider::query()
                 ->whereKey($rhuProvider->id)
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $this->facilityAccess->authorizeProviderManagement($user, $provider);
-            $provider->update(['is_active' => false, 'updated_by' => $user->id]);
-
-            $auditLogger->log(
-                $request,
-                'provider_deactivated',
-                'providers',
-                "Deactivated provider {$provider->name}."
-            );
+            abort_if($provider->isOfficial(), 422, RhuDoctorRosterService::OFFICIAL_LOCKED);
+            abort(422, RhuDoctorRosterService::COVERING_LOCKED);
         });
-
-        return response()->json(['data' => ['deactivated' => true]]);
     }
 }

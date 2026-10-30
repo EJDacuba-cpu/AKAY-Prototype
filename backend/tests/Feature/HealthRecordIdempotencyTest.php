@@ -12,11 +12,13 @@ use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\ActionPermissions;
 use App\Services\ReferralRoutingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class HealthRecordIdempotencyTest extends TestCase
@@ -42,7 +44,7 @@ class HealthRecordIdempotencyTest extends TestCase
         $this->createUser(
             'RHU Receiver',
             'idempotency-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             $this->rhu->id
         );
         $this->patient = $this->createPatient('Primary', 'Patient');
@@ -74,9 +76,11 @@ class HealthRecordIdempotencyTest extends TestCase
         $medicine = $this->medicine(20);
         $payload = $this->payload([
             'chief_complaint' => 'Original complaint',
+            // Only an item marked given deducts stock (HealthRecordController.php:298).
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
                 'quantity' => 2,
+                'confirmed_given' => true,
             ]],
         ]);
 
@@ -87,6 +91,7 @@ class HealthRecordIdempotencyTest extends TestCase
             ['dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
                 'quantity' => 3,
+                'confirmed_given' => true,
             ]]],
             ['patient_id' => $this->createPatient('Second', 'Patient')->id],
         ] as $change) {
@@ -136,6 +141,7 @@ class HealthRecordIdempotencyTest extends TestCase
         $payload = $this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 4,
             ]],
         ]);
@@ -147,14 +153,17 @@ class HealthRecordIdempotencyTest extends TestCase
         $this->assertSame(6, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_record_medicines', 1);
 
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $expired = $this->medicine(10);
+        $expired->expiryGroups()->update(['expiration_date' => now()->subDay()->toDateString()]);
         $this->postRecord($this->payload([
-            'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
-                'quantity' => 99,
-            ]],
+            'dispensed_medicines' => [
+                ['medicine_id' => $medicine->id, 'confirmed_given' => true, 'quantity' => 1],
+                ['allocations' => [['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $expired->id, 'confirmed_given' => true, 'quantity' => 1],
+            ],
         ]), (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(6, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 1);
@@ -163,7 +172,8 @@ class HealthRecordIdempotencyTest extends TestCase
     public function test_follow_up_completion_and_next_task_are_replayed_once(): void
     {
         [$parent, $task] = $this->scheduledFollowUp();
-        $payload = $this->followUpPayload($parent, $task, now()->addWeeks(2)->toDateString());
+        // A follow-up requires a BHC Assessment (HealthRecordRequest.php:460).
+        $payload = $this->followUpPayload($parent, $task, now()->addWeeks(2)->toDateString(), ['diagnosis' => 'Routine follow-up assessment']);
         $key = (string) Str::uuid();
 
         $first = $this->postRecord($payload, $key)->assertCreated();
@@ -205,6 +215,8 @@ class HealthRecordIdempotencyTest extends TestCase
     public function test_referral_and_database_notifications_are_created_once(): void
     {
         $payload = $this->payload([
+            // A referral requires a BHC Assessment (HealthRecordRequest.php:460).
+            'diagnosis' => 'Needs RHU assessment',
             'needs_referral' => true,
             'referral' => [
                 'referral_category' => 'General Consultation',
@@ -223,7 +235,10 @@ class HealthRecordIdempotencyTest extends TestCase
 
         $this->assertDatabaseCount('referrals', 1);
         $this->assertDatabaseCount('referral_updates', 1);
-        $this->assertSame(2, UserNotification::where('related_referral_id', $referralId)->count());
+        // Recipients: both RHU accounts (the seeded available doctor included) and the submitting BHW.
+        $notifications = UserNotification::where('related_referral_id', $referralId)->get();
+        $this->assertCount(3, $notifications);
+        $this->assertCount(3, $notifications->unique(fn ($notification) => $notification->user_id.'|'.$notification->type));
         $this->assertSame(1, AuditLog::where('module', 'referrals')->count());
         $this->assertSame(1, AuditLog::where('module', 'health_records')->count());
     }
@@ -234,10 +249,14 @@ class HealthRecordIdempotencyTest extends TestCase
         $medicine = $this->medicine(12);
         $this->bhc->update(['rural_health_unit_id' => null]);
         $payload = $this->followUpPayload($parent, $task, null, [
+            // A referral requires a BHC Assessment (HealthRecordRequest.php:460);
+            // only an item marked given deducts stock (HealthRecordController.php:298).
+            'diagnosis' => 'Needs RHU assessment',
             'needs_referral' => true,
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
                 'quantity' => 3,
+                'confirmed_given' => true,
             ]],
             'referral' => [
                 'urgency_level' => 'Routine',
@@ -266,6 +285,7 @@ class HealthRecordIdempotencyTest extends TestCase
             'monitoring_data' => ['followUpTaskId' => 999999],
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ]);
@@ -372,7 +392,7 @@ class HealthRecordIdempotencyTest extends TestCase
 
     private function medicine(int $quantity): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => 'Test Medicine '.Str::random(5),
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -381,6 +401,13 @@ class HealthRecordIdempotencyTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'created_by' => $this->bhw->id,
         ]);
+        $medicine->expiryGroups()->create([
+            'expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(),
+            'available_quantity' => $quantity,
+            'quarantined_quantity' => 0,
+        ]);
+
+        return $medicine;
     }
 
     private function createPatient(string $firstName, string $lastName): Patient
@@ -397,7 +424,7 @@ class HealthRecordIdempotencyTest extends TestCase
     private function createUser(
         string $name,
         string $email,
-        string $role = User::ROLE_BHW,
+        string $role = User::ROLE_BHC,
         ?int $rhuId = null
     ): User {
         return User::create([
@@ -406,8 +433,10 @@ class HealthRecordIdempotencyTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => $role,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $role === User::ROLE_BHW ? $this->bhc->id : null,
+            'barangay_health_center_id' => $role === User::ROLE_BHC ? $this->bhc->id : null,
             'rural_health_unit_id' => $rhuId,
+            // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
+            ...($role === User::ROLE_BHC ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }

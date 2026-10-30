@@ -1,11 +1,59 @@
 import { useState } from "react";
 
-export default function RecordTabs({ tabs = [], defaultTabId, className = "" }) {
+export default function RecordTabs({
+  tabs = [],
+  defaultTabId,
+  className = "",
+  stacked = false,
+}) {
   const initialId = tabs.some((tab) => tab.id === defaultTabId)
     ? defaultTabId
     : tabs[0]?.id;
   const [activeTabId, setActiveTabId] = useState(initialId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
+
+  const printSections = (
+    <div className={`hidden print:block ${className}`}>
+      <div className="flex flex-col gap-4">
+        {tabs.map((tab) => (
+          <div key={tab.id} className="break-inside-avoid-page">
+            <h3 className="mb-2 border-b border-slate-300 pb-1 text-[13px] font-bold text-black">
+              {tab.label}
+            </h3>
+            <div className="text-[12px] leading-relaxed text-black">
+              {tab.content}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (stacked) {
+    return (
+      <>
+        <div
+          className={`print:hidden overflow-hidden rounded-card border border-[#E5E7EB] bg-white shadow-card ${className}`}
+        >
+          <div className="flex flex-col divide-y divide-slate-200">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <section key={tab.id} className="p-5 sm:p-6">
+                  <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[#0F172A]">
+                    {Icon && <Icon size={14} />}
+                    {tab.label}
+                  </h3>
+                  {tab.content}
+                </section>
+              );
+            })}
+          </div>
+        </div>
+        {printSections}
+      </>
+    );
+  }
 
   return (
     <>
@@ -48,22 +96,7 @@ export default function RecordTabs({ tabs = [], defaultTabId, className = "" }) 
           {activeTab?.content}
         </div>
       </div>
-
-      {/* Flattened, all-tabs rendering — print only */}
-      <div className={`hidden print:block ${className}`}>
-        <div className="flex flex-col gap-4">
-          {tabs.map((tab) => (
-            <div key={tab.id} className="break-inside-avoid-page">
-              <h3 className="mb-2 border-b border-slate-300 pb-1 text-[13px] font-bold text-black">
-                {tab.label}
-              </h3>
-              <div className="text-[12px] leading-relaxed text-black">
-                {tab.content}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {printSections}
     </>
   );
 }

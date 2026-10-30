@@ -1,52 +1,99 @@
-import { useState } from "react";
-import { Lock, Mail, ArrowRight, Activity, CheckCircle2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Eye, EyeOff, LockKeyhole, CheckCircle2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { loginUser } from "../utils/auth";
 import { submitPasswordResetRequest } from "../services/passwordResetService";
 import ButtonSpinner from "../components/common/loading/ButtonSpinner";
+import { TurnstileField } from "../components/features/auth/TurnstileField";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {
+  TURNSTILE_SITE_KEY,
+  loginErrorMessage,
+  shouldResetTurnstile,
+} from "../config/turnstile";
 
-const LOGO_SRC = "/akay-logo-only.svg";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(() =>
+  const [error, setError] = useState("");
+  const [sessionNotice, setSessionNotice] = useState(() =>
     location.state?.sessionReason === "session-expired"
       ? "Your session has expired. Please sign in again."
       : location.state?.sessionEnded
         ? "Your session is no longer valid. Please sign in again."
-      : "",
+        : location.state?.notice || "",
   );
+  const [fieldErrors, setFieldErrors] = useState({});
   const [mode, setMode] = useState("signin");
   const [resetEmail, setResetEmail] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const [turnstileNonce, setTurnstileNonce] = useState(0);
+  const turnstileRef = useRef(null);
+  const isReset = mode === "reset";
+  const captchaReady = Boolean(TURNSTILE_SITE_KEY && turnstileToken);
+
+  function resetTurnstile() {
+    setTurnstileToken("");
+    turnstileRef.current?.reset();
+  }
+
+  function reloadTurnstile() {
+    setTurnstileFailed(false);
+    setTurnstileToken("");
+    setTurnstileNonce((current) => current + 1);
+  }
+
+  function clearFieldError(field) {
+    setFieldErrors((current) => ({ ...current, [field]: "" }));
+    setError("");
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setIsLoading(true);
+    if (isLoading) return;
+    const errors = {};
+    if (!EMAIL_PATTERN.test(email.trim())) errors.email = "Enter a valid email address.";
+    if (!password) errors.password = "Enter your password.";
+    if (!TURNSTILE_SITE_KEY) errors.turnstile = "Sign-in protection is not configured. Ask an administrator to set the Turnstile site key.";
+    else if (!turnstileToken) errors.turnstile = "Complete the bot check before signing in.";
+    setFieldErrors(errors);
     setError("");
-
+    if (Object.keys(errors).length) {
+      e.currentTarget.elements.namedItem(Object.keys(errors)[0])?.focus();
+      return;
+    }
+    setIsLoading(true);
+    setSessionNotice("");
     try {
-      const user = await loginUser(email, password);
+      const user = await loginUser(email.trim(), password, turnstileToken);
+      if (user.must_change_password) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
       const requestedPath = location.state?.from;
       const requestedUrl = requestedPath?.pathname
         ? `${requestedPath.pathname}${requestedPath.search || ""}`
         : "";
       const expectedPrefix = user.role === "admin" ? "/admin/" : `/${user.role}/`;
-
       if (requestedUrl.startsWith(expectedPrefix)) {
         navigate(requestedUrl, { replace: true });
         return;
       }
-
       if (user.role === "admin") navigate("/admin/dashboard", { replace: true });
       if (user.role === "bhc") navigate("/bhc/dashboard", { replace: true });
       if (user.role === "rhu") navigate("/rhu/dashboard", { replace: true });
     } catch (error) {
-      setError(error.message || "Invalid email or password.");
+      setError(loginErrorMessage(error));
+      if (shouldResetTurnstile(error)) resetTurnstile();
     } finally {
       setIsLoading(false);
     }
@@ -54,240 +101,180 @@ export default function Login() {
 
   async function handleResetRequest(e) {
     e.preventDefault();
+    if (isLoading || resetSuccess) return;
     const trimmedEmail = resetEmail.trim();
-
     setError("");
-    setResetSuccess("");
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setError("Enter a valid email address.");
+    setFieldErrors({});
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setFieldErrors({ resetEmail: "Enter a valid email address." });
+      e.currentTarget.elements.namedItem("resetEmail")?.focus();
       return;
     }
-
     setIsLoading(true);
     try {
       await submitPasswordResetRequest(trimmedEmail);
-      setResetSuccess(
-        "Your password reset request has been submitted. Please wait for admin approval.",
-      );
+      setResetSuccess("Your password reset request has been submitted. Please wait for administrator approval.");
     } catch (error) {
-      setError(
-        error.message ||
-          "Unable to submit your password reset request. Please try again.",
-      );
+      setError(error.message || "Unable to submit your password reset request. Please try again.");
     } finally {
       setIsLoading(false);
     }
   }
 
-  function showResetPanel() {
+  function switchMode() {
     setError("");
+    setSessionNotice("");
+    setFieldErrors({});
     setResetSuccess("");
-    setResetEmail(email);
-    setMode("reset");
-  }
-
-  function showSignInPanel() {
-    setError("");
-    setResetSuccess("");
-    setMode("signin");
+    setShowPassword(false);
+    setTurnstileFailed(false);
+    resetTurnstile();
+    if (!isReset) setResetEmail(email);
+    setMode(isReset ? "signin" : "reset");
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center overflow-y-auto bg-[#F8FAFC] px-4 py-4 text-[#1F2937] sm:px-6">
-      <style>
-        {`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-5px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
+    <div
+      className="flex h-dvh flex-col overflow-y-auto bg-white px-4 py-8 font-sans text-slate-900 short:py-4 tiny:py-3 sm:px-6"
+      style={{ "--color-primary": "#B91C1C", "--color-primary-hover": "#991B1B", "--color-ring": "#B91C1C33" }}
+    >
+      <div className="m-auto w-full max-w-[420px]">
+        <main aria-labelledby="login-title">
+          <header className="text-center">
+            <img src="/akay-logo.png" alt="AKAY — Medical EHR and Referral System" className="mx-auto h-16 w-auto max-w-full object-contain short:h-12 tiny:h-10" draggable="false" />
+            <p className="mt-3 text-xs text-slate-500 short:mt-2">Bulakan, Bulacan</p>
+          </header>
 
-          .animate-fade-in {
-            animation: fadeIn 0.25s ease-out forwards;
-          }
-        `}
-      </style>
-
-      <main className="w-full max-w-[460px] rounded-3xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-xl shadow-slate-900/5 sm:px-9 sm:py-7">
-        <div className="mb-5 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-            <img
-              src={LOGO_SRC}
-              alt="AKAY Logo"
-              className="h-12 w-12 object-contain"
-              draggable="false"
-            />
-          </div>
-
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#B91C1C]">
-            AKAY
+          <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="mt-8 text-center text-xl short:mt-5 tiny:mt-3 font-semibold tracking-tight">
+            {isReset ? "Request password reset" : "Sign in"}
           </h1>
-
-          <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF] sm:text-[10px]">
-            Community EHR & Referral Tracking
+          <p className="mt-2 text-center text-sm leading-6 short:mt-1 text-slate-600">
+            {isReset
+              ? "Enter your registered email address. An administrator must approve your request before you can reset your password."
+              : "Access patient health records and track referrals."}
           </p>
-        </div>
+          {sessionNotice && <p role="status" className="mt-4 rounded-md bg-slate-50 p-3 text-sm leading-5 text-slate-600">{sessionNotice}</p>}
 
-        <div className="mb-5 text-center">
-          <h2 className="text-xl font-bold tracking-tight text-[#111827]">
-            {mode === "reset" ? "Reset password" : "Sign in to AKAY"}
-          </h2>
-
-          <p className="mx-auto mt-1.5 max-w-[340px] text-sm leading-5 text-[#6B7280]">
-            {mode === "reset"
-              ? "Enter your account email. An administrator will review your request."
-              : "Access community health records and referral tracking securely."}
-          </p>
-        </div>
-
-        {mode === "signin" ? (
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          <div>
-            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-[#6B7280]">
-              Email Address
-            </label>
-
-            <div className="relative group">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                <Mail
-                  size={17}
-                  className="text-[#9CA3AF] transition-colors group-focus-within:text-[#B91C1C]"
-                />
-              </div>
-
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-11 w-full rounded-xl border border-[#E5E7EB] bg-white pl-10 pr-4 text-sm text-[#111827] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-4 focus:ring-red-700/10"
-                placeholder="user@akay.com"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-[#6B7280]">
-              Password
-            </label>
-
-            <div className="relative group">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                <Lock
-                  size={17}
-                  className="text-[#9CA3AF] transition-colors group-focus-within:text-[#B91C1C]"
-                />
-              </div>
-
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-11 w-full rounded-xl border border-[#E5E7EB] bg-white pl-10 pr-4 text-sm text-[#111827] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-4 focus:ring-red-700/10"
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="animate-fade-in flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#B91C1C]" />
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] text-sm font-bold text-white shadow-md shadow-red-900/10 transition-all duration-200 hover:bg-[#991B1B] focus:outline-none focus:ring-4 focus:ring-red-700/15 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isLoading ? (
-              <span className="flex items-center gap-2">
-                <ButtonSpinner />
-                Signing in...
-              </span>
-            ) : (
-              <>
-                Sign In <ArrowRight size={16} />
-              </>
-            )}
-          </button>
-        </form>
-        ) : (
-          <form onSubmit={handleResetRequest} className="space-y-3.5" noValidate>
+          <form onSubmit={isReset ? handleResetRequest : handleSubmit} noValidate aria-busy={isLoading} className="mt-6 space-y-4 short:mt-4 short:space-y-3">
             <div>
-              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-[#6B7280]">
-                Email Address
-              </label>
-
-              <div className="relative group">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                  <Mail
-                    size={17}
-                    className="text-[#9CA3AF] transition-colors group-focus-within:text-[#B91C1C]"
-                  />
-                </div>
-
-                <input
-                  type="email"
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#E5E7EB] bg-white pl-10 pr-4 text-sm text-[#111827] outline-none transition-all placeholder:text-[#9CA3AF] focus:border-[#B91C1C] focus:ring-4 focus:ring-red-700/10"
-                  placeholder="user@akay.com"
-                />
-              </div>
+              <label htmlFor={isReset ? "resetEmail" : "email"} className="mb-2 block text-sm font-medium">Email address</label>
+              <Input
+                id={isReset ? "resetEmail" : "email"}
+                name={isReset ? "resetEmail" : "email"}
+                type="email"
+                autoComplete={isReset ? "email" : "username"}
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                disabled={isLoading || (isReset && Boolean(resetSuccess))}
+                value={isReset ? resetEmail : email}
+                onChange={(e) => {
+                  if (isReset) setResetEmail(e.target.value);
+                  else setEmail(e.target.value);
+                  clearFieldError(isReset ? "resetEmail" : "email");
+                }}
+                aria-invalid={Boolean(isReset ? fieldErrors.resetEmail : fieldErrors.email)}
+                aria-describedby={(isReset ? fieldErrors.resetEmail : fieldErrors.email) ? "email-error" : undefined}
+                placeholder="Enter your registered email"
+              />
+              {(isReset ? fieldErrors.resetEmail : fieldErrors.email) && (
+                <p id="email-error" role="alert" className="mt-2 text-xs text-red-700">{isReset ? fieldErrors.resetEmail : fieldErrors.email}</p>
+              )}
             </div>
 
+            {!isReset && (
+              <div>
+                <label htmlFor="password" className="mb-2 block text-sm font-medium">Password</label>
+                <div className="relative">
+                  <Input
+                    id="password" name="password" type={showPassword ? "text" : "password"}
+                    autoComplete="current-password" required disabled={isLoading}
+                    value={password} onChange={(e) => { setPassword(e.target.value); clearFieldError("password"); }}
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                    placeholder="Enter your password" className="pr-12"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0.5 top-0.5" disabled={isLoading}
+                    aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}
+                    onClick={() => setShowPassword((current) => !current)}>
+                    {showPassword ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                  </Button>
+                </div>
+                {fieldErrors.password && <p id="password-error" role="alert" className="mt-2 text-xs text-red-700">{fieldErrors.password}</p>}
+              </div>
+            )}
+
+            {!isReset && (
+              <div>
+                <p className="mb-2 text-sm font-medium" id="turnstile-label">Verification</p>
+                {TURNSTILE_SITE_KEY ? (
+                  <TurnstileField
+                    key={turnstileNonce}
+                    ref={turnstileRef}
+                    siteKey={TURNSTILE_SITE_KEY}
+                    onToken={(token) => {
+                      setTurnstileToken(token);
+                      setTurnstileFailed(false);
+                      clearFieldError("turnstile");
+                    }}
+                    onExpire={() => {
+                      setTurnstileToken("");
+                      setFieldErrors((current) => ({
+                        ...current,
+                        turnstile: "The bot check expired. Complete it again to sign in.",
+                      }));
+                    }}
+                    onError={() => {
+                      setTurnstileToken("");
+                      setTurnstileFailed(true);
+                    }}
+                  />
+                ) : (
+                  <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">
+                    Sign-in protection is not configured. Ask an administrator to set the Turnstile site key.
+                  </p>
+                )}
+                {turnstileFailed && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <p role="alert" className="text-xs text-red-700">
+                      Bot check could not load.
+                    </p>
+                    <Button type="button" variant="link" className="h-auto px-0 py-0 text-xs" onClick={reloadTurnstile}>
+                      Try again
+                    </Button>
+                  </div>
+                )}
+                {fieldErrors.turnstile && (
+                  <p id="turnstile-error" role="alert" className="mt-2 text-xs text-red-700">{fieldErrors.turnstile}</p>
+                )}
+              </div>
+            )}
+
+            {error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-5 text-red-800">{error}</p>}
             {resetSuccess && (
-              <div className="animate-fade-in flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-medium leading-5 text-emerald-700">
-                <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
-                {resetSuccess}
+              <div role="status" className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-5 text-emerald-800">
+                <CheckCircle2 size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <p>{resetSuccess}</p>
               </div>
             )}
-
-            {error && (
-              <div className="animate-fade-in flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#B91C1C]" />
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading || Boolean(resetSuccess)}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#B91C1C] text-sm font-bold text-white shadow-md shadow-red-900/10 transition-all duration-200 hover:bg-[#991B1B] focus:outline-none focus:ring-4 focus:ring-red-700/15 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isLoading ? "Submitting request..." : "Send reset request"}
-            </button>
+            <Button type="submit" className="w-full" disabled={isLoading || (isReset ? Boolean(resetSuccess) : !captchaReady)}>
+              {isLoading && <ButtonSpinner />}
+              {isReset ? (isLoading ? "Submitting request…" : "Submit reset request") : (isLoading ? "Signing in…" : "Sign in")}
+            </Button>
           </form>
-        )}
 
-        <div className="mt-5 flex items-center justify-center gap-6 border-t border-[#E5E7EB] pt-4 text-center">
-          <button
-            type="button"
-            onClick={mode === "reset" ? showSignInPanel : showResetPanel}
-            className="text-[11px] font-semibold text-[#6B7280] transition-colors hover:text-[#B91C1C]"
-          >
-            {mode === "reset" ? "Back to sign in" : "Reset password"}
-          </button>
-
-          <button className="text-[11px] font-semibold text-[#6B7280] transition-colors hover:text-[#B91C1C]">
-            AKAY service status
-          </button>
-        </div>
-
-        <div className="mt-4 text-center">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-[#9CA3AF]">
-            <Activity size={12} />
-            <span>Protected access</span>
+          <div className="mt-2 text-center short:mt-0">
+            <Button type="button" variant="link" disabled={isLoading} onClick={switchMode}>
+              {isReset ? "Back to sign in" : "Forgot password?"}
+            </Button>
           </div>
-
-          <p className="mt-1 text-[9px] text-[#CBD5E1]">
-            &copy; 2026 AKAY Community EHR System. All rights reserved.
-          </p>
-        </div>
-      </main>
+          <div className="mt-6 flex items-start justify-center gap-2 short:mt-3 text-center text-xs leading-5 text-slate-500">
+            <LockKeyhole size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <p>For authorized BHC and RHU personnel only.</p>
+          </div>
+        </main>
+        <footer className="mt-5 text-center text-xs text-slate-500 short:mt-3">&copy; {new Date().getFullYear()} AKAY</footer>
+      </div>
     </div>
   );
 }

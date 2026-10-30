@@ -1,13 +1,8 @@
 import { Link } from "react-router";
-import {
-  CalendarDays,
-  Eye,
-  FilePlus2,
-  MapPin,
-  Pencil,
-  Phone,
-} from "lucide-react";
+import { MapPin } from "lucide-react";
 
+import ButtonSpinner from "../../common/loading/ButtonSpinner";
+import useOpenPatientProfile from "../../../hooks/useOpenPatientProfile";
 import { formatDisplayValue, formatPatientName } from "../../../utils/formatters";
 
 function normalizeDate(value) {
@@ -65,14 +60,6 @@ function getPatientAge(patient) {
   return agePart;
 }
 
-function getPatientAgeSex(patient) {
-  return formatDisplayValue(
-    patient.ageSex ||
-      [patient.age, getPatientSex(patient)].filter(Boolean).join(" / "),
-    "Not recorded",
-  );
-}
-
 function getPatientContact(patient) {
   return formatDisplayValue(
     patient.contact ||
@@ -97,6 +84,16 @@ function getPatientLocation(patient) {
   );
 }
 
+function getBirthDate(patient) {
+  return normalizeDate(
+    patient.birthDate ||
+      patient.birthdate ||
+      patient.dateOfBirth ||
+      patient.date_of_birth ||
+      patient.dob,
+  );
+}
+
 function getRegisteredDate(patient) {
   return normalizeDate(
     patient.dateRegistered ||
@@ -107,75 +104,151 @@ function getRegisteredDate(patient) {
   );
 }
 
+/** Registration is either "child" or "general"; the backend defaults to general. */
+function getRegistrationType(patient) {
+  const value = String(
+    patient.registrationType || patient.registration_type || patient.patientType || "",
+  )
+    .trim()
+    .toLowerCase();
+  return value === "child" ? "Child" : "General";
+}
+
 function getPatientDisplayId(patient) {
   return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
 
-export default function PatientDirectoryCard({ patient, basePath }) {
+/**
+ * Open Profile link that loads the profile's data first. It stays a real link
+ * (new-tab and copy-link still work); only a plain left click is intercepted.
+ */
+function OpenProfileLink({ to, patientId, role, className, onClick, children, ...linkProps }) {
+  const { openProfile, opening, error } = useOpenPatientProfile(role);
+
+  function handleClick(event) {
+    onClick?.(event);
+    const plainClick =
+      event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+    if (event.defaultPrevented || !plainClick) return;
+    event.preventDefault();
+    openProfile(patientId, to);
+  }
+
+  return (
+    <>
+      <Link
+        to={to}
+        className={`${className}${opening ? " pointer-events-none gap-2 opacity-90" : ""}`}
+        onClick={handleClick}
+        aria-busy={opening}
+        aria-disabled={opening || undefined}
+        {...linkProps}
+      >
+        {opening ? (
+          <>
+            <ButtonSpinner />
+            <span>Opening...</span>
+          </>
+        ) : (
+          children
+        )}
+      </Link>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-medium text-red-600">
+          Could not load this profile. Please try again.
+        </p>
+      )}
+    </>
+  );
+}
+
+export default function PatientDirectoryCard({
+  patient,
+  basePath,
+  role = basePath === "/rhu" ? "rhu" : "bhc",
+  onSelect,
+  selected = false,
+}) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
   const patientName = formatPatientName(patient, "Unnamed Patient");
   const displayId = getPatientDisplayId(patient);
   const age = getPatientAge(patient);
   const sex = getPatientSex(patient);
-  const ageSex = getPatientAgeSex(patient);
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
+  const occupation = formatDisplayValue(patient.occupation, "Not recorded");
+  const registrationType = getRegistrationType(patient);
+  const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
-  const metadata = [sex, age || (!sex ? ageSex : ""), location]
-    .filter((value) => value && value !== "Not recorded")
-    .join(` ${String.fromCharCode(8226)} `);
+
+  // With onSelect the whole card opens the directory's summary panel; the
+  // Open Profile link below still navigates straight to the full profile.
+  const selectProps = onSelect
+    ? {
+        role: "button",
+        tabIndex: 0,
+        "aria-pressed": selected,
+        "aria-label": `View summary: ${patientName}, ID ${displayId}`,
+        "data-selected": selected,
+        onClick: () => onSelect(routePatientId),
+        onKeyDown: (event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(routePatientId);
+          }
+        },
+      }
+    : {};
 
   return (
-    <article className="group flex min-h-[132px] flex-col rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm shadow-black/[0.015] transition-all duration-200 hover:-translate-y-0.5 hover:border-red-100 hover:shadow-md">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-[13px] font-bold leading-5 text-[#0F172A]">
-            {patientName}
-          </h3>
-        </div>
-        <span className="shrink-0 rounded-md border border-red-100 bg-white px-2 py-0.5 font-mono text-[10px] font-semibold text-[#B91C1C]">
-          ID #{displayId}
+    <article className="clinical-patient" {...selectProps}>
+      <div className="clinical-patient__top">
+        <span className="clinical-patient__barangay">
+          <MapPin size={12} aria-hidden="true" />
+          <span>
+            <span className="sr-only">Barangay: </span>
+            {formatDisplayValue(location, "Barangay not recorded")}
+          </span>
+        </span>
+        <span
+          className="clinical-patient__badge"
+          data-type={registrationType.toLowerCase()}
+        >
+          {registrationType}
         </span>
       </div>
-
-      <div className="mt-2 min-w-0 space-y-1">
-        <p className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-medium text-[#64748B]">
-          <MapPin size={12} className="shrink-0 text-[#94A3B8]" />
-          <span className="truncate">{metadata || ageSex}</span>
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#475569]">
-          <Phone size={12} className="shrink-0 text-[#94A3B8]" />
-          <span className="truncate">{contact}</span>
-        </p>
-        <p className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-medium text-[#94A3B8]">
-          <CalendarDays size={12} className="shrink-0" />
-          <span className="truncate">Registered {registeredDate}</span>
-        </p>
-      </div>
-
-      <div className="mt-auto grid grid-cols-3 gap-1.5 pt-3">
-        <Link
+      <header className="clinical-patient__identity">
+        <h3 className="clinical-patient__name">{patientName}</h3>
+        <p className="clinical-patient__id">Patient ID #{displayId}</p>
+      </header>
+      <dl className="clinical-patient__fields">
+        {[
+          ["Age", formatDisplayValue(age, "Not recorded")],
+          ["Sex", formatDisplayValue(sex, "Not recorded")],
+          ["Occupation", occupation],
+          ["Date of birth", birthDate],
+          ["Contact", contact],
+          ["Registered", registeredDate],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <footer className="clinical-patient__footer">
+        <OpenProfileLink
           to={`${basePath}/patients/${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-[#B91C1C] px-1.5 text-[10px] font-semibold text-white shadow-sm transition-colors hover:bg-[#991B1B]"
+          patientId={routePatientId}
+          role={role}
+          className="clinical-patient__open"
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Open Profile: ${patientName}, ID ${displayId}`}
         >
-          <Eye size={12} />
-          <span className="truncate">View Details</span>
-        </Link>
-        <Link
-          to={`${basePath}/patients/edit/${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <Pencil size={12} />
-          <span className="truncate">Edit</span>
-        </Link>
-        <Link
-          to={`${basePath}/health-records/add?patientId=${routePatientId}`}
-          className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[10px] font-semibold text-[#475569] transition-colors hover:border-red-100 hover:bg-red-50 hover:text-[#B91C1C]"
-        >
-          <FilePlus2 size={12} />
-          <span className="truncate">Add Record</span>
-        </Link>
-      </div>
+          Open Profile
+        </OpenProfileLink>
+      </footer>
     </article>
   );
 }

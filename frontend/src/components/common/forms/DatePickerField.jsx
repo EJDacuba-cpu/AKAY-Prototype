@@ -304,6 +304,9 @@ export function DatePickerField({
   initialView,
   yearRangeStart,
   yearRangeEnd,
+  // For a table cell whose column header already names the field. Off by
+  // default, so every existing use keeps its label row exactly as before.
+  hideLabel = false,
 }) {
   const selectedDate = useMemo(() => parseDateValue(value), [value]);
   const today = useMemo(() => normalizeDateOnly(new Date()), []);
@@ -479,7 +482,7 @@ function isDateOutOfRange(date) {
 
   return (
     <div ref={wrapperRef} className="relative min-w-0" data-field={name}>
-      <FieldLabel label={label} required={required} />
+      {!hideLabel && <FieldLabel label={label} required={required} />}
       <button
         ref={triggerRef}
         type="button"
@@ -501,7 +504,7 @@ function isDateOutOfRange(date) {
         createPortal(
         <div
           ref={popoverRef}
-          className="anim-drop-in fixed z-[9999] rounded-2xl border border-[#E8ECF0] bg-white p-2.5 shadow-xl shadow-slate-900/10"
+          className="anim-drop-in fixed z-[10001] rounded-2xl border border-[#E8ECF0] bg-white p-2.5 shadow-xl shadow-slate-900/10"
           style={{
             top: position.top,
             left: position.left,
@@ -826,7 +829,7 @@ export function TimePickerField({
         createPortal(
         <div
           ref={popoverRef}
-          className="anim-drop-in fixed z-[9999] rounded-xl border border-[#E8ECF0] bg-white p-2 shadow-xl shadow-slate-900/10"
+          className="anim-drop-in fixed z-[10001] rounded-xl border border-[#E8ECF0] bg-white p-2 shadow-xl shadow-slate-900/10"
           style={{
             top: position.top,
             left: position.left,

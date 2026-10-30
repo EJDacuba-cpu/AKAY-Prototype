@@ -1,11 +1,18 @@
+import { getFacilityCalendarDate } from "./medicineInventoryStatus.js";
 export const queryKeys = {
+  // The RHU Today's Queue.
+  rhuVisits: () => ["rhu-visits"],
   patients: (role = "bhc") => ["patients", role],
+  // Under patients(role), so a registration's invalidation refreshes it too.
+  household: (role = "bhc", serial) => ["patients", role, "household", serial],
   patientDetails: (role = "bhc", patientId) => [
     "patient-details",
     role,
     patientId,
   ],
   healthRecords: (role = "bhc") => ["health-records", role],
+  // In-memory UI state, separate from refetchable clinical queries.
+  patientRecordView: (role = "bhc", patientId) => ["patient-record-view", role, patientId],
   familyPlanningRecords: (role = "bhc") => ["family-planning-records", role],
   healthRecordDetails: (role = "bhc", recordId) => [
     "health-record-details",
@@ -19,6 +26,12 @@ export const queryKeys = {
   ],
   referrals: (role = "bhc") => ["referrals", role],
   followUpTasks: (role = "bhc") => ["follow-up-tasks", role],
+  followUpTasksCalendar: (role = "bhc", start, end) => [
+    "follow-up-tasks-calendar",
+    role,
+    start,
+    end,
+  ],
   followUpTaskDetails: (role = "bhc", taskId) => [
     "follow-up-task-details",
     role,
@@ -31,7 +44,12 @@ export const queryKeys = {
   ],
   incomingReferrals: (role = "rhu") => ["incoming-referrals", role],
   dashboardSummary: (role = "bhc") => ["dashboard-summary", role],
-  medicineAvailability: (role = "bhc") => ["medicine-availability", role],
+  adminDashboard: (period) => ["admin-dashboard", period],
+  toDispense: (role = "rhu") => ["to-dispense", role],
+  medicineAvailability: (role = "bhc", user = {}) => ["medicine-availability", role,
+    String(user?.id || ""),
+    String(role === "bhc" ? (user?.barangayHealthCenterId || user?.barangay_health_center_id || user?.bhcId || user?.facilityId || "") : (user?.ruralHealthUnitId || user?.rural_health_unit_id || user?.rhuId || user?.facilityId || "")),
+    getFacilityCalendarDate()],
   medicineTransactions: (user = {}, medicineId = "", page) => [
     "medicine-transactions",
     String(user?.id || ""),
@@ -45,8 +63,25 @@ export const queryKeys = {
     String(medicineId || ""),
     ...(page === undefined ? [] : [Number(page) || 1]),
   ],
+
   adminAccounts: () => ["admin-accounts"],
+  adminAccount: (id) => ["admin-accounts", String(id)],
+  adminFacilities: () => ["admin-facilities"],
+  staffRoles: () => ["staff-roles"],
   providers: () => ["rhu-providers"],
   providerAvailability: () => ["rhu-provider-availability"],
+  providerUnavailability: (providerId, from, to) => [
+    "rhu-provider-unavailability",
+    String(providerId || ""),
+    from || "",
+    to || "",
+  ],
   referralHolds: () => ["referral-holds"],
+  referralHold: (holdId) => ["referral-hold", String(holdId || "")],
+  clinicalRegistry: () => ["clinical-registry"],
+  careOverview: (patientId) => ["care-overview", String(patientId)],
+  monitoringHandoffs: () => ["monitoring-handoff-requests"],
+  monitoringHandoff: (id) => ["monitoring-handoff-requests", String(id)],
+  patientConditions: (patientId) => ["patient-conditions", String(patientId)],
+  patientBackgroundHistory: (patientId) => ["patient-background-history", String(patientId)],
 };

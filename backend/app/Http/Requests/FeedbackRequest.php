@@ -2,13 +2,15 @@
 
 namespace App\Http\Requests;
 
+use App\Services\LegacyMonitoringReview;
+use App\Services\PatientConditions;
 use Illuminate\Foundation\Http\FormRequest;
 
 class FeedbackRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRhuStaff() ?? false;
+        return $this->user()?->isRhu() ?? false;
     }
 
     public function rules(): array
@@ -22,6 +24,8 @@ class FeedbackRequest extends FormRequest
             'recommendation' => ['nullable', 'string'],
             'receiving_practitioner' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
+            ...PatientConditions::rules(),
+            ...LegacyMonitoringReview::rules(),
         ];
     }
 }

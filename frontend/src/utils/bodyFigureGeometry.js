@@ -1,0 +1,196 @@
+// Extension is explicit so `node --test` can resolve it.
+import { calculateAgeInMonths } from "./patientUtils.js";
+
+/**
+ * Geometry of the body figure, shared by the consultation's Physical Exam
+ * body preview and the patient profile's Visual Health Summary so a finding's
+ * marker sits in the same place on both.
+ *
+ * The figure is one of six 1024 x 1536 images (male/female/infant x
+ * front/back).
+ * Marker positions are normalized [x, y] fractions of the figure box, so they
+ * hold at any rendered size. Front view: the patient's right is on the
+ * viewer's left. Back view: the patient's right is on the viewer's right.
+ * Region keys match BODY_REGIONS in bodyFindings.js.
+ */
+
+/** CSS aspect-ratio of the figure box, matching the 1024 x 1536 images. */
+export const FIGURE_ASPECT = "2 / 3";
+
+export const FIGURE_KEYS = ["male", "female", "infant"];
+
+/** Last completed month of age that still shows the infant figure. */
+const INFANT_MAX_MONTHS = 12;
+
+/**
+ * Infant from birth through 12 completed months (by date of birth, whatever
+ * the sex); otherwise "Female" (trimmed, any case) -> female, anything else
+ * -> male. A missing, invalid or future birth date falls back to sex.
+ */
+export function getFigureKey(sex, birthDate, today = new Date()) {
+  const months = calculateAgeInMonths(birthDate, today);
+  if (months !== "" && months <= INFANT_MAX_MONTHS) return "infant";
+  return String(sex ?? "").trim().toLowerCase() === "female" ? "female" : "male";
+}
+
+export const DOT_POSITIONS = {
+  male: {
+    front: {
+      head: [0.5, 0.075],
+      chest: [0.5, 0.245],
+      abdomen: [0.5, 0.355],
+      pelvis: [0.5, 0.462],
+      right_arm: [0.307, 0.32],
+      left_arm: [0.691, 0.32],
+      right_hand: [0.198, 0.495],
+      left_hand: [0.802, 0.495],
+      right_leg: [0.415, 0.62],
+      left_leg: [0.584, 0.62],
+      right_foot: [0.374, 0.912],
+      left_foot: [0.62, 0.912],
+    },
+    back: {
+      head: [0.5, 0.07],
+      chest: [0.5, 0.245],
+      abdomen: [0.5, 0.355],
+      pelvis: [0.5, 0.475],
+      right_arm: [0.698, 0.32],
+      left_arm: [0.302, 0.32],
+      right_hand: [0.805, 0.495],
+      left_hand: [0.195, 0.495],
+      right_leg: [0.588, 0.62],
+      left_leg: [0.412, 0.62],
+      right_foot: [0.63, 0.92],
+      left_foot: [0.37, 0.92],
+    },
+  },
+  female: {
+    front: {
+      head: [0.5, 0.085],
+      chest: [0.5, 0.255],
+      abdomen: [0.5, 0.365],
+      pelvis: [0.5, 0.47],
+      right_arm: [0.32, 0.33],
+      left_arm: [0.68, 0.33],
+      right_hand: [0.21, 0.49],
+      left_hand: [0.789, 0.49],
+      right_leg: [0.415, 0.62],
+      left_leg: [0.584, 0.62],
+      right_foot: [0.378, 0.925],
+      left_foot: [0.619, 0.925],
+    },
+    back: {
+      head: [0.5, 0.08],
+      chest: [0.5, 0.25],
+      abdomen: [0.5, 0.365],
+      pelvis: [0.5, 0.48],
+      right_arm: [0.685, 0.33],
+      left_arm: [0.315, 0.33],
+      right_hand: [0.792, 0.49],
+      left_hand: [0.207, 0.49],
+      right_leg: [0.585, 0.62],
+      left_leg: [0.414, 0.62],
+      right_foot: [0.624, 0.935],
+      left_foot: [0.376, 0.935],
+    },
+  },
+  infant: {
+    front: {
+      head: [0.5, 0.14],
+      chest: [0.5, 0.325],
+      abdomen: [0.5, 0.445],
+      pelvis: [0.5, 0.575],
+      right_arm: [0.285, 0.38],
+      left_arm: [0.715, 0.38],
+      right_hand: [0.122, 0.54],
+      left_hand: [0.879, 0.54],
+      right_leg: [0.35, 0.69],
+      left_leg: [0.645, 0.69],
+      right_foot: [0.357, 0.93],
+      left_foot: [0.65, 0.93],
+    },
+    back: {
+      head: [0.5, 0.13],
+      chest: [0.5, 0.34],
+      abdomen: [0.5, 0.456],
+      pelvis: [0.5, 0.586],
+      right_arm: [0.708, 0.378],
+      left_arm: [0.293, 0.378],
+      right_hand: [0.884, 0.547],
+      left_hand: [0.117, 0.547],
+      right_leg: [0.65, 0.716],
+      left_leg: [0.352, 0.716],
+      right_foot: [0.645, 0.935],
+      left_foot: [0.356, 0.935],
+    },
+  },
+};
+
+/** Normalized [x, y] of a region's marker on the given figure and side. */
+export function getDotPosition(figure, side, region) {
+  return DOT_POSITIONS[figure]?.[side]?.[region];
+}
+
+const toPercent = (fraction) => `${Number((fraction * 100).toFixed(4))}%`;
+
+/** The only coordinate-to-CSS conversion callers use. */
+export function markerStyle([x, y]) {
+  return { left: toPercent(x), top: toPercent(y) };
+}
+
+/**
+ * Soft area-highlight ellipse per region as [w, h], both fractions of the
+ * FIGURE WIDTH so the ellipse keeps its shape as the figure scales.
+ */
+export const HIGHLIGHT_SIZES = {
+  head: [0.16, 0.18],
+  chest: [0.3, 0.2],
+  abdomen: [0.26, 0.18],
+  pelvis: [0.26, 0.16],
+  right_arm: [0.11, 0.2],
+  left_arm: [0.11, 0.2],
+  right_hand: [0.11, 0.11],
+  left_hand: [0.11, 0.11],
+  right_leg: [0.13, 0.24],
+  left_leg: [0.13, 0.24],
+  right_foot: [0.11, 0.08],
+  left_foot: [0.11, 0.08],
+};
+
+/**
+ * The infant's proportions differ (a much larger head, shorter and plumper
+ * limbs), so it overrides the shared sizes, in the same units.
+ */
+const INFANT_HIGHLIGHT_SIZES = {
+  head: [0.3, 0.35],
+  chest: [0.3, 0.2],
+  abdomen: [0.28, 0.18],
+  pelvis: [0.3, 0.16],
+  right_arm: [0.13, 0.22],
+  left_arm: [0.13, 0.22],
+  right_hand: [0.13, 0.12],
+  left_hand: [0.13, 0.12],
+  right_leg: [0.16, 0.26],
+  left_leg: [0.16, 0.26],
+  right_foot: [0.13, 0.1],
+  left_foot: [0.13, 0.1],
+};
+
+/** [w, h] of a region's highlight on the given figure. */
+export function getHighlightSize(figure, region) {
+  return (figure === "infant" ? INFANT_HIGHLIGHT_SIZES : HIGHLIGHT_SIZES)[region];
+}
+
+/**
+ * CSS for an absolutely positioned highlight centred on a region's dot
+ * (callers add -translate-x-1/2 -translate-y-1/2). The width is a percentage
+ * of the figure box; the height follows from the aspect ratio.
+ */
+export function highlightStyle(figure, side, region) {
+  const [w, h] = getHighlightSize(figure, region);
+  return {
+    ...markerStyle(getDotPosition(figure, side, region)),
+    width: toPercent(w),
+    aspectRatio: `${w} / ${h}`,
+  };
+}

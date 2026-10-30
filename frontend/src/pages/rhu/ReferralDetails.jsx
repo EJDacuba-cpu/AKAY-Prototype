@@ -2,62 +2,48 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CalendarClock,
   AlertTriangle,
   ArrowLeft,
-  ClipboardList,
-  FileText,
-  MapPin,
-  Phone,
-  QrCode,
-  Stethoscope,
-  User,
+  CalendarClock,
   UserCheck,
 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConfirmationModal,
+  ConnectionErrorState,
   ModalButton,
   ModalShell,
   RefreshingIndicator,
   SoftLoadingArea,
 } from "../../components/common";
+import { Button } from "../../components/ui/button";
 import {
-  getReferralByRouteParam,
+  getReferralArrivalWorkspace,
   isReferralWorkflowConflict,
   refreshReferralWorkflowData,
   rescheduleReferral,
-  updateReferralByTrackingId,
+  updateReferralStatus,
 } from "../../services/referrals";
-import { getHealthRecordById } from "../../services/healthRecordService";
-import {
-  formatDisplayValue,
-  formatFacilityName,
-  formatPatientName,
-  formatReferralStatus,
-  formatUserName,
-} from "../../utils/formatters";
-import {
-  getVitalSignItems,
-  getRecordChiefComplaint,
-  getRecordSummary,
-  getRecordDiagnosis,
-  getRecordInitialActions,
-} from "../../components/features/health-records/recordDetailsHelpers";
+import { formatDate, formatDisplayValue } from "../../utils/formatters";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { queryKeys } from "../../utils/queryKeys";
+import {
+  arrivalIdentity,
+  arrivalReferralMeta,
+  canReceiveReferral,
+  missingIdentityLabel,
+  officialReferralStatus,
+  receiveConfirmCopy,
+  RECEIVED_QUEUE_MESSAGE,
+} from "../../utils/referralArrivalWorkspace";
 
-const keyframes = `
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .anim-fade-up { animation: fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both; }
-`;
-
-const OFFICIAL_REFERRAL_STATUSES = ["Pending", "Received", "Completed", "No-Show"];
-
-const stagger = (index) => ({ animationDelay: `${index * 55}ms` });
+const STATUS_PILL = {
+  Pending: "border-info-100 bg-info-50 text-info-700",
+  Received: "border-info-100 bg-info-50 text-info-700",
+  Completed: "border-success-100 bg-success-50 text-success-700",
+  "No-Show": "border-warning-100 bg-warning-50 text-warning-700",
+};
 
 export default function RHUReferralDetails() {
   const { trackingId } = useParams();
@@ -65,6 +51,7 @@ export default function RHUReferralDetails() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [conflict, setConflict] = useState(null);
+  const [receiveOpen, setReceiveOpen] = useState(false);
   const [lateArrivalOpen, setLateArrivalOpen] = useState(false);
   const [lateArrivalNote, setLateArrivalNote] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
@@ -73,59 +60,52 @@ export default function RHUReferralDetails() {
   const [rescheduleError, setRescheduleError] = useState("");
 
   const {
-    data: details,
+    data: referral,
     isLoading,
     isFetching,
     error,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.referralDetails("rhu", trackingId),
-    queryFn: async () => {
-      const found = await getReferralByRouteParam(trackingId);
-      const linkedRecord = found?.healthRecordId
-        ? await getHealthRecordById(found.healthRecordId).catch(() => null)
-        : null;
-      return {
-        referral: found,
-        patient: getReferralPatientSnapshot(found),
-        healthRecord: linkedRecord,
-      };
-    },
+    queryFn: () => getReferralArrivalWorkspace(trackingId),
     enabled: Boolean(trackingId),
     retry: false,
   });
 
-  const referral = details?.referral || null;
-  const patient = details?.patient || null;
-  const healthRecord = details?.healthRecord || null;
-  const loading = isLoading && !details;
+  const loading = isLoading && !referral;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
   const unauthorized = error?.status === 403;
   const notFound = error?.status === 404 || (!loading && !error && !referral);
   const loadError = error && !unauthorized && !notFound;
+  const identity = arrivalIdentity(referral || {});
+  const meta = arrivalReferralMeta(referral || {});
+  const status = officialReferralStatus(referral?.status);
+  const canReceive = canReceiveReferral(status);
+  const lateArrival = status === "No-Show";
+  const confirmCopy = receiveConfirmCopy(identity, lateArrival);
 
-  async function applyStatus(nextStatus, extra = {}) {
-    if (!referral || busy) return;
+  async function receivePatient(extra = {}) {
+    if (!referral?.id || busy) return false;
     setBusy(true);
     setMessage("");
 
     try {
-      const updated = await updateReferralByTrackingId(referral.trackingId, {
-        status: nextStatus,
-        ...extra,
-      });
-
-      if (updated) {
-        setMessage(getStatusMessage(nextStatus, extra));
-        await refreshReferralWorkflowData(queryClient, trackingId);
-      }
+      const updated = await updateReferralStatus(referral.id, "Received", extra);
+      setReceiveOpen(false);
+      setLateArrivalOpen(false);
+      setLateArrivalNote("");
+      setMessage(RECEIVED_QUEUE_MESSAGE);
+      await refreshReferralWorkflowData(queryClient, trackingId);
       return Boolean(updated);
-    } catch (error) {
-      if (isReferralWorkflowConflict(error)) {
-        setConflict(error.payload || {});
+    } catch (caught) {
+      if (isReferralWorkflowConflict(caught)) {
+        setReceiveOpen(false);
+        setLateArrivalOpen(false);
+        setConflict(caught.payload || {});
         await refreshReferralWorkflowData(queryClient, trackingId);
         return false;
       }
-      setMessage(error.message || "Unable to update this referral.");
+      setMessage(caught.message || "Unable to receive this patient.");
       return false;
     } finally {
       setBusy(false);
@@ -135,23 +115,11 @@ export default function RHUReferralDetails() {
   async function confirmLateArrival() {
     const note = lateArrivalNote.trim();
     if (!note) return;
-
-    const updated = await applyStatus("Received", {
-      lateArrival: true,
-      remarks: note,
-    });
-    if (updated) {
-      setLateArrivalOpen(false);
-      setLateArrivalNote("");
-    }
+    await receivePatient({ lateArrival: true, remarks: note });
   }
 
-  /**
-   * D-1 - records a new intended visit date. The referral stays No-Show; this
-   * is not a status change, so it does not go through applyStatus().
-   */
   async function confirmReschedule() {
-    if (!referral || busy || !rescheduleDate) return;
+    if (!referral?.id || busy || !rescheduleDate) return;
 
     setBusy(true);
     setRescheduleError("");
@@ -164,18 +132,20 @@ export default function RHUReferralDetails() {
       setRescheduleOpen(false);
       setRescheduleDate("");
       setRescheduleReason("");
-      setMessage("New visit date recorded. The referral remains No-Show until the patient arrives.");
+      setMessage(
+        "New visit date recorded. The referral remains No-Show until the patient arrives.",
+      );
       await refreshReferralWorkflowData(queryClient, trackingId);
-    } catch (error) {
-      if (isReferralWorkflowConflict(error)) {
+    } catch (caught) {
+      if (isReferralWorkflowConflict(caught)) {
         setRescheduleOpen(false);
-        setConflict(error.payload || {});
+        setConflict(caught.payload || {});
         await refreshReferralWorkflowData(queryClient, trackingId);
         return;
       }
       setRescheduleError(
-        error?.errors?.rescheduled_to?.[0] ||
-          error?.message ||
+        caught?.errors?.rescheduled_to?.[0] ||
+          caught?.message ||
           "Unable to record the new visit date.",
       );
     } finally {
@@ -188,96 +158,184 @@ export default function RHUReferralDetails() {
     await refreshReferralWorkflowData(queryClient, trackingId);
   }
 
+  function startReceive() {
+    if (lateArrival) {
+      setLateArrivalOpen(true);
+      return;
+    }
+    setReceiveOpen(true);
+  }
+
   if (loading) {
     return (
-      <DashboardLayout role="rhu" title="Referral Details">
+      <DashboardLayout role="rhu" title="Patient Arrival">
         <SoftLoadingArea
+          skeleton="details"
           isLoading
-          message="Loading referral details..."
-          minHeight="min-h-[520px]"
+          message="Loading patient arrival..."
+          minHeight="min-h-[420px]"
         >
-          <div className="min-h-[520px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[420px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
   }
 
-  if (unauthorized || notFound || loadError || !referral) {
+  if (loadError) {
     return (
-      <ReferralUnavailableState
-        title={
-          unauthorized
-            ? "Referral Access Restricted"
-            : loadError
-              ? "Unable to Load Referral"
-              : "Referral Not Found"
-        }
+      <DashboardLayout role="rhu" title="Patient Arrival">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(error)}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
+      </DashboardLayout>
+    );
+  }
+
+  if (unauthorized || notFound || !referral) {
+    return (
+      <ArrivalUnavailableState
+        title={unauthorized ? "Referral Access Restricted" : "Referral Not Found"}
         message={
           unauthorized
-            ? "You do not have permission to view this referral."
-            : loadError
-              ? "Unable to load referral details. Please try again."
-              : "No incoming referral record matches this tracking ID."
+            ? "You do not have permission to view this arrival."
+            : "No incoming referral record matches this tracking ID."
         }
       />
     );
   }
 
   return (
-    <DashboardLayout role="rhu" title="Referral Details">
-      <style>{keyframes}</style>
-      <div className="min-h-[520px]">
-
-      <div className="anim-fade-up mb-3" style={stagger(0)}>
+    <DashboardLayout role="rhu" title="Patient Arrival">
+      <div className="mx-auto max-w-3xl space-y-4">
         <Link
           to="/rhu/incoming-referrals"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-500 hover:text-[#0F172A]"
+          className="inline-flex items-center gap-2 text-[13px] font-medium text-neutral-600 hover:text-ink-800"
         >
           <ArrowLeft size={15} />
           Back to Incoming Referrals
         </Link>
-      </div>
 
-      <ReferralHeader
-        referral={referral}
-        patient={patient}
-        busy={busy}
-        onStatusChange={applyStatus}
-        onLateArrival={() => setLateArrivalOpen(true)}
-        onReschedule={() => {
-          setRescheduleError("");
-          setRescheduleDate("");
-          setRescheduleReason("");
-          setRescheduleOpen(true);
-        }}
-        isUpdating={detailsUpdating}
-      />
+        <section className="rounded-[var(--radius-card)] border border-neutral-200 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <header className="flex flex-col gap-4 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-[1.5rem] font-bold leading-tight tracking-tight text-ink-800">
+                  {identity.fullName}
+                </h1>
+                <StatusPill status={status} />
+                {detailsUpdating && (
+                  <RefreshingIndicator label="Updating arrival..." />
+                )}
+              </div>
+              <p className="mt-1 text-[13px] text-neutral-600">
+                {[
+                  identity.birthDateLabel && `Born ${identity.birthDateLabel}`,
+                  identity.age && `${identity.age} years`,
+                  identity.sex,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "Birth date, age, and sex not recorded"}
+              </p>
+            </div>
 
-      {message && (
-        <div
-          className="anim-fade-up mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700"
-          style={stagger(2)}
-        >
-          {message}
-        </div>
-      )}
+            {canReceive && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="brand"
+                  size="sm"
+                  disabled={busy}
+                  onClick={startReceive}
+                >
+                  <UserCheck size={14} />
+                  Receive Patient
+                </Button>
+                {lateArrival && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setRescheduleError("");
+                      setRescheduleDate("");
+                      setRescheduleReason("");
+                      setRescheduleOpen(true);
+                    }}
+                  >
+                    <CalendarClock size={14} />
+                    Reschedule Visit
+                  </Button>
+                )}
+              </div>
+            )}
+          </header>
 
-      <div
-        className="anim-fade-up mb-5 border-b border-slate-200"
-        style={stagger(2)}
-      >
-        <div className="-mb-px flex overflow-x-auto">
-          <div className="flex items-center gap-2 whitespace-nowrap border-b-2 border-[#B91C1C] px-4 py-3 text-xs font-semibold text-[#0F172A]">
-            <ClipboardList size={14} />
-            Referral Record
+          {(message || status === "Received") && (
+            <p
+              role="status"
+              className={`mt-4 rounded-[var(--radius-input)] border px-3 py-2.5 text-[13px] font-medium ${
+                status === "Received" || message === RECEIVED_QUEUE_MESSAGE
+                  ? "border-success-100 bg-success-50 text-success-700"
+                  : "border-alert-100 bg-alert-50 text-alert-700"
+              }`}
+            >
+              {message || RECEIVED_QUEUE_MESSAGE}
+            </p>
+          )}
+
+          <div className="mt-5 grid gap-8 sm:grid-cols-2">
+            <FieldGroup title="Patient registration">
+              <Field label="Full name" value={identity.fullName} />
+              <Field label="Date of birth" value={identity.birthDateLabel} />
+              <Field label="Age" value={identity.age ? `${identity.age} years` : ""} />
+              <Field label="Sex" value={identity.sex} />
+              <Field label="Address" value={identity.address} />
+              <Field label="Contact number" value={identity.contact} />
+            </FieldGroup>
+
+            <FieldGroup title="Referral">
+              <Field label="Tracking ID" value={meta.trackingId} mono />
+              <Field label="Referring BHC" value={meta.referringBhc} />
+              <Field label="Receiving RHU" value={meta.receivingRhu} />
+              <Field
+                label="Referral date"
+                value={meta.referredAt ? formatDate(meta.referredAt) : ""}
+              />
+              <Field
+                label="Referral time"
+                value={formatReferralTime(meta.referredAt)}
+              />
+              <Field label="Status" value={status} />
+            </FieldGroup>
           </div>
-        </div>
+        </section>
       </div>
 
-      <main className="anim-fade-up min-w-0" style={stagger(3)}>
-        <ReferralRecord referral={referral} patient={patient} healthRecord={healthRecord} />
-      </main>
-      </div>
+      <ConfirmationModal
+        open={receiveOpen}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        confirmText={confirmCopy.confirmText}
+        cancelText="Cancel"
+        tone="plain"
+        loading={busy}
+        loadingText="Receiving..."
+        onConfirm={() => receivePatient()}
+        onCancel={() => !busy && setReceiveOpen(false)}
+      />
+      <LateArrivalModal
+        open={lateArrivalOpen}
+        patientName={identity.fullName}
+        note={lateArrivalNote}
+        onNoteChange={setLateArrivalNote}
+        onCancel={() => !busy && setLateArrivalOpen(false)}
+        onConfirm={confirmLateArrival}
+        loading={busy}
+      />
       <RescheduleModal
         open={rescheduleOpen}
         date={rescheduleDate}
@@ -287,14 +345,6 @@ export default function RHUReferralDetails() {
         onReasonChange={setRescheduleReason}
         onCancel={() => !busy && setRescheduleOpen(false)}
         onConfirm={confirmReschedule}
-        loading={busy}
-      />
-      <LateArrivalModal
-        open={lateArrivalOpen}
-        note={lateArrivalNote}
-        onNoteChange={setLateArrivalNote}
-        onCancel={() => !busy && setLateArrivalOpen(false)}
-        onConfirm={confirmLateArrival}
         loading={busy}
       />
       <ConfirmationModal
@@ -310,489 +360,57 @@ export default function RHUReferralDetails() {
   );
 }
 
-function ReferralHeader({
-  referral,
-  patient,
-  busy,
-  onStatusChange,
-  onLateArrival,
-  onReschedule,
-  isUpdating = false,
-}) {
-  const referralDate = getReferralDate(referral);
-
+function StatusPill({ status }) {
   return (
-    <header
-      className="anim-fade-up mb-5 border-b border-slate-200 pb-5"
-      style={stagger(1)}
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+        STATUS_PILL[status] || STATUS_PILL.Pending
+      }`}
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">
-              {getPatientName(referral, patient)}
-            </h1>
-            <StatusBadge status={referral.status} />
-            {isUpdating && (
-              <RefreshingIndicator label="Updating referral details..." />
-            )}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <InfoChip
-              icon={<User size={12} />}
-              value={getAgeSex(referral, patient)}
-            />
-            <InfoChip
-              icon={<Phone size={12} />}
-              value={getContact(referral, patient)}
-            />
-            <InfoChip
-              icon={<QrCode size={12} />}
-              value={referral.trackingId}
-              mono
-            />
-          </div>
-        </div>
-        <ReferralActions
-          referral={referral}
-          busy={busy}
-          onStatusChange={onStatusChange}
-          onLateArrival={onLateArrival}
-          onReschedule={onReschedule}
-        />
-      </div>
-
-      <div className="mt-4 grid gap-x-6 gap-y-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-        <HeaderDetail
-          label="Date of Referral"
-          value={formatDate(referralDate)}
-        />
-        <HeaderDetail
-          label="Time of Referral"
-          value={formatTime(referralDate)}
-        />
-        <HeaderDetail
-          label="Referring HCI"
-          value={getReferringHci(referral, patient)}
-        />
-        <HeaderDetail
-          label="Destination Facility"
-          value={getDestinationFacility(referral)}
-        />
-        <HeaderDetail
-          label="Referral Category"
-          value={getReferralCategory(referral)}
-        />
-        <HeaderDetail
-          label="PhilHealth Acct No."
-          value={getPhilHealth(referral, patient)}
-        />
-        <HeaderDetail
-          label="Referring Practitioner"
-          value={getReferringPractitioner(referral)}
-        />
-        <HeaderDetail
-          label="Preferred Doctor"
-          value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
-        />
-      </div>
-    </header>
+      {status}
+    </span>
   );
 }
 
-function HeaderDetail({ label, value, mono }) {
-  const displayValue = formatDisplayValue(value, "Not recorded");
-
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {label}
-      </p>
-      <p
-        className={`mt-1 truncate text-sm font-semibold text-slate-700 ${
-          mono ? "font-mono text-[#0F172A]" : ""
-        }`}
-        title={displayValue}
-      >
-        {displayValue}
-      </p>
-    </div>
-  );
-}
-
-function ReferralRecord({ referral, patient, healthRecord }) {
-  const referralDate = getReferralDate(referral);
-  const record = healthRecord || {};
-  const vitalItems = getVitalSignItems(record);
-  const chiefComplaint =
-    referral.chiefComplaint || getRecordChiefComplaint(record, "");
-  const signsSymptoms = getRecordSummary(record, "");
-  const diagnosis = referral.initialDiagnosis || getRecordDiagnosis(record, "");
-  const treatmentAction =
-    referral.initialActionsTaken || getRecordInitialActions(record, "");
-
-  return (
-    <div className="space-y-4">
-      <RecordSection
-        title="Patient Demographics"
-        description="Basic patient details from the current referral record."
-        icon={<User size={14} />}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Detail
-            label="Date of Birth"
-            value={getBirthDate(referral, patient)}
-          />
-          <Detail
-            label="Age / Sex / Civil Status"
-            value={getAgeSexCivil(referral, patient)}
-          />
-          <Detail
-            label="Address"
-            value={getPatientAddress(referral, patient)}
-            icon={<MapPin size={12} />}
-          />
-          <Detail
-            label="Contact Number"
-            value={getContact(referral, patient)}
-            icon={<Phone size={12} />}
-          />
-          <Detail
-            label="PhilHealth Category"
-            value={getPhilHealthCategory(referral, patient)}
-          />
-        </div>
-      </RecordSection>
-
-      <RecordSection
-        title="Referral Information"
-        description="Official BHC-RHU referral form details for this tracking ID."
-        icon={<ClipboardList size={14} />}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <Detail
-            label="Referral Category"
-            value={getReferralCategory(referral)}
-            badge
-          />
-          <Detail label="Date of Referral" value={formatDate(referralDate)} />
-          <Detail label="Time of Referral" value={formatTime(referralDate)} />
-          <Detail
-            label="Name of Referring HCI"
-            value={getReferringHci(referral, patient)}
-          />
-          <Detail
-            label="Destination Facility"
-            value={getDestinationFacility(referral)}
-          />
-          <Detail
-            label="PhilHealth Acct No."
-            value={getPhilHealth(referral, patient)}
-          />
-          <Detail
-            label="Name and Signature of Referring Practitioner"
-            value={getReferringPractitioner(referral)}
-          />
-          <Detail
-            label="Preferred Doctor"
-            value={formatDisplayValue(referral.preferredDoctor, "RHU to assign")}
-          />
-          {referral.rescheduledTo && (
-            <Detail
-              label="Rescheduled Visit"
-              value={`${formatDate(new Date(referral.rescheduledTo))} ${formatTime(
-                new Date(referral.rescheduledTo),
-              )}`}
-            />
-          )}
-          {referral.rescheduledTo && referral.rescheduleReason && (
-            <Detail
-              label="Reschedule Reason"
-              value={referral.rescheduleReason}
-            />
-          )}
-        </div>
-      </RecordSection>
-
-      <RecordSection
-        title="Clinical Data"
-        description="Clinical basis and reason for this BHC-RHU referral."
-        icon={<Stethoscope size={14} />}
-      >
-        <div className="space-y-5">
-          <div>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Vital Signs
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {vitalItems.map((item) => (
-                <Detail key={item.label} label={item.label} value={item.value} />
-              ))}
-            </div>
-          </div>
-          <NarrativeBlock
-            label="Chief Complaint"
-            value={chiefComplaint}
-            empty="No chief complaint recorded."
-          />
-          <NarrativeBlock
-            label="Signs & Symptoms / Summary of Present Illness"
-            value={signsSymptoms}
-            empty="No signs and symptoms recorded."
-          />
-          <NarrativeBlock
-            label="Diagnosis / Assessment"
-            value={diagnosis}
-            empty="No diagnosis recorded."
-          />
-          <NarrativeBlock
-            label="Treatment / Action Taken"
-            value={treatmentAction}
-            empty="No treatment or action taken recorded."
-          />
-          <NarrativeBlock
-            label="Reason for Referral"
-            value={referral.reasonForReferral || referral.referralReason}
-            empty="No reason for referral recorded."
-          />
-        </div>
-      </RecordSection>
-    </div>
-  );
-}
-
-function ReferralActions({
-  referral,
-  busy,
-  onStatusChange,
-  onLateArrival,
-  onReschedule,
-}) {
-  const status = getOfficialStatus(referral.status);
-  const button =
-    "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60";
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-      {status === "Pending" && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            onStatusChange("Received", {
-              receivedAt: new Date().toISOString(),
-            })
-          }
-          className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-        >
-          <UserCheck size={14} />
-          Receive Patient
-        </button>
-      )}
-
-      {status === "No-Show" && (
-        <>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onLateArrival}
-            className={`${button} bg-[#B91C1C] text-white hover:bg-[#991B1B]`}
-          >
-            <UserCheck size={14} />
-            Receive Patient
-          </button>
-          {/* D-1 - records a new intended visit date. The referral stays
-              No-Show; this is not a status transition. */}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onReschedule}
-            className={`${button} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
-          >
-            <CalendarClock size={14} />
-            Reschedule Visit
-          </button>
-        </>
-      )}
-
-      {status === "Received" && (
-        <Link
-          to={`/rhu/feedback/${referral.trackingId}`}
-          className={`${button} border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
-        >
-          <FileText size={14} />
-          Record RHU Feedback
-        </Link>
-      )}
-
-      {status === "Completed" && (
-        <Link
-          to={`/rhu/feedback/${referral.trackingId}`}
-          className={`${button} bg-emerald-600 text-white hover:bg-emerald-700`}
-        >
-          <FileText size={14} />
-          View Return Slip
-        </Link>
-      )}
-    </div>
-  );
-}
-
-function RecordSection({ title, description, icon, children }) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-start gap-2.5 border-b border-slate-100 pb-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEF2F2] text-[#B91C1C]">
-          {icon}
-        </div>
-        <div>
-          <h2 className="text-[13px] font-bold text-slate-800">{title}</h2>
-          {description && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-              {description}
-            </p>
-          )}
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Detail({ label, value, icon, strong, badge }) {
-  const displayValue = formatDisplayValue(value, "Not recorded");
-
-  return (
-    <div className="min-w-0">
-      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {icon}
-        {label}
-      </p>
-      {badge ? (
-        <ClassBadge value={displayValue} />
-      ) : (
-        <p
-          className={`mt-1 leading-relaxed ${
-            strong
-              ? "text-sm font-bold text-slate-800"
-              : "text-sm text-slate-700"
-          }`}
-        >
-          {displayValue}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function NarrativeBlock({ label, value, empty }) {
+function FieldGroup({ title, children }) {
   return (
     <div>
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <h2 className="mb-3 text-[11px] font-bold uppercase tracking-wide text-neutral-500">
+        {title}
+      </h2>
+      <dl className="space-y-3">{children}</dl>
+    </div>
+  );
+}
+
+function Field({ label, value, mono = false }) {
+  const display = missingIdentityLabel(value);
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
         {label}
-      </p>
-      <Narrative value={value} empty={empty} />
+      </dt>
+      <dd
+        className={`mt-0.5 truncate text-[13px] text-ink-800 ${mono ? "font-mono" : "font-medium"}`}
+        title={display}
+      >
+        {display}
+      </dd>
     </div>
   );
 }
 
-function Narrative({ value, empty }) {
-  const displayValue = formatDisplayValue(value, empty);
-
-  return (
-    <div className="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3 text-sm leading-6 text-slate-700">
-      {displayValue}
-    </div>
-  );
+function formatReferralTime(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
-function InfoChip({ icon, value }) {
-  const displayValue = formatDisplayValue(value, "Not recorded");
-
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-      {icon}
-      {displayValue}
-    </span>
-  );
-}
-
-function StatusBadge({ status }) {
-  const officialStatus = getOfficialStatus(status);
-  const displayStatus = formatReferralStatus(officialStatus);
-  const map = {
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
-        map[displayStatus] || map.Pending
-      }`}
-    >
-      {displayStatus}
-    </span>
-  );
-}
-
-function ClassBadge({ value }) {
-  const displayValue = formatDisplayValue(value, "Not recorded");
-  const map = {
-    A1: "bg-slate-100 text-slate-700",
-    A2: "bg-slate-100 text-slate-700",
-    B1: "bg-amber-100 text-amber-700",
-    B2: "bg-amber-100 text-amber-700",
-    C1: "bg-red-100 text-red-700",
-    C2: "bg-red-100 text-red-700",
-    Unclassified: "bg-slate-100 text-slate-600",
-    Maternal: "bg-pink-100 text-pink-700",
-    Immunization: "bg-emerald-100 text-emerald-700",
-    "Senior Citizen": "bg-violet-100 text-violet-700",
-    "General Consultation": "bg-slate-100 text-slate-700",
-  };
-
-  return (
-    <span
-      className={`mt-1 inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[displayValue] || "bg-slate-100 text-slate-600"
-      }`}
-    >
-      {displayValue}
-    </span>
-  );
-}
-
-function getOfficialStatus(status) {
-  const raw = String(status || "Pending").trim();
-  if (OFFICIAL_REFERRAL_STATUSES.includes(raw)) return raw;
-
-  const lower = raw.toLowerCase();
-  if (lower.includes("assessment") || lower.includes("monitoring")) return "Received";
-  if (lower.includes("received")) return "Received";
-  if (lower.includes("completed") || lower === "complete") return "Completed";
-  if (lower.includes("show")) return "No-Show";
-  return raw;
-}
-
-function getStatusMessage(status, extra = {}) {
-  if (status === "Received" && extra.lateArrival) {
-    return "Late arrival received. Referral is now marked as Received.";
-  }
-  if (status === "Received") return "Patient has been received by RHU.";
-  if (status === "No-Show") return "Referral has been marked as No-Show.";
-  return `Referral status updated to ${status}.`;
-}
-
-/**
- * D-1 - a new intended visit date for a No-Show referral.
- *
- * DOC-14b: the date is required and must be in the future. Nothing here
- * pre-fills or suggests a date - the system must not invent one.
- */
 function RescheduleModal({
   open,
   date,
@@ -828,26 +446,23 @@ function RescheduleModal({
         </>
       }
     >
-      <p className="leading-5 text-slate-600">
+      <p className="text-[13px] leading-5 text-neutral-600">
         Record a new intended visit date for this patient. The referral stays
         marked No-Show until the patient actually arrives.
       </p>
       <div className="mt-5">
-        <label
-          className="block text-xs font-semibold text-slate-700"
-          htmlFor="reschedule-date"
-        >
-          New visit date and time <span className="text-[#B91C1C]">*</span>
+        <label className="block text-xs font-semibold text-ink-800" htmlFor="reschedule-date">
+          New visit date and time <span className="text-brand-700">*</span>
         </label>
         <input
           id="reschedule-date"
           type="datetime-local"
           value={date}
           onChange={(event) => onDateChange(event.target.value)}
-          className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+          className="mt-2 h-10 w-full rounded-[var(--radius-input)] border border-neutral-200 bg-white px-3 text-sm text-ink-800 outline-none focus:border-ink-400 focus:ring-2 focus:ring-ink-400/20"
         />
         <label
-          className="mt-4 block text-xs font-semibold text-slate-700"
+          className="mt-4 block text-xs font-semibold text-ink-800"
           htmlFor="reschedule-reason"
         >
           Reason (optional)
@@ -858,11 +473,9 @@ function RescheduleModal({
           onChange={(event) => onReasonChange(event.target.value)}
           rows={3}
           maxLength={1000}
-          className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10"
+          className="mt-2 w-full rounded-[var(--radius-input)] border border-neutral-200 bg-white px-3 py-2 text-sm text-ink-800 outline-none focus:border-ink-400 focus:ring-2 focus:ring-ink-400/20"
         />
-        {error && (
-          <p className="mt-2 text-xs font-medium text-[#B91C1C]">{error}</p>
-        )}
+        {error && <p className="mt-2 text-xs font-medium text-danger">{error}</p>}
       </div>
     </ModalShell>
   );
@@ -870,6 +483,7 @@ function RescheduleModal({
 
 function LateArrivalModal({
   open,
+  patientName,
   note,
   onNoteChange,
   onCancel,
@@ -879,8 +493,8 @@ function LateArrivalModal({
   return (
     <ModalShell
       open={open}
-      title="Mark Patient as Arrived?"
-      subtitle="Confirm this late arrival."
+      title="Confirm late arrival?"
+      subtitle="Verify identity, then receive."
       icon={<AlertTriangle size={14} />}
       size="md"
       onClose={onCancel}
@@ -895,18 +509,22 @@ function LateArrivalModal({
             onClick={onConfirm}
             disabled={loading || !note.trim()}
           >
-            {loading ? "Saving..." : "Mark as Arrived"}
+            {loading ? "Receiving..." : "Receive Patient"}
           </ModalButton>
         </>
       }
     >
-      <p className="leading-5 text-slate-600">
-        This referral was previously marked No-Show. Continue only if the
-        patient has now arrived at the RHU.
+      <p className="text-[13px] leading-5 text-neutral-600">
+        Confirm this is {formatDisplayValue(patientName, "this patient")} and that
+        they have now arrived. This referral was previously marked No-Show.
+        Receiving adds them to today's queue.
       </p>
       <div className="mt-5">
-        <label className="mt-5 block text-xs font-semibold text-slate-700" htmlFor="late-arrival-note">
-          Late-arrival note <span className="text-[#B91C1C]">*</span>
+        <label
+          className="block text-xs font-semibold text-ink-800"
+          htmlFor="late-arrival-note"
+        >
+          Late-arrival note <span className="text-brand-700">*</span>
         </label>
         <textarea
           id="late-arrival-note"
@@ -916,7 +534,7 @@ function LateArrivalModal({
           maxLength={1000}
           autoFocus
           disabled={loading}
-          className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10 disabled:bg-slate-50"
+          className="mt-2 w-full rounded-[var(--radius-input)] border border-neutral-200 px-3 py-2.5 text-sm text-ink-800 outline-none focus:border-ink-400 focus:ring-2 focus:ring-ink-400/20 disabled:bg-neutral-50"
           placeholder="Briefly note the patient's late arrival."
         />
       </div>
@@ -924,241 +542,23 @@ function LateArrivalModal({
   );
 }
 
-function isRhuFacility(value = "") {
-  return /rhu|rural health unit/i.test(String(value));
-}
-
-function cleanBarangayName(value = "") {
-  return String(value)
-    .replace(/^barangay\s+/i, "")
-    .trim();
-}
-
-function getReferringHci(referral = {}, patient = null) {
-  const candidates = [
-    referral.referringHealthCenter,
-    referral.referringBHC,
-    referral.bhcName,
-    referral.sourceFacility,
-    referral.referringFacility,
-    referral.bhc,
-    referral.referringHci,
-    referral.barangayHealthCenter,
-    referral.barangay_health_center,
-  ]
-    .map((item) => formatFacilityName(item, ""))
-    .filter(Boolean);
-
-  const valid = candidates.find((item) => !isRhuFacility(item));
-  if (valid) return valid;
-
-  const barangay =
-    referral.referringBarangay ||
-    referral.patientBarangay ||
-    referral.barangay ||
-    patient?.barangay;
-
-  return barangay
-    ? `Barangay ${cleanBarangayName(barangay)} Health Center`
-    : "Barangay Health Center";
-}
-
-function getDestinationFacility(referral = {}) {
-  return formatFacilityName(
-    referral.destinationFacility ||
-      referral.referredFacility ||
-      referral.receivingFacility ||
-      referral.rural_health_unit ||
-      referral.ruralHealthUnit,
-    "",
-  );
-}
-
-function ReferralUnavailableState({ title, message }) {
+function ArrivalUnavailableState({ title, message }) {
   return (
     <DashboardLayout role="rhu" title={title}>
       <div className="mx-auto max-w-lg py-24 text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-[var(--radius-card)] bg-brand-50 text-brand-700">
           <AlertTriangle size={30} />
         </div>
-        <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
-        <p className="mt-3 text-sm text-slate-500">{message}</p>
+        <h1 className="text-2xl font-bold text-ink-800">{title}</h1>
+        <p className="mt-3 text-sm text-neutral-500">{message}</p>
         <Link
           to="/rhu/incoming-referrals"
-          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#991B1B]"
+          className="mt-8 inline-flex h-9 items-center gap-2 rounded-full bg-brand-600 px-5 text-[13px] font-medium text-white hover:bg-brand-700"
         >
           <ArrowLeft size={15} />
           Back to Incoming Referrals
         </Link>
       </div>
     </DashboardLayout>
-  );
-}
-
-function getReferralDate(referral = {}) {
-  const raw =
-    referral.dateOfReferral ||
-    referral.referralDate ||
-    referral.dateSubmitted ||
-    referral.createdAt ||
-    referral.date;
-
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? raw : parsed;
-}
-
-function formatDate(value) {
-  if (!value) return "Not recorded";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTime(value) {
-  if (!value) return "Not recorded";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not recorded";
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-function getPatientName(referral = {}, patient = null) {
-  return formatPatientName(
-    referral.patientName || referral.patient || patient || referral,
-    "Unknown Patient",
-  );
-}
-
-function getReferralPatientSnapshot(referral = {}) {
-  if (!referral) return null;
-  if (referral.patient && typeof referral.patient === "object") {
-    return referral.patient;
-  }
-
-  if (
-    referral.patientName ||
-    referral.patientId ||
-    referral.ageSex ||
-    referral.patientContact ||
-    referral.address
-  ) {
-    return {
-      id: referral.patientId,
-      patientId: referral.patientId,
-      name: referral.patientName,
-      fullName: referral.patientName,
-      ageSex: referral.ageSex,
-      contactNumber: referral.patientContact,
-      contact: referral.patientContact,
-      address: referral.address,
-      barangay: referral.barangay,
-      birthDate: referral.birthDate,
-    };
-  }
-
-  return null;
-}
-
-function getAgeSex(referral = {}, patient = null) {
-  if (referral.ageSex) return referral.ageSex;
-  if (patient?.ageSex) return patient.ageSex;
-  return [referral.age || patient?.age, referral.sex || patient?.sex]
-    .filter(Boolean)
-    .join(" / ");
-}
-
-function getAgeSexCivil(referral = {}, patient = null) {
-  return [
-    getAgeSex(referral, patient),
-    referral.civilStatus || referral.civil_status || patient?.civilStatus,
-  ]
-    .filter(Boolean)
-    .join(" / ");
-}
-
-function getContact(referral = {}, patient = null) {
-  return formatDisplayValue(
-    referral.contactNumber ||
-      referral.contact ||
-      referral.patientContact ||
-      patient?.contactNumber ||
-      patient?.contact,
-    "",
-  );
-}
-
-function getReferralCategory(referral = {}) {
-  return formatDisplayValue(
-    referral.referralCategory || referral.category,
-    "Unclassified",
-  );
-}
-
-function getBirthDate(referral = {}, patient = null) {
-  return (
-    referral.birthDate ||
-    referral.dateOfBirth ||
-    patient?.birthDate ||
-    patient?.dateOfBirth ||
-    ""
-  );
-}
-
-function getPatientAddress(referral = {}, patient = null) {
-  const patientAddress = patient
-    ? [
-        patient.address || patient.streetAddress,
-        patient.barangay,
-        patient.municipality,
-      ]
-        .filter(Boolean)
-        .join(", ")
-    : "";
-
-  return (
-    referral.patientAddress ||
-    referral.address ||
-    [referral.street, referral.barangay, referral.municipality]
-      .filter(Boolean)
-      .join(", ") ||
-    patientAddress ||
-    ""
-  );
-}
-
-function getPhilHealth(referral = {}, patient = null) {
-  return (
-    referral.philHealth ||
-    referral.philHealthNumber ||
-    referral.philhealthNumber ||
-    patient?.philHealth ||
-    patient?.philHealthNumber ||
-    ""
-  );
-}
-
-function getPhilHealthCategory(referral = {}, patient = null) {
-  return formatDisplayValue(
-    referral.philHealthCategory || patient?.philHealthCategory,
-    "",
-  );
-}
-
-function getReferringPractitioner(referral = {}) {
-  return formatUserName(
-    referral.practitioner ||
-      referral.referringPractitioner ||
-      referral.attendingStaff ||
-      referral.createdBy ||
-      referral.created_by,
-    "BHC Staff",
   );
 }

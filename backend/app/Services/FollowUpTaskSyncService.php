@@ -73,6 +73,56 @@ class FollowUpTaskSyncService
         return $lockedTask;
     }
 
+    /**
+     * Every other follow-up the Start Consultation modal selected, locked and
+     * checked exactly like the primary one: same patient and BHC, still
+     * processable. $alreadyLocked is the primary task lockTaskForProcessing()
+     * returned (skipped here).
+     *
+     * @param  array<int, mixed>  $taskIds
+     * @return \Illuminate\Support\Collection<int, FollowUpTask>
+     */
+    public function lockAdditionalTasks(array $taskIds, Patient $patient, User $user, ?FollowUpTask $alreadyLocked): \Illuminate\Support\Collection
+    {
+        // Locked in ascending id order, so two saves touching the same tasks
+        // always take their row locks in the same order (no deadlock); errors
+        // still name the position the client sent the id at.
+        $ordered = array_values($taskIds);
+        asort($ordered, SORT_NUMERIC);
+
+        $tasks = collect();
+        foreach ($ordered as $index => $taskId) {
+            if ($alreadyLocked !== null && (int) $taskId === (int) $alreadyLocked->id) {
+                continue;
+            }
+            $task = FollowUpTask::query()->with('healthRecord')->whereKey((int) $taskId)->lockForUpdate()->first();
+            $samePatient = $task !== null && (int) $task->patient_id === (int) $patient->id;
+            $sameFacility = $user->isRhu()
+                ? (int) $task?->rural_health_unit_id === (int) $user->rural_health_unit_id
+                : (int) $task?->barangay_health_center_id === (int) $patient->barangay_health_center_id;
+            if (! $samePatient || ! $sameFacility) {
+                throw ValidationException::withMessages([
+                    "care_plan.continued_follow_up_task_ids.$index" => 'This follow-up does not belong to this patient.',
+                ]);
+            }
+            $this->facilityAccess->authorizeFollowUpTask($user, $task);
+            if (! $this->isProcessable($task)) {
+                $this->alreadyProcessed($task);
+            }
+            $tasks->push($task);
+        }
+
+        return $tasks;
+    }
+
+    /** @param \Illuminate\Support\Collection<int, FollowUpTask> $tasks */
+    public function fulfillTasks(\Illuminate\Support\Collection $tasks, HealthRecord $record, ?User $user): void
+    {
+        foreach ($tasks as $task) {
+            $this->fulfillTask($task, $record, $user);
+        }
+    }
+
     public function syncRecord(
         HealthRecord $record,
         ?User $user = null,
@@ -84,39 +134,54 @@ class FollowUpTaskSyncService
             return;
         }
 
-        if ($record->needs_referral) {
-            $this->cancelUnfulfilledTask($record, $user);
+        // A referral keeps the visit's own follow-up only when the BHC still
+        // owns the next visit (CarePlan::keepsFollowUpWithReferral); the
+        // record's status then reads Needs Referral, so it is not checked.
+        $keptWithReferral = $record->needs_referral
+            && CarePlan::keepsFollowUpWithReferral($record->diagnoses ?? [], $record->monitoring_data ?? []);
+
+        if ($record->needs_referral && ! $keptWithReferral) {
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
         $status = $this->healthRecordStatus($record);
-        $dueDate = $this->followUpDate($record);
+        $schedules = FollowUpSchedules::fromMonitoringData($record->monitoring_data ?? []);
 
-        if ($status !== 'follow up required' || ! $dueDate) {
-            $this->cancelUnfulfilledTask($record, $user);
+        if ((! $keptWithReferral && $status !== 'follow up required') || $schedules === []) {
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
-        $this->upsertTask(
-            $record,
-            $dueDate,
-            $this->followUpTime($record),
-            $user
-        );
+        $this->syncSchedules($record, $schedules, $user);
     }
 
     /**
-     * Create or refresh the task a record schedules, without clobbering state the
-     * task owns. A record only knows the date the clinician typed into the form;
-     * reschedules, no-shows and notes live on the task and must survive a re-sync.
+     * Create or refresh each independent schedule without clobbering state the
+     * task owns. A record only knows the dates typed into the form; reschedules,
+     * no-shows and notes live on the task and must survive a re-sync.
+     *
+     * @param  array<int, array{purpose_key: string, purpose: string, date: string, time: ?string, predecessor_task_id: ?int, source_entry_id: ?string}>  $schedules
      */
-    private function upsertTask(
-        HealthRecord $record,
-        string $dueDate,
-        ?string $dueTime,
-        ?User $user
-    ): void {
-        $existingTask = FollowUpTask::where('health_record_id', $record->id)->first();
+    private function syncSchedules(HealthRecord $record, array $schedules, ?User $user): void
+    {
+        $keys = [];
+        foreach ($schedules as $schedule) {
+            $keys[] = $schedule['purpose_key'];
+            $this->upsertSchedule($record, $schedule, $user);
+        }
+        $this->cancelUnfulfilledTasks($record, $user, $keys);
+    }
+
+    /**
+     * @param  array{purpose_key: string, purpose: string, date: string, time: ?string, predecessor_task_id: ?int, source_entry_id: ?string}  $schedule
+     */
+    private function upsertSchedule(HealthRecord $record, array $schedule, ?User $user): void
+    {
+        $existingTask = FollowUpTask::where('health_record_id', $record->id)
+            ->where('purpose_key', $schedule['purpose_key'])
+            ->whereNull('rescheduled_to_id')
+            ->first();
 
         if (in_array($existingTask?->state, [
             FollowUpTask::STATE_FULFILLED,
@@ -128,20 +193,29 @@ class FollowUpTaskSyncService
         $attributes = [
             'patient_id' => $record->patient_id,
             'barangay_health_center_id' => $record->barangay_health_center_id,
+            'rural_health_unit_id' => $record->rural_health_unit_id,
+            'purpose' => $schedule['purpose'],
+            'purpose_key' => $schedule['purpose_key'],
+            'source_entry_id' => $schedule['source_entry_id'],
+            'predecessor_task_id' => $schedule['predecessor_task_id'] ?? $existingTask?->predecessor_task_id,
             'state' => $existingTask?->state ?? FollowUpTask::STATE_PENDING,
             'created_by' => $record->created_by,
             'updated_by' => $user?->id,
         ];
 
-        // A rescheduled task carries a date chosen in the Follow-ups module that the
-        // record never learns about. Re-deriving it from the record would silently
-        // undo the reschedule on the next list load.
         if ($existingTask === null || $existingTask->rescheduled_at === null) {
-            $attributes['due_date'] = $dueDate;
-            $attributes['due_time'] = $dueTime;
+            $attributes['due_date'] = $schedule['date'];
+            $attributes['due_time'] = $schedule['time'];
         }
 
-        FollowUpTask::updateOrCreate(['health_record_id' => $record->id], $attributes);
+        FollowUpTask::updateOrCreate(
+            [
+                'health_record_id' => $record->id,
+                'purpose_key' => $schedule['purpose_key'],
+                'rescheduled_to_id' => null,
+            ],
+            $attributes
+        );
     }
 
     public function syncEligibleRecordsForUser(User $user): void
@@ -188,40 +262,43 @@ class FollowUpTaskSyncService
         // chain task this record owns.
         $task = $lockedTask
             ?? $this->linkedFollowUpTask($record, $user)
-            ?? $this->matchingParentTask($record, $user);
-        $dueDate = $this->followUpDate($record);
+            ?? ($this->followUpTaskId($record->monitoring_data ?? []) ? null : $this->matchingParentTask($record, $user));
+        $schedules = FollowUpSchedules::fromMonitoringData($record->monitoring_data ?? []);
 
         if ($task) {
             $this->fulfillTask($task, $record, $user);
         }
 
-        if (! $dueDate) {
-            $this->cancelUnfulfilledTask($record, $user);
+        if ($schedules === []) {
+            $this->cancelUnfulfilledTasks($record, $user);
             return;
         }
 
-        $this->upsertTask(
-            $record,
-            $dueDate,
-            $this->followUpTime($record),
-            $user
-        );
+        $this->syncSchedules($record, $schedules, $user);
     }
 
-    private function cancelUnfulfilledTask(
+    /**
+     * @param  array<int, string>  $keepPurposeKeys
+     */
+    private function cancelUnfulfilledTasks(
         HealthRecord $record,
-        ?User $user
+        ?User $user,
+        array $keepPurposeKeys = []
     ): void
     {
-        FollowUpTask::where('health_record_id', $record->id)
+        $query = FollowUpTask::where('health_record_id', $record->id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
-            ->update([
-                'state' => FollowUpTask::STATE_CANCELLED,
-                'cancelled_at' => now(),
-                'updated_by' => $user?->id,
-                'updated_at' => now(),
-            ]);
+            ->whereNull('rescheduled_to_id');
+        if ($keepPurposeKeys !== []) {
+            $query->whereNotIn('purpose_key', $keepPurposeKeys);
+        }
+        $query->update([
+            'state' => FollowUpTask::STATE_CANCELLED,
+            'cancelled_at' => now(),
+            'updated_by' => $user?->id,
+            'updated_at' => now(),
+        ]);
     }
 
     private function linkedFollowUpTask(
@@ -263,12 +340,9 @@ class FollowUpTaskSyncService
         $isValid = ($isActive || $isExistingFulfillment)
             && (int) $task->patient_id === (int) $record->patient_id
             && (int) $task->health_record_id === (int) $record->parent_health_record_id
-            && (int) $task->barangay_health_center_id
-                === (int) $record->barangay_health_center_id
+            && $this->sameFacility($task, $record)
             && $task->healthRecord !== null
-            && (int) $task->healthRecord->patient_id === (int) $record->patient_id
-            && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id;
+            && (int) $task->healthRecord->patient_id === (int) $record->patient_id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -286,19 +360,26 @@ class FollowUpTaskSyncService
             return null;
         }
 
-        $task = FollowUpTask::query()
+        $taskQuery = FollowUpTask::query()
             ->with('healthRecord')
             ->where('health_record_id', $record->parent_health_record_id)
             ->where('patient_id', $record->patient_id)
-            ->where('barangay_health_center_id', $record->barangay_health_center_id)
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
-            ->first();
-
-        if (! $task) {
+            ->whereNull('rescheduled_to_id');
+        if ($record->rural_health_unit_id) {
+            $taskQuery->where('rural_health_unit_id', $record->rural_health_unit_id);
+        } else {
+            $taskQuery->where('barangay_health_center_id', $record->barangay_health_center_id);
+        }
+        $tasks = $taskQuery->orderBy('id')->get();
+        // Legacy records have one current task per source consultation. With
+        // independent schedules, guessing among siblings would fulfill the
+        // wrong appointment.
+        if ($tasks->count() !== 1) {
             return null;
         }
-
+        $task = $tasks->first();
         $this->facilityAccess->authorizeFollowUpTask($user, $task);
 
         return $task;
@@ -330,15 +411,17 @@ class FollowUpTaskSyncService
         array $recordData,
         Patient $patient
     ): void {
+        $sameFacility = $task->rural_health_unit_id
+            ? (int) $task->rural_health_unit_id === (int) $patient->rural_health_unit_id
+                && (int) $task->healthRecord?->rural_health_unit_id === (int) $task->rural_health_unit_id
+            : (int) $task->barangay_health_center_id === (int) $patient->barangay_health_center_id
+                && (int) $task->healthRecord?->barangay_health_center_id === (int) $task->barangay_health_center_id;
         $isValid = (int) $task->patient_id === (int) $patient->id
             && (int) $task->health_record_id
                 === (int) $recordData['parent_health_record_id']
-            && (int) $task->barangay_health_center_id
-                === (int) $patient->barangay_health_center_id
+            && $sameFacility
             && $task->healthRecord !== null
-            && (int) $task->healthRecord->patient_id === (int) $patient->id
-            && (int) $task->healthRecord->barangay_health_center_id
-                === (int) $task->barangay_health_center_id;
+            && (int) $task->healthRecord->patient_id === (int) $patient->id;
 
         if (! $isValid) {
             $this->invalidTask();
@@ -349,7 +432,22 @@ class FollowUpTaskSyncService
     {
         return in_array($task->state, FollowUpTask::ACTIVE_STATES, true)
             && $task->fulfilled_at === null
-            && $task->fulfilled_by_health_record_id === null;
+            && $task->fulfilled_by_health_record_id === null
+            // A row a reschedule has since superseded is history, not
+            // something still actionable, even though its state
+            // ('rescheduled') is itself one of the active states.
+            && $task->rescheduled_to_id === null;
+    }
+
+    private function sameFacility(FollowUpTask $task, HealthRecord $record): bool
+    {
+        if ($record->rural_health_unit_id) {
+            return (int) $task->rural_health_unit_id === (int) $record->rural_health_unit_id
+                && (int) $task->healthRecord?->rural_health_unit_id === (int) $task->rural_health_unit_id;
+        }
+
+        return (int) $task->barangay_health_center_id === (int) $record->barangay_health_center_id
+            && (int) $task->healthRecord?->barangay_health_center_id === (int) $task->barangay_health_center_id;
     }
 
     private function followUpTaskId(array $monitoringData): mixed

@@ -1,25 +1,27 @@
+import { groupLabel } from "../../../utils/medicineExpiryGroups";
+import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
+import { getConsultationPrograms, PROGRAM_CLASSIFICATIONS } from "../../../utils/consultationPrograms";
 import {
   Baby,
   CalendarClock,
   ClipboardCheck,
-  ClipboardList,
   FlaskConical,
   HeartHandshake,
   Salad,
   Stethoscope,
   Syringe,
 } from "lucide-react";
-import { Link } from "react-router";
 
 import { RecordTabs } from "../../common";
 import PatientDetailItem from "../patients/PatientDetailItem";
+import VisitHistorySnapshot from "./VisitHistorySnapshot";
+import { getCurrentUser } from "../../../utils/auth";
 import { formatDisplayValue, formatLongDate } from "../../../utils/formatters";
 import { FollowUpEpisodeContent } from "./FollowUpEpisodePanel";
+import { formatRecordReporting, getMorbidityReportingStatus } from "../../../utils/diagnosisReporting";
+import { getSurveillanceDiagnoses } from "../../../utils/surveillance";
 import {
-  formatHypertensionDiabeticCondition,
-  getHypertensionDiabeticData,
   getServiceTypeLabel,
-  isNcdRecord as isNcdProgramRecord,
   isMaternalRecord as isMaternalProgramRecord,
 } from "../../../utils/healthRecordPrograms";
 import {
@@ -33,13 +35,11 @@ import {
   getFamilyPlanningDetails,
   normalizeHealthRecordStatus,
   getRecordValue,
-  getMorbidityReportingStatus,
-  formatMorbidityReportingStatus,
-  getHfmdSurveillance,
   getMaternalData,
   getDispensedMedicines,
   getRecordDateValue,
   getRecordDiagnosis,
+  getRecordPhysicalExam,
   getRecordChiefComplaint,
   getRecordSummary,
   getRecordNotes,
@@ -60,26 +60,127 @@ import {
   getBloodPressureValue,
   getRecordVisitTypeValue,
 } from "./recordDetailsHelpers";
+import { diagnosisCarePlanHeading, diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
+import {
+  earlierDraftContinuedNotes,
+  earlierDraftNotes,
+  isBhcGeneralV2,
+  showsDiagnosisRow,
+} from "../../../utils/consultationWorkflow";
+import { recordReportingLines } from "../../../utils/reportingEntries";
 
 /* ─────────────────────────────────────────────
    HealthRecordClinicalDetails
    Renders the full clinical record — vital signs, program-specific data
-   (Prenatal, EPI, Family Planning, NCD, TB, General Consultation), treatment,
+   (Prenatal, EPI, Family Planning, TB, General Consultation), treatment,
    and follow-up — the same way pages/bhc/HealthRecordDetails.jsx does.
    Shared by the health record details page and both referral details pages.
 ──────────────────────────────────────────── */
 
-export default function HealthRecordClinicalDetails({
+export default function HealthRecordClinicalDetails(props) {
+  // A v2 record has no per-concern next actions: it lists what was reported,
+  // and nothing at all when it reported nothing.
+  if (isBhcGeneralV2(props.record)) {
+    const reportingLines = recordReportingLines(props.record);
+    const draftNotes = earlierDraftNotes(props.record);
+    // The rest of a converted draft's text that did not fit one field.
+    const continuedNotes = earlierDraftContinuedNotes(props.record);
+    const v2Details = <RecordDetailsBody {...props} />;
+    if (reportingLines.length === 0 && !draftNotes && !continuedNotes) return v2Details;
+    return (
+      <div className="space-y-4">
+        {v2Details}
+        {reportingLines.length > 0 && <ReportingSummary lines={reportingLines} hasConditions={props.record?.diagnoses?.some((entry) => entry.clinicalOutcome)} />}
+        {(draftNotes || continuedNotes) && (
+          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+            {draftNotes && <TabbedNarrativeBlock label="Earlier draft notes" value={draftNotes} />}
+            {continuedNotes && <TabbedNarrativeBlock label="Earlier draft notes (continued)" value={continuedNotes} />}
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  // Health concerns and their next actions as saved (display only), under
+  // whichever record layout applies.
+  const carePlanItems = diagnosisCarePlanItems(props.record?.diagnoses);
+  const details = <RecordDetailsBody {...props} />;
+  if (carePlanItems.length === 0) return details;
+  return (
+    <div className="space-y-4">
+      {details}
+      <DiagnosisCarePlanSummary title={diagnosisCarePlanHeading(props.record?.diagnoses)} items={carePlanItems} />
+    </div>
+  );
+}
+
+function ReportingSummary({ lines, hasConditions = false }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <TabbedSubsection title={hasConditions ? "Health Concerns & Reporting" : "Reporting"}>
+        <ul className="divide-y divide-slate-100">
+          {lines.map((line) => (
+            <li key={line.key} className="py-2 text-sm font-medium text-[#0F172A]">
+              {line.text}
+            </li>
+          ))}
+        </ul>
+      </TabbedSubsection>
+    </section>
+  );
+}
+
+function DiagnosisCarePlanSummary({ title, items }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <TabbedSubsection title={title}>
+        <ul className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <li key={item.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">
+              <span className="font-medium text-[#0F172A]">{item.name}</span>
+              <span className="flex flex-wrap items-center gap-2">
+                {item.plan && <span className="text-slate-600">{item.plan}</span>}
+                {item.inSurveillance && (
+                  <span className="rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                    In surveillance
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </TabbedSubsection>
+    </section>
+  );
+}
+
+function RecordDetailsBody({
   record,
   patient = {},
   linkedReferral = null,
+  omitVisitHistory = false,
 }) {
   if (!record) return null;
+
+  const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
+  const historyBlock = !omitVisitHistory && canViewHistory ? <VisitHistorySnapshot record={record} patient={patient} /> : null;
+  const withHistory = (inner) => (historyBlock ? <div className="space-y-5">{historyBlock}{inner}</div> : inner);
+
+  const programs = getConsultationPrograms(record);
+  const categories = [...new Set(programs.map(key => PROGRAM_CLASSIFICATIONS[key]))];
+  if (categories.length > 1) {
+    return withHistory(<div className="space-y-6">{categories.map(category => {
+      const selected = programs.filter(key => PROGRAM_CLASSIFICATIONS[key] === category);
+      const programRecord = { ...record, category, recordType: category, classification: category, patientClassification: category, selectedPrograms: selected };
+      return <section key={category}><h2 className="mb-3 text-sm font-semibold text-slate-900">{selected.join(" / ")}</h2><HealthRecordClinicalDetails record={programRecord} patient={patient} linkedReferral={linkedReferral} omitVisitHistory /></section>;
+    })}</div>);
+  }
 
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
   const followUpDateValue = getRecordValue(record, ["followUpDate", "follow_up_date"], "");
+  const followUpReasonValue = getRecordValue(record, ["followUpReason"], "");
   const patientConditionValue = getRecordValue(record, [
     "patientCondition",
     "patient_condition",
@@ -115,23 +216,22 @@ export default function HealthRecordClinicalDetails({
       : getRecordNotes(record, "");
   const chiefComplaintValue = getRecordChiefComplaint(record, "");
   const diagnosisValue = getRecordDiagnosis(record, "");
+  // A v2 record without a stored diagnosis shows its Chief Complaint (already
+  // shown) and no Diagnosis row. Legacy records always keep the row.
+  const diagnosisRowShown = showsDiagnosisRow(record, diagnosisValue);
+  const physicalExamValue = getRecordPhysicalExam(record, "");
   const summaryValue = getRecordSummary(record, "");
   const hasClinicalAssessmentDetails = Boolean(
-    chiefComplaintValue || diagnosisValue || summaryValue,
+    chiefComplaintValue || diagnosisValue || summaryValue || physicalExamValue,
   );
   const initialActionsValue = getRecordInitialActions(record, "");
   const treatmentNotesValue = getRecordTreatmentNotes(record, "");
   const hasTreatmentDetails = Boolean(
     initialActionsValue || treatmentNotesValue || medicalNotesValue,
   );
-  const isHypertensionDiabeticRecord =
-    patientClassification === "Hypertension / Diabetic Monitoring" ||
-    (!isImmunizationRecord && isNcdProgramRecord(record));
   const isMaternalRecord =
     patientClassification === "Maternal / Prenatal" ||
-    (!isImmunizationRecord &&
-      !isHypertensionDiabeticRecord &&
-      isMaternalProgramRecord(record));
+    (!isImmunizationRecord && isMaternalProgramRecord(record));
   const dispensedMedicines = getDispensedMedicines(record);
   const isGeneralConsultationRecord =
     patientClassification === "General Consultation";
@@ -145,8 +245,10 @@ export default function HealthRecordClinicalDetails({
     isGeneralConsultationRecord ||
     morbidityReportingStatus === "morbidity" ||
     morbidityReportingStatus === "notifiable";
-  const hfmdSurveillance = getHfmdSurveillance(record);
-  const generalVitalItems = getVitalSignItems(record);
+  const reportingSummary = formatRecordReporting(record);
+  // Diagnoses included in surveillance; a legacy HFMD-tagged record reads as HFMD.
+  const surveillanceSummary = getSurveillanceDiagnoses(record).map(({ name }) => name).join(", ");
+  const generalVitalItems = getVitalSignItems(record, patient);
   const linkedReferralTarget =
     linkedReferral?.trackingId ||
     linkedReferral?.id ||
@@ -156,8 +258,12 @@ export default function HealthRecordClinicalDetails({
     record.referral_tracking_id ||
     "";
 
+  if (programs.includes("TB")) {
+    return withHistory(<TbTreatmentCardForm value={normalizeTbData(record.tbData || record.tb_data)} readOnly recordId={record.id} />);
+  }
+
   if (isImmunizationRecord) {
-    return (
+    return withHistory(
       <EpiRecordDetails
         record={record}
         vaccineEntries={epiVaccineEntries}
@@ -171,7 +277,7 @@ export default function HealthRecordClinicalDetails({
   }
 
   if (isMaternalRecord) {
-    return (
+    return withHistory(
       <MaternalPrenatalRecordDetails
         record={record}
         dispensedMedicines={dispensedMedicines}
@@ -182,20 +288,8 @@ export default function HealthRecordClinicalDetails({
     );
   }
 
-  if (isHypertensionDiabeticRecord) {
-    return (
-      <HypertensionDiabeticRecordDetails
-        record={record}
-        dispensedMedicines={dispensedMedicines}
-        followUpDate={followUpDateValue}
-        needsReferral={needsRhuReferral}
-        linkedReferral={linkedReferral}
-      />
-    );
-  }
-
   if (isFamilyPlanningRecord) {
-    return (
+    return withHistory(
       <FamilyPlanningRecordDetails
         record={record}
         details={familyPlanningDetails}
@@ -208,19 +302,21 @@ export default function HealthRecordClinicalDetails({
   }
 
   if (isGeneralConsultationRecord) {
-    return (
+    return withHistory(
       <GeneralConsultationRecordDetails
         record={record}
         vitalItems={generalVitalItems}
         chiefComplaint={chiefComplaintValue}
+        physicalExam={physicalExamValue}
         diagnosis={diagnosisValue}
+        showDiagnosisRow={diagnosisRowShown}
         signsSymptoms={summaryValue}
         treatmentAction={initialActionsValue}
         treatmentNotes={treatmentNotesValue}
         medicalNotes={medicalNotesValue}
         shouldShowReporting={shouldShowMorbidityReporting}
-        morbidityReportingStatus={morbidityReportingStatus}
-        hfmdSurveillance={hfmdSurveillance}
+        reportingSummary={reportingSummary}
+        surveillanceSummary={surveillanceSummary}
         dispensedMedicines={dispensedMedicines}
         needsReferral={needsRhuReferral}
         linkedReferral={linkedReferral}
@@ -230,26 +326,29 @@ export default function HealthRecordClinicalDetails({
     );
   }
 
-  return (
+  return withHistory(
     <GenericRecordDetails
       record={record}
       hasClinicalAssessmentDetails={hasClinicalAssessmentDetails}
       hasTreatmentDetails={hasTreatmentDetails}
       chiefComplaintValue={chiefComplaintValue}
+      physicalExamValue={physicalExamValue}
       diagnosisValue={diagnosisValue}
+      showDiagnosisRow={diagnosisRowShown}
       initialActionsValue={initialActionsValue}
       summaryValue={summaryValue}
       treatmentNotesValue={treatmentNotesValue}
       medicalNotesValue={medicalNotesValue}
       shouldShowMorbidityReporting={shouldShowMorbidityReporting}
-      morbidityReportingStatus={morbidityReportingStatus}
+      reportingSummary={reportingSummary}
       isGeneralConsultationRecord={isGeneralConsultationRecord}
-      hfmdSurveillance={hfmdSurveillance}
+      surveillanceSummary={surveillanceSummary}
       dispensedMedicines={dispensedMedicines}
       isFamilyPlanningRecord={isFamilyPlanningRecord}
       hasFamilyPlanningDetails={hasFamilyPlanningDetails}
       familyPlanningDetails={familyPlanningDetails}
       followUpDateValue={followUpDateValue}
+      followUpReasonValue={followUpReasonValue}
       needsRhuReferral={needsRhuReferral}
       patientConditionValue={patientConditionValue}
       status={status}
@@ -261,20 +360,6 @@ export default function HealthRecordClinicalDetails({
 /* ─────────────────────────────────────────────
    LOCAL HELPERS / PRESENTATIONAL PRIMITIVES
 ──────────────────────────────────────────── */
-
-function DetailSection({ title, children }) {
-  return (
-    <section className="py-5 first:pt-0 last:pb-0">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {title}
-        </span>
-        <div className="h-px flex-1 bg-slate-100" />
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
 
 export function DispensedMedicinesList({ medicines }) {
   if (!medicines.length) {
@@ -311,6 +396,9 @@ export function DispensedMedicinesList({ medicines }) {
             </p>
             <p className="text-slate-600">
               {formatDisplayValue(medicine.remarks, "—")}
+              {(medicine.inventoryAllocations || medicine.inventory_allocations || medicine.allocations || []).map(a => <span className="mt-1 block text-xs" key={a.id || a.expiry_group_id}>{groupLabel(a.expiry_group || a.group || a)} · {a.quantity ?? Math.abs(a.available_delta || 0)} {medicine.unit}</span>)}
+              {medicine.override_reason && <span className="mt-1 block text-xs">Reason: {medicine.override_reason}</span>}
+              {Number(medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity) > 0 && <span className="mt-1 block text-xs font-medium text-alert-700">Shortage recorded: {medicine.unallocated_shortage || medicine.shortage || medicine.unallocated_quantity}</span>}
             </p>
             <p className="text-slate-500">
               {formatLongDate(
@@ -363,12 +451,6 @@ function PreviousPregnancyHistoryTable({ rows = [] }) {
   );
 }
 
-function HypertensionDiabeticRecordDetails(props) {
-  return (
-    <HypertensionDiabeticTabbedRecordDetails {...props} />
-  );
-}
-
 /**
  * One naming scheme for every record-details layout.
  *
@@ -383,186 +465,28 @@ const RECORD_DETAIL_TABS = {
   followUp: { label: "Follow-ups for This Record", icon: CalendarClock },
 };
 
-function HypertensionDiabeticLegacyDetails({
-  record,
-  patientName,
-  serviceType,
-  displayDate,
-  displayTime,
-  practitioner,
-  dispensedMedicines,
-  followUpDate,
-  needsReferral,
-  linkedReferral,
-}) {
-  const data = getHypertensionDiabeticData(record);
-  const referralStatus =
-    linkedReferral?.status ||
-    record.referralStatus ||
-    record.referral_status ||
-    "";
-
-  return (
-    <div className="divide-y divide-slate-100">
-      <DetailSection title="Visit Overview">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <PatientDetailItem label="Patient Full Name" value={patientName} />
-          <PatientDetailItem label="Service Type" value={serviceType} />
-          <PatientDetailItem label="Date of Visit" value={displayDate} />
-          <PatientDetailItem
-            label="Time of Visit"
-            value={displayTime || "Not recorded"}
-          />
-          <PatientDetailItem
-            label="Name of Practitioner"
-            value={practitioner}
-          />
-        </div>
-      </DetailSection>
-
-      <DetailSection title="Monitoring Details">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <PatientDetailItem label="BP" value={data.bp || "—"} />
-          <PatientDetailItem label="FBS" value={data.fbs || "—"} />
-          <PatientDetailItem
-            label="Condition Type"
-            value={formatHypertensionDiabeticCondition(data.conditionType) || "—"}
-          />
-        </div>
-      </DetailSection>
-
-      <DetailSection title="Treatment / Action Taken">
-        {data.treatmentActionTaken ? (
-          <NarrativeBox
-            label="Treatment / Action Taken"
-            value={data.treatmentActionTaken}
-          />
-        ) : (
-          <SectionEmptyState text="No treatment or action taken recorded." />
-        )}
-      </DetailSection>
-
-      <DetailSection title="Medicines / Supplies Dispensed">
-        <DispensedMedicinesList medicines={dispensedMedicines} />
-      </DetailSection>
-
-      <DetailSection title="Follow-up & Referral">
-        <div className="grid gap-4 md:grid-cols-3">
-          <PatientDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "—")}
-          />
-          <PatientDetailItem
-            label="Needs RHU Referral"
-            value={needsReferral ? "Yes" : "No"}
-          />
-          <PatientDetailItem
-            label="Referral Status"
-            value={referralStatus || "—"}
-          />
-        </div>
-      </DetailSection>
-    </div>
-  );
-}
-
-HypertensionDiabeticRecordDetails.Legacy = HypertensionDiabeticLegacyDetails;
-
-function HypertensionDiabeticTabbedRecordDetails({
-  record,
-  dispensedMedicines,
-  followUpDate,
-  needsReferral,
-  linkedReferral,
-}) {
-  const data = getHypertensionDiabeticData(record);
-  const referralStatus =
-    linkedReferral?.status ||
-    record.referralStatus ||
-    record.referral_status ||
-    "";
-
-  const tabs = [
-    {
-      id: "monitoring",
-      ...RECORD_DETAIL_TABS.clinical,
-      content: (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TabbedDetailItem label="BP" value={data.bp} />
-          <TabbedDetailItem label="FBS" value={data.fbs} />
-          <TabbedDetailItem
-            label="Condition Type"
-            value={formatHypertensionDiabeticCondition(data.conditionType)}
-          />
-        </div>
-      ),
-    },
-    {
-      id: "management",
-      ...RECORD_DETAIL_TABS.treatment,
-      content: (
-        <div className="space-y-6">
-          {data.treatmentActionTaken ? (
-            <TabbedNarrativeBlock
-              label="Treatment / Action Taken"
-              value={data.treatmentActionTaken}
-            />
-          ) : (
-            <SectionEmptyState text="No treatment or action taken recorded." />
-          )}
-          <TabbedSubsection title="Medicines Dispensed">
-            <DispensedMedicinesList medicines={dispensedMedicines} />
-          </TabbedSubsection>
-        </div>
-      ),
-    },
-    {
-      id: "followup",
-      ...RECORD_DETAIL_TABS.followUp,
-      content: (
-        <div className="grid gap-4 md:grid-cols-3">
-          <TabbedDetailItem
-            label="Next Follow-up Date"
-            value={formatLongDate(followUpDate, "Not recorded")}
-          />
-          <TabbedDetailItem
-            label="Needs RHU Referral"
-            value={needsReferral ? "Yes" : "No"}
-          />
-          <TabbedDetailItem label="Referral Status" value={referralStatus} />
-        </div>
-      ),
-    },
-  ];
-
-  return (
-    <RecordTabs
-      key={record?.id || record?._id}
-      tabs={tabs}
-      defaultTabId="monitoring"
-    />
-  );
-}
-
 function GenericRecordDetails({
   record,
   hasClinicalAssessmentDetails,
   hasTreatmentDetails,
   chiefComplaintValue,
+  physicalExamValue,
   diagnosisValue,
+  showDiagnosisRow = true,
   initialActionsValue,
   summaryValue,
   treatmentNotesValue,
   medicalNotesValue,
   shouldShowMorbidityReporting,
-  morbidityReportingStatus,
+  reportingSummary,
   isGeneralConsultationRecord,
-  hfmdSurveillance,
+  surveillanceSummary,
   dispensedMedicines,
   isFamilyPlanningRecord,
   hasFamilyPlanningDetails,
   familyPlanningDetails,
   followUpDateValue,
+  followUpReasonValue,
   needsRhuReferral,
   patientConditionValue,
   status,
@@ -579,11 +503,16 @@ function GenericRecordDetails({
               label="Chief Complaint"
               value={chiefComplaintValue || "Not recorded"}
             />
-            <PatientDetailItem
-              label="Diagnosis / Assessment"
-              value={diagnosisValue || "Not recorded"}
-            />
+            {showDiagnosisRow && (
+              <PatientDetailItem
+                label="Diagnosis / Assessment"
+                value={diagnosisValue || "Not recorded"}
+              />
+            )}
           </div>
+          {physicalExamValue && (
+            <NarrativeBox label="Physical Exam" value={physicalExamValue} />
+          )}
           {summaryValue && (
             <NarrativeBox label="Signs & Symptoms" value={summaryValue} />
           )}
@@ -633,12 +562,12 @@ function GenericRecordDetails({
     careContent.push(
       <div key="morbidity">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Morbidity / Notifiable Disease Record
+          Morbidity / Notifiable Disease Reports
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
-            label="Reporting Status"
-            value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+            label="Reported Diagnoses"
+            value={reportingSummary}
           />
         </div>
       </div>,
@@ -649,12 +578,12 @@ function GenericRecordDetails({
     careContent.push(
       <div key="surveillance">
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Community-Based Surveillance
+          Surveillance
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           <PatientDetailItem
-            label="HFMD Surveillance"
-            value={hfmdSurveillance ? "Yes" : "No"}
+            label="Included in Surveillance"
+            value={surveillanceSummary || "No"}
           />
         </div>
       </div>,
@@ -707,6 +636,12 @@ function GenericRecordDetails({
             label="Needs RHU Referral"
             value={needsRhuReferral ? "Yes" : "No"}
           />
+          {followUpReasonValue && (
+            <PatientDetailItem
+              label="Follow-up Reason"
+              value={followUpReasonValue}
+            />
+          )}
           {(patientConditionValue || status === "Follow-up Required") && (
             <PatientDetailItem
               label="Patient Condition"
@@ -726,6 +661,7 @@ function GenericRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="record"
+      stacked
     />
   );
 }
@@ -734,14 +670,16 @@ function GeneralConsultationRecordDetails({
   record,
   vitalItems = [],
   chiefComplaint,
+  physicalExam,
   diagnosis,
+  showDiagnosisRow = true,
   signsSymptoms,
   treatmentAction,
   treatmentNotes,
   medicalNotes,
   shouldShowReporting,
-  morbidityReportingStatus,
-  hfmdSurveillance,
+  reportingSummary,
+  surveillanceSummary,
   dispensedMedicines = [],
   needsReferral,
   linkedReferral,
@@ -754,6 +692,7 @@ function GeneralConsultationRecordDetails({
     getRecordVisitTypeValue(record) === "follow_up_visit";
   const hasConsultationDetails = Boolean(
     chiefComplaint ||
+      physicalExam ||
       diagnosis ||
       signsSymptoms ||
       treatmentAction ||
@@ -796,7 +735,10 @@ function GeneralConsultationRecordDetails({
                 }
                 value={signsSymptoms}
               />
-              <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
+              <TabbedNarrativeBlock label="Physical Exam" value={physicalExam} />
+              {showDiagnosisRow && (
+                <TabbedNarrativeBlock label="Diagnosis / Assessment" value={diagnosis} />
+              )}
             </div>
           ) : (
             <SectionEmptyState text="No consultation details recorded." />
@@ -843,12 +785,12 @@ function GeneralConsultationRecordDetails({
             <TabbedSubsection title="Reporting Decision">
               <div className="grid gap-4 md:grid-cols-2">
                 <TabbedDetailItem
-                  label="Morbidity / Notifiable Status"
-                  value={formatMorbidityReportingStatus(morbidityReportingStatus)}
+                  label="Morbidity / Notifiable Reports"
+                  value={reportingSummary}
                 />
                 <TabbedDetailItem
-                  label="HFMD Surveillance"
-                  value={hfmdSurveillance ? "Yes" : "No"}
+                  label="Included in Surveillance"
+                  value={surveillanceSummary || "No"}
                 />
               </div>
             </TabbedSubsection>
@@ -860,24 +802,27 @@ function GeneralConsultationRecordDetails({
       id: "followup",
       ...RECORD_DETAIL_TABS.followUp,
       content: (
-        <FollowUpEpisodeContent
-          episode={record.followUpEpisode}
-          currentRecord={record}
-          sourceRecordId={record.id || record._id}
-          showRecordNavigation={false}
-          showVisitChain={false}
-        />
+        <div className="space-y-4">
+          {getRecordValue(record, ["followUpReason"], "") && (
+            <TabbedNarrativeBlock
+              label="Follow-up Reason"
+              value={getRecordValue(record, ["followUpReason"], "")}
+            />
+          )}
+          <FollowUpEpisodeContent
+            episode={record.followUpEpisode}
+            currentRecord={record}
+            sourceRecordId={record.id || record._id}
+            showRecordNavigation={false}
+            showVisitChain={false}
+            hideActions
+          />
+        </div>
       ),
     },
   ];
 
   if (needsReferral || linkedReferral) {
-    const referralTarget =
-      linkedReferral?.trackingId ||
-      linkedReferral?.tracking_id ||
-      linkedReferral?.id ||
-      "";
-
     tabs.push({
       id: "referral",
       label: "Referral",
@@ -916,15 +861,6 @@ function GeneralConsultationRecordDetails({
               linkedReferral?.reason_for_referral
             }
           />
-          {referralTarget && (
-            <Link
-              to={`/bhc/referrals/${referralTarget}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#991B1B]"
-            >
-              <ClipboardList size={14} />
-              View Referral Details
-            </Link>
-          )}
         </div>
       ),
     });
@@ -935,6 +871,7 @@ function GeneralConsultationRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="consultation"
+      stacked
     />
   );
 }
@@ -1027,6 +964,12 @@ function FamilyPlanningRecordDetails({
             label="Next Follow-up Date"
             value={formatLongDate(followUpDate, "Not recorded")}
           />
+          {getRecordValue(record, ["followUpReason"], "") && (
+            <TabbedDetailItem
+              label="Follow-up Reason"
+              value={getRecordValue(record, ["followUpReason"], "")}
+            />
+          )}
           <TabbedDetailItem
             label="Needs RHU Referral"
             value={needsReferral ? "Yes" : "No"}
@@ -1042,6 +985,7 @@ function FamilyPlanningRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="client"
+      stacked
     />
   );
 }
@@ -1099,9 +1043,10 @@ function MaternalPrenatalRecordDetails({
   const bmi =
     getMaternalValue(maternal, record, ["bmi"], "") ||
     getBmiDisplayValue(record, weight, height);
-  const vitalItems = getVitalSignItems(record);
+  const vitalItems = getVitalSignItems(record, record.patient);
   const temperature =
     vitalItems.find((item) => item.label === "Temperature")?.value || "";
+  const fbs = vitalItems.find((item) => item.label === "FBS")?.value || "";
   const labs = getLaboratoryResultItems(maternal);
   const hasLabResults = labs.some((item) => Boolean(item.value));
   const ultrasoundResult = getUltrasoundValue(maternal, [
@@ -1159,6 +1104,7 @@ function MaternalPrenatalRecordDetails({
               <TabbedDetailItem label="Height / HGT" value={height} />
               <TabbedDetailItem label="BMI" value={bmi} />
               <TabbedDetailItem label="Temperature" value={temperature} />
+              {fbs && <TabbedDetailItem label="FBS" value={fbs} />}
             </div>
           </TabbedSubsection>
           <TabbedSubsection title="Complaint">
@@ -1215,9 +1161,13 @@ function MaternalPrenatalRecordDetails({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {labs.map((item) => (
                   <TabbedDetailItem
-                    key={item.label}
+                    key={item.key || item.label}
                     label={item.label}
-                    value={item.value || EMPTY_VALUE}
+                    value={
+                      item.date
+                        ? `${item.value || EMPTY_VALUE} · ${formatLongDate(item.date, EMPTY_VALUE)}`
+                        : item.value || EMPTY_VALUE
+                    }
                   />
                 ))}
               </div>
@@ -1298,6 +1248,12 @@ function MaternalPrenatalRecordDetails({
               label="Next Follow-up Date"
               value={formatLongDate(followUpDate, EMPTY_VALUE)}
             />
+            {getRecordValue(record, ["followUpReason"], "") && (
+              <TabbedDetailItem
+                label="Follow-up Reason"
+                value={getRecordValue(record, ["followUpReason"], "")}
+              />
+            )}
             <TabbedDetailItem
               label="Needs RHU Referral"
               value={needsReferral ? "Yes" : "No"}
@@ -1319,6 +1275,7 @@ function MaternalPrenatalRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="prenatal"
+      stacked
     />
   );
 }
@@ -1457,6 +1414,12 @@ function EpiRecordDetails({
               label="Next Follow-up Date"
               value={formatLongDate(followUpDate, "Not recorded")}
             />
+            {getRecordValue(record, ["followUpReason"], "") && (
+              <TabbedDetailItem
+                label="Follow-up Reason"
+                value={getRecordValue(record, ["followUpReason"], "")}
+              />
+            )}
             <TabbedDetailItem
               label="Needs RHU Referral"
               value={needsReferral ? "Yes" : "No"}
@@ -1476,6 +1439,7 @@ function EpiRecordDetails({
       key={record?.id || record?._id}
       tabs={tabs}
       defaultTabId="immunization"
+      stacked
     />
   );
 }

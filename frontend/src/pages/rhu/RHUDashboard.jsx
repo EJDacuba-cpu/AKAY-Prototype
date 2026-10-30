@@ -18,6 +18,7 @@ import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import PatientVolumeCard from "../../components/features/volume/PatientVolumeCard";
 import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
+import useAccess from "../../hooks/useAccess";
 import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { getReferrals } from "../../services/referrals";
 import { getHealthRecords } from "../../services/healthRecordService";
@@ -164,7 +165,7 @@ export default function RHUDashboard() {
     <DashboardLayout role="rhu" title="Dashboard">
       <style>{keyframes}</style>
 
-      <PageStateWrapper
+      <PageStateWrapper skeleton="dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
@@ -355,12 +356,9 @@ export default function RHUDashboard() {
                         className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
                       >
                         <td className="whitespace-nowrap px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={item.patient} />
-                            <span className="text-[13px] font-semibold text-[#1A1A1A]">
-                              {formatDisplayValue(item.patient, "Patient")}
-                            </span>
-                          </div>
+                          <span className="text-[13px] font-semibold text-[#1A1A1A]">
+                            {formatDisplayValue(item.patient, "Patient")}
+                          </span>
                         </td>
 
                         <td className="whitespace-nowrap px-4 py-4">
@@ -591,6 +589,7 @@ function SectionCard({
 /* ─── Sidebar Cards ─── */
 function DoctorScheduleCard({ delay = 0 }) {
   const { providers: doctors } = useRhuProviders();
+  const canManage = useAccess().can("rhu.providers.manage");
 
   return (
     <section
@@ -637,12 +636,6 @@ function DoctorScheduleCard({ delay = 0 }) {
                     {doctor.specialization || "General Practitioner"}
                   </p>
 
-                  {doctor.remarks && (
-                    <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                      {doctor.remarks}
-                    </p>
-                  )}
-
                   <div className="mt-2">
                     <DoctorBadge
                       status={doctor.availabilityStatus}
@@ -659,7 +652,7 @@ function DoctorScheduleCard({ delay = 0 }) {
         to="/rhu/doctor-availability"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-[#B91C1C]/15 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#991B1B] hover:shadow-lg hover:shadow-[#B91C1C]/25 active:scale-[0.98]"
       >
-        Manage Availability
+        {canManage ? "Manage availability" : "View availability"}
         <ArrowRight size={13} />
       </Link>
     </section>
@@ -704,7 +697,7 @@ function MedicineAlertCard({ alerts = [], delay = 0 }) {
         to="/rhu/medicine-management"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-[#E8ECF0] bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#F9FAFB] hover:shadow-md active:scale-[0.98]"
       >
-        Manage Medicine Availability
+        Manage Health Commodities
         <ArrowRight size={13} />
       </Link>
     </section>
@@ -726,9 +719,10 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
 
   return (
     <div
-      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
-      style={{ borderTopColor: c.border, ...stagger(delay) }}
+      className="anim-fade-up group relative overflow-hidden rounded-xl border border-[#E8ECF0] bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.04]"
+      style={stagger(delay)}
     >
+      <div className="absolute inset-x-5 top-0 h-0.5" style={{ backgroundColor: c.border }} aria-hidden="true" />
       <div
         className="absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
         style={{
@@ -757,19 +751,6 @@ function StatCard({ title, value, subtitle, icon, color = "navy", delay = 0 }) {
       </p>
 
       <p className="relative mt-1 text-xs text-[#9CA3AF]">{subtitle}</p>
-    </div>
-  );
-}
-
-function Avatar({ name }) {
-  const displayName = formatDisplayValue(name, "Patient");
-
-  return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3F4F6] text-[10px] font-bold text-[#4B5563]">
-      {displayName
-        .split(" ")
-        .map((part) => part[0])
-        .join("")}
     </div>
   );
 }

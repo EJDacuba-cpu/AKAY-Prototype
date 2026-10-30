@@ -20,6 +20,8 @@ export default function ActionMenu({
   /* 2. BAGONG DEFAULT LABEL */
   editPatientLabel = "Edit Patient",
   actions = [],
+  triggerLabel = "Open actions",
+  showHeader = true,
   triggerVariant = "default",
 }) {
   const [open, setOpen] = useState(false);
@@ -125,16 +127,18 @@ export default function ActionMenu({
         }}
       >
         {/* Header */}
-        <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
-          <p className="text-[11px] font-bold text-[#0F172A]">
-            {displayTitle}
-          </p>
-          {displaySubtitle && (
-            <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
-              {displaySubtitle}
+        {showHeader && (
+          <div className="mb-1.5 border-b border-[#F1F5F9] px-2.5 pb-2">
+            <p className="text-[11px] font-bold text-[#0F172A]">
+              {displayTitle}
             </p>
-          )}
-        </div>
+            {displaySubtitle && (
+              <p className="mt-0.5 font-mono text-[10px] text-[#BCC3CD]">
+                {displaySubtitle}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* View Details */}
         {viewLink && (
@@ -182,8 +186,10 @@ export default function ActionMenu({
           </Link>
         )}
 
-        {actions.map((action) =>
-          action.to ? (
+        {actions.map((action, index) =>
+          action.divider ? (
+            <div key={`divider-${index}`} className="my-1 border-t border-[#F1F5F9]" />
+          ) : action.to ? (
             <Link
               key={action.label}
               to={action.to}
@@ -196,13 +202,25 @@ export default function ActionMenu({
             <button
               key={action.label}
               type="button"
+              disabled={action.disabled}
+              title={action.disabled ? action.title : undefined}
               onClick={() => {
+                if (action.disabled) return;
                 closeMenu();
                 action.onClick?.();
               }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold text-[#334155] transition-all duration-150 hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold transition-all duration-150 ${
+                action.disabled
+                  ? "cursor-not-allowed bg-[#F8FAFC] text-[#B6BDC8]"
+                  : "text-[#334155] hover:bg-[#FEF2F2] hover:text-[#B91C1C] active:scale-[0.98]"
+              }`}
             >
-              {action.label}
+              <span className="block">
+                {action.label}
+                {action.disabled && action.reason && (
+                  <span className="mt-0.5 block text-[11px] font-normal leading-snug text-neutral-600">{action.reason}</span>
+                )}
+              </span>
             </button>
           ),
         )}
@@ -216,7 +234,7 @@ export default function ActionMenu({
         ref={btnRef}
         type="button"
         onClick={() => (open ? closeMenu() : openMenu())}
-        aria-label="Open actions"
+        aria-label={triggerLabel}
         className={
           calendarTrigger
             ? `inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent bg-transparent transition-colors active:scale-[0.92] ${

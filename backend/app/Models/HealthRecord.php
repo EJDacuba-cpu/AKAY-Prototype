@@ -12,6 +12,7 @@ class HealthRecord extends Model
     protected $fillable = [
         'idempotency_key',
         'idempotency_hash',
+        'consultation_uuid',
         'patient_id',
         'created_by',
         'barangay_health_center_id',
@@ -28,15 +29,72 @@ class HealthRecord extends Model
         'tb_data',
         'needs_referral',
         'chief_complaint',
+        'physical_exam',
+        'history_of_present_illness',
+        'body_findings',
         'diagnosis',
+        'diagnoses',
+        'assessment_notes',
         'treatment_notes',
         'medical_history',
+        'background_changes',
+        'informant',
+        'similar_illness',
+        'history_snapshot',
         'notes',
+        'encoded_by', 'assessed_by', 'finalized_by', 'finalized_at', 'items_planned',
     ];
+
+    // Internal identity, never part of a clinical response. consultation_uuid
+    // is hidden for the same reason as the idempotency fields: it is written by
+    // the client and read by the draft pipeline, not by record consumers.
+    /** Who gave the history for this visit (ITR "Informant"). */
+    public const INFORMANT_RELATIONS = [
+        'Patient', 'Mother', 'Father', 'Spouse', 'Guardian', 'Grandparent', 'Sibling', 'Other',
+    ];
+
+    /** Whether others in the household had a similar illness (ITR "Similar illness"). */
+    public const SIMILAR_ILLNESS_ANSWERS = ['Yes', 'No', 'Unknown'];
+
+    /**
+     * Regions of the consultation's front-facing 2D body preview. A body
+     * finding records where a symptom was noted - documentation, not diagnosis.
+     */
+    public const BODY_REGIONS = [
+        'head', 'chest', 'abdomen', 'pelvis',
+        'right_arm', 'left_arm', 'right_hand', 'left_hand',
+        'right_leg', 'left_leg', 'right_foot', 'left_foot',
+    ];
+
+    /**
+     * The report a diagnosis may be included in (diagnoses.*.reportAs). One
+     * choice per diagnosis; null means it is not reported. The visit-level
+     * monitoring_data.morbidityReportingStatus is derived from these on save
+     * (HealthRecordController::normalizeDiagnosisReporting).
+     */
+    public const DIAGNOSIS_REPORT_TYPES = ['morbidity', 'notifiable'];
+
+    /**
+     * monitoring_data.consultationWorkflow value of a simplified BHC General
+     * Consultation, whose diagnoses[] are health-concern entries with optional
+     * reporting destinations (App\Services\ReportingEntries).
+     */
+    public const WORKFLOW_BHC_GENERAL_V2 = 'bhc_general_v2';
+
+    /**
+     * monitoring_data.consultationWorkflow value of the RHU ITR consultation.
+     * Nurse/encode fills assessment; doctor/finalize diagnoses, activates
+     * conditions, prescribes and schedules RHU follow-up.
+     */
+    public const WORKFLOW_RHU_ITR_V1 = 'rhu_itr_v1';
 
     protected $hidden = [
         'idempotency_key',
         'idempotency_hash',
+        'consultation_uuid',
+        // Clinical history: served only by the background-history endpoint,
+        // which checks clinical.history - never part of a record response.
+        'background_changes',
     ];
 
     protected $appends = [
@@ -52,8 +110,57 @@ class HealthRecord extends Model
         'monitoring_data' => 'array',
         'family_planning_data' => 'array',
         'tb_data' => 'array',
+        'body_findings' => 'array',
+        'diagnoses' => 'array',
+        'background_changes' => 'array',
+        'informant' => 'array',
+        'similar_illness' => 'array',
+        'history_snapshot' => 'array',
         'needs_referral' => 'boolean',
+        'items_planned' => 'array',
+        'finalized_at' => 'datetime',
     ];
+
+    public function isBhcGeneralV2(): bool
+    {
+        return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_BHC_GENERAL_V2;
+    }
+
+    public function isRhuItrV1(): bool
+    {
+        return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_RHU_ITR_V1;
+    }
+
+    public function prescriptionDisplayText(): string
+    {
+        $text = trim((string) ($this->monitoring_data['prescriptionText'] ?? ''));
+        if ($text !== '') {
+            return $text;
+        }
+
+        $lines = $this->monitoring_data['prescribedMedicines'] ?? [];
+        if (! is_array($lines)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $name = trim((string) ($line['name'] ?? $line['medicineName'] ?? ''));
+            $quantity = trim((string) ($line['quantity'] ?? ''));
+            $unit = trim((string) ($line['unit'] ?? ''));
+            $instructions = trim((string) ($line['instructions'] ?? ''));
+            $qty = trim($quantity.($unit !== '' ? ' '.$unit : ''));
+            $chunk = implode(' · ', array_values(array_filter([$name, $qty, $instructions], fn ($value) => $value !== '')));
+            if ($chunk !== '') {
+                $parts[] = $chunk;
+            }
+        }
+
+        return implode("\n", $parts);
+    }
 
     public function patient(): BelongsTo
     {
@@ -182,7 +289,25 @@ class HealthRecord extends Model
             ? $this->getRelation('outcomeReferrals')
             : $this->outcomeReferrals()->get();
 
-        return $referrals->isNotEmpty();
+        if ($referrals->isNotEmpty()) {
+            return true;
+        }
+
+        // Decision 3: a referral blocked at submission (DOC-14) never created a
+        // referrals row - the only trace of the attempt is a waiting hold. That
+        // still counts as "Referred" (rendered with the Awaiting Provider
+        // sub-label below), not "Follow-up"/"Routine".
+        $holds = $this->relationLoaded('referralHolds')
+            ? $this->getRelation('referralHolds')
+            : $this->referralHolds()->get();
+
+        foreach ($holds as $hold) {
+            if ($hold->status === ReferralHold::STATUS_WAITING) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function hasActiveFollowUp(): bool

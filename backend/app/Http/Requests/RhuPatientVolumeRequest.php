@@ -9,7 +9,7 @@ class RhuPatientVolumeRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isRhuStaff() || $this->user()?->isAdmin();
+        return $this->user()?->isRhu() || $this->user()?->isAdmin();
     }
 
     public function rules(): array

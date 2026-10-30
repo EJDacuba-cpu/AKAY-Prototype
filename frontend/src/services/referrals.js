@@ -6,14 +6,11 @@ import {
 } from "../utils/referralAttention";
 import { refreshNotifications } from "./notificationService";
 import { queryKeys } from "../utils/queryKeys";
+import { arrivalToReferral } from "../utils/referralArrival";
+import { fetchAllReportPages } from "./reportingLists";
 // Re-exported so existing call sites keep importing gate helpers from the
 // referral service, while the contract itself stays dependency-free.
-export {
-  isNoProviderAvailableError,
-  isPreferredProviderInvalidError,
-  isPreferredProviderUnavailableError,
-  getAvailableAlternatives,
-} from "../utils/referralGateErrors";
+export { isNoProviderAvailableError } from "../utils/referralGateErrors";
 
 export function normalizeReferralStatus(status) {
   const original = String(status || "").trim();
@@ -38,6 +35,7 @@ export async function refreshReferralWorkflowData(queryClient, trackingId = "") 
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("bhc") }),
     queryClient.invalidateQueries({ queryKey: queryKeys.dashboardSummary("rhu") }),
     queryClient.invalidateQueries({ queryKey: queryKeys.patients("rhu") }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.rhuVisits() }),
   ];
 
   if (trackingId) {
@@ -110,6 +108,7 @@ function normalizeReferral(referral = {}) {
       referral.birth_date ||
       patient.birthDate ||
       patient.birth_date ||
+      patient.birthdate ||
       "",
     address:
       referral.patientAddress ||
@@ -133,16 +132,8 @@ function normalizeReferral(referral = {}) {
     initialActionsTaken: referral.initial_action_taken || referral.initialActionsTaken || "",
     referringPractitioner:
       referral.referring_practitioner || referral.referringPractitioner || "",
-    preferredDoctor: referral.preferred_doctor || referral.preferredDoctor || "",
-    preferredProviderId: referral.preferred_provider_id
-      ? String(referral.preferred_provider_id)
-      : "",
-    preferredProviderSnapshot:
-      referral.preferred_provider_snapshot || referral.preferredProviderSnapshot || null,
     availabilitySnapshot:
       referral.availability_snapshot || referral.availabilitySnapshot || null,
-    preferenceAcknowledgedAt:
-      referral.preference_acknowledged_at || referral.preferenceAcknowledgedAt || "",
     rescheduledTo: referral.rescheduled_to || referral.rescheduledTo || "",
     rescheduleReason:
       referral.reschedule_reason || referral.rescheduleReason || "",
@@ -163,6 +154,7 @@ function toPayload(referral = {}) {
     client_submission_id:
       referral.clientSubmissionId || referral.client_submission_id || null,
     patient_id: referral.patientId || referral.patient_id,
+    rural_health_unit_id: referral.ruralHealthUnitId || referral.rural_health_unit_id || null,
     health_record_id:
       referral.healthRecordId || referral.health_record_id || referral.recordId || null,
     referral_category: referral.referralCategory || referral.category || null,
@@ -173,13 +165,6 @@ function toPayload(referral = {}) {
     initial_action_taken:
       referral.initialActionsTaken || referral.initialActionTaken || referral.medication || null,
     referring_practitioner: referral.referringPractitioner || null,
-    preferred_doctor:
-      referral.preferredDoctor || referral.preferredRhuDoctorName || null,
-    // REF-SLIP-05 / REF-SLIP-05c - the preference and the Decision A
-    // acknowledgment. The server owns both rules; these only carry intent.
-    preferred_provider_id: referral.preferredRhuDoctorId || null,
-    acknowledged_unavailable_preference:
-      referral.acknowledgedUnavailablePreference === true,
     referral_datetime:
       referral.referralDateTime ||
       (referral.referralDate
@@ -208,6 +193,7 @@ export async function getReferralDestination() {
       id: bhc.id ? String(bhc.id) : "",
       name: bhc.name || "",
     },
+    destinations: data.destinations || [],
     receivingRuralHealthUnit: {
       ...rhu,
       id: rhu.id ? String(rhu.id) : "",
@@ -241,6 +227,10 @@ export async function getReferrals() {
   return listReferrals();
 }
 
+export async function getAllReferrals(params = {}) {
+  return fetchAllReportPages("/referrals", { params, mapItem: normalizeReferral });
+}
+
 export async function getIncomingReferrals(params = {}) {
   return listIncomingReferrals(params);
 }
@@ -267,6 +257,7 @@ export async function resolveReferralTrackingId(trackingId) {
     trackingId: data.tracking_id || data.trackingId || "",
     status: data.status || "",
     displayUrl: data.display_url || data.displayUrl || "",
+    arrival: data.arrival || null,
   };
 }
 
@@ -282,6 +273,7 @@ export async function resolveReferralQrToken(token) {
     trackingId: data.tracking_id || data.trackingId || "",
     status: data.status || "",
     displayUrl: data.display_url || data.displayUrl || "",
+    arrival: data.arrival || null,
   };
 }
 
@@ -308,6 +300,26 @@ export async function getReferralByRouteParam(routeParam) {
   }
 
   return getReferralByTrackingId(decoded);
+}
+
+/**
+ * RHU receiving desk: intake staff get the arrival summary; clinical staff
+ * still resolve the referral but the page only renders identity fields.
+ */
+export async function getReferralArrivalWorkspace(routeParam) {
+  const decoded = decodeURIComponent(String(routeParam || "").trim());
+  if (!decoded) return null;
+
+  if (/^\d+$/.test(decoded)) {
+    return getReferralById(decoded);
+  }
+
+  const resolution = await resolveReferralTrackingId(decoded);
+  if (resolution.arrival) {
+    return arrivalToReferral(resolution.arrival);
+  }
+  if (!resolution.referralId) return null;
+  return getReferralById(resolution.referralId);
 }
 
 export async function getReferralsByPatient(patient) {
@@ -341,7 +353,9 @@ export async function updateReferralStatus(referralId, status, changes = {}) {
     method: "PATCH",
     body: { status: normalizeReferralStatus(status), remarks: changes.remarks || null },
   });
-  return normalizeReferral(unwrapData(response));
+  const data = unwrapData(response);
+  // Intake without Health Records is sent who arrived, not the referral.
+  return data?.arrival ? arrivalToReferral(data.arrival) : normalizeReferral(data);
 }
 
 /**
@@ -389,6 +403,14 @@ export async function submitReturnSlip(trackingId, feedbackData = {}) {
       receiving_practitioner:
         feedbackData.receivingPractitioner || feedbackData.receiving_practitioner || null,
       remarks: feedbackData.remarks || null,
+      // RHU-confirmed condition statuses; absent when nothing was confirmed.
+      ...(feedbackData.conditionConfirmations?.length
+        ? { condition_confirmations: feedbackData.conditionConfirmations }
+        : {}),
+      // RHU review of legacy BHC monitorings (corrected or discontinued); applied before the confirmations.
+      ...(feedbackData.legacyMonitoringDiscontinuations?.length
+        ? { legacy_monitoring_discontinuations: feedbackData.legacyMonitoringDiscontinuations }
+        : {}),
     },
   });
 
@@ -405,6 +427,7 @@ export default {
   getReferralById,
   getReferralByTrackingId,
   getReferralByRouteParam,
+  getReferralArrivalWorkspace,
   resolveReferralTrackingId,
   resolveReferralQrToken,
   getReferralQrPayload,

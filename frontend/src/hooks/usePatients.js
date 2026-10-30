@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getPatients } from "../services/patients";
+import { getPatientSex } from "../utils/patientUtils";
 import { queryKeys } from "../utils/queryKeys";
 
 export default function usePatients(role = "bhc") {
   /* ─────────────────────────────────────────────
    * State
    * ───────────────────────────────────────────── */
-  const [currentPage, setCurrentPage] = useState(1);
-
   const [filters, setFilters] = useState({
     search: "",
     sex: "All",
@@ -18,8 +17,6 @@ export default function usePatients(role = "bhc") {
     civilStatus: "All Civil Status",
     dateRegistered: "",
   });
-
-  const itemsPerPage = 10;
 
   function getPatientAge(patient) {
     if (typeof patient.age === "number") return patient.age;
@@ -102,10 +99,7 @@ export default function usePatients(role = "bhc") {
       const matchesSearch = !query || searchable.includes(query);
 
       const matchesSex =
-        filters.sex === "All" ||
-        (patient.ageSex || "")
-          .toLowerCase()
-          .includes(filters.sex === "Male" ? "/m" : "/f");
+        filters.sex === "All" || getPatientSex(patient) === filters.sex;
 
       const matchesBarangay =
         filters.barangay === "All Barangays" ||
@@ -138,47 +132,11 @@ export default function usePatients(role = "bhc") {
   }, [patients, filters]);
 
   /* ─────────────────────────────────────────────
-   * Pagination
-   * ───────────────────────────────────────────── */
-  const totalPages = Math.ceil(filteredPatients.length / itemsPerPage);
-
-  const paginatedPatients = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-
-    const endIndex = startIndex + itemsPerPage;
-
-    return filteredPatients.slice(startIndex, endIndex);
-  }, [filteredPatients, currentPage, itemsPerPage]);
-
-  /* Reset page when filters change */
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters]);
-
-  /* Prevent page overflow */
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  /* ─────────────────────────────────────────────
-   * Statistics
-   * ───────────────────────────────────────────── */
-  const stats = useMemo(
-    () => ({
-      totalPatients: patients.length,
-    }),
-    [patients],
-  );
-
-  /* ─────────────────────────────────────────────
    * Return
    * ───────────────────────────────────────────── */
   return {
     patients,
     filteredPatients,
-    paginatedPatients,
 
     loading,
     error,
@@ -188,13 +146,5 @@ export default function usePatients(role = "bhc") {
 
     filters,
     setFilters,
-
-    stats,
-
-    currentPage,
-    setCurrentPage,
-
-    totalPages,
-    itemsPerPage,
   };
 }

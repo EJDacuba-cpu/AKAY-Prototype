@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { Link } from "react-router";
 import { Baby, ClipboardList, HeartPulse, UsersRound } from "lucide-react";
 
@@ -5,7 +6,6 @@ import {
   formatDisplayTime,
   getConfirmedBreastfeedingMonths,
   getEpiBreastfeedingMonitoring,
-  getHypertensionDiabeticData,
   getTbData,
   getRecordClassificationText,
   getRecordDateValue,
@@ -13,8 +13,7 @@ import {
   getRecordTimeValue,
   getRecordValue,
   getSpecializedRecordType,
-  formatHypertensionDiabeticClientStatus,
-  formatHypertensionDiabeticCondition,
+  isTbRecord,
 } from "../../../utils/healthRecordPrograms";
 import {
   REQUIRED_EPI_ITEMS,
@@ -27,22 +26,27 @@ const EMPTY_MARK = "Not recorded";
 const SOURCE_EMPTY_MARK = "\u2014";
 const TT_TD_DOSES = [1, 2, 3, 4, 5];
 
+// The flat patient profile renders these histories without the card chrome.
+const FlatContext = createContext(false);
+
 export default function SpecializedRecordsTab({
   records = [],
   patient = null,
   basePath = "/bhc",
   program,
+  flat = false,
 }) {
   const programRecords = records.filter(
     (record) =>
       isOwnPatientRecord(record, patient) &&
-      getSpecializedRecordType(record) === program,
+      (program === "tb" ? isTbRecord(record) : getSpecializedRecordType(record) === program),
   );
 
   if (programRecords.length === 0) return null;
 
   return (
-    <div className="space-y-6">
+    <FlatContext.Provider value={flat}>
+    <div className={flat ? "space-y-5 [&_.px-6]:px-3" : "space-y-6"}>
       {program === "epi" && (
         <SpecializedSection
           icon={<Baby size={15} />}
@@ -73,16 +77,6 @@ export default function SpecializedRecordsTab({
         </SpecializedSection>
       )}
 
-      {program === "ncd" && (
-        <SpecializedSection
-          icon={<HeartPulse size={15} />}
-          title="Hypertension / Diabetic Monitoring History"
-          subtitle="Compiled BP, FBS, HPN/DM status, treatment, and follow-up visits."
-        >
-          <NcdHistory records={programRecords} />
-        </SpecializedSection>
-      )}
-
       {program === "tb" && (
         <SpecializedSection
           icon={<ClipboardList size={15} />}
@@ -93,19 +87,34 @@ export default function SpecializedRecordsTab({
         </SpecializedSection>
       )}
     </div>
+    </FlatContext.Provider>
   );
 }
 
 function SpecializedSection({ icon, title, subtitle, children }) {
+  const flat = useContext(FlatContext);
+
+  if (flat) {
+    return (
+      <section className="border-t border-slate-200 pt-4">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans!">
+          {title}
+        </h3>
+        <p className="mb-2 mt-0.5 text-xs text-slate-400">{subtitle}</p>
+        {children}
+      </section>
+    );
+  }
+
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm in-[.bhc-patient-profile]:border-slate-100">
       <div className="flex items-start gap-3 bg-slate-50/50 px-6 py-4">
         <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-50 text-[#B91C1C]">
           {icon}
         </div>
         <div className="min-w-0">
-          <h2 className="text-sm font-bold text-[#0F172A]">{title}</h2>
-          <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+          <h2 className="text-sm font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900 in-[.bhc-patient-profile]:font-sans!">{title}</h2>
+          <p className="mt-0.5 text-xs text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">{subtitle}</p>
         </div>
       </div>
       {children}
@@ -117,11 +126,11 @@ function SpecializedSubsection({ title, subtitle, children }) {
   return (
     <div className="border-t border-slate-100 first:border-t-0">
       <div className="px-6 py-4">
-        <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#0F172A]">
+        <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900 in-[.bhc-patient-profile]:font-sans!">
           {title}
         </h3>
         {subtitle && (
-          <p className="mt-1 text-xs text-slate-400">{subtitle}</p>
+          <p className="mt-1 text-xs text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:text-slate-500">{subtitle}</p>
         )}
       </div>
       {children}
@@ -157,7 +166,7 @@ function EpiHistory({ records, basePath }) {
       <div className="border-b border-slate-100 px-6 py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:st in-[.bhc-patient-profile]:text-slate-500">
               EPI Status
             </p>
             <p
@@ -169,9 +178,9 @@ function EpiHistory({ records, basePath }) {
             </p>
           </div>
           {!complete && (
-            <p className="max-w-xl text-xs leading-relaxed text-slate-500">
+            <p className="max-w-xl text-xs leading-relaxed text-slate-500 in-[.bhc-patient-profile]:text-sm">
               Remaining vaccines/services:{" "}
-              <span className="font-semibold text-[#0F172A]">
+              <span className="font-semibold text-[#0F172A] in-[.bhc-patient-profile]:text-slate-900">
                 {remainingRows.map((row) => row.vaccineName).join(", ")}
               </span>
             </p>
@@ -181,7 +190,7 @@ function EpiHistory({ records, basePath }) {
 
       <ResponsiveTable minWidth="min-w-[760px]">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
             <TableHead>Vaccine / Service</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Date Given</TableHead>
@@ -194,7 +203,7 @@ function EpiHistory({ records, basePath }) {
               <TableCell strong>{row.vaccineName}</TableCell>
               <TableCell>
                 <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                  className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold in-[.bhc-patient-profile]:px-3 ${
                     row.status === "Given"
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-slate-100 text-slate-500"
@@ -221,7 +230,7 @@ function EpiHistory({ records, basePath }) {
       </ResponsiveTable>
 
       <div className="border-t border-slate-100 px-6 py-4">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:st in-[.bhc-patient-profile]:text-slate-500">
           Exclusive Breastfeeding Monitoring
         </p>
         {breastfeedingMonths.length > 0 ? (
@@ -236,7 +245,7 @@ function EpiHistory({ records, basePath }) {
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-slate-400 in-[.bhc-patient-profile]:text-slate-500">
             No breastfeeding monitoring recorded yet.
           </p>
         )}
@@ -255,7 +264,7 @@ function MaternalHistory({ records, basePath }) {
         {records.length > 0 ? (
           <ResponsiveTable minWidth="min-w-[1120px]">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
                 <TableHead>Visit Date</TableHead>
                 <TableHead>AOG</TableHead>
                 <TableHead>BP</TableHead>
@@ -307,7 +316,7 @@ function TtTdHistory({ records, basePath }) {
     <div>
       <ResponsiveTable minWidth="min-w-[620px]">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
             <TableHead>Dose</TableHead>
             <TableHead>Date Given</TableHead>
             <TableHead>Source Visit</TableHead>
@@ -330,7 +339,7 @@ function TtTdHistory({ records, basePath }) {
         </tbody>
       </ResponsiveTable>
       {!hasRecordedDose && (
-        <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-400">
+        <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-400 in-[.bhc-patient-profile]:text-slate-500">
           No TT/Td dose recorded for this patient.
         </p>
       )}
@@ -342,7 +351,7 @@ function FamilyPlanningHistory({ records, basePath }) {
   return (
     <ResponsiveTable minWidth="min-w-[1120px]">
       <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
           <TableHead>Visit Date</TableHead>
           <TableHead>Client Type</TableHead>
           <TableHead>Method Used / Accepted</TableHead>
@@ -372,45 +381,11 @@ function FamilyPlanningHistory({ records, basePath }) {
   );
 }
 
-function NcdHistory({ records }) {
-  return (
-    <ResponsiveTable minWidth="min-w-[1040px]">
-      <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          <TableHead>Visit Date</TableHead>
-          <TableHead>BP</TableHead>
-          <TableHead>FBS</TableHead>
-          <TableHead>Condition</TableHead>
-          <TableHead>Client Status</TableHead>
-          <TableHead>Next Follow-up</TableHead>
-          <TableHead>Remarks / Action Taken</TableHead>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100 text-sm">
-        {records.map((record) => {
-          const data = getHypertensionDiabeticData(record);
-          return (
-            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
-              <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
-              <TableCell>{data.bp || formatBp(record)}</TableCell>
-              <TableCell>{data.fbs || EMPTY_MARK}</TableCell>
-              <TableCell>{formatHypertensionDiabeticCondition(data.conditionType) || EMPTY_MARK}</TableCell>
-              <TableCell>{formatHypertensionDiabeticClientStatus(data.clientStatus) || EMPTY_MARK}</TableCell>
-              <TableCell>{formatDate(getFollowUpDate(record), EMPTY_MARK)}</TableCell>
-              <TableCell>{data.treatmentActionTaken || getActionTaken(record)}</TableCell>
-            </tr>
-          );
-        })}
-      </tbody>
-    </ResponsiveTable>
-  );
-}
-
 function TbHistory({ records, basePath }) {
   return (
     <ResponsiveTable minWidth="min-w-[1020px]">
       <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
           <TableHead>Visit Date</TableHead>
           <TableHead>TB Case No.</TableHead>
           <TableHead>Registration</TableHead>
@@ -464,7 +439,7 @@ function TableCell({ children, strong = false }) {
   return (
     <td
       className={`whitespace-nowrap px-6 py-4 ${
-        strong ? "font-bold text-[#0F172A]" : "font-medium text-slate-600"
+        strong ? "font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900" : "font-medium text-slate-600"
       }`}
     >
       {children}
@@ -592,21 +567,10 @@ function getNotes(record = {}) {
       record.consultation_notes ||
     record.monitoringNotes ||
     record.monitoring_notes ||
+    record.history_of_present_illness ||
+    record.historyOfPresentIllness ||
     record.medicalHistory ||
     record.medical_history,
-    EMPTY_MARK,
-  );
-}
-
-function getActionTaken(record = {}) {
-  return formatDisplayValue(
-    record.initialActionsTaken ||
-      record.initial_actions_taken ||
-      record.treatmentNotes ||
-      record.treatment_notes ||
-      record.medication ||
-      record.actionTaken ||
-      record.action_taken,
     EMPTY_MARK,
   );
 }
@@ -771,7 +735,7 @@ function normalizeObject(value) {
 
 function SectionEmptyState({ text }) {
   return (
-    <div className="border-t border-slate-100 px-6 py-8 text-center text-sm text-slate-400">
+    <div className="border-t border-slate-100 px-6 py-8 text-center text-sm text-slate-400 in-[.bhc-patient-profile]:text-slate-500">
       {text}
     </div>
   );

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
+use App\Services\ReferralArrivalSummary;
 use App\Services\ReferralQrService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +96,7 @@ class ReferralQrController extends Controller
                     (string) $lockedReferral->qr_token_hash,
                     $this->qrTokens->hash($token)
                 )
-                || ! $request->user()->isRhuStaff()
+                || ! $request->user()->isRhu()
                 || ! $this->facilityAccess->canAccessReferral($request->user(), $lockedReferral)
             ) {
                 return null;
@@ -116,14 +117,14 @@ class ReferralQrController extends Controller
             return $this->lookupFailed();
         }
 
-        return response()->json(['data' => $this->resolutionData($resolved)]);
+        return response()->json(['data' => $this->resolutionData($resolved, $request->user())]);
     }
 
     private function authorizeQrManagement(Request $request, Referral $referral): void
     {
         $user = $request->user();
         abort_unless(
-            ($user->isBhw() || $user->isRhuStaff())
+            ($user->isBhc() || $user->isRhu())
                 && $this->facilityAccess->canAccessReferral($user, $referral),
             403,
             'This resource is outside your assigned facility.'
@@ -151,13 +152,14 @@ class ReferralQrController extends Controller
         ], 404);
     }
 
-    private function resolutionData(Referral $referral): array
+    private function resolutionData(Referral $referral, $user): array
     {
         return [
             'referral_id' => $referral->id,
             'tracking_id' => $referral->tracking_id,
             'status' => $referral->status,
             'display_url' => "/rhu/referrals/{$referral->tracking_id}",
+            ...(ReferralArrivalSummary::appliesTo($user) ? ['arrival' => ReferralArrivalSummary::for($referral)] : []),
         ];
     }
 }

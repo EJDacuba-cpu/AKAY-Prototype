@@ -16,10 +16,10 @@ class SyncFollowUpTasks extends Command
     public function handle(FollowUpTaskSyncService $followUpTasks): int
     {
         // Sync runs through a facility-scoped user so the existing authorization
-        // checks apply unchanged. One active BHW per centre covers every record
+        // checks apply unchanged. One active BHC account per centre covers every record
         // that can own a follow-up task.
         $users = User::query()
-            ->where('role', User::ROLE_BHW)
+            ->where('role', User::ROLE_BHC)
             ->where('status', User::STATUS_ACTIVE)
             ->whereNotNull('barangay_health_center_id')
             ->orderBy('id')
@@ -27,7 +27,7 @@ class SyncFollowUpTasks extends Command
             ->unique('barangay_health_center_id');
 
         if ($users->isEmpty()) {
-            $this->warn('No active BHW users with a barangay health center assignment were found.');
+            $this->warn('No active BHC accounts with a barangay health center assignment were found.');
 
             return self::SUCCESS;
         }

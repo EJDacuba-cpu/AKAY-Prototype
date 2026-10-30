@@ -11,10 +11,12 @@ use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\ReferralRoutingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class FollowUpConcurrencyTest extends TestCase
@@ -39,13 +41,13 @@ class FollowUpConcurrencyTest extends TestCase
         $this->bhw = $this->user(
             'Concurrency BHW',
             'concurrency-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhc->id
         );
         $this->user(
             'Concurrency RHU Staff',
             'concurrency-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             $this->rhu->id
         );
         $this->patient = $this->patient('Concurrency', 'Patient', $this->bhc);
@@ -56,6 +58,9 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $medicine = $this->medicine(20);
         $payload = $this->followUpPayload($parent, $task, [
+            // A follow-up or referral requires a BHC Assessment (HealthRecordRequest.php:460);
+            // only an item marked given deducts stock (HealthRecordController.php:298).
+            'diagnosis' => 'Needs RHU assessment',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
@@ -65,6 +70,7 @@ class FollowUpConcurrencyTest extends TestCase
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
                 'quantity' => 3,
+                'confirmed_given' => true,
             ]],
             'needs_referral' => true,
             'referral' => [
@@ -209,7 +215,7 @@ class FollowUpConcurrencyTest extends TestCase
         $otherBhw = $this->user(
             'Other Concurrency BHW',
             'other-concurrency-bhw@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $otherBhc->id
         );
 
@@ -228,7 +234,7 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $this->patient->update(['rural_health_unit_id' => $this->rhu->id]);
         $parent->update(['rural_health_unit_id' => $this->rhu->id]);
-        $rhuStaff = User::where('role', User::ROLE_RHU_STAFF)->firstOrFail();
+        $rhuStaff = User::where('role', User::ROLE_RHU)->firstOrFail();
 
         $this->postRecord(
             $rhuStaff,
@@ -244,9 +250,12 @@ class FollowUpConcurrencyTest extends TestCase
     {
         [$parent, $task] = $this->scheduledFollowUp();
         $medicine = $this->medicine(2);
+        // A shortage no longer blocks finalization; an undispensable item still rolls back.
+        $medicine->expiryGroups()->update(['expiration_date' => now()->subDay()->toDateString()]);
         $payload = $this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 3,
             ]],
             'monitoring_data' => [
@@ -258,8 +267,8 @@ class FollowUpConcurrencyTest extends TestCase
         ]);
 
         $this->postRecord($this->bhw, $payload, (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
         $this->assertNull($task->fresh()->fulfilled_at);
@@ -274,6 +283,8 @@ class FollowUpConcurrencyTest extends TestCase
         [$parent, $task] = $this->scheduledFollowUp();
         $this->bhc->update(['rural_health_unit_id' => null]);
         $payload = $this->followUpPayload($parent, $task, [
+            // A follow-up or referral requires a BHC Assessment (HealthRecordRequest.php:460).
+            'diagnosis' => 'Needs RHU assessment',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Follow-up Required',
@@ -354,6 +365,7 @@ class FollowUpConcurrencyTest extends TestCase
             'parent_health_record_id' => $parent->id,
             'category' => $parent->category,
             'chief_complaint' => 'Scheduled return visit',
+            'diagnosis' => 'Assessed at BHC',
             'monitoring_data' => [
                 'followUpTaskId' => $task->id,
                 'followUpStatus' => 'Routine Monitoring',
@@ -391,7 +403,7 @@ class FollowUpConcurrencyTest extends TestCase
 
     private function medicine(int $quantity): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => 'Concurrency Medicine '.Str::random(5),
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -400,6 +412,8 @@ class FollowUpConcurrencyTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'created_by' => $this->bhw->id,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function patient(
@@ -428,8 +442,10 @@ class FollowUpConcurrencyTest extends TestCase
             'password' => Hash::make('password123'),
             'role' => $role,
             'status' => User::STATUS_ACTIVE,
-            'barangay_health_center_id' => $role === User::ROLE_BHW ? $facilityId : null,
-            'rural_health_unit_id' => $role === User::ROLE_RHU_STAFF ? $facilityId : null,
+            'barangay_health_center_id' => $role === User::ROLE_BHC ? $facilityId : null,
+            'rural_health_unit_id' => $role === User::ROLE_RHU ? $facilityId : null,
+            // A BHW with null permissions gets the encoder preset and is refused with 403 on save.
+            ...($role === User::ROLE_BHC ? ['permissions' => StaffRoles::defaults('midwife')] : []),
         ]);
     }
 }

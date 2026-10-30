@@ -46,8 +46,8 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $response = $this->postRecord($this->payload([
             'dispensed_medicines' => [
-                ['medicine_id' => $medicine->id, 'quantity' => 2, 'remarks' => 'Morning'],
-                ['medicine_id' => $medicine->id, 'quantity' => 3, 'remarks' => 'Clinic dose'],
+                ['medicine_id' => $medicine->id, 'confirmed_given' => true, 'quantity' => 2, 'remarks' => 'Morning'],
+                ['medicine_id' => $medicine->id, 'confirmed_given' => true, 'quantity' => 3, 'remarks' => 'Clinic dose'],
             ],
         ]), (string) Str::uuid())->assertCreated();
 
@@ -71,14 +71,17 @@ class MedicineStockConcurrencyTest extends TestCase
         ]);
     }
 
-    public function test_insufficient_stock_returns_safe_conflict_and_creates_no_official_effects(): void
+    public function test_undispensable_medicine_rejects_and_creates_no_official_effects(): void
     {
-        $medicine = $this->medicine('Amoxicillin', 1);
+        // A shortage no longer blocks finalization (docs/consultation-workflow-revision.md);
+        // an undispensable item still rolls back every official effect.
+        $medicine = $this->medicine('Amoxicillin', 5, ['expiration_date' => now()->subDay()->toDateString()]);
 
         $this->postRecord($this->payload([
             'needs_referral' => true,
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 4,
             ]],
             'referral' => [
@@ -86,14 +89,10 @@ class MedicineStockConcurrencyTest extends TestCase
                 'reason_for_referral' => 'Requires additional assessment.',
             ],
         ]), (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK')
-            ->assertJsonPath('items.0.medicine_id', $medicine->id)
-            ->assertJsonPath('items.0.medicine_name', 'Amoxicillin')
-            ->assertJsonPath('items.0.requested_quantity', 4)
-            ->assertJsonPath('items.0.available_quantity', 1);
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
-        $this->assertSame(1, $medicine->fresh()->quantity);
+        $this->assertSame(5, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('health_record_medicines', 0);
         $this->assertDatabaseCount('medicine_inventory_transactions', 0);
@@ -109,6 +108,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $payload = $this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 4,
             ]],
         ]);
@@ -122,40 +122,40 @@ class MedicineStockConcurrencyTest extends TestCase
             ->assertJsonPath('idempotent_replay', true)
             ->assertJsonPath('result.health_record_id', $recordId);
 
-        $this->postRecord($payload, (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK')
-            ->assertJsonPath('items.0.available_quantity', 1);
+        // A new key uses current stock: the shortage posts and flags reconciliation.
+        $this->postRecord($payload, (string) Str::uuid())->assertCreated();
+        $this->assertTrue($medicine->fresh()->reconciliation_required);
 
         $this->postRecord([
             ...$payload,
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 3,
             ]],
         ], $winnerKey)
             ->assertConflict()
             ->assertJsonPath('code', 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
 
-        $this->assertSame(1, $medicine->fresh()->quantity);
-        $this->assertDatabaseCount('health_records', 1);
-        $this->assertDatabaseCount('health_record_medicines', 1);
-        $this->assertDatabaseCount('medicine_inventory_transactions', 1);
+        $this->assertSame(0, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_records', 2);
+        $this->assertDatabaseCount('health_record_medicines', 2);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 2);
     }
 
     public function test_all_rows_are_validated_before_any_multi_item_deduction(): void
     {
         $first = $this->medicine('First Medicine', 10);
-        $second = $this->medicine('Second Medicine', 1);
+        $second = $this->medicine('Second Medicine', 1, ['expiration_date' => now()->subDay()->toDateString()]);
 
         $this->postRecord($this->payload([
             'dispensed_medicines' => [
-                ['medicine_id' => $second->id, 'quantity' => 3],
-                ['medicine_id' => $first->id, 'quantity' => 2],
+                ['allocations' => [['expiry_group_id' => $second->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 3],
+                ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 2],
             ],
         ]), (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(10, $first->fresh()->quantity);
         $this->assertSame(1, $second->fresh()->quantity);
@@ -171,8 +171,8 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $this->postRecord($this->payload([
             'dispensed_medicines' => [
-                ['medicine_id' => $second->id, 'quantity' => 4],
-                ['medicine_id' => $first->id, 'quantity' => 3],
+                ['medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 4],
+                ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 3],
             ],
         ]), (string) Str::uuid())->assertCreated();
 
@@ -188,9 +188,9 @@ class MedicineStockConcurrencyTest extends TestCase
         $key = (string) Str::uuid();
         $payload = $this->payload([
             'dispensed_medicines' => [
-                ['medicine_id' => $first->id, 'quantity' => 2],
-                ['medicine_id' => $first->id, 'quantity' => 3],
-                ['medicine_id' => $second->id, 'quantity' => 1],
+                ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 2],
+                ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 3],
+                ['medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 1],
             ],
         ]);
 
@@ -199,8 +199,8 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->postRecord([
             ...$payload,
             'dispensed_medicines' => [
-                ['medicine_id' => $second->id, 'quantity' => 1],
-                ['medicine_id' => $first->id, 'quantity' => 5],
+                ['medicine_id' => $second->id, 'confirmed_given' => true, 'quantity' => 1],
+                ['medicine_id' => $first->id, 'confirmed_given' => true, 'quantity' => 5],
             ],
         ], $key)
             ->assertOk()
@@ -219,11 +219,14 @@ class MedicineStockConcurrencyTest extends TestCase
         $payload = $this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ]);
+        // The server hashes the request after resolving diagnoses, which is always present.
         $legacyHash = app(HealthRecordIdempotencyService::class)->legacyHash([
             ...$payload,
+            'diagnoses' => [],
             'idempotency_key' => $key,
         ]);
         $record = HealthRecord::create([
@@ -264,6 +267,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $response = $this->postRecord($this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $otherMedicine->id,
+                'confirmed_given' => true,
                 'quantity' => 1,
                 'barangay_health_center_id' => $this->bhc->id,
             ]],
@@ -274,14 +278,15 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
-    public function test_stock_conflict_leaves_linked_follow_up_active_and_creates_no_next_task(): void
+    public function test_undispensable_medicine_leaves_linked_follow_up_active_and_creates_no_next_task(): void
     {
         [$parent, $task] = $this->scheduledFollowUp();
-        $medicine = $this->medicine('Follow-up Medicine', 2);
+        $medicine = $this->medicine('Follow-up Medicine', 2, ['expiration_date' => now()->subDay()->toDateString()]);
 
         $this->postRecord($this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
-                'medicine_id' => $medicine->id,
+                'allocations' => [['expiry_group_id' => $medicine->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 3,
             ]],
             'monitoring_data' => [
@@ -291,8 +296,8 @@ class MedicineStockConcurrencyTest extends TestCase
                 'followUpTime' => '09:00',
             ],
         ]), (string) Str::uuid())
-            ->assertConflict()
-            ->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'MEDICINE_NOT_DISPENSABLE');
 
         $this->assertSame(FollowUpTask::STATE_PENDING, $task->fresh()->state);
         $this->assertNull($task->fresh()->fulfilled_at);
@@ -321,6 +326,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->postRecord($this->followUpPayload($parent, $task, [
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 5,
             ]],
         ]), (string) Str::uuid())
@@ -332,7 +338,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->assertDatabaseCount('health_record_medicines', 0);
     }
 
-    public function test_invalid_unavailable_expired_and_missing_items_create_no_effects(): void
+    public function test_invalid_quantity_expired_and_missing_items_create_no_effects(): void
     {
         $unavailable = $this->medicine('Unavailable Medicine', 5, [
             'availability_status' => 'Unavailable',
@@ -345,6 +351,7 @@ class MedicineStockConcurrencyTest extends TestCase
             $this->postRecord($this->payload([
                 'dispensed_medicines' => [[
                     'medicine_id' => $unavailable->id,
+                    'confirmed_given' => true,
                     'quantity' => $quantity,
                 ]],
             ]), (string) Str::uuid())->assertUnprocessable();
@@ -352,14 +359,8 @@ class MedicineStockConcurrencyTest extends TestCase
 
         $this->postRecord($this->payload([
             'dispensed_medicines' => [[
-                'medicine_id' => $unavailable->id,
-                'quantity' => 1,
-            ]],
-        ]), (string) Str::uuid())->assertUnprocessable();
-
-        $this->postRecord($this->payload([
-            'dispensed_medicines' => [[
-                'medicine_id' => $expired->id,
+                'allocations' => [['expiry_group_id' => $expired->expiryGroups()->firstOrFail()->id, 'quantity' => 1]], 'override_reason' => 'Selected actual package', 'medicine_id' => $expired->id,
+                'confirmed_given' => true,
                 'quantity' => 1,
             ]],
         ]), (string) Str::uuid())->assertUnprocessable();
@@ -367,6 +368,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->postRecord($this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => 999999,
+                'confirmed_given' => true,
                 'quantity' => 1,
             ]],
         ]), (string) Str::uuid())->assertUnprocessable();
@@ -397,6 +399,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $this->postRecord($this->payload([
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 3,
             ]],
         ]), (string) Str::uuid())->assertInternalServerError();
@@ -420,6 +423,7 @@ class MedicineStockConcurrencyTest extends TestCase
         $payload = [
             'dispensed_medicines' => [[
                 'medicine_id' => $medicine->id,
+                'confirmed_given' => true,
                 'quantity' => 2,
             ]],
         ];
@@ -449,6 +453,7 @@ class MedicineStockConcurrencyTest extends TestCase
             'date_recorded' => '2026-07-20 09:30:00',
             'category' => 'General Consultation',
             'chief_complaint' => 'Stock protection test',
+            'diagnosis' => 'Assessed at BHC',
             ...$overrides,
         ];
     }
@@ -496,7 +501,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
     private function medicine(string $name, int $quantity, array $overrides = []): Medicine
     {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Medicine',
             'quantity' => $quantity,
@@ -506,6 +511,13 @@ class MedicineStockConcurrencyTest extends TestCase
             'created_by' => $this->bhw->id,
             ...$overrides,
         ]);
+        $medicine->expiryGroups()->create([
+            'expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(),
+            'available_quantity' => $quantity,
+            'quarantined_quantity' => 0,
+        ]);
+
+        return $medicine;
     }
 
     private function patient(
@@ -531,7 +543,8 @@ class MedicineStockConcurrencyTest extends TestCase
             'name' => $name,
             'email' => $email,
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);

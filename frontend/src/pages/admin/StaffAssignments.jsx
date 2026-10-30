@@ -1,0 +1,36 @@
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import { PageStateWrapper } from "../../components/common";
+import Input from "../../components/common/atoms/Input";
+import Select from "../../components/common/atoms/Select";
+import PermissionReviewDialog from "../../components/features/access/PermissionReviewDialog";
+import { ASSIGNMENT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
+import { apiRequest, unwrapList } from "../../services/apiClient";
+import { NURSE_ASSIGNMENT_DUTIES, PERMISSION_CATALOG, suggestedNurseDuties } from "../../utils/actionPermissions";
+import { reviewPermissions, setPermission } from "../../utils/accessPolicy";
+
+export default function StaffAssignments() {
+  const [params]=useSearchParams();
+  const [rows,setRows]=useState([]),[nurses,setNurses]=useState([]),[bhcs,setBhcs]=useState([]),[error,setError]=useState(""),[busy,setBusy]=useState(false),[reviewing,setReviewing]=useState(false);
+  // The page's first load has its own loading and failure state; `error` stays for the form.
+  const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState(null);
+  const [form,setForm]=useState({user_id:params.get("userId")||"",barangay_health_center_id:"",assignment_type:"temporary",starts_on:"",ends_on:"",permissions:[]});
+  async function load(){const [a,b,c]=await Promise.all([apiRequest("/staff-assignments"),apiRequest("/staff-assignments/eligible-nurses"),apiRequest("/barangay-health-centers")]);setRows(unwrapList(a));setNurses(unwrapList(b));setBhcs(unwrapList(c));}
+  function firstLoad(){setLoading(true);setLoadError(null);return load().catch(e=>setLoadError(e)).finally(()=>setLoading(false));}
+  // Runs once on mount; firstLoad is recreated each render and is also the Retry handler.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{firstLoad();},[]);
+  const nurse=nurses.find(n=>String(n.id)===String(form.user_id)),bhc=bhcs.find(b=>String(b.id)===String(form.barangay_health_center_id));
+  // Nurses are licensed, so assigned duties are compared only against the suggested set.
+  const review=reviewPermissions({permissions:form.permissions,defaults:NURSE_ASSIGNMENT_DUTIES,licensedRole:true});
+  function requestSave(e){e.preventDefault();setError("");if(!form.permissions.length){setError("Select at least one permitted duty.");return;}setReviewing(true);}
+  async function save(){setBusy(true);setError("");try{await apiRequest("/staff-assignments",{method:"POST",body:{...form,...(form.assignment_type==="ongoing"?{ends_on:undefined}:{})}});await load();setForm(f=>({...f,barangay_health_center_id:"",starts_on:"",ends_on:"",permissions:[]}));setReviewing(false);}catch(e){setReviewing(false);setError(Object.values(e.errors||{}).flat().join(" ")||e.message);}finally{setBusy(false);}}
+  async function revoke(row){setBusy(true);try{await apiRequest(`/staff-assignments/${row.id}/revoke`,{method:"POST"});await load();}catch(e){setError(e.message);}finally{setBusy(false);}}
+  const today=new Date().toLocaleDateString("en-CA");
+  const state=r=>r.revoked_at?"Revoked":r.starts_on?.slice(0,10)>today?"Scheduled":r.ends_on&&r.ends_on.slice(0,10)<today?"Expired":"Active";
+  return <DashboardLayout role="admin" title="Staff Assignments"><PageStateWrapper skeleton="table" isLoading={loading} isError={Boolean(loadError)} hasData={!loading&&!loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments..."><div className="mx-auto w-full max-w-[1500px] space-y-5"><p className="text-sm text-slate-500">Additional BHC access for existing RHU-based nurses. Home RHU and referral routing do not change.</p>{error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}<form onSubmit={requestSave} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="font-bold">Add Nurse Assignment</h2><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Eligible nurse<Select required placeholder="Select RHU-based nurse" value={form.user_id} onChange={e=>setForm({...form,user_id:e.target.value})} options={nurses.map(n=>({value:n.id,label:`${n.name} · ${n.rural_health_unit?.name||"RHU"}`}))}/></label><label className="text-sm">Destination BHC<Select required placeholder="Select BHC" value={form.barangay_health_center_id} onChange={e=>setForm({...form,barangay_health_center_id:e.target.value})} options={bhcs.filter(b=>b.status==="active").map(b=>({value:b.id,label:b.name}))}/></label><label className="text-sm">Start date<Input required type="date" value={form.starts_on} onChange={e=>setForm({...form,starts_on:e.target.value})}/></label><label className="text-sm">Assignment type<Select value={form.assignment_type} onChange={e=>setForm({...form,assignment_type:e.target.value})} options={[{value:"temporary",label:"Temporary · end date required"},{value:"ongoing",label:"Ongoing · until revoked"}]}/></label>{form.assignment_type==="temporary"&&<label className="text-sm">End date<Input required type="date" min={form.starts_on} value={form.ends_on} onChange={e=>setForm({...form,ends_on:e.target.value})}/></label>}</div><fieldset><legend className="text-sm font-semibold">Permitted duties</legend><button type="button" onClick={()=>setForm({...form,permissions:suggestedNurseDuties()})} className="my-3 text-xs font-semibold text-red-700">Use suggested clinical duties</button><div className="grid gap-2 sm:grid-cols-2">{NURSE_ASSIGNMENT_DUTIES.map(p=><label key={p} className="flex gap-2 text-xs"><input type="checkbox" checked={form.permissions.includes(p)} onChange={e=>setForm({...form,permissions:setPermission(form.permissions,p,e.target.checked)})}/>{PERMISSION_CATALOG[p]?.label||p.replaceAll("."," · ")}</label>)}</div></fieldset><button disabled={busy} className="rounded-lg bg-red-700 px-5 py-2 text-white">{busy?"Saving…":"Create Assignment"}</button></form><div className="grid gap-3 sm:grid-cols-2">{rows.map(r=><article key={r.id} className="rounded-xl border border-slate-200 bg-white p-5"><h3 className="font-semibold">{r.user?.name} · {r.barangay_health_center?.name}</h3><p className="mt-1 text-xs text-slate-500">{state(r)} · {r.assignment_type} · {r.starts_on?.slice(0,10)} → {r.ends_on?.slice(0,10)||"Until revoked"}</p><p className="mt-3 text-xs text-slate-600">{r.permissions.join(", ")}</p>{!r.revoked_at&&<button disabled={busy} onClick={()=>revoke(r)} className="mt-4 text-sm text-red-700">Revoke assignment</button>}</article>)}</div></div>
+    {reviewing&&<PermissionReviewDialog title="Review assignment duties" review={review} confirmationLabel={ASSIGNMENT_CONFIRMATION} confirmText="Create Assignment" loading={busy} onCancel={()=>setReviewing(false)} onConfirm={save}
+      details={[["Nurse",nurse?.name||"—"],["Destination BHC",bhc?.name||"—"],["Assignment",form.assignment_type==="ongoing"?`Ongoing from ${form.starts_on}`:`${form.starts_on} → ${form.ends_on}`]]}/>}
+  </PageStateWrapper></DashboardLayout>;
+}

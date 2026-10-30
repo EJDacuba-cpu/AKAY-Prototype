@@ -54,9 +54,9 @@ class ReferralRescheduleTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhu->id,
         ]);
-        $this->bhw = $this->user('Reschedule BHW', 'resched-bhw@example.test', User::ROLE_BHW, $this->bhc->id);
-        $this->rhuStaff = $this->user('Reschedule RHU Staff', 'resched-rhu@example.test', User::ROLE_RHU_STAFF, null, $this->rhu->id);
-        $this->otherRhuStaff = $this->user('Other RHU Staff', 'resched-other@example.test', User::ROLE_RHU_STAFF, null, $this->otherRhu->id);
+        $this->bhw = $this->user('Reschedule BHW', 'resched-bhw@example.test', User::ROLE_BHC, $this->bhc->id);
+        $this->rhuStaff = $this->user('Reschedule RHU Staff', 'resched-rhu@example.test', User::ROLE_RHU, null, $this->rhu->id);
+        $this->otherRhuStaff = $this->user('Other RHU Staff', 'resched-other@example.test', User::ROLE_RHU, null, $this->otherRhu->id);
         $this->admin = $this->user('Reschedule Admin', 'resched-admin@example.test', User::ROLE_ADMIN);
         $this->patient = Patient::create([
             'first_name' => 'Reschedule',

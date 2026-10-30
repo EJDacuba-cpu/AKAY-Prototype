@@ -17,7 +17,7 @@ class RhuPatientVolumeController extends Controller
     {
         $query = RhuPatientVolume::query()->with('ruralHealthUnit');
 
-        if ($request->user()->isRhuStaff()) {
+        if ($request->user()->isRhu()) {
             $query->where('rural_health_unit_id', $request->user()->rural_health_unit_id);
         }
 
@@ -27,7 +27,7 @@ class RhuPatientVolumeController extends Controller
     public function store(RhuPatientVolumeRequest $request, AuditLogger $auditLogger)
     {
         $data = $request->validated();
-        $rhuId = $request->user()->isRhuStaff()
+        $rhuId = $request->user()->isRhu()
             ? $request->user()->rural_health_unit_id
             : ($data['rural_health_unit_id'] ?? null);
 

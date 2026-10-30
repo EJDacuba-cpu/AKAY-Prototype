@@ -41,7 +41,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         $this->patient = $this->patient('Scheduling', 'Patient', $this->bhc, $this->bhw);
     }
 
-    public function test_general_consultation_follow_up_required_needs_a_date_and_time(): void
+    public function test_general_consultation_follow_up_required_needs_a_date(): void
     {
         $this->postHealthRecord([
             'monitoring_data' => [
@@ -53,23 +53,12 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'monitoring_data.followUpDate',
             ]);
 
-        $this->postHealthRecord([
-            'monitoring_data' => [
-                'followUpStatus' => 'Follow-up Required',
-                'followUpDate' => '2026-08-07',
-            ],
-        ])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'monitoring_data.followUpTime',
-            ]);
-
         $response = $this->postHealthRecord([
             'monitoring_data' => [
                 'followUpStatus' => 'Follow-up Required',
                 'followUpDate' => '2026-08-07',
                 'followUpTime' => '11:30',
-                'followUpReason' => 'Deprecated camel-case reason.',
+                'followUpReason' => 'Recheck blood pressure.',
                 'follow_up_reason' => 'Deprecated snake-case reason.',
             ],
         ])->assertCreated();
@@ -83,7 +72,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         $monitoringData = HealthRecord::findOrFail(
             $response->json('data.id')
         )->monitoring_data;
-        $this->assertArrayNotHasKey('followUpReason', $monitoringData);
+        $this->assertSame('Recheck blood pressure.', $monitoringData['followUpReason']);
         $this->assertArrayNotHasKey('follow_up_reason', $monitoringData);
         $this->assertFalse(Schema::hasColumn('follow_up_tasks', 'reason'));
     }
@@ -111,7 +100,7 @@ class FollowUpTaskSchedulingTest extends TestCase
         );
     }
 
-    public function test_follow_up_visit_requires_time_when_scheduling_another_visit(): void
+    public function test_follow_up_visit_schedules_another_visit_at_its_time(): void
     {
         $task = $this->schedule($this->patient, $this->bhw, $this->bhc);
 
@@ -125,12 +114,6 @@ class FollowUpTaskSchedulingTest extends TestCase
             ],
         ];
 
-        $this->postHealthRecord($payload)
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors([
-                'monitoring_data.followUpTime',
-            ]);
-
         $payload['monitoring_data']['followUpTime'] = '10:30';
         $response = $this->postHealthRecord($payload)->assertCreated();
 
@@ -139,6 +122,24 @@ class FollowUpTaskSchedulingTest extends TestCase
             'due_date' => '2026-08-14 00:00:00',
             'due_time' => '10:30',
             'state' => FollowUpTask::STATE_PENDING,
+        ]);
+    }
+
+    /** Follow-up date is required at finalization; the time is optional (docs/consultation-workflow-revision.md). */
+    public function test_follow_up_time_is_optional(): void
+    {
+        $this->postHealthRecord([
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => '2026-08-07',
+                'followUpReason' => 'Recheck blood pressure.',
+            ],
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('follow_up_tasks', [
+            'patient_id' => $this->patient->id,
+            'due_date' => '2026-08-07 00:00:00',
+            'due_time' => null,
         ]);
     }
 
@@ -272,7 +273,7 @@ class FollowUpTaskSchedulingTest extends TestCase
             ->assertConflict();
     }
 
-    public function test_database_prevents_one_visit_from_fulfilling_two_schedules(): void
+    public function test_one_visit_may_fulfil_several_continued_schedules(): void
     {
         $first = $this->schedule($this->patient, $this->bhw, $this->bhc);
         $second = $this->schedule(
@@ -296,12 +297,16 @@ class FollowUpTaskSchedulingTest extends TestCase
             'fulfilled_by_health_record_id' => $completedVisit->id,
         ]);
 
-        $this->expectException(QueryException::class);
+        // Care Plan & Next Steps: one consultation can continue several
+        // follow-ups, so the database no longer limits a visit to one.
         $second->update([
             'state' => FollowUpTask::STATE_FULFILLED,
             'fulfilled_at' => now(),
             'fulfilled_by_health_record_id' => $completedVisit->id,
         ]);
+
+        $this->assertSame($completedVisit->id, $first->fresh()->fulfilled_by_health_record_id);
+        $this->assertSame($completedVisit->id, $second->fresh()->fulfilled_by_health_record_id);
     }
 
     private function postHealthRecord(array $overrides = [])
@@ -312,6 +317,7 @@ class FollowUpTaskSchedulingTest extends TestCase
                 'patient_id' => $this->patient->id,
                 'category' => 'General Consultation',
                 'chief_complaint' => 'Routine consultation',
+                'diagnosis' => 'Assessed at BHC',
                 ...$overrides,
             ]);
     }
@@ -363,7 +369,8 @@ class FollowUpTaskSchedulingTest extends TestCase
             'name' => $name,
             'email' => $email,
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
         ]);

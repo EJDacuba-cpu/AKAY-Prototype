@@ -13,6 +13,7 @@ import {
   Clock,
   FileText,
   Send,
+  ShieldCheck,
   Stethoscope,
   UserCheck,
 } from "lucide-react";
@@ -29,6 +30,17 @@ import {
 } from "../../services/referrals";
 import { useRhuProviders } from "../../hooks/useDoctorAvailability";
 import { queryKeys } from "../../utils/queryKeys";
+import { getCurrentUser } from "../../utils/auth";
+import { can } from "../../utils/actionPermissions";
+import ConfirmConditionsBlock from "../../components/features/conditions/ConfirmConditionsBlock";
+import {
+  buildConditionConfirmations,
+  buildLegacyDiscontinuations,
+  mapConditionConfirmationErrors,
+  mapLegacyDiscontinuationErrors,
+  validateConditionConfirmations,
+  validateLegacyDecisions,
+} from "../../utils/conditionConfirmations";
 
 const OUTCOME_OPTIONS = [
   "Managed at RHU",
@@ -355,6 +367,16 @@ export default function FeedbackReturnSlip() {
     remarks: "",
   });
   const { providers: rhuDoctors } = useRhuProviders();
+  const [conditionRows, setConditionRows] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
+  const [conditionErrors, setConditionErrors] = useState({});
+
+  // Confirmations belong to one patient's referral: never carry them across.
+  useEffect(() => {
+    setConditionRows([]);
+    setLegacyRows([]);
+    setConditionErrors({});
+  }, [selectedReferralId]);
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -363,6 +385,13 @@ export default function FeedbackReturnSlip() {
   async function handleSubmit(e) {
     e?.preventDefault();
     if (!selectedReferral || !canCreateReturnSlip || submitting) return;
+
+    const validationErrors = {
+      ...validateConditionConfirmations(conditionRows),
+      ...validateLegacyDecisions(legacyRows),
+    };
+    setConditionErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) return;
 
     setSubmitting(true);
 
@@ -386,6 +415,8 @@ export default function FeedbackReturnSlip() {
     try {
       const updated = await submitReturnSlip(selectedReferral.trackingId, {
         ...feedback,
+        conditionConfirmations: buildConditionConfirmations(conditionRows),
+        legacyMonitoringDiscontinuations: buildLegacyDiscontinuations(legacyRows),
         submittedBy: form.receivingPersonnel || "RHU Staff",
       });
 
@@ -408,12 +439,32 @@ export default function FeedbackReturnSlip() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.dashboardSummary("rhu"),
         });
+        if (updated.patientId) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.patientConditions(updated.patientId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.careOverview(updated.patientId),
+          });
+        }
       }
 
       setSubmitted(true);
     } catch (error) {
       if (isReferralWorkflowConflict(error)) {
         setConflict(error.payload || {});
+      } else if (error?.status === 422 || error?.status === 403) {
+        const mapped = {
+          ...mapConditionConfirmationErrors(error.errors, conditionRows),
+          ...mapLegacyDiscontinuationErrors(error.errors, legacyRows),
+        };
+        if (Object.keys(mapped).length > 0) setConditionErrors(mapped);
+        else if (
+          error.status === 403 &&
+          (conditionRows.some((row) => row.setOnRecord) || buildLegacyDiscontinuations(legacyRows).length > 0)
+        ) {
+          setConditionErrors({ conditionConfirmations: error.message });
+        }
       }
       // The form remains available for a manual retry or conflict review.
     } finally {
@@ -436,12 +487,12 @@ export default function FeedbackReturnSlip() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
-        <SoftLoadingArea
+        <SoftLoadingArea skeleton="form"
           isLoading
           message="Loading referral feedback..."
           minHeight="min-h-[420px]"
         >
-          <div className="min-h-[420px] rounded-2xl border border-slate-200 bg-white shadow-sm" />
+          <div className="min-h-[420px]" />
         </SoftLoadingArea>
       </DashboardLayout>
     );
@@ -722,6 +773,29 @@ export default function FeedbackReturnSlip() {
                   />
                 </div>
               </section>
+
+              {can(getCurrentUser(), "conditions.confirm") && (
+                <section className="rounded-xl border border-slate-200 bg-white p-6">
+                  <SectionHeader
+                    icon={<ShieldCheck size={18} />}
+                    title="Confirm Conditions"
+                    description="Set the clinical status of the patient's conditions based on this referral."
+                  />
+                  <ConfirmConditionsBlock
+                    patientId={selectedReferral.patientId}
+                    rows={conditionRows}
+                    onChange={setConditionRows}
+                    legacyRows={legacyRows}
+                    onLegacyChange={setLegacyRows}
+                    errors={conditionErrors}
+                    context={[
+                      { label: "Reason for referral", value: selectedReferral.reasonForReferral },
+                      { label: "Chief complaint", value: selectedReferral.chiefComplaint },
+                      { label: "BHC initial diagnosis", value: selectedReferral.initialDiagnosis },
+                    ]}
+                  />
+                </section>
+              )}
 
               <section className="rounded-xl border border-slate-200 bg-white p-6">
                 <SectionHeader

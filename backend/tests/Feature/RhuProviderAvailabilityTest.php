@@ -7,7 +7,9 @@ use App\Models\BarangayHealthCenter;
 use App\Models\RhuProvider;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\RhuDoctorRosterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -49,35 +51,36 @@ class RhuProviderAvailabilityTest extends TestCase
             'rural_health_unit_id' => $this->rhuA->id,
         ]);
 
-        $this->rhuStaffA = $this->user('RHU A Staff', 'prov-rhu-a@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('RHU B Staff', 'prov-rhu-b@example.test', User::ROLE_RHU_STAFF, null, $this->rhuB->id);
-        $this->bhwA = $this->user('BHW A', 'prov-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
+        $this->rhuStaffA = $this->user('RHU A Staff', 'prov-rhu-a@example.test', User::ROLE_RHU, null, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('RHU B Staff', 'prov-rhu-b@example.test', User::ROLE_RHU, null, $this->rhuB->id);
+        $this->bhwA = $this->user('BHW A', 'prov-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
         $this->admin = $this->user('Provider Admin', 'prov-admin@example.test', User::ROLE_ADMIN);
     }
 
-    /** DOC-20 - RHU staff manage their own roster. */
-    public function test_rhu_staff_can_create_and_update_own_provider(): void
+    /** DOC-20 - RHU staff update official availability; covering create is closed. */
+    public function test_rhu_staff_can_update_own_official_provider(): void
     {
-        $id = $this->actingAs($this->rhuStaffA, 'sanctum')
+        $provider = $this->provider($this->rhuA, 'Dr. Maria Santos');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson('/api/rhu-providers', [
-                'name' => 'Dr. Maria Santos',
+                'name' => 'Dr. Covering',
                 'specialization' => 'General Practitioner',
                 'remarks' => 'Covering provider',
             ])
-            ->assertCreated()
-            ->assertJsonPath('data.availability_status', RhuProvider::STATUS_AVAILABLE)
-            ->assertJsonPath('data.specialization', 'General Practitioner')
-            ->assertJsonPath('data.remarks', 'Covering provider')
-            ->json('data.id');
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_CREATE_DISABLED);
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->patchJson("/api/rhu-providers/{$id}", [
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
                 'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
             ])
             ->assertOk()
-            ->assertJsonPath('data.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+            ->assertJsonPath('data.availability_status', RhuProvider::STATUS_UNAVAILABLE)
+            ->assertJsonPath('data.name', 'Dr. Maria Santos')
+            ->assertJsonPath('data.user_id', $provider->user_id);
 
-        $this->assertSame($this->rhuA->id, RhuProvider::query()->sole()->rural_health_unit_id);
+        $this->assertSame($this->rhuA->id, RhuProvider::query()->whereNotNull('user_id')->sole()->rural_health_unit_id);
     }
 
     /** QA 11 - DOC-15: RHU staff cannot read or write another RHU's roster. */
@@ -194,24 +197,37 @@ class RhuProviderAvailabilityTest extends TestCase
         $this->assertDatabaseCount('rhu_providers', 2);
     }
 
-    /** DOC-20 - deactivation is a soft delete; the row is retained for REL-01. */
-    public function test_deactivation_is_soft_and_leaves_the_row(): void
+    /** Official rows stay until the account changes; covering rows stay untouched. */
+    public function test_roster_delete_cannot_remove_official_or_covering_rows(): void
     {
-        $provider = $this->provider($this->rhuA, 'Dr. Leaving');
-
-        $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->deleteJson("/api/rhu-providers/{$provider->id}")
-            ->assertOk();
-
-        $this->assertDatabaseHas('rhu_providers', [
-            'id' => $provider->id,
-            'is_active' => false,
+        $official = $this->provider($this->rhuA, 'Dr. Leaving');
+        $covering = RhuProvider::create([
+            'rural_health_unit_id' => $this->rhuA->id,
+            'name' => 'Dr. Legacy',
+            'availability_status' => RhuProvider::STATUS_AVAILABLE,
+            'is_active' => true,
         ]);
 
-        $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/rhu-providers/availability')
-            ->assertOk()
-            ->assertJsonPath('data.total_count', 0);
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->deleteJson("/api/rhu-providers/{$official->id}")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::OFFICIAL_LOCKED);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->deleteJson("/api/rhu-providers/{$covering->id}")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_LOCKED);
+
+        $this->assertDatabaseHas('rhu_providers', [
+            'id' => $official->id,
+            'is_active' => true,
+            'user_id' => $official->user_id,
+        ]);
+        $this->assertDatabaseHas('rhu_providers', [
+            'id' => $covering->id,
+            'is_active' => true,
+            'user_id' => null,
+        ]);
     }
 
     /** QA 25 - SCR-06: an availability flip is its own audited event. */
@@ -232,12 +248,57 @@ class RhuProviderAvailabilityTest extends TestCase
         );
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->patchJson("/api/rhu-providers/{$provider->id}", ['remarks' => 'Back Monday'])
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['specialization' => 'Pediatrics'])
             ->assertOk();
 
         $this->assertTrue(
             AuditLog::where('action', 'provider_updated')->exists(),
             'A non-availability edit must audit as provider_updated.'
+        );
+    }
+
+    /** Manual Available/Unavailable persists across refreshes and drives the BHC gate. */
+    public function test_manual_status_persists_and_updates_referral_eligibility(): void
+    {
+        $provider = $this->provider($this->rhuA, 'Dr. Persist');
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.available_count', 1);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.available_count', 0)
+            ->assertJsonPath('data.providers.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.availability_status', RhuProvider::STATUS_UNAVAILABLE);
+
+        $this->assertDatabaseHas('rhu_providers', [
+            'id' => $provider->id,
+            'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+        ]);
+        $this->assertTrue(
+            AuditLog::where('action', 'provider_availability_changed')
+                ->where('module', 'providers')
+                ->exists()
         );
     }
 
@@ -261,25 +322,132 @@ class RhuProviderAvailabilityTest extends TestCase
         }
     }
 
-    /** DOC-20 - an RHU cannot hold two active providers with the same name. */
-    public function test_duplicate_active_name_is_rejected_per_rhu(): void
+    public function test_expected_return_does_not_open_or_close_the_gate(): void
+    {
+        $provider = $this->provider($this->rhuA, 'Dr. Estimate');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'expected_available_at' => now()->addDay()->toDateTimeString(),
+                'remarks' => 'Shared for BHC',
+                'internal_notes' => 'Keep in RHU',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.providers.0.remarks', 'Shared for BHC')
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false);
+
+        $this->assertArrayNotHasKey(
+            'internal_notes',
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0')
+        );
+        $this->assertSame(
+            RhuProvider::STATUS_AVAILABLE,
+            $provider->fresh()->availability_status
+        );
+    }
+
+    public function test_rhu_can_record_expected_return_and_split_notes_without_opening_the_gate(): void
+    {
+        config(['app.timezone' => 'Asia/Manila']);
+        date_default_timezone_set('Asia/Manila');
+        Carbon::setTestNow(Carbon::parse('2026-10-22 08:00:00', 'Asia/Manila'));
+
+        $provider = $this->provider($this->rhuA, 'Dr. Notes');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
+                'expected_available_at' => '2026-10-23 14:00:00',
+                'remarks' => 'AM clinic only until Friday.',
+                'internal_notes' => 'Locum covering OR; do not share.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.internal_notes', 'Locum covering OR; do not share.')
+            ->assertJsonPath('data.remarks', 'AM clinic only until Friday.');
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/rhu-providers')
+            ->assertOk()
+            ->assertJsonPath('data.0.internal_notes', 'Locum covering OR; do not share.');
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.providers.0.remarks', 'AM clinic only until Friday.')
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false)
+            ->assertJsonMissingPath('data.providers.0.internal_notes');
+
+        $this->assertNotNull(
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0.expected_available_at')
+        );
+
+        Carbon::setTestNow(Carbon::parse('2026-10-23 15:00:00', 'Asia/Manila'));
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', false)
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', true)
+            ->assertJsonPath('data.providers.0.expected_available_at', null)
+            ->assertJsonPath('data.providers.0.remarks', 'AM clinic only until Friday.');
+
+        $this->assertArrayNotHasKey(
+            'internal_notes',
+            $this->actingAs($this->bhwA, 'sanctum')
+                ->getJson('/api/rhu-providers/availability')
+                ->json('data.providers.0')
+        );
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
+                'availability_status' => RhuProvider::STATUS_AVAILABLE,
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.can_submit_referral', true)
+            ->assertJsonPath('data.providers.0.awaiting_rhu_update', false);
+
+        Carbon::setTestNow();
+    }
+
+    /** Covering create is rejected at every RHU. */
+    public function test_manual_covering_create_is_rejected_per_rhu(): void
     {
         $this->provider($this->rhuA, 'Dr. Twin');
 
-        // The same name is legitimate at a different RHU.
         $this->actingAs($this->rhuStaffB, 'sanctum')
             ->postJson('/api/rhu-providers', ['name' => 'Dr. Twin'])
-            ->assertCreated();
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_CREATE_DISABLED);
 
-        $this->assertSame(2, RhuProvider::query()->count());
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->postJson('/api/rhu-providers', ['name' => 'Dr. Twin'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', RhuDoctorRosterService::COVERING_CREATE_DISABLED);
+
+        $this->assertSame(1, RhuProvider::query()->count());
     }
 
     /** Availability rejects an invalid status rather than storing it. */
     public function test_invalid_availability_status_is_rejected(): void
     {
+        $provider = $this->provider($this->rhuA, 'Dr. Bad Status');
+
         $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->postJson('/api/rhu-providers', [
-                'name' => 'Dr. Bad Status',
+            ->patchJson("/api/rhu-providers/{$provider->id}", [
                 'availability_status' => 'On Leave',
             ])
             ->assertUnprocessable()
@@ -291,13 +459,7 @@ class RhuProviderAvailabilityTest extends TestCase
         string $name,
         string $status = RhuProvider::STATUS_AVAILABLE
     ): RhuProvider {
-        return RhuProvider::create([
-            'rural_health_unit_id' => $rhu->id,
-            'name' => $name,
-            'specialization' => 'General Practitioner',
-            'availability_status' => $status,
-            'is_active' => true,
-        ]);
+        return $this->seedAvailableProvider($rhu, $name, $status);
     }
 
     private function user(

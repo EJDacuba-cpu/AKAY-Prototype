@@ -1,4 +1,4 @@
-import { apiRequest, mapRoleForBackend, unwrapData, unwrapList } from "./apiClient";
+import { apiRequest, unwrapData, unwrapList } from "./apiClient";
 
 export const ADMIN_ACCOUNTS_UPDATED_EVENT = "akay:admin-accounts-updated";
 
@@ -11,17 +11,22 @@ function dispatchUpdate() {
   }
 }
 
-function frontendRole(role) {
-  if (role === "admin") return "Admin";
-  if (role === "bhw") return "BHC";
-  if (role === "rhu_staff") return "RHU";
-  return role || "";
+const ACCOUNT_TYPES = {
+  admin: { badge: "Admin", label: "Municipal Health Officer", staff: "Municipal Health Officer" },
+  bhc: { badge: "BHC", label: "Barangay Health Center", staff: "BHC staff" },
+  rhu: { badge: "RHU", label: "Rural Health Unit", staff: "RHU staff" },
+};
+
+// Display only; role rules come from GET /staff-roles.
+function staffRoleLabel(staffRole) {
+  if (!staffRole) return "";
+  return staffRole === "bhw" ? "BHW" : staffRole.charAt(0).toUpperCase() + staffRole.slice(1);
 }
 
 function normalizeAccount(account = {}) {
   const bhc = account.barangay_health_center || account.barangayHealthCenter || null;
   const rhu = account.rural_health_unit || account.ruralHealthUnit || null;
-  const role = frontendRole(account.role);
+  const type = ACCOUNT_TYPES[account.role];
   const facility = bhc?.name || rhu?.name || account.facility || "";
 
   return {
@@ -29,27 +34,11 @@ function normalizeAccount(account = {}) {
     id: account.id ? String(account.id) : "",
     fullName: account.fullName || account.name || "",
     name: account.name || account.fullName || "",
-    role,
+    role: type?.badge || account.role || "",
     backendRole: account.role,
-    accountRole:
-      account.role === "bhw"
-        ? "bhc_worker"
-        : account.role === "rhu_staff"
-          ? "rhu_staff"
-          : "admin",
-    accountRoleLabel:
-      account.role === "bhw"
-        ? "Barangay Health Center Worker"
-        : account.role === "rhu_staff"
-          ? "Rural Health Unit Staff"
-          : "MHO / Admin",
-    position:
-      account.position ||
-      (account.role === "bhw"
-        ? "Barangay Health Worker"
-        : account.role === "rhu_staff"
-          ? "RHU Staff"
-          : "Municipal Health Officer"),
+    accountRole: account.role,
+    accountRoleLabel: type?.label || "",
+    position: account.position || staffRoleLabel(account.staff_role) || type?.staff || "",
     facility,
     bhcFacility: bhc?.name || "",
     rhuFacility: rhu?.name || "",
@@ -64,39 +53,6 @@ function normalizeAccount(account = {}) {
         ? "Active"
         : "Inactive",
   };
-}
-
-function toBackendPayload(account = {}) {
-  const role = mapRoleForBackend(account.accountRole || account.role);
-  const selectedBhcId =
-    account.barangayHealthCenterId ??
-    account.barangay_health_center_id ??
-    account.bhcId ??
-    null;
-  const selectedRhuId =
-    account.ruralHealthUnitId ??
-    account.rural_health_unit_id ??
-    account.rhuId ??
-    null;
-
-  return {
-    name: account.fullName || account.name,
-    email: account.email,
-    password: account.password || undefined,
-    role,
-    status:
-      String(account.status || "Active").toLowerCase() === "active"
-        ? "active"
-        : "inactive",
-    barangay_health_center_id:
-      role === "bhw" ? normalizeFacilityId(selectedBhcId) : null,
-    rural_health_unit_id:
-      role === "rhu_staff" ? normalizeFacilityId(selectedRhuId) : null,
-  };
-}
-
-function normalizeFacilityId(value) {
-  return value === "" || value === undefined || value === null ? null : value;
 }
 
 export function getAdminAccounts() {
@@ -134,17 +90,6 @@ export async function saveAdminAccounts() {
   return refreshAdminAccounts();
 }
 
-export async function createAdminAccount(accountData) {
-  const response = await apiRequest("/users", {
-    method: "POST",
-    body: toBackendPayload(accountData),
-  });
-  const created = normalizeAccount(unwrapData(response));
-  accountCache = [created, ...accountCache.filter((account) => account.id !== created.id)];
-  dispatchUpdate();
-  return created;
-}
-
 export async function updateAdminAccountStatus(id, status) {
   const response = await apiRequest(`/users/${id}`, {
     method: "PATCH",
@@ -158,11 +103,13 @@ export async function updateAdminAccountStatus(id, status) {
   return updated;
 }
 
-export async function updateAdminAccount(id, updates) {
-  const response = await apiRequest(`/users/${id}`, {
-    method: "PATCH",
-    body: toBackendPayload(updates),
-  });
+export async function getAdminAccount(id) {
+  return normalizeAccount(unwrapData(await apiRequest(`/users/${id}`)));
+}
+
+/** Saves the edited name and/or contact number (only the fields passed), and refreshes the cached copy. */
+export async function updateAdminAccountProfile(id, changes) {
+  const response = await apiRequest(`/users/${id}`, { method: "PATCH", body: changes });
   const updated = normalizeAccount(unwrapData(response));
   accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
   dispatchUpdate();

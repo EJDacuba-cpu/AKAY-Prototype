@@ -27,7 +27,8 @@ class BrowserSessionPrivacyTest extends TestCase
             'name' => 'Privacy Test BHW',
             'email' => 'privacy-bhw@example.test',
             'password' => bcrypt('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
         ]);
@@ -43,10 +44,10 @@ class BrowserSessionPrivacyTest extends TestCase
     public function test_login_token_response_disables_browser_and_proxy_caching(): void
     {
         $this->assertSensitiveNoStoreHeaders(
-            $this->postJson('/api/auth/login', [
+            $this->postJson('/api/auth/login', $this->withTurnstile([
                 'email' => $this->bhw->email,
                 'password' => 'password123',
-            ])
+            ]))
         );
     }
 
@@ -74,7 +75,7 @@ class BrowserSessionPrivacyTest extends TestCase
     public function test_report_source_responses_disable_browser_and_proxy_caching(): void
     {
         $this->assertSensitiveNoStoreHeaders(
-            $this->actingAs($this->bhw, 'sanctum')->getJson('/api/reports/bhw')
+            $this->actingAs($this->bhw, 'sanctum')->getJson('/api/reports/bhc')
         );
     }
 

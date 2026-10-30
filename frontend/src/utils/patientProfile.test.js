@@ -1,0 +1,200 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  createPatientForm,
+  formatShortDate,
+  getEffectiveFollowUpState,
+  getPatientAge,
+  getPatientValue,
+  getSectionErrors,
+  getTodayIsoDate,
+  groupFollowUpsByStatus,
+  orderFollowUps,
+  validatePatientForm,
+} from "./patientProfile.js";
+import { toPayload } from "./patientRegistrationPayload.js";
+
+const validAdult = {
+  firstName: "Ana",
+  lastName: "Cruz",
+  birthDate: "1990-01-01",
+  sex: "Female",
+  civilStatus: "Single",
+  streetAddress: "1 Main St",
+  barangay: "Perez",
+  municipality: "Bulakan",
+  philHealthStatus: "No PhilHealth",
+};
+
+test("a complete adult registration has no errors", () => {
+  assert.deepEqual(validatePatientForm(validAdult, "2026-09-26"), {});
+});
+
+test("required fields and the future birth date are reported", () => {
+  const errors = validatePatientForm({ ...validAdult, firstName: " ", birthDate: "2030-01-01", barangay: "" }, "2026-09-26");
+  assert.equal(errors.firstName, "First name is required.");
+  assert.equal(errors.birthDate, "Date of Birth cannot be in the future.");
+  assert.equal(errors.barangay, "Barangay is required.");
+});
+
+function monthsAgoIso(months) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return getTodayIsoDate(date);
+}
+
+test("an infant needs a mother name and no civil status", () => {
+  const infant = { ...validAdult, birthDate: monthsAgoIso(3), civilStatus: "", motherName: "" };
+  const errors = validatePatientForm(infant, getTodayIsoDate());
+  assert.equal(errors.civilStatus, undefined);
+  assert.equal(errors.motherName, "Mother name is required.");
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "family")), ["motherName"]);
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "demographics")), []);
+});
+
+test("an infant with a reported mother name has no parent or civil-status errors", () => {
+  const infant = { ...validAdult, birthDate: monthsAgoIso(3), civilStatus: "", motherName: "Ana Cruz" };
+  const errors = validatePatientForm(infant, getTodayIsoDate());
+  assert.equal(errors.civilStatus, undefined);
+  assert.equal(errors.motherName, undefined);
+  assert.equal(errors.fatherName, undefined);
+});
+
+test("a child older than 12 months still requires civil status, not a mother name", () => {
+  const child = { ...validAdult, birthDate: monthsAgoIso(60), civilStatus: "", motherName: "" };
+  const errors = validatePatientForm(child, getTodayIsoDate());
+  assert.equal(errors.civilStatus, "Civil status is required.");
+  assert.equal(errors.motherName, undefined);
+});
+
+test("PhilHealth number is required only with PhilHealth", () => {
+  const errors = validatePatientForm({ ...validAdult, philHealthStatus: "With PhilHealth" }, "2026-09-26");
+  assert.equal(errors.philHealthNumber, "PhilHealth number is required if marked with PhilHealth.");
+});
+
+test("saving one section ignores errors that belong to another", () => {
+  const errors = validatePatientForm({ ...validAdult, barangay: "", civilStatus: "" }, "2026-09-26");
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "demographics")), ["civilStatus"]);
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "contact")), ["barangay"]);
+  assert.deepEqual(getSectionErrors(errors, "family"), {});
+  assert.deepEqual(getSectionErrors(errors, "unknown"), {});
+});
+
+test("the form reads alias keys and defaults the municipality", () => {
+  const form = createPatientForm({ first_name: "Ana", contact: "+639171234567", purok: "3" });
+  assert.equal(form.firstName, "Ana");
+  assert.equal(form.contactNumber, "+639171234567");
+  assert.equal(form.purokArea, "3");
+  assert.equal(form.municipality, "Bulakan");
+  assert.equal(getPatientValue({}, ["x"]), "Not recorded");
+});
+
+test("a profile edit carries parent and guardian text but no longer holds birth details or parent links", () => {
+  const form = createPatientForm({
+    mother_name: "Ana Cruz", mother_birth_date: "1992-03-04",
+    father_name: "Ben Cruz", father_birth_date: "1990-05-06",
+    guardian_name: "Lola", guardian_relationship: "Grandmother", guardian_contact_number: "09171234567",
+    mother_patient_id: 7, father_patient_id: 8,
+    birth_place: "Bulakan", birth_time: "08:30", birth_weight: "3.1", birth_height: "50",
+    family_serial_number: "FSN-2026-0001",
+  });
+  assert.equal(form.motherName, "Ana Cruz");
+  assert.equal(form.motherBirthDate, "1992-03-04");
+  assert.equal(form.fatherName, "Ben Cruz");
+  assert.equal(form.fatherBirthDate, "1990-05-06");
+  assert.equal(form.guardianName, "Lola");
+  assert.equal(form.familySerialNumber, "FSN-2026-0001");
+  for (const key of ["motherPatientId", "fatherPatientId", "birthPlace", "birthTime", "birthWeight", "birthHeight"]) {
+    assert.equal(Object.hasOwn(form, key), false, key);
+  }
+});
+
+test("saving a profile edit never sends birth details or clears stored parent links", () => {
+  const stored = {
+    first_name: "Mia", last_name: "Cruz", birthdate: "2024-05-01", sex: "Female", street_address: "Main", barangay: "Pitpitan", municipality: "Bulakan",
+    mother_patient_id: 7, father_patient_id: 8, mother_name: "Ana Cruz",
+    birth_place: "Bulakan", birth_time: "08:30", birth_weight: "3.1", birth_height: "50",
+  };
+  const payload = toPayload({ ...createPatientForm(stored), occupation: "" });
+  for (const field of ["mother_patient_id", "father_patient_id", "birth_place", "birth_time", "birth_weight", "birth_height"]) {
+    assert.equal(Object.hasOwn(payload, field), false, field);
+  }
+  assert.equal(payload.mother_name, "Ana Cruz");
+  assert.equal(payload.birthdate, "2024-05-01");
+});
+
+test("the Parent & Guardian section validates only its own fields", () => {
+  const errors = validatePatientForm({ ...validAdult, birthDate: getTodayIsoDate(new Date(Date.now() - 5 * 365 * 24 * 3600 * 1000)), motherName: "" }, getTodayIsoDate());
+  assert.deepEqual(getSectionErrors(errors, "family"), {});
+  assert.deepEqual(Object.keys(getSectionErrors(errors, "contact")), []);
+});
+
+test("overdue pending follow-ups read as no-show and resolved ones stay resolved", () => {
+  const today = "2026-09-26";
+  assert.equal(getEffectiveFollowUpState({ dueDate: "2026-09-26" }, today), "due_today");
+  assert.equal(getEffectiveFollowUpState({ dueDate: "2026-09-20" }, today), "no_show");
+  assert.equal(getEffectiveFollowUpState({ dueDate: "2026-10-01", state: "rescheduled" }, today), "rescheduled");
+  assert.equal(getEffectiveFollowUpState({ dueDate: "2026-09-20", state: "fulfilled" }, today), "fulfilled");
+  assert.equal(getEffectiveFollowUpState({}, today), "upcoming");
+});
+
+test("follow-ups list open work soonest-first, then resolved newest-first", () => {
+  const today = "2026-09-26";
+  const { ordered, open } = orderFollowUps([
+    { id: "old-done", dueDate: "2026-08-01", state: "fulfilled" },
+    { id: "later", dueDate: "2026-10-10" },
+    { id: "newer-done", dueDate: "2026-09-01", state: "fulfilled" },
+    { id: "soon", dueDate: "2026-09-28" },
+  ], today);
+  assert.deepEqual(ordered.map((task) => task.id), ["soon", "later", "newer-done", "old-done"]);
+  assert.deepEqual(open.map((task) => task.id), ["soon", "later"]);
+  assert.equal(ordered[0].effectiveState, "upcoming");
+});
+
+test("short dates are compact and tolerate bad input", () => {
+  assert.equal(formatShortDate("2026-09-26"), "Sep 26, 2026");
+  assert.equal(formatShortDate("2026-09-26T09:00:00+08:00"), "Sep 26, 2026");
+  assert.equal(formatShortDate("", "-"), "-");
+  assert.equal(formatShortDate("not a date"), "Not recorded");
+});
+
+test("age falls back to the birth date when the row carries none", () => {
+  assert.equal(getPatientAge({ age: 30 }), 30);
+  const tenYearsAgo = new Date();
+  tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+  tenYearsAgo.setDate(tenYearsAgo.getDate() - 2);
+  assert.equal(getPatientAge({ birthDate: getTodayIsoDate(tenYearsAgo) }), 10);
+  assert.equal(getPatientAge({}), "");
+});
+
+test("follow-ups group into overdue, pending, completed and cancelled", () => {
+  const { ordered } = orderFollowUps(
+    [
+      { id: 1, state: "pending", dueDate: "2026-09-01" },
+      { id: 2, state: "pending", dueDate: "2026-09-27" },
+      { id: 3, state: "rescheduled", dueDate: "2026-10-05" },
+      { id: 4, state: "fulfilled", dueDate: "2026-08-01" },
+      { id: 5, state: "cancelled", dueDate: "2026-08-02" },
+      { id: 6, state: "no_show", dueDate: "2026-09-10" },
+    ],
+    "2026-09-27",
+  );
+  const ids = Object.fromEntries(
+    groupFollowUpsByStatus(ordered).map((group) => [group.key, group.items.map((task) => task.id)]),
+  );
+  assert.deepEqual(ids, {
+    overdue: [1, 6],
+    pending: [2, 3],
+    completed: [4],
+    cancelled: [5],
+  });
+});
+
+test("Patient Information carries Education level and completion, blank when cleared", () => {
+  const form = createPatientForm({ education_level: "College", education_completed: "Graduate" });
+  assert.equal(form.educationLevel, "College");
+  assert.equal(form.educationCompleted, "Graduate");
+  const cleared = createPatientForm({ educationLevel: "", education_level: null });
+  assert.equal(cleared.educationLevel, "");
+  assert.equal(cleared.educationCompleted, "");
+});

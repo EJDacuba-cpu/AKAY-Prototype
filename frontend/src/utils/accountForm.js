@@ -1,0 +1,85 @@
+import { TIERS, isValidContactNumber, normalizeContactNumber } from "./staffRoles.js";
+
+export const STEPS = { facility: "Facility", personal: "Personal Details", access: "Role & Access", review: "Review" };
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const isValidEmail = value => EMAIL.test(String(value || ""));
+
+/**
+ * Every problem on one step, keyed by field, so the form can mark them all at once.
+ * `hasFacility` says a facility of the chosen tier is picked.
+ */
+export function validateAccountStep(step, form, { hasFacility, confirmed }) {
+  const errors = {};
+  if (step === STEPS.facility) {
+    if (!form.role) errors.role = "Choose where this account will work.";
+    else if (form.role === TIERS.bhc && !hasFacility) errors.facility = "Choose the Barangay Health Center.";
+    else if (form.role === TIERS.rhu && !hasFacility) errors.facility = "Choose the Rural Health Unit.";
+  }
+  if (step === STEPS.personal) {
+    if (!form.name.trim()) errors.name = "Enter the full name.";
+    if (!isValidEmail(form.email)) errors.email = "Enter a valid email address.";
+    if (!isValidContactNumber(form.contact_number)) errors.contact_number = "Enter mobile number.";
+  }
+  if (step === STEPS.access) {
+    if (!form.staff_role) errors.staff_role = "Choose a role.";
+    if (!form.permissions.length) errors.permissions = "Select at least one duty.";
+  }
+  if (step === STEPS.review && !confirmed) errors.confirmed = "Tick the confirmation before saving.";
+  return errors;
+}
+
+/**
+ * Name, email and contact number as edited from Account details (the Personal Details rules). An account that has
+ * no contact number on file (the admin account, older accounts) may leave it empty; once there is a number it cannot
+ * be cleared, and a typed number must be valid.
+ */
+export function validateAccountProfile({ name, contact_number, email }, account = {}) {
+  const errors = {};
+  if (!String(name || "").trim()) errors.name = "Enter the full name.";
+  if (!isValidEmail(String(email || "").trim())) errors.email = "Enter a valid email address.";
+  const hadNumber = Boolean(normalizeContactNumber(account.contact_number));
+  const typedNumber = Boolean(normalizeContactNumber(contact_number));
+  if ((hadNumber || typedNumber) && !isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
+  return errors;
+}
+
+/** Only the profile fields that differ from the account: name and email trimmed (email compared without case), the number as the server stores it. */
+export function profileChanges(account, form) {
+  const changes = {};
+  const name = String(form.name || "").trim();
+  const email = String(form.email || "").trim();
+  const contact = normalizeContactNumber(form.contact_number);
+  if (name !== String(account.name || "").trim()) changes.name = name;
+  if (email.toLowerCase() !== String(account.email || "").trim().toLowerCase()) changes.email = email;
+  if (contact !== normalizeContactNumber(account.contact_number)) changes.contact_number = contact;
+  return changes;
+}
+
+// Backend field -> [form field, step it is edited on]. Anything else has no home on the page.
+const SERVER_FIELDS = {
+  name: ["name", STEPS.personal],
+  email: ["email", STEPS.personal],
+  contact_number: ["contact_number", STEPS.personal],
+  role: ["role", STEPS.facility],
+  barangay_health_center_id: ["facility", STEPS.facility],
+  rural_health_unit_id: ["facility", STEPS.facility],
+  staff_role: ["staff_role", STEPS.access],
+  permissions: ["permissions", STEPS.access],
+};
+const ORDER = [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];
+
+/** Splits a 422 `errors` object into per-field messages, the earliest step to show, and messages that fit no field. */
+export function routeServerErrors(errors = {}) {
+  const fields = {};
+  const unrouted = [];
+  let step = null;
+  for (const [key, messages] of Object.entries(errors)) {
+    const target = SERVER_FIELDS[key];
+    if (!target) { unrouted.push(...[].concat(messages)); continue; }
+    fields[target[0]] ??= [].concat(messages)[0];
+    if (step === null || ORDER.indexOf(target[1]) < ORDER.indexOf(step)) step = target[1];
+  }
+  return { step, fields, unrouted };
+}

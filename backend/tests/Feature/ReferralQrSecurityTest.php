@@ -43,10 +43,10 @@ class ReferralQrSecurityTest extends TestCase
             'name' => 'QR Security BHC B',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('QR BHW A', 'qr-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwB = $this->user('QR BHW B', 'qr-bhw-b@example.test', User::ROLE_BHW, $this->bhcB->id);
-        $this->rhuStaffA = $this->user('QR RHU A', 'qr-rhu-a@example.test', User::ROLE_RHU_STAFF, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('QR RHU B', 'qr-rhu-b@example.test', User::ROLE_RHU_STAFF, $this->rhuB->id);
+        $this->bhwA = $this->user('QR BHW A', 'qr-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwB = $this->user('QR BHW B', 'qr-bhw-b@example.test', User::ROLE_BHC, $this->bhcB->id);
+        $this->rhuStaffA = $this->user('QR RHU A', 'qr-rhu-a@example.test', User::ROLE_RHU, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('QR RHU B', 'qr-rhu-b@example.test', User::ROLE_RHU, $this->rhuB->id);
         $this->patientA = $this->patient('Secure', 'Patient', $this->bhcA);
         $this->referralA = $this->referral($this->patientA, $this->bhcA, $this->rhuA, $this->bhwA);
     }
@@ -110,7 +110,7 @@ class ReferralQrSecurityTest extends TestCase
         $inactive = $this->user(
             'Inactive QR RHU',
             'inactive-qr-rhu@example.test',
-            User::ROLE_RHU_STAFF,
+            User::ROLE_RHU,
             $this->rhuA->id,
             User::STATUS_INACTIVE
         );
@@ -122,7 +122,8 @@ class ReferralQrSecurityTest extends TestCase
             'name' => 'Unassigned QR RHU',
             'email' => 'unassigned-qr-rhu@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_RHU_STAFF,
+            'role' => User::ROLE_RHU,
+            'staff_role' => 'nurse',
             'status' => User::STATUS_ACTIVE,
         ]);
         $this->actingAs($unassigned, 'sanctum')
@@ -282,8 +283,8 @@ class ReferralQrSecurityTest extends TestCase
             ->assertForbidden();
         $this->actingAs($admin, 'sanctum')
             ->postJson('/api/referrals/qr/resolve', ['token' => $token])
-            ->assertNotFound()
-            ->assertJsonPath('code', 'QR_LOOKUP_FAILED');
+            // Denied by duty (rhu.manage) before any token lookup, so token validity is never revealed.
+            ->assertForbidden();
     }
 
     public function test_qr_resolution_rate_limit_allows_normal_use_and_hides_token_validity_when_exceeded(): void
@@ -394,9 +395,10 @@ class ReferralQrSecurityTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
             'status' => $status,
-            'barangay_health_center_id' => $role === User::ROLE_BHW ? $facilityId : null,
-            'rural_health_unit_id' => $role === User::ROLE_RHU_STAFF ? $facilityId : null,
+            'barangay_health_center_id' => $role === User::ROLE_BHC ? $facilityId : null,
+            'rural_health_unit_id' => $role === User::ROLE_RHU ? $facilityId : null,
         ]);
     }
 }

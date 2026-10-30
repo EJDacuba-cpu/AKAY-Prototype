@@ -1,13 +1,20 @@
+import { allocationIntent } from "../utils/medicineExpiryGroups";
 import {
   apiRequest,
   getAuthToken,
   unwrapData,
   unwrapList,
 } from "./apiClient";
+import { getConsultationPrograms, getPrimaryProgram } from "../utils/consultationPrograms";
+import { normalizeRecordedBodyFindings, serializeBodyFindings } from "../utils/bodyFindings";
+import { normalizeDiagnoses } from "../utils/diagnoses";
+import { getMorbidityReportingStatus } from "../utils/diagnosisReporting";
 import { API_BASE_URL } from "../config/environment";
 import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
 import { normalizeAttention } from "../utils/referralAttention";
+import { getSurveillanceTags } from "../utils/surveillance";
+import { fetchAllReportPages } from "./reportingLists";
 
 /**
  * Download the DS-TB Treatment Card (DOH Form 4b) PDF for a health record.
@@ -52,67 +59,10 @@ function firstPresent(values = []) {
   return values.find((value) => value !== undefined && value !== null && value !== "") || "";
 }
 
-function toBoolean(value) {
-  const normalized = String(value || "").toLowerCase();
-  return value === true || normalized === "true" || normalized === "yes";
-}
-
-function normalizeMorbidityReportingStatus(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["not_included", "morbidity", "notifiable"].includes(normalized)
-    ? normalized
-    : "";
-}
-
-function deriveMorbidityReportingStatus(record = {}, monitoringData = {}) {
-  const explicitStatus = normalizeMorbidityReportingStatus(
-    record.morbidityReportingStatus ||
-      record.morbidity_reporting_status ||
-      monitoringData.morbidityReportingStatus ||
-      monitoringData.morbidity_reporting_status,
-  );
-
-  if (explicitStatus) return explicitStatus;
-
-  const included = toBoolean(
-    firstPresent([
-      record.includeInMorbidityReport,
-      record.include_in_morbidity_report,
-      monitoringData.includeInMorbidityReport,
-      monitoringData.include_in_morbidity_report,
-    ]),
-  );
-  const notifiable = toBoolean(
-    firstPresent([
-      record.isNotifiableDisease,
-      record.is_notifiable_disease,
-      monitoringData.isNotifiableDisease,
-      monitoringData.is_notifiable_disease,
-    ]),
-  );
-
-  if (!included) return "not_included";
-  return notifiable ? "notifiable" : "morbidity";
-}
-
-function getSurveillanceCategory(record = {}, monitoringData = {}) {
-  return normalizeSurveillanceCategory(
-    firstPresent([
-    record.surveillanceCategory,
-    record.surveillance_category,
-    record.diseaseSurveillanceCategory,
-    record.disease_surveillance_category,
-    record.diseaseCategory,
-    record.disease_category,
-    monitoringData.surveillanceCategory,
-    monitoringData.surveillance_category,
-    monitoringData.diseaseSurveillanceCategory,
-    monitoringData.disease_surveillance_category,
-    monitoringData.diseaseCategory,
-    monitoringData.disease_category,
-    ]),
-  );
-}
+// Legacy HFMD surveillance tag/category reads go through utils/surveillance.js's
+// shared getSurveillanceTags (old records still display them); new records
+// flag diagnoses[].includeInSurveillance instead. Morbidity /
+// notifiable status reads go through utils/diagnosisReporting.js the same way.
 
 function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
   return firstPresent([
@@ -125,33 +75,6 @@ function getOtherSurveillanceCategory(record = {}, monitoringData = {}) {
     monitoringData.otherDiseaseCondition,
     monitoringData.other_disease_condition,
   ]);
-}
-
-function getHfmdSurveillance(record = {}, monitoringData = {}) {
-  const explicit = firstPresent([
-    record.hfmdSurveillance,
-    record.hfmd_surveillance,
-    monitoringData.hfmdSurveillance,
-    monitoringData.hfmd_surveillance,
-  ]);
-
-  if (explicit !== "") return toBoolean(explicit);
-  return getSurveillanceCategory(record, monitoringData) === "hfmd";
-}
-
-function normalizeSurveillanceCategory(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (
-    normalized === "hfmd" ||
-    normalized.includes("hand, foot") ||
-    normalized.includes("hand foot") ||
-    normalized.includes("mouth disease")
-  ) {
-    return "hfmd";
-  }
-  if (normalized === "other") return "other";
-  return normalized;
 }
 
 function normalizeSupplementsGiven(record = {}, maternalData = {}) {
@@ -193,6 +116,9 @@ function normalizeDispensedMedicines(record = {}) {
   if (!Array.isArray(medicines)) return [];
 
   return medicines.map((item = {}) => ({
+    ...allocationIntent(item),
+    inventoryAllocations: item.inventory_allocations || item.allocations || [],
+    shortage: item.unallocated_shortage || item.shortage || item.unallocated_quantity || 0,
     id: item.id ? String(item.id) : "",
     medicineId: item.medicine_id ? String(item.medicine_id) : item.medicineId || "",
     medicineName:
@@ -210,121 +136,8 @@ function normalizeDispensedMedicines(record = {}) {
     unit: item.unit || "",
     remarks: item.remarks || "",
     dateDispensed: item.created_at || item.createdAt || "",
+    dispensedByName: item.dispenser?.name || item.dispensedByName || "",
   }));
-}
-
-function normalizeHypertensionDiabeticValue(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) return "";
-  if (["hpn", "hypertension", "high blood pressure"].includes(normalized)) {
-    return "hpn";
-  }
-  if (["dm", "diabetes", "diabetic", "diabetes mellitus"].includes(normalized)) {
-    return "dm";
-  }
-  if (["both", "hpn/dm", "hpn dm", "hypertension diabetes"].includes(normalized)) {
-    return "both";
-  }
-  return normalized;
-}
-
-function normalizeClientStatusValue(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["new", "old"].includes(normalized) ? normalized : normalized;
-}
-
-function getHypertensionDiabeticData(record = {}, monitoringData = {}) {
-  const nested =
-    record.hypertensionDiabeticData ||
-    record.hypertension_diabetic_data ||
-    monitoringData.hypertensionDiabeticData ||
-    monitoringData.hypertension_diabetic_data ||
-    {};
-  const merged = {
-    ...monitoringData,
-    ...nested,
-    ...record,
-  };
-
-  const systolic =
-    record.systolicBp ||
-    record.systolic_bp ||
-    record.vitalSigns?.systolicBp ||
-    record.vitalSigns?.systolic_bp ||
-    record.vital_signs?.systolicBp ||
-    record.vital_signs?.systolic_bp;
-  const diastolic =
-    record.diastolicBp ||
-    record.diastolic_bp ||
-    record.vitalSigns?.diastolicBp ||
-    record.vitalSigns?.diastolic_bp ||
-    record.vital_signs?.diastolicBp ||
-    record.vital_signs?.diastolic_bp;
-  const bp = firstPresent([
-    merged.bp,
-    merged.bloodPressure,
-    merged.blood_pressure,
-    systolic || diastolic ? `${systolic || "N/A"}/${diastolic || "N/A"}` : "",
-  ]);
-
-  return {
-    bp,
-    fbs: firstPresent([
-      merged.fbs,
-      merged.fastingBloodSugar,
-      merged.fasting_blood_sugar,
-      merged.bloodSugar,
-      merged.blood_sugar,
-    ]),
-    conditionType: normalizeHypertensionDiabeticValue(
-      firstPresent([merged.conditionType, merged.condition_type]),
-    ),
-    condition_type: normalizeHypertensionDiabeticValue(
-      firstPresent([merged.conditionType, merged.condition_type]),
-    ),
-    clientStatus: normalizeClientStatusValue(
-      firstPresent([merged.clientStatus, merged.client_status]),
-    ),
-    client_status: normalizeClientStatusValue(
-      firstPresent([merged.clientStatus, merged.client_status]),
-    ),
-    dateOfLastConsultation: firstPresent([
-      merged.dateOfLastConsultation,
-      merged.date_of_last_consultation,
-      merged.lastConsultationDate,
-      merged.last_consultation_date,
-    ]),
-    date_of_last_consultation: firstPresent([
-      merged.dateOfLastConsultation,
-      merged.date_of_last_consultation,
-      merged.lastConsultationDate,
-      merged.last_consultation_date,
-    ]),
-    treatmentActionTaken: firstPresent([
-      merged.treatmentActionTaken,
-      merged.treatment_action_taken,
-      merged.actionTaken,
-      merged.action_taken,
-      merged.treatment,
-      merged.medication,
-      merged.treatmentNotes,
-      merged.treatment_notes,
-      merged.initialActionsTaken,
-      merged.initial_actions_taken,
-    ]),
-    treatment_action_taken: firstPresent([
-      merged.treatmentActionTaken,
-      merged.treatment_action_taken,
-      merged.actionTaken,
-      merged.action_taken,
-      merged.treatment,
-      merged.medication,
-      merged.treatmentNotes,
-      merged.treatment_notes,
-      merged.initialActionsTaken,
-      merged.initial_actions_taken,
-    ]),
-  };
 }
 
 function normalizeEpisodeRecord(record = {}) {
@@ -405,16 +218,10 @@ function normalizeRecord(record = {}) {
   };
   const immunizationData = record.immunization_data || record.immunizationData || {};
   const monitoringData = record.monitoring_data || record.monitoringData || {};
-  const hypertensionDiabeticData = getHypertensionDiabeticData(
-    record,
-    monitoringData,
-  );
-  const morbidityReportingStatus = deriveMorbidityReportingStatus(
-    record,
-    monitoringData,
-  );
+  const morbidityReportingStatus = getMorbidityReportingStatus(record);
+  const surveillanceTags = getSurveillanceTags(record, monitoringData);
   const surveillanceCategory =
-    getHfmdSurveillance(record, monitoringData) ? "hfmd" : "";
+    surveillanceTags.includes("hfmd") ? "hfmd" : "";
   const hfmdSurveillance = surveillanceCategory === "hfmd";
   const otherSurveillanceCategory =
     surveillanceCategory === "other"
@@ -474,6 +281,8 @@ function normalizeRecord(record = {}) {
       record.outcome_sub_label || record.outcomeSubLabel || "",
     chiefComplaint: record.chief_complaint || record.chiefComplaint || "",
     diagnosis: record.diagnosis || "",
+    diagnoses: normalizeDiagnoses(record.diagnoses),
+    assessmentNotes: record.assessment_notes || record.assessmentNotes || "",
     treatmentNotes: record.treatment_notes || record.treatmentNotes || "",
     medication: record.treatment_notes || record.treatmentNotes || record.medication || "",
     initialActionsTaken:
@@ -483,7 +292,13 @@ function normalizeRecord(record = {}) {
       record.treatmentNotes ||
       record.medication ||
       "",
+    // History of Present Illness has its own column now. Records written
+    // before it existed kept the text in medical_history, and older ones still
+    // in notes (it was copied there when no consultation notes were typed), so
+    // both remain as read-only fallbacks. Nothing writes to them any more.
     summaryOfPresentIllness: firstPresent([
+      record.history_of_present_illness,
+      record.historyOfPresentIllness,
       record.summaryOfPresentIllness,
       record.summary_of_present_illness,
       record.physicalExamination,
@@ -494,6 +309,17 @@ function normalizeRecord(record = {}) {
     ]),
     physicalExamination:
       record.physicalExamination || record.physical_examination || "",
+    // Physical exam findings live in their own column now. Records written
+    // before that column existed kept them in monitoring_data.physicalExam,
+    // so that is read as a fallback and never written to again.
+    physicalExam: firstPresent([
+      record.physical_exam,
+      record.physicalExam,
+      monitoringData.physicalExam,
+      monitoringData.physical_exam,
+    ]),
+    bodyFindings: normalizeRecordedBodyFindings(record.body_findings || record.bodyFindings, record.id || record._id),
+    bodyFindingReassessments: monitoringData.bodyFindingReassessments || [],
     consultationNotes: record.notes || record.consultationNotes || "",
     medicalHistory: record.medical_history || record.medicalHistory || "",
     attendingStaff:
@@ -558,14 +384,13 @@ function normalizeRecord(record = {}) {
     immunization_data: immunizationData,
     monitoringData,
     monitoring_data: monitoringData,
-    hypertensionDiabeticData,
-    hypertension_diabetic_data: hypertensionDiabeticData,
     morbidityReportingStatus,
     morbidity_reporting_status: morbidityReportingStatus,
     includeInMorbidityReport: morbidityReportingStatus !== "not_included",
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    surveillanceTags,
     surveillanceCategory,
     surveillance_category: surveillanceCategory,
     diseaseSurveillanceCategory: surveillanceCategory,
@@ -584,20 +409,17 @@ function normalizeRecord(record = {}) {
     diastolicBp: vitalSigns.diastolicBp || vitalSigns.diastolic_bp || record.diastolicBp || "",
     temperature: vitalSigns.temperature || record.temperature || record.temp || "",
     temp: vitalSigns.temperature || record.temperature || record.temp || "",
-    respiratoryRate:
-      vitalSigns.respiratoryRate ||
-      vitalSigns.respiratory_rate ||
-      record.respiratoryRate ||
-      record.respiratory_rate ||
-      "",
-    respiratory_rate:
-      vitalSigns.respiratoryRate ||
-      vitalSigns.respiratory_rate ||
-      record.respiratoryRate ||
-      record.respiratory_rate ||
-      "",
+    pulse: vitalSigns.pulse || record.pulse || "",
+    spo2: vitalSigns.spo2 || record.spo2 || "",
     weight: vitalSigns.weight || record.weight || "",
     height: vitalSigns.height || record.height || "",
+    // Optional Additional Measurement (mg/dL); "" when not recorded.
+    fbs: vitalSigns.fbs ?? record.fbs ?? "",
+    // Read-only provenance: distinguish saved legacy text from the fallback below.
+    recordedLegacyStatus: firstPresent([
+      monitoringData.followUpStatus, monitoringData.follow_up_status, monitoringData.status,
+      record.followUpStatus, record.follow_up_status, record.status,
+    ]),
     status:
       record.status ||
       monitoringData.followUpStatus ||
@@ -626,6 +448,8 @@ function normalizeRecord(record = {}) {
       record.followUpTime ||
       record.follow_up_time ||
       "",
+    followUpReason:
+      monitoringData.followUpReason || record.followUpReason || "",
     monitoringNotes:
       monitoringData.monitoringNotes ||
       monitoringData.monitoring_notes ||
@@ -649,6 +473,9 @@ function normalizeRecord(record = {}) {
     followUpEpisode: normalizeFollowUpEpisode(
       record.follow_up_episode || record.followUpEpisode || {},
     ),
+    informant: record.informant || null,
+    similarIllness: record.similar_illness || record.similarIllness || null,
+    historySnapshot: record.history_snapshot || record.historySnapshot || null,
   };
 }
 
@@ -669,7 +496,8 @@ function isMaternalCategory(value = "") {
 function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
-  const isMaternalRecord = isMaternalCategory(recordTypeKey);
+  const programs = getConsultationPrograms(record);
+  const isMaternalRecord = isMaternalCategory(recordTypeKey) || programs.includes("Maternal");
   const parentHealthRecordId =
     record.parentHealthRecordId ||
     record.parent_health_record_id ||
@@ -687,23 +515,11 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.visitType ||
     record.visit_type ||
     (record.isFollowUp || parentHealthRecordId ? "follow_up_visit" : "initial_consultation");
-  const morbidityReportingStatus =
-    normalizeMorbidityReportingStatus(
-      record.morbidityReportingStatus ||
-        record.morbidity_reporting_status ||
-        record.monitoringData?.morbidityReportingStatus ||
-        record.monitoring_data?.morbidity_reporting_status,
-    ) ||
-    deriveMorbidityReportingStatus(record, {
-      ...(record.monitoringData || record.monitoring_data || {}),
-    });
+  const morbidityReportingStatus = getMorbidityReportingStatus(record);
   const sourceMonitoringData = record.monitoringData || record.monitoring_data || {};
-  const hypertensionDiabeticData = getHypertensionDiabeticData(
-    record,
-    sourceMonitoringData,
-  );
+  const surveillanceTags = getSurveillanceTags(record, sourceMonitoringData);
   const surveillanceCategory =
-    getHfmdSurveillance(record, sourceMonitoringData) ? "hfmd" : null;
+    surveillanceTags.includes("hfmd") ? "hfmd" : null;
   const hfmdSurveillance = surveillanceCategory === "hfmd";
   const otherSurveillanceCategory =
     surveillanceCategory === "other"
@@ -745,10 +561,24 @@ function toPayload(record = {}, { partial = false } = {}) {
   }));
   const monitoringData = {
     ...sourceMonitoringData,
+    selectedPrograms: programs,
+    primaryProgram: getPrimaryProgram(record) || sourceMonitoringData.primaryProgram || "",
+    prenatalIntent: record.prenatalIntent || sourceMonitoringData.prenatalIntent || null,
     followUpStatus: record.followUpStatus || record.status || null,
     followUpDate: record.followUpDate || null,
     followUpTime: record.followUpTime || null,
     follow_up_time: record.followUpTime || null,
+    followUpReason: record.followUpReason || null,
+    noInterventionPerformed:
+      record.noInterventionPerformed === true ||
+      sourceMonitoringData.noInterventionPerformed === true ||
+      sourceMonitoringData.no_intervention_performed === true,
+    noInterventionReason:
+      record.noInterventionReason ||
+      sourceMonitoringData.noInterventionReason ||
+      sourceMonitoringData.no_intervention_reason ||
+      null,
+    followUpSchedules: record.followUpSchedules || sourceMonitoringData.followUpSchedules || null,
     monitoringNotes: record.monitoringNotes || null,
     patientCondition: record.patientCondition || null,
     attendingStaff: record.attendingStaff || record.nameOfPractitioner || null,
@@ -767,6 +597,8 @@ function toPayload(record = {}, { partial = false } = {}) {
     include_in_morbidity_report: morbidityReportingStatus !== "not_included",
     isNotifiableDisease: morbidityReportingStatus === "notifiable",
     is_notifiable_disease: morbidityReportingStatus === "notifiable",
+    // Legacy HFMD mirrors only; surveillanceTags is no longer sent (new
+    // records flag diagnoses[].includeInSurveillance instead).
     surveillanceCategory,
     surveillance_category: surveillanceCategory,
     diseaseSurveillanceCategory: surveillanceCategory,
@@ -775,8 +607,6 @@ function toPayload(record = {}, { partial = false } = {}) {
     hfmd_surveillance: hfmdSurveillance,
     otherSurveillanceCategory,
     other_surveillance_category: otherSurveillanceCategory,
-    hypertensionDiabeticData,
-    hypertension_diabetic_data: hypertensionDiabeticData,
   };
   const familyPlanningData = {
     ...(record.familyPlanningData || record.family_planning_data || {}),
@@ -957,6 +787,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     record.needsReferral === "yes" ||
     record.needs_referral === true;
 
+  // A postpartum-only visit reuses obstetric history, not current pregnancy
+  // observations left behind when the worker changed the purpose selection.
+  const purpose = sourceMonitoringData.visitPurpose;
+  if (purpose?.services?.includes("Postpartum") && !purpose.services.includes("Prenatal")) {
+    for (const key of ["lmp", "pmp", "cycleDuration", "expectedDeliveryDate", "aog", "fht", "riskAssessment", "ultrasound", "immunizationThisVisit", "tetanusToxoidStatus", "tetanusDiphtheriaStatus"]) delete maternalData[key];
+  }
   const payload = {
     patient_id: record.patientId || record.patient_id,
     date_recorded:
@@ -972,54 +808,91 @@ function toPayload(record = {}, { partial = false } = {}) {
       systolicBp: record.systolicBp || null,
       diastolicBp: record.diastolicBp || null,
       temperature: record.temperature || record.temp || null,
-      respiratoryRate: record.respiratoryRate || record.respiratory_rate || null,
+      pulse: record.pulse || null,
+      spo2: record.spo2 || null,
       weight: record.weight || null,
       height: record.height || null,
+      // Fasting Blood Sugar, mg/dL (optional; the input arrives in Task 13).
+      fbs: record.fbs ?? null,
     },
     visit_type: visitType,
     parent_health_record_id: parentHealthRecordId,
     category,
     maternal_data: isMaternalRecord ? maternalData : null,
     immunization_data:
-      recordTypeKey === "immunization"
+      (recordTypeKey === "immunization" || programs.includes("EPI"))
         ? record.immunizationData || record.immunization_data || {}
         : null,
-    monitoring_data: monitoringData,
+    monitoring_data: {
+      ...monitoringData,
+      ...(record.bodyFindingReassessments ? { bodyFindingReassessments: record.bodyFindingReassessments } : {}),
+    },
     family_planning_data:
-      recordTypeKey === "family planning" ? familyPlanningData : null,
-    tb_data:
-      recordTypeKey === "tb dots / tb monitoring"
-        ? record.tbData || record.tb_data || null
-        : null,
+      (recordTypeKey === "family planning" || programs.includes("Family Planning")) ? familyPlanningData : null,
+    // TB-DOTS data travels with any record that carries it: the BHC workspace
+    // sends it only when Monitoring Details includes the TB card, the RHU page
+    // only for its TB category (each sends null otherwise).
+    tb_data: record.tbData || record.tb_data || null,
     needs_referral: needsReferral,
+    // The BHC General Consultation v2 discriminator (create only); sent only
+    // when the caller sets it, so every other save is unchanged.
+    ...(record.consultationWorkflow ? { consultation_workflow: record.consultationWorkflow } : {}),
     chief_complaint: record.chiefComplaint || null,
+    physical_exam: record.physicalExam || null,
+    body_findings: serializeBodyFindings(record.bodyFindings),
+    history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
+    diagnoses: normalizeDiagnoses(record.diagnoses).length ? normalizeDiagnoses(record.diagnoses) : null,
+    // Care Plan & Next Steps: continued follow-ups / monitoring and stops.
+    care_plan: record.carePlan || null,
+    // Edited Patient Background sections, applied with the record (create only).
+    background_update: record.backgroundUpdate || null,
+    // Patient History per-visit answers, saved on the record (create only).
+    informant: record.informant || null,
+    similar_illness: record.similarIllness || null,
+    // RHU-confirmed condition statuses (create only; RHU staff).
+    condition_confirmations: record.conditionConfirmations || null,
+    // RHU review of legacy BHC monitorings (create only; RHU staff).
+    legacy_monitoring_discontinuations: record.legacyMonitoringDiscontinuations || null,
+    assessment_notes: record.assessmentNotes || null,
     treatment_notes:
       record.treatmentNotes ||
       record.medication ||
       record.initialActionsTaken ||
       record.initialActionTaken ||
       null,
-    medical_history:
-      record.medicalHistory ||
-      record.summaryOfPresentIllness ||
-      record.physicalExamination ||
-      null,
-    notes:
-      record.consultationNotes ||
-      record.summaryOfPresentIllness ||
-      record.monitoringNotes ||
-      null,
+    // Left in place for any caller that sets it explicitly; HPI no longer
+    // flows here. Dropped from the request entirely when unset (see below).
+    medical_history: record.medicalHistory || null,
+    notes: record.consultationNotes || record.monitoringNotes || null,
     dispensed_medicines: Array.isArray(record.dispensedMedicines)
       ? record.dispensedMedicines.map((item) => ({
           medicine_id: item.medicineId || item.medicine_id,
           quantity: item.quantity,
+          confirmed_given: item.confirmedGiven === true,
+          ...allocationIntent(item),
           unit: item.unit || null,
           remarks: item.remarks || null,
         }))
       : [],
+    prescribed_medicines: Array.isArray(record.prescribedMedicines)
+      ? record.prescribedMedicines.map((item) => ({
+          medicine_id: item.medicineId || item.medicine_id,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          instructions: item.instructions || item.remarks || null,
+          category: item.category || null,
+          name: item.name || item.medicineName || null,
+        }))
+      : undefined,
+    prescription_text:
+      record.consultationWorkflow === "rhu_itr_v1" || record.consultation_workflow === "rhu_itr_v1"
+        ? String(record.prescriptionText || record.prescription_text || "")
+        : undefined,
+    rhu_visit_id: record.rhuVisitId || record.rhu_visit_id || undefined,
     referral: record.referral
       ? {
+          rural_health_unit_id: record.referral.ruralHealthUnitId || record.referral.rural_health_unit_id || null,
           referral_category:
             record.referral.referralCategory ||
             record.referral.referral_category ||
@@ -1049,16 +922,6 @@ function toPayload(record = {}, { partial = false } = {}) {
             record.referral.referringPractitioner ||
             record.referral.referring_practitioner ||
             null,
-          preferred_doctor:
-            record.referral.preferredDoctor ||
-            record.referral.preferred_doctor ||
-            null,
-          preferred_provider_id:
-            record.referral.preferredProviderId ||
-            record.referral.preferred_provider_id ||
-            null,
-          acknowledged_unavailable_preference:
-            record.referral.acknowledgedUnavailablePreference === true,
           referral_datetime:
             record.referral.referralDateTime ||
             record.referral.referral_datetime ||
@@ -1069,6 +932,9 @@ function toPayload(record = {}, { partial = false } = {}) {
         }
       : undefined,
   };
+
+  // v2 carries no plain-text visit diagnosis (the server rejects one).
+  if (payload.consultation_workflow) delete payload.diagnosis;
 
   if (!partial) return payload;
 
@@ -1082,8 +948,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       "diastolicBp",
       "temperature",
       "temp",
-      "respiratoryRate",
-      "respiratory_rate",
       "weight",
       "height",
       "vitalSigns",
@@ -1140,10 +1004,12 @@ function toPayload(record = {}, { partial = false } = {}) {
     !hasAny(record, [
       "monitoringData",
       "monitoring_data",
+      "bodyFindingReassessments",
       "followUpStatus",
       "status",
       "followUpDate",
       "followUpTime",
+      "followUpReason",
       "monitoringNotes",
       "patientCondition",
       "attendingStaff",
@@ -1175,8 +1041,6 @@ function toPayload(record = {}, { partial = false } = {}) {
       "hfmd_surveillance",
       "otherSurveillanceCategory",
       "other_surveillance_category",
-      "hypertensionDiabeticData",
-      "hypertension_diabetic_data",
     ])
   ) {
     delete payload.monitoring_data;
@@ -1187,9 +1051,23 @@ function toPayload(record = {}, { partial = false } = {}) {
   if (!hasAny(record, ["dispensedMedicines", "dispensed_medicines"])) {
     delete payload.dispensed_medicines;
   }
+  if (record.consultationWorkflow === "rhu_itr_v1" || record.consultation_workflow === "rhu_itr_v1") {
+    delete payload.dispensed_medicines;
+    delete payload.prescribed_medicines;
+  } else {
+    delete payload.prescription_text;
+  }
   if (!record.referral) delete payload.referral;
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
   if (!hasAny(record, ["diagnosis"])) delete payload.diagnosis;
+  if (!hasAny(record, ["diagnoses"])) delete payload.diagnoses;
+  if (!hasAny(record, ["carePlan"])) delete payload.care_plan;
+  if (!record.backgroundUpdate) delete payload.background_update;
+  if (!record.informant) delete payload.informant;
+  if (!record.similarIllness) delete payload.similar_illness;
+  if (!record.conditionConfirmations?.length) delete payload.condition_confirmations;
+  if (!record.legacyMonitoringDiscontinuations?.length) delete payload.legacy_monitoring_discontinuations;
+  if (!hasAny(record, ["assessmentNotes"])) delete payload.assessment_notes;
   if (
     !hasAny(record, [
       "treatmentNotes",
@@ -1200,22 +1078,19 @@ function toPayload(record = {}, { partial = false } = {}) {
   ) {
     delete payload.treatment_notes;
   }
-  if (
-    !hasAny(record, [
-      "medicalHistory",
-      "summaryOfPresentIllness",
-      "physicalExamination",
-    ])
-  ) {
+  if (!hasAny(record, ["medicalHistory"])) {
     delete payload.medical_history;
   }
-  if (
-    !hasAny(record, [
-      "consultationNotes",
-      "summaryOfPresentIllness",
-      "monitoringNotes",
-    ])
-  ) {
+  if (!hasAny(record, ["summaryOfPresentIllness"])) {
+    delete payload.history_of_present_illness;
+  }
+  if (!hasAny(record, ["physicalExam"])) {
+    delete payload.physical_exam;
+  }
+  if (!hasAny(record, ["bodyFindings"])) {
+    delete payload.body_findings;
+  }
+  if (!hasAny(record, ["consultationNotes", "monitoringNotes"])) {
     delete payload.notes;
   }
 
@@ -1257,6 +1132,11 @@ export async function getHealthRecords(role = "bhc", params = {}) {
   return listRecords(params);
 }
 
+export async function getAllHealthRecords(role = "bhc", params = {}) {
+  void role;
+  return fetchAllReportPages("/health-records", { params, mapItem: normalizeRecord });
+}
+
 export async function getFamilyPlanningHealthRecords(role = "bhc") {
   void role;
   return listRecords({ category: "Family Planning", per_page: 500 });
@@ -1269,20 +1149,36 @@ export async function getHealthRecordById(recordId) {
 
 export async function getHealthRecordsByPatient(patient) {
   const patientId = patient?.id || patient?.patientId || patient;
-  return listRecords({ patient_id: patientId });
+  const records = [];
+  for (let page = 1; ; page += 1) {
+    const query = new URLSearchParams({ patient_id: String(patientId), per_page: "100", page: String(page) });
+    const response = await apiRequest(`/health-records?${query}`);
+    records.push(...unwrapList(response).map(normalizeRecord));
+    const lastPage = Number(response?.data?.last_page) || 1;
+    if (page >= lastPage) break;
+  }
+
+  return records;
 }
 
 export async function createHealthRecord(recordData, role = "bhc", options = {}) {
   void role;
   const idempotencyKey = options.idempotencyKey || createIdempotencyKey();
   const draftId = String(options.draftId || "").trim();
+  // The consultation this record concludes - the same value its drafts carry.
+  // Kept apart from idempotencyKey on purpose: that one names this submission
+  // attempt, this one names the consultation. Create-only; updates reject it.
+  const consultationUuid = String(options.consultationUuid || "").trim();
   const response = await apiRequest("/health-records", {
     method: "POST",
     headers: {
       "Idempotency-Key": idempotencyKey,
-      ...(draftId ? { "X-Health-Record-Draft-ID": draftId } : {}),
+      ...(draftId ? { "X-Health-Record-Draft-ID": draftId, "X-Draft-Version": String(options.draftVersion || "") } : {}),
     },
-    body: toPayload(recordData, { partial: true }),
+    body: {
+      ...toPayload(recordData, { partial: true }),
+      ...(consultationUuid ? { consultation_uuid: consultationUuid } : {}),
+    },
   });
   return {
     ...normalizeRecord(unwrapData(response)),
@@ -1325,6 +1221,7 @@ export async function dispenseHealthRecordMedicines(recordId, dispensedMedicines
     method: "POST",
     body: {
       dispensed_medicines: dispensedMedicines.map((item) => ({
+        ...allocationIntent(item),
         medicine_id: item.medicineId || item.medicine_id,
         quantity: item.quantity,
         unit: item.unit || null,
@@ -1339,6 +1236,11 @@ export async function dispenseHealthRecordMedicines(recordId, dispensedMedicines
 export async function deleteHealthRecord(recordId) {
   await apiRequest(`/health-records/${recordId}`, { method: "DELETE" });
   return true;
+}
+
+export async function getRhuToDispense() {
+  const response = await apiRequest("/rhu/to-dispense");
+  return unwrapList(response);
 }
 
 export default {
@@ -1357,5 +1259,6 @@ export default {
   updateHealthRecordById,
   updateHealthRecord,
   dispenseHealthRecordMedicines,
+  getRhuToDispense,
   deleteHealthRecord,
 };

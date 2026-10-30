@@ -48,7 +48,8 @@ class ReferralAttentionTransitionTest extends TestCase
             'name' => 'Attention BHW',
             'email' => 'attention-bhw@example.test',
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
         ]);
@@ -201,6 +202,7 @@ class ReferralAttentionTransitionTest extends TestCase
             'patient_id' => $this->patient->id,
             'category' => 'General Consultation',
             'chief_complaint' => 'Attention scheme check.',
+            'diagnosis' => 'Assessed at BHC',
         ];
 
         if ($referral !== null) {

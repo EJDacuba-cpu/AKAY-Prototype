@@ -1,8 +1,10 @@
 import { Link } from "react-router";
-import { ArrowRight, CalendarClock, FileText } from "lucide-react";
+import { CalendarClock, FileText } from "lucide-react";
 
 import { formatLongDate } from "../../../utils/formatters";
+import { visitAssessmentDisplay } from "../../../utils/consultationWorkflow";
 import { formatDisplayTime } from "./recordDetailsHelpers";
+import { buildRecordFollowUpVisitPath } from "../followups/followUpStatusStyles.jsx";
 
 const ACTIVE_STATES = new Set(["pending", "rescheduled", "no_show"]);
 
@@ -23,7 +25,14 @@ function recordLabel(record) {
     : "Initial Consultation";
 }
 
-export default function FollowUpEpisodePanel({ episode }) {
+/** " · <diagnosis>" as stored; a v2 record without one shows " · Chief Complaint: <text>". */
+function assessmentSuffix(record) {
+  if (record.diagnosis) return ` · ${record.diagnosis}`;
+  const assessment = visitAssessmentDisplay(record);
+  return assessment ? ` · ${assessment.label}: ${assessment.value}` : "";
+}
+
+export default function FollowUpEpisodePanel({ episode, hideActions = false }) {
   const records = Array.isArray(episode?.records) ? episode.records : [];
   const tasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
 
@@ -46,7 +55,7 @@ export default function FollowUpEpisodePanel({ episode }) {
       </header>
 
       <div className="p-5">
-        <FollowUpEpisodeContent episode={episode} />
+        <FollowUpEpisodeContent episode={episode} hideActions={hideActions} />
       </div>
     </section>
   );
@@ -59,6 +68,7 @@ export function FollowUpEpisodeContent({
   showRecordNavigation = true,
   showVisitChain = true,
   showSchedules = true,
+  hideActions = false,
 }) {
   const records = Array.isArray(episode?.records) ? episode.records : [];
   const episodeTasks = Array.isArray(episode?.tasks) ? episode.tasks : [];
@@ -82,7 +92,7 @@ export function FollowUpEpisodeContent({
     String(parentRecordId) === String(originalRecordId);
 
   const hasVisibleHistory =
-    (showRecordNavigation && isFollowUpVisit) ||
+    (showRecordNavigation && !hideActions && isFollowUpVisit) ||
     (showVisitChain && records.length > 0) ||
     (showSchedules && tasks.length > 0);
 
@@ -98,7 +108,7 @@ export function FollowUpEpisodeContent({
 
   return (
     <div className="space-y-6">
-      {showRecordNavigation && isFollowUpVisit && (
+      {showRecordNavigation && !hideActions && isFollowUpVisit && (
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -156,17 +166,19 @@ export function FollowUpEpisodeContent({
                     </p>
                     <p className="mt-1 truncate text-xs text-slate-500">
                       {formatLongDate(record.dateRecorded, "Date not recorded")}
-                      {record.diagnosis ? ` · ${record.diagnosis}` : ""}
+                      {assessmentSuffix(record)}
                     </p>
                   </div>
                 </div>
-                <Link
-                  to={`/bhc/health-records/${record.id}`}
-                  className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#B91C1C] hover:underline"
-                >
-                  <FileText size={13} />
-                  View record
-                </Link>
+                {!hideActions && (
+                  <Link
+                    to={`/bhc/health-records/${record.id}`}
+                    className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#B91C1C] hover:underline"
+                  >
+                    <FileText size={13} />
+                    View record
+                  </Link>
+                )}
               </li>
             ))}
           </ol>
@@ -222,27 +234,12 @@ export function FollowUpEpisodeContent({
                       />
                     </dl>
 
-                    {recordScoped ? (
-                      <Link
-                        to={`/bhc/follow-ups/${task.id}`}
-                        title="View follow-up details"
-                        aria-label={`View details for follow-up #${task.id}`}
-                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-[#B91C1C]/30 hover:bg-red-50 hover:text-[#B91C1C]"
-                      >
-                        <ArrowRight size={17} />
-                      </Link>
-                    ) : (
+                    {!hideActions && !recordScoped && (
                       <div className="flex flex-wrap gap-2">
-                        <Link
-                          to={`/bhc/follow-ups/${task.id}`}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                        >
-                          View Details
-                        </Link>
                         {active && (
                           <>
                             <Link
-                              to={`/bhc/health-records/add?mode=followup&followUpId=${task.id}&patientId=${task.patientId}&recordId=${task.healthRecordId}`}
+                              to={buildRecordFollowUpVisitPath(task)}
                               className="rounded-lg bg-[#B91C1C] px-3 py-2 text-xs font-semibold text-white hover:bg-[#991B1B]"
                             >
                               Record Visit

@@ -3,6 +3,7 @@ export { default as AccordionSection } from "./accordion/AccordionSection";
 export { default as ActionMenu } from "./tables/ActionMenu";
 export { default as DataTableEmptyState } from "./tables/DataTableEmptyState";
 export { default as ModuleTableCard } from "./tables/ModuleTableCard";
+export { default as FixedTable } from "./tables/FixedTable";
 export { default as RecordTabs } from "./tabs/RecordTabs";
 export { default as ConfirmationModal } from "./modals/ConfirmationModal";
 export {
@@ -25,6 +26,8 @@ export { default as FilterDrawer } from "./list/FilterDrawer";
 export { default as FilterPopover } from "./list/FilterPopover";
 export { default as CommonFilterPopover } from "./filters/FilterPopover";
 export { default as ActiveFilterChips } from "./filters/ActiveFilterChips";
+export { default as SearchField } from "./filters/SearchField";
+export { default as SegmentedFilter } from "./filters/SegmentedFilter";
 export { default as ListToolbar } from "./list/ListToolbar";
 export { default as ModuleToolbar } from "./list/ModuleToolbar";
 export { default as MedicineAlert } from "./cards/MedicineAlert";
@@ -40,6 +43,7 @@ export { default as ConnectionErrorState } from "./ConnectionErrorState";
 export { default as PageLoadingFallback } from "./PageLoadingFallback";
 export { default as PageStateWrapper } from "./PageStateWrapper";
 export { default as TablePagination } from "./pagination/TablePagination";
+export { default as LoadMoreButton } from "./pagination/LoadMoreButton";
 export { default as AkayLogoLoader } from "./loading/AkayLogoLoader";
 export { default as AkayLoader } from "./loading/AkayLoader";
 export { default as AkayLoadingCard } from "./loading/AkayLoadingCard";
@@ -50,6 +54,7 @@ export { default as RefreshingIndicator } from "./loading/RefreshingIndicator";
 export {
   DashboardSkeleton,
   DetailsSkeleton,
+  FacilitiesSkeleton,
   FormSkeleton,
   FollowUpsSkeleton,
   HealthRecordFormSkeleton,
@@ -61,7 +66,6 @@ export {
   ReportsSkeleton,
   TableSkeleton,
   TopLoadingBar,
-  inferLoadingSkeletonVariant,
 } from "./loading/SkeletonLoaders";
 export { default as SoftLoadingOverlay } from "./loading/SoftLoadingOverlay";
 export { DottedSpinner, SoftLoadingArea } from "./loading/SoftLoadingOverlay";

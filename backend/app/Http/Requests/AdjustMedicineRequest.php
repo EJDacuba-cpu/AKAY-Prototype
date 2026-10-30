@@ -9,10 +9,15 @@ use Illuminate\Validation\Rule;
 
 class AdjustMedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (filled($this->header('Idempotency-Key'))) $this->merge(['idempotency_key' => $this->header('Idempotency-Key')]);
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
-        if (! $user || ! ($user->isBhw() || $user->isRhuStaff())) {
+        if (! $user || ! ($user->isBhc() || $user->isRhu())) {
             return false;
         }
 
@@ -27,6 +32,10 @@ class AdjustMedicineRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'idempotency_key' => ['nullable', 'uuid'],
+            'expiry_group_id' => ['nullable', 'integer', 'min:1'],
+            'pool' => ['nullable', 'in:available,quarantined'],
+            'target' => ['nullable', 'in:unassigned'],
             'action' => [
                 'required',
                 Rule::in([
@@ -35,6 +44,7 @@ class AdjustMedicineRequest extends FormRequest
                     'damaged_disposal',
                     'expired_disposal',
                     'correction',
+                    'physical_count',
                 ]),
             ],
             'direction' => [
@@ -43,7 +53,7 @@ class AdjustMedicineRequest extends FormRequest
                 'nullable',
                 Rule::in(['in', 'out']),
             ],
-            'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'quantity' => ['required', 'integer', $this->input('action') === 'physical_count' ? 'min:0' : 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
         ];
     }

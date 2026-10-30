@@ -5,6 +5,9 @@ import {
 } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
 import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
+import { isInfantAt, shouldShowBmiDisplay } from "../../../utils/infantVisibility";
+import { formatFbs } from "../../../utils/recordCarePlan";
+import { labTestLabel, readLaboratoryEntries } from "../../../utils/prenatalForm";
 
 /* ─────────────────────────────────────────────
    Shared health-record detail helpers
@@ -14,6 +17,8 @@ import { calculateBmi, formatBmi, getBmiCategory } from "../../../utils/bmi";
 ──────────────────────────────────────────── */
 
 export function isImmunizationClassification(record = {}, patient = {}) {
+  const selected = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(selected)) return selected.includes("EPI");
   return [
     record.classification,
     record.category,
@@ -234,9 +239,6 @@ export function getHealthRecordDetailsTitle(serviceType = "") {
   if (normalized === "Maternal / Prenatal") return "Maternal / Prenatal Record";
   if (normalized === "Child Health / EPI") return "Child Health / EPI Record";
   if (normalized === "Family Planning") return "Family Planning Record";
-  if (normalized === "Hypertension / Diabetic Monitoring") {
-    return "Hypertension / Diabetic Monitoring Record";
-  }
   if (normalized === "TB DOTS / TB Monitoring") return "TB Follow-up Record";
   if (normalized === "General Consultation") return "General Consultation Record";
   return normalized ? `${normalized} Record` : "Health Record Details";
@@ -311,57 +313,7 @@ export function getNestedRecordValue(record = {}, directKeys = [], nestedKeys = 
   return "";
 }
 
-export function normalizeMorbidityReportingStatus(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["not_included", "morbidity", "notifiable"].includes(normalized)
-    ? normalized
-    : "";
-}
-
-export function getMorbidityReportingStatus(record = {}) {
-  const explicitStatus = normalizeMorbidityReportingStatus(
-    getNestedRecordValue(
-      record,
-      ["morbidityReportingStatus", "morbidity_reporting_status"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  );
-  if (explicitStatus) return explicitStatus;
-
-  const included = String(
-    getNestedRecordValue(
-      record,
-      ["includeInMorbidityReport", "include_in_morbidity_report"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  ).toLowerCase();
-  const notifiable = String(
-    getNestedRecordValue(
-      record,
-      ["isNotifiableDisease", "is_notifiable_disease"],
-      ["monitoringData", "monitoring_data"],
-    ),
-  ).toLowerCase();
-
-  if (included === "true" || included === "yes") {
-    return notifiable === "true" || notifiable === "yes"
-      ? "notifiable"
-      : "morbidity";
-  }
-
-  return "not_included";
-}
-
-export function formatMorbidityReportingStatus(status = "") {
-  switch (normalizeMorbidityReportingStatus(status)) {
-    case "morbidity":
-      return "Include in Morbidity Log";
-    case "notifiable":
-      return "Mark as Notifiable Disease";
-    default:
-      return "Not included";
-  }
-}
+// Morbidity / notifiable reads live in utils/diagnosisReporting.js.
 
 export function getSurveillanceCategoryValue(record = {}) {
   const raw = getNestedRecordValue(
@@ -459,6 +411,18 @@ export function getRecordDiagnosis(record = {}, fallback = "Not recorded") {
   return getRecordValue(record, ["diagnosis", "initialDiagnosis", "initial_diagnosis"], fallback);
 }
 
+/**
+ * Physical examination findings. Reads the dedicated column, then the
+ * monitoring_data key records written before that column existed used.
+ */
+export function getRecordPhysicalExam(record = {}, fallback = "Not recorded") {
+  const direct = getRecordValue(record, ["physicalExam", "physical_exam"], "");
+  if (direct) return direct;
+
+  const monitoring = record.monitoringData || record.monitoring_data || {};
+  return monitoring.physicalExam || monitoring.physical_exam || fallback;
+}
+
 export function getRecordChiefComplaint(record = {}, fallback = "Not recorded") {
   return getRecordValue(record, ["chiefComplaint", "chief_complaint", "concern"], fallback);
 }
@@ -467,6 +431,9 @@ export function getRecordSummary(record = {}, fallback = "Not recorded") {
   return getRecordValue(
     record,
     [
+      // Canonical column first; medical_history and notes are legacy storage.
+      "history_of_present_illness",
+      "historyOfPresentIllness",
       "summaryOfPresentIllness",
       "summary_of_present_illness",
       "physicalExamination",
@@ -498,11 +465,20 @@ export function getCompletedRecordMedicalNotes(
 }
 
 export function getRecordTreatmentNotes(record = {}, fallback = "") {
-  return getRecordValue(
+  const notes = getRecordValue(
     record,
     ["treatmentNotes", "treatment_notes", "treatment"],
-    fallback,
+    "",
   );
+  if (notes) return notes;
+  const monitoring = record.monitoring_data || record.monitoringData || {};
+  if (monitoring.noInterventionPerformed === true || monitoring.no_intervention_performed === true) {
+    const reason = String(
+      monitoring.noInterventionReason || monitoring.no_intervention_reason || "",
+    ).trim();
+    return reason ? `No Intervention Performed: ${reason}` : "No Intervention Performed";
+  }
+  return fallback;
 }
 
 export function isDistinctRecordedValue(value, ...existingValues) {
@@ -538,9 +514,8 @@ export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
     record.creator ||
       record.createdByUser ||
       record.created_by_user ||
-      record.user ||
-      record.practitioner ||
-      record.staff,
+      (typeof record.createdBy === "object" ? record.createdBy : null) ||
+      record.user,
     "",
   );
 
@@ -549,17 +524,18 @@ export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
   const value = getNestedRecordValue(
     record,
     [
+      "recordedBy",
+      "recorded_by",
       "attendingStaff",
       "attending_staff",
       "nameOfPractitioner",
       "name_of_practitioner",
-      "recordedBy",
-      "recorded_by",
     ],
     ["monitoringData", "monitoring_data"],
   );
 
-  if (!value || isLikelyRawId(value)) return fallback;
+  if (!value) return formatUserName(record.practitioner || record.staff, fallback);
+  if (isLikelyRawId(value)) return fallback;
   return value;
 }
 
@@ -593,7 +569,7 @@ export function getVitalSigns(record = {}, fallback = "") {
   return values.join(" | ") || fallback;
 }
 
-export function getVitalSignItems(record = {}) {
+export function getVitalSignItems(record = {}, patient = record.patient) {
   const vitalSigns = record?.vitalSigns || record?.vital_signs || {};
   const vitalObject =
     vitalSigns && typeof vitalSigns === "object" ? vitalSigns : {};
@@ -640,16 +616,23 @@ export function getVitalSignItems(record = {}) {
 
   const cleanWeight = cleanVitalSignValue(weightValue);
   const cleanHeight = cleanVitalSignValue(heightValue);
+  // Optional Additional Measurement; listed only when it was recorded.
+  const fbsValue = formatFbs(record?.fbs ?? vitalObject.fbs);
+  const visitDate = getRecordDateValue(record);
+  const infantVisit = isInfantAt(patient, visitDate);
+  const bp = cleanVitalSignValue(bpValue);
+  const bmi = getBmiDisplayValue(record, cleanWeight, cleanHeight);
 
   return [
-    { label: "BP", value: cleanVitalSignValue(bpValue) },
+    ...((!infantVisit || bp) ? [{ label: "BP", value: bp }] : []),
     {
       label: "Temperature",
       value: cleanVitalSignValue(temperatureValue),
     },
     { label: "Weight", value: cleanWeight },
     { label: "Height", value: cleanHeight },
-    { label: "BMI", value: getBmiDisplayValue(record, cleanWeight, cleanHeight) },
+    ...(shouldShowBmiDisplay(patient, visitDate) ? [{ label: "BMI", value: bmi }] : []),
+    ...(fbsValue ? [{ label: "FBS", value: fbsValue }] : []),
   ];
 }
 
@@ -745,18 +728,11 @@ export function getPreviousFpMethodValue(maternal = {}) {
 }
 
 export function getLaboratoryResultItems(maternal = {}) {
-  const labs = maternal.laboratoryResults || maternal.laboratory_results || {};
-  return [
-    ["Hemoglobin", ["hemoglobin"]],
-    ["CBC", ["cbc"]],
-    ["Blood Type", ["bloodType", "blood_type"]],
-    ["HBsAg", ["hbsag", "HBsAg", "hbsAg"]],
-    ["HIV", ["hiv"]],
-    ["Syphilis", ["syphilis"]],
-    ["Urinalysis", ["urinalysis"]],
-  ].map(([label, keys]) => ({
-    label,
-    value: getRecordValue(labs, keys, ""),
+  return readLaboratoryEntries(maternal).map((entry, index) => ({
+    key: `${entry.test}-${index}`,
+    label: labTestLabel(entry.test),
+    value: entry.result,
+    date: entry.datePerformed,
   }));
 }
 

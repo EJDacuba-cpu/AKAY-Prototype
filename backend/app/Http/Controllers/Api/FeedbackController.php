@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FeedbackRequest;
 use App\Models\Feedback;
 use App\Services\FacilityAccessService;
+use App\Services\PatientConditions;
 use App\Services\ReferralWorkflowService;
 use Illuminate\Http\Request;
 
@@ -25,7 +26,7 @@ class FeedbackController extends Controller
             function ($referrals) use ($user): void {
                 $this->facilityAccess->scopeReferrals($referrals, $user);
 
-                if ($user->isBhw()) {
+                if ($user->isBhc()) {
                     $referrals->whereHas('patient', fn ($patients) => $patients
                         ->where('barangay_health_center_id', $user->barangay_health_center_id));
                 }
@@ -38,6 +39,16 @@ class FeedbackController extends Controller
     public function store(FeedbackRequest $request, ReferralWorkflowService $workflow)
     {
         $data = $request->validated();
+        abort_if(
+            ! empty($data['condition_confirmations']) && ! PatientConditions::canConfirm($request->user()),
+            403,
+            'Only RHU staff can confirm a condition.'
+        );
+        abort_if(
+            ! empty($data['legacy_monitoring_discontinuations']) && ! PatientConditions::canConfirm($request->user()),
+            403,
+            'Only RHU staff can review legacy monitoring.'
+        );
         $feedback = $workflow->completeWithFeedback(
             $request,
             (int) $data['referral_id'],

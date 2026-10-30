@@ -1,4 +1,14 @@
-export function createIdempotencyKey() {
+/**
+ * An RFC 4122 v4 UUID. `crypto.randomUUID()` where available, otherwise the
+ * same format from `crypto.getRandomValues()`.
+ *
+ * Shared by two identities that must never be confused:
+ *  - createIdempotencyKey(): one FINAL-SAVE attempt, bound to one payload.
+ *  - a consultation_uuid: one CONSULTATION, stable across every draft and the
+ *    record it becomes.
+ * They share a generator, not a meaning.
+ */
+export function createUuid() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
   }
@@ -23,6 +33,10 @@ export function createIdempotencyKey() {
     hex.slice(8, 10).join(""),
     hex.slice(10).join(""),
   ].join("-");
+}
+
+export function createIdempotencyKey() {
+  return createUuid();
 }
 
 export function createClientSubmissionId() {

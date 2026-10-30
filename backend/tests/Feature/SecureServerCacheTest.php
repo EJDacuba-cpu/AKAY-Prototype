@@ -9,6 +9,7 @@ use App\Models\Referral;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\AkayCacheService;
+use App\Services\StaffRoles;
 use App\Services\ReferralWorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -57,10 +58,10 @@ class SecureServerCacheTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhuB->id,
         ]);
-        $this->bhwA = $this->user('Cache BHW A', 'cache-bhw-a@example.test', User::ROLE_BHW, $this->bhcA->id);
-        $this->bhwB = $this->user('Cache BHW B', 'cache-bhw-b@example.test', User::ROLE_BHW, $this->bhcB->id);
-        $this->rhuStaffA = $this->user('Cache RHU A', 'cache-rhu-a@example.test', User::ROLE_RHU_STAFF, null, $this->rhuA->id);
-        $this->rhuStaffB = $this->user('Cache RHU B', 'cache-rhu-b@example.test', User::ROLE_RHU_STAFF, null, $this->rhuB->id);
+        $this->bhwA = $this->user('Cache BHW A', 'cache-bhw-a@example.test', User::ROLE_BHC, $this->bhcA->id);
+        $this->bhwB = $this->user('Cache BHW B', 'cache-bhw-b@example.test', User::ROLE_BHC, $this->bhcB->id);
+        $this->rhuStaffA = $this->user('Cache RHU A', 'cache-rhu-a@example.test', User::ROLE_RHU, null, $this->rhuA->id);
+        $this->rhuStaffB = $this->user('Cache RHU B', 'cache-rhu-b@example.test', User::ROLE_RHU, null, $this->rhuB->id);
     }
 
     public function test_medicine_cache_records_miss_then_hit_with_identical_allowlisted_response(): void
@@ -112,10 +113,14 @@ class SecureServerCacheTest extends TestCase
         $this->assertSame($medicine->id, $second->json('data.data.0.id'));
         $this->assertSame([
             'id',
+            'item_type',
+            'expiry_groups',
+            'stock_summary',
             'name',
             'category',
             'description',
             'quantity',
+            'reconciliation_required',
             'low_stock_threshold',
             'unit',
             'availability_status',
@@ -134,6 +139,7 @@ class SecureServerCacheTest extends TestCase
     public function test_role_facility_filter_and_pagination_cache_keys_do_not_collide(): void
     {
         $medicineA = $this->medicine('Alpha Cache Medicine', 8, $this->bhcA->id, null);
+        $secondMedicineA = $this->medicine('Gamma Cache Medicine', 6, $this->bhcA->id, null);
         $medicineB = $this->medicine('Beta Cache Medicine', 9, $this->bhcB->id, null);
         $rhuMedicine = $this->medicine('RHU Cache Medicine', 10, null, $this->rhuA->id);
 
@@ -163,11 +169,71 @@ class SecureServerCacheTest extends TestCase
             ->assertHeader('X-AKAY-Cache', 'MISS');
 
         $this->assertNotSame($aPageOne->json('data.data.0.id'), $aPageTwo->json('data.data.0.id'));
+        $this->assertSame(2, $aPageOne->json('data.total'));
+        $this->assertSame($secondMedicineA->id, $aPageTwo->json('data.data.0.id'));
         $this->assertSame($medicineB->id, $bhwB->json('data.data.0.id'));
         $this->assertSame($rhuMedicine->id, $rhuA->json('data.data.0.id'));
         $this->assertSame([], $rhuB->json('data.data'));
         $this->assertNotContains($medicineB->id, collect($aPageOne->json('data.data'))->pluck('id')->all());
         $this->assertNotContains($medicineA->id, collect($rhuA->json('data.data'))->pluck('id')->all());
+    }
+
+    public function test_bhc_filters_cannot_expand_facility_scope_even_on_cache_hits(): void
+    {
+        $own = $this->medicine('Own Inventory', 8, $this->bhcA->id, null);
+        $this->medicine('Other Inventory', 9, $this->bhcB->id, null);
+        $this->medicine('RHU Inventory', 10, null, $this->rhuA->id);
+        $this->medicine('Mixed Ownership Inventory', 10, $this->bhcA->id, $this->rhuA->id);
+        $archived = $this->medicine('Archived Inventory', 10, $this->bhcA->id, null);
+        $archived->update(['is_active' => false]);
+
+        $cases = [
+            '' => [$own->id],
+            '?barangay_health_center_id='.$this->bhcA->id => [$own->id],
+            '?barangay_health_center_id='.$this->bhcB->id => [],
+            '?rural_health_unit_id='.$this->rhuA->id => [],
+            '?barangay_health_center_id='.$this->bhcA->id.'&rural_health_unit_id='.$this->rhuA->id => [],
+            '?search=Inventory&category=Basic%20Medicines&availability_status=Available' => [$own->id],
+        ];
+
+        foreach ($cases as $query => $expectedIds) {
+            foreach (['MISS', 'HIT'] as $cacheStatus) {
+                $response = $this->actingAs($this->bhwA, 'sanctum')
+                    ->getJson('/api/medicines'.$query)
+                    ->assertOk()
+                    ->assertHeader('X-AKAY-Cache', $cacheStatus)
+                    ->assertJsonPath('data.total', count($expectedIds));
+                $this->assertSame($expectedIds, array_column($response->json('data.data'), 'id'));
+            }
+        }
+    }
+
+    public function test_rhu_stock_changes_refresh_rhu_inventory_without_invalidating_bhc_inventory(): void
+    {
+        $own = $this->medicine('BHC Inventory', 8, $this->bhcA->id, null);
+        $rhuMedicine = $this->medicine('RHU Inventory', 10, null, $this->rhuA->id);
+        $this->primeMedicineCache($this->bhwA);
+        $this->primeMedicineCache($this->rhuStaffA);
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->postJson('/api/medicines/'.$rhuMedicine->id.'/restock', [
+                'expiration_date' => now()->addYear()->toDateString(),
+                'quantity' => 2,
+                'reason' => 'Received RHU delivery',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertHeader('X-AKAY-Cache', 'HIT')
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.data.0.id', $own->id);
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->getJson('/api/medicines')
+            ->assertOk()
+            ->assertHeader('X-AKAY-Cache', 'MISS')
+            ->assertJsonPath('data.data.0.quantity', 12);
     }
 
     public function test_cache_keys_hash_sensitive_filters_and_cached_values_are_explicit_arrays(): void
@@ -196,7 +262,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->assertSame($safeValue, $result);
         $this->assertSame($safeValue, Cache::get($key));
-        $this->assertStringContainsString(':bhw:bhc:'.$this->bhcA->id.':', $key);
+        $this->assertStringContainsString(':bhc:bhc:'.$this->bhcA->id.':', $key);
         foreach (['Patient Name', 'patient@example.test', 'diagnosis', 'token-123'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $key);
             $this->assertStringNotContainsString($forbidden, json_encode(Cache::get($key), JSON_THROW_ON_ERROR));
@@ -212,9 +278,11 @@ class SecureServerCacheTest extends TestCase
         $this->primeMedicineCache($this->bhwB);
 
         $medicineA->update(['quantity' => 1, 'availability_status' => 'Low Stock']);
+        $medicineA->expiryGroups()->update(['available_quantity' => 1]);
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson("/api/medicines/{$medicineA->id}/adjust", [
                 'action' => 'adjustment_out',
+                'expiry_group_id' => $medicineA->expiryGroups()->firstOrFail()->id,
                 'quantity' => 2,
                 'reason' => 'Must use the locked database row',
             ])
@@ -228,6 +296,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->actingAs($this->bhwA, 'sanctum')
             ->postJson("/api/medicines/{$medicineA->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 2,
                 'reason' => 'Committed cache invalidation test',
             ])
@@ -261,8 +330,10 @@ class SecureServerCacheTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $patient->id,
                 'category' => 'General Consultation',
+                'chief_complaint' => 'Cache invalidation check',
                 'dispensed_medicines' => [[
                     'medicine_id' => $medicine->id,
+                    'confirmed_given' => true,
                     'quantity' => 2,
                 ]],
             ])
@@ -284,8 +355,8 @@ class SecureServerCacheTest extends TestCase
             'barangay_health_center_id' => $this->bhcA->id,
         ]);
 
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
-        $this->primeReportCache($this->bhwB, '/api/reports/bhw');
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
+        $this->primeReportCache($this->bhwB, '/api/reports/bhc');
         $this->primeReportCache($this->rhuStaffA, '/api/reports/rhu');
 
         $this->actingAs($this->bhwA, 'sanctum')
@@ -297,7 +368,7 @@ class SecureServerCacheTest extends TestCase
             ->assertCreated();
 
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.total_referrals', 1);
@@ -307,7 +378,7 @@ class SecureServerCacheTest extends TestCase
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.total_referrals', 1);
         $this->actingAs($this->bhwB, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertOk()
             ->assertHeader('X-AKAY-Cache', 'HIT')
             ->assertJsonPath('data.total_referrals', 0);
@@ -321,6 +392,7 @@ class SecureServerCacheTest extends TestCase
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson("/api/medicines/{$medicine->id}/restock", [
+                'expiration_date' => now()->addYear()->toDateString(),
                 'quantity' => 4,
                 'reason' => 'RHU report cache invalidation',
             ])
@@ -365,7 +437,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertCreated()
             ->json('data.id');
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
         $this->primeReportCache($this->rhuStaffA, '/api/reports/rhu');
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -375,7 +447,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertOk();
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.referrals_by_status.Received', 1);
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -390,7 +462,7 @@ class SecureServerCacheTest extends TestCase
             ])
             ->assertCreated();
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.completed_referrals', 1);
         $this->actingAs($this->rhuStaffA, 'sanctum')
@@ -402,14 +474,15 @@ class SecureServerCacheTest extends TestCase
                 'patient_id' => $patient->id,
                 'urgency_level' => 'Routine',
                 'reason_for_referral' => 'Overdue cache invalidation test.',
-                'referral_datetime' => now()->subDay()->toISOString(),
             ])
             ->assertCreated()
             ->json('data.id');
-        $this->primeReportCache($this->bhwA, '/api/reports/bhw');
+        // The server stamps referral_datetime at submission; age it to make the referral overdue.
+        Referral::whereKey($noShowId)->update(['referral_datetime' => now()->subDay()]);
+        $this->primeReportCache($this->bhwA, '/api/reports/bhc');
         $this->assertTrue(app(ReferralWorkflowService::class)->markNoShow((int) $noShowId));
         $this->actingAs($this->bhwA, 'sanctum')
-            ->getJson('/api/reports/bhw')
+            ->getJson('/api/reports/bhc')
             ->assertHeader('X-AKAY-Cache', 'MISS')
             ->assertJsonPath('data.no_show_referrals', 1);
     }
@@ -421,7 +494,7 @@ class SecureServerCacheTest extends TestCase
         $inactive = $this->user(
             'Inactive Cache User',
             'inactive-cache@example.test',
-            User::ROLE_BHW,
+            User::ROLE_BHC,
             $this->bhcA->id,
             null,
             User::STATUS_INACTIVE
@@ -429,7 +502,7 @@ class SecureServerCacheTest extends TestCase
         $unassigned = $this->user(
             'Unassigned Cache User',
             'unassigned-cache@example.test',
-            User::ROLE_BHW
+            User::ROLE_BHC
         );
 
         Cache::shouldReceive('get')->never();
@@ -468,7 +541,7 @@ class SecureServerCacheTest extends TestCase
     {
         $medicine = $this->medicine('Write Failure Medicine', 6, $this->bhcA->id, null);
         Log::spy();
-        Cache::shouldReceive('get')->times(3)->andReturn(1, 1, null);
+        Cache::shouldReceive('get')->twice()->andReturn(1, null);
         Cache::shouldReceive('put')
             ->once()
             ->andThrow(new RuntimeException('secret-cache-write patient@example.test'));
@@ -521,7 +594,7 @@ class SecureServerCacheTest extends TestCase
         ?int $bhcId,
         ?int $rhuId
     ): Medicine {
-        return Medicine::create([
+        $medicine = Medicine::create([
             'name' => $name,
             'category' => 'Basic Medicines',
             'quantity' => $quantity,
@@ -532,6 +605,8 @@ class SecureServerCacheTest extends TestCase
             'rural_health_unit_id' => $rhuId,
             'created_by' => $bhcId === null ? $this->rhuStaffA->id : $this->bhwA->id,
         ]);
+        $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+        return $medicine;
     }
 
     private function user(
@@ -547,6 +622,9 @@ class SecureServerCacheTest extends TestCase
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => $role,
+            'staff_role' => $this->staffRoleFor($role),
+            // These tests mutate inventory, which is a separate duty from the clinical defaults.
+            'permissions' => $this->staffRoleFor($role) ? [...StaffRoles::defaults($this->staffRoleFor($role)), 'inventory.manage'] : null,
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,

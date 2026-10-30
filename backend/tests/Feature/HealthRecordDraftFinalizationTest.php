@@ -8,6 +8,7 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ActionPermissions;
 use App\Services\FollowUpTaskSyncService;
 use App\Services\HealthRecordDraftService;
 use App\Services\ReferralCreationService;
@@ -18,6 +19,7 @@ use Illuminate\Support\Str;
 use LogicException;
 use Mockery\MockInterface;
 use RuntimeException;
+use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class HealthRecordDraftFinalizationTest extends TestCase
@@ -90,6 +92,11 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'barangay_health_center_id' => $this->bhcA->id,
             'created_by' => $this->owner->id,
         ]);
+        $this->medicine->expiryGroups()->create([
+            'expiration_date' => now()->addYear()->toDateString(),
+            'available_quantity' => 20,
+            'quarantined_quantity' => 0,
+        ]);
     }
 
     public function test_draft_consumption_failure_rolls_back_official_record_inventory_and_audits(): void
@@ -151,6 +158,8 @@ class HealthRecordDraftFinalizationTest extends TestCase
         });
         $payload = [
             ...$this->officialPayload(),
+            // A referral requires a BHC Assessment (HealthRecordRequest.php:460).
+            'diagnosis' => 'Needs RHU assessment',
             'needs_referral' => true,
             'referral' => [
                 'reason_for_referral' => 'Requires RHU assessment.',
@@ -176,6 +185,8 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->value('encrypted_payload');
         $this->mock(FollowUpTaskSyncService::class, function (MockInterface $mock): void {
             $mock->shouldReceive('lockTaskForProcessing')->once()->andReturnNull();
+            // store() also locks additional tasks before syncRecord (HealthRecordController.php:232).
+            $mock->shouldReceive('lockAdditionalTasks')->once()->andReturn(collect());
             $mock->shouldReceive('syncRecord')
                 ->once()
                 ->andThrow(new RuntimeException('forced follow-up failure'));
@@ -226,6 +237,45 @@ class HealthRecordDraftFinalizationTest extends TestCase
         ]);
     }
 
+    public function test_body_findings_keep_region_side_and_location_through_draft_and_finalization(): void
+    {
+        $draftId = $this->createDraft([
+            ...$this->draftPayload(),
+            'bodyFindings' => [
+                ['id' => 'f1', 'region' => 'chest', 'side' => 'back', 'location' => 'Upper spine', 'finding' => 'Rash', 'note' => '2 days'],
+                ['id' => 'f2', 'region' => 'left_leg', 'location' => 'Knee', 'finding' => 'Swelling'],
+            ],
+        ]);
+
+        $draft = $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/health-record-drafts/$draftId")
+            ->assertOk()
+            ->assertJsonPath('data.payload.bodyFindings.0.region', 'chest')
+            ->assertJsonPath('data.payload.bodyFindings.0.side', 'back')
+            ->assertJsonPath('data.payload.bodyFindings.0.location', 'Upper spine')
+            ->assertJsonPath('data.payload.bodyFindings.1.region', 'left_leg')
+            ->assertJsonPath('data.payload.bodyFindings.1.location', 'Knee')
+            ->assertJsonMissingPath('data.payload.bodyFindings.1.side');
+
+        $recordId = $this->finalize($draftId, (string) Str::uuid(), [
+            ...$this->officialPayload(),
+            'body_findings' => [
+                ['id' => 'f1', 'region' => 'chest', 'side' => 'back', 'location' => 'Upper spine', 'finding' => 'Rash', 'note' => '2 days'],
+                ['id' => 'f2', 'region' => 'left_leg', 'side' => 'front', 'location' => 'Knee', 'finding' => 'Swelling'],
+            ],
+        ], ['X-Draft-Version' => (string) $draft->json('data.version')])->assertCreated()->json('data.id');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/health-records/$recordId")
+            ->assertOk()
+            ->assertJsonPath('data.body_findings.0.region', 'chest')
+            ->assertJsonPath('data.body_findings.0.side', 'back')
+            ->assertJsonPath('data.body_findings.0.location', 'Upper spine')
+            ->assertJsonPath('data.body_findings.1.region', 'left_leg')
+            ->assertJsonPath('data.body_findings.1.side', 'front')
+            ->assertJsonPath('data.body_findings.1.location', 'Knee');
+    }
+
     public function test_draft_binding_and_terminal_states_are_enforced_before_official_creation(): void
     {
         $patientMismatch = $this->createDraft();
@@ -238,6 +288,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
         $this->finalize($classificationMismatch, (string) Str::uuid(), [
             'patient_id' => $this->patientA->id,
             'category' => 'Maternal',
+            'chief_complaint' => 'Atomic finalization visit.',
         ])->assertUnprocessable()->assertJsonValidationErrors('draft');
 
         $otherOwnerDraft = $this->createDraft();
@@ -246,8 +297,11 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $this->patientA->id,
                 'category' => 'General Consultation',
+                // chief_complaint is required on POST (HealthRecordRequest.php:281).
+                'chief_complaint' => 'Atomic finalization visit.',
             ])
-            ->assertNotFound();
+            // A shared BHC encounter: the colleague finds it but does not hold its edit lease.
+            ->assertConflict();
 
         $otherFacilityDraft = $this->createDraft();
         $this->actingAs($this->otherBhcUser, 'sanctum')
@@ -255,6 +309,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $this->patientB->id,
                 'category' => 'General Consultation',
+                'chief_complaint' => 'Atomic finalization visit.',
             ])
             ->assertNotFound();
 
@@ -298,6 +353,8 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->postJson('/api/health-records', [
                 'patient_id' => $this->patientA->id,
                 'category' => 'General Consultation',
+                // chief_complaint is required on POST (HealthRecordRequest.php:281).
+                'chief_complaint' => 'Atomic finalization visit.',
             ])
             ->assertCreated();
 
@@ -443,10 +500,17 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ->json('data.id');
     }
 
-    private function finalize(string $draftId, string $key, array $payload)
+    private function finalize(string $draftId, string $key, array $payload, array $extraHeaders = [])
     {
+        // Finalizing from a draft requires the draft's current version (HealthRecordDraftService.php:367).
+        $version = (string) HealthRecordDraft::where('public_id', $draftId)->value('version');
+
         return $this->actingAs($this->owner, 'sanctum')
-            ->withHeaders($this->officialHeaders($key, $draftId))
+            ->withHeaders([
+                ...$this->officialHeaders($key, $draftId),
+                ...($version !== '' ? ['X-Draft-Version' => $version] : []),
+                ...$extraHeaders,
+            ])
             ->postJson('/api/health-records', $payload);
     }
 
@@ -464,9 +528,11 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'patient_id' => $this->patientA->id,
             'category' => 'General Consultation',
             'chief_complaint' => 'Atomic finalization visit.',
+            // Only an item marked given deducts stock (HealthRecordController.php:298).
             'dispensed_medicines' => [[
                 'medicine_id' => $this->medicine->id,
                 'quantity' => 2,
+                'confirmed_given' => true,
             ]],
         ];
     }
@@ -518,9 +584,10 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'name' => $name,
             'email' => $email,
             'password' => Hash::make('password123'),
-            'role' => User::ROLE_BHW,
+            'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhcId,
+            'permissions' => StaffRoles::defaults('midwife'),
         ]);
     }
 }

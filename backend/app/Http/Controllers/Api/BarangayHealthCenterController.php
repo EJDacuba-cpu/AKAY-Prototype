@@ -13,7 +13,7 @@ class BarangayHealthCenterController extends Controller
     public function index(Request $request)
     {
         $query = BarangayHealthCenter::query()
-            ->with('ruralHealthUnit')
+            ->with(['ruralHealthUnit', 'alternativeRhus'])
             ->withCount(['users', 'patients']);
 
         if ($request->query('status')) {
@@ -25,7 +25,14 @@ class BarangayHealthCenterController extends Controller
 
     public function store(FacilityRequest $request, AuditLogger $auditLogger)
     {
-        $bhc = BarangayHealthCenter::create($request->validated());
+        $bhc = \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
+            $data = $request->validated();
+            $alternatives = $data['alternative_rhu_ids'] ?? [];
+            unset($data['alternative_rhu_ids']);
+            $bhc = BarangayHealthCenter::create($data);
+            $bhc->alternativeRhus()->sync(array_diff($alternatives, [$bhc->rural_health_unit_id]));
+            return $bhc;
+        });
         $auditLogger->log($request, 'created', 'barangay_health_centers', "Created BHC {$bhc->name}.");
 
         return response()->json(['data' => $bhc->load('ruralHealthUnit')], 201);
@@ -38,7 +45,14 @@ class BarangayHealthCenterController extends Controller
 
     public function update(FacilityRequest $request, BarangayHealthCenter $barangayHealthCenter, AuditLogger $auditLogger)
     {
-        $barangayHealthCenter->update($request->validated());
+        \Illuminate\Support\Facades\DB::transaction(function () use ($request, $barangayHealthCenter) {
+            $data = $request->validated();
+            $alternatives = $data['alternative_rhu_ids'] ?? null;
+            unset($data['alternative_rhu_ids']);
+            $locked = BarangayHealthCenter::whereKey($barangayHealthCenter->id)->lockForUpdate()->firstOrFail();
+            $locked->update($data);
+            if ($alternatives !== null) $locked->alternativeRhus()->sync(array_diff($alternatives, [$locked->rural_health_unit_id]));
+        });
         $auditLogger->log($request, 'updated', 'barangay_health_centers', "Updated BHC {$barangayHealthCenter->name}.");
 
         return response()->json(['data' => $barangayHealthCenter->fresh()->load('ruralHealthUnit')]);

@@ -1,97 +1,121 @@
 import {
-  ArrowRight,
+  AlertTriangle,
+  CalendarClock,
   ClipboardList,
-  FileText,
-  HeartPulse,
-  Pill,
+  Moon,
+  Sun,
   Stethoscope,
+  UserPlus,
   Users,
 } from "lucide-react";
-
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import {
-  BarElement,
-  CategoryScale,
-  Chart as ChartJS,
-  Legend,
-  LinearScale,
-  Tooltip,
-} from "chart.js";
-import { Bar } from "react-chartjs-2";
 
-/* Layout */
+import "../../components/features/bhc-dashboard/dashboard-theme.css";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
-
-/* Cards */
+import ModuleGate from "../../components/common/access/ModuleGate";
+import LockedPlaceholder from "../../components/common/access/LockedPlaceholder";
+import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import ConsultationActivityChart from "../../components/features/bhc-dashboard/ConsultationActivityChart";
+import { getBhcDashboardSummary } from "../../services/dashboardService";
 import {
-  MedicineAlert,
-  PageStateWrapper,
-  RefreshingIndicator,
-  SideCard,
-} from "../../components/common";
-
-
-/* Services */
-import {
-  getBhcDashboardData,
-  getMedicineAlerts,
-} from "../../services/dashboardService";
-import {
+  bhcCoordinationText,
   formatDoctorAvailabilityDate,
   formatDoctorAvailabilitySummary,
 } from "../../services/doctorAvailability";
+import { displayedAvailabilityStatus } from "../../utils/doctorRoster";
 import { useDoctorAvailability } from "../../hooks/useDoctorAvailability";
-import { getRhuVolumeSnapshot } from "../../services/volumeService";
 import { getCurrentUser } from "../../utils/auth";
 import { queryKeys } from "../../utils/queryKeys";
+import { buildAttentionItems, formatKpiValue } from "../../utils/bhcDashboard";
+import { cn } from "../../lib/utils";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
-
-const ACTIVE_REFERRAL_STATUSES = new Set([
-  "Pending",
-  "Received",
-  "For Monitoring",
-  "No-Show",
-]);
-
-const EMPTY_STATS = {
-  totalPatients: 0,
-  healthRecords: 0,
-  pendingReferrals: 0,
-  monitoringPatients: 0,
+const EMPTY_SUMMARY = {
+  facility: { name: "" },
+  access: { patients: false, clinical: false, inventory: false },
+  kpis: {
+    registered_patients: null,
+    consultations_today: null,
+    open_referrals: null,
+    follow_ups_due_today: null,
+  },
+  consultation_activity: null,
+  attention: {
+    overdue_follow_ups: null,
+    pending_rhu_feedback: null,
+    inventory_alerts: null,
+    inventory_items: null,
+  },
 };
-const EMPTY_REFERRALS = [];
-const EMPTY_MEDICINE_ALERTS = [];
 
-function getTopChiefComplaints(referrals) {
-  if (!Array.isArray(referrals) || referrals.length === 0) return [];
+const KPI_CARDS = [
+  {
+    key: "registered_patients",
+    title: "Registered Patients",
+    description: "Patient profiles at this BHC",
+    icon: Users,
+    module: "patients",
+  },
+  {
+    key: "consultations_today",
+    title: "Consultations Today",
+    description: "Encounters recorded today",
+    icon: Stethoscope,
+    module: "history",
+  },
+  {
+    key: "open_referrals",
+    title: "Open Referrals",
+    description: "Awaiting RHU receipt or feedback",
+    icon: ClipboardList,
+    module: "history",
+  },
+  {
+    key: "follow_ups_due_today",
+    title: "Follow-ups Due Today",
+    description: "Active tasks due today",
+    icon: CalendarClock,
+    module: "history",
+  },
+];
 
-  const counts = referrals.reduce((acc, referral) => {
-    const complaint = getReferralConcern(referral);
-    if (!complaint || complaint === "No chief complaint recorded") return acc;
-
-    const key = String(complaint).trim();
-    if (!key) return acc;
-
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(counts)
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
-}
-
-const stagger = (index) => ({
-  animationDelay: `${index * 65}ms`,
-});
+const QUICK_ACTIONS = [
+  {
+    title: "Register Patient",
+    description: "Add a new patient profile",
+    href: "/bhc/patients/add",
+    icon: UserPlus,
+    module: "patients",
+  },
+  {
+    title: "Start Consultation",
+    description: "Open the consultation workspace",
+    href: "/bhc/health-records/add",
+    icon: Stethoscope,
+    module: "consultations",
+  },
+  {
+    title: "Referrals",
+    description: "Track BHC-to-RHU referrals",
+    href: "/bhc/referrals",
+    icon: ClipboardList,
+    module: "history",
+  },
+  {
+    title: "Follow-ups",
+    description: "Work the follow-up queue",
+    href: "/bhc/follow-ups",
+    icon: CalendarClock,
+    module: "history",
+  },
+];
 
 export default function BHCDashboard() {
-  const { availability: doctorAvailability } = useDoctorAvailability();
-  const [now, setNow] = useState(() => new Date());
+  const user = getCurrentUser();
+  const { availability: doctorAvailability, isLoading: availabilityLoading } = useDoctorAvailability();
   const {
     data,
     isLoading,
@@ -99,54 +123,24 @@ export default function BHCDashboard() {
     error: loadError,
     refetch,
   } = useQuery({
-    queryKey: queryKeys.dashboardSummary("bhc"),
-    queryFn: async () => {
-      const [dashboardData, medicineData] = await Promise.all([
-        getBhcDashboardData({ force: true, maxAgeMs: 0 }),
-        Promise.resolve(getMedicineAlerts()),
-      ]);
-
-      return {
-        stats: dashboardData?.stats || EMPTY_STATS,
-        referrals: Array.isArray(dashboardData?.referrals)
-          ? dashboardData.referrals
-          : [],
-        medicineAlerts: Array.isArray(medicineData) ? medicineData : [],
-      };
-    },
+    queryKey: [...queryKeys.dashboardSummary("bhc"), user?.id, user?.working_facility_key],
+    queryFn: getBhcDashboardSummary,
     retry: false,
   });
-  const stats = data?.stats || EMPTY_STATS;
-  const referrals = data?.referrals || EMPTY_REFERRALS;
-  const medicineAlerts = data?.medicineAlerts || EMPTY_MEDICINE_ALERTS;
+  const summary = data || EMPTY_SUMMARY;
   const hasDashboardData = Boolean(data);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000);
-
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const uniqueReferrals = useMemo(
-    () => getUniqueReferrals(referrals),
-    [referrals],
-  );
-
-  const rhuVolumeSnapshot = getRhuVolumeSnapshot();
   const userName = useMemo(() => getCurrentUserDisplayName(), []);
-
-  const activeReferrals = useMemo(() => {
-    return uniqueReferrals
-      .filter((referral) =>
-        ACTIVE_REFERRAL_STATUSES.has(getReferralStatus(referral)),
-      )
-      .sort(sortByReferralDateDesc)
-      .slice(0, 6);
-  }, [uniqueReferrals]);
+  const facilityName =
+    summary.facility?.name || user?.facility || user?.assignedBarangayHealthCenter || "Barangay Health Center";
+  const attentionItems = useMemo(
+    () => buildAttentionItems(summary.attention, summary.access || data?.access),
+    [summary.attention, summary.access, data?.access],
+  );
 
   return (
     <DashboardLayout role="bhc" title="Dashboard">
       <PageStateWrapper
+        skeleton="dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
@@ -155,615 +149,257 @@ export default function BHCDashboard() {
         onRetry={() => refetch()}
         loadingMessage="Loading dashboard..."
       >
-        <div className="mx-auto w-full max-w-[1500px] space-y-4">
-          {isFetching && hasDashboardData && (
+        <div className="bhc-dashboard-color mx-auto flex w-full max-w-[1500px] flex-col gap-4">
+          {isFetching && hasDashboardData ? (
             <div className="flex justify-end">
               <RefreshingIndicator label="Updating dashboard..." />
             </div>
-          )}
+          ) : null}
 
-          <BHCWorkboardHeader userName={userName} now={now} />
-
-          <CareSnapshot
-            stats={stats}
-            rhuVolumeSnapshot={rhuVolumeSnapshot}
-          />
-
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="min-w-0 space-y-4">
-              <ChiefComplaintSummaryCard
-                activeCount={activeReferrals.length}
-                referrals={activeReferrals}
-              />
+          <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {KPI_CARDS.map((card) => (
+                <ModuleGate
+                  key={card.key}
+                  module={card.module}
+                  className="rounded-card"
+                  placeholder={<KpiCard {...card} value="—" />}
+                >
+                  <KpiCard
+                    {...card}
+                    value={formatKpiValue(summary.kpis?.[card.key])}
+                  />
+                </ModuleGate>
+              ))}
             </div>
-
-            <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-              <RHUReadinessCard
-                availability={doctorAvailability}
-                medicineAlerts={medicineAlerts}
-              />
-
-              <MedicineAvailabilityCard
-                medicineAlerts={medicineAlerts}
-              />
-            </aside>
+            <WelcomeSummary userName={userName} facilityName={facilityName} />
           </section>
+
+          <section aria-label="Quick actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {QUICK_ACTIONS.map((action) => (
+              <ModuleGate
+                key={action.href}
+                module={action.module}
+                className="rounded-card"
+                placeholder={<QuickActionCard {...action} locked />}
+              >
+                <QuickActionCard {...action} />
+              </ModuleGate>
+            ))}
+          </section>
+
+          <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+            <ModuleGate
+              module="history"
+              className="rounded-card"
+              placeholder={<LockedPlaceholder lines={6} className="min-h-72" />}
+            >
+              <ConsultationActivityChart series={summary.consultation_activity?.series || []} />
+            </ModuleGate>
+            <NeedsAttentionCard items={attentionItems} />
+            <div className="xl:col-start-2">
+              <RHUReadinessCard availability={doctorAvailability} loading={availabilityLoading} />
+            </div>
+          </section>
+
         </div>
       </PageStateWrapper>
     </DashboardLayout>
   );
 }
 
-function BHCWorkboardHeader({ userName, now }) {
-  const greeting = getGreeting(now);
-  const today = formatToday(now);
-  const currentTime = formatCurrentTime(now);
+function WelcomeSummary({ userName, facilityName }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(clock);
+  }, []);
+
+  const hour = getManilaHour(now);
+  const timeTone = hour >= 6 && hour < 18 ? "day" : "night";
+  const TimeIcon = timeTone === "day" ? Sun : Moon;
 
   return (
-    <section className="anim-fade-up" style={stagger(0)}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-black tracking-tight text-[#0F172A] md:text-3xl">
-            {greeting}, {userName}
-          </h1>
-
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
-            Monitor today&apos;s BHC referral status, RHU workload, follow-up
-            watchlist, and medicine/doctor readiness in one clean view.
-          </p>
-        </div>
-
-        <div className="shrink-0 text-left lg:text-right">
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#94A3B8]">
-            Today
-          </p>
-          <p className="mt-1 text-sm font-bold text-[#0F172A]">
-            {today}
-          </p>
-          <p className="mt-1 text-xs font-semibold text-[#64748B]">
-            {currentTime}
-          </p>
+    <div data-time-tone={timeTone} className="bhc-welcome-summary welcome-ambient-panel">
+      <div aria-hidden="true" className="welcome-ambient-beam" />
+      <svg aria-hidden="true" focusable="false" className="welcome-ambient-waves" viewBox="0 0 600 260" preserveAspectRatio="none">
+        <path d="M0 128C110 48 170 205 298 140S485 65 600 104V260H0Z" fill="var(--ambient-wave-back)" />
+        <path d="M0 190C100 130 185 245 330 179S505 135 600 170V260H0Z" fill="var(--ambient-wave-front)" />
+      </svg>
+      <div className="welcome-ambient-copy">
+        <span aria-hidden="true" className="welcome-ambient-icon"><TimeIcon size={28} strokeWidth={1.75} /></span>
+        <h1>{getGreeting(now)}, {userName}</h1>
+        <p className="bhc-welcome-facility mt-2 leading-normal">{facilityName}</p>
+        <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <time dateTime={now.toISOString()} className="bhc-welcome-date leading-normal">{formatToday(now)}</time>
+          <time dateTime={now.toISOString()} title="Philippine Time (UTC+8)" className="bhc-welcome-clock leading-normal tabular-nums"><span className="sr-only">Philippine time: </span>{formatCurrentTime(now)}</time>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
-
-function CareSnapshot({ stats, rhuVolumeSnapshot }) {
-  const cards = [
-    {
-      title: "Registered Patients",
-      value: safeNumber(stats.totalPatients),
-      description: "BHC patient profiles",
-      icon: <Users size={17} />,
-      color: "red",
-    },
-    {
-      title: "Health Records",
-      value: safeNumber(stats.healthRecords),
-      description: "saved visit records",
-      icon: <FileText size={17} />,
-      color: "slate",
-    },
-    {
-      title: "Pending Referrals",
-      value: safeNumber(stats.pendingReferrals),
-      description: "waiting for RHU",
-      icon: <ClipboardList size={17} />,
-      color: "slate",
-    },
-    {
-      title: "For Monitoring",
-      value: safeNumber(stats.monitoringPatients),
-      description: "needs follow-up watch",
-      icon: <HeartPulse size={17} />,
-      color: "amber",
-    },
-  ];
-
+function KpiCard({ title, description, icon: Icon, value }) {
   return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {cards.map((card, index) => (
-        <BHCStatCard
-          key={card.title}
-          title={card.title}
-          value={card.value}
-          description={card.description}
-          icon={card.icon}
-          color={card.color}
-          delay={index + 1}
-        />
-      ))}
-
-      <RHUVolumeStatCard
-        snapshot={rhuVolumeSnapshot}
-        delay={cards.length + 1}
-      />
-    </section>
-  );
-}
-function BHCStatCard({
-  title,
-  value,
-  description,
-  icon,
-  color = "red",
-  delay = 0,
-}) {
-  const map = {
-    red: {
-      border: "border-t-[#B91C1C]",
-      icon: "bg-[#FEF2F2] text-[#B91C1C]",
-    },
-    slate: {
-      border: "border-t-slate-300",
-      icon: "bg-slate-100 text-slate-600",
-    },
-    amber: {
-      border: "border-t-amber-400",
-      icon: "bg-amber-50 text-amber-700",
-    },
-    blue: {
-      border: "border-t-blue-400",
-      icon: "bg-blue-50 text-blue-700",
-    },
-  };
-
-  const selected = map[color] || map.red;
-
-  return (
-    <div
-      className={`anim-fade-up rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-5 shadow-sm transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-md ${selected.border}`}
-      style={stagger(delay)}
-    >
+    <article className="bhc-dashboard-kpi rounded-card border border-neutral-200 bg-white p-4 shadow-card">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
-            {title}
-          </p>
-
-          <p className="mt-4 text-2xl font-bold tracking-tight text-[#0F172A]">
-            {value}
-          </p>
-
-          {description && (
-            <p className="mt-2 text-[11px] font-medium text-[#64748B]">
-              {description}
-            </p>
-          )}
-        </div>
-
-        <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${selected.icon}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RHUVolumeStatCard({ snapshot, delay = 0 }) {
-  const status = snapshot?.status || "Normal Volume";
-  const cleanStatus = String(status).replace(/\s*Volume$/i, "") || "Normal";
-  const load = safeNumber(
-    snapshot?.load,
-    snapshot?.currentLoad,
-    snapshot?.patientLoad,
-    snapshot?.patientCount,
-    snapshot?.count,
-  );
-
-  return (
-    <BHCStatCard
-      title="RHU Patient Volume"
-      value={cleanStatus}
-      description={`Stable patient activity · Load ${load}`}
-      icon={<HeartPulse size={17} />}
-      color="blue"
-      delay={delay}
-    />
-  );
-}
-
-
-function ChiefComplaintSummaryCard({ activeCount, referrals, loading }) {
-  const topComplaints = getTopChiefComplaints(referrals);
-  const chartData = {
-    labels: topComplaints.map((item) => item.label),
-    datasets: [
-      {
-        label: "Cases",
-        data: topComplaints.map((item) => item.value),
-        backgroundColor: (context) => {
-          const { ctx, chartArea } = context.chart;
-          if (!chartArea) return "rgba(185, 28, 28, 0.82)";
-
-          const gradient = ctx.createLinearGradient(0, 0, chartArea.right, 0);
-          gradient.addColorStop(0, "rgba(254, 226, 226, 0.95)");
-          gradient.addColorStop(0.55, "rgba(220, 38, 38, 0.82)");
-          gradient.addColorStop(1, "rgba(185, 28, 28, 0.96)");
-          return gradient;
-        },
-        borderColor: "#B91C1C",
-        borderWidth: 1,
-        borderRadius: 10,
-        borderSkipped: false,
-        barThickness: 24,
-        maxBarThickness: 28,
-      },
-    ],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: {
-      duration: 700,
-      easing: "easeOutQuart",
-    },
-    indexAxis: "y",
-    layout: {
-      padding: {
-        top: 4,
-        right: 10,
-        bottom: 4,
-        left: 0,
-      },
-    },
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        backgroundColor: "#0F172A",
-        titleColor: "#FFFFFF",
-        bodyColor: "#E2E8F0",
-        displayColors: false,
-        padding: 10,
-        cornerRadius: 10,
-        callbacks: {
-          label: (context) => `${context.parsed.x || 0} case(s)`,
-        },
-      },
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        grace: "15%",
-        ticks: {
-          precision: 0,
-          color: "#64748B",
-          font: {
-            size: 11,
-            weight: 700,
-          },
-        },
-        grid: {
-          color: "rgba(226, 232, 240, 0.9)",
-          drawBorder: false,
-        },
-        border: {
-          display: false,
-        },
-      },
-      y: {
-        ticks: {
-          color: "#334155",
-          font: {
-            size: 11,
-            weight: 800,
-          },
-          callback: function (value) {
-            const label = this.getLabelForValue(value);
-            return label.length > 22 ? `${label.slice(0, 22)}...` : label;
-          },
-        },
-        grid: {
-          display: false,
-          drawBorder: false,
-        },
-        border: {
-          display: false,
-        },
-      },
-    },
-  };
-
-  return (
-    <section className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div className="flex flex-col gap-2 border-b border-[#F1F5F9] bg-[#FFF7F7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-black text-[#0F172A]">
-            Chief Complaint Summary
-          </h2>
-          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-[#94A3B8]">
-            Top reported complaints from active BHC referrals that still need
-            tracking.
-          </p>
-        </div>
-
-        <span className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#B91C1C] shadow-sm">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#B91C1C]" />
-          {activeCount} active
+        <p className="bhc-kpi-label text-[10px] font-bold uppercase tracking-wider text-neutral-400">{title}</p>
+        <span className="bhc-kpi-icon flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-ink-700">
+          <Icon size={16} />
         </span>
       </div>
+      <p className="bhc-kpi-value mt-3 text-2xl font-bold tabular-nums text-neutral-900">{value}</p>
+      <p className="bhc-kpi-description mt-1 text-xs text-neutral-500">{description}</p>
+    </article>
+  );
+}
 
-      <div className="p-4">
-        {loading ? (
-          <ChartSkeleton />
-        ) : topComplaints.length === 0 ? (
-          <div className="flex h-[260px] items-center justify-center rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 text-center">
-            <div>
-              <ClipboardList
-                className="mx-auto mb-2 text-[#CBD5E1]"
-                size={28}
-              />
-              <p className="text-sm font-bold text-[#334155]">
-                No chief complaints to summarize
-              </p>
-              <p className="mt-1 text-xs text-[#94A3B8]">
-                Active referrals with chief complaints will appear in this
-                chart.
-              </p>
-            </div>
-          </div>
+function NeedsAttentionCard({ items }) {
+  return (
+    <Card className="rounded-card shadow-card">
+      <CardHeader>
+        <CardTitle>Needs Attention</CardTitle>
+        <CardDescription>Overdue work, RHU feedback, and stock alerts.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {items.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-4 text-sm text-neutral-500">
+            Nothing needs attention today.
+          </p>
         ) : (
-          <div className="relative h-[260px] w-full overflow-hidden rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/60 p-3">
-            <Bar data={chartData} options={chartOptions} />
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function ChartSkeleton() {
-  return (
-    <div className="h-[260px] rounded-xl border border-[#F1F5F9] bg-[#F8FAFC]/60 p-4">
-      <div className="space-y-4">
-        {[0, 1, 2, 3, 4].map((item) => (
-          <div key={item} className="flex items-center gap-3">
-            <SkeletonLine className="h-3 w-24" />
-            <SkeletonLine className="h-5 flex-1 rounded-full" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RHUReadinessCard({ availability, medicineAlerts, loading }) {
-  const unavailableMedicines = medicineAlerts.filter((medicine) =>
-    String(medicine.status || "")
-      .toLowerCase()
-      .includes("unavailable"),
-  ).length;
-  const doctors = Array.isArray(availability.providers)
-    ? availability.providers
-    : [];
-
-  return (
-    <SideCard title="RHU Readiness" badge="coordination">
-      <div className="space-y-3">
-        <div className="rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] p-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C]">
-              <Stethoscope size={17} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                    availability.status === "Unavailable"
-                      ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
-                      : "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-                  }`}
-                >
-                  {availability.status}
-                </span>
-                <span className="text-[11px] font-bold text-[#64748B]">
-                  {availability.availableCount} of{" "}
-                  {availability.totalCount}
-                </span>
+          items.map((item) => (
+            <Link
+              key={item.key}
+              to={item.href}
+              className="flex items-start justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 hover:bg-neutral-50"
+            >
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-medium text-neutral-900">
+                  <AlertTriangle className="text-brand-700" size={14} />
+                  {item.label}
+                </p>
+                {item.detail ? (
+                  <p className="mt-0.5 truncate text-xs text-neutral-500">{item.detail}</p>
+                ) : null}
               </div>
-              <p className="mt-2 text-xs font-bold text-[#334155]">
-                {formatDoctorAvailabilitySummary(availability)}.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          {doctors.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3 text-[11px] leading-relaxed text-[#64748B]">
-              No doctor records yet. RHU has not added doctor availability.
-            </div>
-          ) : (
-            doctors.map((doctor) => {
-              const unavailable =
-                doctor.availabilityStatus === "Unavailable";
-              // DOC-22: remarks is the only note field on the roster.
-              const remarks = doctor.remarks;
-
-              return (
-                <div
-                  key={doctor.id}
-                  className="rounded-xl border border-[#F1F5F9] bg-white px-3 py-2.5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-[#0F172A]">
-                        {doctor.name}
-                      </p>
-                      <p className="mt-0.5 truncate text-[10.5px] text-[#64748B]">
-                        {doctor.specialization || "General Practitioner"}
-                      </p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                        unavailable
-                          ? "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]"
-                          : "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]"
-                      }`}
-                    >
-                      {unavailable ? "Unavailable" : "Available"}
-                    </span>
-                  </div>
-                  {unavailable && remarks && (
-                    <p className="mt-1 text-[10.5px] font-semibold text-[#B45309]">
-                      {remarks}
-                    </p>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          {loading ? (
-            <>
-              <MiniReadinessSkeleton />
-              <MiniReadinessSkeleton />
-            </>
-          ) : (
-            <>
-              <MiniReadinessMetric
-                label="Medicine alerts"
-                value={medicineAlerts.length}
-                icon={<Pill size={14} />}
-              />
-              <MiniReadinessMetric
-                label="Unavailable meds"
-                value={unavailableMedicines}
-                icon={<Pill size={14} />}
-              />
-            </>
-          )}
-        </div>
-
-        <p className="text-[10px] font-medium text-[#94A3B8]">
-          Updated {formatDoctorAvailabilityDate(availability.updatedAt)}
-        </p>
-      </div>
-    </SideCard>
+              <span className="text-sm font-semibold tabular-nums text-neutral-900">{item.count}</span>
+            </Link>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function MiniReadinessSkeleton() {
-  return (
-    <div className="rounded-xl border border-[#F1F5F9] bg-white p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <SkeletonLine className="h-4 w-4" />
-        <SkeletonLine className="h-5 w-8" />
-      </div>
-      <SkeletonLine className="h-3 w-24" />
-    </div>
-  );
-}
+function RHUReadinessCard({ availability, loading = false }) {
+  const doctors = Array.isArray(availability.providers) ? availability.providers : [];
 
-function MiniReadinessMetric({ label, value, icon }) {
   return (
-    <div className="rounded-xl border border-[#F1F5F9] bg-white p-3">
-      <div className="mb-2 flex items-center justify-between text-[#B91C1C]">
-        {icon}
-        <span className="text-lg font-black tabular-nums text-[#0F172A]">
-          {value}
-        </span>
-      </div>
-      <p className="text-[10px] font-bold uppercase tracking-wide text-[#94A3B8]">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function MedicineAvailabilityCard({ medicineAlerts, loading }) {
-  return (
-    <SideCard
-      title="Medicine Availability"
-      badge={`${medicineAlerts.length} items`}
-    >
-      <p className="mb-4 text-xs leading-relaxed text-[#94A3B8]">
-        Read-only RHU medicine status for referral coordination.
-      </p>
-
-      {loading ? (
-        <div className="space-y-2.5">
-          {[0, 1, 2].map((item) => (
-            <MedicineAlertSkeleton key={item} />
-          ))}
-        </div>
-      ) : medicineAlerts.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 py-6 text-center">
-          <Pill className="mx-auto mb-2 text-[#CBD5E1]" size={26} />
-          <p className="text-xs font-semibold text-[#64748B]">
-            No medicine alerts
+    <Card className="rounded-card shadow-card">
+      <CardHeader className="p-4 pb-3">
+        <CardTitle>RHU Readiness</CardTitle>
+        {!loading && (
+          <p className="mt-[5px] text-xs leading-normal text-neutral-600">
+            {formatDoctorAvailabilitySummary(availability)}
           </p>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {medicineAlerts.slice(0, 3).map((medicine) => (
-            <MedicineAlert
-              key={medicine.name}
-              name={medicine.name}
-              status={medicine.status}
-              qty={medicine.qty}
-            />
-          ))}
-        </div>
-      )}
-
-      <Link
-        to="/bhc/medicine-availability"
-        className="mt-5 flex items-center justify-center gap-2 rounded-lg bg-[#B91C1C] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#991B1B]"
-      >
-        View Medicine Availability
-        <ArrowRight size={13} />
-      </Link>
-    </SideCard>
+        )}
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <p role="status" className="px-4 pb-4 text-sm leading-normal text-neutral-500">
+            Checking doctor availability?
+          </p>
+        ) : (
+          <>
+            {doctors.length === 0 ? (
+              <p className="px-4 pb-4 text-sm leading-normal text-neutral-500">No doctor records yet.</p>
+            ) : (
+              <ul className="m-0 flex list-none flex-col gap-2 px-3 pb-3">
+                {doctors.map((doctor) => {
+                  const doctorUnavailable = displayedAvailabilityStatus(doctor) === "Unavailable";
+                  const coordination = bhcCoordinationText(doctor);
+                  return (
+                    <li key={doctor.id} className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+                        <p className="col-start-1 row-start-1 truncate text-[13px] font-medium leading-normal text-neutral-900" title={doctor.name}>
+                          {doctor.name}
+                        </p>
+                        <div className="contents">
+                          <p className="col-start-1 row-start-2 mt-0.5 truncate text-xs leading-normal text-neutral-500" title={doctor.specialization || "General Practitioner"}>
+                            {doctor.specialization || "General Practitioner"}
+                          </p>
+                          <ReadinessBadge unavailable={doctorUnavailable} />
+                        </div>
+                      </div>
+                      {doctorUnavailable && coordination ? (
+                        <p className="mt-[5px] text-xs leading-normal text-neutral-600">{coordination}</p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="border-t border-neutral-200 px-4 py-2.5 text-[11px] leading-normal text-neutral-500">
+              Updated {formatDoctorAvailabilityDate(availability.updatedAt)}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function MedicineAlertSkeleton() {
-  return (
-    <div className="rounded-lg border border-[#E8ECF0] bg-[#F8FAFC] p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <SkeletonLine className="h-3 w-32" />
-          <SkeletonLine className="mt-2 h-3 w-20" />
-        </div>
-        <SkeletonLine className="h-5 w-16 rounded-md" />
+function QuickActionCard({ title, description, href, icon: Icon, locked = false }) {
+  const className = cn(
+    "bhc-quick-action flex h-full flex-col gap-3 rounded-card border border-neutral-200 bg-white p-4 shadow-card",
+    !locked && "hover:bg-neutral-50",
+  );
+
+  const body = (
+    <>
+      <span className="bhc-quick-icon flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-ink-700">
+        <Icon size={16} />
+      </span>
+      <div>
+        <p className="bhc-quick-title text-sm font-semibold text-neutral-900">{title}</p>
+        <p className="bhc-quick-description mt-1 text-xs text-neutral-500">{description}</p>
       </div>
-    </div>
+    </>
+  );
+
+  if (locked) {
+    return <div className={className}>{body}</div>;
+  }
+
+  return (
+    <Link to={href} className={className}>
+      {body}
+    </Link>
   );
 }
 
-function SkeletonLine({ className = "" }) {
+function ReadinessBadge({ unavailable }) {
   return (
-    <span
-      className={`block animate-pulse rounded-full bg-slate-200/80 ${className}`}
-    />
+    <span className="col-start-2 row-span-2 row-start-1 inline-flex shrink-0 items-center justify-between gap-[7px] whitespace-nowrap rounded-full border border-neutral-200 bg-white px-2 py-[3px] text-[11px] font-medium leading-[1.4] text-neutral-900">
+      {unavailable ? "Unavailable" : "Available"}
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 shrink-0 rounded-full", unavailable ? "bg-warning-500" : "bg-success-500")}
+      />
+    </span>
   );
 }
 
 function getCurrentUserDisplayName() {
   const user = getCurrentUser();
   const name = user?.fullName || user?.full_name || user?.name || "";
-  if (name) return firstNameOnly(name);
-
+  if (name) return String(name).trim().split(/\s+/)[0] || "BHC Worker";
   return "BHC Worker";
 }
 
-function firstNameOnly(name) {
-  return String(name).trim().split(/\s+/)[0] || "BHC Worker";
-}
-
 function getGreeting(date) {
-  const hour = date.getHours();
-
+  const hour = getManilaHour(date);
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
@@ -771,6 +407,7 @@ function getGreeting(date) {
 
 function formatToday(date) {
   return date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -780,67 +417,13 @@ function formatToday(date) {
 
 function formatCurrentTime(date) {
   return date.toLocaleTimeString("en-US", {
+    timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
-function safeNumber(...values) {
-  const value = values.find((item) => Number.isFinite(Number(item)));
-  return Number(value || 0);
-}
-
-function getUniqueReferrals(referrals) {
-  const seen = new Set();
-
-  return referrals.filter((referral) => {
-    const key = getReferralTrackingId(referral);
-    if (seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-}
-
-function getReferralTrackingId(referral) {
-  return (
-    referral?.trackingId ||
-    referral?.tracking_id ||
-    referral?.id ||
-    referral?.referralId ||
-    "N/A"
-  );
-}
-
-function getReferralConcern(referral) {
-  return (
-    referral?.chiefComplaint ||
-    referral?.chief_complaint ||
-    referral?.concern ||
-    referral?.reasonForReferral ||
-    referral?.referralReason ||
-    "No chief complaint recorded"
-  );
-}
-
-function getReferralStatus(referral) {
-  return referral?.status || referral?.referralStatus || "Pending";
-}
-
-function getReferralDateValue(referral) {
-  const raw =
-    referral?.createdAt ||
-    referral?.created_at ||
-    referral?.submittedAt ||
-    referral?.dateSubmitted ||
-    referral?.dateOfReferral ||
-    referral?.referralDate ||
-    referral?.date;
-
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
-}
-
-function sortByReferralDateDesc(a, b) {
-  return getReferralDateValue(b) - getReferralDateValue(a);
+function getManilaHour(date) {
+  return Number(date.toLocaleString("en-US", { timeZone: "Asia/Manila", hour: "numeric", hourCycle: "h23" }));
 }

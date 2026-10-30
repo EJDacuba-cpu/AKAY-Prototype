@@ -1,7 +1,8 @@
 import { X } from "lucide-react";
 import FullSidebarNav from "./FullSidebarNav";
-import LogoMark from "./LogoMark";
+import { LogoWordmark } from "./LogoMark";
 import SidebarUserFooter from "./SidebarUserFooter";
+import { FOCUS_RING } from "./sidebarStyles";
 
 export default function MobileSidebarDrawer({
   open,
@@ -13,31 +14,22 @@ export default function MobileSidebarDrawer({
 }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden border-r border-[#E5E7EB] bg-white shadow-2xl shadow-black/15 transition-transform duration-300 ease-in-out md:hidden ${
+      className={`font-sans antialiased fixed left-0 top-0 z-50 flex h-dvh max-h-dvh w-[min(88vw,320px)] flex-col overflow-hidden bg-[var(--color-shell)] shadow-2xl transition-transform duration-300 ease-in-out md:hidden ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#991B1B] bg-[#B91C1C] px-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <LogoMark />
-
-          <div className="min-w-0">
-            <p className="text-sm font-bold tracking-tight text-white">
-              AKAY
-            </p>
-           <p className="text-[8px] uppercase tracking-[0.16em] text-red-100">
-              Health Coordination
-            </p>
-          </div>
+      <div className="flex h-16 shrink-0 items-center justify-between pl-5 pr-3">
+        <div className="flex min-w-0 items-center">
+          <LogoWordmark />
         </div>
 
         <button
           type="button"
           onClick={onClose}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-red-100 transition hover:bg-white/10 hover:text-white"
+          className={`flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900 ${FOCUS_RING}`}
           aria-label="Close sidebar"
         >
-          <X size={17} />
+          <X size={16} />
         </button>
       </div>
 

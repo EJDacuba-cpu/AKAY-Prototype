@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, TriangleAlert } from "lucide-react";
 import ModalShell, { ModalButton } from "./ModalShell";
 
 // Variants a caller may opt into. Anything else falls back to "secondary".
@@ -9,7 +9,7 @@ const ALLOWED_VARIANTS = new Set(["primary", "destructive", "ghost"]);
 
 // No exit animation by design. It would require keeping the panel mounted after
 // open=false, but most callers unmount this outright (AddUser renders it behind
-// `{successModal && ...}`) or navigate away in onClose (AddHealthRecord,
+// `{successModal && ...}`) or navigate away in onClose (ConsultationWorkspace,
 // AddPatient). The animation would rarely be seen, while delaying unmount would
 // shift ModalShell's focus-return and scroll-lock timing for every consumer.
 export default function SuccessModal({
@@ -18,12 +18,16 @@ export default function SuccessModal({
   description,
   actions,
   buttonText = "Continue",
+  tone = "success",
   onClose,
   secondaryButtonText,
   onSecondaryAction,
 }) {
   const descriptionId = useId();
   if (!open) return null;
+
+  // "warning" is for "it worked, but something still needs attention" (an amber icon instead of the animated check).
+  const warning = tone === "warning";
 
   const hasCustomActions = Array.isArray(actions) && actions.length > 0;
   // Primary renders last so it sits rightmost on desktop and closest to the
@@ -108,16 +112,25 @@ export default function SuccessModal({
     >
       <div className="flex flex-col items-center gap-4 py-1 text-center">
         {/* Decorative: the message below carries the meaning for screen readers. */}
-        <span
-          aria-hidden="true"
-          className="anim-success-badge motion-reduce:animate-none flex h-12 w-12 items-center justify-center rounded-full bg-success-50 text-success-500 ring-8 ring-success-50/60"
-        >
-          <CheckCircle2
-            size={26}
-            strokeWidth={2.2}
-            className="anim-success-check motion-reduce:animate-none"
-          />
-        </span>
+        {warning ? (
+          <span
+            aria-hidden="true"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 ring-8 ring-amber-50/60"
+          >
+            <TriangleAlert size={26} strokeWidth={2.2} />
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="anim-success-badge motion-reduce:animate-none flex h-12 w-12 items-center justify-center rounded-full bg-success-50 text-success-500 ring-8 ring-success-50/60"
+          >
+            <CheckCircle2
+              size={26}
+              strokeWidth={2.2}
+              className="anim-success-check motion-reduce:animate-none"
+            />
+          </span>
+        )}
         {description && (
           <p
             id={descriptionId}

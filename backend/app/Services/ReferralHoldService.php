@@ -26,7 +26,7 @@ class ReferralHoldService
     }
 
     /**
-     * @param  array{health_record_id?: int|null, urgency_level?: string|null, preferred_provider_id?: int|null}  $data
+     * @param  array{health_record_id?: int|null, urgency_level?: string|null}  $data
      */
     public function recordBlockedAttempt(
         User $bhw,
@@ -42,7 +42,6 @@ class ReferralHoldService
             'created_by' => $bhw->id,
             'health_record_id' => $data['health_record_id'] ?? null,
             'urgency_level' => $data['urgency_level'] ?? null,
-            'preferred_provider_id' => $data['preferred_provider_id'] ?? null,
             'status' => ReferralHold::STATUS_WAITING,
         ]));
     }
@@ -72,13 +71,14 @@ class ReferralHoldService
             ->each(function (ReferralHold $hold) use ($rhu): void {
                 $patientName = $hold->patient?->full_name ?: 'A previously blocked referral';
 
-                $this->notifications->notifyUser(
-                    $hold->creator,
+                $recipients = ActionPermissions::bhcRecipients((int) $hold->barangay_health_center_id, 'referrals.submit');
+                $this->notifications->notifyUsers(
+                    $recipients,
                     'Doctor Now Available',
-                    "{$rhu->name} may now have an available doctor - {$patientName} can be resubmitted.",
+                    "{$rhu->name} may now have an available doctor. Review {$patientName} under Waiting to Submit and submit only after confirming availability.",
                     'referral_hold_available',
                     null,
-                    "/bhc/referrals/create?resume_hold={$hold->id}",
+                    "/bhc/referrals/waiting/{$hold->id}",
                     'referral_hold',
                     $hold->id
                 );
@@ -87,10 +87,12 @@ class ReferralHoldService
             });
     }
 
-    public function discard(ReferralHold $hold): void
+    public function discard(ReferralHold $hold, string $reason, User $actor): void
     {
         $hold->update([
             'status' => ReferralHold::STATUS_DISCARDED,
+            'discard_reason' => $reason,
+            'discarded_by' => $actor->id,
             'resolved_at' => now(),
         ]);
     }

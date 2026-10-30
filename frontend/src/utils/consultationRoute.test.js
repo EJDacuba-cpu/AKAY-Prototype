@@ -1,0 +1,84 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  buildPatientConsultationPath,
+  continuedRouteIds,
+  resolveBhcConsultationRoute,
+} from "./consultationRoute.js";
+
+test("patient-scoped routes open a new consultation directly", () => {
+  assert.deepEqual(resolveBhcConsultationRoute("?patientId=17&mode=new"), {
+    kind: "new",
+    patientId: "17",
+  });
+  assert.equal(
+    buildPatientConsultationPath(17),
+    "/bhc/health-records/add?patientId=17&mode=new",
+  );
+});
+
+test("continue routes carry the selected follow-ups and monitoring", () => {
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,2&monitoringIds=4"),
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [4], startConditionIds: [] },
+  );
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=followup&followUpId=9"),
+    { kind: "continue", patientId: "17", followUpIds: [9], monitoringIds: [], startConditionIds: [] },
+  );
+});
+
+test("continue routes carry the recommended conditions to start", () => {
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&startConditionIds=9,,x,10"),
+    { kind: "continue", patientId: "17", followUpIds: [], monitoringIds: [], startConditionIds: [9, 10] },
+  );
+});
+
+test("legacy follow-up routes open the step flow with that task continued", () => {
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?mode=follow-up&patientId=17&followUpId=91&recordId=4"),
+    { kind: "continue", patientId: "17", followUpIds: [91], monitoringIds: [], startConditionIds: [] },
+  );
+  assert.deepEqual(
+    resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=1,,x,-3,2&monitoringIds="),
+    { kind: "continue", patientId: "17", followUpIds: [1, 2], monitoringIds: [], startConditionIds: [] },
+  );
+});
+
+test("draft resume restores consultation context directly", () => {
+  assert.deepEqual(resolveBhcConsultationRoute("?draftId=draft-1"), {
+    kind: "draft",
+    draftId: "draft-1",
+    patientId: "",
+  });
+});
+
+test("generic and malformed follow-up routes redirect to Patient Center", () => {
+  assert.equal(resolveBhcConsultationRoute("").kind, "redirect");
+  assert.equal(resolveBhcConsultationRoute("?mode=followup&recordId=4").kind, "redirect");
+});
+
+test("a follow-up route without a task but with a patient opens a new consultation", () => {
+  assert.deepEqual(resolveBhcConsultationRoute("?mode=followup&patientId=17"), {
+    kind: "new",
+    patientId: "17",
+  });
+});
+
+test("continuedRouteIds is always arrays, including new and draft routes", () => {
+  const empty = { followUpIds: [], monitoringIds: [], startConditionIds: [] };
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=new")), empty);
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("?draftId=draft-1")), empty);
+  assert.deepEqual(continuedRouteIds(resolveBhcConsultationRoute("")), empty);
+  assert.equal(continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=new")).followUpIds.length, 0);
+  assert.deepEqual(
+    continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=continue")),
+    empty,
+  );
+  assert.deepEqual(
+    continuedRouteIds(resolveBhcConsultationRoute("?patientId=17&mode=continue&followUpIds=25")),
+    { followUpIds: [25], monitoringIds: [], startConditionIds: [] },
+  );
+});

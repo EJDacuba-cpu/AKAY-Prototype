@@ -66,8 +66,15 @@ class UserSessionRevocationService
                 throw new PersistentSessionException;
             }
 
+            // The app timezone is not optional here. Carbon 3 returns UTC from a
+            // bare createFromTimestamp(), while every stored datetime is written
+            // and re-read as a naive string in config('app.timezone'). Under a
+            // non-UTC timezone the reconstructed start would land one UTC offset
+            // early, so the rotated refresh token inherited a deadline that had
+            // already passed - the session died on its first rotation.
             $absoluteStartedAt = CarbonImmutable::createFromTimestamp(
-                (int) explode(':', (string) $token->name, 3)[1]
+                (int) explode(':', (string) $token->name, 3)[1],
+                config('app.timezone')
             );
 
             $expired = $token->expires_at?->isPast() !== false
@@ -84,12 +91,13 @@ class UserSessionRevocationService
             if (! $user instanceof User
                 || ! $this->matchesSecurityContext($token, $user)
                 || ! $user->isActive()
+                || ! app(AccountActivationService::class)->isActivated($user)
                 || ! in_array($user->role, [
                     User::ROLE_ADMIN,
-                    User::ROLE_BHW,
-                    User::ROLE_RHU_STAFF,
+                    User::ROLE_BHC,
+                    User::ROLE_RHU,
                 ], true)
-                || ! $facilityAccess->hasValidFacilityAssignment($user)) {
+                || (! $user->isAdmin() && app(WorkingFacilityService::class)->available($user) === [])) {
                 if ($user instanceof User) {
                     $this->revokeAllTokens($user, 'persistent-session-context-invalid');
                 }

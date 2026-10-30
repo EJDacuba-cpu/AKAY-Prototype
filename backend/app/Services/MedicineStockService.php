@@ -29,9 +29,9 @@ class MedicineStockService
 
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
-        private readonly AuditLogger $auditLogger
-    ) {
-    }
+        private readonly AuditLogger $auditLogger,
+        private readonly MedicineExpiryStockService $expiryStock
+    ) {}
 
     public function normalize(array $items): array
     {
@@ -45,6 +45,8 @@ class MedicineStockService
             abort_if($quantity <= 0, 422, 'Quantity must be greater than 0.');
             abort_if($quantity > self::MAX_QUANTITY, 422, 'Quantity is too large.');
 
+            $manual = array_key_exists('allocations', $item);
+            abort_if(isset($normalized[$medicineId]) && ($manual || array_key_exists('allocations', $normalized[$medicineId])), 422, 'Combine manual allocations into one entry per medicine.');
             $normalized[$medicineId] ??= [
                 'medicine_id' => $medicineId,
                 'quantity' => 0,
@@ -57,6 +59,27 @@ class MedicineStockService
                 'Combined quantity is too large.'
             );
             $normalized[$medicineId]['quantity'] += $quantity;
+            if ($manual) {
+                $allocations = $item['allocations'];
+                abort_unless(is_array($allocations), 422, 'Invalid group allocations.');
+                $reason = trim((string) ($item['override_reason'] ?? ''));
+                abort_if(mb_strlen($reason) > 1000, 422, 'A manual allocation reason is required (maximum 1000 characters).');
+                $seen = [];
+                $total = 0;
+                $clean = [];
+                foreach ($allocations as $allocation) {
+                    $groupId = filter_var($allocation['expiry_group_id'] ?? null, FILTER_VALIDATE_INT);
+                    $amount = filter_var($allocation['quantity'] ?? null, FILTER_VALIDATE_INT);
+                    abort_if(! $groupId || $groupId < 1 || ! $amount || $amount < 1 || $amount > self::MAX_QUANTITY || isset($seen[$groupId]), 422, 'Invalid or duplicate group allocation.');
+                    $seen[$groupId] = true;
+                    $total += $amount;
+                    $clean[] = ['expiry_group_id' => $groupId, 'quantity' => $amount];
+                }
+                abort_if($total > $quantity, 422, 'Group allocations exceed the actual quantity.');
+                usort($clean, fn ($a, $b) => $a['expiry_group_id'] <=> $b['expiry_group_id']);
+                $normalized[$medicineId]['allocations'] = $clean;
+                $normalized[$medicineId]['override_reason'] = $reason;
+            }
 
             $unit = trim((string) ($item['unit'] ?? ''));
             if ($unit !== '') {
@@ -82,6 +105,7 @@ class MedicineStockService
                 'quantity' => $item['quantity'],
                 'unit' => $units[0] ?? null,
                 'remarks' => $remarks === [] ? null : implode('; ', $remarks),
+                ...(array_key_exists('allocations', $item) ? ['allocations' => $item['allocations'], 'override_reason' => $item['override_reason']] : []),
             ];
         }, $normalized));
     }
@@ -101,7 +125,8 @@ class MedicineStockService
             $quantity,
             null,
             null,
-            "medicine:{$medicine->id}:opening"
+            "medicine:{$medicine->id}:opening",
+            options: $request->only(['expiration_date', 'expiry_not_applicable'])
         );
         $this->auditResult($request, 'medicine_created', $context, $result);
 
@@ -125,7 +150,8 @@ class MedicineStockService
             $quantity,
             trim($reason),
             null,
-            $operationKey ?: (string) Str::uuid()
+            $operationKey ?: (string) Str::uuid(),
+            options: $request->only(['expiration_date', 'expiry_not_applicable'])
         );
         $this->auditResult($request, 'medicine_restocked', $context, $result);
 
@@ -141,6 +167,9 @@ class MedicineStockService
         ?string $direction = null,
         ?string $operationKey = null
     ): array {
+        if ($action === 'physical_count') {
+            return $this->correctRecordedQuantity($request, $medicine, $quantity, $reason, $operationKey);
+        }
         abort_unless(in_array($action, self::ADJUSTMENT_ACTIONS, true), 422, 'Invalid inventory operation.');
         $this->facilityAccess->authorizeMedicine($request->user(), $medicine);
         $context = $this->facilityContext($request->user());
@@ -153,7 +182,8 @@ class MedicineStockService
             trim($reason),
             $action === 'correction' ? $direction : null,
             $operationKey ?: (string) Str::uuid(),
-            $action
+            $action,
+            $request->only(['expiry_group_id', 'pool', 'target'])
         );
         $auditAction = in_array($action, ['damaged_disposal', 'expired_disposal'], true)
             ? 'medicine_disposed'
@@ -163,18 +193,50 @@ class MedicineStockService
         return $result;
     }
 
+    public function correctRecordedQuantity(
+        Request $request,
+        Medicine $medicine,
+        int $quantity,
+        string $reason,
+        ?string $operationKey = null
+    ): array {
+        return DB::transaction(function () use ($request, $medicine, $quantity, $reason, $operationKey) {
+            $locked = Medicine::whereKey($medicine->id)->lockForUpdate()->firstOrFail();
+            $this->facilityAccess->authorizeMedicine($request->user(), $locked);
+            abort_if($locked->expiryGroups()->exists(), 422, 'Use a group correction or complete stock verification for grouped inventory.');
+            $result = $this->expiryStock->operate($request->user(), $locked, $this->facilityContext($request->user()), 'verify_stock', 0, $reason, $operationKey ?: (string) Str::uuid(), [
+                'groups' => [], 'unassigned_quantity' => $quantity, 'snapshot' => $locked->stock_summary['snapshot'],
+            ]);
+            $this->auditResult($request, 'inventory_corrected', $this->facilityContext($request->user()), $result);
+
+            return $result;
+        });
+    }
+
+    public function groupOperation(Request $request, Medicine $medicine, array $data): array
+    {
+        $result = $this->expiryStock->operate($request->user(), $medicine, $this->facilityContext($request->user()), $data['action'], (int) ($data['quantity'] ?? 0), $data['reason'], $data['idempotency_key'], $data);
+        $this->auditResult($request, 'medicine_'.$data['action'], $this->facilityContext($request->user()), $result);
+
+        return $result;
+    }
+
     public function dispense(Request $request, HealthRecord $record, array $requestedItems): void
     {
+        ActionPermissions::ensure($request->user(), 'items.dispense');
         if ($requestedItems === []) {
             return;
         }
 
         $user = $request->user();
-        abort_unless($user->isBhw(), 422, 'Medicine dispensing is only available for BHC visits.');
         $context = $this->facilityContext($user);
         abort_unless(
-            $context['type'] === 'bhc'
-                && (int) $record->barangay_health_center_id === $context['id'],
+            ($context['type'] === 'bhc'
+                && (int) $record->barangay_health_center_id === $context['id']
+                && ! $record->isRhuItrV1())
+            || ($context['type'] === 'rhu'
+                && (int) $record->rural_health_unit_id === $context['id']
+                && $record->isRhuItrV1()),
             403,
             'This resource is outside your assigned facility.'
         );
@@ -202,7 +264,8 @@ class MedicineStockService
                 'unit' => $item['unit'] ?: $medicine->unit,
                 'remarks' => $item['remarks'],
                 'dispensed_by' => $user->id,
-                'barangay_health_center_id' => $record->barangay_health_center_id,
+                'barangay_health_center_id' => $context['type'] === 'bhc' ? $context['id'] : null,
+                'rural_health_unit_id' => $context['type'] === 'rhu' ? $context['id'] : null,
             ]);
 
             $result = collect($results)->firstWhere('medicine_id', $medicine->id);
@@ -219,67 +282,11 @@ class MedicineStockService
     }
 
     private function executeSingle(
-        string $operation,
-        User $user,
-        Medicine $medicine,
-        array $context,
-        int $quantity,
-        ?string $reason,
-        ?string $direction,
-        string $operationKey,
-        ?string $action = null
+        string $operation, User $user, Medicine $medicine, array $context,
+        int $quantity, ?string $reason, ?string $direction, string $operationKey,
+        ?string $action = null, array $options = []
     ): array {
-        if (DB::getDriverName() !== 'pgsql') {
-            return $this->sqliteSingle(
-                $operation,
-                $user,
-                $medicine,
-                $context,
-                $quantity,
-                $reason,
-                $direction,
-                $operationKey,
-                $action
-            );
-        }
-
-        try {
-            if ($operation === 'opening_balance') {
-                $rows = DB::select(
-                    'SELECT * FROM public.akay_inventory_opening_balance(?, ?, ?, ?, ?, ?)',
-                    [$medicine->id, $user->id, $context['type'], $context['id'], $quantity, $operationKey]
-                );
-            } elseif ($operation === 'restock') {
-                $rows = DB::select(
-                    'SELECT * FROM public.akay_inventory_restock(?, ?, ?, ?, ?, ?, ?)',
-                    [$medicine->id, $user->id, $context['type'], $context['id'], $quantity, $reason, $operationKey]
-                );
-            } else {
-                $rows = DB::select(
-                    'SELECT * FROM public.akay_inventory_adjust(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [
-                        $medicine->id,
-                        $user->id,
-                        $context['type'],
-                        $context['id'],
-                        $action,
-                        $direction,
-                        $quantity,
-                        $reason,
-                        $operationKey,
-                    ]
-                );
-            }
-        } catch (QueryException $exception) {
-            $this->throwMappedDatabaseError($exception);
-        }
-
-        abort_unless(count($rows) === 1, 500, 'Inventory operation did not return a result.');
-
-        $result = $this->normalizeResult($rows[0]);
-        $result['transaction_type'] = $action ?: $operation;
-
-        return $result;
+        return $this->expiryStock->operate($user, $medicine, $context, $action ?: $operation, $quantity, $reason, $operationKey, [...$options, 'direction' => $direction]);
     }
 
     private function postgresDispense(
@@ -289,10 +296,27 @@ class MedicineStockService
         array $items,
         string $operationKey
     ): array {
-        $payload = array_map(fn (array $item): array => [
-            'medicine_id' => $item['medicine_id'],
-            'quantity' => $item['quantity'],
-        ], $items);
+        $medicines = Medicine::query()
+            ->whereIn('id', array_column($items, 'medicine_id'))
+            ->with('expiryGroups')
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $medicine = $medicines->get($item['medicine_id']);
+            $this->assertOwnedMedicine($medicine, $context, true);
+            $this->assertDispensable($medicine);
+        }
+
+        $payload = array_map(function (array $item) use ($medicines): array {
+            $item = $this->expiryStock->resolveManualDispenseItem($medicines->get($item['medicine_id'])->expiryGroups, $item);
+
+            return [
+                'medicine_id' => $item['medicine_id'],
+                'quantity' => $item['quantity'],
+                ...(array_key_exists('allocations', $item) ? ['allocations' => $item['allocations'], 'override_reason' => $item['override_reason']] : []),
+            ];
+        }, $items);
 
         try {
             $rows = DB::select(
@@ -319,88 +343,6 @@ class MedicineStockService
         }, $rows);
     }
 
-    private function sqliteSingle(
-        string $operation,
-        User $user,
-        Medicine $medicine,
-        array $context,
-        int $quantity,
-        ?string $reason,
-        ?string $direction,
-        string $operationKey,
-        ?string $action
-    ): array {
-        $locked = Medicine::query()->whereKey($medicine->id)->lockForUpdate()->first();
-        $this->assertOwnedMedicine($locked, $context);
-        $this->assertOperationKeyAvailable($operationKey, $medicine->id);
-
-        $before = (int) $locked->quantity;
-        $transactionType = $action ?: $operation;
-        $sourceType = match ($transactionType) {
-            'opening_balance' => 'opening_balance',
-            'restock' => 'manual_restock',
-            'damaged_disposal', 'expired_disposal' => 'disposal',
-            'correction' => 'correction',
-            default => 'manual_adjustment',
-        };
-
-        if ($operation === 'opening_balance') {
-            $this->assertUsableForIncrease($locked);
-            $this->conflictIf($before !== 0);
-            $delta = $quantity;
-        } elseif ($operation === 'restock') {
-            $this->assertUsableForIncrease($locked);
-            $delta = $quantity;
-        } else {
-            abort_unless(in_array($transactionType, self::ADJUSTMENT_ACTIONS, true), 422, 'Invalid inventory operation.');
-            abort_if(
-                $transactionType === 'expired_disposal'
-                    && (! $locked->expiration_date || ! $locked->expiration_date->isBefore(today())),
-                422,
-                'Expired disposal is only available for expired stock.'
-            );
-            abort_if(
-                ! $locked->is_active
-                    && in_array($transactionType, ['adjustment_in', 'correction'], true),
-                409,
-                'Archived medicine cannot receive stock.'
-            );
-            $isIncrease = $transactionType === 'adjustment_in'
-                || ($transactionType === 'correction' && $direction === 'in');
-            abort_if($transactionType === 'correction' && ! in_array($direction, ['in', 'out'], true), 422, 'Correction direction is required.');
-            $delta = $isIncrease ? $quantity : -$quantity;
-        }
-
-        $after = $before + $delta;
-        $this->conflictIf($after < 0 || $after > self::MAX_QUANTITY);
-        $locked->update([
-            'quantity' => $after,
-            'availability_status' => $this->medicineStatus($after, (int) ($locked->low_stock_threshold ?? 10)),
-            'updated_by' => $user->id,
-        ]);
-        $transaction = MedicineInventoryTransaction::create([
-            'medicine_id' => $locked->id,
-            'actor_user_id' => $user->id,
-            'transaction_type' => $transactionType,
-            'quantity_delta' => $delta,
-            'quantity_before' => $before,
-            'quantity_after' => $after,
-            'source_type' => $sourceType,
-            'source_id' => $locked->id,
-            'reason' => $reason,
-            'operation_key' => $operationKey,
-        ]);
-
-        return [
-            'transaction_id' => $transaction->id,
-            'medicine_id' => $locked->id,
-            'quantity_before' => $before,
-            'quantity_after' => $after,
-            'quantity_delta' => $delta,
-            'transaction_type' => $transactionType,
-        ];
-    }
-
     private function sqliteDispense(
         User $user,
         HealthRecord $record,
@@ -423,69 +365,12 @@ class MedicineStockService
 
         foreach ($items as $item) {
             $medicine = $medicines->get($item['medicine_id']);
-            if (
-                ! $medicine->is_active
-                || $medicine->expiration_date?->isBefore(today())
-                || strcasecmp((string) $medicine->availability_status, 'Unavailable') === 0
-            ) {
-                $this->inventoryError(
-                    'MEDICINE_NOT_DISPENSABLE',
-                    422,
-                    'One or more selected medicines cannot be dispensed.'
-                );
-            }
-        }
-
-        $insufficientItems = [];
-        foreach ($items as $item) {
-            $medicine = $medicines->get($item['medicine_id']);
-            if ($item['quantity'] > (int) $medicine->quantity) {
-                $insufficientItems[] = [
-                    'medicine_id' => $medicine->id,
-                    'medicine_name' => $medicine->name,
-                    'requested_quantity' => $item['quantity'],
-                    'available_quantity' => (int) $medicine->quantity,
-                ];
-            }
-        }
-        if ($insufficientItems !== []) {
-            $this->inventoryError(
-                'INSUFFICIENT_STOCK',
-                409,
-                'One or more selected medicines no longer have enough available stock.',
-                $insufficientItems
-            );
+            $this->assertDispensable($medicine);
         }
 
         $results = [];
         foreach ($items as $item) {
-            $medicine = $medicines->get($item['medicine_id']);
-            $before = (int) $medicine->quantity;
-            $after = $before - $item['quantity'];
-            $medicine->update([
-                'quantity' => $after,
-                'availability_status' => $this->medicineStatus($after, (int) ($medicine->low_stock_threshold ?? 10)),
-                'updated_by' => $user->id,
-            ]);
-            $transaction = MedicineInventoryTransaction::create([
-                'medicine_id' => $medicine->id,
-                'actor_user_id' => $user->id,
-                'transaction_type' => 'dispense',
-                'quantity_delta' => -$item['quantity'],
-                'quantity_before' => $before,
-                'quantity_after' => $after,
-                'source_type' => 'health_record',
-                'source_id' => $record->id,
-                'operation_key' => $operationKey,
-            ]);
-            $results[] = [
-                'transaction_id' => $transaction->id,
-                'medicine_id' => $medicine->id,
-                'quantity_before' => $before,
-                'quantity_after' => $after,
-                'quantity_delta' => -$item['quantity'],
-                'transaction_type' => 'dispense',
-            ];
+            $results[] = $this->expiryStock->sqliteDispense($user, $medicines->get($item['medicine_id']), $item, $operationKey, $record->id);
         }
 
         return $results;
@@ -493,11 +378,11 @@ class MedicineStockService
 
     private function facilityContext(User $user): array
     {
-        if ($user->isBhw() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
+        if ($user->isBhc() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
             return ['type' => 'bhc', 'id' => (int) $user->barangay_health_center_id];
         }
 
-        if ($user->isRhuStaff() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
+        if ($user->isRhu() && $this->facilityAccess->hasValidFacilityAssignment($user)) {
             return ['type' => 'rhu', 'id' => (int) $user->rural_health_unit_id];
         }
 
@@ -518,16 +403,22 @@ class MedicineStockService
             $this->inventoryError(
                 'MEDICINE_FACILITY_MISMATCH',
                 422,
-                'Please select a medicine from BHC inventory.'
+                'Please select a medicine from your facility inventory.'
             );
         }
 
         abort_unless($owned, 403, 'This resource is outside your assigned facility.');
     }
 
-    private function assertUsableForIncrease(Medicine $medicine): void
+    private function assertDispensable(Medicine $medicine): void
     {
-        $this->conflictIf(! $medicine->is_active || $medicine->expiration_date?->isBefore(today()));
+        if (! $medicine->is_active) {
+            $this->inventoryError(
+                'MEDICINE_NOT_DISPENSABLE',
+                422,
+                'One or more selected medicines cannot be dispensed.'
+            );
+        }
     }
 
     private function assertOperationKeyAvailable(string $operationKey, ?int $medicineId = null): void
@@ -543,13 +434,6 @@ class MedicineStockService
                 409,
                 'This inventory operation has already been applied.'
             );
-        }
-    }
-
-    private function conflictIf(bool $condition): void
-    {
-        if ($condition) {
-            $this->inventoryError('INVENTORY_CONFLICT', 409, 'The inventory changed. Please refresh and try again.');
         }
     }
 
@@ -570,6 +454,9 @@ class MedicineStockService
             'INVENTORY_OPERATION_ALREADY_APPLIED',
             'MEDICINE_FACILITY_MISMATCH',
             'INVENTORY_CONFLICT',
+            'INVENTORY_GROUP_MISMATCH',
+            'INVENTORY_GROUP_CONTEXT_REQUIRED',
+            'INVALID_INVENTORY_EXPIRY',
         ];
         $message = $exception->getMessage();
         $code = collect($knownCodes)->first(fn (string $candidate): bool => str_contains($message, $candidate));
@@ -584,6 +471,9 @@ class MedicineStockService
             'INVALID_INVENTORY_OPERATION' => [422, 'The inventory operation is invalid.'],
             'INVENTORY_OPERATION_ALREADY_APPLIED' => [409, 'This inventory operation has already been applied.'],
             'MEDICINE_FACILITY_MISMATCH' => [422, 'The selected medicine is not available for this facility.'],
+            'INVENTORY_GROUP_MISMATCH' => [422, 'The selected group does not belong to this medicine.'],
+            'INVENTORY_GROUP_CONTEXT_REQUIRED' => [422, 'An expiry group is required.'],
+            'INVALID_INVENTORY_EXPIRY' => [422, 'The expiry information is invalid.'],
             'INVENTORY_CONFLICT' => [409, 'The inventory changed. Please refresh and try again.'],
         ];
 
@@ -648,14 +538,5 @@ class MedicineStockService
         }
 
         $this->auditLogger->log($request, $action, 'medicines', implode('; ', $details).'.');
-    }
-
-    private function medicineStatus(int $quantity, int $lowStockThreshold): string
-    {
-        if ($quantity <= 0) {
-            return 'Unavailable';
-        }
-
-        return $quantity <= $lowStockThreshold ? 'Low Stock' : 'Available';
     }
 }

@@ -8,10 +8,19 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class RestockMedicineRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (filled($this->header('Idempotency-Key'))) {
+            $this->merge([
+                'idempotency_key' => $this->header('Idempotency-Key'),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         $user = $this->user();
-        if (! $user || ! ($user->isBhw() || $user->isRhuStaff())) {
+        if (! $user || ! ($user->isBhc() || $user->isRhu())) {
             return false;
         }
 
@@ -26,8 +35,10 @@ class RestockMedicineRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...\App\Services\MedicineExpiryStockService::expiryRules($this->route('medicine')?->item_type ?? 'medicine', $this->boolean('expiry_not_applicable')),
             'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
+            'idempotency_key' => ['nullable', 'uuid'],
         ];
     }
 }

@@ -1,0 +1,537 @@
+/* Opt-in clinical tokens: the existing BHC primary red remains the anchor.
+   Corners follow the app-wide rule: sheets and cards use --radius-card (12px),
+   controls and chips are pills. Soft card elevation (--clinical-shadow) matches
+   the rest of the app's cards. */
+.clinical-directory {
+  --clinical-red-dark: #b91c1c;
+  --clinical-red: #dc2626;
+  --clinical-red-pale: #fef2f2;
+  --clinical-canvas: #ffffff;
+  --clinical-surface: #ffffff;
+  --clinical-ink: #111827;
+  --clinical-muted: #4b5563;
+  --clinical-label: #6b7280;
+  --clinical-border: #e4e7ec;
+  --clinical-border-strong: #d1d5db;
+  --clinical-radius: var(--radius-card, 12px);
+  --clinical-radius-pill: var(--radius-pill, 999px);
+  --clinical-shadow: 0 4px 16px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.03);
+  --clinical-gap: 12px;
+  --fab-size: 52px;
+  --fab-inset: 24px;
+  --clinical-focus: 0 0 0 3px #dc262626;
+  container-type: inline-size;
+  min-width: 0;
+  display: block;
+  background: transparent;
+  color: var(--clinical-ink);
+}
+
+/* Title + count on the left, search / filters / New Patient on the right.
+   On phones the toolbar scrolls away with the page; from 768px up it is pinned
+   (see the pinned-layout block below). */
+.clinical-directory .module-toolbar[data-variant="clinical"] {
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.clinical-directory__heading { min-width: 0; padding-block: 0; }
+.clinical-directory__title {
+  color: var(--clinical-ink);
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+.clinical-directory__count {
+  margin-top: 4px;
+  color: var(--clinical-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.clinical-directory .module-toolbar__row { flex-wrap: wrap; }
+.clinical-directory .module-toolbar__controls > div,
+.clinical-directory .module-toolbar__row :is(button, a, input) {
+  border-radius: var(--clinical-radius-pill);
+  box-shadow: none;
+}
+.clinical-directory .module-toolbar__row input { font-size: 14px; }
+
+/* Permanent medium-width search (400px, shrinks when the row is tight) beside
+   the filter and action buttons. It filters on submit (Enter or the Search button), so no expand
+   animation and no half-typed results. */
+.clinical-directory .module-toolbar__controls { flex: 1 1 auto; }
+.clinical-search {
+  display: flex;
+  flex: 0 1 400px;
+  align-items: center;
+  gap: 4px;
+  min-width: min(100%, 240px);
+  height: 40px;
+  padding: 0 4px 0 14px;
+  border: 1px solid var(--clinical-border-strong);
+  border-radius: var(--clinical-radius-pill);
+  background: var(--clinical-surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.clinical-search:focus-within {
+  border-color: var(--clinical-red);
+  box-shadow: var(--clinical-focus);
+}
+.clinical-search__icon { flex: none; color: var(--clinical-label); }
+.clinical-directory .clinical-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--clinical-ink);
+}
+.clinical-directory .clinical-search__input::placeholder { color: var(--clinical-label); }
+.clinical-directory .clinical-search__input:focus-visible { outline: none; box-shadow: none; }
+.clinical-directory .clinical-search__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--clinical-label);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.clinical-directory .clinical-search__clear:hover { background: #f1f3f6; color: var(--clinical-ink); }
+.clinical-directory .clinical-search__submit {
+  flex: none;
+  height: 32px;
+  padding: 0 16px;
+  background: #1b2638;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 120ms ease;
+}
+.clinical-directory .clinical-search__submit:hover { background: #2c3a52; }
+.clinical-directory .clinical-search__submit:active { background: #101828; }
+.clinical-directory .clinical-search :is(button):focus-visible { outline-offset: 1px; }
+.clinical-directory .clinical-search :disabled { opacity: 0.6; cursor: not-allowed; }
+.clinical-directory .module-toolbar__row > div:last-child > a {
+  background: var(--clinical-red);
+}
+.clinical-directory .module-toolbar__row > div:last-child > a:hover {
+  background: var(--clinical-red-dark);
+}
+
+/* Results area is its own container so the grid reacts to the room left beside
+   the preview panel, not to the viewport. */
+.clinical-directory__results {
+  container: directory-results / inline-size;
+  /* Breathing room under the last card. */
+  padding-bottom: 16px;
+}
+/* Below desktop the floating button overlays the list's bottom-right corner:
+   let the list scroll far enough that its last card and Open Profile button can
+   rest clear of it (24px inset + 52px button + 20px). Keep in sync with
+   DESKTOP_QUERY in PatientsModule. */
+@media (max-width: 1023.98px) {
+  .clinical-directory__results {
+    padding-bottom: calc(var(--fab-inset) + var(--fab-size) + 20px);
+  }
+}
+/* One column on phones, two cards per row once there is room (the reference). */
+.clinical-directory__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--clinical-gap);
+}
+@container directory-results (min-width: 560px) {
+  .clinical-directory__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Main column (pinned header + card list) and, from 1024px up, a collapsible
+   details panel beside it (decided in PatientsModule). Collapsed it takes no
+   space at all; the Details button in the toolbar or a card click opens it. */
+.clinical-directory__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.clinical-directory__layout--preview {
+  grid-template-columns: minmax(0, 1fr) 0;
+  column-gap: 0;
+  transition: grid-template-columns 200ms ease, column-gap 200ms ease;
+}
+.clinical-directory__layout--preview.is-open {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  column-gap: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .clinical-directory__layout--preview { transition: none; }
+}
+.clinical-directory__main {
+  min-width: 0;
+}
+.clinical-directory__details {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--clinical-border);
+  border-radius: var(--clinical-radius);
+  background: var(--clinical-surface);
+  box-shadow: var(--clinical-shadow);
+}
+/* Collapsed: no border or shadow bleeding into the 0px column, and hidden from
+   assistive tech once the close transition has finished. */
+.clinical-directory__details[data-open="false"] {
+  border-width: 0;
+  box-shadow: none;
+  visibility: hidden;
+  transition: visibility 0s linear 200ms;
+}
+.clinical-directory__preview {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 378px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Details toggle: a quiet secondary button, ordered before New Patient. */
+.clinical-directory .module-toolbar__row > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.clinical-directory .module-toolbar__row > div:last-child > * { flex: 0 0 auto; width: auto; }
+.clinical-directory .clinical-directory__details-toggle {
+  order: -1;
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--clinical-border-strong);
+  border-radius: var(--clinical-radius-pill);
+  background: var(--clinical-surface);
+  color: var(--clinical-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.clinical-directory .clinical-directory__details-toggle:hover {
+  border-color: var(--clinical-red);
+  background: var(--clinical-red-pale);
+  color: var(--clinical-red-dark);
+}
+.clinical-directory .clinical-directory__details-toggle[aria-pressed="true"] {
+  border-color: var(--clinical-red);
+  background: var(--clinical-red-pale);
+  color: var(--clinical-red-dark);
+}
+.clinical-directory .clinical-directory__details-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--clinical-focus);
+}
+
+/* Pinned layout (768px and up; keep in sync with PINNED_QUERY in
+   PatientsModule): the directory fills the content area and the page itself no
+   longer scrolls. The header and the preview panel stay put; only the card list
+   scrolls. Phones keep normal page scrolling. */
+@media (min-width: 768px) {
+  .akay-content-scroll:has(.clinical-directory) {
+    overflow-y: hidden;
+  }
+  .clinical-directory,
+  .clinical-directory__layout {
+    height: 100%;
+    min-height: 0;
+  }
+  .clinical-directory__layout {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .clinical-directory__main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .clinical-directory .module-toolbar[data-variant="clinical"] {
+    flex: none;
+    margin: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--clinical-border);
+  }
+  .clinical-directory__results {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 16px;
+  }
+  /* Patient tools stay full-width above both independently scrolling panes. */
+  .clinical-directory--patients {
+    display: flex;
+    flex-direction: column;
+  }
+  .clinical-directory--patients > .clinical-directory__layout {
+    flex: 1 1 auto;
+    height: auto;
+    padding-top: 16px;
+  }
+  .clinical-directory--patients .clinical-directory__results {
+    padding-top: 0;
+  }
+}
+.clinical-directory__preview-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 64px 24px;
+  text-align: center;
+}
+.clinical-directory__preview-empty-title {
+  color: var(--clinical-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+.clinical-directory__preview-empty-hint {
+  color: var(--clinical-muted);
+  font-size: 12px;
+}
+.clinical-patient {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 12px 16px;
+  border: 1px solid var(--clinical-border);
+  border-radius: var(--clinical-radius);
+  background: var(--clinical-surface);
+  box-shadow: var(--clinical-shadow);
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+.clinical-patient:hover { border-color: var(--clinical-border-strong); }
+.clinical-patient[role="button"] { cursor: pointer; }
+.clinical-patient[data-selected="true"] {
+  border-color: #fca5a5;
+  background: var(--clinical-red-pale);
+  box-shadow: var(--clinical-shadow);
+}
+.clinical-patient[role="button"]:focus-visible {
+  outline: 2px solid var(--clinical-red);
+  outline-offset: 2px;
+}
+
+.clinical-patient__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.clinical-patient__barangay {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--clinical-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.clinical-patient__barangay svg { flex-shrink: 0; }
+.clinical-patient__barangay > span { min-width: 0; overflow-wrap: anywhere; }
+.clinical-patient__badge {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: var(--clinical-radius-pill);
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.clinical-patient__badge[data-type="child"] {
+  background: #cffafe;
+  color: #155e75;
+}
+
+.clinical-patient__identity { text-align: left; }
+.clinical-patient__name {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+.clinical-patient__id {
+  margin-top: 2px;
+  color: var(--clinical-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.clinical-patient__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--clinical-border);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.clinical-patient__fields > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+}
+.clinical-patient__fields dt {
+  color: var(--clinical-label);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.clinical-patient__fields dd {
+  margin: 0;
+  min-width: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.clinical-patient__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+.clinical-patient__open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding-inline: 16px;
+  border-radius: var(--clinical-radius-pill);
+  background: var(--clinical-red);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 150ms ease;
+}
+.clinical-patient__open:hover { background: var(--clinical-red-dark); }
+.clinical-patient__open:active { background: #991b1b; }
+
+.clinical-directory :is(button, a, input):focus-visible {
+  outline: 2px solid var(--clinical-red);
+  outline-offset: 3px;
+  box-shadow: var(--clinical-focus);
+}
+
+/* Sticky footer of the Patient Summary (drawer and inline preview). */
+.patient-summary__footer {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--clinical-border, #e5e7eb);
+  background: #ffffff;
+}
+
+@container (max-width: 620px) {
+  .clinical-directory .module-toolbar__row { flex-direction: column; align-items: stretch; }
+  .clinical-directory .module-toolbar__controls { flex: auto; margin-left: 0; }
+  .clinical-directory .module-toolbar__row > div:last-child { width: 100%; }
+  .clinical-directory .module-toolbar__row > div:last-child > * { flex: 1 1 0; }
+  .clinical-directory .module-toolbar__controls > div { width: 100%; }
+  .clinical-directory .module-toolbar__controls .clinical-search { width: 100%; }
+  .clinical-directory .module-toolbar__row input { width: 100%; opacity: 1; font-size: 16px; }
+}
+@media (pointer: coarse) {
+  .clinical-directory .module-toolbar__row :is(button, a),
+  .clinical-patient__open { min-height: 44px; }
+  .clinical-search { height: 44px; }
+  .clinical-directory .clinical-search__submit { height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clinical-directory *, .clinical-directory .anim-fade-up { animation: none; transition: none; }
+}
+
+/* New Patient floating button (below 1024px only; desktop uses the toolbar
+   button). It floats over the list's bottom-right corner, --fab-inset (24px) from
+   the list's bottom and right edges, so it is clear of the scrollbar and beside,
+   never over, the Details panel. The anchor is a zero-height sticky line at the
+   bottom of the list column: in the pinned layout (768px+) that is the list's
+   bottom edge, and on phones (whole page scrolls) it sticks to the screen bottom,
+   so the button is always visible. Cards scroll beneath it. */
+.clinical-directory__fab-anchor {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  flex: none;
+  height: 0;
+}
+.patients-fab {
+  position: absolute;
+  right: var(--fab-inset);
+  bottom: var(--fab-inset);
+  display: flex;
+  width: var(--fab-size);
+  height: var(--fab-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--clinical-red);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.18), 0 1px 3px rgba(17, 24, 39, 0.1);
+  transition: background-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.patients-fab:hover {
+  background: var(--clinical-red-dark);
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.22), 0 1px 4px rgba(17, 24, 39, 0.12);
+}
+.patients-fab:active { background: #991b1b; transform: scale(0.96); }
+.patients-fab:focus-visible {
+  outline: 3px solid #fecaca;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .patients-fab { transition: none; }
+}
+.patients-fab__tooltip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(4px, -50%);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.patients-fab:focus-visible .patients-fab__tooltip { opacity: 1; transform: translate(0, -50%); }
+@media (hover: hover) {
+  .patients-fab:hover .patients-fab__tooltip { opacity: 1; transform: translate(0, -50%); }
+}
