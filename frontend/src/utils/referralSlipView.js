@@ -57,6 +57,13 @@ function text(value) {
 
 /** Explicitly referred concern/service from the referral snapshot — not BHC-managed programs. */
 export function referredServices(referral) {
+  const named = text(
+    referral?.initialDiagnosis ||
+      referral?.initial_diagnosis ||
+      referral?.referredConcerns ||
+      referral?.referred_concerns,
+  );
+  if (named) return named;
   return formatServiceType(referral?.referralCategory || referral?.category, "");
 }
 
@@ -208,7 +215,13 @@ export function referralSlipModel(referral, record) {
     bodyFindings: referralBodyFindings(linked),
     referringHci: text(referral.referringHci || referral.barangayHealthCenter?.name || referral.barangay_health_center?.name),
     receivingFacility: receivingFacilityName(referral),
-    practitioner: text(referral.referringPractitioner || referral.referring_practitioner),
+    practitioner: text(
+      referral.referringPractitioner ||
+        referral.referring_practitioner ||
+        (linked
+          ? getRecordValue(linked, ["attendingStaff", "attending_staff", "nameOfPractitioner", "name_of_practitioner"], "")
+          : ""),
+    ),
     dateTime: referralDateTime(referral),
     trackingId: text(referral.trackingId || referral.tracking_id),
   };

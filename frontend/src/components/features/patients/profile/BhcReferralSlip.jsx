@@ -47,8 +47,7 @@ export default function BhcReferralSlip({ referral = null, record = null, patien
     <article className="rounded-xl border border-neutral-200 bg-white p-5 shadow-card sm:p-6">
       <header className="flex flex-col gap-3 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-
-          <h1 className="mt-1 text-[1.5rem] font-bold leading-tight tracking-tight text-ink-800">
+          <h1 className="text-[1.5rem] font-bold leading-tight tracking-tight text-ink-800">
             Referral Slip
           </h1>
           <p className="mt-1 font-mono text-[13px] text-neutral-600">{trackingId || "Tracking ID not recorded"}</p>
@@ -60,7 +59,6 @@ export default function BhcReferralSlip({ referral = null, record = null, patien
         <Field label="Referral date / time" value={slip.dateTime} />
         <Field label="Referring BHC" value={slip.referringHci} />
         <Field label="Destination RHU" value={slip.receivingFacility} />
-        <Field label="Tracking ID" value={trackingId} mono />
         <Field label="Referring practitioner" value={slip.practitioner} />
         <Field label="Referral status" value={formatDisplayValue(referral?.status, "")} />
         <Field label="Patient" value={identity} />
@@ -109,10 +107,7 @@ function BhcExaminationPanel({ slip, record, patient }) {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">
-           Examination findings
-        </h2>
- 
+        <h2 className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Examination findings</h2>
         {!record ? (
           <p className="mt-3 text-[13px] text-neutral-500">
             Body findings are unavailable without the linked BHC health record. RHU Health Records may still be empty.

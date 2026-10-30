@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, ClipboardList, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { ClipboardList } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ActionMenu,
@@ -12,12 +12,18 @@ import {
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
+import { Button } from "../../components/ui/button";
 import { getReferrals } from "../../services/referrals";
+import { getReferralHolds } from "../../services/referralHolds";
 import {
-  discardReferralHold,
-  getReferralHolds,
-} from "../../services/referralHolds";
+  TAB_SENT,
+  TAB_WAITING,
+  WAITING_EMPTY_DESCRIPTION,
+  WAITING_EMPTY_TITLE,
+  waitingHoldCard,
+} from "../../utils/bhcReferralWorkspace";
 import {
+  formatDate,
   formatDisplayValue,
   formatFacilityName,
   formatPatientName,
@@ -114,7 +120,9 @@ function getSubmittedDate(referral) {
 
 export default function Referrals() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab =
+    searchParams.get("tab") === TAB_WAITING ? TAB_WAITING : TAB_SENT;
 
   const {
     data: referralsData = [],
@@ -140,12 +148,6 @@ export default function Referrals() {
     () => (Array.isArray(referralHoldsData) ? referralHoldsData : []),
     [referralHoldsData],
   );
-
-  const discardHold = useMutation({
-    mutationFn: discardReferralHold,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() }),
-  });
 
   const referrals = useMemo(
     () => (Array.isArray(referralsData) ? referralsData : []),
@@ -305,6 +307,13 @@ export default function Referrals() {
     );
   }
 
+  function selectTab(tab) {
+    const next = new URLSearchParams(searchParams);
+    if (tab === TAB_WAITING) next.set("tab", TAB_WAITING);
+    else next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }
+
   return (
     <DashboardLayout role="bhc" title="Referrals">
       <SoftLoadingArea skeleton="table"
@@ -312,14 +321,48 @@ export default function Referrals() {
         message="Loading referrals..."
         scope="area"
       >
-        {!loading && referralHolds.length > 0 ? (
-          <WaitingOnDoctorAvailability
-            holds={referralHolds}
-            onDiscard={(holdId) => discardHold.mutate(holdId)}
-            discardingId={discardHold.isPending ? discardHold.variables : null}
-          />
+        {!loading ? (
+          <div
+            role="tablist"
+            aria-label="Referral lists"
+            className="mb-3 flex items-center gap-1 shadow-[inset_0_-1px_0_#E5E7EB]"
+          >
+            {[
+              { key: TAB_SENT, label: "Sent Referrals", count: referrals.length },
+              { key: TAB_WAITING, label: "Waiting to Submit", count: referralHolds.length },
+            ].map((tab) => {
+              const active = tab.key === activeTab;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => selectTab(tab.key)}
+                  className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium ${
+                    active
+                      ? "border-[#DC2626] text-[#111827]"
+                      : "border-transparent text-[#6B7280] hover:border-[#D1D5DB] hover:text-[#111827]"
+                  }`}
+                >
+                  {tab.label}
+                  <span
+                    className={`rounded-sm px-1.5 py-px text-[11px] font-medium tabular-nums ${
+                      active ? "bg-[#FEF2F2] text-[#B91C1C]" : "bg-[#F3F4F6] text-[#6B7280]"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         ) : null}
 
+        {activeTab === TAB_WAITING ? (
+          <WaitingToSubmitList holds={referralHolds} />
+        ) : (
+          <>
         {!loading ? (
           <ModuleToolbar
             searchValue={filters.search}
@@ -339,9 +382,9 @@ export default function Referrals() {
 
         {loading ? null : (
         <ModuleTableCard
-          title="Referrals"
+          title="Sent Referrals"
           count={filteredReferrals.length}
-          subtitle="Track sent referrals and RHU updates."
+          subtitle="Track submitted referrals and RHU updates."
           minWidth="min-w-[1100px]"
           fixedRows
           refreshing={isFetching && referrals.length > 0}
@@ -440,6 +483,8 @@ export default function Referrals() {
             </tbody>
         </ModuleTableCard>
         )}
+          </>
+        )}
       </SoftLoadingArea>
     </DashboardLayout>
   );
@@ -501,57 +546,50 @@ function UrgencyBadge({ urgency }) {
   );
 }
 
-/**
- * DOC-14 blocked attempts still waiting on RHU availability (plan 4.3/4.4).
- * Additive: the notification bell already surfaces this once a doctor
- * becomes available, this list just lets a BHW check without waiting.
- */
-function WaitingOnDoctorAvailability({ holds, onDiscard, discardingId }) {
-  return (
-    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <Bell size={14} className="text-amber-600" />
-        <h2 className="text-[13px] font-bold text-[#78350F]">
-          Waiting on Doctor Availability
-        </h2>
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-          {holds.length}
-        </span>
+function WaitingToSubmitList({ holds }) {
+  if (!holds.length) {
+    return (
+      <div className="border-t border-b border-[#E5E7EB] bg-white px-4 py-10 text-center">
+        <ClipboardList size={20} className="mx-auto text-[#94A3B8]" />
+        <p className="mt-3 text-sm font-semibold text-[#111827]">{WAITING_EMPTY_TITLE}</p>
+        <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#6B7280]">
+          {WAITING_EMPTY_DESCRIPTION}
+        </p>
       </div>
-      <ul className="space-y-2">
-        {holds.map((hold) => (
-          <li
-            key={hold.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-100 bg-white px-4 py-3"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-800">
-                {hold.patientName}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {hold.ruralHealthUnitName || "Receiving RHU"} has no
-                available doctor right now.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Link
-                to={`/bhc/referrals/create?resume_hold=${hold.id}`}
-                className="inline-flex items-center rounded-lg bg-[#B91C1C] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#991B1B]"
-              >
-                Resubmit
-              </Link>
-              <button
-                type="button"
-                onClick={() => onDiscard(hold.id)}
-                disabled={discardingId === hold.id}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-60"
-              >
-                <X size={12} />
-                Discard
-              </button>
-            </div>
-          </li>
-        ))}
+    );
+  }
+
+  return (
+    <div className="border-t border-b border-[#E5E7EB] bg-white">
+      <ul className="divide-y divide-[#F1F5F9]">
+        {holds.map((hold) => {
+          const card = waitingHoldCard(hold);
+          return (
+            <li
+              key={card.id}
+              className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-[#111827]">
+                  {card.patientName}
+                </p>
+                <p className="mt-0.5 text-[11px] text-[#6B7280]">
+                  {formatDate(card.consultationDate, "Date not recorded")} · {card.receivingRhu}
+                </p>
+                <p className="mt-1 text-[12px] text-[#374151]">{card.reason}</p>
+                <p className="mt-1 text-[11px] font-medium text-[#B54708]">{card.status}</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button asChild variant="ghost" className="h-8 rounded-none border border-[#D1D5DB] px-3 text-[11px] font-semibold text-[#111827] hover:bg-[#F9FAFB]">
+                  <Link to={card.detailsPath}>{card.viewLabel}</Link>
+                </Button>
+                <Button asChild className="h-8 rounded-none bg-[#DC2626] px-3 text-[11px] font-semibold text-white hover:bg-[#B91C1C]">
+                  <Link to={card.submitPath}>{card.submitLabel}</Link>
+                </Button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

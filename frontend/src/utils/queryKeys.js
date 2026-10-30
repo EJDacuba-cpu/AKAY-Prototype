@@ -77,6 +77,7 @@ export const queryKeys = {
     to || "",
   ],
   referralHolds: () => ["referral-holds"],
+  referralHold: (holdId) => ["referral-hold", String(holdId || "")],
   clinicalRegistry: () => ["clinical-registry"],
   careOverview: (patientId) => ["care-overview", String(patientId)],
   monitoringHandoffs: () => ["monitoring-handoff-requests"],

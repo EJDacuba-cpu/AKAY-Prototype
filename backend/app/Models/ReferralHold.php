@@ -26,6 +26,8 @@ class ReferralHold extends Model
         'health_record_id',
         'urgency_level',
         'status',
+        'discard_reason',
+        'discarded_by',
         'last_notified_at',
         'resolved_at',
         'resolved_referral_id',
@@ -49,5 +51,56 @@ class ReferralHold extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function healthRecord(): BelongsTo
+    {
+        return $this->belongsTo(HealthRecord::class);
+    }
+
+    public function discardedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'discarded_by');
+    }
+
+    public function pendingReferral(): array
+    {
+        $monitoring = $this->healthRecord?->monitoring_data ?? [];
+        $shared = is_array($monitoring['pendingReferral'] ?? null)
+            ? $monitoring['pendingReferral']
+            : [];
+        $fromOutcome = collect($monitoring['conditionReferralOutcomes'] ?? [])
+            ->first(fn ($outcome) => (int) ($outcome['holdId'] ?? 0) === (int) $this->id);
+
+        return is_array($fromOutcome['pendingReferral'] ?? null)
+            ? $fromOutcome['pendingReferral']
+            : $shared;
+    }
+
+    public function toWaitingArray(): array
+    {
+        $pending = $this->pendingReferral();
+        $record = $this->healthRecord;
+
+        return [
+            'id' => $this->id,
+            'patient_id' => $this->patient_id,
+            'patient' => $this->patient,
+            'rural_health_unit_id' => $this->rural_health_unit_id,
+            'rural_health_unit' => $this->ruralHealthUnit,
+            'health_record_id' => $this->health_record_id,
+            'urgency_level' => $this->urgency_level,
+            'status' => $this->status,
+            'created_at' => $this->created_at,
+            'consultation_date' => optional($record?->date_recorded)->toDateString()
+                ?: optional($this->created_at)->toDateString(),
+            'reason_for_referral' => $pending['reason_for_referral'] ?? null,
+            'chief_complaint' => $pending['chief_complaint'] ?? $record?->chief_complaint,
+            'initial_diagnosis' => $pending['initial_diagnosis'] ?? $record?->diagnosis,
+            'initial_action_taken' => $pending['initial_action_taken'] ?? $record?->treatment_notes,
+            'pending_referral' => $pending,
+            'referral_status' => 'Awaiting Doctor Availability',
+            'submission_status' => 'Not Yet Submitted',
+        ];
     }
 }

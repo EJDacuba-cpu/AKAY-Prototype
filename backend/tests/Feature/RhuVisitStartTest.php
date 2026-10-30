@@ -210,6 +210,29 @@ class RhuVisitStartTest extends TestCase
         $this->as($finalizer)->postJson("/api/rhu-visits/{$waiting->id}/start")->assertForbidden();
     }
 
+    public function test_encoder_without_history_can_read_the_started_visit_but_not_the_queue(): void
+    {
+        $visit = $this->visit();
+        $user = $this->rhuUser(['permissions' => ['consultations.encode']]);
+
+        $uuid = $this->as($user)->postJson("/api/rhu-visits/{$visit->id}/start")
+            ->assertOk()
+            ->json('data.consultation_uuid');
+        $this->assertNotEmpty($uuid);
+
+        $this->as($user)->getJson("/api/rhu-visits/{$visit->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $visit->id)
+            ->assertJsonPath('data.status', RhuVisitQueueEntry::STATUS_IN_CONSULTATION)
+            ->assertJsonPath('data.consultation_uuid', $uuid);
+
+        $this->as($user)->postJson("/api/rhu-visits/{$visit->id}/start")
+            ->assertOk()
+            ->assertJsonPath('data.consultation_uuid', $uuid);
+
+        $this->as($user)->getJson('/api/rhu-visits')->assertForbidden();
+    }
+
     public function test_other_rhu_visit_cannot_be_started(): void
     {
         $patient = Patient::create(['first_name' => 'Other', 'last_name' => 'Start', 'sex' => 'Female', 'status' => 'active', 'rural_health_unit_id' => $this->otherRhu->id]);

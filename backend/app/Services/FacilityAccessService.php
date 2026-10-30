@@ -151,7 +151,8 @@ class FacilityAccessService
                     ->select('health_record_id')
                     ->where('rural_health_unit_id', $user->rural_health_unit_id)
                     ->whereColumn('referrals.patient_id', 'health_records.patient_id')
-                    ->whereNotNull('health_record_id'));
+                    ->whereNotNull('health_record_id'))
+                ->orWhereIn('id', $this->referredParentHealthRecordIds($user));
         });
     }
 
@@ -387,6 +388,7 @@ class FacilityAccessService
                         ->where('health_record_id', $record->id)
                         ->where('rural_health_unit_id', $user->rural_health_unit_id)
                         ->exists()
+                    || $this->isReferredParentHealthRecord($user, $record)
                     || ($record->isRhuItrV1()
                         && $this->sameAssignedId(
                             $record->rural_health_unit_id,
@@ -515,6 +517,34 @@ class FacilityAccessService
                 $medicine->barangay_health_center_id,
                 $user->barangay_health_center_id
             );
+    }
+
+    /**
+     * Parent of a record this RHU was referred: read-only previous-visit context.
+     * Unrelated BHC records stay outside this set.
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    private function referredParentHealthRecordIds(User $user)
+    {
+        return Referral::query()
+            ->select('parents.id')
+            ->join('health_records as referred', 'referred.id', '=', 'referrals.health_record_id')
+            ->join('health_records as parents', 'parents.id', '=', 'referred.parent_health_record_id')
+            ->where('referrals.rural_health_unit_id', $user->rural_health_unit_id)
+            ->whereColumn('referrals.patient_id', 'referred.patient_id')
+            ->whereColumn('parents.patient_id', 'referred.patient_id');
+    }
+
+    private function isReferredParentHealthRecord(User $user, HealthRecord $record): bool
+    {
+        return Referral::query()
+            ->join('health_records as referred', 'referred.id', '=', 'referrals.health_record_id')
+            ->where('referrals.rural_health_unit_id', $user->rural_health_unit_id)
+            ->where('referred.parent_health_record_id', $record->id)
+            ->whereColumn('referrals.patient_id', 'referred.patient_id')
+            ->where('referred.patient_id', $record->patient_id)
+            ->exists();
     }
 
     public function sameAssignedId(mixed $resourceId, mixed $assignedId): bool

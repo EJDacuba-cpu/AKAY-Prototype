@@ -62,6 +62,14 @@ test("under evaluation is the active second stop", () => {
   assert.equal(byKey(steps).confirmed.detail, "Under evaluation");
 });
 
+test("a Received referral is no longer awaiting RHU", () => {
+  const { steps } = buildCarePath({ referrals: [referral("Received")], groups: groups() });
+  const { referred } = byKey(steps);
+  assert.equal(referred.state, "done");
+  assert.match(referred.detail, /Received/i);
+  assert.doesNotMatch(referred.detail, /Awaiting RHU/i);
+});
+
 test("only resolved or ruled-out conditions read as no active condition", () => {
   const { steps } = buildCarePath({
     referrals: [referral("Completed")],

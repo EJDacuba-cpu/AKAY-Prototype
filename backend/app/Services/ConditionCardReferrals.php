@@ -30,7 +30,9 @@ class ConditionCardReferrals
                 'initial_diagnosis' => $entry['name'],
                 'chief_complaint' => $record->chief_complaint,
                 'initial_action_taken' => $record->treatment_notes,
-                'referring_practitioner' => $request->user()->name,
+                'referring_practitioner' => $record->monitoring_data['attendingStaff']
+                    ?? $record->monitoring_data['attending_staff']
+                    ?? $request->user()->name,
                 'client_submission_id' => 'condition:'.hash('sha256', $submissionKey.':'.$entry['id']),
             ];
             try {

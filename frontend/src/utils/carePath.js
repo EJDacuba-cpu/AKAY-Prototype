@@ -17,7 +17,8 @@ import { formatDate } from "./formatters.js";
  */
 
 const DEAD_REFERRAL = new Set(["cancelled", "declined"]);
-const OPEN_REFERRAL = new Set(["pending", "received", "referred", "referred/pending"]);
+const OPEN_REFERRAL = new Set(["pending", "referred", "referred/pending"]);
+const RECEIVED_REFERRAL = new Set(["received", "for monitoring"]);
 
 function referralDateValue(referral = {}) {
   return (
@@ -60,6 +61,9 @@ function referredStep(referrals) {
   const date = formatDate(referralDateValue(latest), "");
   if (OPEN_REFERRAL.has(statusOf(latest))) {
     return { state: "active", detail: date ? `Awaiting RHU · ${date}` : "Awaiting RHU" };
+  }
+  if (RECEIVED_REFERRAL.has(statusOf(latest))) {
+    return { state: "done", detail: date ? `Received · ${date}` : "Received" };
   }
   return { state: "done", detail: date || "Referred" };
 }

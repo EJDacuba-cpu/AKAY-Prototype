@@ -64,13 +64,16 @@ function mapFollowUpOption(task) {
     sourceDate: task.sourceDate || "",
     sourceChiefComplaint: task.sourceChiefComplaint || "",
     sourceAssessment: task.sourceAssessment || "",
+    ruralHealthUnitId: Number(task.ruralHealthUnitId || task.rural_health_unit_id || 0) || null,
+    barangayHealthCenterId: Number(task.barangayHealthCenterId || task.barangay_health_center_id || 0) || null,
   };
 }
 
 /** Every pending follow-up the Continue path may select, earliest due first. */
-export function pendingFollowUpOptions(overview) {
+export function pendingFollowUpOptions(overview, { facility = "any" } = {}) {
   return (overview?.pendingFollowUps || [])
     .map(mapFollowUpOption)
+    .filter((task) => facility !== "rhu" || Number(task.ruralHealthUnitId) > 0)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.followUpId - b.followUpId);
 }
 
@@ -89,11 +92,9 @@ export function scheduledFollowUpOptions(overview) {
 }
 
 /**
- * Whether Start Consultation has anything to ask: verified monitoring to
- * continue, a confirmed condition BHC may start monitoring, a scheduled
- * follow-up to attend, or legacy monitoring to show as pending RHU
- * verification. All of it is optional context on the one encounter, so a
- * patient with none of it skips the modal and goes straight to the workspace.
+ * Whether Start Consultation has optional continue/monitoring context to
+ * offer. The modal still opens for a first-visit patient (New Consultation);
+ * this only decides whether Continue Scheduled Follow-up is available.
  */
 export function hasStartChoices(overview) {
   return (
@@ -104,12 +105,26 @@ export function hasStartChoices(overview) {
   );
 }
 
+/** Resume an unfinished draft skips the modal; every new start confirms in it. */
+export function consultationNeedsStartModal(draft) {
+  return !draft;
+}
+
+/** Actionable start failure copy. The generic patient-load line is only the last fallback. */
+export function startConsultationFailureMessage(error, nothingTicked = true) {
+  const detail = String(error?.message || "").trim();
+  if (detail) return detail;
+  return nothingTicked
+    ? "Patient details could not be loaded. Try again."
+    : "Records could not be loaded. Try again, or untick them to start a normal consultation.";
+}
+
 /**
  * What a Start / Resume Consultation action does with usePatientConsultation's
  * state: "disabled" while it is still checking (or the draft check failed, or a
- * discard is running), "modal" when there is something to continue (the hook
- * never asks for the modal while a draft exists - Resume wins), else "link"
- * (to the draft, or to a new consultation).
+ * discard is running), "modal" when a new consultation needs confirmation
+ * (the hook never asks for the modal while a draft exists - Resume wins), else
+ * "link" (to the unfinished draft).
  */
 export function startConsultationAction(consultation) {
   if (!consultation || consultation.isPending || consultation.isError || consultation.discarding) return "disabled";

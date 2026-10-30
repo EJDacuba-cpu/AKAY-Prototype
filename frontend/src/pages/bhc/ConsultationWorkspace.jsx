@@ -44,12 +44,14 @@ import {
   listLocalDrafts,
 } from "../../services/localDraftVault";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
-import { isNoProviderAvailableError } from "../../services/referrals";
+import { getReferralDestination, isNoProviderAvailableError } from "../../services/referrals";
 import {
   ATTENTION_LEVELS,
   DEFAULT_ATTENTION,
+  isPriority,
   normalizeAttention,
 } from "../../utils/referralAttention";
+import { consultationFinalizeLabel, unavailableReferralGuidance } from "../../utils/bhcReferralWorkspace";
 import { formatDisplayTime } from "../../utils/healthRecordPrograms";
 import {
   FP_CLIENT_TYPE_OPTIONS,
@@ -702,6 +704,7 @@ export default function ConsultationWorkspace() {
   const [connectionIssue, setConnectionIssue] = useState(null);
   const [lastFailedSubmit, setLastFailedSubmit] = useState(null);
   const officialSubmissionRef = useRef(null);
+  const deferralConfirmedRef = useRef(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [selectedPatientId, setSelectedPatientId] = useState(preselectedPatientId);
   // The wizard is a single ordered phase rather than a set of booleans so that
@@ -1275,6 +1278,24 @@ export default function ConsultationWorkspace() {
     conditionReferred: conditionReferrals.length > 0,
     monitoringReferralIds,
   });
+  const { data: referralDestination } = useQuery({
+    queryKey: ["approved-referral-destinations", currentUser?.id, currentUser?.working_facility_key],
+    queryFn: getReferralDestination,
+    enabled: Boolean(needsReferral && userRole === "bhc"),
+    staleTime: 30_000,
+    refetchInterval: needsReferral ? 30_000 : false,
+  });
+  const selectedReferralDestination = (referralDestination?.destinations || []).find(
+    (item) => String(item.id) === String(receivingRhuId),
+  );
+  const referralDoctorAvailable = selectedReferralDestination
+    ? Boolean(selectedReferralDestination.availability?.can_submit_referral)
+    : true;
+  const availableReferralAlternatives = (referralDestination?.destinations || []).filter(
+    (item) =>
+      String(item.id) !== String(receivingRhuId) &&
+      item.availability?.can_submit_referral,
+  );
   const followUpStatus = scheduledReturns.length > 0 ? "Follow-up Required" : "Completed";
   const followUpReasonIsExempt = followUpReasonExempt({
     selectedPrograms: carePlanHasService ? selectedPrograms : [],
@@ -3590,6 +3611,33 @@ export default function ConsultationWorkspace() {
       // ReferralSubmissionGate inside the same server transaction, so a blocked
       // submission still fails closed and is reported through the gate error
       // handling in submitHealthRecordWithReferral.
+      if (userRole === "bhc" && !referralDoctorAvailable && !deferralConfirmedRef.current) {
+        const guidance = unavailableReferralGuidance({
+          facilityName: selectedReferralDestination?.name || "the receiving RHU",
+          isPriority: isPriority(referralForm.urgencyLevel),
+          alternativeNames: availableReferralAlternatives.map((item) => item.name),
+        });
+        setNoticeModal({
+          title: "Save Referral for Later?",
+          message: `${guidance.headline} ${guidance.body}`,
+          actions: [
+            {
+              label: "Back",
+              variant: "secondary",
+              onClick: () => setNoticeModal(null),
+            },
+            {
+              label: "Finalize Consultation & Save Referral for Later",
+              onClick: () => {
+                deferralConfirmedRef.current = true;
+                setNoticeModal(null);
+                void handleSave();
+              },
+            },
+          ],
+        });
+        return;
+      }
       await submitHealthRecordWithReferral({
         formData,
         referralOverrides: {
@@ -3780,6 +3828,7 @@ export default function ConsultationWorkspace() {
 
       setLastFailedSubmit(null);
       clearOfficialSubmission();
+      deferralConfirmedRef.current = false;
       setSaveSuccess({
         recordId: savedRecordId,
         patientId: selectedPatientId,
@@ -4340,6 +4389,7 @@ export default function ConsultationWorkspace() {
           value={receivingRhuId}
           error={validationErrors.receivingRhuId}
           disabled={conditionFieldsLocked}
+          urgencyLevel={referralForm.urgencyLevel}
           onChange={(id) => {
             clearValidationError("receivingRhuId");
             setReceivingRhuId(id);
@@ -5141,7 +5191,11 @@ export default function ConsultationWorkspace() {
           // Review, where Save Consultation is the one action that commits.
           secondaryAction={autosaveStatus}
           onContinue={handleWorkspaceContinue}
-          continueLabel={isReviewStep ? (canFinalize ? (needsReferral ? "Finalize Consultation & Submit Referral" : "Finalize Consultation") : "Submit for Review") : "Next"}
+          continueLabel={isReviewStep ? consultationFinalizeLabel({
+            canFinalize,
+            needsReferral,
+            doctorAvailable: referralDoctorAvailable,
+          }) : "Next"}
           continueDisabled={activeDraft?.reviewState === "review" && !canFinalize}
           continueBusy={isReviewStep ? saving : false}
           continueBusyLabel={isReviewStep ? "Saving..." : "Loading..."}
@@ -5192,6 +5246,14 @@ export default function ConsultationWorkspace() {
             label: "Open Patient",
             onClick: () => navigate(`${basePath}/patients/${selectedPatientId}`),
           },
+          ...(saveSuccess?.awaitingDoctor
+            ? [
+                {
+                  label: "Open Waiting to Submit",
+                  onClick: () => navigate("/bhc/referrals?tab=waiting"),
+                },
+              ]
+            : []),
         ]}
       />
 

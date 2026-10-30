@@ -107,6 +107,8 @@ class CareOverviewController extends Controller
                     $task->purpose_key
                 ) ?: null,
                 'source_health_record_id' => $task->health_record_id,
+                'rural_health_unit_id' => $task->rural_health_unit_id,
+                'barangay_health_center_id' => $task->barangay_health_center_id,
                 'source_date' => $task->healthRecord?->date_recorded?->toDateString(),
                 'source_chief_complaint' => $task->healthRecord?->chief_complaint,
                 'source_assessment' => $this->sourceAssessment($task->healthRecord),

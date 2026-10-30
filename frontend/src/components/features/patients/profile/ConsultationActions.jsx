@@ -10,9 +10,9 @@ import { TextAction } from "./ProfileSection";
 import { formatDate } from "../../../../utils/formatters";
 
 /**
- * `onStart` replaces the link (Start Consultation opens the modal instead).
- * Without it, a plain click loads the patient first (spinner) and then opens
- * the workspace; it stays a real link for new-tab and copy-link.
+ * `onStart` replaces the link (Start Consultation opens the confirmation
+ * modal). Resume of an unfinished draft stays a real link for new-tab and
+ * copy-link; a plain click still loads the patient first.
  */
 export function ConsultationButton({ consultation, onStart }) {
   const { isPending, isError, discarding, opening, primaryLabel, startPath, open } = consultation;

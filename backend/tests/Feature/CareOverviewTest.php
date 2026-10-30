@@ -63,6 +63,8 @@ class CareOverviewTest extends TestCase
         $response->assertJsonPath('data.pending_follow_ups.0.id', $task->id)
             ->assertJsonPath('data.pending_follow_ups.0.is_overdue', true)
             ->assertJsonPath('data.pending_follow_ups.0.reason', 'BP recheck')
+            ->assertJsonPath('data.pending_follow_ups.0.barangay_health_center_id', $this->bhc->id)
+            ->assertJsonPath('data.pending_follow_ups.0.rural_health_unit_id', null)
             ->assertJsonPath('data.pending_follow_ups.0.conditions.0.condition_name', 'Hypertension')
             ->assertJsonPath('data.pending_follow_ups.0.conditions.0.condition_key', 'hypertension')
             ->assertJsonPath('data.pending_follow_ups.0.conditions.0.started_at', now()->subWeeks(2)->toDateString())
@@ -71,7 +73,7 @@ class CareOverviewTest extends TestCase
             ->assertJsonPath('data.monitoring_without_follow_up.0.last_health_record_id', $source->id);
         $this->assertSame(['pending_follow_ups', 'monitoring_without_follow_up', 'monitoring_recommendations'], array_keys($response->json('data')));
         $this->assertSame(
-            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'purpose', 'purpose_key', 'predecessor_task_id', 'reason', 'source_health_record_id', 'source_date', 'source_chief_complaint', 'source_assessment', 'source_selected_programs', 'source_category', 'conditions'],
+            ['id', 'due_date', 'due_time', 'state', 'is_overdue', 'purpose', 'purpose_key', 'predecessor_task_id', 'reason', 'source_health_record_id', 'rural_health_unit_id', 'barangay_health_center_id', 'source_date', 'source_chief_complaint', 'source_assessment', 'source_selected_programs', 'source_category', 'conditions'],
             array_keys($response->json('data.pending_follow_ups.0'))
         );
         $this->assertSame(

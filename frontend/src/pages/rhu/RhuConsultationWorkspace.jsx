@@ -124,7 +124,7 @@ import { getConsultationPatientQuery } from "../../services/consultationPatientQ
 import { listHealthRecordDrafts, getHealthRecordDraft } from "../../services/healthRecordDraftService";
 import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
-import { listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
+import { getRhuVisit, listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
 
 function restorePrescriptionText(payload = {}) {
@@ -260,15 +260,17 @@ export default function RhuConsultationWorkspace() {
     let cancelled = false;
     async function loadVisit() {
       try {
-        const visits = await listRhuVisits();
-        const match = visits.find((entry) => {
-          if (visitId && Number(entry.id) === Number(visitId)) return true;
-          return (
-            !visitId &&
-            String(entry.patient?.id || entry.patient_id) === String(patientId) &&
-            entry.status === "in_consultation"
+        let match = null;
+        if (visitId) {
+          match = await getRhuVisit(visitId);
+        } else {
+          const visits = await listRhuVisits();
+          match = visits.find(
+            (entry) =>
+              String(entry.patient?.id || entry.patient_id) === String(patientId) &&
+              entry.status === "in_consultation",
           );
-        });
+        }
         if (cancelled) return;
         if (!match || match.status !== "in_consultation") {
           setVisitError("Start this consultation from Today's Queue.");
@@ -1092,6 +1094,20 @@ export default function RhuConsultationWorkspace() {
           <p className="mt-2">{visitError}</p>
           <button type="button" className="mt-4 text-sm font-semibold text-[#DC2626]" onClick={() => navigate("/rhu/patients")}>
             Back to Today's Queue
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (patientQuery.isError) {
+    return (
+      <DashboardLayout role="rhu" title="RHU Consultation">
+        <div className="mx-auto max-w-lg border border-[#E5E7EB] bg-white p-6 text-sm text-[#374151]">
+          <h1 className="text-lg font-bold text-[#111827]">Patient details could not be loaded</h1>
+          <p className="mt-2">{patientQuery.error?.message || "This consultation cannot open until the patient record is available."}</p>
+          <button type="button" className="mt-4 text-sm font-semibold text-[#DC2626]" onClick={() => patientQuery.refetch()}>
+            Retry
           </button>
         </div>
       </DashboardLayout>

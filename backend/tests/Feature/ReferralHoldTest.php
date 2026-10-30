@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
+use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\ReferralHold;
@@ -115,8 +116,8 @@ class ReferralHoldTest extends TestCase
         $this->assertNotNull($hold->resolved_at);
     }
 
-    /** A BHW cannot resolve another BHW's hold by guessing its id. */
-    public function test_resume_hold_id_is_scoped_to_its_creator(): void
+    /** Authorized staff at the same BHC can submit a colleague's waiting hold. */
+    public function test_resume_hold_id_is_scoped_to_the_bhc_not_the_creator(): void
     {
         $this->provider(RhuProvider::STATUS_UNAVAILABLE);
         $this->postReferral()->assertUnprocessable();
@@ -124,19 +125,17 @@ class ReferralHoldTest extends TestCase
 
         $this->provider(RhuProvider::STATUS_AVAILABLE);
 
-        $this->postReferral(['resume_hold_id' => $hold->id], $this->otherBhw)
-            ->assertCreated();
+        $referralId = $this->postReferral(['resume_hold_id' => $hold->id], $this->otherBhw)
+            ->assertCreated()
+            ->json('data.id');
 
         $hold->refresh();
-        $this->assertSame(
-            ReferralHold::STATUS_WAITING,
-            $hold->status,
-            'A referral created by a different BHW must not resolve someone else\'s hold.'
-        );
+        $this->assertSame(ReferralHold::STATUS_RESUBMITTED, $hold->status);
+        $this->assertSame($referralId, $hold->resolved_referral_id);
     }
 
-    /** GET /referral-holds returns only the caller's own waiting holds. */
-    public function test_index_returns_only_the_callers_waiting_holds(): void
+    /** GET /referral-holds returns every waiting hold for the caller's BHC. */
+    public function test_index_returns_waiting_holds_for_the_bhc(): void
     {
         $this->provider(RhuProvider::STATUS_UNAVAILABLE);
         $this->postReferral()->assertUnprocessable();
@@ -145,18 +144,140 @@ class ReferralHoldTest extends TestCase
         $this->actingAs($this->bhw, 'sanctum')
             ->getJson('/api/referral-holds')
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(2, 'data');
     }
 
-    /** A BHW cannot discard another BHW's hold. */
-    public function test_discard_is_forbidden_for_another_bhws_hold(): void
+    public function test_index_includes_consultation_date_and_referral_reason(): void
     {
+        $record = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->bhc->id,
+            'date_recorded' => '2026-10-30',
+            'chief_complaint' => 'Persistent cough',
+            'physical_exam' => 'Clear chest findings',
+            'treatment_notes' => 'Observed and advised',
+            'monitoring_data' => [
+                'pendingReferral' => [
+                    'reason_for_referral' => 'Needs RHU assessment',
+                    'chief_complaint' => 'Persistent cough',
+                    'initial_action_taken' => 'Observed and advised',
+                ],
+            ],
+        ]);
+        $hold = ReferralHold::create([
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $this->otherBhw->id,
+            'health_record_id' => $record->id,
+            'urgency_level' => Referral::ATTENTION_ROUTINE,
+            'status' => ReferralHold::STATUS_WAITING,
+        ]);
+
+        $this->actingAs($this->bhw, 'sanctum')
+            ->getJson('/api/referral-holds')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $hold->id)
+            ->assertJsonPath('data.0.consultation_date', '2026-10-30')
+            ->assertJsonPath('data.0.reason_for_referral', 'Needs RHU assessment')
+            ->assertJsonMissingPath('data.0.tracking_id')
+            ->assertJsonMissingPath('data.0.qr_code_value');
+    }
+
+    public function test_show_returns_saved_consultation_findings_without_a_tracking_id(): void
+    {
+        $record = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->bhc->id,
+            'date_recorded' => '2026-10-30',
+            'chief_complaint' => 'Persistent cough',
+            'physical_exam' => 'Clear chest findings',
+            'treatment_notes' => 'Observed and advised',
+            'monitoring_data' => [
+                'pendingReferral' => [
+                    'reason_for_referral' => 'Needs RHU assessment',
+                    'rural_health_unit_id' => $this->rhu->id,
+                    'urgency_level' => Referral::ATTENTION_ROUTINE,
+                ],
+            ],
+        ]);
+        $hold = ReferralHold::create([
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $this->bhw->id,
+            'health_record_id' => $record->id,
+            'urgency_level' => Referral::ATTENTION_ROUTINE,
+            'status' => ReferralHold::STATUS_WAITING,
+        ]);
+
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->getJson("/api/referral-holds/{$hold->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $hold->id)
+            ->assertJsonPath('data.chief_complaint', 'Persistent cough')
+            ->assertJsonPath('data.initial_action_taken', 'Observed and advised')
+            ->assertJsonPath('data.reason_for_referral', 'Needs RHU assessment')
+            ->assertJsonMissingPath('data.tracking_id');
+    }
+
+    /** Authorized staff at the same BHC can discard a colleague's hold with a reason. */
+    public function test_discard_requires_an_audited_reason_and_preserves_the_consultation(): void
+    {
+        $record = HealthRecord::create([
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->bhc->id,
+            'date_recorded' => now(),
+        ]);
+        $hold = ReferralHold::create([
+            'patient_id' => $this->patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'created_by' => $this->bhw->id,
+            'health_record_id' => $record->id,
+            'status' => ReferralHold::STATUS_WAITING,
+        ]);
+
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->postJson("/api/referral-holds/{$hold->id}/discard")
+            ->assertUnprocessable();
+
+        $this->actingAs($this->otherBhw, 'sanctum')
+            ->postJson("/api/referral-holds/{$hold->id}/discard", [
+                'reason' => 'Patient asked to wait for the next clinic day.',
+            ])
+            ->assertOk();
+
+        $this->assertSame(ReferralHold::STATUS_DISCARDED, $hold->fresh()->status);
+        $this->assertSame('Patient asked to wait for the next clinic day.', $hold->fresh()->discard_reason);
+        $this->assertSame($this->otherBhw->id, $hold->fresh()->discarded_by);
+        $this->assertDatabaseHas('health_records', ['id' => $record->id]);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $this->otherBhw->id,
+            'module' => 'referral_holds',
+            'action' => 'discarded',
+        ]);
+    }
+
+    public function test_discard_is_forbidden_for_another_bhcs_hold(): void
+    {
+        $otherBhc = BarangayHealthCenter::create([
+            'name' => 'Other Hold BHC',
+            'status' => 'active',
+            'rural_health_unit_id' => $this->rhu->id,
+        ]);
+        $foreignStaff = $this->user('Foreign BHW', 'hold-foreign@example.test', User::ROLE_BHC, $otherBhc->id);
         $this->provider(RhuProvider::STATUS_UNAVAILABLE);
         $this->postReferral()->assertUnprocessable();
         $hold = ReferralHold::query()->sole();
 
-        $this->actingAs($this->otherBhw, 'sanctum')
-            ->postJson("/api/referral-holds/{$hold->id}/discard")
+        $this->actingAs($foreignStaff, 'sanctum')
+            ->postJson("/api/referral-holds/{$hold->id}/discard", [
+                'reason' => 'Trying to discard another facility hold.',
+            ])
             ->assertForbidden();
 
         $this->assertSame(ReferralHold::STATUS_WAITING, $hold->fresh()->status);
@@ -170,12 +291,49 @@ class ReferralHoldTest extends TestCase
         $hold = ReferralHold::query()->sole();
 
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/referral-holds/{$hold->id}/discard")
+            ->postJson("/api/referral-holds/{$hold->id}/discard", [
+                'reason' => 'Patient no longer needs this referral.',
+            ])
             ->assertOk();
 
         $this->actingAs($this->bhw, 'sanctum')
-            ->postJson("/api/referral-holds/{$hold->id}/discard")
+            ->postJson("/api/referral-holds/{$hold->id}/discard", [
+                'reason' => 'Patient no longer needs this referral.',
+            ])
             ->assertUnprocessable();
+    }
+
+    public function test_failed_resume_does_not_create_another_hold(): void
+    {
+        $this->provider(RhuProvider::STATUS_UNAVAILABLE);
+        $this->postReferral()->assertUnprocessable();
+        $hold = ReferralHold::query()->sole();
+
+        $this->postReferral(['resume_hold_id' => $hold->id])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'NO_PROVIDER_AVAILABLE');
+
+        $this->assertDatabaseCount('referral_holds', 1);
+        $this->assertSame(ReferralHold::STATUS_WAITING, $hold->fresh()->status);
+        $this->assertDatabaseCount('referrals', 0);
+    }
+
+    public function test_repeat_resume_returns_the_existing_referral(): void
+    {
+        $this->provider(RhuProvider::STATUS_UNAVAILABLE);
+        $this->postReferral()->assertUnprocessable();
+        $hold = ReferralHold::query()->sole();
+        $this->provider(RhuProvider::STATUS_AVAILABLE);
+
+        $firstId = $this->postReferral(['resume_hold_id' => $hold->id], $this->otherBhw)
+            ->assertCreated()
+            ->json('data.id');
+        $secondId = $this->postReferral(['resume_hold_id' => $hold->id], $this->bhw)
+            ->assertOk()
+            ->json('data.id');
+
+        $this->assertSame($firstId, $secondId);
+        $this->assertDatabaseCount('referrals', 1);
     }
 
     /** Flipping a provider to Available notifies every waiting hold at that RHU exactly once. */

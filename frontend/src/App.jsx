@@ -59,6 +59,7 @@ import BhcFollowUpRedirect from "./pages/bhc/BhcFollowUpRedirect";
 import FollowUpDetails from "./pages/bhc/FollowUpDetails";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
+import WaitingReferralDetails from "./pages/bhc/WaitingReferralDetails";
 import ReferralDetails from "./pages/bhc/ReferralDetails";
 import MedicineAvailability from "./pages/bhc/MedicineAvailability";
 import MedicineDetailsPage from "./pages/shared/MedicineDetailsPage";
@@ -618,6 +619,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="bhc" module="referrals">
             <CreateReferral />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/bhc/referrals/waiting/:holdId"
+        element={
+          <ProtectedPage allowedRole="bhc" module="referrals">
+            <WaitingReferralDetails />
           </ProtectedPage>
         }
       />

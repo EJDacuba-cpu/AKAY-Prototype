@@ -75,10 +75,10 @@ class ReferralHoldService
                 $this->notifications->notifyUsers(
                     $recipients,
                     'Doctor Now Available',
-                    "{$rhu->name} may now have an available doctor - {$patientName} can be resubmitted.",
+                    "{$rhu->name} may now have an available doctor. Review {$patientName} under Waiting to Submit and submit only after confirming availability.",
                     'referral_hold_available',
                     null,
-                    "/bhc/referrals/create?resume_hold={$hold->id}",
+                    "/bhc/referrals/waiting/{$hold->id}",
                     'referral_hold',
                     $hold->id
                 );
@@ -87,10 +87,12 @@ class ReferralHoldService
             });
     }
 
-    public function discard(ReferralHold $hold): void
+    public function discard(ReferralHold $hold, string $reason, User $actor): void
     {
         $hold->update([
             'status' => ReferralHold::STATUS_DISCARDED,
+            'discard_reason' => $reason,
+            'discarded_by' => $actor->id,
             'resolved_at' => now(),
         ]);
     }

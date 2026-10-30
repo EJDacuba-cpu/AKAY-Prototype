@@ -61,6 +61,12 @@ class EnforceActionPermissions
                 ActionPermissions::allows($request->user(), 'consultations.encode')
                 || ActionPermissions::allows($request->user(), 'consultations.finalize')
             ) ? null : 'consultations.encode',
+            // The ITR workspace reads one started visit after encode; the queue list stays history.
+            str_contains($path, '/rhu-visits') && $read && preg_match('#/rhu-visits/\d+$#', $path) => (
+                ActionPermissions::allows($request->user(), 'consultations.encode')
+                || ActionPermissions::allows($request->user(), 'consultations.finalize')
+                || ActionPermissions::allows($request->user(), 'clinical.history')
+            ) ? null : 'clinical.history',
             // Reading the queue is clinical history; walk-in intake and close are the registration duty.
             str_contains($path, '/rhu-visits') => $read ? 'clinical.history' : 'patients.register',
             // RHU intake identifies an arrival and marks it Received; every other referral write stays rhu.manage.

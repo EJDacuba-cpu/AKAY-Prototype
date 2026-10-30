@@ -129,7 +129,11 @@ class ReferralController extends Controller
         } catch (ReferralSubmissionBlockedException $exception) {
             // Recorded only after the transaction above has already rolled
             // back, in its own fresh transaction - see ReferralHoldService.
-            if ($exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE) {
+            // Resuming a waiting hold must not create a second hold.
+            if (
+                $exception->blockCode === ReferralSubmissionBlockedException::NO_PROVIDER_AVAILABLE
+                && empty($data['resume_hold_id'])
+            ) {
                 $route = $referralRouting->resolveForBhc($user, isset($data['rural_health_unit_id']) ? (int) $data['rural_health_unit_id'] : null);
 
                 $referralHolds->recordBlockedAttempt($user, $patient, $route['bhc']->id, $route['rhu'], [
@@ -155,7 +159,7 @@ class ReferralController extends Controller
 
         $this->cache->invalidateReferralReports($referral);
 
-        return $this->storeResponse($referral, 201);
+        return $this->storeResponse($referral, $referral->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(Request $request, Referral $referral)

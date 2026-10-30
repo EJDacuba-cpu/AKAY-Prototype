@@ -14,7 +14,7 @@ import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
 import { DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
-import { hasStartChoices, reachedPath, startRoute } from "../utils/startConsultation";
+import { consultationNeedsStartModal, reachedPath, startRoute } from "../utils/startConsultation";
 
 /**
  * The consultation state of one patient: whether the signed-in user has an
@@ -22,13 +22,12 @@ import { hasStartChoices, reachedPath, startRoute } from "../utils/startConsulta
  * to discard the draft. Shared by the profile header's primary button and its
  * draft banner so both read one query.
  *
- * Without a draft, Start Consultation first reads the patient's care overview:
- * when the patient has active monitored conditions or RHU-recommended
- * conditions to start, `needsStartModal` is true and the button opens the Start
- * Consultation modal, where they can optionally be added to the visit. With none, the button goes straight to
- * the consultation. A draft always wins - Resume goes straight back to it. An
- * overview that fails to load never blocks starting: the button falls back to
- * a new consultation.
+ * Without a draft, Start Consultation always opens the selection modal, even
+ * when the patient has no pending follow-up (New Consultation is the default).
+ * Continue Scheduled Follow-up is offered only when eligible pending tasks
+ * exist. A draft always wins - Resume goes straight back to it. An overview
+ * that fails to load never blocks starting: the modal still opens a new
+ * consultation.
  *
  * Start and Resume load the patient record the workspace restricts services
  * by before navigating (`opening` is true meanwhile), so the form never opens
@@ -117,7 +116,7 @@ export default function usePatientConsultation(patientId) {
     isError: DRAFTS_ENABLED && isError,
     opening,
     careOverview,
-    needsStartModal: !draft && hasStartChoices(careOverview),
+    needsStartModal: consultationNeedsStartModal(draft),
     /**
      * Opens the consultation for what the Start Consultation modal chose.
      * With monitoring, scheduled follow-ups or RHU recommendations ticked it

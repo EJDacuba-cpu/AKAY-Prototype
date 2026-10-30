@@ -14,6 +14,8 @@ const payload = {
       is_overdue: true,
       reason: "DOTS check",
       source_health_record_id: 50,
+      rural_health_unit_id: 8,
+      barangay_health_center_id: 4,
       source_date: "2026-09-17",
       conditions: [
         { monitoring_id: 3, condition_name: "Tuberculosis", condition_key: "tuberculosis", started_at: "2026-07-01" },
@@ -25,6 +27,8 @@ const payload = {
 
 test("a follow-up's conditions carry condition_key and started_at", () => {
   const overview = mapCareOverview(payload);
+  assert.equal(overview.pendingFollowUps[0].ruralHealthUnitId, 8);
+  assert.equal(overview.pendingFollowUps[0].barangayHealthCenterId, 4);
   assert.deepEqual(overview.pendingFollowUps[0].conditions, [
     {
       monitoringId: 3,

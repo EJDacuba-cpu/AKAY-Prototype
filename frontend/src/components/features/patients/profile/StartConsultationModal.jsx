@@ -8,6 +8,7 @@ import {
   legacyMonitoringOptions,
   monitoredConditionOptions,
   pendingFollowUpOptions,
+  startConsultationFailureMessage,
 } from "../../../../utils/startConsultation";
 
 const NEW_VISIT = "new";
@@ -78,14 +79,13 @@ function SectionHeading({ id, children }) {
 }
 
 /**
- * Shown by Start Consultation when the patient has verified monitoring,
- * conditions the RHU recommends BHC start monitoring, scheduled follow-ups, or
- * legacy monitoring waiting on RHU verification. The two entry paths are New
- * Consultation (default; never attaches pending follow-ups) and Continue
- * Scheduled Follow-up (one selected by default, more only if explicitly
- * added). Opening never completes a follow-up. Legacy monitoring is listed
- * read-only. `onStart` (async) always loads the patient first. Mount it only
- * while open so each opening starts empty.
+ * Shown by Start Consultation for first-time and returning patients. The two
+ * entry paths are New Consultation (default; never attaches pending
+ * follow-ups) and Continue Scheduled Follow-up (only when eligible pending
+ * tasks exist; one selected by default on BHC, more only if explicitly added).
+ * Opening never completes a follow-up. Legacy monitoring is listed read-only.
+ * `onStart` (async) always loads the patient first. Mount it only while open
+ * so each opening starts empty.
  */
 export default function StartConsultationModal({ overview, onStart, onCancel, variant = "bhc" }) {
   const visitTypeId = useId();
@@ -100,11 +100,11 @@ export default function StartConsultationModal({ overview, onStart, onCancel, va
   const [startConditionIds, setStartConditionIds] = useState([]);
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState("");
+  const rhu = variant === "rhu";
   const options = monitoredConditionOptions(overview);
-  const followUps = pendingFollowUpOptions(overview);
+  const followUps = pendingFollowUpOptions(overview, { facility: rhu ? "rhu" : "any" });
   const recommendations = monitoringRecommendationOptions(overview);
   const legacy = legacyMonitoringOptions(overview);
-  const rhu = variant === "rhu";
   const continueMode = followUps.length > 0 && visitType === CONTINUE;
   const effectiveFollowUpIds = continueMode ? followUpIds : [];
   const needsFollowUpTick = continueMode && followUpIds.length === 0;
@@ -149,11 +149,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel, va
         }
         setProblem(`${messages.join(" ")} Check the list, then start again.`);
       } else {
-        setProblem(
-          nothingTicked
-            ? "Patient details could not be loaded. Try again."
-            : "Records could not be loaded. Try again, or untick them to start a normal consultation.",
-        );
+        setProblem(startConsultationFailureMessage(error, nothingTicked));
       }
       setStarting(false);
     }

@@ -13,6 +13,8 @@ import {
   bhcCoordinationText,
   bhcExpectedReturnLabel,
 } from "../../../services/doctorAvailabilityModel";
+import { unavailableReferralGuidance } from "../../../utils/bhcReferralWorkspace";
+import { isPriority } from "../../../utils/referralAttention";
 
 const STATUS_AVAILABLE = "Available";
 const REFERENCE_NOTE = "For reference only — the RHU assigns the practitioner.";
@@ -105,6 +107,47 @@ function DetailItem({ label, children }) {
   );
 }
 
+function UnavailableReferralNotice({
+  facilityName,
+  alternatives = [],
+  disabled = false,
+  onFacilityChange,
+  urgencyLevel,
+}) {
+  const guidance = unavailableReferralGuidance({
+    facilityName,
+    isPriority: isPriority(urgencyLevel),
+    alternativeNames: alternatives.map((destination) => destination.name),
+  });
+
+  return (
+    <div role="status" className="space-y-3 border-t border-slate-200 p-4 text-xs leading-5">
+      <p>{guidance.headline} {guidance.body}</p>
+      {alternatives.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {alternatives.map((destination) => (
+            <Button
+              key={destination.id}
+              type="button"
+              variant="ghost"
+              disabled={disabled}
+              onClick={() => onFacilityChange(String(destination.id))}
+              className="rounded-none border border-slate-300 bg-white text-black hover:bg-slate-50 hover:text-black"
+            >
+              Choose {destination.name}
+            </Button>
+          ))}
+        </div>
+      )}
+      {guidance.saveForLaterIsDefault ? (
+        <p>Finalizing will save the consultation and keep this referral under Waiting to Submit until staff submit it.</p>
+      ) : (
+        <p>Choose an authorized alternative first when one is available. Saving for later is a last resort, not the default safe option.</p>
+      )}
+    </div>
+  );
+}
+
 function DoctorDetailsModal({ provider, onClose }) {
   if (!provider) return null;
   const updated = formatStamp(provider.updated_at);
@@ -149,7 +192,7 @@ function DoctorDetailsModal({ provider, onClose }) {
  * Full-width read-only roster below the facility and priority fields.
  * Unavailable doctors stay visible; only an empty roster shows the empty state.
  */
-function AvailabilityPreview({ facility, alternatives = [], disabled = false, onFacilityChange }) {
+function AvailabilityPreview({ facility, alternatives = [], disabled = false, onFacilityChange, urgencyLevel }) {
   const [detailsProvider, setDetailsProvider] = useState(null);
   const availability = facility.availability || {};
   const providers = sortProviders(
@@ -175,15 +218,13 @@ function AvailabilityPreview({ facility, alternatives = [], disabled = false, on
         </ul>
       )}
       {!availability.can_submit_referral && (
-        <div role="status" className="space-y-3 border-t border-slate-200 p-4 text-xs leading-5">
-          <p>No doctor is currently available at {facility.name}. Choose another facility, or finalize to save the consultation with this referral marked Awaiting Doctor Availability / Not Yet Submitted.</p>
-          {alternatives.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {alternatives.map((destination) => <Button key={destination.id} type="button" variant="ghost" disabled={disabled} onClick={() => onFacilityChange(String(destination.id))} className="rounded-none border border-slate-300 bg-white text-black hover:bg-slate-50 hover:text-black">Choose {destination.name}</Button>)}
-            </div>
-          )}
-          <p>A hold is an administrative state, not an appointment or assurance that waiting is safe.</p>
-        </div>
+        <UnavailableReferralNotice
+          facilityName={facility.name}
+          alternatives={alternatives}
+          disabled={disabled}
+          onFacilityChange={onFacilityChange}
+          urgencyLevel={urgencyLevel}
+        />
       )}
       <DoctorDetailsModal
         provider={detailsProvider}
@@ -200,7 +241,7 @@ function AvailabilityPreview({ facility, alternatives = [], disabled = false, on
  *
  * @param selectAside  optional field drawn beside the select on wide screens
  */
-export default function ReferralFacilityField({ value, onChange, error, disabled = false, autoSelect = true, selectAside = null, name = "receivingRhuId", label = "Receiving Facility" }) {
+export default function ReferralFacilityField({ value, onChange, error, disabled = false, autoSelect = true, selectAside = null, name = "receivingRhuId", label = "Receiving Facility", urgencyLevel }) {
   const user = getStoredAuthUser();
   const { data, error: loadError, refetch } = useQuery({
     queryKey: ["approved-referral-destinations", user?.id, user?.working_facility_key],
@@ -268,7 +309,7 @@ export default function ReferralFacilityField({ value, onChange, error, disabled
         {selectAside}
       </div>
 
-      {selected && <AvailabilityPreview key={selected.id} facility={selected} alternatives={alternatives} disabled={disabled} onFacilityChange={onChange} />}
+      {selected && <AvailabilityPreview key={selected.id} facility={selected} alternatives={alternatives} disabled={disabled} onFacilityChange={onChange} urgencyLevel={urgencyLevel} />}
     </div>
   );
 }

@@ -19,6 +19,8 @@ export function mapCareOverview(data) {
       predecessorTaskId: task.predecessor_task_id || null,
       reason: task.reason || task.purpose || "",
       sourceHealthRecordId: task.source_health_record_id,
+      ruralHealthUnitId: task.rural_health_unit_id || null,
+      barangayHealthCenterId: task.barangay_health_center_id || null,
       sourceDate: task.source_date,
       sourceChiefComplaint: task.source_chief_complaint || "",
       sourceAssessment: task.source_assessment || "",

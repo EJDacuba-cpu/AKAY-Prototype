@@ -511,4 +511,58 @@ class RhuItrConsultationTest extends TestCase
         $this->assertDatabaseCount('patient_conditions', 1);
         $this->assertDatabaseCount('monitoring_handoff_requests', 0);
     }
+
+    public function test_rhu_can_read_referred_follow_up_and_its_parent_but_not_unrelated_bhc_records(): void
+    {
+        $patient = $this->patient(['rural_health_unit_id' => null]);
+        $clinician = $this->clinician();
+        $parent = HealthRecord::create([
+            'patient_id' => $patient->id,
+            'created_by' => $clinician->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Initial cough',
+            'visit_type' => 'initial_consultation',
+        ]);
+        $followUp = HealthRecord::create([
+            'patient_id' => $patient->id,
+            'created_by' => $clinician->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'parent_health_record_id' => $parent->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Cough worsened',
+            'visit_type' => 'follow_up_visit',
+        ]);
+        $unrelated = HealthRecord::create([
+            'patient_id' => $patient->id,
+            'created_by' => $clinician->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Unrelated visit',
+        ]);
+        Referral::create([
+            'tracking_id' => 'AKY-PARENT-'.Str::upper(Str::random(6)),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id,
+            'health_record_id' => $followUp->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Assessment',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+
+        $this->as($clinician)->getJson('/api/health-records/'.$followUp->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $followUp->id)
+            ->assertJsonPath('data.parent_health_record_id', $parent->id);
+        $this->as($clinician)->getJson('/api/health-records/'.$parent->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $parent->id)
+            ->assertJsonPath('data.chief_complaint', 'Initial cough');
+        $this->as($clinician)->getJson('/api/health-records/'.$unrelated->id)->assertForbidden();
+        $ids = $this->as($clinician)->getJson('/api/health-records?patient_id='.$patient->id)
+            ->assertOk()
+            ->json('data.data');
+        $this->assertEqualsCanonicalizing([$followUp->id, $parent->id], array_column($ids, 'id'));
+    }
 }

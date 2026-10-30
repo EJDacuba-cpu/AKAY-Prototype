@@ -1418,4 +1418,70 @@ class BhcGeneralConsultationV2Test extends TestCase
             ->assertJsonPath('data.payload.pulse', '3123')
             ->assertJsonPath('data.payload.systolicBp', '120');
     }
+
+    public function test_follow_up_referral_links_to_the_follow_up_record_not_the_parent(): void
+    {
+        $this->seedAvailableProvider($this->rhu);
+        $parentId = $this->v2($this->followUp())->assertCreated()->json('data.id');
+        $task = FollowUpTask::where('health_record_id', $parentId)->sole();
+
+        $card = $this->card('c1', 'refer_to_rhu', 'Persistent cough');
+        unset($card['referral']);
+        $followUpId = $this->v2([
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $parentId,
+            'needs_referral' => true,
+            'chief_complaint' => 'Cough worsened during follow-up',
+            'physical_exam' => 'Wheeze this visit',
+            'diagnoses' => [$card],
+            'care_plan' => [
+                'continued_concerns' => [['taskId' => $task->id, 'careOutcome' => 'refer_to_rhu']],
+                'condition_cards' => true,
+                'shared_condition_referral' => true,
+                'refer_to_rhu' => true,
+                'shared_referral_acknowledged' => true,
+            ],
+            'monitoring_data' => [
+                'followUpTaskId' => $task->id,
+                'attendingStaff' => 'Midwife Rosa',
+            ],
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'urgency_level' => 'Routine',
+                'reason_for_referral' => 'Needs RHU assessment',
+                'referring_practitioner' => 'Midwife Rosa',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->assertNotSame($parentId, $followUpId);
+        $this->assertSame($parentId, HealthRecord::findOrFail($followUpId)->parent_health_record_id);
+        $this->assertDatabaseHas('referrals', [
+            'health_record_id' => $followUpId,
+            'referring_practitioner' => 'Midwife Rosa',
+        ]);
+        $this->assertStringContainsString('Persistent cough', Referral::where('health_record_id', $followUpId)->value('initial_diagnosis'));
+        $this->assertSame(0, Referral::where('health_record_id', $parentId)->count());
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $task->fresh()->state);
+        $this->assertSame(1, Referral::count());
+    }
+
+    public function test_referral_uses_recorded_attending_staff_when_practitioner_omitted(): void
+    {
+        $this->seedAvailableProvider($this->rhu);
+        $payload = $this->sharedReferral();
+        $id = $this->v2([
+            ...$payload,
+            'monitoring_data' => ['attendingStaff' => 'Recorded Practitioner'],
+            'referral' => [
+                'rural_health_unit_id' => $this->rhu->id,
+                'urgency_level' => 'Priority',
+                'reason_for_referral' => 'Shared RHU assessment',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->assertDatabaseHas('referrals', [
+            'health_record_id' => $id,
+            'referring_practitioner' => 'Recorded Practitioner',
+        ]);
+    }
 }

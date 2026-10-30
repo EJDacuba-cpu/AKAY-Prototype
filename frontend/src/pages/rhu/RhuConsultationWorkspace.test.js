@@ -29,3 +29,9 @@ test("RHU ITR submit sends prescription_text and omits catalog prescribe and con
   const rhuBlock = service.match(/rhu_itr_v1[\s\S]{0,400}prescription_text/);
   assert.ok(rhuBlock, "expected RHU ITR payload to include prescription_text");
 });
+
+test("RHU ITR loads the started visit by id and shows a retryable patient-load error", () => {
+  assert.match(workspace, /getRhuVisit/);
+  assert.match(workspace, /patientQuery\.isError/);
+  assert.match(workspace, /Retry/);
+});

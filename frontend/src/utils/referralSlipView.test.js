@@ -112,6 +112,30 @@ test("referred concerns come from the referral snapshot, not BHC-managed program
   );
 });
 
+test("referred concerns prefer the explicit referred names over the service category", () => {
+  assert.equal(
+    referredServices({ ...linked, initialDiagnosis: "Persistent cough; Wheeze" }),
+    "Persistent cough; Wheeze",
+  );
+  assert.equal(
+    referredServices({ ...linked, initial_diagnosis: "Hypertension" }),
+    "Hypertension",
+  );
+});
+
+test("the slip practitioner is the recorded referring practitioner, never a borrowed parent value", () => {
+  const slip = referralSlipModel(
+    { ...linked, referringPractitioner: "Midwife Rosa" },
+    { ...record22, attendingStaff: "Someone else" },
+  );
+  assert.equal(slip.practitioner, "Midwife Rosa");
+  const fromLinkedRecord = referralSlipModel({ ...linked, referringPractitioner: "" }, {
+    ...record22,
+    attendingStaff: "Midwife Rosa",
+  });
+  assert.equal(fromLinkedRecord.practitioner, "Midwife Rosa");
+});
+
 test("only numeric ids are safe to fetch as /referrals/{id}", () => {
   assert.equal(isNumericReferralId("5"), true);
   assert.equal(isNumericReferralId("AKAY-NEW"), false);

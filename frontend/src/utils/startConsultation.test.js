@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   checkContinuedStart,
+  consultationNeedsStartModal,
   reachedPath,
   hasStartChoices,
   legacyMonitoringOptions,
@@ -10,6 +12,7 @@ import {
   scheduledFollowUpOptions,
   selectionToRoute,
   startConsultationAction,
+  startConsultationFailureMessage,
   startRoute,
 } from "./startConsultation.js";
 
@@ -211,6 +214,50 @@ test("hasStartChoices is true for a pending concern follow-up alone", () => {
 test("hasStartChoices is false for a first-visit patient", () => {
   assert.equal(hasStartChoices({ pendingFollowUps: [], monitoringWithoutFollowUp: [], monitoringRecommendations: [] }), false);
   assert.equal(hasStartChoices({}), false);
+});
+
+test("Start Consultation still opens a modal when the patient has no pending follow-up", () => {
+  assert.equal(consultationNeedsStartModal(null), true);
+  assert.equal(consultationNeedsStartModal(undefined), true);
+  assert.equal(consultationNeedsStartModal({ id: "draft-1" }), false);
+});
+
+test("BHC Start Consultation uses the modal even when there are no start choices", () => {
+  const hook = readFileSync(new URL("../hooks/usePatientConsultation.js", import.meta.url), "utf8");
+  const modal = readFileSync(new URL("../components/features/patients/profile/StartConsultationModal.jsx", import.meta.url), "utf8");
+  assert.match(hook, /consultationNeedsStartModal\(draft\)/);
+  assert.match(modal, /startConsultationFailureMessage/);
+  assert.match(modal, /facility: rhu \? "rhu" : "any"/);
+});
+
+test("Start Consultation shows the API error instead of a generic patient-load message", () => {
+  assert.equal(
+    startConsultationFailureMessage({ message: "Only a waiting visit can start a consultation." }, true),
+    "Only a waiting visit can start a consultation.",
+  );
+  assert.equal(
+    startConsultationFailureMessage({ message: "This follow-up does not belong to this patient." }, false),
+    "This follow-up does not belong to this patient.",
+  );
+  assert.equal(
+    startConsultationFailureMessage({}, true),
+    "Patient details could not be loaded. Try again.",
+  );
+  assert.match(
+    startConsultationFailureMessage({}, false),
+    /Records could not be loaded/,
+  );
+});
+
+test("RHU continue only offers follow-ups that belong to the RHU", () => {
+  const mixed = {
+    pendingFollowUps: [
+      { id: 11, dueDate: "2026-10-01", purpose: "BHC recheck", ruralHealthUnitId: null, barangayHealthCenterId: 4 },
+      { id: 12, dueDate: "2026-10-02", purpose: "RHU review", ruralHealthUnitId: 8 },
+    ],
+  };
+  assert.deepEqual(pendingFollowUpOptions(mixed).map((row) => row.followUpId), [11, 12]);
+  assert.deepEqual(pendingFollowUpOptions(mixed, { facility: "rhu" }).map((row) => row.followUpId), [12]);
 });
 
 test("startRoute carries followUpIds", () => {

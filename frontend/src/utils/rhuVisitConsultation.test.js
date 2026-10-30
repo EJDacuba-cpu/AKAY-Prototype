@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   reviewReferralSlipPath,
@@ -8,6 +11,27 @@ import {
   selectedRhuFollowUpIds,
   visitContinuedFollowUpIds,
 } from "./rhuVisitRoutes.js";
+
+test("start and resume go through the existing visit APIs without minting a second identity", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, "rhuVisitConsultation.js"), "utf8");
+  const service = readFileSync(join(here, "../services/rhuVisitService.js"), "utf8");
+  assert.match(source, /mode === "resume"/);
+  assert.match(source, /resumeRhuVisit\(visitId\)/);
+  assert.match(source, /startRhuVisit\(visitId/);
+  assert.match(service, /export async function getRhuVisit/);
+});
+
+test("start and resume reuse the same visit consultation path", () => {
+  assert.equal(
+    rhuConsultationPath(12, 9),
+    "/rhu/health-records/add?visitId=12&patientId=9&mode=continue",
+  );
+  assert.equal(
+    rhuConsultationPath(12, 9, visitContinuedFollowUpIds({ continued_follow_up_task_ids: [] })),
+    "/rhu/health-records/add?visitId=12&patientId=9&mode=continue",
+  );
+});
 
 test("queue and profile open the same RHU ITR route", () => {
   assert.equal(

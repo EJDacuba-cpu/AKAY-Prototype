@@ -6,6 +6,12 @@ export async function listRhuVisits() {
   return response?.data ?? [];
 }
 
+/** One visit in today's queue, including an in-consultation identity after start. */
+export async function getRhuVisit(visitId) {
+  const response = await apiRequest(`/rhu-visits/${visitId}`);
+  return response?.data ?? null;
+}
+
 /** Patients this RHU may check in, found by name tokens, PhilHealth or contact number. */
 export async function searchPatientsForCheckIn(query) {
   const response = await apiRequest(`/rhu-visits/patient-search?q=${encodeURIComponent(query)}`);

@@ -193,6 +193,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::get('/referral-routing', [ReferralController::class, 'destination']);
             Route::get('/referral-holds', [ReferralHoldController::class, 'index']);
             Route::post('/referral-holds', [ReferralHoldController::class, 'store']);
+            Route::get('/referral-holds/{referralHold}', [ReferralHoldController::class, 'show']);
             Route::post('/referral-holds/{referralHold}/discard', [ReferralHoldController::class, 'discard']);
             Route::get('/reports/bhc', [ReportController::class, 'bhc']);
         });
