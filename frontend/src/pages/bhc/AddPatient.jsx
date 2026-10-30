@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   
@@ -47,7 +48,8 @@ import {
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
 import { checkInExistingPatient } from "../../services/rhuVisitService";
-import { duplicatePrompt, postSaveDestination } from "../../utils/walkInRegistration";
+import { duplicatePrompt, newCheckInKey, postSaveDestination } from "../../utils/walkInRegistration";
+import { queryKeys } from "../../utils/queryKeys";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
 import { reportedParentValues } from "../../utils/parentLinks";
@@ -191,6 +193,7 @@ export function RegistrationForm({
   walkIn, onNewWalkIn,
 }) {
   const navigate = useNavigate();
+  const client = useQueryClient();
   const [createdPatientId, setCreatedPatientId] = useState("");
   const editingPatientId = patientId || createdPatientId || undefined;
   const savedPatient = savedPatientOverride || registry.patients.find((patient) => patient.id === editingPatientId);
@@ -211,6 +214,9 @@ export function RegistrationForm({
     success: false,
   });
   const [saving, setSaving] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkInError, setCheckInError] = useState("");
+  const checkInKeyRef = useRef(walkIn?.key || "");
   const [duplicates, setDuplicates] = useState(null);
   const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection,{preserveParentLinks:live}) : registrationForm(savedPatient));
   const [fieldErrors, setFieldErrors] = useState({});
@@ -403,14 +409,9 @@ function handleBirthDateChange(valueOrEvent) {
       setModals({ ...modals, confirm: false, success: true });
       toast.success(householdEnabled && live ? "Patient and household saved." : live ? "Patient saved." : "Patient saved in this mock session.");
     } catch (error) {
-      const prompt = walkIn ? duplicatePrompt(error) : null;
+      const prompt = role === "rhu" ? duplicatePrompt(error) : null;
       if (prompt) {
         setDuplicates(prompt);
-        setModals((current) => ({ ...current, confirm: false }));
-        return;
-      }
-      if (walkIn && error?.code === "VISIT_CHECK_IN_KEY_CONFLICT") {
-        toast.error("This walk-in was already registered and checked in. Check the patient list before registering again.");
         setModals((current) => ({ ...current, confirm: false }));
         return;
       }
@@ -428,16 +429,48 @@ function handleBirthDateChange(valueOrEvent) {
     setHeadReplacement(null);
     setCreatedPatientId("");
     setFieldErrors({});
+    setCheckInError("");
     setModals({ confirm: false, success: false });
-    // A new registration is a new visit: it must not reuse the previous check-in key.
+    checkInKeyRef.current = "";
     if (walkIn) onNewWalkIn?.();
-    navigate(walkIn ? `${patientsPath}/add?check_in=1` : `${patientsPath}/add`);
+    navigate(walkIn || role === "rhu" ? `${patientsPath}/add${walkIn ? "?check_in=1" : ""}` : `${patientsPath}/add`);
+  }
+
+  function ensureCheckInKey() {
+    if (!checkInKeyRef.current) checkInKeyRef.current = walkIn?.key || newCheckInKey();
+    return checkInKeyRef.current;
+  }
+
+  async function goToQueue() {
+    setModals({ confirm: false, success: false });
+    navigate(patientsPath);
+  }
+
+  async function checkInCreatedPatient() {
+    if (checkingIn || !createdPatientId) return;
+    setCheckingIn(true);
+    setCheckInError("");
+    try {
+      await checkInExistingPatient(createdPatientId, ensureCheckInKey());
+      toast.success("Patient added to today's queue.");
+      await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
+      goToQueue();
+    } catch (error) {
+      if (error?.code === "VISIT_ALREADY_ACTIVE") {
+        await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
+        goToQueue();
+      } else {
+        setCheckInError(error?.message || "Unable to check this patient in.");
+      }
+    } finally {
+      setCheckingIn(false);
+    }
   }
 
   async function checkInMatch(match) {
     try {
       setSaving(true);
-      if (!match.activeVisitId) await checkInExistingPatient(match.id, walkIn.key);
+      if (!match.activeVisitId) await checkInExistingPatient(match.id, ensureCheckInKey());
       setDuplicates(null);
       navigate(patientsPath);
     } catch (error) {
@@ -823,12 +856,22 @@ function handleBirthDateChange(valueOrEvent) {
       {/* Modals */}
       {modals.success && <ModalShell
         title="Patient Saved" appearance="plain"
-        onClose={() => { setModals({ confirm: false, success: false }); navigate(postSaveDestination({ checkIn: Boolean(walkIn), patientsPath, patientId: createdPatientId })); }}
+        onClose={() => { if (checkingIn) return; setModals({ confirm: false, success: false }); navigate(postSaveDestination({ checkIn: Boolean(walkIn), role, patientsPath, patientId: createdPatientId })); }}
         footer={<>
-          <Button type="button" variant="ghost" onClick={registerAnother}>Register Another Patient</Button>
-          <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(walkIn ? patientsPath : `${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>{walkIn ? "Back to queue" : "Edit Patient"}</Button>
+          <Button type="button" variant="ghost" disabled={checkingIn} onClick={registerAnother}>Register Another Patient</Button>
+          {role === "rhu" && !patientId ? (
+            <>
+              <Button type="button" variant="secondary" disabled={checkingIn} onClick={goToQueue}>Back to Today's Queue</Button>
+              <Button type="button" disabled={checkingIn} onClick={checkInCreatedPatient}>{checkingIn ? "Checking in..." : "Check In Patient"}</Button>
+            </>
+          ) : (
+            <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(walkIn ? patientsPath : `${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>{walkIn ? "Back to queue" : "Edit Patient"}</Button>
+          )}
         </>}
-      ><PatientRegistrationSuccess householdEnabled={householdEnabled} live={live} serialNumber={form.familySerialNumber} /></ModalShell>}
+      >
+        <PatientRegistrationSuccess householdEnabled={householdEnabled} live={live} serialNumber={form.familySerialNumber} />
+        {checkInError && <p role="alert" className="mt-3 text-sm text-alert-700">{checkInError}</p>}
+      </ModalShell>}
       {modals.confirm && <ModalShell
         title="Save Patient?" appearance="plain"
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}

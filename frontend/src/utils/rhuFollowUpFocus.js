@@ -67,3 +67,41 @@ export function focusedRhuFollowUp({
     linkedTaskId: Number(task.id) || null,
   };
 }
+
+function recordId(record) {
+  return Number(record?.id || 0);
+}
+
+function parentForTask(task, parentRecords) {
+  const parentId = Number(task?.healthRecordId || task?.originalHealthRecordId || 0);
+  if (!parentId) return null;
+  return (parentRecords || []).find((record) => recordId(record) === parentId) || null;
+}
+
+/** Focus every explicitly selected RHU follow-up; unrelated conditions stay references. */
+export function focusedRhuFollowUps({
+  tasks = [],
+  parentRecords = [],
+  conditions = [],
+} = {}) {
+  const diagnoses = [];
+  const linkedTaskIds = [];
+  const focusedNames = new Set();
+  for (const task of tasks) {
+    const one = focusedRhuFollowUp({
+      task,
+      parentRecord: parentForTask(task, parentRecords),
+      conditions,
+    });
+    if (one.linkedTaskId) linkedTaskIds.push(one.linkedTaskId);
+    if (!one.focused) continue;
+    diagnoses.push(one.focused);
+    focusedNames.add(text(one.focused.name).toLowerCase());
+  }
+  const references = (conditions || []).filter((condition) => {
+    if (!["active", "controlled"].includes(text(condition?.status).toLowerCase())) return false;
+    const name = text(condition?.conditionName || condition?.condition_name || condition?.name).toLowerCase();
+    return name && !focusedNames.has(name);
+  });
+  return { diagnoses, references, linkedTaskIds };
+}

@@ -123,12 +123,15 @@ class PatientController extends Controller
         $canAccessHistory = $user->isAdmin() || ActionPermissions::allows($user, 'clinical.history');
         $data['created_by'] = $user->id;
 
-        // RHU walk-in: the visit is created in the same transaction as the patient.
+        // Check-in is a separate action. A leftover check_in field is ignored
+        // after duplicate detection, and never creates a queue visit here.
         $checkIn = $data['check_in'] ?? null;
         $confirmDuplicate = (bool) ($data['confirm_possible_duplicate'] ?? false);
         unset($data['check_in'], $data['confirm_possible_duplicate']);
         if ($checkIn !== null) {
             abort_unless($user->isRhu(), 403, 'Only RHU staff can check a patient in.');
+        }
+        if ($user->isRhu()) {
             $duplicates = $confirmDuplicate ? [] : app(RhuVisitQueueService::class)->findPossibleDuplicates(
                 $user,
                 (string) ($data['first_name'] ?? ''),
@@ -161,8 +164,7 @@ class PatientController extends Controller
 
         $householdInput = $data['household'] ?? null;
         unset($data['household'], $data['head_replacement']);
-        $visit = null;
-        $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger, $checkIn, &$visit) {
+        $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger) {
             $user = $request->user();
             if ($user->isBhc() || $user->isRhu()) {
                 $households = app(Households::class);
@@ -182,13 +184,9 @@ class PatientController extends Controller
                 app(Households::class)->attach($request, $patient, $householdInput);
             }
             $auditLogger->log($request, 'created', 'patients', "Created patient {$patient->full_name}.");
-            if ($checkIn !== null) {
-                $visit = app(RhuVisitQueueService::class)->checkIn($request->user(), $patient->id, null, $checkIn['key'])['entry'];
-            }
 
             return $patient;
         });
-        $visitSummary = $visit === null ? [] : ['visit' => $visit->only(['id', 'status', 'checked_in_at'])];
 
         $patient->load(['barangayHealthCenter', 'ruralHealthUnit', 'mother', 'father', 'household']);
         if (! $canAccessHistory) {
@@ -196,10 +194,10 @@ class PatientController extends Controller
             $response['mother'] = $patient->mother ? PatientIdentity::response($patient->mother) : null;
             $response['father'] = $patient->father ? PatientIdentity::response($patient->father) : null;
 
-            return response()->json(['data' => $response, ...$visitSummary], 201);
+            return response()->json(['data' => $response], 201);
         }
 
-        return response()->json(['data' => $patient, ...$visitSummary], 201);
+        return response()->json(['data' => $patient], 201);
     }
 
     public function show(Request $request, Patient $patient)

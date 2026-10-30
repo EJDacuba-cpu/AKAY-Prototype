@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { focusedRhuFollowUp } from "./rhuFollowUpFocus.js";
+import { focusedRhuFollowUp, focusedRhuFollowUps } from "./rhuFollowUpFocus.js";
 
 const HTN = { id: 11, conditionName: "Hypertension", status: "active", conditionIdentity: "hypertension" };
 const DM = { id: 12, conditionName: "Diabetes Mellitus", status: "active", conditionIdentity: "diabetes_mellitus" };
@@ -52,4 +52,21 @@ test("without a follow-up task the visit does not grab an unrelated pending task
   assert.equal(result.focused, null);
   assert.deepEqual(result.diagnoses, []);
   assert.equal(result.linkedTaskId, null);
+});
+
+test("multiple selected follow-ups focus only those concerns and leave the rest as references", () => {
+  const result = focusedRhuFollowUps({
+    tasks: [
+      { id: 9, purposeKey: "entry:dx-htn", purpose: "Hypertension review", healthRecordId: 31 },
+      { id: 10, purposeKey: "entry:dx-dm", purpose: "Diabetes review", healthRecordId: 32 },
+    ],
+    parentRecords: [
+      { id: 31, diagnoses: [{ id: "dx-htn", name: "Hypertension" }] },
+      { id: 32, diagnoses: [{ id: "dx-dm", name: "Diabetes Mellitus" }] },
+    ],
+    conditions: [HTN, DM, ASTHMA],
+  });
+  assert.deepEqual(result.linkedTaskIds, [9, 10]);
+  assert.deepEqual(result.diagnoses.map((item) => item.name), ["Hypertension", "Diabetes Mellitus"]);
+  assert.deepEqual(result.references.map((item) => item.conditionName), ["Asthma"]);
 });

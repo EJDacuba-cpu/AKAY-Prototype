@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { SegmentedFilter } from "../../components/common";
 import CloseVisitModal from "../../components/features/rhu-queue/CloseVisitModal";
 import RhuQueueTable from "../../components/features/rhu-queue/RhuQueueTable";
+import RhuStartConsultationModal from "../../components/features/rhu-queue/RhuStartConsultationModal";
 import WalkInCheckInModal from "../../components/features/rhu-queue/WalkInCheckInModal";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import useAccess from "../../hooks/useAccess";
@@ -27,6 +28,7 @@ export default function RhuPatientsWorkspace() {
   const [params, setParams] = useSearchParams();
   const view = params.get("view") === "all" ? "all" : "queue";
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const [startingRow, setStartingRow] = useState(null);
   const [closingRow, setClosingRow] = useState(null);
   const [closeState, setCloseState] = useState({ saving: false, error: "" });
   const client = useQueryClient();
@@ -55,20 +57,6 @@ export default function RhuPatientsWorkspace() {
 
   async function refreshQueue() {
     await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
-  }
-
-  async function startVisit(row) {
-    try {
-      const { path } = await startOrResumeRhuConsultation({
-        mode: "start",
-        visitId: row.id,
-        patientId: row.patientId,
-      });
-      toast.success(`Consultation started for ${row.name}.`);
-      navigate(path);
-    } catch (error) {
-      toast.error(error?.message || "Unable to start this consultation.");
-    }
   }
 
   async function resumeVisit(row) {
@@ -125,7 +113,7 @@ export default function RhuPatientsWorkspace() {
             canEncode={canEncode}
             canFinalize={canFinalize}
             onCheckIn={() => setCheckInOpen(true)}
-            onStart={startVisit}
+            onStart={setStartingRow}
             onResume={resumeVisit}
             onCloseVisit={setClosingRow}
           />
@@ -136,6 +124,18 @@ export default function RhuPatientsWorkspace() {
 
       {checkInOpen && (
         <WalkInCheckInModal registerPath={REGISTER_FOR_CHECK_IN} onClose={() => setCheckInOpen(false)} />
+      )}
+      {startingRow && (
+        <RhuStartConsultationModal
+          patientId={startingRow.patientId}
+          visitId={startingRow.id}
+          patientName={startingRow.name}
+          onClose={() => setStartingRow(null)}
+          onStarted={(path) => {
+            setStartingRow(null);
+            navigate(path);
+          }}
+        />
       )}
       {closingRow && (
         <CloseVisitModal

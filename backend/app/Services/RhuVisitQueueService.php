@@ -6,6 +6,7 @@ use App\Exceptions\RhuVisitCheckInKeyConflictException;
 use App\Exceptions\RhuVisitDuplicateActiveException;
 use App\Exceptions\RhuVisitStateException;
 use App\Models\AuditLog;
+use App\Models\FollowUpTask;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
@@ -196,16 +197,19 @@ class RhuVisitQueueService
 
     /**
      * Mint one consultation identity for a waiting visit, or return the existing
-     * one. No doctor is assigned and no draft is created.
+     * one. Selected follow-up ids are stored on the visit; they are not fulfilled.
+     * No doctor is assigned and no draft is created.
+     *
+     * @param  list<int>  $followUpTaskIds
      */
-    public function start(User $user, int $entryId): RhuVisitQueueEntry
+    public function start(User $user, int $entryId, array $followUpTaskIds = []): RhuVisitQueueEntry
     {
         $this->authorizeRhuUser($user);
         ActionPermissions::ensure($user, 'consultations.encode');
 
         $started = null;
         $conflict = null;
-        DB::transaction(function () use ($user, $entryId, &$started, &$conflict): void {
+        DB::transaction(function () use ($user, $entryId, $followUpTaskIds, &$started, &$conflict): void {
             $entry = $this->lockedVisit($user, $entryId);
             if ($entry->closed_at !== null || $entry->status === RhuVisitQueueEntry::STATUS_CLOSED) {
                 $conflict = ['errorCode' => 'VISIT_CLOSED', 'message' => 'A closed visit cannot be started.', 'id' => $entry->id];
@@ -224,6 +228,7 @@ class RhuVisitQueueService
             $entry->update([
                 'status' => RhuVisitQueueEntry::STATUS_IN_CONSULTATION,
                 'consultation_uuid' => (string) Str::uuid(),
+                'continued_follow_up_task_ids' => $this->eligibleFollowUpTaskIds($entry, $followUpTaskIds),
             ]);
             $started = $entry->fresh();
         });
@@ -441,7 +446,8 @@ class RhuVisitQueueService
             return [];
         }
 
-        $matches = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
+        $matches = Patient::query()
+            ->where('rural_health_unit_id', $rhuId)
             ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
             ->whereRaw('lower(trim(first_name)) = ?', [mb_strtolower(trim($firstName))])
             ->whereRaw('lower(trim(last_name)) = ?', [mb_strtolower(trim($lastName))])
@@ -470,6 +476,46 @@ class RhuVisitQueueService
             ->map(fn (Patient $patient): array => ['patient' => $patient, 'active_visit_id' => $visits[$patient->id] ?? null])
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<mixed>  $ids
+     * @return list<int>
+     */
+    private function eligibleFollowUpTaskIds(RhuVisitQueueEntry $entry, array $ids): array
+    {
+        $selected = [];
+        foreach ($ids as $id) {
+            $taskId = (int) $id;
+            if ($taskId > 0 && ! in_array($taskId, $selected, true)) {
+                $selected[] = $taskId;
+            }
+        }
+        if ($selected === []) {
+            return [];
+        }
+
+        $tasks = FollowUpTask::query()->whereIn('id', $selected)->get()->keyBy('id');
+        foreach ($selected as $index => $taskId) {
+            $task = $tasks->get($taskId);
+            $samePatient = $task !== null && (int) $task->patient_id === (int) $entry->patient_id;
+            $sameFacility = $task !== null && (int) $task->rural_health_unit_id === (int) $entry->rural_health_unit_id;
+            if (! $samePatient || ! $sameFacility) {
+                throw ValidationException::withMessages([
+                    "follow_up_task_ids.$index" => 'This follow-up does not belong to this patient.',
+                ]);
+            }
+            $pending = in_array($task->state, FollowUpTask::ACTIVE_STATES, true)
+                && $task->fulfilled_at === null
+                && $task->rescheduled_to_id === null;
+            if (! $pending) {
+                throw ValidationException::withMessages([
+                    "follow_up_task_ids.$index" => 'This follow-up is no longer pending.',
+                ]);
+            }
+        }
+
+        return $selected;
     }
 
     private function lockedVisit(User $user, int $entryId): RhuVisitQueueEntry

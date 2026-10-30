@@ -32,6 +32,7 @@ import { errorStateVariant } from "../../utils/errorStateVariant";
 import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffService";
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
+import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -61,7 +62,7 @@ function Shell({ embedded, children, ...layoutProps }) {
 }
 
 export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false } = {}) {
-  const canRegister = useAccess().can("patients.register");
+  const canRegister = useAccess().can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -460,7 +461,11 @@ function PatientDirectory({
             description={
               hasAnyFilter
                 ? "Try another search or filter."
-                : canRegister ? "Tap New Patient to start." : "No patients registered at this facility."
+                : canRegister
+                  ? "Tap New Patient to start."
+                  : role === "rhu"
+                    ? "Register walk-in patients from Today's Queue."
+                    : "No patients registered at this facility."
             }
             action={
               !hasAnyFilter && canRegister && (

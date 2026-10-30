@@ -91,7 +91,8 @@ import {
   isRecognizedTbDiagnosis,
   tbCaseNumberRequired,
 } from "../../utils/rhuTbCaseManagement";
-import { focusedRhuFollowUp } from "../../utils/rhuFollowUpFocus";
+import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
+import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
 import { getPatientConditions } from "../../services/patientConditionService";
 import { defaultInformant } from "../../utils/patientHistory";
@@ -165,6 +166,10 @@ export default function RhuConsultationWorkspace() {
   const visitId = Number(params.get("visitId") || 0) || null;
   const patientId = String(params.get("patientId") || "");
   const followUpTaskId = Number(params.get("followUpTaskId") || 0) || null;
+  const followUpIdsFromQuery = String(params.get("followUpIds") || "")
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isInteger(id) && id > 0);
 
   const [visit, setVisit] = useState(null);
   const [visitError, setVisitError] = useState("");
@@ -204,7 +209,10 @@ export default function RhuConsultationWorkspace() {
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
   const [catchmentBhcs, setCatchmentBhcs] = useState([]);
   const [openConditions, setOpenConditions] = useState([]);
-  const [linkedFollowUpTaskId, setLinkedFollowUpTaskId] = useState(followUpTaskId);
+  const [linkedFollowUpTaskIds, setLinkedFollowUpTaskIds] = useState(() =>
+    selectedRhuFollowUpIds({ queryIds: followUpIdsFromQuery, singularId: followUpTaskId, visit: null }),
+  );
+  const linkedFollowUpTaskId = linkedFollowUpTaskIds[0] || null;
   const [parentHealthRecordId, setParentHealthRecordId] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -267,6 +275,9 @@ export default function RhuConsultationWorkspace() {
           return;
         }
         setVisit(match);
+        setLinkedFollowUpTaskIds(
+          selectedRhuFollowUpIds({ queryIds: followUpIdsFromQuery, singularId: followUpTaskId, visit: match }),
+        );
         setVisitError("");
       } catch (error) {
         if (!cancelled) setVisitError(error?.message || "Unable to load this visit.");
@@ -330,21 +341,21 @@ export default function RhuConsultationWorkspace() {
   useEffect(() => {
     followUpFocusApplied.current = false;
     setConditionReferences([]);
-  }, [followUpTaskId]);
+  }, [linkedFollowUpTaskIds.join(",")]);
 
   useEffect(() => {
-    if (!followUpTaskId || !patientId) return;
+    if (!linkedFollowUpTaskIds.length || !patientId) return;
     getFollowUpTasks({ patient_id: patientId, active: true })
       .then((tasks) => {
-        const match = tasks.find((task) => Number(task.id) === Number(followUpTaskId));
-        if (!match) return;
-        setLinkedFollowUpTaskId(Number(match.id));
-        const parentId = Number(match.healthRecordId || match.originalHealthRecordId) || null;
+        const selected = linkedFollowUpTaskIds
+          .map((id) => tasks.find((task) => Number(task.id) === Number(id)))
+          .filter(Boolean);
+        if (!selected.length) return;
+        const parentId = Number(selected[0].healthRecordId || selected[0].originalHealthRecordId) || null;
         setParentHealthRecordId(parentId);
-        const parentRecord = (patientRecords || []).find((record) => Number(record.id) === parentId) || null;
-        const focus = focusedRhuFollowUp({
-          task: match,
-          parentRecord,
+        const focus = focusedRhuFollowUps({
+          tasks: selected,
+          parentRecords: patientRecords,
           conditions: openConditions,
         });
         setConditionReferences(focus.references);
@@ -354,7 +365,7 @@ export default function RhuConsultationWorkspace() {
         }
       })
       .catch(() => {});
-  }, [followUpTaskId, patientId, patientRecords, openConditions]);
+  }, [linkedFollowUpTaskIds, patientId, patientRecords, openConditions]);
 
   const consultationUuid = visit?.consultation_uuid || visit?.consultationUuid || "";
   const existingTbCase = useMemo(() => existingRegisteredTbCase(patientRecords), [patientRecords]);
@@ -441,6 +452,9 @@ export default function RhuConsultationWorkspace() {
       followUpTime: followUpSchedules[0]?.time || "",
       followUpReason: followUpSchedules[0]?.purpose || "",
       rhuVisitId: visit?.id,
+      carePlan: {
+        continuedFollowUpTaskIds: linkedFollowUpTaskIds,
+      },
     }),
     [
       wizardPhase,
@@ -477,6 +491,7 @@ export default function RhuConsultationWorkspace() {
       treatmentNotes,
       followUpSchedules,
       visit?.id,
+      linkedFollowUpTaskIds,
     ],
   );
 
@@ -542,6 +557,10 @@ export default function RhuConsultationWorkspace() {
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
     setFollowUpSchedules(restoredSchedules.length ? restoredSchedules : restoreRhuFollowUpSchedules(payload, restoredDiagnoses));
+    const restoredFollowUpIds = payload.carePlan?.continuedFollowUpTaskIds || payload.carePlan?.continued_follow_up_task_ids;
+    if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
+      setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
+    }
     const restored = resolveRestoredPosition(payload, stepOptions);
     if (restored.phase === REVIEW_STEP || restored.phase === "review") {
       setWizardPhase(WIZARD_REVIEW);
@@ -914,12 +933,12 @@ export default function RhuConsultationWorkspace() {
           followUpTime: hasRhuFollowUp ? (firstSchedule?.time || "") : "",
           followUpReason: hasRhuFollowUp ? (firstSchedule?.purpose || "") : "",
           followUpTaskId: linkedFollowUpTaskId || undefined,
-          visitType: linkedFollowUpTaskId ? "follow_up_visit" : "initial_consultation",
-          parentHealthRecordId: linkedFollowUpTaskId ? parentHealthRecordId : undefined,
+          visitType: linkedFollowUpTaskIds.length ? "follow_up_visit" : "initial_consultation",
+          parentHealthRecordId: linkedFollowUpTaskIds.length ? parentHealthRecordId : undefined,
           carePlan: {
             rhu_follow_up: Boolean(hasRhuFollowUp),
             manage_to_bhc: savedDiagnoses.some((entry) => entry.nextAction === "manage_to_bhc"),
-            continued_follow_up_task_ids: linkedFollowUpTaskId ? [linkedFollowUpTaskId] : [],
+            continued_follow_up_task_ids: linkedFollowUpTaskIds,
           },
           backgroundUpdate: canViewBackground
             ? toRecordBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))

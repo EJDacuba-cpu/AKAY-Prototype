@@ -33,6 +33,11 @@ export function withCheckIn(payload, { key, confirmDuplicate = false }) {
   };
 }
 
+/** RHU registration may confirm a duplicate without creating a queue visit. */
+export function withDuplicateConfirm(payload, confirmDuplicate = false) {
+  return confirmDuplicate ? { ...payload, confirm_possible_duplicate: true } : payload;
+}
+
 /** The "possible duplicate patient" answer as a prompt view model, or null for any other error. */
 export function duplicatePrompt(error) {
   if (error?.status !== 409 || error?.code !== 'POSSIBLE_DUPLICATE_PATIENT') return null;
@@ -48,7 +53,7 @@ export function duplicatePrompt(error) {
   };
 }
 
-/** Where to go after a patient is saved: back to the list for a walk-in, else the new profile. */
-export function postSaveDestination({ checkIn, patientsPath, patientId }) {
-  return checkIn ? patientsPath : `${patientsPath}/${patientId}`;
+/** Where to go after a patient is saved: RHU returns to the queue without checking the patient in. */
+export function postSaveDestination({ checkIn, role, patientsPath, patientId }) {
+  return checkIn || role === "rhu" ? patientsPath : `${patientsPath}/${patientId}`;
 }

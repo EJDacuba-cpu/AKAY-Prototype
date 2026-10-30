@@ -87,7 +87,7 @@ function SectionHeading({ id, children }) {
  * read-only. `onStart` (async) always loads the patient first. Mount it only
  * while open so each opening starts empty.
  */
-export default function StartConsultationModal({ overview, onStart, onCancel }) {
+export default function StartConsultationModal({ overview, onStart, onCancel, variant = "bhc" }) {
   const visitTypeId = useId();
   const monitoringHeadingId = useId();
   const followUpHeadingId = useId();
@@ -104,6 +104,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   const followUps = pendingFollowUpOptions(overview);
   const recommendations = monitoringRecommendationOptions(overview);
   const legacy = legacyMonitoringOptions(overview);
+  const rhu = variant === "rhu";
   const continueMode = followUps.length > 0 && visitType === CONTINUE;
   const effectiveFollowUpIds = continueMode ? followUpIds : [];
   const needsFollowUpTick = continueMode && followUpIds.length === 0;
@@ -113,7 +114,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
   function chooseVisitType(next) {
     setVisitType(next);
     if (next === NEW_VISIT) setFollowUpIds([]);
-    if (next === CONTINUE && followUpIds.length === 0 && followUps[0]) {
+    if (next === CONTINUE && followUpIds.length === 0 && followUps[0] && !rhu) {
       setFollowUpIds([followUps[0].followUpId]);
     }
   }
@@ -230,7 +231,9 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
           <section>
             <SectionHeading id={followUpHeadingId}>Scheduled follow-up for this visit</SectionHeading>
             <p className="mt-0.5 text-xs text-neutral-500">
-              One follow-up is selected by default. Add another only if it is genuinely addressed in this same encounter. Nothing is marked attended until the consultation is saved.
+              {rhu
+                ? "Check every follow-up this encounter genuinely addresses. Nothing is marked attended until the consultation is finalized."
+                : "One follow-up is selected by default. Add another only if it is genuinely addressed in this same encounter. Nothing is marked attended until the consultation is saved."}
             </p>
             <div role="group" aria-labelledby={followUpHeadingId} className="mt-1">
               {followUps.map((option) => (
@@ -245,7 +248,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
             </div>
           </section>
         )}
-        {options.length > 0 && (
+        {!rhu && options.length > 0 && (
           <section>
             <SectionHeading id={monitoringHeadingId}>Condition monitoring addressed today</SectionHeading>
             <p className="mt-0.5 text-xs text-neutral-500">
@@ -264,7 +267,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
             </div>
           </section>
         )}
-        {recommendations.length > 0 && (
+        {!rhu && recommendations.length > 0 && (
           <section>
             <SectionHeading id={recommendedHeadingId}>Recommended by RHU — start BHC monitoring</SectionHeading>
             <p className="mt-0.5 text-xs text-neutral-500">
@@ -283,7 +286,7 @@ export default function StartConsultationModal({ overview, onStart, onCancel }) 
             </div>
           </section>
         )}
-        {legacy.length > 0 && (
+        {!rhu && legacy.length > 0 && (
           <section>
             <SectionHeading id={legacyHeadingId}>Pending RHU verification</SectionHeading>
             <p className="mt-0.5 text-xs text-neutral-500">

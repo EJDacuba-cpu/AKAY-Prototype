@@ -9,7 +9,7 @@ import { getHouseholdById, getHouseholds } from '../../services/householdService
 import { createPatient, updatePatient, getPatientById } from '../../services/patientService';
 import { householdPayload, householdRegistry, normalizeHousehold, normalizeHouseholdPatient } from '../../utils/householdData';
 import { queryKeys } from '../../utils/queryKeys';
-import { isCheckInFlow, newWalkIn, withCheckIn } from '../../utils/walkInRegistration';
+import { isCheckInFlow, newWalkIn, withDuplicateConfirm } from '../../utils/walkInRegistration';
 
 export default function BhcPatientRegistration({ role = 'bhc', ...props }) {
   const scope=useHouseholdScope(role);
@@ -45,7 +45,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   async function save(data,connection,id,replacement,options={}) {
     const base={...data,household:householdPayload(connection,registry,{includeRelationshipLink:false}),
       ...(replacement ? {head_replacement:{household_id:replacement.householdId,head_patient_id:replacement.headPatientId,relationships:replacement.relationships,version:registry.households.find(item=>item.id === replacement.householdId)?.version}} : {})};
-    const payload=walkIn && !id ? withCheckIn(base,{key:walkIn.key,confirmDuplicate:options.confirmDuplicate}) : base;
+    const payload=role === 'rhu' && !id ? withDuplicateConfirm(base, options.confirmDuplicate) : base;
     const response=normalizeHouseholdPatient(await mutation.mutateAsync({id,data:payload}));
     if(response.household) {
       // Use the committed response: a failed follow-up read must not turn a save into an error.

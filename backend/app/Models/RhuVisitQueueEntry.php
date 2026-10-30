@@ -49,12 +49,14 @@ class RhuVisitQueueEntry extends Model
         'close_reason',
         'close_note',
         'consultation_uuid',
+        'continued_follow_up_task_ids',
         'check_in_key',
     ];
 
     protected $casts = [
         'checked_in_at' => 'datetime',
         'closed_at' => 'datetime',
+        'continued_follow_up_task_ids' => 'array',
     ];
 
     public function patient(): BelongsTo

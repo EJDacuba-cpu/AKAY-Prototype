@@ -31,8 +31,11 @@ export async function closeRhuVisit(visitId, { reason, note } = {}) {
 }
 
 /** Start or resume the visit's consultation identity. Does not create a draft. */
-export async function startRhuVisit(visitId) {
-  const response = await apiRequest(`/rhu-visits/${visitId}/start`, { method: "POST" });
+export async function startRhuVisit(visitId, { followUpTaskIds } = {}) {
+  const response = await apiRequest(`/rhu-visits/${visitId}/start`, {
+    method: "POST",
+    body: { follow_up_task_ids: Array.isArray(followUpTaskIds) ? followUpTaskIds : [] },
+  });
   return response?.data ?? null;
 }
 

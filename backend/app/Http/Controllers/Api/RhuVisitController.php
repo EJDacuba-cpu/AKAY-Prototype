@@ -74,7 +74,13 @@ class RhuVisitController extends Controller
 
     public function start(Request $request, int $visit)
     {
-        $entry = $this->visits->start($request->user(), $visit)->load(['patient', 'referral.barangayHealthCenter']);
+        $data = $request->validate([
+            'follow_up_task_ids' => ['sometimes', 'array', 'max:20'],
+            'follow_up_task_ids.*' => ['integer', 'distinct', 'min:1'],
+        ]);
+        $entry = $this->visits
+            ->start($request->user(), $visit, $data['follow_up_task_ids'] ?? [])
+            ->load(['patient', 'referral.barangayHealthCenter']);
 
         return response()->json(['data' => $this->present($entry)]);
     }
@@ -95,6 +101,10 @@ class RhuVisitController extends Controller
             'checked_in_at' => $entry->checked_in_at?->toISOString(),
             'closed_at' => $entry->closed_at?->toISOString(),
             'consultation_uuid' => $entry->consultation_uuid,
+            'continued_follow_up_task_ids' => array_values(array_map(
+                'intval',
+                $entry->continued_follow_up_task_ids ?? []
+            )),
             'close_reason' => $entry->close_reason,
             'close_note' => $entry->close_note,
             'waiting_minutes' => (int) $entry->checked_in_at->diffInMinutes($entry->closed_at ?? now()),

@@ -64,7 +64,7 @@ class RhuVisitQueueMigrationTest extends TestCase
         $this->assertTrue(Schema::hasColumns('rhu_visit_queue_entries', [
             'id', 'rural_health_unit_id', 'patient_id', 'referral_id', 'source', 'status',
             'checked_in_at', 'closed_at', 'checked_in_by', 'closed_by', 'close_reason', 'close_note',
-            'consultation_uuid', 'check_in_key', 'created_at', 'updated_at',
+            'consultation_uuid', 'continued_follow_up_task_ids', 'check_in_key', 'created_at', 'updated_at',
         ]));
     }
 

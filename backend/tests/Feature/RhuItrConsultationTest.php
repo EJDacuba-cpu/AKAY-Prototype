@@ -398,6 +398,52 @@ class RhuItrConsultationTest extends TestCase
         $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $returnVisit->fresh()->status);
     }
 
+    public function test_finalizing_an_rhu_return_fulfills_only_the_follow_ups_selected_at_start(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $firstVisit = $this->visit($patient);
+        $firstUuid = $this->startVisit($clinician, $firstVisit);
+        $created = $this->postRecord($clinician, $patient, $firstVisit, $firstUuid, [
+            'care_plan' => ['rhu_follow_up' => true],
+            'monitoring_data' => [
+                'followUpStatus' => 'Follow-up Required',
+                'followUpDate' => now()->addDays(3)->toDateString(),
+                'followUpReason' => 'Return for review.',
+            ],
+        ])->assertCreated();
+        $selected = FollowUpTask::where('health_record_id', $created->json('data.id'))->whereNull('rescheduled_to_id')->sole();
+        $otherParent = HealthRecord::create([
+            'patient_id' => $patient->id, 'created_by' => $clinician->id,
+            'rural_health_unit_id' => $this->rhu->id, 'category' => 'General Consultation',
+            'chief_complaint' => 'Wound',
+        ]);
+        $unchecked = FollowUpTask::create([
+            'health_record_id' => $otherParent->id,
+            'patient_id' => $patient->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'due_date' => now()->addDays(4)->toDateString(),
+            'purpose' => 'Wound review',
+            'state' => FollowUpTask::STATE_PENDING,
+        ]);
+
+        $returnVisit = $this->visit($patient);
+        $returnUuid = $this->as($clinician)->postJson("/api/rhu-visits/{$returnVisit->id}/start", [
+            'follow_up_task_ids' => [$selected->id],
+        ])->assertOk()->json('data.consultation_uuid');
+
+        $this->assertSame([$selected->id], $returnVisit->fresh()->continued_follow_up_task_ids);
+        $this->postRecord($clinician, $patient, $returnVisit, $returnUuid, [
+            'visit_type' => 'follow_up_visit',
+            'parent_health_record_id' => $selected->health_record_id,
+            'monitoring_data' => ['followUpTaskId' => $selected->id],
+            'care_plan' => ['continued_follow_up_task_ids' => [$selected->id]],
+        ])->assertCreated();
+
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $selected->fresh()->state);
+        $this->assertSame(FollowUpTask::STATE_PENDING, $unchecked->fresh()->state);
+    }
+
     public function test_manage_to_bhc_does_not_silent_activate_and_does_not_fan_out(): void
     {
         $patient = $this->patient();
