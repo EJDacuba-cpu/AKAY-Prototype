@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { Check, Pencil } from "lucide-react";
+import { Button } from "../../../ui/button";
+import { Card, CardContent, CardHeader } from "../../../ui/card";
+import { hasHistoryCardData, historyCardEditing } from "../../../../utils/historyCardState";
+import { backgroundUpdateErrors } from "../../../../utils/backgroundValidation";
+import { historyErrorMessages } from "../../../../utils/historyStep";
 
 import RestrictedArea from "../../../common/access/RestrictedArea";
 import LockedPlaceholder from "../../../common/access/LockedPlaceholder";
@@ -25,7 +30,7 @@ import {
 import FamilySection, { SimilarIllnessBlock } from "./FamilySection";
 import GeneralDataSection from "./GeneralDataSection";
 import HistorySectionSummary from "./HistorySectionSummary";
-import { BHC_HIDDEN_SOCIAL_FIELDS } from "../../../../utils/backgroundEditing";
+import { BHC_HIDDEN_SOCIAL_FIELDS, omitHiddenSocialFromUpdate } from "../../../../utils/backgroundEditing";
 import { infantHiddenSocialKeys } from "../../../../utils/infantVisibility";
 import { SMALL_BUTTON_CLASS } from "./HistoryFields";
 import ObstetricSection from "./ObstetricSection";
@@ -87,8 +92,8 @@ function SectionFrame({ title, status, updated, reviewed, canReview, editing, on
 
 /**
  * Patient History (ITR page 1): the one shared component for the BHC
- * consultation (layout "section", `inline` to edit in place), the prenatal
- * obstetric card (`summaryWhenRecorded`), and the RHU record form
+ * consultation (`inline` with per-section saved summaries), the prenatal
+ * obstetric card (`summaryWhenRecorded`), and the legacy RHU record form
  * (layout "screen" or stacked, with Update / Done / No changes).
  * Controlled; it holds no save logic. Edits are staged in `update` through
  * buildBackgroundUpdate, "No changes" marks a section reviewed, and nothing
@@ -96,7 +101,7 @@ function SectionFrame({ title, status, updated, reviewed, canReview, editing, on
  * consultation moves on; invalid numbers and half-filled rows stay as typed.
  *
  * `errors` is historyErrorMessages(..., { withSection: true }) of the last
- * check: listed above the sections, and the first one's section is opened.
+ * check: the first one's section is opened; consultation cards show errors inline.
  * `fieldErrors` is the keyed object shown inline on the invalid inputs.
  */
 export default function PatientHistoryPanel({
@@ -129,23 +134,27 @@ export default function PatientHistoryPanel({
   const conditionsQuery = usePatientConditions(patient?.id, { enabled: !locked });
   const [active, setActive] = useState(initialSection);
   const [editing, setEditing] = useState({});
+  const [doneErrors, setDoneErrors] = useState({});
+  const panelId = useId();
+  const allErrors = [...errors, ...historyErrorMessages(doneErrors, { withSection: true })];
+  const allFieldErrors = { ...fieldErrors, ...doneErrors };
   // The values as typed, kept while `update` is still the one they produced:
   // the staged update is trimmed and drops blank rows, which must not happen
   // under the cursor.
   const [typed, setTyped] = useState(null);
   // Open the section of the first error once per error list.
-  const errorKey = errors.map((error) => error.text).join("|");
+  const errorKey = allErrors.map((error) => error.text).join("|");
   const [seenErrorKey, setSeenErrorKey] = useState("");
   if (errorKey !== seenErrorKey) {
     setSeenErrorKey(errorKey);
-    const first = errors.find((error) => error.section)?.section;
+    const first = allErrors.find((error) => error.section)?.section;
     if (first) {
       setActive(first);
       if (first !== "general") setEditing((current) => ({ ...current, [first]: true }));
     }
   }
 
-  const firstErrorField = errors.find((error) => error.key)?.key || "";
+  const firstErrorField = allErrors.find((error) => error.key)?.key || "";
   useEffect(() => {
     if (!firstErrorField) return;
     const frame = window.requestAnimationFrame(() => {
@@ -173,6 +182,10 @@ export default function PatientHistoryPanel({
   }
 
   const current = typed && typed.update === update ? typed.value : overlayBackgroundUpdate(background, update);
+  const omittedSummaryFields = [
+    ...(showEducationAndOccupation ? [] : BHC_HIDDEN_SOCIAL_FIELDS),
+    ...infantHiddenSocialKeys(patient, today, { includeBhcProfileFields: false }),
+  ];
   const updatedKeys = editedSectionKeys(update);
   const reviewedKeys = reviewedSectionKeys(update);
   const visibility = sectionVisibility(patient, today);
@@ -196,6 +209,7 @@ export default function PatientHistoryPanel({
 
   function change(next) {
     const nextUpdate = buildBackgroundUpdate(background, next, update);
+    setDoneErrors({});
     setTyped({ update: nextUpdate, value: next });
     onUpdateChange(nextUpdate);
   }
@@ -224,7 +238,7 @@ export default function PatientHistoryPanel({
   ];
 
   function sectionForm(section) {
-    const props = { value: sliceOf(current, section), onChange: changeSlice, errors: fieldErrors };
+    const props = { value: sliceOf(current, section), onChange: changeSlice, errors: allFieldErrors };
     if (section === "medical") return <PastMedicalSection {...props} conditionGroups={conditionGroups} />;
     if (section === "family") {
       return (
@@ -253,7 +267,7 @@ export default function PatientHistoryPanel({
   }
 
   function sectionSummary(section) {
-    const recorded = hasRecordedData(current, section);
+    const recorded = hasHistoryCardData(current, section, omittedSummaryFields);
     return (
       <div className="space-y-4">
         {section === "medical" && (
@@ -262,14 +276,11 @@ export default function PatientHistoryPanel({
             <LegacyPendingConditions rows={conditionGroups.legacyPending} />
           </div>
         )}
-        {recorded ? (
+        {(recorded || inline || summaryWhenRecorded) ? (
           <HistorySectionSummary
             section={section}
             value={current}
-            omitFields={[
-              ...(showEducationAndOccupation ? [] : BHC_HIDDEN_SOCIAL_FIELDS),
-              ...infantHiddenSocialKeys(patient, today, { includeBhcProfileFields: false }),
-            ]}
+            omitFields={omittedSummaryFields}
           />
         ) : (
           <p className="text-[13px] text-gray-500">
@@ -303,56 +314,59 @@ export default function PatientHistoryPanel({
         </section>
       );
     }
-    if (summaryWhenRecorded) {
-      const recordedNow = hasRecordedData(current, section);
+    if (summaryWhenRecorded || inline) {
       const updated = updatedKeys.includes(section);
-      const isEditing = recordedNow ? (editing[section] ?? updated) : true;
+      const prefix = `background_update.sections.${section}`;
+      const hasErrors = allErrors.some((error) => error.section === section)
+        || Object.keys(allFieldErrors).some((key) => key === prefix || key.startsWith(`${prefix}.`));
+      const isEditing = historyCardEditing({
+        background, section, editing: editing[section], hasErrors, omitFields: omittedSummaryFields,
+      });
+      const contentId = `${panelId}-${section}`;
+      const toggleEdit = () => {
+        if (isEditing) {
+          const validationUpdate = omitHiddenSocialFromUpdate(
+            buildBackgroundUpdate(background, current, update), patient, today,
+            { includeBhcProfileFields: !showEducationAndOccupation },
+          );
+          const sectionErrors = backgroundUpdateErrors(validationUpdate, { sections: [section] });
+          setDoneErrors(sectionErrors);
+          if (Object.keys(sectionErrors).length) return;
+        }
+        setEditing((state) => ({ ...state, [section]: !isEditing }));
+      };
       return (
-        <section aria-label={HISTORY_SECTION_TITLES[section]} className="border border-gray-200 bg-white">
-          <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-4 py-2.5">
+        <Card role="region" aria-label={HISTORY_SECTION_TITLES[section]} className="overflow-hidden rounded-[var(--radius-modal)] border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-card)]">
+          <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
             <div className="min-w-0">
-              <h3 className="text-[14px] font-bold leading-snug text-gray-900">{HISTORY_SECTION_TITLES[section]}</h3>
+              <h3 className="text-sm font-semibold leading-snug text-[var(--color-text)]">{HISTORY_SECTION_TITLES[section]}</h3>
+              {updated && <p className="mt-1 text-xs text-[var(--color-text-muted)]">Changes save when the consultation is finalized.</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {updated ? (
-                <button type="button" onClick={() => undo(section)} className={SMALL_BUTTON_CLASS}>
+                <Button type="button" variant="ghost" size="compact" onClick={() => { setDoneErrors({}); undo(section); }}>
                   Undo changes
-                </button>
+                </Button>
               ) : null}
-              {recordedNow ? (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size={isEditing ? "compact" : "icon"}
+                  className={isEditing ? undefined : "size-8"}
+                  aria-label={isEditing ? `Done editing ${HISTORY_SECTION_TITLES[section]}` : `Edit ${HISTORY_SECTION_TITLES[section]}`}
+                  title={isEditing ? "Done" : `Edit ${HISTORY_SECTION_TITLES[section]}`}
                   aria-expanded={isEditing}
-                  onClick={() => setEditing((state) => ({ ...state, [section]: !isEditing }))}
-                  className={SMALL_BUTTON_CLASS}
+                  aria-controls={contentId}
+                  onClick={toggleEdit}
                 >
-                  {isEditing ? "Done" : "Update"}
-                </button>
-              ) : null}
+                  {isEditing ? <><Check size={14} aria-hidden="true" />Done</> : <Pencil size={14} aria-hidden="true" />}
+                </Button>
             </div>
-          </header>
-          <div className="px-4 py-3">
+          </CardHeader>
+          <CardContent id={contentId} className="p-5">
             {isEditing ? sectionForm(section) : sectionSummary(section)}
-          </div>
-        </section>
-      );
-    }
-    if (inline) {
-      return (
-        <section aria-label={HISTORY_SECTION_TITLES[section]} className="border border-gray-200 bg-white">
-          <header className="border-b border-gray-200 px-4 py-2.5">
-            <h3 className="text-[14px] font-bold leading-snug text-gray-900">{HISTORY_SECTION_TITLES[section]}</h3>
-          </header>
-          <div className="px-4 py-3">
-            {section === "medical" && (
-              <div className="mb-4 space-y-3">
-                <RhuConditions groups={conditionGroups} />
-                <LegacyPendingConditions rows={conditionGroups.legacyPending} />
-              </div>
-            )}
-            {sectionForm(section)}
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       );
     }
     const updated = updatedKeys.includes(section);
@@ -389,7 +403,7 @@ export default function PatientHistoryPanel({
     </div>
   );
 
-  const errorList = errors.length > 0 && (
+  const errorList = !inline && !summaryWhenRecorded && errors.length > 0 && (
     <div role="alert" className="border border-red-200 border-l-4 border-l-red-600 bg-red-50 p-3">
       <p className="text-[13px] font-bold text-red-700">Fix the highlighted fields before continuing</p>
       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12.5px] text-red-700">

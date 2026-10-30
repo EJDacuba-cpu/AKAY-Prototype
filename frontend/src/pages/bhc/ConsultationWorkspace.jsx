@@ -4824,6 +4824,7 @@ export default function ConsultationWorkspace() {
             {canViewBackground && (
               <div className="mt-4">
                 <PatientHistoryPanel
+                  key={selectedPatientId}
                   patient={selectedPatient}
                   background={selectedPatient?.medicalBackground}
                   update={backgroundUpdate}

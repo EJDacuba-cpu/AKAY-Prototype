@@ -1142,6 +1142,7 @@ export default function RhuConsultationWorkspace() {
                   )}
                   {canViewBackground && (
                     <PatientHistoryPanel
+                      key={patientId}
                       patient={patient}
                       background={patient?.medicalBackground}
                       update={backgroundUpdate}

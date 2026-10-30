@@ -73,6 +73,7 @@ export default function PrenatalAssessmentForm({
     <div className="space-y-4">
       {showObstetricHistory && (
         <PatientHistoryPanel
+          key={patient?.id}
           patient={patient}
           background={background}
           update={backgroundUpdate}
