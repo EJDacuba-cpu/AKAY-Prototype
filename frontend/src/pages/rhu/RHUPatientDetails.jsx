@@ -4,12 +4,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import RestrictedArea from "../../components/common/access/RestrictedArea";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import "../../components/features/patients/profile/patient-overview.css";
 import {
   ConfirmationModal,
   ConnectionErrorState,
   SoftLoadingArea,
   SuccessModal,
 } from "../../components/common";
+import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
+import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import ProfileQueueAction from "../../components/features/rhu-queue/ProfileQueueAction";
 import { formatPatientName } from "../../utils/formatters";
@@ -40,6 +43,7 @@ import {
   getPatientAge,
   getPatientBirthDate,
   getSectionErrors,
+  orderFollowUps,
   sortByDateDesc,
   validatePatientForm,
 } from "../../utils/patientProfile";
@@ -48,7 +52,7 @@ import { registrationErrors } from "../../utils/householdData";
 import { canModifyRhuPatient } from "../../utils/rhuPatientAccess";
 import { reviewReferralSlipPath } from "../../utils/rhuVisitRoutes";
 
-const PROFILE_CONTENT_CLASS = "p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
+const PROFILE_CONTENT_CLASS = "patient-profile-content p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-4";
 const BASE_PATH = "/rhu";
 
 function ProfileShell({ children }) {
@@ -107,6 +111,13 @@ function LiveRHUPatientDetails() {
     refetch: refetchReferrals,
   } = useQuery(profileQueries.referrals);
 
+  const {
+    data: followUpTasksData = [],
+    isFetching: followUpsFetching,
+    error: followUpsError,
+    refetch: refetchFollowUps,
+  } = useQuery(profileQueries.followUps);
+
   const overrideMatchesPatient =
     patientOverride &&
     String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
@@ -115,9 +126,9 @@ function LiveRHUPatientDetails() {
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
   const loadError =
     patientError ||
-    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError)) ||
+    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError || followUpsError)) ||
     null;
-  const retrying = patientFetching || recordsFetching || referralsFetching;
+  const retrying = patientFetching || recordsFetching || referralsFetching || followUpsFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   const records = useMemo(
@@ -127,6 +138,15 @@ function LiveRHUPatientDetails() {
   const referrals = useMemo(
     () => [...(Array.isArray(referralsData) ? referralsData : [])].sort(sortByDateDesc),
     [referralsData],
+  );
+  const { open: activeFollowUps } = useMemo(
+    () =>
+      orderFollowUps(
+        (Array.isArray(followUpTasksData) ? followUpTasksData : []).filter(
+          (task) => String(task.patientId || task.patient?.id || "") === String(patientId),
+        ),
+      ),
+    [followUpTasksData, patientId],
   );
   const specializedRecordPrograms = useMemo(
     () => getSpecializedRecordPrograms(records),
@@ -155,6 +175,7 @@ function LiveRHUPatientDetails() {
     { key: "patient-info", label: "Patient Information" },
     ...(canViewHistory
       ? [
+          { key: "background", label: "Patient Background" },
           {
             key: "programs",
             label: "Care & Programs",
@@ -194,6 +215,7 @@ function LiveRHUPatientDetails() {
     refetchPatient();
     refetchRecords();
     refetchReferrals();
+    refetchFollowUps();
   }
 
   useEffect(() => {
@@ -365,15 +387,29 @@ function LiveRHUPatientDetails() {
             }
           />
 
-          <div className="@container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
-            <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
+          <div className="patient-profile-panels @container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
+            <ProfileTabs
+              tabs={tabs}
+              activeTab={activeTab}
+              onSelect={setActiveTab}
+              aside={
+                activeTab === "overview" && canViewHistory ? (
+                  <PatientHistoryReference
+                    patient={patient}
+                    background={patient.medicalBackground}
+                    conditions={conditions}
+                  />
+                ) : null
+              }
+            />
 
             {activeTab === "overview" &&
               (canViewHistory ? (
                 <PatientOverviewBoard
-                  left={<VitalsTiles records={records} isLoading={recordsLoading} infant={isInfantAt(patient)} />}
+                  anatomyWorkspace
                   center={
                     <AnatomyFindingsPanel
+                      vitals={<VitalsTiles records={records} isLoading={recordsLoading} infant={isInfantAt(patient)} />}
                       key={patientId}
                       age={getPatientAge(patient)}
                       background={patient.medicalBackground}
@@ -393,11 +429,13 @@ function LiveRHUPatientDetails() {
                       referrals={referrals}
                       referralsLoading={referralsLoading}
                       referralsError={Boolean(referralsError)}
+                      activeFollowUps={activeFollowUps}
                       records={records}
                       recordsLoading={recordsLoading}
-                      onViewPrograms={() => setActiveTab("records")}
+                      onViewPrograms={() => setActiveTab("programs")}
                       onViewReferrals={() => setActiveTab("referrals")}
                       onViewReferral={(trackingId) => openReferralSlip(trackingId)}
+                      onViewFollowUp={() => navigate(`${BASE_PATH}/follow-ups`)}
                       onViewRecords={() => setActiveTab("records")}
                       onViewRecord={viewRecord}
                     />
@@ -437,6 +475,18 @@ function LiveRHUPatientDetails() {
                     onChange={handleChange}
                     fieldErrors={fieldErrors}
                     saving={saving}
+                  />
+                )}
+
+                {activeTab === "background" && canViewHistory && (
+                  <PatientBackgroundTab
+                    key={patientId}
+                    patientId={patientId}
+                    patient={patient}
+                    background={patient.medicalBackground}
+                    conditions={conditions}
+                    basePath={BASE_PATH}
+                    canEdit={false}
                   />
                 )}
 

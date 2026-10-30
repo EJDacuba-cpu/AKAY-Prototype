@@ -75,14 +75,21 @@ export function getRhuPatientProfileQueries(patientId, { canViewHistory = false 
       enabled: historyEnabled,
       retry: false,
     },
+    followUps: {
+      queryKey: [...queryKeys.followUpTasks("rhu"), "patient", patientId],
+      queryFn: () => getPatientFollowUpTasks(patientId),
+      enabled: historyEnabled,
+      staleTime: 30_000,
+      retry: false,
+    },
   };
 }
 
 /** The profile queries for a role, as the `{ patient, secondary }` shape the prefetch takes. */
 export function getPatientProfilePrefetch(role, patientId, options) {
   if (role === "rhu") {
-    const { patient, records, referrals } = getRhuPatientProfileQueries(patientId, options);
-    return { patient, secondary: [records, referrals] };
+    const { patient, records, referrals, followUps } = getRhuPatientProfileQueries(patientId, options);
+    return { patient, secondary: [records, referrals, followUps] };
   }
 
   const { patient, records, referrals, followUps, registeredPatients } =
