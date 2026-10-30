@@ -3,7 +3,6 @@ import { Trash2 } from "lucide-react";
 import { TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
-import PrescribedMedicinesSection from "../PrescribedMedicinesSection";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
@@ -295,12 +294,8 @@ export default function RhuDiagnosisCarePlanSection({
   onServiceFollowUp,
   treatmentNotes = "",
   onTreatmentNotesChange,
-  prescribedMedicines = [],
-  onPrescribedMedicinesChange,
-  catalog = [],
-  catalogError = "",
-  onRetryCatalog,
-  canPrescribe = false,
+  prescriptionText = "",
+  onPrescriptionTextChange,
   registry = {},
   existingTbCase = null,
   conditionReferences = [],
@@ -385,13 +380,14 @@ export default function RhuDiagnosisCarePlanSection({
               placeholder="What was done at this visit?"
               onChange={(event) => onTreatmentNotesChange?.(event.target.value)}
             />
-            <PrescribedMedicinesSection
-              catalog={catalog}
-              value={prescribedMedicines}
-              onChange={onPrescribedMedicinesChange}
-              disabled={disabled || !canPrescribe}
-              error={catalogError}
-              onRetry={onRetryCatalog}
+            <FieldTextarea
+              label="Prescription"
+              name="prescriptionText"
+              value={prescriptionText}
+              error={errors.prescriptionText}
+              rows={4}
+              placeholder="Medicine names, how to take them, and for how long"
+              onChange={(event) => onPrescriptionTextChange?.(event.target.value)}
             />
           </>
         )}

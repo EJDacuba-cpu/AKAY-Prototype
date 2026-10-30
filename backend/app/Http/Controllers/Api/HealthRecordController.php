@@ -140,9 +140,8 @@ class HealthRecordController extends Controller
                 'consultationWorkflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
             ];
         } elseif ($rhuItr) {
-            $prescribedMedicines = $data['prescribed_medicines'] ?? [];
-            unset($data['prescribed_medicines'], $data['rhu_visit_id']);
-            $this->assertRhuPrescribedMedicines($request->user(), $prescribedMedicines);
+            $prescriptionText = trim((string) ($data['prescription_text'] ?? ''));
+            unset($data['prescription_text'], $data['rhu_visit_id']);
             $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
             $schedules = \App\Services\FollowUpSchedules::fromMonitoringData($monitoringData);
             $firstSchedule = $schedules[0] ?? null;
@@ -150,7 +149,7 @@ class HealthRecordController extends Controller
             $data['monitoring_data'] = [
                 ...$monitoringData,
                 'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
-                'prescribedMedicines' => $prescribedMedicines,
+                'prescriptionText' => $prescriptionText,
                 'rhuFollowUp' => $rhuFollowUp,
                 'manageToBhc' => (bool) (($data['care_plan']['manage_to_bhc'] ?? false)),
                 'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),

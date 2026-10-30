@@ -1,0 +1,17 @@
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .rhu-prescription-print,
+  .rhu-prescription-print * {
+    visibility: visible !important;
+  }
+
+  .rhu-prescription-print {
+    position: absolute;
+    inset: 0;
+    background: white;
+    padding: 24px;
+  }
+}

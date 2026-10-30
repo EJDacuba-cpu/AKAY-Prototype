@@ -19,7 +19,6 @@ import {
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import RhuDiagnosisCarePlanSection from "../../components/features/health-records/wizard/RhuDiagnosisCarePlanSection";
-import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import TbTreatmentCardForm, {
   EMPTY_TB_DATA,
   normalizeTbData,
@@ -124,11 +123,22 @@ import { getConsultationPatientQuery } from "../../services/consultationPatientQ
 import { listHealthRecordDrafts, getHealthRecordDraft } from "../../services/healthRecordDraftService";
 import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
 import { getFollowUpTasks } from "../../services/followUpTaskService";
-import { loadMedicineAvailability } from "../../services/medicineService";
-import { getCurrentUser } from "../../utils/auth";
-import { queryKeys } from "../../utils/queryKeys";
 import { listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
+
+function restorePrescriptionText(payload = {}) {
+  const text = String(payload.prescriptionText || "");
+  if (text.trim()) return text;
+  return (Array.isArray(payload.prescribedMedicines) ? payload.prescribedMedicines : [])
+    .map((line) => {
+      const name = line.medicineName || line.name || "";
+      const qty = [line.quantity, line.unit].filter(Boolean).join(" ");
+      const instructions = line.instructions || "";
+      return [name, qty, instructions].filter(Boolean).join(" · ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
 
 const WIZARD_FORM = "form";
 const WIZARD_NEXT = "next";
@@ -152,17 +162,6 @@ export default function RhuConsultationWorkspace() {
   const canEncode = access.can("consultations.encode");
   const canFinalize = access.can("consultations.finalize");
   const canViewBackground = access.can("clinical.history");
-  const canPrescribe = access.can("inventory.view");
-  const canDispense = access.can("items.dispense");
-  const currentUser = getCurrentUser();
-  const inventoryKey = queryKeys.medicineAvailability("rhu", currentUser);
-  const catalogQuery = useQuery({ queryKey: inventoryKey, queryFn: loadMedicineAvailability,
-    enabled: canPrescribe || canDispense, retry: false });
-  const ownRhuId = String(currentUser?.ruralHealthUnitId || currentUser?.rural_health_unit_id || currentUser?.rhuId || currentUser?.facilityId || "");
-  const catalog = useMemo(() => (Array.isArray(catalogQuery.data) ? catalogQuery.data : []).filter(
-    item => ownRhuId && !item.barangayHealthCenterId && String(item.ruralHealthUnitId) === ownRhuId,
-  ), [catalogQuery.data, ownRhuId]);
-  const catalogError = catalogQuery.error?.message || "";
   const visitId = Number(params.get("visitId") || 0) || null;
   const patientId = String(params.get("patientId") || "");
   const followUpTaskId = Number(params.get("followUpTaskId") || 0) || null;
@@ -200,8 +199,7 @@ export default function RhuConsultationWorkspace() {
   const [immunizationEntries, setImmunizationEntries] = useState([]);
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
-  const [prescribedMedicines, setPrescribedMedicines] = useState([]);
-  const [dispensedMedicines, setDispensedMedicines] = useState([]);
+  const [prescriptionText, setPrescriptionText] = useState("");
   const [treatmentNotes, setTreatmentNotes] = useState("");
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
   const [catchmentBhcs, setCatchmentBhcs] = useState([]);
@@ -433,8 +431,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationData: { vaccineEntries: immunizationEntries },
       diagnoses,
-      prescribedMedicines,
-      dispensedMedicines,
+      prescriptionText,
       medication: treatmentNotes,
       followUpSchedules,
       rhuFollowUp: diagnoses.some((entry) => diagnosisNextAction(entry) === "rhu_follow_up") || followUpSchedules.some((item) => item.purposeKey === "visit"),
@@ -476,8 +473,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationEntries,
       diagnoses,
-      prescribedMedicines,
-      dispensedMedicines,
+      prescriptionText,
       treatmentNotes,
       followUpSchedules,
       visit?.id,
@@ -542,8 +538,7 @@ export default function RhuConsultationWorkspace() {
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
-    setPrescribedMedicines(Array.isArray(payload.prescribedMedicines) ? payload.prescribedMedicines : []);
-    setDispensedMedicines(Array.isArray(payload.dispensedMedicines) ? payload.dispensedMedicines : []);
+    setPrescriptionText(restorePrescriptionText(payload));
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
     setFollowUpSchedules(restoredSchedules.length ? restoredSchedules : restoreRhuFollowUpSchedules(payload, restoredDiagnoses));
@@ -897,8 +892,7 @@ export default function RhuConsultationWorkspace() {
           treatmentNotes,
           medication: treatmentNotes,
           diagnoses: savedDiagnoses,
-          prescribedMedicines,
-          dispensedMedicines,
+          prescriptionText,
           tbData: includeTb ? tbData : null,
           maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
           expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
@@ -944,7 +938,6 @@ export default function RhuConsultationWorkspace() {
       queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
       queryClient.invalidateQueries({ queryKey: ["patient-records-height"] });
       queryClient.invalidateQueries({ queryKey: ["health-records"] });
-      queryClient.invalidateQueries({ queryKey: inventoryKey });
     } catch (error) {
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
       setValidationErrors(fieldErrors);
@@ -1009,7 +1002,7 @@ export default function RhuConsultationWorkspace() {
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
       [NEXT_STEP]: visit?.source === "referral"
         ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
-        : "Named diagnoses, treatment, prescription, and confirmed dispensing. Only confirmed items deduct RHU stock.",
+        : "Named diagnoses, treatment, and prescription. Staff confirm given medicines on Health Commodities.",
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },
   });
@@ -1063,11 +1056,7 @@ export default function RhuConsultationWorkspace() {
           ].filter(Boolean).join(" · "),
         })),
         { label: "Actions taken", value: treatmentNotes },
-        ...prescribedMedicines.map((line) => ({
-          label: line.medicineName || line.name,
-          value: `${line.quantity}${line.unit ? ` ${line.unit}` : ""}${line.instructions ? ` · ${line.instructions}` : ""}`,
-        })),
-        ...dispensedMedicines.map((line) => ({ label: "Confirmed dispensed", value: `${line.medicineName || line.name} · ${line.quantity} ${line.unit || ""}` })),
+        { label: "Prescription", value: prescriptionText },
         ...followUpSchedules.filter((item) => item.date).map((item) => ({
           label: item.purpose || "Follow-up",
           value: [item.date, item.time].filter(Boolean).join(" · "),
@@ -1379,24 +1368,14 @@ export default function RhuConsultationWorkspace() {
                     onServiceFollowUp={handleServiceFollowUp}
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
-                    prescribedMedicines={prescribedMedicines}
-                    onPrescribedMedicinesChange={setPrescribedMedicines}
-                    catalog={catalog}
-                    catalogError={catalogError}
-                    onRetryCatalog={() => catalogQuery.refetch()}
-                    canPrescribe={canPrescribe}
+                    prescriptionText={prescriptionText}
+                    onPrescriptionTextChange={setPrescriptionText}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     conditionReferences={conditionReferences}
                     errors={validationErrors}
                     disabled={clinicalLocked}
                   />
-                  {canDispense && <div className="mt-5 rounded-xl border border-neutral-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-semibold text-ink-800">Medicines / Supplies Dispensed</h3>
-                    <DispensedMedicinesSection inventory={catalog} value={dispensedMedicines} onChange={setDispensedMedicines}
-                      disabled={clinicalLocked} loading={catalogQuery.isLoading} error={catalogError} onRetry={() => catalogQuery.refetch()}
-                      facilityLabel="RHU" />
-                  </div>}
                 </fieldset>
               )}
             </div>

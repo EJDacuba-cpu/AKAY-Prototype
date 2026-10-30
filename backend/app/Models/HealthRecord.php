@@ -131,6 +131,37 @@ class HealthRecord extends Model
         return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_RHU_ITR_V1;
     }
 
+    public function prescriptionDisplayText(): string
+    {
+        $text = trim((string) ($this->monitoring_data['prescriptionText'] ?? ''));
+        if ($text !== '') {
+            return $text;
+        }
+
+        $lines = $this->monitoring_data['prescribedMedicines'] ?? [];
+        if (! is_array($lines)) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $name = trim((string) ($line['name'] ?? $line['medicineName'] ?? ''));
+            $quantity = trim((string) ($line['quantity'] ?? ''));
+            $unit = trim((string) ($line['unit'] ?? ''));
+            $instructions = trim((string) ($line['instructions'] ?? ''));
+            $qty = trim($quantity.($unit !== '' ? ' '.$unit : ''));
+            $chunk = implode(' · ', array_values(array_filter([$name, $qty, $instructions], fn ($value) => $value !== '')));
+            if ($chunk !== '') {
+                $parts[] = $chunk;
+            }
+        }
+
+        return implode("\n", $parts);
+    }
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);

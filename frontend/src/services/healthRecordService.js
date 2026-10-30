@@ -885,6 +885,10 @@ function toPayload(record = {}, { partial = false } = {}) {
           name: item.name || item.medicineName || null,
         }))
       : undefined,
+    prescription_text:
+      record.consultationWorkflow === "rhu_itr_v1" || record.consultation_workflow === "rhu_itr_v1"
+        ? String(record.prescriptionText || record.prescription_text || "")
+        : undefined,
     rhu_visit_id: record.rhuVisitId || record.rhu_visit_id || undefined,
     referral: record.referral
       ? {
@@ -1046,6 +1050,12 @@ function toPayload(record = {}, { partial = false } = {}) {
   }
   if (!hasAny(record, ["dispensedMedicines", "dispensed_medicines"])) {
     delete payload.dispensed_medicines;
+  }
+  if (record.consultationWorkflow === "rhu_itr_v1" || record.consultation_workflow === "rhu_itr_v1") {
+    delete payload.dispensed_medicines;
+    delete payload.prescribed_medicines;
+  } else {
+    delete payload.prescription_text;
   }
   if (!record.referral) delete payload.referral;
   if (!hasAny(record, ["chiefComplaint"])) delete payload.chief_complaint;
@@ -1228,6 +1238,11 @@ export async function deleteHealthRecord(recordId) {
   return true;
 }
 
+export async function getRhuToDispense() {
+  const response = await apiRequest("/rhu/to-dispense");
+  return unwrapList(response);
+}
+
 export default {
   getBhcHealthRecords,
   getRhuHealthRecords,
@@ -1244,5 +1259,6 @@ export default {
   updateHealthRecordById,
   updateHealthRecord,
   dispenseHealthRecordMedicines,
+  getRhuToDispense,
   deleteHealthRecord,
 };

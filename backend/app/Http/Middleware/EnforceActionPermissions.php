@@ -35,6 +35,7 @@ class EnforceActionPermissions
             str_contains($path, '/conditions') => 'clinical.history',
             str_contains($path, '/corrections') => $read ? 'clinical.history' : 'records.correct',
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
+            str_contains($path, '/rhu/to-dispense') => 'items.dispense',
             str_contains($path, '/health-record-drafts') => $request->user()->isRhu()
                 && (ActionPermissions::allows($request->user(), 'consultations.encode')
                     || ActionPermissions::allows($request->user(), 'consultations.finalize'))

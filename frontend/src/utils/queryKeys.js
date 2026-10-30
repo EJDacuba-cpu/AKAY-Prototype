@@ -45,6 +45,7 @@ export const queryKeys = {
   incomingReferrals: (role = "rhu") => ["incoming-referrals", role],
   dashboardSummary: (role = "bhc") => ["dashboard-summary", role],
   adminDashboard: (period) => ["admin-dashboard", period],
+  toDispense: (role = "rhu") => ["to-dispense", role],
   medicineAvailability: (role = "bhc", user = {}) => ["medicine-availability", role,
     String(user?.id || ""),
     String(role === "bhc" ? (user?.barangayHealthCenterId || user?.barangay_health_center_id || user?.bhcId || user?.facilityId || "") : (user?.ruralHealthUnitId || user?.rural_health_unit_id || user?.rhuId || user?.facilityId || "")),

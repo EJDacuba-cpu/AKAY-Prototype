@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RhuPatientVolumeController;
 use App\Http\Controllers\Api\RhuProviderController;
 use App\Http\Controllers\Api\RhuProviderUnavailabilityController;
+use App\Http\Controllers\Api\RhuToDispenseController;
 use App\Http\Controllers\Api\RhuVisitController;
 use App\Http\Controllers\Api\RuralHealthUnitController;
 use App\Http\Controllers\Api\StaffAssignmentController;
@@ -152,6 +153,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::post('/rhu-patient-volumes', [RhuPatientVolumeController::class, 'store']);
 
         Route::middleware('role:rhu')->group(function () {
+            Route::get('/rhu/to-dispense', [RhuToDispenseController::class, 'index']);
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
             Route::get('/rhu/catchment-bhcs', [MonitoringHandoffController::class, 'catchmentBhcs']);
             Route::get('/rhu-visits', [RhuVisitController::class, 'index']);

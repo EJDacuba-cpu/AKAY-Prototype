@@ -135,17 +135,14 @@ class RhuItrConsultationTest extends TestCase
         $medicine->expiryGroups()->create(['expiration_date' => now()->addYear()->toDateString(),
             'available_quantity' => 8, 'quarantined_quantity' => 0]);
 
-        $response = $this->postRecord($clinician, $patient, $visit, $uuid, [
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
             'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 2,
                 'confirmed_given' => true]],
-        ])->assertCreated();
+        ])->assertUnprocessable()->assertJsonValidationErrors('dispensed_medicines');
 
-        $this->assertSame(6, $medicine->fresh()->quantity);
-        $this->assertDatabaseHas('health_record_medicines', ['health_record_id' => $response->json('data.id'),
-            'medicine_id' => $medicine->id, 'rural_health_unit_id' => $this->rhu->id,
-            'barangay_health_center_id' => null]);
-        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id,
-            'transaction_type' => 'dispense', 'quantity_delta' => -2]);
+        $this->assertSame(8, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
     }
 
     public function test_rhu_itr_cannot_dispense_another_facility_medicine(): void
@@ -188,7 +185,7 @@ class RhuItrConsultationTest extends TestCase
         $this->postRecord($clinician, $patient, $visit, $uuid, [
             'dispensed_medicines' => [['medicine_id' => $medicine->id, 'quantity' => 2,
                 'confirmed_given' => true]],
-        ])->assertForbidden();
+        ])->assertUnprocessable()->assertJsonValidationErrors('dispensed_medicines');
         $this->assertSame(8, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('health_record_medicines', 0);
     }
@@ -278,12 +275,7 @@ class RhuItrConsultationTest extends TestCase
                 'receivingBhcId' => $this->bhc->id,
                 'monitoringRecommendation' => 'Weekly blood pressure at the BHC.',
             ]],
-            'prescribed_medicines' => [[
-                'medicine_id' => $medicine->id,
-                'quantity' => 14,
-                'unit' => 'tablets',
-                'instructions' => 'Once daily after breakfast',
-            ]],
+            'prescription_text' => 'Losartan 50mg tablets · 14 · Once daily after breakfast',
             'care_plan' => [
                 'rhu_follow_up' => true,
                 'manage_to_bhc' => true,
@@ -300,7 +292,11 @@ class RhuItrConsultationTest extends TestCase
         $this->assertTrue($record->isRhuItrV1());
         $this->assertSame($this->rhu->id, $record->rural_health_unit_id);
         $this->assertSame($uuid, $record->consultation_uuid);
-        $this->assertSame('Once daily after breakfast', $record->monitoring_data['prescribedMedicines'][0]['instructions'] ?? null);
+        $this->assertSame(
+            'Losartan 50mg tablets · 14 · Once daily after breakfast',
+            $record->monitoring_data['prescriptionText'] ?? null
+        );
+        $this->assertArrayNotHasKey('prescribedMedicines', $record->monitoring_data ?? []);
         $this->assertSame(40, $medicine->fresh()->quantity);
         $this->assertDatabaseCount('medicine_inventory_transactions', 0);
         $this->assertDatabaseCount('health_record_medicines', 0);

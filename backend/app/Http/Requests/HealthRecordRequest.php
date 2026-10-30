@@ -194,13 +194,10 @@ class HealthRecordRequest extends FormRequest
             $rules['care_plan.manage_to_bhc'] = ['nullable', 'boolean'];
             $rules['rhu_visit_id'] = ['required', 'integer', 'exists:rhu_visit_queue_entries,id'];
             $rules['consultation_uuid'] = ['required', 'uuid'];
-            $rules['prescribed_medicines'] = ['nullable', 'array', 'max:50'];
-            $rules['prescribed_medicines.*.medicine_id'] = ['required', 'integer', 'exists:medicines,id'];
-            $rules['prescribed_medicines.*.quantity'] = ['required', 'integer', 'min:1', 'max:2147483647'];
-            $rules['prescribed_medicines.*.unit'] = ['nullable', 'string', 'max:50'];
-            $rules['prescribed_medicines.*.instructions'] = ['nullable', 'string', 'max:2000'];
+            $rules['prescription_text'] = ['nullable', 'string', 'max:5000'];
+            $rules['prescribed_medicines'] = ['prohibited'];
             $rules['referral'] = ['prohibited'];
-            $rules['dispensed_medicines'] = ['nullable', 'array'];
+            $rules['dispensed_medicines'] = ['prohibited'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
