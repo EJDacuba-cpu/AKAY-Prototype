@@ -5,6 +5,45 @@
   --consult-gap: 16px;
 }
 
+/* RHU uses the same clinical sheets as BHC through shadcn Card primitives.
+   Explicit sheet roles keep nested history and program controls untouched. */
+.ehr-consult .ehr-consult__sheet {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-modal);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult .ehr-consult__sheet--headed > div:first-child {
+  border-start-start-radius: inherit;
+  border-start-end-radius: inherit;
+  padding: 16px 20px;
+}
+.ehr-consult .ehr-consult__sheet--headed > div:nth-child(2) {
+  padding: 20px;
+}
+.ehr-consult--rhu .ehr-consult__grid--assessment .ehr-consult__form h3 {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: 16px;
+}
+/* Shared service forms own their sections; only their outer sheets receive
+   the consultation finish, without adding a second card around them. */
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] {
+  border-radius: var(--radius-modal);
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] > div:first-child[class~="border-b"] {
+  padding: 16px 20px;
+}
+.ehr-consult--rhu .ehr-consult__form > div > fieldset > div > section[class~="border"] > div:first-child[class~="border-b"] + div {
+  padding: 20px;
+}
+
 .ehr-consult__header {
   flex: none;
   margin-bottom: var(--consult-gap);

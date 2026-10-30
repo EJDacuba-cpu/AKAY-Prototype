@@ -255,7 +255,7 @@ function FieldLabel({ label, required }) {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
-function TextField({ label, value, onChange, required, placeholder, disabled = false }) {
+function TextField({ label, value, onChange, required, placeholder, disabled = false, error }) {
   return (
     <div className="min-w-0">
       <FieldLabel label={label} required={required} />
@@ -264,9 +264,11 @@ function TextField({ label, value, onChange, required, placeholder, disabled = f
         value={value ?? ""}
         placeholder={placeholder}
         disabled={disabled}
+        aria-invalid={Boolean(error)}
         onChange={(e) => onChange(e.target.value)}
         className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
       />
+      {error && <p role="alert" className="mt-1 text-[11px] font-medium text-[var(--color-danger)]">{error}</p>}
     </div>
   );
 }
@@ -331,6 +333,7 @@ export default function TbTreatmentCardForm({
   recordId = null,
   mode = "full",
   referenceCaseNumber = "",
+  errors = {},
 }) {
   const data = value || EMPTY_TB_DATA;
   const [downloading, setDownloading] = useState(false);
@@ -564,6 +567,7 @@ export default function TbTreatmentCardForm({
           />
           <TextField
             label="TB Case Number"
+            error={errors["tbData.diagnosis.tbCaseNumber"] || errors["tb_data.diagnosis.tbCaseNumber"]}
             value={data.diagnosis.tbCaseNumber}
             onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
             required={!referenceCaseNumber}

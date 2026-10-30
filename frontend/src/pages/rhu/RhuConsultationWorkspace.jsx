@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { Card } from "../../components/ui/card";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import { SuccessModal } from "../../components/common";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
@@ -70,7 +71,6 @@ import {
   getPreviousStepKey,
   getProgramFormSteps,
   getStepOrder,
-  pickErrorsForStep,
   programStepKey,
   remapServerErrorKeys,
   resolveFormStep,
@@ -1079,19 +1079,21 @@ export default function RhuConsultationWorkspace() {
     );
   }
 
-  const stepErrors = Object.values(pickErrorsForStep(validationErrors, currentStepKey, stepOptions)).filter(Boolean);
+  const showSidePanel = currentStepKey === INTERVIEW_STEP || currentStepKey === ASSESSMENT_STEP;
+  const stepLayout = currentStepKey === ASSESSMENT_STEP ? "assessment"
+    : currentStepKey === NEXT_STEP ? "care-plan"
+    : currentStepKey === REVIEW_STEP ? "review" : "interview";
 
   return (
     <DashboardLayout role="rhu" title="RHU Consultation">
+      <div className="ehr-consult ehr-consult--rhu ehr-consult--pinned">
+      <div className="ehr-consult__stage">
       <ConsultationWorkspaceBody>
+        <header className={`ehr-consult__header ehr-consult__header--${stepLayout}`}>
         <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} />
-        {stepErrors.length > 0 && (
-          <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-            {stepErrors.map((message) => (
-              <p key={message}>{message}</p>
-            ))}
-          </div>
-        )}
+        </header>
+        <div className={`ehr-consult__grid ehr-consult__grid--${stepLayout}${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:items-start lg:gap-4" : ""}`}>
+        <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
         {wizardPhase === WIZARD_REVIEW ? (
           <ConsultationReviewStep
             visitDate={new Date().toLocaleDateString()}
@@ -1101,11 +1103,10 @@ export default function RhuConsultationWorkspace() {
             onEditStep={(key) => goToStepKey(key)}
           />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
             <div className="min-w-0 space-y-4">
               {currentStepKey === INTERVIEW_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
-                  <section className="rounded-none border border-[#E5E7EB] bg-white">
+                  <Card className="ehr-consult__sheet ehr-consult__sheet--headed">
                     <div className="border-b border-[#E5E7EB] px-4 py-2.5">
                       <h2 className="text-[14px] font-bold leading-snug text-[#111827]">Chief Complaint & History of Present Illness</h2>
                       <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">Why the patient is here today, in their own words and yours.</p>
@@ -1114,7 +1115,8 @@ export default function RhuConsultationWorkspace() {
                       <div className="grid gap-4 @xl:grid-cols-2">
                         <label className="block text-xs">
                           <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">Chief Complaint *</span>
-                          <textarea rows={3} value={chiefComplaint} onChange={(event) => { clearError("chiefComplaint"); setChiefComplaint(event.target.value); }} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
+                          <textarea name="chiefComplaint" rows={3} aria-invalid={Boolean(validationErrors.chiefComplaint)} aria-describedby={validationErrors.chiefComplaint ? "rhu-chief-complaint-error" : undefined} value={chiefComplaint} onChange={(event) => { clearError("chiefComplaint"); setChiefComplaint(event.target.value); }} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
+                          {validationErrors.chiefComplaint && <span id="rhu-chief-complaint-error" role="alert" className="mt-1 block text-[11px] font-medium text-[var(--color-danger)]">{validationErrors.chiefComplaint}</span>}
                         </label>
                         <label className="block text-xs">
                           <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">History of Present Illness</span>
@@ -1122,9 +1124,9 @@ export default function RhuConsultationWorkspace() {
                         </label>
                       </div>
                     </div>
-                  </section>
+                  </Card>
                   {canViewBackground && (
-                    <section className="rounded-none border border-[#E5E7EB] bg-white">
+                    <Card className="ehr-consult__sheet ehr-consult__sheet--headed">
                       <div className="border-b border-[#E5E7EB] px-4 py-2.5">
                         <h2 className="text-[14px] font-bold leading-snug text-[#111827]" title="Informant">Informant</h2>
                         <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">Who gave this history at this visit.</p>
@@ -1136,7 +1138,7 @@ export default function RhuConsultationWorkspace() {
                           errors={informantErrors}
                         />
                       </div>
-                    </section>
+                    </Card>
                   )}
                   {canViewBackground && (
                     <PatientHistoryPanel
@@ -1172,7 +1174,7 @@ export default function RhuConsultationWorkspace() {
               )}
               {currentStepKey === ASSESSMENT_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
-                  <section className="rounded-none border border-[#E5E7EB] bg-white p-4">
+                  <Card className="ehr-consult__sheet p-5">
                     <div>
                       <h3 className="mb-3 text-[12px] font-bold uppercase tracking-wide text-[#111827]">Vital Signs</h3>
                       <div className="grid gap-4 @xl:grid-cols-2 @3xl:grid-cols-3">
@@ -1248,7 +1250,7 @@ export default function RhuConsultationWorkspace() {
                       errors={validationErrors}
                       readOnly={assessmentLocked || !canViewBackground || saving || Boolean(saveSuccess)}
                     />
-                  </section>
+                  </Card>
                 </fieldset>
               )}
               {programFormSteps.some((step) => step.key === currentStepKey) && currentStepKey === programStepKey("Immunization") && (
@@ -1309,7 +1311,7 @@ export default function RhuConsultationWorkspace() {
                 </fieldset>
               )}
               {programFormSteps.some((step) => step.key === currentStepKey) && currentStepKey === programStepKey("Family Planning") && (
-                <fieldset disabled={assessmentLocked} className="border border-[#E5E7EB] bg-white p-4">
+                <fieldset disabled={assessmentLocked} className="ehr-consult__sheet p-5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block text-xs">
                       <span className="mb-1 block font-semibold uppercase tracking-wide text-[#374151]">Client type</span>
@@ -1338,7 +1340,8 @@ export default function RhuConsultationWorkspace() {
                   ) : null}
                   <TbTreatmentCardForm
                     value={tbData}
-                    onChange={setTbData}
+                    onChange={(next) => { clearErrorsStartingWith(["tbData", "tb_data"]); setTbData(next); }}
+                    errors={validationErrors}
                     mode="encode"
                     readOnly={assessmentLocked}
                     referenceCaseNumber={existingTbCase?.tbCaseNumber || ""}
@@ -1346,7 +1349,7 @@ export default function RhuConsultationWorkspace() {
                 </fieldset>
               )}
               {currentStepKey === NEXT_STEP && (
-                <fieldset disabled={clinicalLocked} className="ehr-consult min-w-0">
+                <fieldset disabled={clinicalLocked} className="min-w-0">
                   <RhuDiagnosisCarePlanSection
                     diagnoses={diagnoses}
                     diagnosisDraft={diagnosisDraft}
@@ -1379,8 +1382,10 @@ export default function RhuConsultationWorkspace() {
                 </fieldset>
               )}
             </div>
-            <div className="min-w-0">
+        )}
+        </div>
               {currentStepKey === INTERVIEW_STEP && (
+                <fieldset disabled={assessmentLocked} className="contents">
                 <ConsultationProgramPanel
                   heading="Health Services"
                   description="Prenatal enrollment is optional. Clicking Enroll adds prenatal fields to this consultation. Prenatal becomes Active only after a clinician finalizes the visit."
@@ -1390,6 +1395,7 @@ export default function RhuConsultationWorkspace() {
                   onSelect={handleProgramSelect}
                   onPrimaryChange={setPrimaryProgram}
                 />
+                </fieldset>
               )}
               {currentStepKey === ASSESSMENT_STEP && (
                 <BodyPreviewPanel
@@ -1408,9 +1414,9 @@ export default function RhuConsultationWorkspace() {
                   onDialogChange={setBodyDialog}
                 />
               )}
-            </div>
-          </div>
-        )}
+        </div>
+      </ConsultationWorkspaceBody>
+      </div>
         <ConsultationActionBar
           onPrevious={handlePrevious}
           previousLabel={currentStepKey === INTERVIEW_STEP ? "Back to Queue" : "Previous"}
@@ -1427,7 +1433,6 @@ export default function RhuConsultationWorkspace() {
           continueBusyLabel="Saving..."
           continueDisabled={wizardPhase === WIZARD_REVIEW && !canFinalize}
         />
-      </ConsultationWorkspaceBody>
       <SuccessModal
         open={Boolean(saveSuccess)}
         title="Health Record Saved"
@@ -1442,6 +1447,7 @@ export default function RhuConsultationWorkspace() {
           { label: "Back to Queue", onClick: () => navigate("/rhu/patients") },
         ]}
       />
+      </div>
     </DashboardLayout>
   );
 }
