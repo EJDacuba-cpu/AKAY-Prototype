@@ -7,18 +7,17 @@ use App\Exceptions\TurnstileVerificationException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Models\User;
+use App\Services\AccountActivationService;
 use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
 use App\Services\TurnstileVerifier;
-use App\Services\UserNotificationService;
 use App\Services\UserSessionRevocationService;
 use App\Services\WorkingFacilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Cookie;
@@ -27,6 +26,7 @@ class AuthController extends Controller
 {
     public function login(
         LoginRequest $request,
+        AccountActivationService $activation,
         AuditLogger $auditLogger,
         FacilityAccessService $facilityAccess,
         UserSessionRevocationService $sessions,
@@ -66,6 +66,13 @@ class AuthController extends Controller
                 'message' => 'The provided credentials are incorrect.',
                 'code' => 'LOGIN_FAILED',
             ], 422);
+        }
+
+        if (! $activation->isActivated($user)) {
+            return response()->json([
+                'message' => 'Finish account setup from the invitation sent to your email, or ask the Municipal Health Officer to resend it.',
+                'code' => 'ACCOUNT_SETUP_REQUIRED',
+            ], 403);
         }
 
         // Fail closed: a temporary password with no recorded expiry is treated as expired.
@@ -177,46 +184,6 @@ class AuthController extends Controller
             ));
     }
 
-    public function forgotPassword(Request $request, UserNotificationService $notifications)
-    {
-        $validated = $request->validate(['email' => ['required', 'email']]);
-        $status = Password::sendResetLink($validated);
-
-        if ($status === Password::RESET_LINK_SENT) {
-            $notifications->notifyUser(
-                User::where('email', $validated['email'])->first(),
-                'Password reset requested',
-                'A password reset request was created for your account.',
-                'password_reset'
-            );
-        }
-
-        return response()->json(['message' => __($status)]);
-    }
-
-    public function resetPassword(
-        Request $request,
-        UserSessionRevocationService $sessions
-    ) {
-        $validated = $request->validate([
-            'token' => ['required', 'string'],
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
-
-        $status = Password::reset(
-            $validated,
-            function (User $user, string $password) use ($sessions) {
-                $user->forceFill(['password' => $password])->save();
-                $sessions->revokeAllTokens($user, 'password-reset');
-            }
-        );
-
-        return $status === Password::PASSWORD_RESET
-            ? response()->json(['message' => __($status)])
-            : response()->json(['message' => __($status)], 422);
-    }
-
     private function sessionResponse(User $user, array $session, array $extra = [])
     {
         return response()->json([
@@ -247,6 +214,7 @@ class AuthController extends Controller
             'name' => $user->name,
             'role' => $user->role,
             'status' => $user->status,
+            'email_verified_at' => $user->email_verified_at,
             'must_change_password' => (bool) $user->must_change_password,
             'staff_role' => $user->staff_role,
             'contact_number' => $user->contact_number,

@@ -320,13 +320,13 @@ class AuthenticationPersistenceTest extends TestCase
 
     private function newBhw(string $email): User
     {
-        return User::create([
+        return $this->markVerified(User::create([
             'name' => 'Persistent BHW',
             'email' => $email,
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $this->bhc->id,
-        ]);
+        ]));
     }
 }

@@ -7,6 +7,7 @@ use App\Http\Requests\UserRequest;
 use App\Models\AccountInvite;
 use App\Models\PasswordResetRequest;
 use App\Models\User;
+use App\Services\AccountActivationService;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
 use App\Services\RhuDoctorRosterService;
@@ -97,6 +98,7 @@ class UserController extends Controller
         UserNotificationService $notifications,
         UserSessionRevocationService $sessions,
         AccountInviteService $invites,
+        AccountActivationService $activation,
         RhuDoctorRosterService $roster
     ) {
         $data = $request->validated();
@@ -110,6 +112,8 @@ class UserController extends Controller
                 $securityContextChanged = true;
             }
         }
+
+        $previousEmail = $user->email;
 
         DB::transaction(function () use (
             $request,
@@ -137,7 +141,7 @@ class UserController extends Controller
             $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions));
         });
 
-        $this->followEmailChange($user, $invites);
+        $this->followEmailChange($user, $invites, $activation, $previousEmail, $request->user());
 
         return response()->json(['data' => $user->fresh()->load(['barangayHealthCenter', 'ruralHealthUnit', 'facilityAssignments.barangayHealthCenter'])]);
     }
@@ -160,34 +164,37 @@ class UserController extends Controller
     }
 
     /**
-     * A new email on an account whose invite is still open: the old link stops working and a fresh one goes to the
-     * new address (the same as Edit email on Password & Invites). An inactive account gets no email; its old link is
-     * only retired, and the MHO can resend after reactivating.
+     * A real mailbox change is not a case-only edit: clear verification, drop old tokens, and invite the new address.
+     * Inactive accounts get no email; their old link is retired until the MHO resends after reactivating.
      */
-    private function followEmailChange(User $user, AccountInviteService $invites): void
-    {
-        if (! $user->wasChanged('email')) {
+    private function followEmailChange(
+        User $user,
+        AccountInviteService $invites,
+        AccountActivationService $activation,
+        string $previousEmail,
+        User $actor
+    ): void {
+        if ($activation->sameMailbox($previousEmail, (string) $user->email)) {
             return;
         }
 
+        $activation->startOverForMailboxChange($user);
         $this->retargetOpenResetRequests($user);
 
         $invite = $user->accountInvite()->first();
-        if (! $invite || $invite->status === AccountInvite::STATUS_COMPLETED) {
+        if (! $user->isActive()) {
+            if ($invite && $invite->status !== AccountInvite::STATUS_COMPLETED) {
+                $invite->forceFill([
+                    'email' => $user->email,
+                    'token_hash' => null,
+                    'status' => $invite->status === AccountInvite::STATUS_TEMPORARY ? $invite->status : AccountInvite::STATUS_EXPIRED,
+                ])->save();
+            }
+
             return;
         }
 
-        if ($user->isActive()) {
-            $invites->resend($invite);
-
-            return;
-        }
-
-        $invite->forceFill([
-            'email' => $user->email,
-            'token_hash' => null,
-            'status' => $invite->status === AccountInvite::STATUS_TEMPORARY ? $invite->status : AccountInvite::STATUS_EXPIRED,
-        ])->save();
+        $invites->issue($user, $actor);
     }
 
     /**

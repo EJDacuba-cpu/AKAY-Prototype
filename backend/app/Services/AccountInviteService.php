@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\AccountSetupRequiredException;
 use App\Mail\AccountInviteMail;
 use App\Models\AccountInvite;
 use App\Models\User;
@@ -50,9 +51,24 @@ class AccountInviteService
         return $this->inviteUrl($token);
     }
 
+    /** Pending copied links are not mailbox proof; drop their tokens but keep the audit delivery value. */
+    public function invalidateCopiedPendingInvites(): int
+    {
+        return AccountInvite::query()
+            ->where('status', AccountInvite::STATUS_PENDING)
+            ->where('delivery', AccountInvite::DELIVERY_COPIED)
+            ->whereNotNull('token_hash')
+            ->update(['token_hash' => null]);
+    }
+
     /** Sets a temporary password on the account and returns it. The caller must show it once and never log it. */
     public function temporaryPassword(AccountInvite $invite): string
     {
+        $invite->loadMissing('user');
+        if (! $invite->user || ! app(AccountActivationService::class)->isActivated($invite->user)) {
+            throw new AccountSetupRequiredException;
+        }
+
         $password = $this->generatePassword();
 
         DB::transaction(function () use ($invite, $password): void {

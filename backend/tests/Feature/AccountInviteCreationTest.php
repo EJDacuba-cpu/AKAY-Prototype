@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\AccountSetupRequiredException;
 use App\Mail\AccountInviteMail;
 use App\Models\AccountInvite;
 use App\Models\AuditLog;
@@ -11,7 +12,6 @@ use App\Models\User;
 use App\Services\AccountInviteService;
 use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -19,6 +19,8 @@ use Tests\TestCase;
 class AccountInviteCreationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected bool $autoVerifyUsers = false;
 
     private BarangayHealthCenter $bhc;
 
@@ -29,7 +31,7 @@ class AccountInviteCreationTest extends TestCase
         parent::setUp();
         $rhu = RuralHealthUnit::create(['name' => 'Invite RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Invite BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->admin = User::create(['name' => 'MHO', 'email' => 'mho@example.test', 'password' => 'password123', 'role' => 'admin', 'status' => 'active', 'permissions' => []]);
+        $this->admin = $this->markVerified(User::create(['name' => 'MHO', 'email' => 'mho@example.test', 'password' => 'password123', 'role' => 'admin', 'status' => 'active', 'permissions' => []]));
         Sanctum::actingAs($this->admin, ['*']);
     }
 
@@ -53,6 +55,7 @@ class AccountInviteCreationTest extends TestCase
 
         $this->assertSame(1, AccountInvite::count());
         $invite = AccountInvite::firstOrFail();
+        $this->assertNull($invite->user->fresh()->email_verified_at);
         $this->assertSame(AccountInvite::STATUS_PENDING, $invite->status);
         $this->assertSame(AccountInvite::DELIVERY_SENT, $invite->delivery);
         $this->assertSame('joshua@example.test', $invite->email);
@@ -172,20 +175,13 @@ class AccountInviteCreationTest extends TestCase
         $this->assertSame(AccountInvite::DELIVERY_COPIED, $fresh->delivery);
     }
 
-    public function test_temporary_password_replaces_the_link(): void
+    public function test_temporary_password_cannot_replace_the_link_for_an_unverified_account(): void
     {
         Mail::fake();
         $this->postJson('/api/users', $this->payload())->assertCreated();
         $invite = AccountInvite::firstOrFail();
 
-        $password = app(AccountInviteService::class)->temporaryPassword($invite);
-
-        $user = $invite->user->fresh();
-        $this->assertTrue(Hash::check($password, $user->password));
-        $this->assertTrue($user->must_change_password);
-        $this->assertEqualsWithDelta(now()->addHours(72)->timestamp, $user->temp_password_expires_at->timestamp, 60);
-        $fresh = $invite->fresh();
-        $this->assertSame(AccountInvite::STATUS_TEMPORARY, $fresh->status);
-        $this->assertNull($fresh->token_hash);
+        $this->expectException(AccountSetupRequiredException::class);
+        app(AccountInviteService::class)->temporaryPassword($invite);
     }
 }

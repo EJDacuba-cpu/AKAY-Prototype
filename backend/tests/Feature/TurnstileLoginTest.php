@@ -29,14 +29,14 @@ class TurnstileLoginTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $rhu->id,
         ]);
-        $this->user = User::create([
+        $this->user = $this->markVerified(User::create([
             'name' => 'Turnstile BHW',
             'email' => 'turnstile-bhw@example.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_BHC,
             'status' => User::STATUS_ACTIVE,
             'barangay_health_center_id' => $bhc->id,
-        ]);
+        ]));
     }
 
     public function test_login_requires_a_turnstile_token_before_authentication(): void

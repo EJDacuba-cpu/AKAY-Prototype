@@ -78,21 +78,21 @@ export function inviteStatus(row, now = new Date()) {
 
   switch (row.status) {
     case "expired":
-      return result("pending", "Link expired", ["resend", "editEmail", "temporaryPassword"]);
+      return result("pending", "Link expired", ["resend", "editEmail"]);
     case "temporary": {
-      // No expiry counts as expired: sign-in refuses such a password too.
+      // Leftover temporary-password rows cannot activate pending setup; resend the emailed invite.
       const expiresAt = row.temp_password_expires_at;
       if (!expiresAt || new Date(expiresAt).getTime() <= now.getTime()) {
-        return result("pending", "Temporary password expired", ["resend", "temporaryPassword"]);
+        return result("pending", "Temporary password expired", ["resend", "editEmail"]);
       }
-      return result("in_progress", "Temporary password generated", ["temporaryPassword"]);
+      return result("in_progress", "Temporary password generated", ["resend", "editEmail"]);
     }
     default: {
-      const actions = ["resend", "copy", "editEmail", "temporaryPassword"];
+      const actions = ["resend", "editEmail"];
       if (row.delivery === "failed") return result("pending", "Email not sent", actions);
       return result(
         "in_progress",
-        withExpiry(row.delivery === "copied" ? "Link shared by the MHO" : "Link sent", row.expires_at, now),
+        withExpiry(row.delivery === "copied" ? "Invite must be resent by email" : "Link sent", row.expires_at, now),
         actions,
       );
     }

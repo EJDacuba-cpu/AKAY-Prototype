@@ -38,7 +38,11 @@ export function shouldResetTurnstile(error) {
   return error?.code !== "LOGIN_THROTTLED";
 }
 
+const ACCOUNT_SETUP_REQUIRED_MESSAGE =
+  "Finish account setup from the invitation sent to your email, or ask the Municipal Health Officer to resend it.";
+
 export function loginErrorMessage(error) {
+  if (error?.code === "ACCOUNT_SETUP_REQUIRED") return ACCOUNT_SETUP_REQUIRED_MESSAGE;
   if (error?.code === "TEMP_PASSWORD_EXPIRED") return TEMP_PASSWORD_EXPIRED_MESSAGE;
   if (error?.code && CAPTCHA_MESSAGES[error.code]) return CAPTCHA_MESSAGES[error.code];
   const tokenError = error?.errors?.turnstile_token;

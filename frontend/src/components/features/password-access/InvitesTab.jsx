@@ -2,28 +2,22 @@ import { useMemo, useState } from "react";
 import { ConfirmationModal } from "../../common";
 import useNotification from "../../../hooks/useNotification";
 import {
-  copyInviteLink,
   getAccountInvites,
-  issueTemporaryPassword,
   resendInvite,
 } from "../../../services/accountInviteService";
 import { inviteStatus } from "../../../utils/accessRequestStatus";
 import { ACTION_CONFIRM } from "../../../utils/accountAccess";
-import { copyText } from "../../../utils/clipboard";
-import AccessRequestTable, { accessColumns, accountName, menuEntries } from "./AccessRequestTable";
-import TemporaryPasswordDialog, { ManualCopyDialog } from "./TemporaryPasswordDialog";
+import AccessRequestTable, { accessColumns, menuEntries } from "./AccessRequestTable";
 import useAccessRows from "./useAccessRows";
 
 /**
- * Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2). Each row's ⋯ menu lists
- * the controls its status allows; choosing one opens a confirmation modal. The email is changed in Users.
+ * Invites tab: rows from the account invite API, statuses from `inviteStatus` (spec F2).
+ * Pending setup can only be completed from the emailed invitation.
  */
 export default function InvitesTab({ rolesData, toolbarLead = null }) {
   const notify = useNotification();
   const list = useAccessRows(getAccountInvites, notify.error);
-  const [pending, setPending] = useState(null); // { action, row } awaiting confirmation
-  const [tempPassword, setTempPassword] = useState(null);
-  const [manualCopy, setManualCopy] = useState(null);
+  const [pending, setPending] = useState(null);
   const columns = useMemo(
     () => accessColumns({ rolesData, dateOf: (row) => row.sent_at, dateLabel: "Sent" }),
     [rolesData],
@@ -38,34 +32,17 @@ export default function InvitesTab({ rolesData, toolbarLead = null }) {
   async function confirmAction() {
     const { action, row } = pending;
     if (action === "resend") await resend(row);
-    if (action === "copy") await copy(row);
-    if (action === "temporaryPassword") await issueTemp(row);
   }
 
   async function resend(row) {
     const updated = await list.runAction(row, () => resendInvite(row.id));
     setPending(null);
     if (!updated) return;
-    if (updated.delivery === "failed") notify.error("The email could not be sent. Use Copy link to share it another way.");
-    else notify.success(`Invite sent to ${updated.email}.`);
-  }
-
-  async function copy(row) {
-    const url = await list.runAction(row, () => copyInviteLink(row.id));
-    setPending(null);
-    if (url === undefined) return;
-    if (!url) {
-      notify.error("Could not create a link. Try again.");
-      return;
+    if (updated.delivery === "failed") {
+      notify.error("The email could not be sent. Correct the address in Users if needed, then resend.");
+    } else {
+      notify.success(`Invite sent to ${updated.email}.`);
     }
-    if (await copyText(url)) notify.success("Link copied. The emailed link no longer works.");
-    else setManualCopy({ name: accountName(row), url });
-  }
-
-  async function issueTemp(row) {
-    const result = await list.runAction(row, () => issueTemporaryPassword(row.id));
-    setPending(null);
-    if (result?.password) setTempPassword({ name: accountName(row), password: result.password });
   }
 
   const confirm = pending ? ACTION_CONFIRM.invite[pending.action] : null;
@@ -78,7 +55,7 @@ export default function InvitesTab({ rolesData, toolbarLead = null }) {
         statusOf={(row) => inviteStatus(row)}
         menuFor={menuFor}
         emptyMessage="No invites yet"
-        emptyHint="Adding a user in Users sends them an invite, and you can follow it here until they set a password."
+        emptyHint="Adding a user in Users emails them an invitation. They cannot sign in until they set a password from that message."
         loading={list.loading}
         error={list.error}
         onRetry={list.refresh}
@@ -99,18 +76,6 @@ export default function InvitesTab({ rolesData, toolbarLead = null }) {
         loadingText="Working..."
         onCancel={() => !list.busyId && setPending(null)}
         onConfirm={confirmAction}
-      />
-
-      <TemporaryPasswordDialog
-        name={tempPassword?.name}
-        password={tempPassword?.password}
-        onClose={() => setTempPassword(null)}
-      />
-
-      <ManualCopyDialog
-        name={manualCopy?.name}
-        url={manualCopy?.url}
-        onClose={() => setManualCopy(null)}
       />
     </>
   );

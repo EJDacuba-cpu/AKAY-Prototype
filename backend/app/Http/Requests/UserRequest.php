@@ -24,7 +24,20 @@ class UserRequest extends FormRequest
 
         return [
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
-            'email' => [$isUpdate ? 'sometimes' : 'required', 'email', Rule::unique('users', 'email')->ignore($userId)],
+            'email' => [
+                $isUpdate ? 'sometimes' : 'required',
+                'email',
+                function (string $attribute, mixed $value, \Closure $fail) use ($userId): void {
+                    $taken = User::query()
+                        ->whereRaw('lower(email) = ?', [strtolower(trim((string) $value))])
+                        ->when($userId, fn ($query) => $query->where('id', '!=', $userId))
+                        ->exists();
+
+                    if ($taken) {
+                        $fail('This email is already in use.');
+                    }
+                },
+            ],
             // The MHO never sets a password: people set their own through the invite link.
             'password' => ['prohibited'],
             'password_confirmation' => ['prohibited'],

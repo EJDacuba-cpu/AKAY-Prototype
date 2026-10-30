@@ -6,16 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountInvite;
 use App\Models\PasswordResetRequest;
 use App\Models\User;
+use App\Exceptions\AccountSetupRequiredException;
 use App\Services\AccessRequestStatus;
+use App\Services\AccountActivationService;
 use App\Services\AccountInviteService;
 use App\Services\AuditLogger;
-use App\Services\PasswordSetRecorder;
-use App\Services\PasswordSetService;
 use App\Support\MaskedEmail;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -43,10 +42,10 @@ class AccountInviteController extends Controller
         ]);
     }
 
-    /** Public: the one-time link sets the first password. A second use of the same link fails. */
+    /** Public: the one-time link sets the first password and verifies the current mailbox. */
     public function accept(
         Request $request,
-        PasswordSetService $passwords,
+        AccountActivationService $activation,
         AuditLogger $auditLogger
     ) {
         $validated = $request->validate([
@@ -60,32 +59,18 @@ class AccountInviteController extends Controller
             return response()->json(['message' => self::INVALID_MESSAGE], 422);
         }
 
-        $accepted = DB::transaction(function () use ($found, $validated, $passwords, $request, $auditLogger): bool {
-            // Re-check under a row lock so two simultaneous submissions cannot both succeed.
-            $invite = AccountInvite::query()->whereKey($found->id)->lockForUpdate()->first();
-
-            if (! $invite
-                || $invite->status !== AccountInvite::STATUS_PENDING
-                || $invite->token_hash !== hash('sha256', $validated['token'])
-                || ! $invite->expires_at?->isFuture()) {
-                return false;
-            }
-
-            $user = $invite->user;
-            if (! $user || ! $user->isActive()) {
-                return false;
-            }
-
-            $passwords->set($user, $validated['password'], PasswordSetRecorder::ROUTE_INVITE, 'invite-accepted');
-
-            $auditLogger->log($request, 'account invite completed', 'auth', 'Account invite completed for '.MaskedEmail::mask($user->email).'.');
-
-            return true;
-        });
+        $accepted = $activation->acceptInvite($found, $validated['token'], $validated['password']);
 
         if (! $accepted) {
             return response()->json(['message' => self::INVALID_MESSAGE], 422);
         }
+
+        $auditLogger->log(
+            $request,
+            'account invite completed',
+            'auth',
+            'Account invite completed for '.MaskedEmail::mask($found->user->email).'.'
+        );
 
         return response()->json(['message' => 'Your password is set. Sign in to continue.']);
     }
@@ -180,6 +165,10 @@ class AccountInviteController extends Controller
         $previous = $invite->user->email;
         $invite->user->forceFill(['email' => trim($validated['email'])])->save();
 
+        if (! app(AccountActivationService::class)->sameMailbox($previous, $invite->user->email)) {
+            app(AccountActivationService::class)->startOverForMailboxChange($invite->user);
+        }
+
         $invites->resend($invite);
 
         $auditLogger->log(
@@ -192,18 +181,15 @@ class AccountInviteController extends Controller
         return response()->json(['data' => $this->toResponse($invite->fresh(self::WITH_FACILITY))]);
     }
 
-    /** Copy link: a fresh one-time link for the MHO to share another way. The emailed link stops working. */
-    public function link(Request $request, AccountInvite $invite, AccountInviteService $invites, AuditLogger $auditLogger)
+    /** Copy-link is retired: a token handed to the MHO is not mailbox proof. */
+    public function link()
     {
-        if ($refusal = $this->refuseIfClosed($invite)) {
-            return $refusal;
-        }
+        $exception = new AccountSetupRequiredException;
 
-        $url = $invites->link($invite);
-
-        $auditLogger->log($request, 'account invite link copied', 'auth', 'Account invite link copied for '.MaskedEmail::mask($invite->email).'.');
-
-        return response()->json(['data' => ['url' => $url]]);
+        return response()->json([
+            'message' => $exception->getMessage(),
+            'code' => $exception->codeName(),
+        ], $exception->status());
     }
 
     /** The password is in this response only; it is never logged or stored in the clear. */
@@ -213,7 +199,14 @@ class AccountInviteController extends Controller
             return $refusal;
         }
 
-        $password = $invites->temporaryPassword($invite);
+        try {
+            $password = $invites->temporaryPassword($invite);
+        } catch (AccountSetupRequiredException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => $exception->codeName(),
+            ], $exception->status());
+        }
 
         $auditLogger->log($request, 'temporary password issued', 'auth', 'Temporary password issued for '.MaskedEmail::mask($invite->email).'.');
 
@@ -266,6 +259,7 @@ class AccountInviteController extends Controller
                 'role' => $user->role,
                 'staff_role' => $user->staff_role,
                 'status' => $user->status,
+                'email_verified_at' => $user->email_verified_at,
                 'facility' => $facility,
             ] : null,
         ];

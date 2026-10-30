@@ -1,8 +1,7 @@
 // Every control of each tab, in menu order; a divider is drawn between groups. The menu always lists all of them;
-// the row's status decides which are active. (Generate temporary password is its own group: it is the fallback when
-// the email cannot be delivered.)
+// the row's status decides which are active. Invite setup is completed from the emailed invitation only.
 const MENU = {
-  invite: [{ actions: ["resend", "copy"] }, { actions: ["temporaryPassword"] }],
+  invite: [{ actions: ["resend"] }],
   reset: [{ actions: ["approve", "decline", "resend", "copy"] }],
 };
 
@@ -25,12 +24,6 @@ const COPY_LINK = "This creates a new one-time link and copies it. The emailed l
 export const ACTION_CONFIRM = {
   invite: {
     resend: { title: "Resend invite?", description: NEW_LINK, confirmText: "Resend invite" },
-    copy: { title: "Copy a new link?", description: COPY_LINK, confirmText: "Copy link" },
-    temporaryPassword: {
-      title: "Generate a temporary password?",
-      description: "Any invite link stops working.",
-      confirmText: "Generate temporary password",
-    },
   },
   reset: {
     approve: {
@@ -52,7 +45,6 @@ const LABELS = {
   approve: "Approve",
   decline: "Decline",
   copy: "Copy link",
-  temporaryPassword: "Generate temporary password",
 };
 
 export function actionLabel(kind, action) {

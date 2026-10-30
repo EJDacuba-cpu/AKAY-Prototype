@@ -8,6 +8,7 @@ import {
   activeFacilityAssignments,
   homeFacilityLabel,
   roleLabel,
+  setupStatusLabel,
 } from "../../../utils/accountSetup";
 import { formatUserName } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
@@ -56,6 +57,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
             <Row label="Account type">{accountTypeLabel(current) || "Not recorded"}</Row>
             <Row label="Home facility">{homeFacilityLabel(current)}</Row>
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>
+            <Row label="Setup">{setupStatusLabel(current)}</Row>
             <Row label="Date created">{formatDateTime(current.created_at)}</Row>
           </dl>
 

@@ -246,7 +246,7 @@ export default function AddUser() {
     ["Facility", admin ? "Municipal Health Officer (not tied to a facility)" : homeName],
     ["Name", form.name], ["Email", form.email], ["Contact number", normalizeContactNumber(form.contact_number)],
     ["Role", admin ? "Municipal Health Officer" : role?.label],
-    ...(id ? [] : [["Sign-in", "Invite link by email"]]),
+    ...(id ? [] : [["Sign-in", "Emailed invitation; setup stays pending until they set a password"]]),
   ];
   const [title, subtitle] = HEADINGS[current];
   const centered = current === STEPS.facility && !editLoading;
@@ -332,8 +332,8 @@ export default function AddUser() {
     {created && <SuccessModal
       open
       tone={created.inviteSent ? "success" : "warning"}
-      title={created.inviteSent ? "Account created" : "Account created, invite not sent"}
-      description={created.inviteSent ? "The account was created and an invite was sent to their email." : "The account was created, but the invite email could not be sent. Resend it from Password & Invites."}
+      title={created.inviteSent ? "Account created with setup pending" : "Account created, invitation not sent"}
+      description={created.inviteSent ? "The account was saved as Active with setup pending. An invitation was emailed; they cannot sign in until they set a password from that message. The mail provider accepting the message is not proof it arrived." : "The account was saved as Active with setup pending, but the invitation email could not be sent. Resend it from Password & Invites after checking the address."}
       onClose={() => navigate("/admin/users")}
       actions={created.inviteSent
         ? [{ label: "Add another account", onClick: addAnother }, { label: "Done", variant: "primary", onClick: () => navigate("/admin/users") }]

@@ -9,7 +9,7 @@ import { meetsPasswordRules, passwordRules } from "../utils/passwordRules";
 
 const LOGO_SRC = "/akay-logo.png";
 const INVALID_LINK_MESSAGE =
-  "This invite link is invalid or expired. Ask your MHO to send a new one.";
+  "This invite link is invalid or expired. Ask your Admin to send a new one.";
 const CHECK_FAILED_MESSAGE =
   "We couldn't check this link right now. Check your connection and try again.";
 const SIGN_IN_NOTICE = "Your password is set. Sign in to continue.";
@@ -231,7 +231,7 @@ export default function AcceptInvite() {
           <div className="space-y-4">
             <div
               role="alert"
-              className="rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm font-medium leading-5 text-[#B91C1C]"
+              className="text-sm font-medium leading-5 text-[#B91C1C]"
             >
               {INVALID_LINK_MESSAGE}
             </div>

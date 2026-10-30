@@ -38,16 +38,20 @@ class PasswordSetRecorder
 
         DB::transaction(function () use ($user, $route) {
             $now = now();
+            $completeInvite = $route === self::ROUTE_INVITE
+                || app(AccountActivationService::class)->isActivated($user);
 
-            AccountInvite::where('user_id', $user->id)
-                ->where('status', '!=', AccountInvite::STATUS_COMPLETED)
-                ->update([
-                    'status' => AccountInvite::STATUS_COMPLETED,
-                    'completed_via' => self::INVITE_VIA[$route],
-                    'completed_at' => $now,
-                    'token_hash' => null,
-                    'updated_at' => $now,
-                ]);
+            if ($completeInvite) {
+                AccountInvite::where('user_id', $user->id)
+                    ->where('status', '!=', AccountInvite::STATUS_COMPLETED)
+                    ->update([
+                        'status' => AccountInvite::STATUS_COMPLETED,
+                        'completed_via' => self::INVITE_VIA[$route],
+                        'completed_at' => $now,
+                        'token_hash' => null,
+                        'updated_at' => $now,
+                    ]);
+            }
 
             PasswordResetRequest::where('user_id', $user->id)
                 ->whereIn('status', [

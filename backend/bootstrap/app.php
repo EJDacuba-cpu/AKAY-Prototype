@@ -3,6 +3,7 @@
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\EnforceProductionHttps;
 use App\Http\Middleware\EnsureAccessTokenAbility;
+use App\Http\Middleware\EnsureAccountIsActivated;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\EnsureTrustedSessionRequest;
 use App\Http\Middleware\EnsureUserIsActive;
@@ -49,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'active' => EnsureUserIsActive::class,
+            'account.activated' => EnsureAccountIsActivated::class,
             'password.current' => \App\Http\Middleware\EnsurePasswordIsCurrent::class,
             'facility.assigned' => EnsureValidFacilityAssignment::class,
             'actions.allowed' => \App\Http\Middleware\EnforceActionPermissions::class,

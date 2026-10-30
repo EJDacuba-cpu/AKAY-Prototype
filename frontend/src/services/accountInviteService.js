@@ -32,17 +32,6 @@ export async function updateInviteEmail(id, email) {
   return unwrapData(response);
 }
 
-export async function copyInviteLink(id) {
-  const response = await apiRequest(`/account-invites/${id}/link`, { method: "POST" });
-  return unwrapData(response)?.url || "";
-}
-
-export async function issueTemporaryPassword(id) {
-  const response = await apiRequest(`/account-invites/${id}/temporary-password`, { method: "POST" });
-  const data = unwrapData(response) || {};
-  return { password: data.password || "", expiresAt: data.expires_at || "" };
-}
-
 export async function getPasswordInviteSummary() {
   const response = await apiRequest("/password-invites/summary");
   const data = unwrapData(response) || {};

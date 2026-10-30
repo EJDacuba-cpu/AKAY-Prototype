@@ -30,6 +30,15 @@ export function activeFacilityAssignments(user = {}, today = new Date().toLocale
   );
 }
 
+/** Pending Setup is mailbox proof, not the Active/Inactive administrative status. */
+export function isPendingSetup(user = {}) {
+  return !user?.email_verified_at;
+}
+
+export function setupStatusLabel(user = {}) {
+  return isPendingSetup(user) ? "Pending Setup" : "Setup complete";
+}
+
 /** "Also covers Pitpitan BHC" or "Also covers 2 BHCs"; empty when the account has no additional access. */
 export function additionalAccessLabel(user = {}) {
   const active = activeFacilityAssignments(user);

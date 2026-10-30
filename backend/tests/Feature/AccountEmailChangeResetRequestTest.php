@@ -69,6 +69,35 @@ class AccountEmailChangeResetRequestTest extends TestCase
         $this->assertSame('new@example.test', $request->email);
         $this->assertNull($request->reset_token_hash);
         $this->assertSame(PasswordResetRequest::STATUS_EXPIRED, $request->status);
+        $this->assertNull($this->user->fresh()->email_verified_at);
+    }
+
+    public function test_a_mailbox_change_clears_verification_and_revokes_sessions(): void
+    {
+        $this->markVerified($this->user);
+        $this->user->createToken('before-email-change', ['akay:access']);
+        $this->assertSame(1, $this->user->tokens()->count());
+
+        $this->patchJson("/api/users/{$this->user->id}", ['email' => 'new@example.test'])->assertOk();
+
+        $fresh = $this->user->fresh();
+        $this->assertSame('new@example.test', $fresh->email);
+        $this->assertNull($fresh->email_verified_at);
+        $this->assertSame(0, $fresh->tokens()->count());
+    }
+
+    public function test_a_case_only_email_edit_is_not_a_new_mailbox(): void
+    {
+        $verifiedAt = $this->markVerified($this->user)->email_verified_at;
+        $this->user->createToken('keep-session', ['akay:access']);
+
+        $this->patchJson("/api/users/{$this->user->id}", ['email' => 'Old@example.test'])->assertOk();
+
+        $fresh = $this->user->fresh();
+        $this->assertTrue(strcasecmp($fresh->email, 'old@example.test') === 0);
+        $this->assertNotNull($fresh->email_verified_at);
+        $this->assertEquals($verifiedAt->timestamp, $fresh->email_verified_at->timestamp);
+        $this->assertSame(1, $fresh->tokens()->count());
     }
 
     public function test_closed_requests_keep_the_address_they_were_made_with(): void

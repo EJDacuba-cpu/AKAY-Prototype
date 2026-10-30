@@ -461,7 +461,7 @@ class AuthenticationSessionSecurityTest extends TestCase
         ?int $rhuId = null,
         string $status = User::STATUS_ACTIVE
     ): User {
-        return User::create([
+        return $this->markVerified(User::create([
             'name' => $name,
             'email' => $email,
             'password' => Hash::make('password123'),
@@ -469,6 +469,6 @@ class AuthenticationSessionSecurityTest extends TestCase
             'status' => $status,
             'barangay_health_center_id' => $bhcId,
             'rural_health_unit_id' => $rhuId,
-        ]);
+        ]));
     }
 }

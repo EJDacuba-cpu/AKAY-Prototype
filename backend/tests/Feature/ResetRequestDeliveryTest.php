@@ -209,6 +209,26 @@ class ResetRequestDeliveryTest extends TestCase
         $this->assertStringNotContainsString('both@example.test', $audit->description);
     }
 
+    public function test_reset_completion_cannot_activate_an_unverified_account(): void
+    {
+        $request = $this->approved('pending-setup@example.test', ['reset_token_hash' => hash('sha256', 'unverified-token')]);
+        $request->user->forceFill(['email_verified_at' => null])->save();
+        $originalPassword = $request->user->password;
+
+        $this->postJson('/api/auth/password-reset/complete', [
+            'token' => 'unverified-token',
+            'password' => 'NewPassw0rd',
+            'password_confirmation' => 'NewPassw0rd',
+        ])->assertUnprocessable();
+
+        $this->getJson('/api/auth/password-reset/verify?token=unverified-token')->assertUnprocessable();
+
+        $fresh = $request->user->fresh();
+        $this->assertNull($fresh->email_verified_at);
+        $this->assertSame($originalPassword, $fresh->password);
+        $this->assertSame(PasswordResetRequest::STATUS_APPROVED, $request->fresh()->status);
+    }
+
     public function test_status_filter_and_staff_role(): void
     {
         $pending = $this->makeRequest('p@example.test');

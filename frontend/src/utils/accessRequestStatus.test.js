@@ -100,43 +100,43 @@ const INVITE_ROWS = [
     inviteRow({ status: "pending", delivery: "failed" }),
     "pending",
     "Email not sent",
-    ["resend", "copy", "editEmail", "temporaryPassword"],
+    ["resend", "editEmail"],
   ],
-  ["expired", inviteRow({ status: "expired" }), "pending", "Link expired", ["resend", "editEmail", "temporaryPassword"]],
+  ["expired", inviteRow({ status: "expired" }), "pending", "Link expired", ["resend", "editEmail"]],
   [
     "temporary, past its expiry",
     inviteRow({ status: "temporary", delivery: null, temp_password_expires_at: inMinutes(-5) }),
     "pending",
     "Temporary password expired",
-    ["resend", "temporaryPassword"],
+    ["resend", "editEmail"],
   ],
   [
     "temporary, no expiry (cannot sign in, so expired)",
     inviteRow({ status: "temporary", delivery: null, temp_password_expires_at: null }),
     "pending",
     "Temporary password expired",
-    ["resend", "temporaryPassword"],
+    ["resend", "editEmail"],
   ],
   [
     "pending + sent",
     inviteRow({ status: "pending", delivery: "sent", expires_at: inHours(41) }),
     "in_progress",
     "Link sent · expires in 41 h",
-    ["resend", "copy", "editEmail", "temporaryPassword"],
+    ["resend", "editEmail"],
   ],
   [
     "pending + copied",
     inviteRow({ status: "pending", delivery: "copied", expires_at: inHours(41) }),
     "in_progress",
-    "Link shared by the MHO · expires in 41 h",
-    ["resend", "copy", "editEmail", "temporaryPassword"],
+    "Invite must be resent by email · expires in 41 h",
+    ["resend", "editEmail"],
   ],
   [
     "temporary, still valid",
     inviteRow({ status: "temporary", delivery: null, temp_password_expires_at: inHours(10) }),
     "in_progress",
     "Temporary password generated",
-    ["temporaryPassword"],
+    ["resend", "editEmail"],
   ],
   ["completed via link", inviteRow({ status: "completed", completed_via: "link" }), "complete", "Password set", []],
   [
@@ -183,12 +183,12 @@ test("invite: status equals the backend display_status for every F2 row", () => 
   }
 });
 
-test("the spec example: a failed invite email is Pending with all four actions", () => {
+test("the spec example: a failed invite email is Pending with resend and correct-email only", () => {
   assert.deepEqual(inviteStatus({ status: "pending", delivery: "failed", user: { status: "active" } }, NOW), {
     status: "pending",
     label: "Pending",
     reason: "Email not sent",
-    actions: ["resend", "copy", "editEmail", "temporaryPassword"],
+    actions: ["resend", "editEmail"],
   });
 });
 

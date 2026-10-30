@@ -298,7 +298,7 @@ export function isForcedSessionInvalidation(status, payload = {}) {
   if (Number(status) !== 403) return false;
 
   const code = String(payload?.code || "").toUpperCase();
-  if (["ACCOUNT_INACTIVE", "SESSION_CONTEXT_INVALID"].includes(code)) {
+  if (["ACCOUNT_INACTIVE", "SESSION_CONTEXT_INVALID", "ACCOUNT_SETUP_REQUIRED"].includes(code)) {
     return true;
   }
 

@@ -7,6 +7,7 @@ use App\Mail\PasswordResetApprovedMail;
 use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AccessRequestStatus;
+use App\Services\AccountActivationService;
 use App\Services\AuditLogger;
 use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
@@ -37,7 +38,7 @@ class PasswordResetRequestController extends Controller
             ->with(['barangayHealthCenter', 'ruralHealthUnit'])
             ->first();
 
-        if (! $user || ! $user->isActive()) {
+        if (! $user || ! $user->isActive() || ! app(AccountActivationService::class)->isActivated($user)) {
             $auditLogger->log($request, 'password reset requested', 'auth', 'Password reset requested for '.MaskedEmail::mask($email).'.');
 
             return response()->json(['message' => self::PUBLIC_MESSAGE]);
@@ -172,7 +173,9 @@ class PasswordResetRequestController extends Controller
         }
 
         $passwordResetRequest->load('user');
-        if (! $passwordResetRequest->user || ! $passwordResetRequest->user->isActive()) {
+        if (! $passwordResetRequest->user
+            || ! $passwordResetRequest->user->isActive()
+            || ! app(AccountActivationService::class)->isActivated($passwordResetRequest->user)) {
             return response()->json(['message' => 'This request cannot be approved because the account is inactive or missing.'], 422);
         }
 
@@ -264,7 +267,9 @@ class PasswordResetRequestController extends Controller
             return response()->json(['message' => 'This password reset request is closed.'], 422);
         }
 
-        if (! $resetRequest->user || ! $resetRequest->user->isActive()) {
+        if (! $resetRequest->user
+            || ! $resetRequest->user->isActive()
+            || ! app(AccountActivationService::class)->isActivated($resetRequest->user)) {
             return response()->json(['message' => 'This request cannot be sent because the account is inactive or missing.'], 422);
         }
 
@@ -329,6 +334,10 @@ class PasswordResetRequestController extends Controller
                 'reset_token_hash' => null,
             ]);
 
+            return null;
+        }
+
+        if (! $resetRequest->user || ! app(AccountActivationService::class)->isActivated($resetRequest->user)) {
             return null;
         }
 

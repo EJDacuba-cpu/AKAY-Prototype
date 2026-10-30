@@ -16,26 +16,17 @@ const resetMenu = (row) => menuSections("reset", resetRequestStatus(row, now).ac
 /** [[[action, enabled], ...], ...] (one list per group) so a test reads as the menu does. */
 const view = (sections) => sections.map((section) => section.items.map((item) => [item.action, item.enabled]));
 
-test("an open invite: every invite control is active", () => {
-  assert.deepEqual(view(inviteMenu(openInvite)), [
-    [["resend", true], ["copy", true]],
-    [["temporaryPassword", true]],
-  ]);
+test("an open invite: only resend is listed and it is active", () => {
+  assert.deepEqual(view(inviteMenu(openInvite)), [[["resend", true]]]);
 });
 
-test("an expired invite: Copy link is greyed, the rest active", () => {
-  assert.deepEqual(view(inviteMenu({ ...openInvite, status: "expired" })), [
-    [["resend", true], ["copy", false]],
-    [["temporaryPassword", true]],
-  ]);
+test("an expired invite: resend stays active and copy/temp are gone", () => {
+  assert.deepEqual(view(inviteMenu({ ...openInvite, status: "expired" })), [[["resend", true]]]);
 });
 
-test("an active temporary password: only Generate temporary password is active", () => {
+test("an active leftover temporary password: resend is the recovery action", () => {
   const invite = { ...openInvite, status: "temporary", temp_password_expires_at: hoursFromNow(30) };
-  assert.deepEqual(view(inviteMenu(invite)), [
-    [["resend", false], ["copy", false]],
-    [["temporaryPassword", true]],
-  ]);
+  assert.deepEqual(view(inviteMenu(invite)), [[["resend", true]]]);
 });
 
 test("a pending reset request: Approve and Decline are active", () => {
@@ -62,7 +53,7 @@ test("complete, declined and cancelled rows keep the menu with every control gre
   assert.ok(allDisabled(inviteMenu({ ...openInvite, user: { status: "inactive" } })));
   assert.ok(allDisabled(resetMenu(resetRow({ status: "rejected" }))));
   assert.ok(allDisabled(resetMenu(resetRow({ user: null }))));
-  assert.equal(inviteMenu({ ...openInvite, status: "completed" }).flatMap((section) => section.items).length, 3);
+  assert.equal(inviteMenu({ ...openInvite, status: "completed" }).flatMap((section) => section.items).length, 1);
 });
 
 test("Edit email is never listed", () => {
@@ -72,20 +63,20 @@ test("Edit email is never listed", () => {
 });
 
 test("confirmation copy", () => {
-  assert.equal(ACTION_CONFIRM.invite.temporaryPassword.description, "Any invite link stops working.");
   assert.equal(ACTION_CONFIRM.reset.decline.title, "Decline this reset request?");
   assert.equal(ACTION_CONFIRM.reset.approve.confirmText, "Approve and send link");
   assert.equal(ACTION_CONFIRM.invite.resend.title, "Resend invite?");
   assert.equal(ACTION_CONFIRM.reset.resend.title, "Resend reset link?");
-  assert.equal(ACTION_CONFIRM.invite.copy.confirmText, "Copy link");
+  assert.equal(ACTION_CONFIRM.reset.copy.confirmText, "Copy link");
+  assert.equal(ACTION_CONFIRM.invite.copy, undefined);
+  assert.equal(ACTION_CONFIRM.invite.temporaryPassword, undefined);
   assert.ok(ACTION_CONFIRM.invite.resend.description.includes("{email}"));
 });
 
 test("labels", () => {
   assert.equal(actionLabel("invite", "resend"), "Resend invite");
   assert.equal(actionLabel("reset", "resend"), "Resend link");
-  assert.equal(actionLabel("invite", "temporaryPassword"), "Generate temporary password");
   assert.equal(actionLabel("reset", "approve"), "Approve");
   assert.equal(actionLabel("reset", "decline"), "Decline");
-  assert.equal(actionLabel("invite", "copy"), "Copy link");
+  assert.equal(actionLabel("reset", "copy"), "Copy link");
 });

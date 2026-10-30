@@ -91,6 +91,7 @@ class UserSessionRevocationService
             if (! $user instanceof User
                 || ! $this->matchesSecurityContext($token, $user)
                 || ! $user->isActive()
+                || ! app(AccountActivationService::class)->isActivated($user)
                 || ! in_array($user->role, [
                     User::ROLE_ADMIN,
                     User::ROLE_BHC,

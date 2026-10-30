@@ -69,6 +69,7 @@ class PasswordSetRecorderTest extends TestCase
 
     public function test_a_reset_completes_an_open_invite_via_reset(): void
     {
+        $this->markVerified($this->user);
         $invite = $this->invite(AccountInvite::STATUS_EXPIRED);
         $reset = $this->reset(PasswordResetRequest::STATUS_APPROVED);
 
@@ -80,8 +81,22 @@ class PasswordSetRecorderTest extends TestCase
         $this->assertSame('link', $reset->fresh()->completed_via);
     }
 
+    public function test_a_reset_does_not_complete_or_verify_an_unverified_invite(): void
+    {
+        $this->user->forceFill(['email_verified_at' => null])->save();
+        $invite = $this->invite(AccountInvite::STATUS_PENDING);
+        $reset = $this->reset(PasswordResetRequest::STATUS_APPROVED);
+
+        app(PasswordSetRecorder::class)->record($this->user, 'reset');
+
+        $this->assertSame(AccountInvite::STATUS_PENDING, $invite->fresh()->status);
+        $this->assertNull($this->user->fresh()->email_verified_at);
+        $this->assertSame(PasswordResetRequest::STATUS_COMPLETED, $reset->fresh()->status);
+    }
+
     public function test_a_temporary_password_change_completes_both_via_temporary_password(): void
     {
+        $this->markVerified($this->user);
         $invite = $this->invite(AccountInvite::STATUS_TEMPORARY);
         $reset = $this->reset(PasswordResetRequest::STATUS_PENDING, ['reset_token_hash' => null, 'expires_at' => null]);
 

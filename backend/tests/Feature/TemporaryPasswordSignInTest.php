@@ -40,7 +40,9 @@ class TemporaryPasswordSignInTest extends TestCase
         ]);
 
         $this->invite = app(AccountInviteService::class)->issue($this->user, $admin);
+        $this->user = $this->markVerified($this->user);
         $this->temporary = app(AccountInviteService::class)->temporaryPassword($this->invite);
+        $this->user->refresh();
     }
 
     private function signIn(): array

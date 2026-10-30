@@ -22,6 +22,8 @@ class AccountInviteAdminTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected bool $autoVerifyUsers = false;
+
     private User $admin;
 
     private BarangayHealthCenter $bhc;
@@ -33,7 +35,7 @@ class AccountInviteAdminTest extends TestCase
 
         $rhu = RuralHealthUnit::create(['name' => 'Admin RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Admin BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
-        $this->admin = User::create(['name' => 'MHO', 'email' => 'MHO@Example.Test', 'password' => 'password123', 'role' => 'admin', 'status' => 'active', 'permissions' => []]);
+        $this->admin = $this->markVerified(User::create(['name' => 'MHO', 'email' => 'MHO@Example.Test', 'password' => 'password123', 'role' => 'admin', 'status' => 'active', 'permissions' => []]));
         Sanctum::actingAs($this->admin, ['*']);
     }
 
@@ -92,22 +94,20 @@ class AccountInviteAdminTest extends TestCase
         $this->assertTrue(AuditLog::where('action', 'account invite resent')->exists());
     }
 
-    public function test_copy_link_returns_a_working_url_and_counts_as_in_progress(): void
+    public function test_copy_link_is_retired_and_does_not_return_a_token(): void
     {
-        $invite = $this->makeInvite('copy@example.test', ['delivery' => AccountInvite::DELIVERY_FAILED]);
-        $this->getJson('/api/account-invites?status=pending')->assertJsonPath('data.data.0.id', $invite->id);
+        $invite = $this->makeInvite('copy@example.test', [
+            'delivery' => AccountInvite::DELIVERY_COPIED,
+            'token_hash' => hash('sha256', 'copied-token'),
+        ]);
 
-        $url = $this->postJson("/api/account-invites/{$invite->id}/link")
-            ->assertOk()
-            ->json('data.url');
+        $this->postJson("/api/account-invites/{$invite->id}/link")
+            ->assertForbidden()
+            ->assertJsonPath('code', 'ACCOUNT_SETUP_REQUIRED')
+            ->assertJsonMissingPath('data.url');
 
-        parse_str(parse_url($url, PHP_URL_QUERY), $query);
-        $this->getJson('/api/auth/invites/verify?token='.$query['token'])->assertOk();
-
-        $this->assertSame(AccountInvite::DELIVERY_COPIED, $invite->fresh()->delivery);
-        $this->assertSame([$invite->id], collect($this->getJson('/api/account-invites?status=in_progress')->json('data.data'))->pluck('id')->all());
-        $this->assertSame([], $this->getJson('/api/account-invites?status=pending')->json('data.data'));
-        $this->assertTrue(AuditLog::where('action', 'account invite link copied')->exists());
+        $this->assertSame(hash('sha256', 'copied-token'), $invite->fresh()->token_hash);
+        $this->assertNull($invite->user->fresh()->email_verified_at);
         Mail::assertNothingSent();
     }
 
@@ -148,47 +148,25 @@ class AccountInviteAdminTest extends TestCase
         $this->patchJson("/api/account-invites/{$invite->id}/email", ['email' => 'Joshua@example.test'])->assertOk();
     }
 
-    public function test_temporary_password_is_returned_once_and_never_logged(): void
+    public function test_temporary_password_cannot_activate_an_unverified_account(): void
     {
         $invite = $this->realInvite();
-        $logged = [];
-        Event::listen(MessageLogged::class, function (MessageLogged $event) use (&$logged): void {
-            $logged[] = $event->message.json_encode($event->context);
-        });
-
+        $originalPassword = $invite->user->password;
         $invite->user->createToken('before-temporary-password');
-        $this->assertSame(1, $invite->user->tokens()->count());
 
-        $response = $this->postJson("/api/account-invites/{$invite->id}/temporary-password")->assertOk();
-        $password = $response->json('data.password');
-
-        $this->assertGreaterThanOrEqual(12, strlen($password));
-        $this->assertMatchesRegularExpression('/[a-z]/', $password);
-        $this->assertMatchesRegularExpression('/[A-Z]/', $password);
-        $this->assertMatchesRegularExpression('/\d/', $password);
+        $this->postJson("/api/account-invites/{$invite->id}/temporary-password")
+            ->assertForbidden()
+            ->assertJsonPath('code', 'ACCOUNT_SETUP_REQUIRED')
+            ->assertJsonMissingPath('data.password');
 
         $user = $invite->user->fresh();
-        $this->assertTrue(Hash::check($password, $user->password));
-        $this->assertTrue((bool) $user->must_change_password);
-        $this->assertSame(0, $user->tokens()->count());
-        $this->assertEqualsWithDelta(72 * 3600, now()->diffInSeconds($user->temp_password_expires_at, false), 5);
-        $this->assertSame($user->temp_password_expires_at->toJSON(), \Illuminate\Support\Carbon::parse($response->json('data.expires_at'))->toJSON());
-
-        $fresh = $invite->fresh();
-        $this->assertSame(AccountInvite::STATUS_TEMPORARY, $fresh->status);
-        $this->assertNull($fresh->token_hash);
-
-        $audit = AuditLog::where('action', 'temporary password issued')->get();
-        $this->assertCount(1, $audit);
-        foreach (AuditLog::all() as $row) {
-            $this->assertStringNotContainsString($password, (string) $row->description);
-        }
-        foreach ($logged as $line) {
-            $this->assertStringNotContainsString($password, $line);
-        }
-
-        // Listing never shows it either.
-        $this->assertStringNotContainsString($password, $this->getJson('/api/account-invites')->getContent());
+        $this->assertNull($user->email_verified_at);
+        $this->assertSame($originalPassword, $user->password);
+        $this->assertFalse((bool) $user->must_change_password);
+        $this->assertNull($user->temp_password_expires_at);
+        $this->assertSame(AccountInvite::STATUS_PENDING, $invite->fresh()->status);
+        $this->assertNotNull($invite->fresh()->token_hash);
+        $this->assertSame(1, $user->tokens()->count());
     }
 
     public function test_completed_or_inactive_invites_refuse_every_action(): void
@@ -199,7 +177,7 @@ class AccountInviteAdminTest extends TestCase
         foreach ([$completed, $inactive] as $invite) {
             $this->postJson("/api/account-invites/{$invite->id}/resend")->assertUnprocessable();
             $this->patchJson("/api/account-invites/{$invite->id}/email", ['email' => 'other@example.test'])->assertUnprocessable();
-            $this->postJson("/api/account-invites/{$invite->id}/link")->assertUnprocessable();
+            $this->postJson("/api/account-invites/{$invite->id}/link")->assertForbidden();
             $this->postJson("/api/account-invites/{$invite->id}/temporary-password")->assertUnprocessable();
         }
 
@@ -383,7 +361,7 @@ class AccountInviteAdminTest extends TestCase
         $this->assertSame(AccountInvite::STATUS_EXPIRED, $fresh->status);
     }
 
-    public function test_edit_account_leaves_completed_invites_and_unchanged_emails_alone(): void
+    public function test_edit_account_reinvites_after_a_mailbox_change_and_leaves_same_email_alone(): void
     {
         $completed = $this->makeInvite('done@example.test', ['status' => AccountInvite::STATUS_COMPLETED, 'completed_via' => 'link', 'completed_at' => now()]);
         $open = $this->realInvite('same@example.test');
@@ -393,8 +371,10 @@ class AccountInviteAdminTest extends TestCase
         $this->patchJson("/api/users/{$completed->user_id}", ['email' => 'done2@example.test'])->assertOk();
         $this->patchJson("/api/users/{$open->user_id}", ['email' => 'same@example.test', 'name' => 'Renamed'])->assertOk();
 
-        Mail::assertNothingSent();
-        $this->assertSame(AccountInvite::STATUS_COMPLETED, $completed->fresh()->status);
+        Mail::assertSent(\App\Mail\AccountInviteMail::class, fn ($mail) => $mail->hasTo('done2@example.test'));
+        Mail::assertNotSent(\App\Mail\AccountInviteMail::class, fn ($mail) => $mail->hasTo('same@example.test'));
+        $this->assertSame(AccountInvite::STATUS_PENDING, $completed->fresh()->status);
+        $this->assertNull($completed->user->fresh()->email_verified_at);
         $this->assertSame($openHash, $open->fresh()->token_hash);
     }
 

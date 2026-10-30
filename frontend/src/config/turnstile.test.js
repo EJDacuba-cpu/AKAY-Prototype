@@ -31,6 +31,10 @@ test("production keeps a real site key", () => {
 
 test("login errors keep temporary-password and captcha wording", () => {
   assert.equal(
+    loginErrorMessage({ code: "ACCOUNT_SETUP_REQUIRED" }),
+    "Finish account setup from the invitation sent to your email, or ask the Municipal Health Officer to resend it.",
+  );
+  assert.equal(
     loginErrorMessage({ code: "TEMP_PASSWORD_EXPIRED" }),
     "This temporary password has expired. Ask the MHO for a new one.",
   );

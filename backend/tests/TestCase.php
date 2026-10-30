@@ -16,6 +16,12 @@ abstract class TestCase extends BaseTestCase
     public const TEST_TURNSTILE_TOKEN = TurnstileVerifier::DUMMY_TOKEN;
 
     /**
+     * Working-staff fixtures represent already activated accounts.
+     * Invite and activation tests set this false so pending users stay unverified.
+     */
+    protected bool $autoVerifyUsers = true;
+
+    /**
      * @var array{body: mixed, status: int}|Throwable|'success'
      */
     protected mixed $turnstileFake = 'success';
@@ -24,6 +30,14 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
         $this->fakeSuccessfulTurnstileVerification();
+
+        if ($this->autoVerifyUsers) {
+            User::created(function (User $user): void {
+                if ($user->email_verified_at === null) {
+                    $user->forceFill(['email_verified_at' => now()])->saveQuietly();
+                }
+            });
+        }
     }
 
     protected function fakeSuccessfulTurnstileVerification(): void
@@ -84,6 +98,13 @@ abstract class TestCase extends BaseTestCase
      * defaults (ActionPermissions::home), so fixtures that exercise clinical
      * workflows must name the role they represent.
      */
+    protected function markVerified(User $user, mixed $at = null): User
+    {
+        $user->forceFill(['email_verified_at' => $at ?? now()])->save();
+
+        return $user->refresh();
+    }
+
     protected function staffRoleFor(string $role): ?string
     {
         return match ($role) {
@@ -108,7 +129,7 @@ abstract class TestCase extends BaseTestCase
     ): RhuProvider {
         $rhuId = $rhu instanceof RuralHealthUnit ? $rhu->id : $rhu;
         $slug = strtolower((string) preg_replace('/[^a-z0-9]+/i', '.', $name));
-        $user = User::create([
+        $user = $this->markVerified(User::create([
             'name' => $name,
             'email' => $slug.'.'.$rhuId.'.'.str_replace('.', '', uniqid('', true)).'@example.test',
             'password' => 'password123',
@@ -116,7 +137,7 @@ abstract class TestCase extends BaseTestCase
             'staff_role' => 'doctor',
             'status' => User::STATUS_ACTIVE,
             'rural_health_unit_id' => $rhuId,
-        ]);
+        ]));
 
         return RhuProvider::create([
             'rural_health_unit_id' => $rhuId,
