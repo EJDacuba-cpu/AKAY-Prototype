@@ -6,6 +6,13 @@ import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { Card } from "../../components/ui/card";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
+import ModalShell from "../../components/common/modals/ModalShell";
+import BhcReferralSlip from "../../components/features/patients/profile/BhcReferralSlip";
+import RhuBhcReferralReference from "../../components/features/health-records/wizard/RhuBhcReferralReference";
+import RhuPreviousVitalsReference from "../../components/features/health-records/wizard/RhuPreviousVitalsReference";
+import { Button } from "../../components/ui/button";
+import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
+import { referralSlipModel } from "../../utils/referralSlipView";
 import { SuccessModal } from "../../components/common";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
@@ -126,6 +133,7 @@ import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services
 import { getFollowUpTasks } from "../../services/followUpTaskService";
 import { getRhuVisit, listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
+import { additionalConcernPayload, isReferredRhuVisit } from "../../utils/rhuVisitReferral";
 
 function restorePrescriptionText(payload = {}) {
   const text = String(payload.prescriptionText || "");
@@ -172,6 +180,14 @@ export default function RhuConsultationWorkspace() {
     .filter((id) => Number.isInteger(id) && id > 0);
 
   const [visit, setVisit] = useState(null);
+  const isReferred = isReferredRhuVisit(visit);
+  const referralData = useRhuReferralSlipData({ patientId, referralId: visit?.referral?.id || visit?.referral_id, enabled: isReferred && canViewBackground });
+  const slip = referralSlipModel(referralData.referral, referralData.record);
+  const sendingBhc = slip.referringHci || visit?.referral?.sending_bhc?.name || visit?.referral?.sending_bhc;
+  const [referralSlipOpen, setReferralSlipOpen] = useState(false);
+  const [showAdditionalConcern, setShowAdditionalConcern] = useState(false);
+  const [additionalChiefComplaint, setAdditionalChiefComplaint] = useState("");
+  const [additionalHistoryOfPresentIllness, setAdditionalHistoryOfPresentIllness] = useState("");
   const [visitError, setVisitError] = useState("");
   const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
   const [formStep, setFormStep] = useState(canEncode ? INTERVIEW_STEP : NEXT_STEP);
@@ -415,6 +431,9 @@ export default function RhuConsultationWorkspace() {
       formStep: activeFormStep,
       chiefComplaint,
       summaryOfPresentIllness,
+      showAdditionalConcern,
+      additionalChiefComplaint,
+      additionalHistoryOfPresentIllness,
       ...visitAnswerDraftFields({ informant, similarIllness, allowed: canViewBackground }),
       backgroundUpdate: canViewBackground
         ? toDraftBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))
@@ -463,6 +482,9 @@ export default function RhuConsultationWorkspace() {
       activeFormStep,
       chiefComplaint,
       summaryOfPresentIllness,
+      showAdditionalConcern,
+      additionalChiefComplaint,
+      additionalHistoryOfPresentIllness,
       informant,
       similarIllness,
       canViewBackground,
@@ -529,6 +551,9 @@ export default function RhuConsultationWorkspace() {
     const payload = draft.payload || {};
     setActiveDraft(draft);
     setChiefComplaint(payload.chiefComplaint || "");
+    setShowAdditionalConcern(Boolean(payload.showAdditionalConcern));
+    setAdditionalChiefComplaint(payload.additionalChiefComplaint || "");
+    setAdditionalHistoryOfPresentIllness(payload.additionalHistoryOfPresentIllness || "");
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     if (payload.informant) setInformant(payload.informant);
     if (payload.similarIllness) setSimilarIllness(payload.similarIllness);
@@ -637,7 +662,7 @@ export default function RhuConsultationWorkspace() {
       Object.assign(errors, rhuCarePlanErrors(diagnoses, {
         schedules: followUpSchedules,
         catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
-        isReferralVisit: visit?.source === "referral",
+        isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
@@ -871,7 +896,7 @@ export default function RhuConsultationWorkspace() {
       ...rhuCarePlanErrors(diagnoses, {
         schedules: followUpSchedules,
         catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
-        isReferralVisit: visit?.source === "referral",
+        isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }),
       ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
@@ -899,6 +924,9 @@ export default function RhuConsultationWorkspace() {
           rhuVisitId: visit.id,
           chiefComplaint,
           summaryOfPresentIllness,
+          monitoringData: {
+            additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
+          },
           physicalExam,
           bodyFindings,
           bodyFindingReassessments,
@@ -962,6 +990,8 @@ export default function RhuConsultationWorkspace() {
     } catch (error) {
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
       setValidationErrors(fieldErrors);
+      const first = findFirstErrorStepKey(fieldErrors, stepOrder, stepOptions);
+      if (first) goToStepKey(first);
       toast.error(error?.message || "Unable to save this consultation.");
     } finally {
       setSaving(false);
@@ -1021,7 +1051,7 @@ export default function RhuConsultationWorkspace() {
         : "Record the patient's reason for visit and present illness.",
       [ASSESSMENT_STEP]: "Record the vital signs and examination findings for this visit.",
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
-      [NEXT_STEP]: visit?.source === "referral"
+      [NEXT_STEP]: isReferredRhuVisit(visit)
         ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
         : "Named diagnoses, treatment, and prescription. Staff confirm given medicines on Health Commodities.",
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
@@ -1037,6 +1067,10 @@ export default function RhuConsultationWorkspace() {
         patientReviewRow({ name: formatPatientName(patient) || "Patient", id: patientId }),
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
+        ...(isReferred && showAdditionalConcern ? [
+          { label: "Additional Chief Complaint", value: additionalChiefComplaint },
+          { label: "Additional History of Present Illness", value: additionalHistoryOfPresentIllness },
+        ] : []),
         ...visitAnswerRows({ informant, similarIllness }),
       ],
     },
@@ -1139,27 +1173,53 @@ export default function RhuConsultationWorkspace() {
           />
         ) : (
             <div className="min-w-0 space-y-4">
+              {currentStepKey === INTERVIEW_STEP && isReferred && canViewBackground && (
+                <RhuBhcReferralReference slip={slip} sendingBhc={sendingBhc} {...referralData} onRetry={referralData.retry} onViewFullSlip={() => setReferralSlipOpen(true)} />
+              )}
               {currentStepKey === INTERVIEW_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
                   <Card className="ehr-consult__sheet ehr-consult__sheet--headed">
                     <div className="border-b border-[#E5E7EB] px-4 py-2.5">
-                      <h2 className="text-[14px] font-bold leading-snug text-[#111827]">Chief Complaint & History of Present Illness</h2>
+                      <h2 className="text-[14px] font-bold leading-snug text-[#111827]">{isReferred ? "Today's RHU interview" : "Chief Complaint & History of Present Illness"}</h2>
                       <p className="mt-0.5 text-xs leading-relaxed text-[#6B7280]">Why the patient is here today, in their own words and yours.</p>
                     </div>
                     <div className="p-4">
                       <div className="grid gap-4 @xl:grid-cols-2">
                         <label className="block text-xs">
-                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">Chief Complaint *</span>
+                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">{isReferred ? "Today's RHU chief complaint *" : "Chief Complaint *"}</span>
                           <textarea name="chiefComplaint" rows={3} aria-invalid={Boolean(validationErrors.chiefComplaint)} aria-describedby={validationErrors.chiefComplaint ? "rhu-chief-complaint-error" : undefined} value={chiefComplaint} onChange={(event) => { clearError("chiefComplaint"); setChiefComplaint(event.target.value); }} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
                           {validationErrors.chiefComplaint && <span id="rhu-chief-complaint-error" role="alert" className="mt-1 block text-[11px] font-medium text-[var(--color-danger)]">{validationErrors.chiefComplaint}</span>}
                         </label>
                         <label className="block text-xs">
-                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">History of Present Illness</span>
+                          <span className="mb-1.5 block font-semibold uppercase tracking-wide text-[#374151]">{isReferred ? "Today's clinical history / update" : "History of Present Illness"}</span>
                           <textarea rows={3} value={summaryOfPresentIllness} onChange={(event) => setSummaryOfPresentIllness(event.target.value)} className="w-full rounded-none border border-[#D1D5DB] px-3 py-2 text-sm" />
                         </label>
                       </div>
                     </div>
                   </Card>
+                  {isReferred && (
+                    <Card className="ehr-consult__sheet p-4">
+                      <div className="flex flex-col gap-4">
+                        <Button type="button" variant="ghost" size="sm" className="self-start" aria-expanded={showAdditionalConcern} aria-controls="rhu-additional-concern" onClick={() => setShowAdditionalConcern((shown) => !shown)}>
+                          {showAdditionalConcern ? "Hide Additional Concern" : "+ Add Another Concern"}
+                        </Button>
+                        {showAdditionalConcern && (
+                          <div id="rhu-additional-concern" className="grid gap-4 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1.5 text-xs font-medium text-ink-800">
+                              Additional Chief Complaint (optional)
+                              <textarea rows={3} maxLength={2000} value={additionalChiefComplaint} onChange={(event) => { clearError("additionalChiefComplaint"); setAdditionalChiefComplaint(event.target.value); }} aria-invalid={Boolean(validationErrors.additionalChiefComplaint)} aria-describedby={validationErrors.additionalChiefComplaint ? "rhu-additional-chief-error" : undefined} className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm" />
+                              {validationErrors.additionalChiefComplaint && <span id="rhu-additional-chief-error" role="alert" className="text-xs text-[var(--color-danger)]">{validationErrors.additionalChiefComplaint}</span>}
+                            </label>
+                            <label className="flex flex-col gap-1.5 text-xs font-medium text-ink-800">
+                              Additional History of Present Illness (optional)
+                              <textarea rows={3} maxLength={5000} value={additionalHistoryOfPresentIllness} onChange={(event) => { clearError("additionalHistoryOfPresentIllness"); setAdditionalHistoryOfPresentIllness(event.target.value); }} aria-invalid={Boolean(validationErrors.additionalHistoryOfPresentIllness)} aria-describedby={validationErrors.additionalHistoryOfPresentIllness ? "rhu-additional-hpi-error" : undefined} className="w-full border border-neutral-300 bg-white px-3 py-2 text-sm" />
+                              {validationErrors.additionalHistoryOfPresentIllness && <span id="rhu-additional-hpi-error" role="alert" className="text-xs text-[var(--color-danger)]">{validationErrors.additionalHistoryOfPresentIllness}</span>}
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  )}
                   {canViewBackground && (
                     <Card className="ehr-consult__sheet ehr-consult__sheet--headed">
                       <div className="border-b border-[#E5E7EB] px-4 py-2.5">
@@ -1207,6 +1267,9 @@ export default function RhuConsultationWorkspace() {
                     />
                   )}
                 </fieldset>
+              )}
+              {currentStepKey === ASSESSMENT_STEP && isReferred && canViewBackground && !referralData.unauthorized && !referralData.loading && !referralData.loadError && !referralData.missing && (
+                <RhuPreviousVitalsReference vitals={slip.vitals} sendingBhc={sendingBhc} recordedAt={referralData.record?.date_recorded || referralData.record?.dateRecorded || referralData.record?.created_at || referralData.record?.createdAt} />
               )}
               {currentStepKey === ASSESSMENT_STEP && (
                 <fieldset disabled={assessmentLocked} className="space-y-4">
@@ -1275,6 +1338,7 @@ export default function RhuConsultationWorkspace() {
                         onRemove={(id) => setBodyFindings((current) => current.filter((item) => item.id !== id))}
                       />
                     </div>
+                    {isReferred && <p className="text-xs text-neutral-600">Previous recorded findings are listed below. Record today's RHU findings on the body map and examination fields.</p>}
                     <PreviousBodyFindings
                       title="Previous Findings Reassessment"
                       findings={previousBodyFindings}
@@ -1401,7 +1465,7 @@ export default function RhuConsultationWorkspace() {
                     onFollowUpChange={handleDiagnosisFollowUp}
                     conditions={openConditions}
                     catchmentBhcs={catchmentBhcs}
-                    isReferralVisit={visit?.source === "referral"}
+                    isReferralVisit={isReferredRhuVisit(visit)}
                     selectedPrograms={selectedPrograms}
                     onServiceNextAction={handleServiceNextAction}
                     onServiceFollowUp={handleServiceFollowUp}
@@ -1469,6 +1533,13 @@ export default function RhuConsultationWorkspace() {
           continueBusyLabel="Saving..."
           continueDisabled={wizardPhase === WIZARD_REVIEW && !canFinalize}
         />
+      {isReferred && canViewBackground && referralSlipOpen && (
+        <ModalShell open size="wide" title="BHC Referral Slip" onClose={() => setReferralSlipOpen(false)} bodyClassName="max-h-[min(80vh,720px)] overflow-y-auto">
+          {referralData.unauthorized ? <p className="text-sm text-neutral-600">Clinical referral details are restricted to authorized RHU users.</p> : (
+            <BhcReferralSlip referral={referralData.referral} record={referralData.record} patient={referralData.patient} />
+          )}
+        </ModalShell>
+      )}
       <SuccessModal
         open={Boolean(saveSuccess)}
         title="Health Record Saved"

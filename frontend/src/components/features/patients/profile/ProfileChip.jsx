@@ -1,4 +1,4 @@
-import { formatDisplayValue, normalizeHealthRecordStatus } from "../../../../utils/formatters";
+import { formatDisplayValue, formatReferralStatus, normalizeHealthRecordStatus } from "../../../../utils/formatters";
 
 // The patient profile speaks in dark ink, white and red only. Red means "needs attention",
 // an outlined ink chip means "in progress", and a quiet gray chip means "settled".
@@ -41,5 +41,10 @@ export function ProfileChip({ tone = "quiet", dot = false, className = "", child
 // Same labels as the shared StatusBadge, in the profile's palette.
 export function ProfileStatusChip({ status }) {
   const label = normalizeHealthRecordStatus(formatDisplayValue(status, "Pending"), "Pending");
+  return <ProfileChip tone={statusTone(label)} dot>{label}</ProfileChip>;
+}
+
+export function ReferralStatusChip({ status }) {
+  const label = formatReferralStatus(formatDisplayValue(status, "Pending"), "Pending");
   return <ProfileChip tone={statusTone(label)} dot>{label}</ProfileChip>;
 }

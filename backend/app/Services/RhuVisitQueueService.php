@@ -83,19 +83,24 @@ class RhuVisitQueueService
 
         $source = RhuVisitQueueEntry::SOURCE_WALK_IN;
         if ($referralId !== null) {
-            $referral = Referral::findOrFail($referralId);
-            $this->facilityAccess->authorizeRhuReferralAction($user, $referral);
-            if ((int) $referral->patient_id !== $patient->id) {
-                throw ValidationException::withMessages([
-                    'referral_id' => ['This referral belongs to a different patient.'],
-                ]);
-            }
+            $this->authorizeCheckInReferral($user, $patient, $referralId);
             $source = RhuVisitQueueEntry::SOURCE_REFERRAL;
         }
 
         $existing = $this->resolveExisting($rhuId, $key, $patient->id, $referralId, $source);
         if ($existing !== null) {
             return $existing;
+        }
+
+        // A new walk-in key may continue exactly one Received referral. The
+        // client's key is kept; the reserved referral-{id} key already belongs
+        // to the closed visit.
+        if ($referralId === null) {
+            $referralId = $this->eligibleReturnReferralId($rhuId, (int) $patient->id);
+            if ($referralId !== null) {
+                $this->authorizeCheckInReferral($user, $patient, $referralId);
+                $source = RhuVisitQueueEntry::SOURCE_REFERRAL;
+            }
         }
 
         try {
@@ -541,6 +546,58 @@ class RhuVisitQueueService
         return (int) $user->rural_health_unit_id;
     }
 
+    private function authorizeCheckInReferral(User $user, Patient $patient, int $referralId): void
+    {
+        $referral = Referral::findOrFail($referralId);
+        $this->facilityAccess->authorizeRhuReferralAction($user, $referral);
+        if ((int) $referral->patient_id !== (int) $patient->id) {
+            throw ValidationException::withMessages([
+                'referral_id' => ['This referral belongs to a different patient.'],
+            ]);
+        }
+    }
+
+    /**
+     * The single Received referral a new walk-in may continue. None, or more
+     * than one match, stays a true walk-in. The latest visit is the most
+     * recent check-in, then the highest id.
+     */
+    private function eligibleReturnReferralId(int $rhuId, int $patientId): ?int
+    {
+        $referralIds = Referral::query()
+            ->where('patient_id', $patientId)
+            ->where('rural_health_unit_id', $rhuId)
+            ->where('status', Referral::STATUS_RECEIVED)
+            ->orderBy('id')
+            ->pluck('id');
+        if ($referralIds->isEmpty()) {
+            return null;
+        }
+
+        $latestByReferral = RhuVisitQueueEntry::query()
+            ->whereIn('referral_id', $referralIds)
+            ->orderByDesc('checked_in_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('referral_id')
+            ->keyBy('referral_id');
+
+        $eligible = [];
+        foreach ($referralIds as $referralId) {
+            $latest = $latestByReferral->get($referralId);
+            $canReturn = $latest === null || (
+                $latest->closed_at !== null
+                && $latest->status === RhuVisitQueueEntry::STATUS_CLOSED
+                && in_array($latest->close_reason, RhuVisitQueueEntry::CLOSE_REASONS, true)
+            );
+            if ($canReturn) {
+                $eligible[] = (int) $referralId;
+            }
+        }
+
+        return count($eligible) === 1 ? $eligible[0] : null;
+    }
+
     /**
      * @return array{entry: RhuVisitQueueEntry, created: bool}|null
      */
@@ -553,11 +610,17 @@ class RhuVisitQueueService
 
         if ($sameKey !== null) {
             // A walk-in visit may gain a referral link after check-in (D4), so its
-            // referral_id is not part of what the original request sent.
+            // referral_id is not part of what the original request sent. A return
+            // check-in is stored as a referral under the client's own key, and
+            // submitting that key again is the same check-in.
+            $samePatient = (int) $sameKey->patient_id === $patientId;
+            $returnReplay = $source === RhuVisitQueueEntry::SOURCE_WALK_IN
+                && $sameKey->source === RhuVisitQueueEntry::SOURCE_REFERRAL
+                && $samePatient;
             $sameReferral = $source === RhuVisitQueueEntry::SOURCE_WALK_IN
                 || (int) $sameKey->referral_id === $referralId;
-            $samePayload = (int) $sameKey->patient_id === $patientId
-                && $sameKey->source === $source
+            $samePayload = $samePatient
+                && ($sameKey->source === $source || $returnReplay)
                 && $sameReferral;
 
             if (! $samePayload) {

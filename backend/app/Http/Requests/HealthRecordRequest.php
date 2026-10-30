@@ -170,6 +170,9 @@ class HealthRecordRequest extends FormRequest
                 $rules['referral.reason_for_referral'] = [$requiresReferral ? 'required' : 'nullable', 'string', 'max:5000'];
             }
         } elseif ($rhuItr) {
+            $rules['monitoring_data.additionalConcern'] = ['nullable', 'array:chiefComplaint,historyOfPresentIllness'];
+            $rules['monitoring_data.additionalConcern.chiefComplaint'] = ['nullable', 'string', 'max:2000'];
+            $rules['monitoring_data.additionalConcern.historyOfPresentIllness'] = ['nullable', 'string', 'max:5000'];
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
             $rules['diagnoses.*.referral'] = ['prohibited'];

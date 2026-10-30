@@ -384,7 +384,7 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   const carePlanStep = carePlanOwnerStep(options);
   if (key.startsWith('continuedConcern.') || key.startsWith('care_plan.continued_concerns') || key.startsWith('followUpSchedule.')) return carePlanStep;
 
-  if (key === "chiefComplaint" || key === "summaryOfPresentIllness") {
+  if (key === "chiefComplaint" || key === "summaryOfPresentIllness" || key === "additionalChiefComplaint" || key === "additionalHistoryOfPresentIllness") {
     return INTERVIEW_STEP;
   }
   // Patient History: the staged background update and the per-visit informant.
@@ -468,6 +468,8 @@ const SERVER_ERROR_KEYS = {
   "monitoring_data.followUpDate": "followUpDate",
   "monitoring_data.followUpTime": "followUpTime",
   "monitoring_data.prenatalIntent": "prenatalIntent",
+  "monitoring_data.additionalConcern.chiefComplaint": "additionalChiefComplaint",
+  "monitoring_data.additionalConcern.historyOfPresentIllness": "additionalHistoryOfPresentIllness",
   "maternal_data.lmp": "maternalData.lmp",
   "referral.reason_for_referral": "reasonForReferral",
   "referral.rural_health_unit_id": "receivingRhuId",

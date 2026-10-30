@@ -12,6 +12,30 @@ const carePlan = readFileSync(
 );
 const service = readFileSync(join(here, "../../services/healthRecordService.js"), "utf8");
 
+test("RHU ITR treats a linked referral id as a referred visit", () => {
+  assert.match(workspace, /isReferredRhuVisit/);
+  assert.doesNotMatch(workspace, /visit\?\.source === "referral"/);
+});
+
+test("referred interview has separate RHU fields, optional concern, and draft restore", () => {
+  for (const text of ["RhuBhcReferralReference", "Today's RHU chief complaint", "Today's clinical history / update", "Add Another Concern", "additionalConcernPayload", "setShowAdditionalConcern(Boolean(payload.showAdditionalConcern))", "payload.additionalChiefComplaint", "payload.additionalHistoryOfPresentIllness"]) assert.ok(workspace.includes(text), text);
+  assert.match(workspace, /monitoringData:\s*\{\s*additionalConcern:/);
+  assert.doesNotMatch(workspace, /setChiefComplaint\([^\n]*(?:referral|slip)/i);
+});
+
+test("full referral overlay stays inside the mounted ITR", () => {
+  for (const text of ["ModalShell", "BhcReferralSlip", "referralSlipOpen", "setReferralSlipOpen(false)"]) assert.ok(workspace.includes(text), text);
+  assert.doesNotMatch(workspace, /reviewReferralSlipPath|navigate\(.*referrals/);
+});
+
+test("assessment keeps previous BHC vitals distinct from editable RHU vitals", () => {
+  assert.match(workspace, /RhuPreviousVitalsReference/);
+  assert.match(workspace, /Previous Findings Reassessment/);
+  assert.doesNotMatch(workspace, /set(?:SystolicBp|DiastolicBp|Temp|Pulse|Weight|Height)\([^\n]*(?:slip|referralRecord)/);
+  assert.ok(workspace.includes("Previous recorded findings are listed below."));
+  assert.equal(workspace.includes("Previous BHC findings are listed below."), false);
+});
+
 test("RHU consult prescription is a textarea without catalog picker or consult dispensing", () => {
   assert.match(carePlan, /label="Prescription"/);
   assert.match(carePlan, /FieldTextarea/);

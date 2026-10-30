@@ -122,6 +122,70 @@ class RhuItrConsultationTest extends TestCase
             ]);
     }
 
+    public function test_rhu_itr_stores_additional_concern_without_changing_the_referral_snapshot(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $referral = Referral::create([
+            'tracking_id' => 'REF-ADDITIONAL',
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'chief_complaint' => 'Original BHC complaint',
+            'reason_for_referral' => 'Assessment',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+        $visit = $this->visit($patient, ['referral_id' => $referral->id]);
+        $uuid = $this->startVisit($clinician, $visit);
+        $concern = ['chiefComplaint' => 'Second concern', 'historyOfPresentIllness' => 'Since dawn'];
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'chief_complaint' => 'Today RHU complaint',
+            'monitoring_data' => ['additionalConcern' => $concern],
+        ])->assertCreated();
+
+        $record = HealthRecord::where('consultation_uuid', $uuid)->firstOrFail();
+        $this->assertSame('Today RHU complaint', $record->chief_complaint);
+        $this->assertSame($concern, $record->monitoring_data['additionalConcern']);
+        $this->assertSame('Original BHC complaint', $referral->fresh()->chief_complaint);
+        $this->assertSame(Referral::STATUS_RECEIVED, $referral->fresh()->status);
+    }
+
+    public function test_rhu_itr_rejects_invalid_additional_concern_fields(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+
+        foreach ([
+            ['chiefComplaint' => ['invalid']],
+            ['chiefComplaint' => str_repeat('a', 2001)],
+            ['historyOfPresentIllness' => str_repeat('a', 5001)],
+            ['unexpected' => 'not a clinical field'],
+        ] as $concern) {
+            $this->postRecord($clinician, $patient, $visit, $uuid, [
+                'monitoring_data' => ['additionalConcern' => $concern],
+            ])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_additional_concern_does_not_replace_required_today_chief_complaint(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'chief_complaint' => '',
+            'monitoring_data' => ['additionalConcern' => ['chiefComplaint' => 'Second concern']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('chief_complaint');
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
     public function test_rhu_itr_confirmed_dispensing_deducts_only_rhu_stock(): void
     {
         $patient = $this->patient();

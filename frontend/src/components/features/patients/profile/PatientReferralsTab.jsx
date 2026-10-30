@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 
 import { RefreshingIndicator, SoftLoadingArea, FixedTable, TablePagination } from "../../../common";
-import { ProfileStatusChip } from "./ProfileChip";
+import { ReferralStatusChip } from "./ProfileChip";
 import usePagedRows from "../../../../hooks/usePagedRows";
 import { formatDisplayValue } from "../../../../utils/formatters";
 import { getReferralDate } from "./FollowUpsAndReferrals";
@@ -99,14 +99,14 @@ function ReferralRow({ patientId, referral }) {
       <td className="px-4 py-3">{formatDisplayValue(referral.referringHci, "Not recorded")}</td>
       <td className="max-w-[240px] truncate px-4 py-3">{formatDisplayValue(referredServices(referral), "Not recorded")}</td>
       <td className="px-4 py-3">
-        <ProfileStatusChip status={referral.status} />
+        <ReferralStatusChip status={referral.status} />
       </td>
       <td className="px-4 py-3 text-right">
         <Link
           to={slipTo(patientId, referral)}
           className="text-[13px] font-medium text-ink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50"
         >
-          View Referral Slip
+          View Details
         </Link>
       </td>
     </tr>
@@ -122,7 +122,7 @@ function ReferralCard({ patientId, referral }) {
           <p className="tabular-nums">{getReferralDate(referral)}</p>
           <p className="mt-0.5 font-mono text-[12px] text-neutral-500">{trackingId}</p>
         </div>
-        <ProfileStatusChip status={referral.status} />
+        <ReferralStatusChip status={referral.status} />
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
         <dt className="text-neutral-500">Referring BHC</dt>
@@ -134,7 +134,7 @@ function ReferralCard({ patientId, referral }) {
         to={slipTo(patientId, referral)}
         className="inline-flex text-[13px] font-medium text-ink-700 hover:underline"
       >
-        View Referral Slip
+        View Details
       </Link>
     </li>
   );

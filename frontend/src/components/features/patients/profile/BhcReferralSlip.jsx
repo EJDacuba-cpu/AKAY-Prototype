@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import { ProfileStatusChip } from "./ProfileChip";
+import { ReferralStatusChip } from "./ProfileChip";
 import BodyPreviewPanel, { BodyFindingsList } from "../../health-records/wizard/BodyPreviewPanel";
-import { formatDisplayValue, formatPatientName } from "../../../../utils/formatters";
+import { formatDisplayValue, formatPatientName, formatReferralStatus } from "../../../../utils/formatters";
 import { getPatientAge, getPatientBirthDate } from "../../../../utils/patientProfile";
 import { referralSlipModel } from "../../../../utils/referralSlipView";
 
@@ -52,7 +52,7 @@ export default function BhcReferralSlip({ referral = null, record = null, patien
           </h1>
           <p className="mt-1 font-mono text-[13px] text-neutral-600">{trackingId || "Tracking ID not recorded"}</p>
         </div>
-        <ProfileStatusChip status={referral?.status} />
+        <ReferralStatusChip status={referral?.status} />
       </header>
 
       <dl className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -60,7 +60,10 @@ export default function BhcReferralSlip({ referral = null, record = null, patien
         <Field label="Referring BHC" value={slip.referringHci} />
         <Field label="Destination RHU" value={slip.receivingFacility} />
         <Field label="Referring practitioner" value={slip.practitioner} />
-        <Field label="Referral status" value={formatDisplayValue(referral?.status, "")} />
+        <Field
+          label="Referral status"
+          value={formatReferralStatus(formatDisplayValue(referral?.status, ""), "")}
+        />
         <Field label="Patient" value={identity} />
       </dl>
 
