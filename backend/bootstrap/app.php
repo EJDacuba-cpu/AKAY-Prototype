@@ -68,13 +68,26 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            Log::error('Unexpected AKAY API exception.', [
+            $context = [
                 'exception_type' => get_debug_type($exception),
                 'request_method' => request()->method(),
                 'route_uri' => request()->route()?->uri(),
-            ]);
+            ];
+
+            if ($exception instanceof \Illuminate\Database\QueryException) {
+                $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+
+                $context['db_sqlstate'] = is_string($sqlState)
+                    && preg_match('/^[A-Z0-9]{5}$/i', $sqlState)
+                        ? strtoupper($sqlState)
+                        : null;
+            }
+
+            Log::error('Unexpected AKAY API exception.', $context);
 
             return false;
+
+
         });
 
         $exceptions->render(function (Throwable $exception, Request $request) {
