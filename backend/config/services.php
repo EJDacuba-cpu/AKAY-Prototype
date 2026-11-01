@@ -17,6 +17,11 @@ return [
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],
+    'google_gmail' => [
+        'client_id' => env('GOOGLE_GMAIL_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_GMAIL_CLIENT_SECRET'),
+        'refresh_token' => env('GOOGLE_GMAIL_REFRESH_TOKEN'),
+    ],
 
     'resend' => [
         'key' => env('RESEND_API_KEY'),
