@@ -59,6 +59,16 @@ import {
   getPrenatalEnrollment,
   prenatalProgramCopy,
 } from "../../utils/prenatalEnrollment";
+import {
+  NUTRITION_INTENT_CONTINUE,
+  NUTRITION_INTENT_ENROLL,
+  NUTRITION_STATUS_ACTIVE,
+  NUTRITION_STATUS_NOT_ENROLLED,
+  getNutritionEnrollment,
+  nutritionProgramCopy,
+} from "../../utils/nutritionEnrollment";
+import { queryKeys } from "../../utils/queryKeys";
+import { getCareOverview } from "../../services/careOverviewService";
 import { applyRiskFlags, getMaternalRiskFlags } from "../../utils/maternalRisk";
 import { isPatientMale } from "../../utils/programApplicability";
 import { getLatestRecordedHeight } from "../../utils/currentPatientVitals";
@@ -210,6 +220,8 @@ export default function RhuConsultationWorkspace() {
   const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
+  // Draft resume keeps the saved enroll/continue until care-overview or records settle.
+  const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
   const [conditionReferences, setConditionReferences] = useState([]);
   const followUpFocusApplied = useRef(false);
@@ -248,6 +260,12 @@ export default function RhuConsultationWorkspace() {
     queryFn: () => getHealthRecordsByPatient(patientId),
     enabled: Boolean(patientId) && canViewBackground,
   });
+  const careOverviewQuery = useQuery({
+    queryKey: queryKeys.careOverview(patientId),
+    queryFn: () => getCareOverview(patientId),
+    enabled: Boolean(patientId),
+    staleTime: 30_000,
+  });
   const patientRecords = recordsQuery.data ?? EMPTY_HEALTH_RECORDS;
   const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecords, "ongoing").findings, [patientRecords]);
   function changeBodyReassessments(next) {
@@ -257,6 +275,16 @@ export default function RhuConsultationWorkspace() {
   const prenatalEnrollment = useMemo(
     () => getPrenatalEnrollment(patient || {}, patientRecords),
     [patient, patientRecords],
+  );
+  const nutritionRecordsReady = Array.isArray(recordsQuery.data);
+  const nutritionEnrollment = useMemo(
+    () => getNutritionEnrollment(
+      patient || {},
+      nutritionRecordsReady ? recordsQuery.data : [],
+      new Date(),
+      careOverviewQuery.isSuccess ? careOverviewQuery.data?.nutritionCare : undefined,
+    ),
+    [patient, nutritionRecordsReady, recordsQuery.data, careOverviewQuery.isSuccess, careOverviewQuery.data],
   );
   const prenatalHistory = useMemo(
     () => collectPrenatalHistory(patientRecords),
@@ -271,6 +299,17 @@ export default function RhuConsultationWorkspace() {
     [patient?.medicalBackground, backgroundUpdate, maternalData, patientRecords],
   );
   const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
+  const nutritionEnrollmentKnown = careOverviewQuery.isSuccess || (careOverviewQuery.isError && nutritionRecordsReady);
+  const nutritionSelected = selectedPrograms.includes("Nutrition");
+  const nutritionIntent = nutritionSelected
+    ? (nutritionEnrollmentKnown ? nutritionEnrollment.intent : (restoredNutritionIntent || nutritionEnrollment.intent))
+    : "";
+  const nutritionPanelEnrolled = nutritionEnrollmentKnown
+    ? nutritionEnrollment.enrolled
+    : restoredNutritionIntent === NUTRITION_INTENT_CONTINUE;
+  const nutritionPanelStatus = nutritionEnrollmentKnown
+    ? nutritionEnrollment.status
+    : (nutritionPanelEnrolled ? NUTRITION_STATUS_ACTIVE : NUTRITION_STATUS_NOT_ENROLLED);
 
   useEffect(() => {
     let cancelled = false;
@@ -460,6 +499,7 @@ export default function RhuConsultationWorkspace() {
       expectedDeliveryDate,
       aog,
       prenatalIntent,
+      nutritionIntent,
       familyPlanningData,
       immunizationData: { vaccineEntries: immunizationEntries },
       diagnoses,
@@ -508,6 +548,7 @@ export default function RhuConsultationWorkspace() {
       expectedDeliveryDate,
       aog,
       prenatalIntent,
+      nutritionIntent,
       familyPlanningData,
       immunizationEntries,
       diagnoses,
@@ -572,6 +613,11 @@ export default function RhuConsultationWorkspace() {
     const programs = getConsultationPrograms(payload);
     setSelectedPrograms(programs);
     setPrimaryProgram(payload.primaryProgram || programs[0] || "");
+    setRestoredNutritionIntent(
+      payload.nutritionIntent === NUTRITION_INTENT_ENROLL || payload.nutritionIntent === NUTRITION_INTENT_CONTINUE
+        ? payload.nutritionIntent
+        : "",
+    );
     if (payload.tbData) setTbData(normalizeTbData(payload.tbData));
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
@@ -926,6 +972,7 @@ export default function RhuConsultationWorkspace() {
           summaryOfPresentIllness,
           monitoringData: {
             additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
+            ...(nutritionIntent ? { nutritionIntent } : {}),
           },
           physicalExam,
           bodyFindings,
@@ -1006,14 +1053,21 @@ export default function RhuConsultationWorkspace() {
             included: selectedPrograms.includes("Maternal"),
           })
         : null;
+      const nutritionCopy = key === "Nutrition"
+        ? nutritionProgramCopy({
+            enrolled: nutritionPanelEnrolled,
+            included: nutritionSelected,
+            status: nutritionPanelStatus,
+          })
+        : null;
       const male = Boolean(patient) && key === "Maternal" && isPatientMale(patient);
       return {
         key,
-        title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : key,
-        description: key === "Maternal" ? maternalCopy.description : "",
-        enrollLabel: maternalCopy?.enrollLabel || programEnrollLabel(key),
-        statusLabel: maternalCopy?.statusLabel,
-        statusTone: maternalCopy?.statusTone,
+        title: key === "EPI" ? "Child Health / EPI" : key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
+        description: key === "Maternal" ? maternalCopy.description : nutritionCopy?.description || "",
+        enrollLabel: maternalCopy?.enrollLabel || nutritionCopy?.enrollLabel || programEnrollLabel(key),
+        statusLabel: maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
+        statusTone: maternalCopy?.statusTone || nutritionCopy?.statusTone,
         disabled: male,
         disabledReason: male ? MATERNAL_CARE_MALE_ELIGIBILITY : "",
         disabledNote: male ? "Not applicable to this patient" : "",

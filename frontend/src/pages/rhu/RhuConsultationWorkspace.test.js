@@ -59,3 +59,15 @@ test("RHU ITR loads the started visit by id and shows a retryable patient-load e
   assert.match(workspace, /patientQuery\.isError/);
   assert.match(workspace, /Retry/);
 });
+
+test("Nutrition service sets panel copy and nutritionIntent without a form step", () => {
+  const bhc = readFileSync(join(here, "../bhc/ConsultationWorkspace.jsx"), "utf8");
+  for (const source of [workspace, bhc]) {
+    assert.match(source, /getNutritionEnrollment/);
+    assert.match(source, /nutritionProgramCopy/);
+    assert.match(source, /payload\.nutritionIntent/);
+    assert.match(source, /nutritionIntent \? \{ nutritionIntent \}/);
+    assert.doesNotMatch(source, /NutritionAssessment/);
+  }
+  assert.match(workspace, /heading="Health Services"/);
+});
