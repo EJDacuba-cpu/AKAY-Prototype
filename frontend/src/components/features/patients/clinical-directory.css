@@ -20,7 +20,6 @@
   --fab-size: 52px;
   --fab-inset: 24px;
   --clinical-focus: 0 0 0 3px #dc262626;
-  container-type: inline-size;
   min-width: 0;
   display: block;
   background: transparent;
@@ -61,10 +60,21 @@
 }
 .clinical-directory .module-toolbar__row input { font-size: 14px; }
 
-/* Permanent medium-width search (400px, shrinks when the row is tight) beside
-   the filter and action buttons. It filters on submit (Enter or the Search button), so no expand
-   animation and no half-typed results. */
-.clinical-directory .module-toolbar__controls { flex: 1 1 auto; }
+/* Search/filter cluster stays content-sized so it cannot grow over the title. */
+.clinical-directory .module-toolbar__controls {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.clinical-directory .module-toolbar__heading,
+.clinical-directory .clinical-directory__heading {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.clinical-directory .module-toolbar .search-filter-cluster {
+  flex: 0 1 auto;
+  max-width: min(100%, 22rem);
+}
 .clinical-search {
   display: flex;
   flex: 0 1 400px;
@@ -444,6 +454,15 @@
   outline-offset: 3px;
   box-shadow: var(--clinical-focus);
 }
+/* Nested search/filter inputs share one pill — don't outline the inner field. */
+.clinical-directory .search-filter-cluster :is(button, a, input):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.clinical-directory .search-filter-cluster:focus-within {
+  border-color: var(--clinical-red);
+  box-shadow: var(--clinical-focus);
+}
 
 /* Sticky footer of the Patient Summary (drawer and inline preview). */
 .patient-summary__footer {
@@ -454,9 +473,9 @@
   background: #ffffff;
 }
 
-@container (max-width: 620px) {
+@media (max-width: 900px) {
   .clinical-directory .module-toolbar__row { flex-direction: column; align-items: stretch; }
-  .clinical-directory .module-toolbar__controls { flex: auto; margin-left: 0; }
+  .clinical-directory .module-toolbar__controls { flex: auto; margin-left: 0; max-width: none; }
   .clinical-directory .module-toolbar__row > div:last-child { width: 100%; }
   .clinical-directory .module-toolbar__row > div:last-child > * { flex: 1 1 0; }
   .clinical-directory .module-toolbar__controls > div { width: 100%; }

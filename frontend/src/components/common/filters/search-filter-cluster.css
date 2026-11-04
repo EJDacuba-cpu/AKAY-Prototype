@@ -1,9 +1,23 @@
-/* Nested search + Filter share one pill; strip their own borders. */
+/* Nested search + Filter share one pill; strip their own borders/shadows/focus. */
+.search-filter-cluster .search-filter-cluster__search > * {
+  height: 2rem;
+}
 .search-filter-cluster .search-filter-cluster__search input {
+  border: 0 !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  outline: none !important;
   border-radius: 999px !important;
-  height: 2rem;
+  height: 2rem !important;
+  min-height: 2rem !important;
+  background: transparent !important;
+}
+.search-filter-cluster .search-filter-cluster__search input:hover,
+.search-filter-cluster .search-filter-cluster__search input:focus,
+.search-filter-cluster .search-filter-cluster__search input:focus-visible {
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .search-filter-cluster .search-filter-cluster__search .clinical-search {
@@ -19,8 +33,20 @@
   border-color: transparent !important;
   box-shadow: none !important;
   background: transparent !important;
+  outline: none !important;
 }
 
 .search-filter-cluster .search-filter-cluster__filter [data-slot="button"]:hover {
   background: var(--color-surface-2, #f8f9fb) !important;
+}
+
+.search-filter-cluster .search-filter-cluster__filter [data-slot="button"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* One focus ring on the shared pill, not on the nested field. */
+.search-filter-cluster:focus-within {
+  border-color: var(--color-ink-400, #98a2b3);
+  box-shadow: 0 0 0 3px rgb(16 24 40 / 0.12);
 }

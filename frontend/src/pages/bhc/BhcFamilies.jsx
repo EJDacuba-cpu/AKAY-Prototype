@@ -91,14 +91,15 @@ function Directory({scope,role}) {
       <div className="clinical-directory__layout">
         <div className="clinical-directory__main">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 shrink">
               <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Families</h1>
               <p className="mt-1 text-[13px] text-neutral-600">
                 Households registered in your {facilityLabel(role)}.
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
               <SearchFilterCluster
+                className="max-w-full"
                 search={
                   <SearchField
                     value={draft}
@@ -110,7 +111,7 @@ function Directory({scope,role}) {
                 filter={hasFilterChoices ? <FamilyDirectoryFilter applied={filters} options={options} onApply={setFilters}/> : null}
               />
               {isDesktop && canManage ? (
-                <Button asChild variant="brand" size="sm">
+                <Button asChild variant="brand" size="sm" className="shrink-0">
                   <Link to={addPath}>
                     <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
                     Add Family

@@ -6,12 +6,14 @@ import { PanelRight, Plus, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
+  ListFilterPopover,
   LoadMoreButton,
   RefreshingIndicator,
-  SegmentedFilter,
+  SearchField,
+  SearchFilterCluster,
+  pickFilterValues,
 } from "../../components/common";
 import Drawer from "../../components/common/drawer/Drawer";
-import ModuleToolbar from "../../components/common/list/ModuleToolbar";
 import { Button } from "../../components/ui/button";
 import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
 import PatientDirectoryCard from "../../components/features/patients/PatientDirectoryCard";
@@ -65,7 +67,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const canRegister = useAccess().can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
@@ -227,7 +229,11 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
 
   if (error) {
     return (
-      <Shell embedded={embedded} role={role} title="Patients">
+      <Shell
+        embedded={embedded}
+        role={role}
+        title={showHandoffs ? "Monitoring Requests" : "Patients"}
+      >
         <ConnectionErrorState
           fullPage
           onRetry={() => refetchPatients()}
@@ -239,83 +245,107 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   }
 
   return (
-    <Shell embedded={embedded} role={role} title="Patients">
+    <Shell
+      embedded={embedded}
+      role={role}
+      title={showHandoffs ? "Monitoring Requests" : "Patients"}
+    >
       <SoftLoadingArea skeleton="table"
         isLoading={showInitialLoading}
         message="Loading patients..."
         scope="area"
         className="clinical-directory clinical-directory--patients"
       >
-        {/* The toolbar spans the workspace; opening Details only resizes the area below. */}
+        {/* Toolbar spans the workspace; opening Details only resizes the panes below. */}
         {!showInitialLoading && (
-          <ModuleToolbar
-            heading={
-              <div className="clinical-directory__heading min-w-0">
-                {!embedded && (
-                  <>
-                    <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
-                      Patients
-                    </h1>
-                    <p className="mt-1 text-[13px] text-neutral-600">
-                      {showHandoffs
-                        ? "RHU monitoring handoffs waiting for BHC follow-up."
-                        : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
-                    </p>
-                  </>
-                )}
-                {role === "bhc" && (
-                  <div className="mt-2">
-                    <SegmentedFilter
-                      label="Patient directory"
-                      options={[
-                        { value: "patients", label: "All Patients" },
-                        { value: "monitoring-requests", label: "Monitoring Requests" },
-                      ]}
-                      value={showHandoffs ? "monitoring-requests" : "patients"}
-                      onChange={(next) => setParams(next === "monitoring-requests" ? { view: next } : {}, { replace: true })}
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 shrink">
+              {!embedded && (
+                <>
+                  <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                    {showHandoffs ? "Monitoring Requests" : "Patients"}
+                  </h1>
+                  <p className="mt-1 text-[13px] text-neutral-600">
+                    {showHandoffs
+                      ? "RHU Manage to BHC handoffs for your catchment."
+                      : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
+                  </p>
+                </>
+              )}
+              <p className="sr-only" role="status">
+                {showHandoffs
+                  ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
+                  : patientCountLabel}
+              </p>
+            </div>
+            {!showHandoffs ? (
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <SearchFilterCluster
+                  search={
+                    <SearchField
+                      value={filters.search}
+                      onChange={(value) =>
+                        setFilters((prev) => ({ ...prev, search: value }))
+                      }
+                      placeholder="Search name, ID, or contact number..."
+                      label="Search patients"
                     />
-                  </div>
-                )}
-                <p className="sr-only" role="status">
-                  {showHandoffs
-                    ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
-                    : patientCountLabel}
-                </p>
+                  }
+                  filter={
+                    <ListFilterPopover
+                      fields={dropdownFilters}
+                      applied={{
+                        barangay: filters.barangay,
+                        sex: filters.sex,
+                        ageGroup: filters.ageGroup,
+                        civilStatus: filters.civilStatus,
+                        dateRegistered: filters.dateRegistered,
+                      }}
+                      activeFilters={activeFilters}
+                      activeCount={activeFilterCount}
+                      onApply={applyDropdownFilters}
+                      onRemoveFilter={removeFilter}
+                      onClearAll={clearFilters}
+                      pickValues={(current) =>
+                        pickFilterValues(current, dropdownFilters)
+                      }
+                      buildDefaults={() => ({
+                        barangay: "All Barangays",
+                        sex: "All",
+                        ageGroup: "All Age Groups",
+                        civilStatus: "All Civil Status",
+                        dateRegistered: "",
+                      })}
+                    />
+                  }
+                />
+                {isDesktop ? (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    size="sm"
+                    className="clinical-directory__details-toggle"
+                    onClick={togglePanel}
+                    aria-pressed={panelOpen}
+                    aria-expanded={panelOpen}
+                    aria-controls="patient-details-panel"
+                    title={panelOpen ? "Hide patient details" : "Show patient details"}
+                  >
+                    <PanelRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                    Details
+                  </Button>
+                ) : null}
+                {isDesktop && canRegister ? (
+                  <Button asChild variant="brand" size="sm">
+                    <Link to={addPatientPath}>
+                      <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+                      New Patient
+                    </Link>
+                  </Button>
+                ) : null}
               </div>
-            }
-            searchValue={filters.search}
-            onSearchChange={(value) =>
-              setFilters((prev) => ({ ...prev, search: value }))
-            }
-            searchPlaceholder="Search name, ID, or contact number..."
-            filters={dropdownFilters}
-            activeFilterCount={activeFilterCount}
-            activeFilters={activeFilters}
-            onApplyFilters={applyDropdownFilters}
-            onClearFilters={clearFilters}
-            onRemoveFilter={removeFilter}
-            filterDescription="Narrow the patient directory."
-            primaryActionTo={isDesktop && canRegister ? addPatientPath : undefined}
-            primaryActionLabel={isDesktop && canRegister ? "New Patient" : undefined}
-            primaryActionIcon={<Plus size={14} strokeWidth={2.5} />}
-            actions={
-              isDesktop && (
-                <Button
-                  variant="secondary"
-                  type="button"
-                  className="clinical-directory__details-toggle"
-                  onClick={togglePanel}
-                  aria-pressed={panelOpen}
-                  aria-expanded={panelOpen}
-                  aria-controls="patient-details-panel"
-                  title={panelOpen ? "Hide patient details" : "Show patient details"}
-                >
-                  <PanelRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                  Details
-                </Button>
-              )
-            }
-          />
+            ) : null}
+          </div>
         )}
         <div
           className={`clinical-directory__layout${

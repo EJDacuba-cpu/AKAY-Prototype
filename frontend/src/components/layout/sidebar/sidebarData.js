@@ -50,7 +50,19 @@ export const menuByRole = {
     {
       section: "Patient Care",
       items: [
-        { label: "Patients", path: "/bhc/patients", icon: Users },
+        {
+          label: "Patients",
+          path: "/bhc/patients",
+          icon: Users,
+          defaultPath: "/bhc/patients",
+          children: [
+            { label: "All Patients", path: "/bhc/patients?view=patients" },
+            {
+              label: "Monitoring Requests",
+              path: "/bhc/patients?view=monitoring-requests",
+            },
+          ],
+        },
         { label: "Families", path: "/bhc/families", icon: House },
         {
           label: "Follow-ups",

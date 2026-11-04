@@ -102,7 +102,7 @@ export default function MonitoringHandoffReview() {
           <h1 className="text-xl font-bold text-ink-900">Monitoring Request Not Found</h1>
           <p className="mt-2 text-sm text-neutral-600">This request does not exist or belongs to another facility.</p>
           <Button asChild variant="secondary" className="mt-6">
-            <Link to="/bhc/patients?view=monitoring-requests"><ArrowLeft size={15} />Back to Patients</Link>
+            <Link to="/bhc/patients?view=monitoring-requests"><ArrowLeft size={15} />Back to Monitoring Requests</Link>
           </Button>
         </div>
       </DashboardLayout>
@@ -116,7 +116,7 @@ export default function MonitoringHandoffReview() {
     <DashboardLayout role="bhc" title="Monitoring Request">
       <div className="min-w-0 space-y-3">
         <Button asChild variant="link" size="compact" className="px-0">
-          <Link to="/bhc/patients?view=monitoring-requests"><ArrowLeft size={15} />Back to Patients</Link>
+          <Link to="/bhc/patients?view=monitoring-requests"><ArrowLeft size={15} />Back to Monitoring Requests</Link>
         </Button>
         <article className="min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
           <header className="border-b border-neutral-200 p-4 sm:p-5">
