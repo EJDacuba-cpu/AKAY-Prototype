@@ -4,7 +4,7 @@ export const ALL_PERMISSIONS = ["patients.register", "consultations.encode", "cl
 // Mirrors backend/app/Services/ActionPermissions.php. `requires` matches the read/write pairs in EnforceActionPermissions.
 export const PERMISSION_GROUPS = [
   { key: "patients", label: "Patients" },
-  { key: "families", label: "Families" },
+  { key: "families", label: "Households" },
   { key: "consultations", label: "Consultations" },
   { key: "history", label: "Health Records & History" },
   { key: "followups", label: "Follow-ups" },
@@ -16,8 +16,8 @@ export const PERMISSION_GROUPS = [
 
 export const PERMISSION_CATALOG = {
   "patients.register": { group: "patients", label: "Register patients", note: "Can register patients and update their identification details." },
-  "families.view": { group: "families", label: "View Families", note: "Can view household details and members at the assigned facility." },
-  "families.manage": { group: "families", label: "Manage Families", requires: ["families.view"], note: "Can create households and correct household details, family serial numbers and head relationships." },
+  "families.view": { group: "families", label: "View Households", note: "Can view household details and members at the assigned facility." },
+  "families.manage": { group: "families", label: "Manage Households", requires: ["families.view"], note: "Can create households and correct household details, family serial numbers and head relationships." },
   "consultations.encode": { group: "consultations", label: "Encode consultations", note: "Can start current consultations and submit them for review." },
   "consultations.finalize": { group: "consultations", label: "Review & finalize consultations", requires: ["clinical.history"], note: "Can finalize consultations into permanent clinical records." },
   "clinical.history": { group: "history", label: "View health records & patient history", note: "Can open full patient histories, previous diagnoses and completed records." },

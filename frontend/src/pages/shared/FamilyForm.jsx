@@ -56,7 +56,7 @@ function FamilyEditor({ role, householdId }) {
 
   return <DashboardLayout role={role} title={title} contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10">
     <div className="max-w-4xl space-y-7 text-neutral-900">
-      <Link to={returnPath} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />{householdId ? "Back to Family" : "Back to Families"}</Link>
+      <Link to={returnPath} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />{householdId ? "Back to Household" : "Back to Households"}</Link>
       <h1 className="text-3xl font-normal tracking-tight">{title}</h1>
       {householdId && !current ? <p>This family is not available in the current mock session.</p> : <form noValidate onSubmit={save} className="space-y-7">
         {!householdId && newHeadPicker}

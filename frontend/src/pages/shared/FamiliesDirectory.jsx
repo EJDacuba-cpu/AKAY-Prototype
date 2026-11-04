@@ -15,10 +15,10 @@ export default function FamiliesDirectory({ role = "bhc" }) {
   const [query, setQuery] = useState("");
   const households = searchHouseholds(registry, query);
   const base = `/${role}/families`;
-  return <DashboardLayout role={role} title="Families" contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10">
+  return <DashboardLayout role={role} title="Households" contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10">
     <div className="mx-auto max-w-[1440px] space-y-7 text-neutral-900">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-normal tracking-tight">Families</h1>
+        <h1 className="text-3xl font-normal tracking-tight">Households</h1>
         {access.can("families.manage") && <Button asChild className="rounded-none"><Link to={`${base}/new`}><Plus size={18} />Add Family</Link></Button>}
       </header>
       <div className="flex flex-wrap items-center justify-between gap-4">

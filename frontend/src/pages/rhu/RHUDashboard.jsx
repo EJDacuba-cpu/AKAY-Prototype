@@ -697,7 +697,7 @@ function MedicineAlertCard({ alerts = [], delay = 0 }) {
         to="/rhu/medicine-management"
         className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-[#E8ECF0] bg-white px-4 py-2.5 text-xs font-semibold text-[#0F172A] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#F9FAFB] hover:shadow-md active:scale-[0.98]"
       >
-        Manage Health Commodities
+        Manage Medicine and Supply
         <ArrowRight size={13} />
       </Link>
     </section>

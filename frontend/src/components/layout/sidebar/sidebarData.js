@@ -63,7 +63,7 @@ export const menuByRole = {
             },
           ],
         },
-        { label: "Families", path: "/bhc/families", icon: House },
+        { label: "Households", path: "/bhc/families", icon: House },
         {
           label: "Follow-ups",
           path: "/bhc/follow-ups",
@@ -88,7 +88,7 @@ export const menuByRole = {
       section: "Coordination",
       items: [
         {
-          label: "Health Commodities",
+          label: "Medicine and Supply",
           path: "/bhc/medicine-availability",
           icon: Boxes,
         },
@@ -125,7 +125,7 @@ export const menuByRole = {
       section: "Clinical Records",
       items: [
         { label: "Patients", path: "/rhu/patients", icon: Users },
-        { label: "Families", path: "/rhu/families", icon: House },
+        { label: "Households", path: "/rhu/families", icon: House },
         {
           label: "Follow-ups",
           path: "/rhu/follow-ups",
@@ -142,7 +142,7 @@ export const menuByRole = {
       section: "Operations",
       items: [
         {
-          label: "Health Commodities",
+          label: "Medicine and Supply",
           path: "/rhu/medicine-management",
           icon: Boxes,
         },

@@ -49,7 +49,7 @@ function MedicineInventoryWorkspace({ role }) {
     setDialog(null); toast.success('Medicine added to inventory.');
   }
   return (
-    <DashboardLayout role={role} title="Health Commodities">
+    <DashboardLayout role={role} title="Medicine and Supply">
       {showDispenseDesk ? (
         <div className="mb-4 flex flex-wrap gap-2">
           <Button variant={desk === "inventory" ? "brand" : "secondary"} size="sm" onClick={() => setDesk("inventory")}>Inventory</Button>
@@ -63,7 +63,7 @@ function MedicineInventoryWorkspace({ role }) {
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Health Commodities</h1>
+                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Medicine and Supply</h1>
                 <p className="mt-1 text-[13px] text-neutral-600">{role.toUpperCase()} medicine and supply inventory.</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">

@@ -43,11 +43,11 @@ export function QueryState({query,label='Loading households…',skeleton}) {
   if(query.error) {
     // A 404 has nothing to retry; the back link above is the way out.
     const missing=query.error.status === 404;
-    return <div role="alert" className="rounded-card border border-neutral-200 bg-white"><ConnectionErrorState size="compact" variant={errorStateVariant(query.error)} title={missing ? 'Household not found' : undefined} message={missing ? 'We could not find this household. Go back to Families and choose another.' : undefined} onRetry={missing ? undefined : ()=>query.refetch()} retrying={query.isFetching}/></div>;
+    return <div role="alert" className="rounded-card border border-neutral-200 bg-white"><ConnectionErrorState size="compact" variant={errorStateVariant(query.error)} title={missing ? 'Household not found' : undefined} message={missing ? 'We could not find this household. Go back to Households and choose another.' : undefined} onRetry={missing ? undefined : ()=>query.refetch()} retrying={query.isFetching}/></div>;
   }
   return <div role="status"><span className="sr-only">{label}</span><div aria-hidden="true">{skeleton}</div></div>;
 }
-function BackLink({to,children='Back to Families'}) {
+function BackLink({to,children='Back to Households'}) {
   return <Link to={to} className="inline-flex min-h-10 items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16}/>{children}</Link>;
 }
 export function BhcFamiliesDirectory({role='bhc'}={}) {
@@ -86,13 +86,13 @@ function Directory({scope,role}) {
   const hasFilterChoices=options.puroks.length > 0 || options.hasWithoutPurok || options.barangays.length > 1 || chips.length > 0;
   function clearAll() {setDraft('');setSearch('');setFilters(NO_FILTERS);}
   const addPath=`${base}/new`;
-  return <DashboardLayout role={role} title="Families">
+  return <DashboardLayout role={role} title="Households">
     <div className="clinical-directory">
       <div className="clinical-directory__layout">
         <div className="clinical-directory__main">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 shrink">
-              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Families</h1>
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Households</h1>
               <p className="mt-1 text-[13px] text-neutral-600">
                 Households registered in your {facilityLabel(role)}.
               </p>

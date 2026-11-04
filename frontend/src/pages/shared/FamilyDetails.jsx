@@ -35,7 +35,7 @@ export default function FamilyDetails({ role = "bhc" }) {
   const name = household ? familyName(registry, household) : "Family not found";
   return <DashboardLayout role={role} title={name} contentClassName="bg-white px-5 py-7 sm:px-8 lg:px-10">
     <div className="mx-auto max-w-[1440px] space-y-7 text-neutral-900">
-      <Link to={base} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Families</Link>
+      <Link to={base} className="inline-flex items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16} />Back to Households</Link>
       {household?.archivedAt ? <p role="status">This household is archived.</p> : !household ? <p role="status">This family is not available in the current mock session.</p> : <>
         <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-3xl font-normal tracking-tight">{name}</h1><p className="mt-2 text-sm text-neutral-500">Family Serial Number · {household.serialNumber}</p></div>
           {canManage && <div className="flex flex-wrap gap-3"><Button asChild variant="ghost" className="rounded-none border border-neutral-200 text-neutral-900"><Link to={`${base}/${householdId}/edit`}><Pencil size={17} />Edit Family</Link></Button><Button asChild className="rounded-none"><Link to={`${base}/${householdId}/members/new`}><Plus size={18} />Add Member</Link></Button></div>}
