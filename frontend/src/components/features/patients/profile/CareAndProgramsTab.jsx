@@ -175,6 +175,9 @@ export default function CareAndProgramsTab({
             <Input value={cardSearch} onChange={(event) => setCardSearch(event.target.value)} placeholder="Search care tracking" className="h-8 rounded-lg border-neutral-200 pl-9 text-xs shadow-none" />
           </label>
         </div>
+        {canReadCareOverview && careOverviewQuery.isError ? (
+          <p role="alert" className="mb-4 rounded-lg border border-alert-100 bg-alert-50 px-4 py-3 text-sm text-alert-700">Could not load Nutrition status. Care Tracking may be incomplete. <Button type="button" variant="link" size="sm" onClick={() => careOverviewQuery.refetch()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
+        ) : null}
         {isError ? (
           <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 p-5 text-sm text-alert-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
         ) : trackingLoading ? (
