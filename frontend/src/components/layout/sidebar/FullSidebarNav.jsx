@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ChevronDown, ChevronRight, Lock } from "lucide-react";
 import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./sidebarStyles";
 
 export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate }) {
+  const navigate = useNavigate();
   const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
@@ -18,7 +19,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
       let changed = false;
       menuSections.forEach((section) => {
         section.items.forEach((item) => {
-          if (item.children?.length && isMenuActive(item.path) && !next[item.path]) {
+          if (item.children?.length && isMenuActive(item.path) && !Object.hasOwn(next, item.path)) {
             next[item.path] = true;
             changed = true;
           }
@@ -39,7 +40,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
               const Icon = item.icon;
               const active = isMenuActive(item.path);
               const hasChildren = item.children?.length > 0;
-              const expanded = active || expandedGroups[item.path];
+              const expanded = expandedGroups[item.path] ?? active;
 
               if (item.locked) {
                 return (
@@ -65,12 +66,13 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                     <button
                       type="button"
                       aria-expanded={expanded}
-                      onClick={() =>
+                      onClick={() => {
                         setExpandedGroups((current) => ({
                           ...current,
-                          [item.path]: !expanded,
-                        }))
-                      }
+                          [item.path]: (!active && Boolean(item.defaultPath)) || !expanded,
+                        }));
+                        if (!active && item.defaultPath) navigate(item.defaultPath, { state: { openSidebarGroup: item.path } });
+                      }}
                       className={`${navItemClass(active)} gap-2.5 pl-2.5 pr-3 text-left`}
                     >
                       <Icon
@@ -94,6 +96,7 @@ export default function FullSidebarNav({ menuSections, isMenuActive, onNavigate 
                             <Link
                               key={child.path}
                               to={child.path}
+                              aria-current={childActive ? "page" : undefined}
                               onClick={onNavigate}
                               className={childLinkClass(childActive)}
                             >

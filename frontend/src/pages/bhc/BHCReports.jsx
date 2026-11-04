@@ -5,21 +5,18 @@ import { FileText, Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  DatePickerField,
   PageStateWrapper,
   RefreshingIndicator,
-  SegmentedFilter,
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
+import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { getCurrentUser } from "../../utils/auth";
 import {
-  PERIOD_PRESETS,
-  REPORT_CATEGORIES,
   buildBhcReport,
   normalizeReportCategory,
-  resolveReportPeriod,
 } from "../../utils/bhcReporting";
 import { queryKeys } from "../../utils/queryKeys";
 import { getAllHealthRecords } from "../../services/healthRecordService";
@@ -29,16 +26,13 @@ import { getAllReferrals } from "../../services/referrals";
 export default function BHCReports() {
   const user = getCurrentUser();
   const facilityName = user?.facility || user?.assignedBarangayHealthCenter || "Barangay Health Center";
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const category = normalizeReportCategory(searchParams.get("type"));
-  const [periodPreset, setPeriodPreset] = useState("monthly");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-
-  const period = useMemo(
-    () => resolveReportPeriod({ preset: periodPreset, from: customFrom, to: customTo }),
-    [periodPreset, customFrom, customTo],
-  );
+  const [appliedPeriod, setAppliedPeriod] = useState(() => {
+    const initial = prepareBhcReportPeriod({ preset: "monthly" });
+    return { selection: initial.selection, period: initial.period };
+  });
+  const period = appliedPeriod.period;
 
   const {
     data: patients = [],
@@ -92,10 +86,6 @@ export default function BHCReports() {
     [patients, records, referrals, category, period],
   );
 
-  function selectCategory(slug) {
-    setSearchParams({ type: slug });
-  }
-
   function retryReports() {
     refetchPatients();
     refetchRecords();
@@ -127,7 +117,7 @@ export default function BHCReports() {
         <div className="flex flex-col gap-5">
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-neutral-900">Reports & Analytics</h1>
+              <h1 className="text-xl font-bold text-neutral-900">{category === "all" ? "Reports & Analytics" : report.categoryLabel}</h1>
               <p className="mt-1 text-sm text-neutral-500">
                 {facilityName} · {period.label}
               </p>
@@ -144,47 +134,7 @@ export default function BHCReports() {
             </div>
           </header>
 
-          <div className="no-print flex flex-col gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <SegmentedFilter
-                label="Reporting period"
-                visibleLabel="Reporting period"
-                value={periodPreset}
-                onChange={setPeriodPreset}
-                options={PERIOD_PRESETS}
-              />
-              {periodPreset === "custom" ? (
-                <div className="flex flex-wrap items-end gap-3">
-                  <DatePickerField
-                    label="From"
-                    name="report-from"
-                    value={customFrom}
-                    onChange={setCustomFrom}
-                    disableFuture
-                  />
-                  <DatePickerField
-                    label="To"
-                    name="report-to"
-                    value={customTo}
-                    onChange={setCustomTo}
-                    disableFuture
-                  />
-                  {!customFrom ? (
-                    <p className="pb-2 text-xs text-neutral-500">Choose a start date for the custom range.</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <div className="-mx-1 overflow-x-auto px-1">
-              <SegmentedFilter
-                label="Report category"
-                value={REPORT_CATEGORIES.find((item) => item.key === category)?.slug || "all"}
-                onChange={selectCategory}
-                wrap
-                options={REPORT_CATEGORIES.map((item) => ({ value: item.slug, label: item.label }))}
-              />
-            </div>
-          </div>
+          <BhcReportPeriodFilter applied={appliedPeriod} onApply={setAppliedPeriod} />
 
           {refreshing ? (
             <div className="no-print flex justify-end">

@@ -5,6 +5,7 @@ import WorkingFacility from "./WorkingFacility";
 import TopBarBreadcrumbs from "./TopBarBreadcrumbs";
 import { getBreadcrumbs } from "../../utils/breadcrumbs";
 import { navigationAllowed } from "../../utils/dashboardAccess";
+import { hasSidebarOpenIntent, isSidebarPathActive } from "../../utils/sidebarNavigation";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
 import {
@@ -50,8 +51,8 @@ export default function DashboardLayout({
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [sidebarExpanded, setSidebarExpanded] = useState(sidebarExpandedMemory);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(() => hasSidebarOpenIntent(location));
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => hasSidebarOpenIntent(location) || sidebarExpandedMemory);
 
   const {
     unreadCount,
@@ -236,9 +237,7 @@ export default function DashboardLayout({
   }
 
   function isMenuActive(path) {
-    if (location.pathname === path) return true;
-    if (path === `/${role}/dashboard`) return false;
-    return location.pathname.startsWith(path);
+    return isSidebarPathActive(path, location, role);
   }
 
   const handleDropdownSelect = (notif) => {

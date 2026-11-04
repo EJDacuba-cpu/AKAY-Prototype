@@ -58,7 +58,7 @@ import { Input } from "../../components/ui/input";
 // Flat bordered panel used for each registration section.
 function FormPanel({ icon, title, description, children }) {
   return (
-    <section className="min-w-0 border border-gray-200 bg-white p-4">
+    <section className="registration-panel min-w-0 border border-gray-200 bg-white p-4">
       <SectionHeader icon={icon} title={title} description={description} />
       {children}
     </section>
@@ -497,7 +497,7 @@ function handleBirthDateChange(valueOrEvent) {
 
   return (
     <>
-      <DashboardLayout role={role} title={dashboardTitle}>
+      <DashboardLayout role={role} title={dashboardTitle} contentClassName="patient-registration">
         {/* Header */}
         <div className="mb-4 ml-0 mr-auto w-full max-w-7xl min-w-0">
           <div className="flex flex-col gap-2">
@@ -524,7 +524,7 @@ function handleBirthDateChange(valueOrEvent) {
           onSubmit={handleFormSubmit}
           className="ehr-form ml-0 mr-auto w-full max-w-7xl min-w-0"
         >
-          <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="registration-columns grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             {/* LEFT COLUMN */}
             <div className="min-w-0 space-y-4">
               <FormPanel
@@ -723,13 +723,6 @@ function handleBirthDateChange(valueOrEvent) {
                   <HistoricalParentLinks patient={form} />
                 </div>
               </FormPanel>
-              <FormPanel icon={Users} title="Guardian Information" description="Optional guardian details, recorded separately from parents and household membership.">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[["guardianName", "Guardian name"], ["guardianRelationship", "Guardian relationship"], ["guardianContactNumber", "Guardian contact"]].map(([name, label]) => (
-                    <label key={name} className="space-y-1.5 text-sm text-neutral-700">{label}<Input name={name} value={form[name]} onChange={handleChange} type={name === 'guardianContactNumber' ? 'tel' : 'text'} /></label>
-                  ))}
-                </div>
-              </FormPanel>
 
             </div>
 
@@ -747,6 +740,23 @@ function handleBirthDateChange(valueOrEvent) {
                     value={form.contactNumber}
                     onChange={handleChange}
                   />
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="other-contact-number" className="text-sm text-neutral-700">Other Contact Number</label>
+                    <Input
+                      id="other-contact-number"
+                      type="tel"
+                      name="guardianContactNumber"
+                      value={form.guardianContactNumber}
+                      onChange={handleChange}
+                      aria-invalid={Boolean(fieldErrors.guardianContactNumber)}
+                      aria-describedby={`other-contact-hint${fieldErrors.guardianContactNumber ? ' other-contact-error' : ''}`}
+                    />
+                    <p id="other-contact-hint" className="text-xs text-neutral-600">Contact number of a mother, father, or guardian.</p>
+                    {fieldErrors.guardianContactNumber && (
+                      <p id="other-contact-error" className="text-xs text-alert-600">{fieldErrors.guardianContactNumber}</p>
+                    )}
+                  </div>
 
                   <PhilHealthRadioGroup
                     label="PhilHealth Membership"
@@ -768,6 +778,19 @@ function handleBirthDateChange(valueOrEvent) {
                   )}
                 </div>
               </FormPanel>
+
+              <section className="registration-panel registration-guardian min-w-0">
+                <h2>Guardian Information</h2>
+                <p>Optional guardian details, recorded separately from parents and household membership.</p>
+                <div className="registration-guardian-fields">
+                  {[["guardianName", "Guardian name"], ["guardianRelationship", "Guardian relationship"]].map(([name, label]) => (
+                    <label key={name} className="space-y-1.5 text-sm text-neutral-700">
+                      {label}
+                      <Input name={name} value={form[name]} onChange={handleChange} />
+                    </label>
+                  ))}
+                </div>
+              </section>
 
               <FormPanel
                 icon={MapPinHouse}

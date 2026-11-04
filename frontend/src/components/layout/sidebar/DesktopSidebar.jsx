@@ -6,7 +6,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import LogoMark, { LogoWordmark } from "./LogoMark";
 import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
@@ -27,6 +27,7 @@ export default function DesktopSidebar({
   onToggle,
   onLogout,
 }) {
+  const navigate = useNavigate();
   const [hoverLabel, setHoverLabel] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
 
@@ -36,7 +37,7 @@ export default function DesktopSidebar({
       let changed = false;
       menuSections.forEach((section) => {
         section.items.forEach((item) => {
-          if (item.children?.length && isMenuActive(item.path) && !next[item.path]) {
+          if (item.children?.length && isMenuActive(item.path) && !Object.hasOwn(next, item.path)) {
             next[item.path] = true;
             changed = true;
           }
@@ -143,7 +144,7 @@ export default function DesktopSidebar({
                 const Icon = item.icon;
                 const active = isMenuActive(item.path);
                 const hasChildren = item.children?.length > 0;
-                const groupExpanded = active || expandedGroups[item.path];
+                const groupExpanded = expandedGroups[item.path] ?? active;
 
                 const content = (
                   <>
@@ -187,12 +188,15 @@ export default function DesktopSidebar({
                         type="button"
                         aria-label={item.label}
                         aria-expanded={groupExpanded}
-                        onClick={() =>
+                        onClick={() => {
+                          hideCollapsedLabel();
+                          if (!expanded) onToggle();
                           setExpandedGroups((current) => ({
                             ...current,
-                            [item.path]: !groupExpanded,
-                          }))
-                        }
+                            [item.path]: (!active && Boolean(item.defaultPath)) || !expanded || !groupExpanded,
+                          }));
+                          if (!active && item.defaultPath) navigate(item.defaultPath, { state: { openSidebarGroup: item.path } });
+                        }}
                         {...tooltipHandlers(item.label)}
                         className={`${navItemClass(active)} ${itemLayout}`}
                       >
@@ -213,6 +217,7 @@ export default function DesktopSidebar({
                               <Link
                                 key={child.path}
                                 to={child.path}
+                                aria-current={childActive ? "page" : undefined}
                                 className={childLinkClass(childActive)}
                               >
                                 {childActive && (

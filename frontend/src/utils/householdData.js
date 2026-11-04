@@ -36,7 +36,7 @@ export function householdKeys(user = {}, role = 'bhc') {
     : id(user.barangayHealthCenterId || user.facilityId);
   return [`${role}-households`,id(user.id),id(user.backendRole || user.role),facility,id(user.working_facility_key)];
 }
-const fields={first_name:'firstName',middle_name:'middleName',last_name:'lastName',birthdate:'birthDate',street_address:'streetAddress',purok_area:'purokArea',civil_status:'civilStatus',contact_number:'contactNumber',philhealth_number:'philHealthNumber',mother_name:'motherName',mother_birth_date:'motherBirthDate',father_birth_date:'fatherBirthDate',family_serial_number:'familySerialNumber',education_level:'educationLevel',education_completed:'educationCompleted'};
+const fields={first_name:'firstName',middle_name:'middleName',last_name:'lastName',birthdate:'birthDate',street_address:'streetAddress',purok_area:'purokArea',civil_status:'civilStatus',contact_number:'contactNumber',guardian_contact_number:'guardianContactNumber',philhealth_number:'philHealthNumber',mother_name:'motherName',mother_birth_date:'motherBirthDate',father_birth_date:'fatherBirthDate',family_serial_number:'familySerialNumber',education_level:'educationLevel',education_completed:'educationCompleted'};
 export function registrationErrors(error = {}) {
   const result={};
   for (const [key,value] of Object.entries(error.errors || {})) {

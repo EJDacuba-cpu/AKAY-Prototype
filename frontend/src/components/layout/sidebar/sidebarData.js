@@ -10,27 +10,10 @@ import {
   QrCode,
   Users,
 } from "lucide-react";
+import { REPORT_CATEGORIES } from "../../../utils/bhcReporting";
 
 export const LOGO_SRC = "/akay-mark.png";
 export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
-
-export const reportNavItems = [
-  { label: "Referral Tracking", slug: "referrals" },
-  { label: "Family Planning Target Client List", slug: "family-planning" },
-  { label: "Child Immunization (EPI) Target Client List", slug: "epi-target-client-list" },
-  { label: "Morbidity and Notifiable Diseases", slug: "morbidity" },
-  { label: "Surveillance Report", slug: "community-based-surveillance" },
-  { label: "Follow-up and Monitoring", slug: "follow-ups" },
-  { label: "Maternal and Prenatal Care Target Client List", slug: "maternal" },
-  { label: "TB Program Register", slug: "tb" },
-];
-
-export function createReportChildren(basePath) {
-  return reportNavItems.map((item) => ({
-    ...item,
-    path: `${basePath}/${item.slug}`,
-  }));
-}
 
 export const menuByRole = {
   admin: [
@@ -89,6 +72,11 @@ export const menuByRole = {
           label: "Reports",
           path: "/bhc/reports",
           icon: FileText,
+          defaultPath: "/bhc/reports",
+          children: REPORT_CATEGORIES.map((category) => ({
+            label: category.label,
+            path: `/bhc/reports?type=${category.slug}`,
+          })),
         },
       ],
     },

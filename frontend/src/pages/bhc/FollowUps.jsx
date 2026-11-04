@@ -7,7 +7,6 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
   FixedTable,
-  ModuleToolbar,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
@@ -58,6 +57,8 @@ import FollowUpWeekCalendar from "../../components/features/followups/FollowUpWe
 import FollowUpDayView from "../../components/features/followups/FollowUpDayView";
 import FollowUpMonthCalendar from "../../components/features/followups/FollowUpMonthCalendar";
 import FollowUpActionModal from "../../components/features/followups/FollowUpActionModal";
+import FollowUpToolbar from "../../components/features/followups/FollowUpToolbar";
+import "../../components/features/followups/followups.css";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
@@ -303,7 +304,6 @@ export default function FollowUps({ role = "bhc" }) {
     },
   ];
   const activeFilters = createActiveFilterChips(filters, dropdownFilters);
-  const activeFilterCount = activeFilters.length;
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -412,7 +412,7 @@ export default function FollowUps({ role = "bhc" }) {
 
   if (hasLoadError) {
     return (
-      <DashboardLayout role={role} title="Follow-ups">
+      <DashboardLayout role={role} title="Follow-ups" contentClassName="followups-page">
         <ConnectionErrorState
           fullPage
           onRetry={() => refetch()}
@@ -445,7 +445,7 @@ export default function FollowUps({ role = "bhc" }) {
   };
 
   return (
-    <DashboardLayout role={role} title="Follow-ups">
+    <DashboardLayout role={role} title="Follow-ups" contentClassName="followups-page">
       <FollowUpActionModal
         modal={modal}
         saving={savingAction}
@@ -465,26 +465,23 @@ export default function FollowUps({ role = "bhc" }) {
         message="Loading follow-ups..."
         scope="area"
       >
-        {!loading ? (
-          <ModuleToolbar
-            searchValue={filters.search}
-            onSearchChange={(value) => updateFilter("search", value)}
-            searchPlaceholder="Search by patient or record..."
-            filters={dropdownFilters}
-            activeFilterCount={activeFilterCount}
+        {!loading && (
+          <FollowUpToolbar
+            filters={filters}
+            config={dropdownFilters}
             activeFilters={activeFilters}
-            onApplyFilters={(nextFilters) =>
-              setFilters((prev) => ({ ...prev, ...nextFilters }))
-            }
-            onClearFilters={clearFilters}
-            onRemoveFilter={removeFilter}
-            filterDescription="Narrow the follow-up tracking list."
+            count={viewMode === "list" ? filteredTasks.length : filteredCalendarTasks.length}
+            calendar={viewMode !== "list"}
+            onSearch={(value) => updateFilter("search", value)}
+            onApply={(next) => setFilters((previous) => ({ ...previous, ...next }))}
+            onRemove={removeFilter}
+            onClear={clearFilters}
           />
-        ) : null}
+        )}
 
         {!loading && (
-          <div className="anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.02]">
-            <div className="flex flex-col gap-3 border-b border-[#F1F5F9] pb-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="followup-board anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.02]">
+            <div className="followup-board-header flex flex-col gap-3 border-b border-[#F1F5F9] pb-4 lg:flex-row lg:items-center lg:justify-between">
               {viewMode === "list" ? (
                 <div className="min-w-0">
                   <h2 className="text-[15px] font-bold text-[#0F172A]">
@@ -503,7 +500,7 @@ export default function FollowUps({ role = "bhc" }) {
 
               <div className="flex flex-wrap items-center gap-2">
                 {viewMode !== "list" && (
-                <div className="flex items-center gap-1 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
+                <div className="followup-date-navigation flex items-center gap-1 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
                   <button
                     type="button"
                     onClick={goToPrevious}
@@ -530,12 +527,13 @@ export default function FollowUps({ role = "bhc" }) {
                 </div>
                 )}
 
-                <div className="flex items-center gap-0.5 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
+                <div className="followup-view-switch flex items-center gap-0.5 rounded-lg border border-[#E5E7EB] bg-white p-0.5" role="group" aria-label="Follow-up view">
                   {VIEW_MODES.map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setViewMode(mode)}
+                      aria-pressed={viewMode === mode}
                       className={`h-7 rounded-md px-2.5 text-[11px] font-semibold capitalize transition-colors ${
                         viewMode === mode
                           ? "bg-red-50 text-[#B91C1C]"

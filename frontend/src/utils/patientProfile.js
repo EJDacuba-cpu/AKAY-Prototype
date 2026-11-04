@@ -119,12 +119,12 @@ export const REGISTRATION_SECTION_FIELDS = Object.freeze({
     "spouseName", "spouseOccupation",
   ],
   contact: [
-    "contactNumber", "philHealthStatus", "philHealthNumber",
+    "contactNumber", "guardianContactNumber", "philHealthStatus", "philHealthNumber",
     "streetAddress", "purokArea", "barangay", "municipality",
   ],
   family: [
     "motherName", "fatherName",
-    "guardianName", "guardianRelationship", "guardianContactNumber",
+    "guardianName", "guardianRelationship",
   ],
 });
 
