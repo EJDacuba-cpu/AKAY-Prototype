@@ -57,7 +57,19 @@ export const menuByRole = {
           path: "/bhc/follow-ups",
           icon: CalendarDays,
         },
-        { label: "Referrals", path: "/bhc/referrals", icon: ClipboardList },
+        {
+          label: "Referrals",
+          path: "/bhc/referrals",
+          icon: ClipboardList,
+          defaultPath: "/bhc/referrals",
+          children: [
+            { label: "Sent Referrals", path: "/bhc/referrals?view=sent" },
+            {
+              label: "Waiting to Submit",
+              path: "/bhc/referrals?view=waiting",
+            },
+          ],
+        },
       ],
     },
     {

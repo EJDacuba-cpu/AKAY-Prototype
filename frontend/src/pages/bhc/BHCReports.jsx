@@ -122,7 +122,8 @@ export default function BHCReports() {
                 {facilityName} · {period.label}
               </p>
             </div>
-            <div className="no-print flex flex-wrap items-center gap-2">
+            <div className="no-print flex flex-wrap items-center justify-end gap-2">
+              <BhcReportPeriodFilter applied={appliedPeriod} onApply={setAppliedPeriod} />
               <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>
                 <FileText size={14} />
                 Export PDF
@@ -133,8 +134,6 @@ export default function BHCReports() {
               </Button>
             </div>
           </header>
-
-          <BhcReportPeriodFilter applied={appliedPeriod} onApply={setAppliedPeriod} />
 
           {refreshing ? (
             <div className="no-print flex justify-end">

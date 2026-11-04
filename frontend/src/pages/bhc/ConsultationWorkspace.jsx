@@ -5250,7 +5250,7 @@ export default function ConsultationWorkspace() {
             ? [
                 {
                   label: "Open Waiting to Submit",
-                  onClick: () => navigate("/bhc/referrals?tab=waiting"),
+                  onClick: () => navigate("/bhc/referrals?view=waiting"),
                 },
               ]
             : []),

@@ -121,7 +121,7 @@ export default function WaitingReferralDetails() {
     mutationFn: () => discardReferralHold(hold.id, discardReason.trim()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.referralHolds() });
-      navigate("/bhc/referrals?tab=waiting");
+      navigate("/bhc/referrals?view=waiting");
     },
   });
 
@@ -152,7 +152,7 @@ export default function WaitingReferralDetails() {
         {!hold ? null : (
           <div className="min-w-0 space-y-3">
             <Button asChild variant="link" size="compact" className="px-0">
-              <Link to="/bhc/referrals?tab=waiting"><ArrowLeft size={15} />Back to Waiting to Submit</Link>
+              <Link to="/bhc/referrals?view=waiting"><ArrowLeft size={15} />Back to Waiting to Submit</Link>
             </Button>
             <article className="border border-[#E5E7EB] bg-white">
               <header className="border-b border-[#E5E7EB] px-4 py-4">

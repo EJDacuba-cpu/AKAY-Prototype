@@ -27,6 +27,15 @@ export { default as FilterPopover } from "./list/FilterPopover";
 export { default as CommonFilterPopover } from "./filters/FilterPopover";
 export { default as ActiveFilterChips } from "./filters/ActiveFilterChips";
 export { default as SearchField } from "./filters/SearchField";
+export { default as SearchFilterCluster } from "./filters/SearchFilterCluster";
+export { default as ListFilterChips } from "./filters/ListFilterChips";
+export {
+  default as ListFilterPopover,
+  FilterSelect as ListFilterSelect,
+  pickFilterValues,
+  isDraftDefault,
+} from "./filters/ListFilterPopover";
+export { default as FilteredEmptyPanel } from "./filters/FilteredEmptyPanel";
 export { default as SegmentedFilter } from "./filters/SegmentedFilter";
 export { default as ListToolbar } from "./list/ListToolbar";
 export { default as ModuleToolbar } from "./list/ModuleToolbar";

@@ -3,11 +3,14 @@ import { test } from "node:test";
 import {
   TAB_SENT,
   TAB_WAITING,
+  VIEW_SENT,
+  VIEW_WAITING,
   WAITING_EMPTY_DESCRIPTION,
   WAITING_EMPTY_TITLE,
   UNSENT_NOT_APPOINTMENT,
   consultationFinalizeLabel,
   discardReasonError,
+  normalizeReferralView,
   unavailableReferralGuidance,
   waitingHoldCard,
 } from "./bhcReferralWorkspace.js";
@@ -32,9 +35,18 @@ test("waiting hold cards expose the compact list fields and actions", () => {
   assert.equal(card.submitLabel, "Check Availability & Submit");
 });
 
-test("tab ids stay as Sent Referrals and Waiting to Submit", () => {
-  assert.equal(TAB_SENT, "sent");
-  assert.equal(TAB_WAITING, "waiting");
+test("view ids stay as sent and waiting", () => {
+  assert.equal(VIEW_SENT, "sent");
+  assert.equal(VIEW_WAITING, "waiting");
+  assert.equal(TAB_SENT, VIEW_SENT);
+  assert.equal(TAB_WAITING, VIEW_WAITING);
+});
+
+test("normalizeReferralView prefers view and accepts legacy tab", () => {
+  assert.equal(normalizeReferralView(""), VIEW_SENT);
+  assert.equal(normalizeReferralView("view=sent"), VIEW_SENT);
+  assert.equal(normalizeReferralView("view=waiting"), VIEW_WAITING);
+  assert.equal(normalizeReferralView("tab=waiting"), VIEW_WAITING);
 });
 
 test("empty waiting copy is explicit and not decorative", () => {

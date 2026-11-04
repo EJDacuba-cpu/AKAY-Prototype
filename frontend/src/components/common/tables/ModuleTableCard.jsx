@@ -21,23 +21,29 @@ export default function ModuleTableCard({
   pageSize = TABLE_PAGE_SIZE,
 }) {
   const shouldShowCount = showCount && count !== undefined && count !== null;
+  const showHeader = Boolean(title || subtitle || actions || refreshing || shouldShowCount);
 
   return (
     <div
       className={`anim-fade-up relative z-0 flex min-w-0 flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm shadow-black/[0.02] ${minHeight}`}
       style={stagger(delay)}
     >
+      {showHeader ? (
       <div className="flex items-center justify-between gap-4 border-b border-[#F1F5F9] px-3.5 py-3 sm:px-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-sm font-semibold text-[#0F172A]">{title}</h2>
+            {title ? (
+              <h2 className="truncate text-sm font-semibold text-[#0F172A]">{title}</h2>
+            ) : null}
             {shouldShowCount && (
               <span className="rounded-md border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-1 text-[10px] font-semibold text-[#64748B]">
                 {count}
               </span>
             )}
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-[#9CA3AF]">{subtitle}</p>
+          {subtitle ? (
+            <p className="mt-1 line-clamp-2 text-xs text-[#9CA3AF]">{subtitle}</p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {refreshing && (
@@ -46,6 +52,7 @@ export default function ModuleTableCard({
           {actions}
         </div>
       </div>
+      ) : null}
 
       <div className="border-b border-[#F8FAFC] bg-[#FCFCFD] px-3.5 py-2 text-[10px] font-medium text-[#94A3B8] sm:hidden">
         Swipe sideways to view all columns.

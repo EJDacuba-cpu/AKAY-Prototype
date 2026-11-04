@@ -460,6 +460,8 @@
   .clinical-directory .module-toolbar__row > div:last-child { width: 100%; }
   .clinical-directory .module-toolbar__row > div:last-child > * { flex: 1 1 0; }
   .clinical-directory .module-toolbar__controls > div { width: 100%; }
+  .clinical-directory .module-toolbar__controls .search-filter-cluster { width: 100%; max-width: none; }
+  .clinical-directory .module-toolbar__controls .search-filter-cluster__search { max-width: none; }
   .clinical-directory .module-toolbar__controls .clinical-search { width: 100%; }
   .clinical-directory .module-toolbar__row input { width: 100%; opacity: 1; font-size: 16px; }
 }

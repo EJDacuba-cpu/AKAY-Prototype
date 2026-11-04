@@ -1,4 +1,5 @@
 import { normalizeReportCategory } from "./bhcReporting.js";
+import { normalizeReferralView } from "./bhcReferralWorkspace.js";
 
 /** Preserve an explicitly opened menu when route navigation remounts the layout. */
 export function hasSidebarOpenIntent(location) {
@@ -11,11 +12,18 @@ export function isSidebarPathActive(path, location, role) {
   if (query) {
     if (location.pathname !== pathname) return false;
     const actual = new URLSearchParams(location.search);
-    return [...new URLSearchParams(query)].every(([key, value]) =>
-      pathname === "/bhc/reports" && key === "type"
-        ? normalizeReportCategory(actual.get(key)) === normalizeReportCategory(value)
-        : actual.get(key) === value,
-    );
+    return [...new URLSearchParams(query)].every(([key, value]) => {
+      if (pathname === "/bhc/reports" && key === "type") {
+        return (
+          normalizeReportCategory(actual.get(key)) ===
+          normalizeReportCategory(value)
+        );
+      }
+      if (pathname === "/bhc/referrals" && key === "view") {
+        return normalizeReferralView(actual) === value;
+      }
+      return actual.get(key) === value;
+    });
   }
   if (location.pathname === pathname) return true;
   if (pathname === `/${role}/dashboard`) return false;

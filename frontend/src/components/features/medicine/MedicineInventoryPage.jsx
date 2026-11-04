@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PackagePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../layout/DashboardLayout';
-import { PageStateWrapper, RefreshingIndicator, SearchField, TablePagination } from '../../common';
+import { FilteredEmptyPanel, PageStateWrapper, RefreshingIndicator, SearchField, SearchFilterCluster, TablePagination } from '../../common';
 import { Button } from '../../ui/button';
 import MedicineInventoryTable from './MedicineInventoryTable';
 import MedicineInventoryFilters from './MedicineInventoryFilters';
@@ -66,48 +66,80 @@ function MedicineInventoryWorkspace({ role }) {
                 <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Health Commodities</h1>
                 <p className="mt-1 text-[13px] text-neutral-600">{role.toUpperCase()} medicine and supply inventory.</p>
               </div>
-              <div className="flex items-center gap-2">
-                <MedicineInventoryFilters applied={filters} activeCount={activeCount} onApply={(next) => setFilters((current) => ({ ...current, ...next }))} />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <SearchFilterCluster
+                  search={
+                    <SearchField
+                      value={filters.search}
+                      onChange={(search) => setFilters((current) => ({ ...current, search }))}
+                      placeholder="Search name, category, item ID, or notes"
+                      label="Search medicines"
+                    />
+                  }
+                  filter={
+                    <MedicineInventoryFilters
+                      applied={filters}
+                      activeCount={activeCount}
+                      activeFilters={[
+                        { key: "status", fieldLabel: "Status", value: filters.status, reset: defaults.status },
+                        { key: "expiry", fieldLabel: "Expiry", value: filters.expiry, reset: defaults.expiry },
+                        { key: "category", fieldLabel: "Category", value: filters.category, reset: defaults.category },
+                      ]
+                        .filter((chip) => chip.value !== chip.reset)
+                        .map((chip) => ({
+                          key: chip.key,
+                          label: `${chip.fieldLabel}: ${chip.value}`,
+                        }))}
+                      onApply={(next) => setFilters((current) => ({ ...current, ...next }))}
+                      onRemoveFilter={(key) => setFilters((current) => ({ ...current, [key]: defaults[key] }))}
+                      onClearAll={() => setFilters((current) => ({ ...defaults, search: current.search }))}
+                    />
+                  }
+                />
                 <Button variant="brand" size="sm" disabled={!canManage} title={!canManage ? "Inventory management permission required" : undefined} onClick={() => setDialog({ mode: "add" })}>
                   <PackagePlus size={14} />Add Medicine
                 </Button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">{filtered.length} of {items.length} items</p>
-                {query.isFetching && items.length > 0 && <RefreshingIndicator label="Updating inventory…" />}
-              </div>
-              <div className="w-full sm:max-w-xs">
-                <SearchField value={filters.search} onChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search name, category, item ID, or notes" label="Search medicines" />
-              </div>
-            </div>
-            {(activeCount > 0 || filters.search) && (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
-                {["category", "status", "expiry"].filter((key) => filters[key] !== defaults[key]).map((key) => (
-                  <span key={key} className="rounded-full border border-neutral-200 bg-white px-2.5 py-1">{filters[key]}</span>
-                ))}
-                <Button variant="ghost" size="compact" className="rounded-full" onClick={() => setFilters(defaults)}>Clear Filters</Button>
-              </div>
-            )}
             {query.isError && items.length > 0 && <p role="status" className="text-sm text-warning-700">Unable to refresh inventory. The last loaded values are shown.</p>}
-            <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px` }}>
-              <div className="medicine-inventory-body">
-                <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
-              </div>
-              <div className="medicine-inventory-pagination">
-                {totalPages === 1 ? (
-                  <nav aria-label="Inventory pagination" className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3">
-                    <span className="text-xs text-neutral-600">Page <span className="font-semibold text-ink-800">1</span> of 1</span>
-                    <div className="flex items-center gap-1.5">
-                      <Button variant="secondary" size="compact" disabled>Previous</Button>
-                      <Button variant="secondary" size="compact" aria-current="page">1</Button>
-                      <Button variant="secondary" size="compact" disabled>Next</Button>
+            {(() => {
+              const narrowed = Boolean(filters.search.trim()) || activeCount > 0;
+              if (narrowed && filtered.length === 0) {
+                return (
+                  <FilteredEmptyPanel
+                    title="No medicines match"
+                    description="Try a different search, or clear filters to see the full inventory again."
+                    onClear={() => setFilters(defaults)}
+                    clearLabel="Clear search and filters"
+                  />
+                );
+              }
+              return (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">{filtered.length} of {items.length} items</p>
+                    {query.isFetching && items.length > 0 && <RefreshingIndicator label="Updating inventory…" />}
+                  </div>
+                  <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px` }}>
+                    <div className="medicine-inventory-body">
+                      <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
                     </div>
-                  </nav>
-                ) : <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
-              </div>
-            </div>
+                    <div className="medicine-inventory-pagination">
+                      {totalPages === 1 ? (
+                        <nav aria-label="Inventory pagination" className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3">
+                          <span className="text-xs text-neutral-600">Page <span className="font-semibold text-ink-800">1</span> of 1</span>
+                          <div className="flex items-center gap-1.5">
+                            <Button variant="secondary" size="compact" disabled>Previous</Button>
+                            <Button variant="secondary" size="compact" aria-current="page">1</Button>
+                            <Button variant="secondary" size="compact" disabled>Next</Button>
+                          </div>
+                        </nav>
+                      ) : <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </PageStateWrapper>
       )}

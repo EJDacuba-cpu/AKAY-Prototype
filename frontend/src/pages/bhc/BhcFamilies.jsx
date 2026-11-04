@@ -97,8 +97,8 @@ function Directory({scope,role}) {
       <div className="clinical-directory__layout">
         <div className="clinical-directory__main">
           <ModuleToolbar variant="clinical" heading={heading} searchValue={draft} onSearchChange={setDraft} searchPlaceholder="Search FSN, household head or address" showFilters={false}
-            primaryActionTo={isDesktop && canManage ? addPath : undefined} primaryActionLabel={isDesktop && canManage ? 'Add Family' : undefined} primaryActionIcon={<Plus size={14} strokeWidth={2.5}/>}
-            actions={hasFilterChoices && <FamilyDirectoryFilter applied={filters} options={options} onApply={setFilters}/>}/>
+            filterControl={hasFilterChoices ? <FamilyDirectoryFilter applied={filters} options={options} onApply={setFilters}/> : null}
+            primaryActionTo={isDesktop && canManage ? addPath : undefined} primaryActionLabel={isDesktop && canManage ? 'Add Family' : undefined} primaryActionIcon={<Plus size={14} strokeWidth={2.5}/>}/>
           <div className="clinical-directory__results akay-scrollbar relative min-w-0">
             {!query.isPending && !query.error && (chips.length > 0 || (query.isFetching && !query.isFetchingNextPage)) && <div className="mb-3 flex min-h-7 flex-wrap items-center gap-2">
               {chips.map(chip=><span key={chip.key} className="inline-flex h-7 items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 pl-3 pr-1 text-xs text-ink-800">{chip.label}<button type="button" aria-label={`Remove filter ${chip.label}`} onClick={()=>setFilters(previous=>({...previous,[chip.key]:''}))} className="flex h-5 w-5 items-center justify-center rounded-full text-neutral-500 outline-none hover:bg-neutral-200 hover:text-ink-800 focus-visible:ring-2 focus-visible:ring-ink-400/50"><X size={12} aria-hidden="true"/></button></span>)}

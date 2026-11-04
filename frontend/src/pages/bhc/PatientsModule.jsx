@@ -137,20 +137,20 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const activeFilters = [
     filters.barangay !== "All Barangays" && {
       key: "barangay",
-      label: filters.barangay,
+      label: `Barangay: ${filters.barangay}`,
     },
-    filters.sex !== "All" && { key: "sex", label: filters.sex },
+    filters.sex !== "All" && { key: "sex", label: `Sex: ${filters.sex}` },
     filters.ageGroup !== "All Age Groups" && {
       key: "ageGroup",
-      label: filters.ageGroup,
+      label: `Age Group: ${filters.ageGroup}`,
     },
     filters.civilStatus !== "All Civil Status" && {
       key: "civilStatus",
-      label: filters.civilStatus,
+      label: `Civil Status: ${filters.civilStatus}`,
     },
     filters.dateRegistered && {
       key: "dateRegistered",
-      label: filters.dateRegistered,
+      label: `Date Registered: ${filters.dateRegistered}`,
     },
   ].filter(Boolean);
 

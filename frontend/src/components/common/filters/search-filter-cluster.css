@@ -1,0 +1,26 @@
+/* Nested search + Filter share one pill; strip their own borders. */
+.search-filter-cluster .search-filter-cluster__search input {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 999px !important;
+  height: 2rem;
+}
+
+.search-filter-cluster .search-filter-cluster__search .clinical-search {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  height: 2rem;
+  min-height: 2rem;
+  padding-inline: 0.25rem;
+}
+
+.search-filter-cluster .search-filter-cluster__filter [data-slot="button"] {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.search-filter-cluster .search-filter-cluster__filter [data-slot="button"]:hover {
+  background: var(--color-surface-2, #f8f9fb) !important;
+}
