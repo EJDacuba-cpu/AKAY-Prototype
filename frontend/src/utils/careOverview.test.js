@@ -43,6 +43,17 @@ test("a follow-up's conditions carry condition_key and started_at", () => {
     pendingFollowUps: [],
     monitoringWithoutFollowUp: [],
     monitoringRecommendations: [],
+    nutritionCare: {
+      status: "Not Enrolled",
+      enrolled: false,
+      enrolledOn: null,
+      latestWeightKg: null,
+      latestHeightCm: null,
+      latestBmi: null,
+      latestBmiCategory: null,
+      measurementHistory: [],
+      closures: [],
+    },
   });
 });
 
@@ -107,4 +118,52 @@ test("a payload without the new fields still maps (older server)", () => {
   assert.deepEqual(overview.monitoringRecommendations, []);
   assert.equal(overview.monitoringWithoutFollowUp[0].conditionStatus, null);
   assert.equal(overview.monitoringWithoutFollowUp[0].legacy, false);
+  assert.equal(overview.nutritionCare.status, "Not Enrolled");
+  assert.deepEqual(overview.nutritionCare.measurementHistory, []);
+});
+
+test("nutrition_care maps onto nutritionCare", () => {
+  const overview = mapCareOverview({
+    nutrition_care: {
+      status: "Active",
+      enrolled: true,
+      enrolled_on: "2026-10-01",
+      latest_weight_kg: 70,
+      latest_height_cm: 170,
+      latest_bmi: 24.2,
+      latest_bmi_category: "Normal",
+      measurement_history: [
+        { health_record_id: 9, date_recorded: "2026-10-01", weight_kg: 70, height_cm: 170, bmi: 24.2 },
+        { health_record_id: 9, date_recorded: "2026-10-01", weight_kg: 99, height_cm: 170, bmi: 30 },
+      ],
+      closures: [{
+        id: 4,
+        reason: "goals_met",
+        closed_on: "2026-10-20",
+        note: "Done",
+        closed_by_name: "Ana",
+        started_health_record_id: 9,
+        enrolled_on: "2026-10-01",
+      }],
+    },
+  });
+  assert.equal(overview.nutritionCare.status, "Active");
+  assert.equal(overview.nutritionCare.enrolled, true);
+  assert.equal(overview.nutritionCare.enrolledOn, "2026-10-01");
+  assert.equal(overview.nutritionCare.latestWeightKg, 70);
+  assert.equal(overview.nutritionCare.latestHeightCm, 170);
+  assert.equal(overview.nutritionCare.latestBmi, 24.2);
+  assert.equal(overview.nutritionCare.latestBmiCategory, "Normal");
+  assert.deepEqual(overview.nutritionCare.measurementHistory, [
+    { healthRecordId: 9, dateRecorded: "2026-10-01", weightKg: 70, heightCm: 170, bmi: 24.2 },
+  ]);
+  assert.deepEqual(overview.nutritionCare.closures, [{
+    id: 4,
+    reason: "goals_met",
+    closedOn: "2026-10-20",
+    note: "Done",
+    closedByName: "Ana",
+    startedHealthRecordId: 9,
+    enrolledOn: "2026-10-01",
+  }]);
 });

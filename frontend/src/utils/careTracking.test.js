@@ -252,9 +252,16 @@ test("EPI reads Completely Immunized when the schedule completes after the FIC a
 // Visibility
 // ---------------------------------------------------------------------------
 
-test("a program with no history and no eligibility is left out entirely", () => {
+test("a program with no history and no eligibility is left out, except Nutrition Care", () => {
   const entries = getCareTracking({ sex: "Male", birthdate: "1980-01-01" }, [], new Date("2026-09-01"));
-  assert.deepEqual(entries, []);
+  assert.deepEqual(entries.map((item) => item.key), ["nutrition"]);
+  assert.equal(entries[0].status, "Not Enrolled");
+  assert.equal(entries[0].statusTone, "neutral");
+  assert.equal(entries[0].label, "Nutrition Care");
+  assert.equal(entries[0].action, null);
+  assert.deepEqual(entries[0].records, []);
+  assert.deepEqual(entries[0].measurementHistory, []);
+  assert.equal(entries[0].nextVisit, "");
 });
 
 test("TB is absent without history even for an otherwise-eligible patient", () => {
@@ -328,4 +335,82 @@ test("stopped monitoring and resolved conditions keep history without looking ac
 test("EPI shows Not started for an eligible child with no records", () => {
   const epi = entry(getCareTracking(child("2025-01-01"), [], new Date("2026-01-01")), "epi");
   assert.equal(epi.status, "Not started");
+});
+
+test("nutrition care derives Active facts from episode measurements and withholds a child's BMI category", () => {
+  const records = [
+    { id: 1, dateOfVisit: "2026-09-01", weight: "80", height: "170" },
+    {
+      id: 2,
+      dateOfVisit: "2026-10-01",
+      selectedPrograms: ["Nutrition"],
+      vitalSigns: { weight: "18", height: "110" },
+    },
+    { id: 3, dateOfVisit: "2026-10-05", category: "General Consultation", weight: "19", height: "110" },
+    { id: 3, dateOfVisit: "2026-10-05", weight: "40", height: "110" },
+  ];
+  const nutrition = entry(getCareTracking(child("2020-01-01"), records, new Date("2026-06-01")), "nutrition");
+  assert.equal(nutrition.status, "Active");
+  assert.equal(nutrition.statusTone, "success");
+  assert.equal(nutrition.lastVisit, "2026-10-05");
+  assert.equal(nutrition.nextVisit, "");
+  assert.deepEqual(nutrition.flags, []);
+  assert.deepEqual(nutrition.action, { type: "close-nutrition-care", label: "Close Nutrition Care" });
+  assert.deepEqual(nutrition.records.map((record) => record.id), [2]);
+  assert.deepEqual(nutrition.measurementHistory.map((row) => row.healthRecordId), [2, 3]);
+  assert.equal(nutrition.measurementHistory[0].bmiCategory, "");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Enrollment Date").value, "2026-10-01");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Latest Weight").value, "19 kg");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Latest Height/Length").value, "110 cm");
+  const bmi = nutrition.facts.find((fact) => fact.label === "Latest BMI").value;
+  assert.match(bmi, /^15\.7$/);
+  assert.doesNotMatch(bmi, /Underweight|Normal|Overweight|Obese/);
+});
+
+test("nutrition care prefers the API summary for status, facts, and history", () => {
+  const records = [
+    { id: 2, dateOfVisit: "2026-10-01", selectedPrograms: ["Nutrition"], weight: "50", height: "150" },
+    { id: 3, dateOfVisit: "2026-10-08", weight: "55", height: "150" },
+  ];
+  const nutrition = entry(getCareTracking({ birthdate: "1990-01-15" }, records, new Date("2026-11-05"), {
+    nutritionCare: {
+      status: "Active",
+      enrolled: true,
+      enrolled_on: "2026-10-01",
+      latest_weight_kg: 70,
+      latest_height_cm: 170,
+      latest_bmi: 70 / (1.7 ** 2),
+      latest_bmi_category: "Normal",
+      measurement_history: [
+        { health_record_id: 5, date_recorded: "2026-10-01", weight_kg: 70, height_cm: 170, bmi: 24.2 },
+      ],
+    },
+  }), "nutrition");
+  assert.equal(nutrition.status, "Active");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Latest Weight").value, "70 kg");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Latest Height/Length").value, "170 cm");
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Latest BMI").value, "24.2 Normal");
+  assert.deepEqual(nutrition.measurementHistory.map((row) => row.healthRecordId), [5]);
+  assert.equal(nutrition.lastVisit, "2026-10-01");
+});
+
+test("a closed nutrition episode keeps its enrollment date and drops the close action", () => {
+  const records = [
+    { id: 1, dateOfVisit: "2026-10-01", createdAt: "2026-10-01T09:00:00+08:00", selectedPrograms: ["Nutrition"], weight: "70", height: "170" },
+  ];
+  const nutrition = entry(getCareTracking({ birthdate: "1990-01-15" }, records, new Date("2026-11-05"), {
+    nutritionCare: {
+      closures: [{
+        startedHealthRecordId: 1,
+        closedOn: "2026-10-10",
+        createdAt: "2026-10-10T12:00:00+08:00",
+        enrolledOn: "2026-10-01",
+      }],
+    },
+  }), "nutrition");
+  assert.equal(nutrition.status, "Closed");
+  assert.equal(nutrition.statusTone, "neutral");
+  assert.equal(nutrition.action, null);
+  assert.equal(nutrition.facts.find((fact) => fact.label === "Enrollment Date").value, "2026-10-01");
+  assert.match(nutrition.facts.find((fact) => fact.label === "Latest BMI").value, /Normal/);
 });
