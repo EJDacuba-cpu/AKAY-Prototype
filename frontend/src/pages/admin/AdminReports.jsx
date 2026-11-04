@@ -605,10 +605,10 @@ function MhoReportHeader() {
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
               Municipal Health Officer Report
             </p>
-            <h1 className="mt-1 text-xl font-black tracking-tight text-[#0F172A] sm:text-2xl">
+            <h1 className="mt-1 text-[17px] font-bold tracking-tight text-ink-800">
               Municipal Referral Report
             </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#64748B]">
+            <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
               MHO monitoring for all 14 barangays and BHCs, with receiving and
               processing visibility for {MAIN_RHU_NAME}.
             </p>

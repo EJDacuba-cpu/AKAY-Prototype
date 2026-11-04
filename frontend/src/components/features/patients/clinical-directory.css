@@ -42,15 +42,15 @@
 .clinical-directory__title {
   color: var(--clinical-ink);
   font-family: var(--font-sans);
-  font-size: 22px;
-  font-weight: 650;
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.025em;
 }
 .clinical-directory__count {
   margin-top: 4px;
   color: var(--clinical-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .clinical-directory .module-toolbar__row { flex-wrap: wrap; }

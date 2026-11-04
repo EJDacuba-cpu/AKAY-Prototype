@@ -92,8 +92,8 @@ export default function RhuPatientsWorkspace() {
       <div className="flex h-full min-h-0 flex-col gap-4">
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-[24px] font-bold leading-tight text-neutral-900">Patients</h1>
-            <p className="mt-0.5 text-[13px] text-neutral-600">
+            <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Patients</h1>
+            <p className="mt-1 text-[13px] text-neutral-600">
               Visits checked in today, and every patient record at this RHU.
             </p>
           </div>

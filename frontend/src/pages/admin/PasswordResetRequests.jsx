@@ -72,7 +72,7 @@ export default function PasswordResetRequests() {
     <DashboardLayout role="admin" title="Password & Invites">
       <div className="mx-auto w-full max-w-[1500px]">
         <div className="mb-4 min-w-0">
-          <h2 className="text-xl font-bold tracking-tight text-neutral-900">{activeInfo.label}</h2>
+          <h2 className="text-[17px] font-bold tracking-tight text-ink-800">{activeInfo.label}</h2>
           <p className="mt-1 max-w-xl text-[13px] text-neutral-600">{activeInfo.description}</p>
         </div>
 

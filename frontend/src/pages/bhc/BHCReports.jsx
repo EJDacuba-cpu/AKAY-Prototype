@@ -117,8 +117,8 @@ export default function BHCReports() {
         <div className="flex flex-col gap-5">
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-neutral-900">{category === "all" ? "Reports & Analytics" : report.categoryLabel}</h1>
-              <p className="mt-1 text-sm text-neutral-500">
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{category === "all" ? "Reports & Analytics" : report.categoryLabel}</h1>
+              <p className="mt-1 text-[13px] text-neutral-600">
                 {facilityName} · {period.label}
               </p>
             </div>

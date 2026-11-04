@@ -366,10 +366,10 @@ export default function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 px-1 py-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-base font-bold text-[#0F172A]">
+          <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
             Notification Inbox
           </h1>
-          <p className="mt-0.5 text-xs text-[#64748B]">
+          <p className="mt-1 text-[13px] text-neutral-600">
             Manage clinical reminders, referrals, inventory alerts, and system
             updates.
           </p>

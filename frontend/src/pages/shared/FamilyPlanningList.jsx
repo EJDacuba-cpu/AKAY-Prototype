@@ -319,10 +319,10 @@ export function FamilyPlanningReportSection({
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-bold text-[#0F172A]">
+        <h2 className="text-[17px] font-bold tracking-tight text-ink-800">
           Family Planning Reports
         </h2>
-        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-[#64748B]">
+        <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
           Target Client List and summaries generated from saved Family Planning
           health records.
         </p>

@@ -249,10 +249,20 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         {/* The toolbar spans the workspace; opening Details only resizes the area below. */}
         {!showInitialLoading && (
           <ModuleToolbar
-            variant="clinical"
             heading={
               <div className="clinical-directory__heading min-w-0">
-                {!embedded && <h1 className="clinical-directory__title">Patients</h1>}
+                {!embedded && (
+                  <>
+                    <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                      Patients
+                    </h1>
+                    <p className="mt-1 text-[13px] text-neutral-600">
+                      {showHandoffs
+                        ? "RHU monitoring handoffs waiting for BHC follow-up."
+                        : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
+                    </p>
+                  </>
+                )}
                 {role === "bhc" && (
                   <div className="mt-2">
                     <SegmentedFilter
@@ -266,7 +276,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     />
                   </div>
                 )}
-                <p className="clinical-directory__count">
+                <p className="sr-only" role="status">
                   {showHandoffs
                     ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
                     : patientCountLabel}

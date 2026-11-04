@@ -1,42 +1,7 @@
 import { Link } from "react-router";
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { SquareArrowOutUpRight } from "lucide-react";
 import { addressText, patientName } from "../../../services/familyRegistry";
-import { Button } from "../../ui/button";
 import { tableBodyHeight } from "../../../utils/tablePaging";
-
-// A header that sorts on the server, so the order holds across every page of households.
-function SortHeader({ column, label, sort, onSort, className = "" }) {
-  const active = sort.key === column;
-  const Icon = !active
-    ? ChevronsUpDown
-    : sort.direction === "asc"
-      ? ChevronUp
-      : ChevronDown;
-  return (
-    <th
-      scope="col"
-      aria-sort={
-        active
-          ? sort.direction === "asc"
-            ? "ascending"
-            : "descending"
-          : "none"
-      }
-      className={className}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`-mx-1 inline-flex items-center gap-1 rounded-full px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide outline-none transition-colors hover:text-ink-800 focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
-          active ? "text-ink-800" : "text-neutral-600"
-        }`}
-      >
-        {label}
-        <Icon size={12} aria-hidden="true" />
-      </button>
-    </th>
-  );
-}
 
 // One ledger row per household; fixed commodities viewport with internal scroll
 // so "Show more" batches do not grow the card height.
@@ -45,8 +10,6 @@ export default function FamilyDirectoryTable({
   base,
   footer,
   dimmed = false,
-  sort,
-  onSort,
 }) {
   return (
     <div
@@ -61,36 +24,20 @@ export default function FamilyDirectoryTable({
         <table className="w-full min-w-[720px] table-fixed border-separate border-spacing-0 text-left">
           <thead className="sticky top-0 z-10 h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
             <tr>
-              <SortHeader
-                column="household"
-                label="Household"
-                sort={sort}
-                onSort={onSort}
-                className="px-4"
-              />
-              <SortHeader
-                column="fsn"
-                label="FSN"
-                sort={sort}
-                onSort={onSort}
-                className="hidden px-3 sm:table-cell"
-              />
-              <SortHeader
-                column="address"
-                label="Address"
-                sort={sort}
-                onSort={onSort}
-                className="hidden px-3 md:table-cell"
-              />
-              <SortHeader
-                column="members"
-                label="Members"
-                sort={sort}
-                onSort={onSort}
-                className="px-3 text-right"
-              />
+              <th scope="col" className="px-4">
+                Household
+              </th>
+              <th scope="col" className="hidden px-3 sm:table-cell">
+                FSN
+              </th>
+              <th scope="col" className="hidden px-3 md:table-cell">
+                Address
+              </th>
+              <th scope="col" className="px-3 text-right">
+                Members
+              </th>
               <th scope="col" className="px-2 text-right">
-                <span className="sr-only">Open</span>
+                Actions
               </th>
             </tr>
           </thead>
@@ -137,17 +84,14 @@ export default function FamilyDirectoryTable({
                     {item.members.length}
                   </td>
                   <td className="px-2 text-right">
-                    <Button
-                      asChild
-                      variant="secondary"
-                      size="compact"
-                      className="h-8 w-8 gap-1 px-0 sm:w-auto sm:px-3"
+                    <Link
+                      to={to}
+                      aria-label={`View ${name}`}
+                      className="inline-flex items-center gap-1 rounded-sm text-[13px] font-medium text-ink-800 outline-none underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ink-400/50"
                     >
-                      <Link to={to} aria-label={`Open ${name}`}>
-                        <span className="hidden sm:inline">Open</span>
-                        <ChevronRight size={14} aria-hidden="true" />
-                      </Link>
-                    </Button>
+                      View
+                      <SquareArrowOutUpRight size={13} strokeWidth={2.25} aria-hidden="true" />
+                    </Link>
                   </td>
                 </tr>
               );
