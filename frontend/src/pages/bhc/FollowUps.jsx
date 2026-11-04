@@ -7,6 +7,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
   DataTableEmptyState,
+  FixedTable,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
@@ -44,8 +45,7 @@ import {
   addDays,
   addMonths,
   addWeeks,
-  formatMonthLabel,
-  formatWeekRangeLabel,
+  formatCalendarBoardHeading,
   getMonthGridDays,
   getTasksForDay,
   getWeekDays,
@@ -431,16 +431,14 @@ export default function FollowUps({ role = "bhc" }) {
     );
   }
 
-  const headerLabel =
-    viewMode === "day"
-      ? currentDate.toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })
-      : viewMode === "month"
-        ? formatMonthLabel(currentDate)
-        : formatWeekRangeLabel(weekStart, weekDays[6]);
+  const calendarHeading = formatCalendarBoardHeading(
+    viewMode,
+    currentDate,
+    weekStart,
+    weekDays[6],
+  );
+  const boardCount =
+    viewMode === "list" ? filteredTasks.length : filteredCalendarTasks.length;
   // One handler set for the List menu and every Calendar event, so all four
   // views drive the same record / reschedule / cancel flows.
   const taskHandlers = {
@@ -478,7 +476,6 @@ export default function FollowUps({ role = "bhc" }) {
             filters={filters}
             config={dropdownFilters}
             activeFilters={activeFilters}
-            count={viewMode === "list" ? filteredTasks.length : filteredCalendarTasks.length}
             calendar={boardMode === "calendar"}
             calendarSpan={calendarSpan}
             onSearch={(value) => updateFilter("search", value)}
@@ -489,64 +486,72 @@ export default function FollowUps({ role = "bhc" }) {
         )}
 
         {!loading && (
-          <div className="followup-board anim-fade-up rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm shadow-black/[0.02]">
-            <div className="followup-board-header flex flex-col gap-3 border-b border-[#F1F5F9] pb-4 lg:flex-row lg:items-center lg:justify-between">
-              {viewMode === "list" ? (
-                <div className="min-w-0">
-                  <h2 className="text-[15px] font-bold text-[#0F172A]">
+          <div className="followup-board anim-fade-up rounded-xl border border-[#E5E7EB] bg-white shadow-sm shadow-black/[0.02]">
+            <div className="followup-board-header">
+              <div className="followup-board-heading min-w-0 flex-1">
+                {viewMode === "list" ? (
+                  <h2 className="truncate text-[15px] font-semibold text-[#0F172A]">
                     Scheduled Return Visits
                   </h2>
-                  <p className="mt-0.5 text-[12px] text-[#64748B]">
-                    Scheduled follow-up visits due for this patient list. Use
-                    the menu to record or reschedule a visit.
-                  </p>
-                </div>
-              ) : (
-                <h2 className="text-[15px] font-bold text-[#0F172A]">
-                  {headerLabel}
-                </h2>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2">
-                {viewMode !== "list" && (
-                <div className="followup-date-navigation flex items-center gap-1 rounded-lg border border-[#E5E7EB] bg-white p-0.5">
-                  <button
-                    type="button"
-                    onClick={goToPrevious}
-                    aria-label="Previous"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={goToToday}
-                    className="h-7 rounded-md px-2 text-[11px] font-semibold text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={goToNext}
-                    aria-label="Next"
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
-                  >
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
+                ) : (
+                  <h2 className="fu-cal-title min-w-0 text-[15px] font-semibold text-[#0F172A]">
+                    <span className="fu-cal-primary block truncate">
+                      {calendarHeading.primary}
+                    </span>
+                  </h2>
                 )}
+                <p
+                  aria-live="polite"
+                  className="followup-board-count mt-1 text-xs tabular-nums text-neutral-600"
+                >
+                  {boardCount} follow-up{boardCount === 1 ? "" : "s"}
+                </p>
+              </div>
 
-                <div className="followup-view-switch flex items-center gap-0.5 rounded-lg border border-[#E5E7EB] bg-white p-0.5" role="group" aria-label="Follow-up view">
+              <div className="fu-header-controls flex shrink-0 flex-nowrap items-center gap-2">
+                {viewMode !== "list" ? (
+                  <div className="followup-date-navigation flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white p-0.5">
+                    <button
+                      type="button"
+                      onClick={goToPrevious}
+                      aria-label="Previous"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToToday}
+                      className="h-7 rounded-full px-2.5 text-[11px] font-semibold text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToNext}
+                      aria-label="Next"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#B91C1C]"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                ) : null}
+
+                <div
+                  className="followup-view-switch flex items-center gap-0.5 rounded-full bg-neutral-100 p-1"
+                  role="group"
+                  aria-label="Follow-up view"
+                >
                   {BOARD_MODES.map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setBoardMode(mode)}
                       aria-pressed={boardMode === mode}
-                      className={`h-7 rounded-md px-2.5 text-[11px] font-semibold capitalize transition-colors ${
+                      className={`h-8 rounded-full px-3 text-[12px] font-medium capitalize transition-colors ${
                         boardMode === mode
-                          ? "bg-red-50 text-[#B91C1C]"
-                          : "text-[#64748B] hover:bg-[#F8FAFC]"
+                          ? "bg-white text-ink-800 shadow-sm"
+                          : "text-neutral-600 hover:text-ink-800"
                       }`}
                     >
                       {mode}
@@ -556,7 +561,7 @@ export default function FollowUps({ role = "bhc" }) {
               </div>
             </div>
 
-            <div className="pt-4">
+            <div className="followup-board-body">
               {viewMode === "list" && (
                 <FollowUpList
                   tasks={filteredTasks}
@@ -567,7 +572,6 @@ export default function FollowUps({ role = "bhc" }) {
                     Boolean(filters.search.trim()) || activeFilters.length > 0
                   }
                   onClearFilters={clearFilters}
-                  resultCount={filteredTasks.length}
                 />
               )}
               {viewMode === "week" && (
@@ -577,7 +581,6 @@ export default function FollowUps({ role = "bhc" }) {
                   {...taskHandlers}
                 />
               )}
-
               {viewMode === "day" && (
                 <FollowUpDayView
                   date={currentDate}
@@ -585,7 +588,6 @@ export default function FollowUps({ role = "bhc" }) {
                   {...taskHandlers}
                 />
               )}
-
               {viewMode === "month" && (
                 <FollowUpMonthCalendar
                   monthDate={currentDate}
@@ -609,132 +611,127 @@ function FollowUpList({
   basePath = "/bhc",
   narrowed = false,
   onClearFilters,
-  resultCount = 0,
 }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(tasks, resetKey);
+  const empty = tasks.length === 0;
+
+  const tableBody = (
+    <>
+      <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+        <tr>
+          <th className="px-4">Patient</th>
+          <th className="px-3">Follow-up</th>
+          <th className="px-3">Status</th>
+          <th className="px-2 text-right">
+            <span className="sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-neutral-100">
+        {!empty ? (
+          pageRows.map((task) => {
+            const patientName = formatDisplayValue(
+              task.patientName,
+              "Unnamed Patient",
+            );
+            const timeLabel = formatTimeLabel(task.dueTime);
+            const service = getTaskServiceTypeLabel(task);
+            const followUpId = formatFollowUpId(task);
+            const actions = buildTaskActions(task, {
+              onRecordVisit: () => handlers.onRecordVisit(task),
+              onReschedule: () => handlers.onReschedule(task),
+              onCancel: () => handlers.onCancel(task),
+              onViewRecord: () => handlers.onViewRecord(task),
+              basePath,
+            });
+
+            return (
+              <tr
+                key={task.id}
+                className="h-14 transition-colors hover:bg-neutral-50"
+              >
+                <td className="px-4">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink-800">
+                      {patientName}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                      {service}
+                      {task.healthRecordId ? (
+                        <>
+                          {" · "}
+                          <Link
+                            to={`${basePath}/health-records/${task.healthRecordId}`}
+                            className="font-medium text-brand-700 underline-offset-4 hover:underline"
+                          >
+                            Record #{task.healthRecordId}
+                          </Link>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                </td>
+                <td className="px-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink-800">
+                      {formatDate(task.dueDate)}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                      {followUpId}
+                      {timeLabel ? ` · ${timeLabel}` : ""}
+                    </p>
+                  </div>
+                </td>
+                <td className="px-3">
+                  <StateBadge state={task.effectiveState} appearance="plain" />
+                </td>
+                <td className="px-2 text-right">
+                  {actions.length > 0 ? (
+                    <ActionMenu
+                      title={patientName}
+                      subtitle={followUpId}
+                      actions={actions}
+                    />
+                  ) : (
+                    <span className="text-neutral-400">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })
+        ) : (
+          <DataTableEmptyState
+            colSpan={4}
+            title={narrowed ? "No follow-ups match" : "No follow-ups yet."}
+            description={
+              narrowed
+                ? "Try a different search, or clear filters to see the full list again."
+                : "Scheduled return visits will appear here."
+            }
+            action={
+              narrowed ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onClearFilters}
+                >
+                  Clear search and filters
+                </Button>
+              ) : null
+            }
+          />
+        )}
+      </tbody>
+    </>
+  );
 
   return (
-    <div>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
-          {resultCount} follow-up{resultCount === 1 ? "" : "s"}
-        </p>
-      </div>
-      <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-        <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-              <th className="whitespace-nowrap px-4 py-3">Patient</th>
-              <th className="whitespace-nowrap px-4 py-3">Follow-up</th>
-              <th className="whitespace-nowrap px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {tasks.length > 0 ? (
-              pageRows.map((task) => {
-                const patientName = formatDisplayValue(
-                  task.patientName,
-                  "Unnamed Patient",
-                );
-                const timeLabel = formatTimeLabel(task.dueTime);
-                const service = getTaskServiceTypeLabel(task);
-                const followUpId = formatFollowUpId(task);
-                const actions = buildTaskActions(task, {
-                  onRecordVisit: () => handlers.onRecordVisit(task),
-                  onReschedule: () => handlers.onReschedule(task),
-                  onCancel: () => handlers.onCancel(task),
-                  onViewRecord: () => handlers.onViewRecord(task),
-                  basePath,
-                });
-
-                return (
-                  <tr
-                    key={task.id}
-                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                  >
-                    <td className="px-4 py-3 align-middle">
-                      <div className="min-w-0 py-0.5">
-                        <p className="truncate text-[13px] font-semibold text-[#111827]">
-                          {patientName}
-                        </p>
-                        <p className="mt-1 truncate text-[11px] leading-snug text-[#6B7280]">
-                          {service}
-                          {task.healthRecordId ? (
-                            <>
-                              <span className="text-[#D0D5DD]"> · </span>
-                              <Link
-                                to={`${basePath}/health-records/${task.healthRecordId}`}
-                                className="font-medium text-[#B91C1C] hover:underline"
-                              >
-                                Record #{task.healthRecordId}
-                              </Link>
-                            </>
-                          ) : null}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <div className="min-w-0 py-0.5">
-                        <p className="text-[13px] font-medium text-[#111827]">
-                          {formatDate(task.dueDate)}
-                        </p>
-                        <p className="mt-1 text-[11px] leading-snug text-[#9CA3AF]">
-                          {followUpId}
-                          {timeLabel ? ` · ${timeLabel}` : ""}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <StateBadge state={task.effectiveState} />
-                    </td>
-                    <td className="px-4 py-3 align-middle text-right">
-                      <div className="inline-flex items-center justify-end">
-                        {actions.length > 0 ? (
-                          <ActionMenu
-                            title={patientName}
-                            subtitle={followUpId}
-                            actions={actions}
-                          />
-                        ) : (
-                          <span className="text-[#94A3B8]">—</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              <DataTableEmptyState
-                colSpan={4}
-                title={
-                  narrowed
-                    ? "No follow-ups match"
-                    : "No follow-ups yet."
-                }
-                description={
-                  narrowed
-                    ? "Try a different search, or clear filters to see the full list again."
-                    : "Scheduled return visits will appear here."
-                }
-                action={
-                  narrowed ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={onClearFilters}
-                    >
-                      Clear search and filters
-                    </Button>
-                  ) : null
-                }
-              />
-            )}
-          </tbody>
-        </table>
-      </div>
-      {tasks.length > 0 ? (
+    <div className="followup-list-sheet">
+      <FixedTable minWidth="min-w-[640px]">
+        {tableBody}
+      </FixedTable>
+      {!empty ? (
         <TablePagination
           currentPage={page}
           totalPages={totalPages}

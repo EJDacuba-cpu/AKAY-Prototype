@@ -45,6 +45,7 @@ export { default as Select } from "./atoms/Select";
 export { default as SideCard } from "./cards/SideCard";
 export { default as ReferralIndicatorBadge } from "./badges/ReferralIndicatorBadge";
 export { default as StatusBadge } from "./badges/StatusBadge";
+export { default as PlainStatusStamp } from "./badges/PlainStatusStamp";
 export { default as SuccessModal } from "./modals/SuccessModal";
 export { default as ConnectionIssueModal } from "./modals/ConnectionIssueModal";
 export { default as ConnectionStatusBanner } from "./network/ConnectionStatusBanner";

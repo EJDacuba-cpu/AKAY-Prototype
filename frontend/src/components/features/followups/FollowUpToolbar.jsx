@@ -45,7 +45,6 @@ export default function FollowUpToolbar({
   filters,
   config,
   activeFilters,
-  count,
   calendar,
   calendarSpan = "week",
   onSearch,
@@ -61,7 +60,7 @@ export default function FollowUpToolbar({
   return (
     <div className="followup-modern-toolbar">
       <div className="followup-heading">
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink-900">
+        <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
           Follow-ups
         </h1>
         <p className="mt-1 text-[13px] text-neutral-600">
@@ -113,13 +112,6 @@ export default function FollowUpToolbar({
           }
         />
       </div>
-      {calendar ? (
-        <div className="followup-filter-summary">
-          <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
-            {count} follow-up{count === 1 ? "" : "s"}
-          </p>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   ConnectionErrorState,
   DataTableEmptyState,
   ModuleTableCard,
+  PlainStatusStamp,
   SearchField,
   SearchFilterCluster,
   SoftLoadingArea,
@@ -40,7 +41,7 @@ import usePagedRows from "../../hooks/usePagedRows";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_FILTER_OPTIONS,
-  getAttentionBadgeClass,
+  ATTENTION_PRIORITY,
   getReferralAttention,
   normalizeAttention,
 } from "../../utils/referralAttention";
@@ -472,6 +473,7 @@ export default function Referrals() {
             </div>
             <ModuleTableCard
               minWidth="min-w-[1000px]"
+              fixedRows
               refreshing={holdsFetching && referralHolds.length > 0}
               footer={
                 <TablePagination
@@ -481,46 +483,52 @@ export default function Referrals() {
                 />
               }
             >
-              <thead>
-                <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                  <th className="whitespace-nowrap px-4 py-3">Consultation</th>
-                  <th className="whitespace-nowrap px-4 py-3">RHU</th>
-                  <th className="whitespace-nowrap px-4 py-3">Urgency</th>
-                  <th className="whitespace-nowrap px-4 py-3">Reason</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+              <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                <tr>
+                  <th className="px-4">Patient</th>
+                  <th className="px-3">Consultation</th>
+                  <th className="px-3">RHU</th>
+                  <th className="px-3">Urgency</th>
+                  <th className="px-3">Reason</th>
+                  <th className="px-2 text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-neutral-100">
                 {filteredHolds.length > 0 ? (
                   paginatedHolds.map((hold) => {
                     const card = waitingHoldCard(hold);
                     return (
                       <tr
                         key={card.id}
-                        className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
+                        className="h-14 transition-colors hover:bg-neutral-50"
                       >
-                        <td className="px-4 py-3.5 align-middle">
-                          <p className="truncate text-[13px] font-semibold text-[#111827]">
-                            {card.patientName}
-                          </p>
-                          <p className="text-[11px] text-[#B54708]">{card.status}</p>
+                        <td className="px-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink-800">
+                              {card.patientName}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] text-warning-700">
+                              {card.status}
+                            </p>
+                          </div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3.5 align-middle text-[13px] text-[#9CA3AF]">
+                        <td className="whitespace-nowrap px-3 text-sm text-neutral-600">
                           {formatDate(card.consultationDate, "—")}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] text-[#6B7280]">
+                        <td className="px-3 text-sm text-neutral-600">
                           {card.receivingRhu}
                         </td>
-                        <td className="px-4 py-3.5 align-middle">
+                        <td className="px-3">
                           <UrgencyBadge urgency={getHoldUrgency(hold)} />
                         </td>
-                        <td className="max-w-[240px] px-4 py-3.5 align-middle">
-                          <p className="truncate text-[13px] text-[#374151]" title={card.reason}>
+                        <td className="max-w-[240px] px-3">
+                          <p className="truncate text-sm text-ink-800" title={card.reason}>
                             {card.reason}
                           </p>
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right">
+                        <td className="px-2 text-right">
                           <div className="inline-flex flex-wrap items-center justify-end gap-2">
                             <Button
                               asChild
@@ -582,6 +590,7 @@ export default function Referrals() {
           </div>
           <ModuleTableCard
             minWidth="min-w-[640px]"
+            fixedRows
             refreshing={isFetching && referrals.length > 0}
             footer={
               <TablePagination
@@ -591,16 +600,18 @@ export default function Referrals() {
               />
             }
           >
-            <thead>
-              <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <th className="whitespace-nowrap px-4 py-3">Referral No.</th>
-                <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                <th className="whitespace-nowrap px-4 py-3">Status</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              <tr>
+                <th className="px-4">Referral No.</th>
+                <th className="px-3">Patient</th>
+                <th className="px-3">Status</th>
+                <th className="px-2 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-neutral-100">
               {filteredReferrals.length > 0 ? (
                 paginatedReferrals.map((referral) => {
                   const patientName = getReferralPatientName(referral);
@@ -613,14 +624,14 @@ export default function Referrals() {
                   return (
                     <tr
                       key={trackingId || referral.id}
-                      className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
+                      className="h-14 transition-colors hover:bg-neutral-50"
                     >
-                      <td className="px-4 py-3 align-middle">
-                        <div className="min-w-0 py-0.5">
-                          <p className="truncate font-mono text-[12px] font-semibold tabular-nums text-[#B91C1C]">
+                      <td className="px-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-sm font-semibold tabular-nums text-brand-700">
                             {trackingId || "—"}
                           </p>
-                          <p className="mt-1 text-[11px] leading-snug text-[#9CA3AF]">
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
                             {submittedDate
                               ? formatDate(submittedDate, submittedDate)
                               : "Date not recorded"}
@@ -628,48 +639,46 @@ export default function Referrals() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 align-middle">
-                        <div className="min-w-0 py-0.5">
-                          <p className="truncate text-[13px] font-semibold text-[#111827]">
+                      <td className="px-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink-800">
                             {patientName}
                           </p>
-                          <p className="mt-1 truncate text-[11px] leading-snug text-[#6B7280]">
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
                             {destinationFacility}
-                            <span className="text-[#D0D5DD]"> · </span>
+                            {" · "}
                             {service}
                           </p>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 align-middle">
-                        <div className="min-w-0 py-0.5">
+                      <td className="px-3">
+                        <div className="min-w-0">
                           <StatusBadge
                             status={referral.statusDisplay || referral.status}
                           />
-                          <p className="mt-1 text-[11px] leading-snug text-[#9CA3AF]">
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
                             {priority} priority
                           </p>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 align-middle text-right">
-                        <div className="inline-flex items-center justify-end">
-                          <ActionMenu
-                            title={patientName}
-                            subtitle={trackingId}
-                            viewLink={`/bhc/referrals/${trackingId}`}
-                            viewLabel="View Details"
-                            actions={[
-                              {
-                                label: "Copy Referral No.",
-                                disabled: !trackingId,
-                                onClick: () => {
-                                  if (trackingId) void copyText(String(trackingId));
-                                },
+                      <td className="px-2 text-right">
+                        <ActionMenu
+                          title={patientName}
+                          subtitle={trackingId}
+                          viewLink={`/bhc/referrals/${trackingId}`}
+                          viewLabel="View Details"
+                          actions={[
+                            {
+                              label: "Copy Referral No.",
+                              disabled: !trackingId,
+                              onClick: () => {
+                                if (trackingId) void copyText(String(trackingId));
                               },
-                            ]}
-                          />
-                        </div>
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
@@ -709,39 +718,39 @@ export default function Referrals() {
   );
 }
 
+function referralStatusTone(displayStatus) {
+  if (displayStatus === "Completed") return "success";
+  if (
+    displayStatus === "Received" ||
+    displayStatus === "Received by RHU"
+  ) {
+    return "info";
+  }
+  if (
+    displayStatus === "Under Assessment" ||
+    displayStatus === "No-Show"
+  ) {
+    return "warning";
+  }
+  return "neutral";
+}
+
 function StatusBadge({ status }) {
   const displayStatus = formatReferralStatus(status);
-  const map = {
-    "Pending RHU Review": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "Received by RHU": "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "Under Assessment": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-  };
-
   return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
-    >
-      {displayStatus}
-    </span>
+    <PlainStatusStamp
+      label={displayStatus}
+      tone={referralStatusTone(displayStatus)}
+    />
   );
 }
 
 function UrgencyBadge({ urgency }) {
   const attention = normalizeAttention(urgency);
-
   return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${getAttentionBadgeClass(
-        attention,
-      )}`}
-    >
-      {attention}
-    </span>
+    <PlainStatusStamp
+      label={attention}
+      tone={attention === ATTENTION_PRIORITY ? "warning" : "neutral"}
+    />
   );
 }

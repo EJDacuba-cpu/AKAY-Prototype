@@ -506,19 +506,18 @@ function SummaryTable({ title, columns, rows }) {
       title={title}
       subtitle="Generated from filtered Family Planning records."
       minWidth="min-w-[780px]"
-      minHeight="min-h-[320px]"
-      bodyMinHeight="min-h-[220px]"
+      fixedRows
     >
-      <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+      <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
         <tr>
           {columns.map((column) => (
-            <th key={column} className="whitespace-nowrap px-4 py-3">
+            <th key={column} className="px-4">
               {column}
             </th>
           ))}
         </tr>
       </thead>
-      <tbody className="divide-y divide-[#F3F4F6]">
+      <tbody className="divide-y divide-neutral-100">
         {rows.length === 0 ? (
           <DataTableEmptyState
             colSpan={columns.length}
@@ -527,14 +526,17 @@ function SummaryTable({ title, columns, rows }) {
           />
         ) : (
           rows.map((row, rowIndex) => (
-            <tr key={`${title}-${rowIndex}`} className="hover:bg-[#FAFBFD]">
+            <tr
+              key={`${title}-${rowIndex}`}
+              className="h-14 transition-colors hover:bg-neutral-50"
+            >
               {row.map((value, cellIndex) => (
                 <td
                   key={`${title}-${rowIndex}-${cellIndex}`}
-                  className={`whitespace-nowrap px-4 py-3.5 text-[13px] ${
+                  className={`px-4 text-sm ${
                     cellIndex === 0
-                      ? "font-semibold text-[#334155]"
-                      : "text-[#64748B]"
+                      ? "font-semibold text-ink-800"
+                      : "text-neutral-600"
                   }`}
                 >
                   {value === "" || value === null || value === undefined

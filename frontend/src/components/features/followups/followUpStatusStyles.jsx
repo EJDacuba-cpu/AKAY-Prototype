@@ -1,6 +1,7 @@
 import { formatDisplayValue } from "../../../utils/formatters";
 import { formatServiceType } from "../../../utils/healthRecordPrograms";
 import { selectionToRoute } from "../../../utils/startConsultation";
+import PlainStatusStamp from "../../common/badges/PlainStatusStamp";
 
 export const STATE_CONFIG = {
   due_today: {
@@ -196,8 +197,27 @@ export function getPatientSubtext(task) {
   );
 }
 
-export function StateBadge({ state }) {
+const STATE_STAMP_TONE = {
+  due_today: "warning",
+  upcoming: "neutral",
+  no_show: "danger",
+  rescheduled: "neutral",
+  fulfilled: "success",
+  cancelled: "neutral",
+  superseded: "neutral",
+};
+
+export function StateBadge({ state, appearance = "badge" }) {
   const config = getStateConfig(state);
+
+  if (appearance === "plain") {
+    return (
+      <PlainStatusStamp
+        label={config.label}
+        tone={STATE_STAMP_TONE[state] || "neutral"}
+      />
+    );
+  }
 
   return (
     <span

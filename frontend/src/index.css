@@ -738,6 +738,8 @@ textarea,
   justify-content: center;
 }
 
+/* Compact module-list status (Health Commodities look): plain label + trailing dot. */
+.akay-status-plain,
 .medicine-inventory-sheet .medicine-inventory-status,
 .medicine-inventory-status--plain {
   position: relative;
@@ -752,8 +754,10 @@ textarea,
   text-transform: none;
 }
 
+.akay-status-plain .akay-status-plain-dot,
 .medicine-inventory-sheet .medicine-inventory-status-dot,
-.medicine-inventory-status--plain .medicine-inventory-status-dot {
+.medicine-inventory-status--plain .medicine-inventory-status-dot,
+.medicine-inventory-status--plain .akay-status-plain-dot {
   position: absolute;
   top: 50%;
   right: 0;
@@ -763,19 +767,30 @@ textarea,
   background: var(--color-text-muted);
 }
 
+.akay-status-plain[data-tone="info"] .akay-status-plain-dot,
 .medicine-inventory-sheet .medicine-inventory-status[data-tone="info"] .medicine-inventory-status-dot,
-.medicine-inventory-status--plain[data-tone="info"] .medicine-inventory-status-dot {
+.medicine-inventory-status--plain[data-tone="info"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="info"] .akay-status-plain-dot {
   background: var(--color-info-500);
 }
 
+.akay-status-plain[data-tone="warning"] .akay-status-plain-dot,
 .medicine-inventory-sheet .medicine-inventory-status[data-tone="warning"] .medicine-inventory-status-dot,
-.medicine-inventory-status--plain[data-tone="warning"] .medicine-inventory-status-dot {
+.medicine-inventory-status--plain[data-tone="warning"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="warning"] .akay-status-plain-dot {
   background: var(--color-warning-500);
 }
 
+.akay-status-plain[data-tone="danger"] .akay-status-plain-dot,
 .medicine-inventory-sheet .medicine-inventory-status[data-tone="danger"] .medicine-inventory-status-dot,
-.medicine-inventory-status--plain[data-tone="danger"] .medicine-inventory-status-dot {
+.medicine-inventory-status--plain[data-tone="danger"] .medicine-inventory-status-dot,
+.medicine-inventory-status--plain[data-tone="danger"] .akay-status-plain-dot {
   background: var(--color-danger);
+}
+
+.akay-status-plain[data-tone="success"] .akay-status-plain-dot,
+.medicine-inventory-status--plain[data-tone="success"] .akay-status-plain-dot {
+  background: var(--color-success-500, #12b76a);
 }
 
 .medicine-inventory-sheet .medicine-inventory-pagination button {
