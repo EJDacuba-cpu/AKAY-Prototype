@@ -286,6 +286,21 @@ class NutritionEnrollmentTest extends TestCase
         $this->assertEqualsWithDelta(68 / (1.65 ** 2), $summary['latest_bmi'], 0.0001);
         $this->assertSame('Normal', $summary['latest_bmi_category']);
         $this->assertSame(NutritionEnrollment::STATUS_ACTIVE, $summary['status']);
+
+        $laterWeightOnly = $this->record($patient, [
+            'category' => 'General Consultation',
+            'date_recorded' => '2026-10-25 08:00:00',
+            'vital_signs' => ['weight' => 90],
+        ]);
+        $paired = NutritionEnrollment::summary($patient);
+        $this->assertSame(
+            [$nutrition->id, $weightOnly->id, $general->id, $laterWeightOnly->id],
+            array_column($paired['measurement_history'], 'health_record_id')
+        );
+        $this->assertEquals(90, $paired['latest_weight_kg']);
+        $this->assertEquals(165, $paired['latest_height_cm']);
+        $this->assertEqualsWithDelta(68 / (1.65 ** 2), $paired['latest_bmi'], 0.0001);
+        $this->assertSame('Normal', $paired['latest_bmi_category']);
     }
 
     public function test_closure_ends_active_and_later_nutrition_record_starts_new_episode(): void
@@ -391,5 +406,56 @@ class NutritionEnrollmentTest extends TestCase
         $this->assertCount(1, $summary['closures']);
         $this->assertNotEmpty($this->intentErrors($patient->id, NutritionEnrollment::INTENT_ENROLL));
         $this->assertSame([], $this->intentErrors($patient->id, NutritionEnrollment::INTENT_CONTINUE));
+    }
+
+    public function test_unfinalized_records_do_not_enroll_or_enter_measurement_history(): void
+    {
+        $patient = $this->patient(['birthdate' => '1990-01-15']);
+        $draftNutrition = $this->record($patient, [
+            'category' => 'Nutrition',
+            'date_recorded' => '2026-10-01 09:00:00',
+            'monitoring_data' => [
+                'selectedPrograms' => ['Nutrition'],
+                'nutritionIntent' => NutritionEnrollment::INTENT_ENROLL,
+            ],
+            'vital_signs' => ['weight' => 70, 'height' => 170],
+            'finalized_at' => null,
+        ]);
+
+        $state = NutritionEnrollment::stateFor($patient->id);
+        $this->assertSame(NutritionEnrollment::STATUS_NOT_ENROLLED, $state['status']);
+        $this->assertFalse($state['enrolled']);
+        $this->assertNull($state['latest']);
+        $this->assertNull($state['active']);
+        $this->assertSame([], $state['episodes']);
+
+        $beforeFinalize = NutritionEnrollment::summary($patient);
+        $this->assertSame([], $beforeFinalize['measurement_history']);
+        $this->assertNull($beforeFinalize['latest_weight_kg']);
+        $this->assertNull($beforeFinalize['latest_height_cm']);
+        $this->assertNull($beforeFinalize['latest_bmi']);
+
+        $finalized = $this->record($patient, [
+            'category' => 'Nutrition',
+            'date_recorded' => '2026-10-05 09:00:00',
+            'monitoring_data' => ['selectedPrograms' => ['Nutrition']],
+            'vital_signs' => ['weight' => 71, 'height' => 171],
+            'finalized_at' => '2026-10-05 09:30:00',
+        ]);
+        $draftVitals = $this->record($patient, [
+            'category' => 'General Consultation',
+            'date_recorded' => '2026-10-20 09:00:00',
+            'vital_signs' => ['weight' => 90, 'height' => 180],
+            'finalized_at' => null,
+        ]);
+
+        $summary = NutritionEnrollment::summary($patient);
+        $ids = array_column($summary['measurement_history'], 'health_record_id');
+        $this->assertSame([$finalized->id], $ids);
+        $this->assertNotContains($draftNutrition->id, $ids);
+        $this->assertNotContains($draftVitals->id, $ids);
+        $this->assertTrue($summary['enrolled']);
+        $this->assertEquals(71, $summary['latest_weight_kg']);
+        $this->assertEquals(171, $summary['latest_height_cm']);
     }
 }

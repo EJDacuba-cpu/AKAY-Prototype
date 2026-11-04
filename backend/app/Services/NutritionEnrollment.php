@@ -120,14 +120,15 @@ class NutritionEnrollment
         $latestWeight = null;
         $latestHeight = null;
         $latestBmi = null;
-        foreach ($history as $row) {
-            if ($row['weight_kg'] !== null) {
+        foreach (array_reverse($history) as $row) {
+            if ($latestWeight === null && $row['weight_kg'] !== null) {
                 $latestWeight = $row['weight_kg'];
             }
-            if ($row['height_cm'] !== null) {
+            if ($latestHeight === null && $row['height_cm'] !== null) {
                 $latestHeight = $row['height_cm'];
             }
-            if ($row['bmi'] !== null) {
+            // BMI stays on one visit. Do not pair a newer weight with an older height.
+            if ($latestBmi === null && $row['weight_kg'] !== null && $row['height_cm'] !== null) {
                 $latestBmi = $row['bmi'];
             }
         }
@@ -152,6 +153,7 @@ class NutritionEnrollment
     {
         return HealthRecord::query()
             ->where('patient_id', $patientId)
+            ->whereNotNull('finalized_at')
             ->orderBy('date_recorded')
             ->orderBy('id')
             ->get();
