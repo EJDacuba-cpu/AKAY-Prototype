@@ -1034,6 +1034,9 @@ export default function RhuConsultationWorkspace() {
       queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
       queryClient.invalidateQueries({ queryKey: ["patient-records-height"] });
       queryClient.invalidateQueries({ queryKey: ["health-records"] });
+      if (patientId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(patientId) });
+      }
     } catch (error) {
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
       setValidationErrors(fieldErrors);

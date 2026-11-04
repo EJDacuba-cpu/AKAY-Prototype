@@ -40,10 +40,11 @@ function includeCareEntry(entry) {
   return isDiseaseTrackingKey(entry.key) || entry.records.length > 0;
 }
 
-function nutritionCardEntry(entry) {
+function nutritionCardEntry(entry, { canClose = true } = {}) {
   if (entry.key !== "nutrition") return entry;
   return {
     ...entry,
+    action: canClose ? entry.action : null,
     facts: [
       { label: "Current status", value: entry.status, type: "text" },
       ...entry.facts,
@@ -81,6 +82,7 @@ export default function CareAndProgramsTab({
   const permissions = getCurrentUser()?.permissions || [];
   const canReadCareOverview =
     permissions.includes("consultations.encode") || permissions.includes("clinical.history");
+  const canCloseNutrition = permissions.includes("consultations.finalize");
 
   const careOverviewQuery = useQuery({
     queryKey: queryKeys.careOverview(patientId),
@@ -107,7 +109,10 @@ export default function CareAndProgramsTab({
       entry.label.toLowerCase().includes(cardSearch.trim().toLowerCase());
   });
   const selectedEntry = visibleTracking.find((entry) => entry.key === selectedKey) || null;
-  const nutritionEntry = careTracking.find((entry) => entry.key === "nutrition") || null;
+  const nutritionEntryRaw = careTracking.find((entry) => entry.key === "nutrition") || null;
+  const nutritionEntry = nutritionEntryRaw && !canCloseNutrition
+    ? { ...nutritionEntryRaw, action: null }
+    : nutritionEntryRaw;
 
   const closeNutrition = useMutation({
     mutationFn: (payload) => closeNutritionCare(patientId, payload),
@@ -192,7 +197,7 @@ export default function CareAndProgramsTab({
                 entry={entry.key === "maternal" ? { ...entry, facts: [
                   ...(maternalSummary.gp ? [{ label: "G/P", value: maternalSummary.gp, type: "text" }] : []),
                   ...(entry.status === "Prenatal" && maternalSummary.aog ? [{ label: "AOG", value: maternalSummary.aog, type: "text" }] : []),
-                ] } : nutritionCardEntry(entry)}
+                ] } : nutritionCardEntry(entry, { canClose: canCloseNutrition })}
                 selected={selectedEntry?.key === entry.key}
                 onOpen={openTracking}
                 onViewRecords={onViewProgramRecords}

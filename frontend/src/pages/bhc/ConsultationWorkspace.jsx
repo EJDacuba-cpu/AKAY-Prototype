@@ -3069,6 +3069,9 @@ export default function ConsultationWorkspace() {
     queryClient.invalidateQueries({ queryKey: ["patient-records-height", selectedPatientId] });
     queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(selectedPatientId)] });
     queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records"] });
+    if (selectedPatientId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(selectedPatientId) });
+    }
     if (formData.needsReferral || formData.needs_referral) {
       queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
       queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") });
