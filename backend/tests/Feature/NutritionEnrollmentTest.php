@@ -8,10 +8,13 @@ use App\Models\NutritionCareClosure;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\FacilityAccessService;
 use App\Services\NutritionEnrollment;
 use App\Services\StaffRoles;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -32,6 +35,13 @@ class NutritionEnrollmentTest extends TestCase
             'status' => 'active',
             'rural_health_unit_id' => $this->rhu->id,
         ]);
+        Carbon::setTestNow(Carbon::parse('2026-11-05 08:00:00'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function patient(array $attributes = []): Patient
@@ -59,6 +69,46 @@ class NutritionEnrollmentTest extends TestCase
             'barangay_health_center_id' => $this->bhc->id,
             'permissions' => StaffRoles::defaults('encoder'),
         ]);
+    }
+
+    private function clinician(array $attributes = []): User
+    {
+        return User::create([
+            'name' => 'Nutrition Midwife',
+            'email' => uniqid('midwife', true).'@example.test',
+            'password' => 'password123',
+            'status' => User::STATUS_ACTIVE,
+            'role' => User::ROLE_BHC,
+            'staff_role' => 'midwife',
+            'barangay_health_center_id' => $this->bhc->id,
+            'permissions' => StaffRoles::defaults('midwife'),
+            ...$attributes,
+        ]);
+    }
+
+    private function enroll(Patient $patient, array $overrides = []): HealthRecord
+    {
+        return $this->record($patient, [
+            'category' => 'Nutrition',
+            'date_recorded' => '2026-10-01 09:00:00',
+            'created_at' => '2026-10-01 09:00:00',
+            'monitoring_data' => [
+                'selectedPrograms' => ['Nutrition'],
+                'nutritionIntent' => NutritionEnrollment::INTENT_ENROLL,
+            ],
+            'vital_signs' => ['weight' => 70, 'height' => 170],
+            'finalized_at' => '2026-10-01 09:30:00',
+            ...$overrides,
+        ]);
+    }
+
+    private function closeCare(Patient $patient, array $payload = []): TestResponse
+    {
+        return $this->postJson("/api/patients/{$patient->id}/nutrition-care/close", array_merge([
+            'reason' => 'goals_met',
+            'closed_on' => '2026-10-01',
+            'note' => 'Goals met',
+        ], $payload));
     }
 
     private function record(Patient $patient, array $overrides = []): HealthRecord
@@ -457,5 +507,149 @@ class NutritionEnrollmentTest extends TestCase
         $this->assertTrue($summary['enrolled']);
         $this->assertEquals(71, $summary['latest_weight_kg']);
         $this->assertEquals(171, $summary['latest_height_cm']);
+    }
+
+    public function test_closing_the_active_enrollment(): void
+    {
+        $patient = $this->patient(['birthdate' => '1990-01-15']);
+        $started = $this->enroll($patient);
+        $during = $this->record($patient, [
+            'category' => 'General Consultation',
+            'date_recorded' => '2026-10-01 15:00:00',
+            'created_at' => '2026-10-01 15:00:00',
+            'vital_signs' => ['weight' => 69, 'height' => 170],
+        ]);
+        $afterClose = $this->record($patient, [
+            'category' => 'General Consultation',
+            'date_recorded' => '2026-10-20 09:00:00',
+            'created_at' => '2026-10-20 09:00:00',
+            'vital_signs' => ['weight' => 80, 'height' => 170],
+        ]);
+        $clinician = $this->clinician();
+        Sanctum::actingAs($clinician, ['akay:access']);
+
+        $note = str_repeat('n', 500);
+        $response = $this->closeCare($patient, [
+            'reason' => 'lost_to_follow_up',
+            'closed_on' => '2026-10-01',
+            'note' => $note,
+        ])->assertCreated();
+
+        $summary = NutritionEnrollment::summary($patient);
+        $this->assertEquals($summary, $response->json('data'));
+        $this->assertSame(NutritionEnrollment::STATUS_CLOSED, $summary['status']);
+        $this->assertFalse($summary['enrolled']);
+        $this->assertNull($summary['enrolled_on']);
+        $this->assertNull(NutritionEnrollment::active($patient));
+        $this->assertSame('lost_to_follow_up', $summary['closures'][0]['reason']);
+        $this->assertSame('2026-10-01', $summary['closures'][0]['closed_on']);
+        $this->assertSame($note, $summary['closures'][0]['note']);
+        $this->assertSame('Nutrition Midwife', $summary['closures'][0]['closed_by_name']);
+        $this->assertSame($started->id, $summary['closures'][0]['started_health_record_id']);
+        $this->assertSame('2026-10-01', $summary['closures'][0]['enrolled_on']);
+        $this->assertSame(
+            [$started->id, $during->id],
+            array_column($summary['measurement_history'], 'health_record_id')
+        );
+        $this->assertNotContains($afterClose->id, array_column($summary['measurement_history'], 'health_record_id'));
+        $this->assertDatabaseHas('nutrition_care_closures', [
+            'patient_id' => $patient->id,
+            'started_health_record_id' => $started->id,
+            'reason' => 'lost_to_follow_up',
+            'closed_by' => $clinician->id,
+        ]);
+
+        $again = $this->patient(['birthdate' => '1991-02-02']);
+        $this->enroll($again);
+        $withoutNote = $this->closeCare($again, ['reason' => 'transferred', 'note' => null])->assertCreated();
+        $reopened = NutritionEnrollment::summary($again);
+        $this->assertSame('transferred', $reopened['closures'][0]['reason']);
+        $this->assertNull($reopened['closures'][0]['note']);
+        $this->assertEquals($reopened, $withoutNote->json('data'));
+    }
+
+    public function test_closing_without_active_is_422(): void
+    {
+        $clinician = $this->clinician();
+        Sanctum::actingAs($clinician, ['akay:access']);
+
+        $never = $this->patient();
+        $this->closeCare($never)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This patient has no active Nutrition Care.');
+        $this->assertSame(0, NutritionCareClosure::query()->where('patient_id', $never->id)->count());
+
+        $draftOnly = $this->patient();
+        $this->enroll($draftOnly, ['finalized_at' => null]);
+        $this->closeCare($draftOnly)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This patient has no active Nutrition Care.');
+
+        $closed = $this->patient();
+        $started = $this->enroll($closed);
+        NutritionCareClosure::create([
+            'patient_id' => $closed->id,
+            'started_health_record_id' => $started->id,
+            'reason' => 'goals_met',
+            'closed_on' => '2026-10-01',
+            'note' => 'Already closed',
+            'closed_by' => $clinician->id,
+        ]);
+        $this->closeCare($closed, ['reason' => 'other'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'This patient has no active Nutrition Care.');
+        $this->assertSame(1, NutritionCareClosure::query()->where('patient_id', $closed->id)->count());
+    }
+
+    public function test_invalid_reason_or_dates_is_422(): void
+    {
+        $patient = $this->patient(['birthdate' => '1990-01-15']);
+        $this->enroll($patient);
+        Sanctum::actingAs($this->clinician(), ['akay:access']);
+
+        $this->closeCare($patient, ['reason' => 'discharged'])->assertUnprocessable()->assertJsonValidationErrors(['reason']);
+        $this->closeCare($patient, ['reason' => null])->assertUnprocessable()->assertJsonValidationErrors(['reason']);
+        $this->closeCare($patient, ['closed_on' => '2026-11-06'])->assertUnprocessable()->assertJsonValidationErrors(['closed_on']);
+        $this->closeCare($patient, ['closed_on' => '2026-09-30'])->assertUnprocessable()->assertJsonValidationErrors(['closed_on']);
+        $this->closeCare($patient, ['closed_on' => null])->assertUnprocessable()->assertJsonValidationErrors(['closed_on']);
+        $this->closeCare($patient, ['note' => str_repeat('n', 501)])->assertUnprocessable()->assertJsonValidationErrors(['note']);
+        $this->assertSame(0, NutritionCareClosure::query()->where('patient_id', $patient->id)->count());
+        $this->assertNotNull(NutritionEnrollment::active($patient));
+
+        $this->closeCare($patient, ['closed_on' => '2026-11-05', 'reason' => 'other', 'note' => null])->assertCreated();
+    }
+
+    public function test_other_facility_cannot_close(): void
+    {
+        $patient = $this->patient(['birthdate' => '1990-01-15']);
+        $this->enroll($patient);
+        $other = BarangayHealthCenter::create([
+            'name' => 'Other Nutrition BHC',
+            'status' => 'active',
+            'rural_health_unit_id' => $this->rhu->id,
+        ]);
+        Sanctum::actingAs($this->clinician([
+            'name' => 'Outside Midwife',
+            'barangay_health_center_id' => $other->id,
+        ]), ['akay:access']);
+
+        $this->closeCare($patient)
+            ->assertForbidden()
+            ->assertJsonPath('message', FacilityAccessService::DENIED_MESSAGE);
+        $this->assertSame(0, NutritionCareClosure::query()->where('patient_id', $patient->id)->count());
+        $this->assertNotNull(NutritionEnrollment::active($patient));
+    }
+
+    public function test_requires_consultations_finalize(): void
+    {
+        $patient = $this->patient(['birthdate' => '1990-01-15']);
+        $this->enroll($patient);
+        Sanctum::actingAs($this->encoder(), ['akay:access']);
+
+        $this->closeCare($patient)
+            ->assertForbidden()
+            ->assertJsonPath('message', 'Your current facility assignment does not permit this action.');
+        $this->assertSame(0, NutritionCareClosure::query()->where('patient_id', $patient->id)->count());
+        $this->assertNotNull(NutritionEnrollment::active($patient));
     }
 }

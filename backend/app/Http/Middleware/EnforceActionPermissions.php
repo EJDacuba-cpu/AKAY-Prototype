@@ -42,6 +42,7 @@ class EnforceActionPermissions
                     ? null
                     : 'consultations.encode',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
+            str_contains($path, '/nutrition-care') => 'consultations.finalize',
             // BHC and RHU history now opens through the patient directory/profile.
             // Reading these does not confer registration/update authority; facility scopes still apply.
             str_contains($path, '/patients') && $read

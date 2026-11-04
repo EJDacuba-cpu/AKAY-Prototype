@@ -5,7 +5,11 @@ namespace App\Services;
 use App\Models\HealthRecord;
 use App\Models\NutritionCareClosure;
 use App\Models\Patient;
+use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator as ValidatorFacade;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 
 class NutritionEnrollment
@@ -91,6 +95,47 @@ class NutritionEnrollment
                 'This patient is not enrolled in Nutrition Care. Enroll first.'
             );
         }
+    }
+
+    /**
+     * @param  array{reason?: mixed, closed_on?: mixed, note?: mixed}  $input
+     * @return array{
+     *     status: string,
+     *     enrolled: bool,
+     *     enrolled_on: ?string,
+     *     latest_weight_kg: ?float,
+     *     latest_height_cm: ?float,
+     *     latest_bmi: ?float,
+     *     latest_bmi_category: ?string,
+     *     measurement_history: array<int, array{health_record_id: int, date_recorded: ?string, weight_kg: ?float, height_cm: ?float, bmi: ?float}>,
+     *     closures: array<int, array{id: int, reason: string, closed_on: ?string, note: ?string, closed_by_name: ?string, started_health_record_id: int, enrolled_on: string}>
+     * }
+     */
+    public static function close(Patient $patient, User $actor, array $input): array
+    {
+        $active = self::active($patient);
+        if ($active === null) {
+            throw ValidationException::withMessages([
+                'patient' => 'This patient has no active Nutrition Care.',
+            ]);
+        }
+
+        $validated = ValidatorFacade::make($input, [
+            'reason' => ['required', 'string', Rule::in(self::CLOSE_REASONS)],
+            'closed_on' => ['required', 'date', 'before_or_equal:today', 'after_or_equal:'.$active['started_on']],
+            'note' => ['nullable', 'string', 'max:500'],
+        ])->validate();
+
+        NutritionCareClosure::create([
+            'patient_id' => $patient->id,
+            'started_health_record_id' => $active['started_record_id'],
+            'reason' => $validated['reason'],
+            'closed_on' => $validated['closed_on'],
+            'note' => $validated['note'] ?? null,
+            'closed_by' => $actor->id,
+        ]);
+
+        return self::summary($patient);
     }
 
     /**
