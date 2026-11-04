@@ -25,6 +25,7 @@ class HealthRecordDraftPayloadService
         'selectedPrograms' => ['*' => self::SCALAR],
         'primaryProgram' => self::SCALAR,
         'prenatalIntent' => self::SCALAR,
+        'nutritionIntent' => self::SCALAR,
         'consultationMode' => self::SCALAR,
         'wizardPhase' => self::SCALAR,
         // Which screen of the step-based consultation the user was on (a program

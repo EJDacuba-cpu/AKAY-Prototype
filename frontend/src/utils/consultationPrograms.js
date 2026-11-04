@@ -2,6 +2,7 @@ export const PROGRAM_CLASSIFICATIONS = Object.freeze({
   Maternal: "Maternal",
   "Family Planning": "Family Planning",
   EPI: "Immunization",
+  Nutrition: "Nutrition",
 });
 
 export function getConsultationPrograms(record = {}) {
@@ -53,11 +54,13 @@ const PROGRAM_ENROLL_LABELS = Object.freeze({
   Maternal: "Include Maternal Care",
   "Family Planning": "Enroll to Family Planning",
   EPI: "Enroll to Child Health / EPI",
+  Nutrition: "Enroll to Nutrition",
 });
 
 /** The label of the button that enrolls the patient in a service for this visit. */
 export function programEnrollLabel(programKey, { enrolled } = {}) {
   if (programKey === "Maternal" && enrolled === true) return "Continue Maternal Care";
   if (programKey === "Maternal" && enrolled === false) return "Include Maternal Care";
+  if (programKey === "Nutrition" && enrolled === true) return "Continue Nutrition Care";
   return PROGRAM_ENROLL_LABELS[programKey] || "Enroll";
 }

@@ -13,6 +13,7 @@ class HealthRecordDraftRequest extends FormRequest
         'Immunization',
         'Maternal',
         'Family Planning',
+        'Nutrition',
         'TB DOTS / TB Monitoring',
     ];
 

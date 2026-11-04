@@ -16,7 +16,7 @@ class RemovedHypertensionDiabetesProgramTest extends TestCase
     {
         // Neither the old Hypertension / Diabetes programs nor the retired
         // NCD Monitoring pathway may come back as a classification.
-        $this->assertSame(['Maternal', 'Family Planning', 'EPI'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
+        $this->assertSame(['Maternal', 'Family Planning', 'EPI', 'Nutrition'], array_keys(ConsultationPrograms::CLASSIFICATIONS));
         $this->assertNotContains('Hypertension / Diabetic Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
         $this->assertNotContains('NCD Monitoring', HealthRecordDraftRequest::CLASSIFICATIONS);
     }

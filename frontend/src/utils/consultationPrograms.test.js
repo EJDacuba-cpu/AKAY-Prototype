@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
-import { getSpecializedRecordPrograms, getServiceTypeLabel } from "./healthRecordPrograms.js";
+import { getSpecializedRecordPrograms, getServiceTypeLabel, isNutritionRecord } from "./healthRecordPrograms.js";
 import { visibleConsultationPrograms } from "./infantVisibility.js";
 
 test("removing the primary selects a remaining program without losing the others", () => {
@@ -17,14 +17,15 @@ test("server metadata restores primary and all selected programs", () => {
 });
 
 test("the selectable programs", () => {
-  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI", "Nutrition"]);
+  assert.equal(PROGRAM_CLASSIFICATIONS.Nutrition, "Nutrition");
 });
 
-test("infant consultations hide Maternal and Family Planning and keep Child Health / EPI", () => {
+test("infant consultations hide Maternal and Family Planning and keep Child Health / EPI and Nutrition", () => {
   const programs = Object.keys(PROGRAM_CLASSIFICATIONS);
   assert.deepEqual(
     visibleConsultationPrograms(programs, { birthdate: "2026-06-01" }, "2026-10-04"),
-    ["EPI"],
+    ["EPI", "Nutrition"],
   );
   assert.deepEqual(
     visibleConsultationPrograms(programs, { birthdate: "2021-01-01" }, "2026-10-04"),
@@ -57,7 +58,7 @@ test("a restored draft with a removed classification follows its remaining prima
 });
 
 test("TB is no longer a consultation program", () => {
-  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI"]);
+  assert.deepEqual(Object.keys(PROGRAM_CLASSIFICATIONS), ["Maternal", "Family Planning", "EPI", "Nutrition"]);
   assert.deepEqual(getConsultationPrograms({ selectedPrograms: ["TB", "EPI"] }), ["EPI"]);
 });
 
@@ -83,5 +84,18 @@ test("each service has its own enroll button label", () => {
   assert.equal(programEnrollLabel("Maternal", { enrolled: true }), "Continue Maternal Care");
   assert.equal(programEnrollLabel("Family Planning"), "Enroll to Family Planning");
   assert.equal(programEnrollLabel("EPI"), "Enroll to Child Health / EPI");
+  assert.equal(programEnrollLabel("Nutrition"), "Enroll to Nutrition");
+  assert.equal(programEnrollLabel("Nutrition", { enrolled: false }), "Enroll to Nutrition");
+  assert.equal(programEnrollLabel("Nutrition", { enrolled: true }), "Continue Nutrition Care");
   assert.equal(programEnrollLabel("Something Else"), "Enroll");
+});
+
+test("a Nutrition visit is its own specialized program", () => {
+  const record = {
+    category: "Nutrition",
+    monitoring_data: { selectedPrograms: ["Nutrition"], primaryProgram: "Nutrition" },
+  };
+  assert.equal(isNutritionRecord(record), true);
+  assert.equal(getConsultationPrograms(record)[0], "Nutrition");
+  assert.deepEqual(getSpecializedRecordPrograms([record]).map((program) => program.key), ["nutrition"]);
 });

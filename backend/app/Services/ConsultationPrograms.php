@@ -10,6 +10,7 @@ class ConsultationPrograms
         'Maternal' => 'Maternal',
         'Family Planning' => 'Family Planning',
         'EPI' => 'Immunization',
+        'Nutrition' => 'Nutrition',
     ];
 
     public static function rules(string $prefix): array

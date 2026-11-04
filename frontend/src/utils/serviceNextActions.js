@@ -23,6 +23,7 @@ export const CARE_PLAN_SERVICE_LABELS = Object.freeze({
   Maternal: "Maternal Care",
   EPI: "EPI",
   "Family Planning": "Family Planning",
+  Nutrition: "Nutrition",
 });
 
 const text = (value) => String(value ?? "").trim();
@@ -39,6 +40,7 @@ export function defaultServicePurpose(program) {
   if (program === "Maternal") return "Prenatal follow-up";
   if (program === "EPI") return "Immunization follow-up";
   if (program === "Family Planning") return "Family planning appointment";
+  if (program === "Nutrition") return "Nutrition follow-up";
   return "BHC follow-up";
 }
 

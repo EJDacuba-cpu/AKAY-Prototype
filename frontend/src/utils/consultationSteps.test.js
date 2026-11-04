@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
 import {
   ASSESSMENT_STEP,
   HISTORY_STEP,
@@ -282,6 +283,19 @@ test("a primary that is not selected falls back to the first selected program", 
 
 test("unknown program keys never produce a form", () => {
   assert.deepEqual(getProgramFormSteps(["Nonsense"], "Nonsense"), []);
+});
+
+test("selecting Nutrition adds no nutrition form step", () => {
+  assert.equal(PROGRAM_CLASSIFICATIONS.Nutrition, "Nutrition");
+  assert.deepEqual(getProgramFormSteps(["Nutrition"], "Nutrition"), []);
+  assert.deepEqual(
+    getProgramFormSteps(["Maternal", "Nutrition"], "Maternal").map((step) => step.classification),
+    ["Maternal"],
+  );
+  const nutritionFirst = getProgramFormSteps(["Nutrition", "EPI"], "Nutrition");
+  assert.deepEqual(nutritionFirst.map((step) => step.classification), ["Immunization"]);
+  assert.equal(nutritionFirst[0].isPrimary, true);
+  assert.equal(nutritionFirst[0].programCount, 1);
 });
 
 test("a stored screen that no longer exists falls back to Interview", () => {
