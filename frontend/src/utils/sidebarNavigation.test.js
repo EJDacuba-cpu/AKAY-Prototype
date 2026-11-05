@@ -35,6 +35,29 @@ test("RHU Patients sidebar nests Today's Queue and All Patients like BHC", () =>
   );
 });
 
+test("RHU reports sidebar type matching highlights the normalized category", () => {
+  const patientVisitsLocation = {
+    pathname: "/rhu/reports",
+    search: "?type=patient-visits",
+  };
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=patient-visits", patientVisitsLocation, "rhu"),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=overview", patientVisitsLocation, "rhu"),
+    false,
+  );
+});
+
+test("RHU reports sidebar treats missing type as overview", () => {
+  const bareReports = { pathname: "/rhu/reports", search: "" };
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=overview", bareReports, "rhu"),
+    true,
+  );
+});
+
 test("RHU Patients sidebar children stay query-aware on refresh and bare /rhu/patients", () => {
   const queueLocation = { pathname: "/rhu/patients", search: "" };
   const queueExplicit = { pathname: "/rhu/patients", search: "?view=queue" };

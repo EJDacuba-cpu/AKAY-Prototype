@@ -1,4 +1,5 @@
 import { normalizeReportCategory } from "./bhcReporting.js";
+import { normalizeRhuReportCategory } from "./rhuReporting.js";
 import { normalizeReferralView } from "./bhcReferralWorkspace.js";
 
 export const PATIENT_VIEW_DIRECTORY = "patients";
@@ -108,6 +109,13 @@ export function isSidebarPathActive(path, location, role) {
         return (
           normalizeReportCategory(actual.get(key)) ===
           normalizeReportCategory(value)
+        );
+      }
+      if (pathname === "/rhu/reports" && key === "type") {
+        if (location.pathname !== pathname) return false;
+        return (
+          normalizeRhuReportCategory(actual.get(key)) ===
+          normalizeRhuReportCategory(value)
         );
       }
       if (pathname === "/bhc/referrals" && key === "view") {

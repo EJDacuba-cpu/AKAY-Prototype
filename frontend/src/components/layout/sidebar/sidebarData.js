@@ -10,6 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import { REPORT_CATEGORIES } from "../../../utils/bhcReporting.js";
+import { RHU_REPORT_CATEGORIES } from "../../../utils/rhuReporting.js";
 
 export const LOGO_SRC = "/akay-mark.png";
 export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
@@ -163,7 +164,16 @@ export const menuByRole = {
             { label: "To Dispense", path: "/rhu/to-dispense", hideWhenDenied: true },
           ],
         },
-        { label: "Reports", path: "/rhu/reports", icon: Activity },
+        {
+          label: "Reports",
+          path: "/rhu/reports",
+          icon: Activity,
+          defaultPath: "/rhu/reports?type=overview",
+          children: RHU_REPORT_CATEGORIES.map((category) => ({
+            label: category.label,
+            path: `/rhu/reports?type=${category.slug}`,
+          })),
+        },
       ],
     },
   ],
