@@ -1,3 +1,14 @@
+import { isDateInReportPeriod, trendSeries } from "./bhcReporting.js";
+
+const CHART_COLORS = {
+  brand: "var(--color-brand-600)",
+  ink: "var(--color-ink-700)",
+  info: "var(--color-info-500)",
+};
+
+const CLOSE_REASON_MISTAKE = "checked_in_by_mistake";
+const CLOSE_REASON_CONSULTATION_COMPLETED = "consultation_completed";
+
 export const RHU_REPORT_CATEGORIES = Object.freeze([
   Object.freeze({ key: "overview", slug: "overview", label: "Overview" }),
   Object.freeze({ key: "patient_visits", slug: "patient-visits", label: "Patient Visits" }),
@@ -51,4 +62,116 @@ export function normalizeRhuReportCategory(value) {
     RHU_REPORT_CATEGORIES.find((item) => item.slug === raw)?.key ||
     DEFAULT_CATEGORY
   );
+}
+
+function isReferredVisit(visit) {
+  if (String(visit?.source || "").toLowerCase() === "referral") return true;
+  if (visit?.referral?.id != null) return true;
+  if (visit?.referral_id != null && visit.referral_id !== "") return true;
+  return false;
+}
+
+function visitInPatientMetricsCohort(visit, period) {
+  if (visit?.close_reason === CLOSE_REASON_MISTAKE) return false;
+  return isDateInReportPeriod(visit?.checked_in_at, period);
+}
+
+function areaChart(title, description, period, data, xKey, valueKey, seriesLabel) {
+  return {
+    kind: "area",
+    title,
+    description,
+    periodLabel: period.label,
+    data,
+    xKey,
+    valueKey,
+    seriesLabel,
+    config: { [valueKey]: { label: seriesLabel, color: CHART_COLORS.brand } },
+  };
+}
+
+function barChart(title, description, period, data, xKey, valueKey, seriesLabel, color = CHART_COLORS.ink) {
+  return {
+    kind: "bar",
+    title,
+    description,
+    periodLabel: period.label,
+    data,
+    xKey,
+    valueKey,
+    seriesLabel,
+    config: { [valueKey]: { label: seriesLabel, color } },
+  };
+}
+
+export function buildPatientVisitMetrics(visits, period) {
+  const cohort = (Array.isArray(visits) ? visits : []).filter((visit) =>
+    visitInPatientMetricsCohort(visit, period),
+  );
+  let walkIn = 0;
+  let referred = 0;
+  let completedConsultations = 0;
+
+  for (const visit of cohort) {
+    if (isReferredVisit(visit)) {
+      referred += 1;
+    } else {
+      walkIn += 1;
+    }
+    if (visit.close_reason === CLOSE_REASON_CONSULTATION_COMPLETED) {
+      completedConsultations += 1;
+    }
+  }
+
+  const total = cohort.length;
+  const trend = trendSeries(
+    cohort.map((visit) => visit.checked_in_at),
+    period,
+  );
+  const sourceBreakdown = [
+    { label: "Walk-in", value: walkIn },
+    { label: "Referred", value: referred },
+  ].filter((item) => item.value > 0);
+
+  const summaryRows = [
+    { label: "Total visits", value: total, note: "Queue check-ins in period; mistakes excluded" },
+    { label: "Walk-in", value: walkIn, note: "Visits without a linked referral" },
+    { label: "Referred", value: referred, note: "Referral source or linked referral id" },
+    {
+      label: "Completed consultations",
+      value: completedConsultations,
+      note: "Closed with consultation completed",
+    },
+  ];
+
+  const charts = [
+    areaChart(
+      "Check-ins over the period",
+      "Each visit is counted once on its check-in date.",
+      period,
+      trend,
+      "label",
+      "value",
+      "Visits",
+    ),
+    barChart(
+      "Walk-in vs referred",
+      "Source mix for visits checked in during this period.",
+      period,
+      sourceBreakdown.length ? sourceBreakdown : [{ label: "No visits", value: 0 }],
+      "label",
+      "value",
+      "Visits",
+    ),
+  ];
+
+  return {
+    total,
+    walkIn,
+    referred,
+    completedConsultations,
+    trend,
+    summaryRows,
+    charts,
+  };
 }

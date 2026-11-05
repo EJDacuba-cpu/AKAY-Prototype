@@ -1,8 +1,9 @@
 import { apiRequest } from "./apiClient";
 
-/** Active visits in today's RHU queue, oldest first. */
-export async function listRhuVisits() {
-  const response = await apiRequest("/rhu-visits");
+/** Active visits in today's RHU queue, oldest first. Pass includeClosed for reporting. */
+export async function listRhuVisits({ includeClosed = false } = {}) {
+  const path = includeClosed ? "/rhu-visits?include_closed=1" : "/rhu-visits";
+  const response = await apiRequest(path);
   return response?.data ?? [];
 }
 
