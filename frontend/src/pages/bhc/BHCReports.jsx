@@ -123,7 +123,13 @@ export default function BHCReports() {
         <div className="flex flex-col gap-5">
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{category === "all" ? "Reports & Analytics" : report.categoryLabel}</h1>
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                {category === "all"
+                  ? "Reports & Analytics"
+                  : isNutrition
+                    ? "Nutrition Report"
+                    : report.categoryLabel}
+              </h1>
               <p className="mt-1 text-[13px] text-neutral-600">
                 {facilityName} · {period.label}
                 {isNutrition && ageGroup !== "all" ? ` · Age ${ageGroup}` : ""}
@@ -209,7 +215,7 @@ export default function BHCReports() {
           <PrintReport
             facilityName={facilityName}
             periodLabel={period.label}
-            categoryLabel={report.categoryLabel}
+            categoryLabel={isNutrition ? "Nutrition Report" : report.categoryLabel}
             cards={report.cards}
             summary={report.summary}
             notes={report.notes}

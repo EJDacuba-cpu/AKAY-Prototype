@@ -23,7 +23,7 @@ export const REPORT_CATEGORIES = Object.freeze([
   Object.freeze({ key: "epi", slug: "epi", label: "EPI / Immunization" }),
   Object.freeze({ key: "maternal", slug: "maternal", label: "Maternal Care" }),
   Object.freeze({ key: "family_planning", slug: "family-planning", label: "Family Planning" }),
-  Object.freeze({ key: "nutrition", slug: "nutrition", label: "Nutrition Report" }),
+  Object.freeze({ key: "nutrition", slug: "nutrition", label: "Nutrition" }),
   Object.freeze({ key: "morbidity", slug: "morbidity", label: "Morbidity" }),
   Object.freeze({ key: "notifiable", slug: "notifiable", label: "Notifiable Diseases" }),
   Object.freeze({ key: "surveillance", slug: "surveillance", label: "Community Surveillance" }),

@@ -5,6 +5,7 @@ import {
   buildBhcReport,
   isDateInReportPeriod,
   normalizeReportCategory,
+  REPORT_CATEGORIES,
   resolveReportPeriod,
 } from "./bhcReporting.js";
 
@@ -74,7 +75,11 @@ test("nutrition report cards and radial coverage use unique adult BMI and ever e
     ageGroup: "all",
   });
   assert.equal(result.category, "nutrition");
-  assert.equal(result.categoryLabel, "Nutrition Report");
+  assert.equal(result.categoryLabel, "Nutrition");
+  assert.ok(
+    REPORT_CATEGORIES.some((item) => item.slug === "nutrition" && item.label === "Nutrition"),
+    "Nutrition must appear as a Reports sidebar submenu child",
+  );
   assert.equal(cardValue(result, "bmi-underweight"), 1);
   assert.equal(cardValue(result, "bmi-obese"), 1);
   assert.equal(result.charts[0].kind, "bar");
