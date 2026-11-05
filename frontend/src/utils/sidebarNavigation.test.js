@@ -56,6 +56,35 @@ test("RHU reports sidebar treats missing type as overview", () => {
     isSidebarPathActive("/rhu/reports?type=overview", bareReports, "rhu"),
     true,
   );
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=patient-visits", bareReports, "rhu"),
+    false,
+  );
+});
+
+test("RHU reports refresh with an unknown type highlights overview", () => {
+  const refreshed = { pathname: "/rhu/reports", search: "?type=nope" };
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=overview", refreshed, "rhu"),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=patient-visits", refreshed, "rhu"),
+    false,
+  );
+  assert.equal(isSidebarPathActive("/rhu/reports", refreshed, "rhu"), true);
+});
+
+test("RHU reports refresh with a category alias highlights the canonical child", () => {
+  const refreshed = { pathname: "/rhu/reports", search: "?type=referral-reports" };
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=referrals", refreshed, "rhu"),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive("/rhu/reports?type=overview", refreshed, "rhu"),
+    false,
+  );
 });
 
 test("RHU Patients sidebar children stay query-aware on refresh and bare /rhu/patients", () => {
@@ -257,4 +286,28 @@ test("applySidebarAccess retargets defaultPath only after the matching child is 
   assert.equal(reports.children, undefined);
   assert.equal(reports.defaultPath, undefined);
   assert.equal(reports.locked, true);
+});
+
+test("locked RHU Reports item keeps category children behind the parent lock", () => {
+  const reports = menuByRole.rhu
+    .flatMap((section) => section.items)
+    .find((item) => item.path === "/rhu/reports");
+  assert.ok(reports?.children?.length > 1);
+
+  const denied = { role: "rhu", permissions: ["patients.register"] };
+  const locked = applySidebarAccess(reports, denied, navigationAllowed);
+  assert.equal(locked.locked, true);
+  assert.equal(locked.defaultPath, "/rhu/reports?type=overview");
+  assert.equal(locked.children.length, reports.children.length);
+  for (const child of locked.children) {
+    assert.equal(navigationAllowed(denied, child.path), false, child.path);
+  }
+
+  const allowed = applySidebarAccess(
+    reports,
+    { role: "rhu", permissions: ["reports.view"] },
+    navigationAllowed,
+  );
+  assert.equal(allowed.locked, false);
+  assert.equal(allowed.children.length, reports.children.length);
 });

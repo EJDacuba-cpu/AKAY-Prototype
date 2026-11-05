@@ -346,6 +346,77 @@ test("nutrition view keeps the requested age group", () => {
   assert.ok(report.notes.length > 0);
 });
 
+test("empty period keeps cards, summary, and print rows at zero", () => {
+  const emptyPeriod = {
+    start: "2026-01-01",
+    end: "2026-01-07",
+    label: "Jan 1–7, 2026",
+    preset: "custom",
+  };
+  const outside = {
+    visits: [
+      visit({
+        id: 1,
+        close_reason: "consultation_completed",
+        closed_at: "2026-11-03T04:00:00Z",
+      }),
+    ],
+    referrals: [
+      {
+        id: 1,
+        date: "2026-11-02",
+        status: "Completed",
+        barangay_health_center: "BHC A",
+        patient_name: "Secret",
+      },
+    ],
+    records: [
+      {
+        selectedPrograms: ["EPI"],
+        patientId: "p1",
+        immunizationData: {
+          vaccineEntries: [{ vaccineName: "BCG", dateGiven: "2026-11-02" }],
+        },
+      },
+    ],
+    patients: [{ id: "p1" }],
+  };
+
+  for (const category of ["overview", "patient_visits", "referrals", "epi"]) {
+    const report = buildRhuReport({ ...outside, category, period: emptyPeriod });
+    assert.equal(report.empty, true, category);
+    assert.equal(report.period.label, emptyPeriod.label, category);
+    assert.ok(report.cards.length > 0, category);
+    assert.ok(report.cards.every((card) => card.value === 0), category);
+    assert.ok(report.summary.every((row) => Number(row.value) === 0), category);
+    assert.equal(report.printRows, report.summary, category);
+    assert.ok(
+      report.charts.every((chart) => chart.periodLabel === emptyPeriod.label),
+      category,
+    );
+    assert.doesNotMatch(JSON.stringify(report.summary), /Secret|BHC A/, category);
+  }
+});
+
+test("applied period label stays on the report for subtitle and print", () => {
+  for (const category of ["overview", "patient-visits", "referrals", "maternal"]) {
+    const report = buildRhuReport({
+      visits: [visit({ id: 1 })],
+      referrals: [],
+      records: [],
+      patients: [],
+      category,
+      period,
+    });
+    assert.equal(report.period, period, category);
+    assert.equal(report.period.label, "Nov 1–5, 2026", category);
+    assert.ok(
+      report.charts.every((chart) => chart.periodLabel === period.label),
+      category,
+    );
+  }
+});
+
 test("buildIncomingReferralMetrics excludes referrals with only raw referral_date (not normalized cohort fields)", () => {
   const metrics = buildIncomingReferralMetrics(
     [
