@@ -48,12 +48,26 @@ const filterSelectClass =
 const PRINT_CSS = `
   @page { size: A4 portrait; margin: 14mm; }
   @media print {
-    body * { visibility: hidden !important; }
-    #admin-account-report-print,
-    #admin-account-report-print * { visibility: visible !important; }
+    html, body {
+      height: auto !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+    }
+    /* Shells use h-dvh and overflow-hidden. Reset them so the article paginates. */
+    body, #root, #root * {
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+    main {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .no-print { display: none !important; }
     #admin-account-report-print {
-      position: absolute;
-      inset: 0;
+      position: static !important;
+      display: block !important;
       width: 100%;
       background: #ffffff !important;
       color: #0f172a !important;
@@ -78,7 +92,6 @@ const PRINT_CSS = `
     #admin-account-report-print th.num { text-align: right; }
     #admin-account-report-print tr,
     #admin-account-report-print section { break-inside: avoid; page-break-inside: avoid; }
-    .no-print { display: none !important; }
   }
 `;
 
@@ -413,7 +426,7 @@ function AccessPanel({ access, pending, retrying, onRetry }) {
 
 function SummaryTable({ report }) {
   return (
-    <section className="rounded-card border border-neutral-200 bg-white shadow-card">
+    <section className="no-print rounded-card border border-neutral-200 bg-white shadow-card">
       <div className="border-b border-neutral-200 px-4 py-4">
         <h2 className="text-sm font-semibold text-neutral-900">Account summary</h2>
         <p className="mt-1 text-[12px] text-neutral-500">{report.roleChartTitle} · {report.filterLabel}</p>
@@ -481,7 +494,7 @@ function PrintCountTable({ caption, headers, rows }) {
   );
 }
 
-function PrintArticle({ report, generatedLabel, summaryPending }) {
+function PrintArticle({ report, generatedLabel }) {
   const access = report.accessRequests;
   const numeric = (value) => ({ value: formatCount(value), numeric: true });
 
@@ -580,9 +593,7 @@ function PrintArticle({ report, generatedLabel, summaryPending }) {
 
       <section className="mt-4">
         <h2 className="text-[12px] font-bold uppercase tracking-wider text-neutral-700">Pending access requests</h2>
-        {summaryPending ? (
-          <p className="mt-2 text-[12px] text-neutral-700">Pending access counts are still loading.</p>
-        ) : access?.available ? (
+        {access?.available ? (
           <>
             <p className="mt-2 text-[12px] text-neutral-700">{access.scopeLabel}</p>
             <PrintCountTable
@@ -647,9 +658,7 @@ export default function AdminReports() {
     });
   }, [analyticsQuery.dataUpdatedAt]);
 
-  const refreshing =
-    (analyticsQuery.isFetching && !analyticsQuery.isLoading) ||
-    (summaryQuery.isFetching && !summaryQuery.isPending);
+  const analyticsRefreshing = analyticsQuery.isFetching && !analyticsQuery.isLoading;
   const summaryPending = summaryQuery.isPending;
 
   function applyFilters(event) {
@@ -679,7 +688,7 @@ export default function AdminReports() {
         {report?.ok ? (
           <div className="flex flex-col gap-5">
             <style>{PRINT_CSS}</style>
-            <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <header className="no-print flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Account & Role Analytics</h1>
                 <p className="mt-1 text-[13px] text-neutral-600">System Administration · Current Account Snapshot</p>
@@ -694,7 +703,7 @@ export default function AdminReports() {
               />
             </header>
 
-            {refreshing ? (
+            {analyticsRefreshing ? (
               <div className="no-print flex justify-end">
                 <RefreshingIndicator label="Updating account snapshot…" />
               </div>
@@ -721,14 +730,14 @@ export default function AdminReports() {
             {report.showOtherWarning ? (
               <div
                 role="status"
-                className="flex gap-3 rounded-card border border-red-200 bg-red-50 px-4 py-3 text-[13px] leading-relaxed text-red-950"
+                className="no-print flex gap-3 rounded-card border border-red-200 bg-red-50 px-4 py-3 text-[13px] leading-relaxed text-red-950"
               >
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-700" aria-hidden="true" />
                 <p>{otherWarning(report)}</p>
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <div className="no-print grid grid-cols-1 gap-4 lg:grid-cols-12">
               <RolePanel report={report} />
               <div className="flex flex-col gap-4 lg:col-span-7">
                 <StatusPanel report={report} />
@@ -742,7 +751,7 @@ export default function AdminReports() {
             </div>
 
             <SummaryTable report={report} />
-            <PrintArticle report={report} generatedLabel={generatedLabel} summaryPending={summaryPending} />
+            <PrintArticle report={report} generatedLabel={generatedLabel} />
           </div>
         ) : (
           <ConnectionErrorState
