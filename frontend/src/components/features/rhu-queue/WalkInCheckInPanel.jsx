@@ -28,7 +28,7 @@ function toCheckInRow(patient) {
 
 /**
  * Search existing patients and check one into today's queue.
- * Shared by the Walk-in Check-in page and the queue modal.
+ * Shared by the Walk-in Check-in page.
  */
 export default function WalkInCheckInPanel({
   registerPath,
@@ -120,7 +120,7 @@ export default function WalkInCheckInPanel({
   async function checkIn(patient) {
     setSavingId(patient.id);
     try {
-      walkIn.current = walkInKeyFor(walkIn.current, patient.id);
+      walkIn.current = walkInKeyFor(walkIn.current, String(patient.id));
       const visit = await checkInExistingPatient(patient.id, walkIn.current.key);
       toast.success(`${patient.full_name} added to today's queue.`);
       walkIn.current = null;

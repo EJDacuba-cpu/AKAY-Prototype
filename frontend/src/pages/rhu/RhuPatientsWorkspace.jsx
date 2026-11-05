@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
 import toast from "react-hot-toast";
 
 import {
@@ -13,9 +12,7 @@ import {
 import CloseVisitModal from "../../components/features/rhu-queue/CloseVisitModal";
 import RhuQueueTable from "../../components/features/rhu-queue/RhuQueueTable";
 import RhuStartConsultationModal from "../../components/features/rhu-queue/RhuStartConsultationModal";
-import WalkInCheckInModal from "../../components/features/rhu-queue/WalkInCheckInModal";
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { Button } from "../../components/ui/button";
 import useAccess from "../../hooks/useAccess";
 import useRhuVisits from "../../hooks/useRhuVisits";
 import { closeRhuVisit } from "../../services/rhuVisitService";
@@ -27,8 +24,6 @@ import {
   RHU_PATIENT_VIEW_QUEUE,
 } from "../../utils/sidebarNavigation";
 import PatientsModule from "../bhc/PatientsModule";
-
-const REGISTER_FOR_CHECK_IN = "/rhu/patients/add?check_in=1";
 
 const VISIT_PROGRESS_ALL = "All Visit Progress";
 const VISIT_PROGRESS_OPTIONS = [
@@ -53,7 +48,6 @@ export default function RhuPatientsWorkspace() {
   const isQueue = view === RHU_PATIENT_VIEW_QUEUE;
   const [queueSearch, setQueueSearch] = useState("");
   const [visitProgress, setVisitProgress] = useState(VISIT_PROGRESS_ALL);
-  const [checkInOpen, setCheckInOpen] = useState(false);
   const [startingRow, setStartingRow] = useState(null);
   const [closingRow, setClosingRow] = useState(null);
   const [closeState, setCloseState] = useState({ saving: false, error: "" });
@@ -132,17 +126,9 @@ export default function RhuPatientsWorkspace() {
       <div className="flex h-full min-h-0 flex-col gap-4">
         {isQueue ? (
           <>
-            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{pageTitle}</h1>
-                <p className="mt-1 text-[13px] text-neutral-600">{pageSubtitle}</p>
-              </div>
-              {canCheckIn && (
-                <Button type="button" variant="brand" className="shrink-0 self-start" onClick={() => setCheckInOpen(true)}>
-                  <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
-                  Check in walk-in
-                </Button>
-              )}
+            <div className="min-w-0 shrink-0">
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{pageTitle}</h1>
+              <p className="mt-1 text-[13px] text-neutral-600">{pageSubtitle}</p>
             </div>
 
             <div className={`flex shrink-0 justify-end ${canViewQueue ? "" : "invisible"}`} aria-hidden={!canViewQueue}>
@@ -205,9 +191,6 @@ export default function RhuPatientsWorkspace() {
         )}
       </div>
 
-      {checkInOpen && (
-        <WalkInCheckInModal registerPath={REGISTER_FOR_CHECK_IN} onClose={() => setCheckInOpen(false)} />
-      )}
       {startingRow && (
         <RhuStartConsultationModal
           patientId={startingRow.patientId}

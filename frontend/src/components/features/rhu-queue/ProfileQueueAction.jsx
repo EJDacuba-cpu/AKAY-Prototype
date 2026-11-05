@@ -120,7 +120,7 @@ export default function ProfileQueueAction({ patientId, patientName }) {
   async function checkIn() {
     setSaving(true);
     try {
-      walkIn.current = walkInKeyFor(walkIn.current, patientId);
+      walkIn.current = walkInKeyFor(walkIn.current, String(patientId));
       await checkInExistingPatient(patientId, walkIn.current.key);
       toast.success(`${patientName || "Patient"} added to today's queue.`);
       walkIn.current = null;

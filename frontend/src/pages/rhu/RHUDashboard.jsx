@@ -444,7 +444,7 @@ function WorkflowPanel({ delay = 0 }) {
         />
 
         <WorkflowShortcut
-          href="/rhu/patients/add"
+          href="/rhu/walk-in-check-in"
           icon={<UserPlus size={17} />}
           label="Direct Visit"
           title="Add Walk-in Patient"

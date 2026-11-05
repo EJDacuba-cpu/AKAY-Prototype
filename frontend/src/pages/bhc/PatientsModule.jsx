@@ -504,7 +504,15 @@ function PatientDirectory({
                 : canRegister
                   ? "Tap New Patient to start."
                   : role === "rhu"
-                    ? "Register walk-in patients from Today's Queue."
+                    ? (
+                      <>
+                        Register walk-in patients from{" "}
+                        <Link to="/rhu/walk-in-check-in" className="font-medium text-ink-700 underline">
+                          Walk-in Check-in
+                        </Link>
+                        .
+                      </>
+                    )
                     : "No patients registered at this facility."
             }
             action={

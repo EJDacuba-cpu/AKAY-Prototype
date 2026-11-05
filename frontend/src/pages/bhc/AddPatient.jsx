@@ -48,7 +48,7 @@ import {
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
 import { checkInExistingPatient } from "../../services/rhuVisitService";
-import { duplicatePrompt, newCheckInKey, postSaveDestination } from "../../utils/walkInRegistration";
+import { duplicatePrompt, newCheckInKey, postSaveDestination, walkInCheckInPathForPatient } from "../../utils/walkInRegistration";
 import { queryKeys } from "../../utils/queryKeys";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
@@ -468,6 +468,11 @@ function handleBirthDateChange(valueOrEvent) {
   }
 
   async function checkInMatch(match) {
+    if (walkIn) {
+      setDuplicates(null);
+      navigate(match.activeVisitId ? "/rhu/patients" : walkInCheckInPathForPatient(match.id));
+      return;
+    }
     try {
       setSaving(true);
       if (!match.activeVisitId) await checkInExistingPatient(match.id, ensureCheckInKey());
@@ -882,13 +887,20 @@ function handleBirthDateChange(valueOrEvent) {
         onClose={() => { if (checkingIn) return; setModals({ confirm: false, success: false }); navigate(postSaveDestination({ checkIn: Boolean(walkIn), role, patientsPath, patientId: createdPatientId })); }}
         footer={<>
           <Button type="button" variant="ghost" disabled={checkingIn} onClick={registerAnother}>Register Another Patient</Button>
-          {role === "rhu" && !patientId ? (
+          {walkIn ? (
+            <Button type="button" onClick={() => {
+              setModals({ confirm: false, success: false });
+              navigate(postSaveDestination({ checkIn: true, role, patientsPath, patientId: createdPatientId }));
+            }}>
+              Continue to check-in
+            </Button>
+          ) : role === "rhu" && !patientId ? (
             <>
               <Button type="button" variant="secondary" disabled={checkingIn} onClick={goToQueue}>Back to Today's Queue</Button>
               <Button type="button" disabled={checkingIn} onClick={checkInCreatedPatient}>{checkingIn ? "Checking in..." : "Check In Patient"}</Button>
             </>
           ) : (
-            <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(walkIn ? patientsPath : `${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>{walkIn ? "Back to queue" : "Edit Patient"}</Button>
+            <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>Edit Patient</Button>
           )}
         </>}
       >
