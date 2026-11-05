@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Link } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
-import { ConfirmationModal, SearchField } from "../../common";
+import { SearchField } from "../../common";
 import { Button } from "../../ui/button";
+import useAccess from "../../../hooks/useAccess";
 import { getRhuPatientById } from "../../../services/patientService";
 import { checkInExistingPatient, searchPatientsForCheckIn } from "../../../services/rhuVisitService";
 import { formatAgeSex, isSearchable, walkInKeyFor } from "../../../utils/rhuQueueView";
 import { queryKeys } from "../../../utils/queryKeys";
 
 const SEARCH_DELAY_MS = 300;
+const QUEUE_PATH = "/rhu/patients?view=queue";
+
+const panelSheet =
+  "flex min-h-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm shadow-black/[0.02]";
 
 /** Identity from GET /patients/:id, in the same shape as a check-in search row. */
 function toCheckInRow(patient) {
@@ -27,43 +32,52 @@ function toCheckInRow(patient) {
   };
 }
 
+function samePatient(a, b) {
+  return a != null && b != null && String(a) === String(b);
+}
+
 /**
- * Search existing patients and check one into today's queue.
- * Shared by the Walk-in Check-in page.
+ * Two-panel walk-in workspace: Find Patient (search + select) and Check-in Details (verify + confirm).
  */
 export default function WalkInCheckInPanel({
   selectedPatientId = null,
   onClearedSelection,
   onCheckedIn,
 }) {
+  const access = useAccess();
+  const canViewQueue = access.can("clinical.history");
   const client = useQueryClient();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState({ loading: false, error: "" });
-  const [savingId, setSavingId] = useState(null);
-  const [pending, setPending] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [selectedLoading, setSelectedLoading] = useState(false);
   const [selectedError, setSelectedError] = useState("");
-  // One key per patient: a retry for the same patient is recognised, another patient never inherits it.
+  const [saving, setSaving] = useState(false);
+  const [successName, setSuccessName] = useState("");
   const walkIn = useRef(null);
   const [reloads, setReloads] = useState(0);
   const latest = useRef(0);
 
   useEffect(() => {
-    if (!selectedPatientId) {
-      setSelected(null);
-      setSelectedError("");
-      return undefined;
-    }
+    if (!selectedPatientId) return undefined;
     let cancelled = false;
-    setSelected(null);
+    setSelectedLoading(true);
     setSelectedError("");
+    setSuccessName("");
     (async () => {
       try {
         const patient = await getRhuPatientById(selectedPatientId);
-        if (!cancelled) setSelected(toCheckInRow(patient));
+        if (!cancelled) {
+          setSelected(toCheckInRow(patient));
+          setSelectedLoading(false);
+        }
       } catch {
-        if (!cancelled) setSelectedError("Unable to load the registered patient.");
+        if (!cancelled) {
+          setSelected(null);
+          setSelectedError("Unable to load the registered patient.");
+          setSelectedLoading(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -80,7 +94,6 @@ export default function WalkInCheckInPanel({
     const timer = setTimeout(async () => {
       try {
         const found = await searchPatientsForCheckIn(query.trim());
-        // A slower, older answer must never replace a newer one.
         if (request !== latest.current) return;
         setResults(found);
         setStatus({ loading: false, error: "" });
@@ -93,91 +106,68 @@ export default function WalkInCheckInPanel({
     return () => clearTimeout(timer);
   }, [query, reloads]);
 
-  // Swallow Escape on the confirm so it never closes a parent shell behind it.
-  useEffect(() => {
-    if (!pending) return undefined;
-    function onKeyDown(event) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      if (savingId === null) setPending(null);
-    }
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [pending, savingId]);
-
   function markInQueue(patientId, visitId) {
     const apply = (row) => (
-      String(row.id) === String(patientId) ? { ...row, active_visit_id: visitId ?? true } : row
+      samePatient(row.id, patientId) ? { ...row, active_visit_id: visitId ?? true } : row
     );
     setResults((rows) => rows.map(apply));
     setSelected((current) => (current ? apply(current) : current));
   }
 
-  async function checkIn(patient) {
-    setSavingId(patient.id);
+  function selectPatient(patient) {
+    setSuccessName("");
+    setSelectedError("");
+    setSelectedLoading(false);
+    setSelected(toCheckInRow(patient));
+  }
+
+  function resetWorkspace() {
+    setQuery("");
+    setResults([]);
+    setStatus({ loading: false, error: "" });
+    setSelected(null);
+    setSelectedLoading(false);
+    setSelectedError("");
+    setSuccessName("");
+    walkIn.current = null;
+    onClearedSelection?.();
+  }
+
+  async function confirmCheckIn() {
+    if (!selected || selected.active_visit_id || saving || successName) return;
+    setSaving(true);
     try {
-      walkIn.current = walkInKeyFor(walkIn.current, String(patient.id));
-      const visit = await checkInExistingPatient(patient.id, walkIn.current.key);
-      toast.success(`${patient.full_name} added to today's queue.`);
+      walkIn.current = walkInKeyFor(walkIn.current, String(selected.id));
+      const visit = await checkInExistingPatient(selected.id, walkIn.current.key);
+      const name = selected.full_name;
       walkIn.current = null;
-      markInQueue(patient.id, visit?.id ?? true);
+      markInQueue(selected.id, visit?.id ?? true);
+      setSuccessName(name);
       await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
       onCheckedIn?.();
     } catch (error) {
       if (error?.code === "VISIT_ALREADY_ACTIVE") {
-        // Another desk was faster; the outcome is the one we wanted. Show the truth instead of an error.
-        markInQueue(patient.id, true);
+        markInQueue(selected.id, true);
         await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
         setReloads((count) => count + 1);
       } else {
         toast.error(error.message || "Unable to check this patient in.");
       }
     } finally {
-      setSavingId(null);
+      setSaving(false);
     }
   }
 
-  async function confirmPending() {
-    if (!pending || savingId !== null) return;
-    await checkIn(pending);
-    setPending(null);
-  }
-
-  const busy = savingId !== null || pending !== null;
+  const alreadyInQueue = Boolean(selected?.active_visit_id);
+  const canConfirm = Boolean(selected) && !alreadyInQueue && !saving && !successName && !selectedLoading;
 
   return (
-    <div className="space-y-4">
-      {selectedPatientId ? (
-        <section
-          aria-label="Selected patient"
-          className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm shadow-black/[0.02]"
-        >
-          {selectedError ? (
-            <p role="alert" className="px-3.5 py-5 text-center text-[13px] text-danger sm:px-4">{selectedError}</p>
-          ) : selected ? (
-            <ul>
-              <ResultRow patient={selected} saving={savingId === selected.id} busy={busy} onCheckIn={() => setPending(selected)} />
-            </ul>
-          ) : (
-            <p role="status" className="px-3.5 py-5 text-center text-[13px] text-neutral-500 sm:px-4">Loading patient...</p>
-          )}
-          {onClearedSelection ? (
-            <div className="flex justify-end border-t border-neutral-100 px-3.5 py-2 sm:px-4">
-              <Button type="button" variant="ghost" size="compact" disabled={busy} onClick={onClearedSelection}>
-                Clear selected patient
-              </Button>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm shadow-black/[0.02]">
+    <div className="grid min-h-0 gap-4 lg:grid-cols-2 lg:items-start">
+      <section className={panelSheet} aria-labelledby="walk-in-find-heading">
         <div className="border-b border-neutral-100 px-3.5 py-3 sm:px-4">
-          <h2 className="text-sm font-semibold text-ink-800">Find a Patient</h2>
+          <h2 id="walk-in-find-heading" className="text-sm font-semibold text-ink-800">Find Patient</h2>
           <p className="mt-1 text-xs text-neutral-500">
-            Search existing records before registering a new patient.
+            Search by name, PhilHealth number, or contact number.
           </p>
         </div>
         <div className="space-y-3 px-3.5 py-3 sm:px-4">
@@ -186,7 +176,6 @@ export default function WalkInCheckInPanel({
             onChange={setQuery}
             placeholder="Name, PhilHealth number or contact number"
             label="Search patients to check in"
-            className="max-w-xl"
           />
           <div aria-live="polite">
             {status.error ? (
@@ -199,65 +188,159 @@ export default function WalkInCheckInPanel({
               <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Searching...</p>
             ) : results.length === 0 ? (
               <p className="py-5 text-center text-[13px] text-neutral-500">
-                No matching patient. Use Register New Patient above if they are new.
+                No matching patient. Use Register New Patient if they are new.
               </p>
             ) : (
-              <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
-                {results.map((patient) => (
-                  <ResultRow
-                    key={patient.id}
-                    patient={patient}
-                    saving={savingId === patient.id}
-                    busy={busy}
-                    onCheckIn={() => setPending(patient)}
-                  />
-                ))}
+              <ul className="overflow-hidden rounded-lg border border-neutral-200" role="listbox" aria-label="Matching patients">
+                {results.map((patient) => {
+                  const isSelected = samePatient(selected?.id, patient.id);
+                  const secondary = [formatAgeSex(patient), patient.barangay].filter(Boolean).join(" · ");
+                  return (
+                    <li key={patient.id} role="option" aria-selected={isSelected} className="border-b border-neutral-100 last:border-b-0">
+                      <button
+                        type="button"
+                        onClick={() => selectPatient(patient)}
+                        className={[
+                          "flex w-full min-h-14 items-center gap-3 px-3 py-2 text-left transition-colors sm:px-3.5",
+                          isSelected
+                            ? "bg-brand-50 ring-1 ring-inset ring-brand-600/25"
+                            : "hover:bg-neutral-50",
+                        ].join(" ")}
+                      >
+                        <div className="min-w-0 flex-1 leading-tight">
+                          <p className="truncate text-[13px] font-semibold text-neutral-900">{patient.full_name}</p>
+                          {secondary ? (
+                            <p className="mt-0.5 truncate text-[12px] text-neutral-500">{secondary}</p>
+                          ) : null}
+                        </div>
+                        {patient.active_visit_id ? (
+                          <span className="shrink-0 text-[11px] font-medium text-neutral-500">In queue</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
         </div>
       </section>
 
-      {pending ? createPortal(
-        <ConfirmationModal
-          open
-          title="Check in this patient?"
-          description={`Check in ${pending.full_name} to today's queue.`}
-          confirmText="Check in"
-          cancelText="Cancel"
-          tone="plain"
-          loading={savingId !== null}
-          loadingText="Checking in..."
-          onConfirm={confirmPending}
-          onCancel={() => { if (savingId === null) setPending(null); }}
-        />,
-        document.body,
-      ) : null}
+      <section className={panelSheet} aria-labelledby="walk-in-details-heading">
+        <div className="border-b border-neutral-100 px-3.5 py-3 sm:px-4">
+          <h2 id="walk-in-details-heading" className="text-sm font-semibold text-ink-800">Check-in Details</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Verify identity, then confirm check-in to Today's Queue.
+          </p>
+        </div>
+
+        <div className="flex flex-1 flex-col gap-4 px-3.5 py-4 sm:px-4">
+          {successName ? (
+            <SuccessState
+              name={successName}
+              canViewQueue={canViewQueue}
+              onCheckInAnother={resetWorkspace}
+            />
+          ) : selectedLoading ? (
+            <p role="status" className="py-8 text-center text-[13px] text-neutral-500">Loading patient...</p>
+          ) : selectedError ? (
+            <p role="alert" className="py-8 text-center text-[13px] text-danger">{selectedError}</p>
+          ) : !selected ? (
+            <p className="py-8 text-center text-[13px] text-neutral-500">
+              Select a patient from the search results to review check-in details.
+            </p>
+          ) : (
+            <>
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-semibold tracking-tight text-ink-800">{selected.full_name}</p>
+                <p className="mt-1 text-[13px] text-neutral-600">
+                  {[formatAgeSex(selected), selected.barangay].filter(Boolean).join(" · ") || "—"}
+                </p>
+              </div>
+
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Birthdate" value={selected.birthdate || "—"} />
+                <DetailField label="PhilHealth number" value={selected.philhealth_number || "—"} />
+                <DetailField label="Contact number" value={selected.contact_number || "—"} />
+                <DetailField label="Barangay" value={selected.barangay || "—"} />
+              </dl>
+
+              <CheckInStatus alreadyInQueue={alreadyInQueue} />
+
+              {alreadyInQueue ? (
+                <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] font-medium text-neutral-700">
+                  Already Checked In
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="brand"
+                  className="w-full sm:w-auto sm:self-start"
+                  disabled={!canConfirm}
+                  onClick={confirmCheckIn}
+                >
+                  {saving ? "Checking in..." : "Confirm Check-in"}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
-function ResultRow({ patient, saving, busy, onCheckIn }) {
-  const details = [
-    formatAgeSex(patient),
-    patient.birthdate,
-    patient.philhealth_number,
-    patient.contact_number,
-    patient.barangay,
-  ].filter(Boolean).join(" · ");
+function DetailField({ label, value }) {
   return (
-    <li className="flex min-h-14 items-center justify-between gap-3 px-3 py-2 sm:px-3.5">
-      <div className="min-w-0 leading-tight">
-        <p className="truncate text-[13px] font-semibold text-neutral-900">{patient.full_name}</p>
-        {details ? <p className="mt-0.5 truncate text-[12px] text-neutral-500">{details}</p> : null}
+    <div className="min-w-0">
+      <dt className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">{label}</dt>
+      <dd className="mt-1 truncate text-[13px] text-ink-800">{value}</dd>
+    </div>
+  );
+}
+
+function CheckInStatus({ alreadyInQueue }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px]">
+      <span
+        aria-hidden="true"
+        className={[
+          "h-2 w-2 shrink-0 rounded-full",
+          alreadyInQueue ? "bg-success-500" : "bg-info-500",
+        ].join(" ")}
+      />
+      <span className={alreadyInQueue ? "font-medium text-success-700" : "text-neutral-700"}>
+        {alreadyInQueue ? "Already in Today's Queue" : "Ready to check in"}
+      </span>
+    </div>
+  );
+}
+
+function SuccessState({ name, canViewQueue, onCheckInAnother }) {
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <div className="flex items-start gap-2.5">
+        <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-success-500" />
+        <div className="min-w-0">
+          <p className="text-[14px] font-semibold text-ink-800">Checked in successfully</p>
+          <p className="mt-1 text-[13px] text-neutral-600">
+            {name} was added to Today's Queue and is waiting.
+          </p>
+        </div>
       </div>
-      {patient.active_visit_id ? (
-        <span className="shrink-0 text-[12px] font-medium text-neutral-600">Already in today's queue</span>
-      ) : (
-        <Button type="button" variant="secondary" size="compact" disabled={busy} onClick={onCheckIn}>
-          {saving ? "Checking in..." : "Check in"}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="brand" onClick={onCheckInAnother}>
+          Check In Another Patient
         </Button>
-      )}
-    </li>
+        {canViewQueue ? (
+          <Link
+            to={QUEUE_PATH}
+            className="inline-flex h-9 items-center rounded-full px-3 text-[13px] font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+          >
+            View Today's Queue
+          </Link>
+        ) : null}
+      </div>
+    </div>
   );
 }
