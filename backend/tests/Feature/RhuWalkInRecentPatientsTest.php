@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
 use App\Models\Patient;
+use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
+use App\Services\ReferralService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -17,13 +19,15 @@ class RhuWalkInRecentPatientsTest extends TestCase
 
     private RuralHealthUnit $rhu;
 
+    private BarangayHealthCenter $bhc;
+
     private User $nurse;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->rhu = RuralHealthUnit::create(['name' => 'Recent RHU', 'status' => 'active']);
-        BarangayHealthCenter::create(['name' => 'Recent BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
+        $this->bhc = BarangayHealthCenter::create(['name' => 'Recent BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
         $this->nurse = User::create([
             'name' => 'Recent Nurse',
             'email' => 'recent-nurse@example.test',
@@ -89,10 +93,11 @@ class RhuWalkInRecentPatientsTest extends TestCase
         $this->recent()->assertOk()->assertJsonPath('data.*.id', [$own->id]);
     }
 
-    public function test_includes_active_visit_id_and_identity_only(): void
+    public function test_excludes_patients_with_an_active_queue_visit(): void
     {
-        $queued = $this->patient('Queued', 'Now', ['medical_background' => ['allergies' => ['items' => [['allergen' => 'Private']]]]]);
-        $visit = RhuVisitQueueEntry::create([
+        $eligible = $this->patient('Free', 'Desk');
+        $queued = $this->patient('Queued', 'Now');
+        RhuVisitQueueEntry::create([
             'rural_health_unit_id' => $this->rhu->id,
             'patient_id' => $queued->id,
             'source' => 'walk_in',
@@ -101,9 +106,42 @@ class RhuWalkInRecentPatientsTest extends TestCase
             'check_in_key' => 'recent-key',
         ]);
 
+        $this->recent()->assertOk()->assertJsonPath('data.*.id', [$eligible->id]);
+    }
+
+    public function test_excludes_patients_with_a_pending_referral_to_this_rhu(): void
+    {
+        $eligible = $this->patient('Walk', 'In');
+        $referred = $this->patient('Pending', 'Referral');
+        Referral::create([
+            'tracking_id' => 'AKY-RECENT-'.uniqid(),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $referred->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Recent preview',
+            'status' => Referral::STATUS_PENDING,
+        ]);
+
+        $this->recent()->assertOk()->assertJsonPath('data.*.id', [$eligible->id]);
+    }
+
+    public function test_received_referral_patients_remain_in_the_preview(): void
+    {
+        $received = $this->patient('Received', 'Before', ['medical_background' => ['allergies' => ['items' => [['allergen' => 'Private']]]]]);
+        Referral::create([
+            'tracking_id' => 'AKY-RECV-'.uniqid(),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $received->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Already received',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+
         $response = $this->recent()->assertOk()
-            ->assertJsonPath('data.0.id', $queued->id)
-            ->assertJsonPath('data.0.active_visit_id', $visit->id)
+            ->assertJsonPath('data.0.id', $received->id)
+            ->assertJsonPath('data.0.active_visit_id', null)
             ->assertJsonMissingPath('data.0.medical_background');
         $this->assertStringNotContainsString('Private', $response->getContent());
     }

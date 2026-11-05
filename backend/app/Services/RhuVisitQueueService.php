@@ -442,7 +442,9 @@ class RhuVisitQueueService
     }
 
     /**
-     * Newest walk-in-eligible patients for the check-in desk preview (identity only).
+     * Newest patients eligible for a direct walk-in from the check-in desk preview.
+     * Excludes anyone already in today's queue or with a Pending referral to this RHU
+     * (those arrivals belong in Incoming Referrals). Manual search is unchanged.
      *
      * @return list<array{patient: Patient, active_visit_id: int|null}>
      */
@@ -453,6 +455,16 @@ class RhuVisitQueueService
 
         $patients = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
             ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
+            ->whereDoesntHave('referrals', fn ($referrals) => $referrals
+                ->where('rural_health_unit_id', $rhuId)
+                ->where('status', Referral::STATUS_PENDING))
+            ->whereNotExists(function ($active) use ($rhuId): void {
+                $active->selectRaw('1')
+                    ->from((new RhuVisitQueueEntry)->getTable())
+                    ->whereColumn('patient_id', (new Patient)->getTable().'.id')
+                    ->where('rural_health_unit_id', $rhuId)
+                    ->whereNull('closed_at');
+            })
             ->orderByDesc('id')
             ->limit($take)
             ->get();

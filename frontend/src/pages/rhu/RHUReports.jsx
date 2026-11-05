@@ -10,6 +10,7 @@ import {
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
 import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import RhuOverviewBento from "../../components/features/reports/RhuOverviewBento";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -42,6 +43,7 @@ export default function RHUReports() {
   });
   const period = appliedPeriod.period;
   const ageGroup = appliedPeriod.selection?.ageGroup || "all";
+  const isOverview = category === "overview";
   const isNutrition = category === "nutrition";
 
   const {
@@ -149,7 +151,7 @@ export default function RHUReports() {
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
-                {category === "overview"
+                {isOverview
                   ? "Reports & Analytics"
                   : isNutrition
                     ? "Nutrition Report"
@@ -188,54 +190,60 @@ export default function RHUReports() {
             </div>
           ) : null}
 
-          <div className="anim-stagger no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {report.cards.map((item) => (
-              <article key={item.key} className="rounded-card border border-neutral-200 bg-white p-4 shadow-card">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{item.label}</p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{item.value}</p>
-                <p className="mt-1 text-xs text-neutral-500">{item.hint}</p>
-              </article>
-            ))}
-          </div>
+          {isOverview ? (
+            <RhuOverviewBento report={report} periodLabel={period.label} className="anim-stagger" />
+          ) : (
+            <>
+              <div className="anim-stagger no-print grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {report.cards.map((item) => (
+                  <article key={item.key} className="rounded-card border border-neutral-200 bg-white p-4 shadow-card">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{item.label}</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{item.value}</p>
+                    <p className="mt-1 text-xs text-neutral-500">{item.hint}</p>
+                  </article>
+                ))}
+              </div>
 
-          <BhcReportCharts charts={report.charts} className="no-print" />
+              <BhcReportCharts charts={report.charts} className="no-print" />
 
-          <Card className="no-print rounded-card shadow-card">
-            <CardHeader>
-              <CardTitle>Reporting summary</CardTitle>
-              <CardDescription>
-                Aggregate counts for {report.categoryLabel.toLowerCase()} · {period.label}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {report.summary.length === 0 || report.empty ? (
-                <p className="py-6 text-center text-sm text-neutral-500">
-                  No matching records in this reporting period.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                        <th className="px-3 py-2.5">Indicator</th>
-                        <th className="px-3 py-2.5 text-right">Count</th>
-                        <th className="px-3 py-2.5">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.summary.map((row, index) => (
-                        <tr key={`${row.label}-${row.note}-${index}`} className="border-b border-neutral-100">
-                          <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
-                          <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <Card className="no-print rounded-card shadow-card">
+                <CardHeader>
+                  <CardTitle>Reporting summary</CardTitle>
+                  <CardDescription>
+                    Aggregate counts for {report.categoryLabel.toLowerCase()} · {period.label}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {report.summary.length === 0 || report.empty ? (
+                    <p className="py-6 text-center text-sm text-neutral-500">
+                      No matching records in this reporting period.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                            <th className="px-3 py-2.5">Indicator</th>
+                            <th className="px-3 py-2.5 text-right">Count</th>
+                            <th className="px-3 py-2.5">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.summary.map((row, index) => (
+                            <tr key={`${row.label}-${row.note}-${index}`} className="border-b border-neutral-100">
+                              <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
+                              <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
 
           <PrintReport
             facilityName={facilityName}

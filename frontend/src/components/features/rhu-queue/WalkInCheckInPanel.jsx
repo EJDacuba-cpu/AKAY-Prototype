@@ -253,7 +253,7 @@ export default function WalkInCheckInPanel({
     && !pendingError
     && !pendingBlocks;
   const listRows = searching ? results : recent;
-  const listLabel = searching ? "Matching patients" : "Recent Patient Records";
+  const listLabel = searching ? "Matching patients" : "Eligible for walk-in";
 
   return (
     <div className="grid min-h-0 gap-4 lg:grid-cols-2 lg:items-stretch">
@@ -390,7 +390,7 @@ function PatientListBody({
     if (listRows.length === 0) {
       return (
         <p className="py-5 text-center text-[13px] text-neutral-500">
-          No recent patient records yet. Search above or register a new patient.
+          No eligible walk-in patients yet. Search above or register a new patient.
         </p>
       );
     }
@@ -457,7 +457,6 @@ function DetailField({ label, value }) {
 }
 
 function CheckInStatus({ alreadyInQueue, pendingReferral, checking, failed }) {
-  const tone = alreadyInQueue ? "success" : pendingReferral ? "warning" : "info";
   const label = alreadyInQueue
     ? "Already in Today's Queue"
     : pendingReferral
@@ -471,12 +470,9 @@ function CheckInStatus({ alreadyInQueue, pendingReferral, checking, failed }) {
     <div className="flex items-center gap-2 text-[13px]">
       <span
         aria-hidden="true"
-        className={[
-          "h-2 w-2 shrink-0 rounded-full",
-          tone === "success" ? "bg-success-500" : tone === "warning" ? "bg-warning-500" : "bg-info-500",
-        ].join(" ")}
+        className={["h-2 w-2 shrink-0 rounded-full", alreadyInQueue ? "bg-success-500" : "bg-info-500"].join(" ")}
       />
-      <span className={tone === "success" ? "font-medium text-success-700" : tone === "warning" ? "font-medium text-warning-700" : "text-neutral-700"}>
+      <span className={alreadyInQueue ? "font-medium text-success-700" : "text-neutral-700"}>
         {label}
       </span>
     </div>
@@ -485,9 +481,9 @@ function CheckInStatus({ alreadyInQueue, pendingReferral, checking, failed }) {
 
 function PendingReferralNotice({ title, body }) {
   return (
-    <div role="status" className="rounded-lg border border-warning-100 bg-warning-50 px-3 py-2.5">
-      <p className="text-[13px] font-semibold text-warning-700">{title}</p>
-      <p className="mt-1 text-[13px] leading-5 text-neutral-700">{body}</p>
+    <div role="status" className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
+      <p className="text-[13px] font-semibold text-ink-800">{title}</p>
+      <p className="mt-0.5 text-[12px] leading-5 text-neutral-600">{body}</p>
     </div>
   );
 }

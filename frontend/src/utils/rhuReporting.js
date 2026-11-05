@@ -1,10 +1,27 @@
 import { buildBhcReport, isDateInReportPeriod, trendSeries } from "./bhcReporting.js";
+import { normalizeDateValue } from "./filterUtils.js";
 
 const CHART_COLORS = {
   brand: "var(--color-brand-600)",
   ink: "var(--color-ink-700)",
   info: "var(--color-info-500)",
+  soft: "var(--color-brand-300)",
+  muted: "var(--color-neutral-400)",
 };
+
+const CLINICAL_PROGRAM_LABELS = Object.freeze([
+  "EPI doses",
+  "Maternal consultations",
+  "FP services",
+  "Nutrition enrollments",
+]);
+
+const CLINICAL_PROGRAM_UNITS = Object.freeze({
+  "EPI doses": "doses",
+  "Maternal consultations": "consultations",
+  "FP services": "services",
+  "Nutrition enrollments": "enrollments",
+});
 
 const CLOSE_REASON_MISTAKE = "checked_in_by_mistake";
 const CLOSE_REASON_CONSULTATION_COMPLETED = "consultation_completed";
@@ -102,6 +119,75 @@ function barChart(title, description, period, data, xKey, valueKey, seriesLabel,
     seriesLabel,
     config: { [valueKey]: { label: seriesLabel, color } },
   };
+}
+
+function donutChart(title, description, period, data, seriesLabel) {
+  const palette = [CHART_COLORS.brand, CHART_COLORS.ink, CHART_COLORS.info, CHART_COLORS.soft, CHART_COLORS.muted];
+  const colored = (Array.isArray(data) ? data : []).map((item, index) => {
+    const key = String(item.label || "item")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || `item-${index}`;
+    return {
+      ...item,
+      key,
+      fill: palette[index % palette.length],
+    };
+  });
+  return {
+    kind: "donut",
+    title,
+    description,
+    periodLabel: period.label,
+    data: colored,
+    xKey: "label",
+    valueKey: "value",
+    seriesLabel,
+    config: Object.fromEntries(colored.map((item) => [item.key, { label: item.label, color: item.fill }])),
+  };
+}
+
+/** Walk-in vs referred counts per day — same eligible cohort as Patient Visits. */
+function visitSourceTrend(cohort, period) {
+  const base = trendSeries([], period);
+  const walkInByDay = new Map(base.map((row) => [row.date, 0]));
+  const referredByDay = new Map(base.map((row) => [row.date, 0]));
+
+  for (const visit of cohort) {
+    const date = normalizeDateValue(visit?.checked_in_at);
+    if (!walkInByDay.has(date)) continue;
+    if (isReferredVisit(visit)) {
+      referredByDay.set(date, referredByDay.get(date) + 1);
+    } else {
+      walkInByDay.set(date, walkInByDay.get(date) + 1);
+    }
+  }
+
+  return base.map((row) => ({
+    date: row.date,
+    label: row.label,
+    walkIn: walkInByDay.get(row.date) || 0,
+    referred: referredByDay.get(row.date) || 0,
+  }));
+}
+
+function clinicalProgramBars(clinicalAll) {
+  const activity = (clinicalAll?.charts || []).find((chart) => chart.title === "Category activity");
+  const rows = Array.isArray(activity?.data) ? activity.data : [];
+  return CLINICAL_PROGRAM_LABELS.map((label) => {
+    const match = rows.find((row) => row.label === label);
+    return {
+      label,
+      value: Number(match?.value) || 0,
+      unit: CLINICAL_PROGRAM_UNITS[label] || "count",
+    };
+  });
+}
+
+function countRecordedDiagnoses(clinicalAll) {
+  const morbidity = Number(clinicalAll?.cards?.find((item) => item.key === "morbidity")?.value) || 0;
+  const notifiable = Number(clinicalAll?.cards?.find((item) => item.key === "notifiable")?.value) || 0;
+  return morbidity + notifiable;
 }
 
 export function buildPatientVisitMetrics(visits, period) {
@@ -396,41 +482,119 @@ export function buildRhuReport({
 
   const visitMetrics = buildPatientVisitMetrics(visits, period);
   const referralMetrics = buildIncomingReferralMetrics(referrals, period);
-  const summary = [
-    {
-      label: "Total Visits",
-      value: visitMetrics.total,
-      note: "Queue check-ins in period; mistakes excluded",
+  const clinicalAll = buildBhcReport({
+    patients,
+    records,
+    referrals: [],
+    category: "all",
+    period,
+    ageGroup,
+  });
+  const recordedDiagnoses = countRecordedDiagnoses(clinicalAll);
+  const programBars = clinicalProgramBars(clinicalAll);
+  const visitCohort = (Array.isArray(visits) ? visits : []).filter((visit) =>
+    visitInPatientMetricsCohort(visit, period),
+  );
+  const sourceTrend = visitSourceTrend(visitCohort, period);
+  const distributionSlices = [
+    { label: "Walk-in", value: visitMetrics.walkIn },
+    { label: "Referred", value: visitMetrics.referred },
+  ].filter((item) => item.value > 0);
+
+  const visitTrend = {
+    kind: "multi-area",
+    title: "Patient Visit Trends",
+    description: "Walk-in and referred check-ins by day. Same eligible visits as Patient Visits.",
+    periodLabel: period.label,
+    data: sourceTrend,
+    xKey: "label",
+    series: [
+      { key: "walkIn", label: "Walk-in", color: CHART_COLORS.brand },
+      { key: "referred", label: "Referred", color: CHART_COLORS.ink },
+    ],
+    config: {
+      walkIn: { label: "Walk-in", color: CHART_COLORS.brand },
+      referred: { label: "Referred", color: CHART_COLORS.ink },
     },
-    {
-      label: "Referrals Submitted",
-      value: referralMetrics.total,
-      note: "Incoming referrals submitted in period",
+  };
+
+  const visitDistribution = donutChart(
+    "Visit Distribution",
+    "Walk-in versus referred among eligible visits in this period.",
+    period,
+    distributionSlices.length ? distributionSlices : [{ label: "No visits", value: 0 }],
+    "Visits",
+  );
+
+  const clinicalPrograms = {
+    kind: "horizontal-bar",
+    title: "Clinical Program Activity",
+    description:
+      "Each bar is its own unit (doses, consultations, services, enrollments). Bars are not a shared percentage total.",
+    periodLabel: period.label,
+    data: programBars,
+    xKey: "label",
+    valueKey: "value",
+    config: {
+      value: { label: "Count", color: CHART_COLORS.ink },
     },
-    {
-      label: "Completed Consultations",
-      value: visitMetrics.completedConsultations,
-      note: "Visits closed with consultation completed",
-    },
+  };
+
+  const cards = [
+    card("total_visits", "Patient Visits", visitMetrics.total, "Eligible queue check-ins; mistakes excluded"),
+    card(
+      "completed_consultations",
+      "Completed Consultations",
+      visitMetrics.completedConsultations,
+      "Visits closed with consultation completed",
+    ),
+    card("total_referrals", "Total Referrals", referralMetrics.total, "Incoming referrals submitted in period"),
+    card(
+      "recorded_diagnoses",
+      "Recorded Diagnoses",
+      recordedDiagnoses,
+      "Reportable morbidity + notifiable diagnosis entries",
+    ),
   ];
 
-  return reportView({
+  const summary = [
+    ...cards.map((item) => ({ label: item.label, value: item.value, note: item.hint })),
+    {
+      label: "Walk-in visits",
+      value: visitMetrics.walkIn,
+      note: "Eligible visits without a linked referral",
+    },
+    {
+      label: "Referred visits",
+      value: visitMetrics.referred,
+      note: "Referral source or linked referral id",
+    },
+    ...programBars.map((row) => ({
+      label: row.label,
+      value: row.value,
+      note: `Recorded ${row.unit} in period`,
+    })),
+  ];
+
+  const view = reportView({
     category: selected,
     period,
     ageGroup,
-    notes: ["Visits, referrals, and consultations are separate counts and are not added together."],
-    cards: [
-      card("total_visits", "Total Visits", visitMetrics.total, summary[0].note),
-      card("referrals_submitted", "Referrals Submitted", referralMetrics.total, summary[1].note),
-      card(
-        "completed_consultations",
-        "Completed Consultations",
-        visitMetrics.completedConsultations,
-        summary[2].note,
-      ),
-      card("referring_bhcs", "Referring BHCs", referralMetrics.referringBhcs, "Distinct source facilities"),
+    notes: [
+      "Visits, referrals, consultations, diagnoses, and program activities are separate counts and are not added together.",
+      "Clinical program bars compare magnitude only; each program keeps its own unit.",
     ],
-    charts: [visitMetrics.charts[0], visitMetrics.charts[1], referralMetrics.charts[0]].filter(Boolean),
+    cards,
+    charts: [visitTrend, visitDistribution, clinicalPrograms],
     summary,
   });
+
+  return {
+    ...view,
+    bento: {
+      visitTrend,
+      visitDistribution,
+      clinicalPrograms,
+    },
+  };
 }

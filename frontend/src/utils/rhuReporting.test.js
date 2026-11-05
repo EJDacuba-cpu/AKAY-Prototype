@@ -158,6 +158,40 @@ test("buildIncomingReferralMetrics uses referring HCI names from normalized refe
   assert.doesNotMatch(JSON.stringify(metrics), /Hidden Patient/);
 });
 
+test("overview visit charts use the same eligible cohort and keep separate program units", () => {
+  const report = buildRhuReport({
+    visits: [
+      visit({ id: 1, source: "walk_in", checked_in_at: "2026-11-02T02:00:00Z" }),
+      visit({ id: 2, source: "referral", checked_in_at: "2026-11-02T03:00:00Z" }),
+      visit({
+        id: 3,
+        source: "walk_in",
+        close_reason: "checked_in_by_mistake",
+        closed_at: "2026-11-02T04:00:00Z",
+      }),
+    ],
+    referrals: [],
+    records: [],
+    patients: [],
+    category: "overview",
+    period,
+  });
+  assert.equal(report.cards.find((card) => card.key === "total_visits").value, 2);
+  const day = report.bento.visitTrend.data.find((row) => row.walkIn + row.referred > 0);
+  assert.ok(day);
+  assert.equal(day.walkIn + day.referred, 2);
+  assert.deepEqual(
+    report.bento.visitDistribution.data.map((row) => ({ label: row.label, value: row.value })),
+    [
+      { label: "Walk-in", value: 1 },
+      { label: "Referred", value: 1 },
+    ],
+  );
+  assert.ok(
+    report.bento.clinicalPrograms.description.includes("not a shared percentage"),
+  );
+});
+
 test("overview does not sum visits, referrals, and records into one total", () => {
   const report = buildRhuReport({
     visits: [visit({ id: 1 })],
@@ -180,19 +214,23 @@ test("overview does not sum visits, referrals, and records into one total", () =
   assert.equal(report.category, "overview");
   assert.equal(report.categoryLabel, "Overview");
   assert.equal(report.cards.find((card) => card.key === "total_visits").value, 1);
-  assert.equal(report.cards.find((card) => card.key === "referrals_submitted").value, 1);
+  assert.equal(report.cards.find((card) => card.key === "total_referrals").value, 1);
   assert.equal(report.cards.find((card) => card.key === "completed_consultations").value, 0);
-  assert.equal(report.cards.find((card) => card.key === "referring_bhcs").value, 1);
+  assert.equal(report.cards.find((card) => card.key === "recorded_diagnoses").value, 0);
+  assert.equal(report.cards.find((card) => card.key === "referring_bhcs"), undefined);
   assert.equal(report.cards.some((card) => card.key === "epi-doses"), false);
-  assert.equal(report.summary.length, 3);
   assert.deepEqual(
-    report.summary.map((row) => row.label),
-    ["Total Visits", "Referrals Submitted", "Completed Consultations"],
+    report.cards.map((card) => card.key),
+    ["total_visits", "completed_consultations", "total_referrals", "recorded_diagnoses"],
   );
+  assert.ok(report.summary.length >= 4);
+  assert.equal(report.summary[0].label, "Patient Visits");
   assert.equal(report.printRows, report.summary);
-  assert.ok(report.charts.some((chart) => chart.title === "Walk-in vs referred"));
-  assert.ok(report.charts.some((chart) => chart.kind === "area"));
-  assert.ok(report.charts.some((chart) => chart.title === "Referrals by Barangay / BHC"));
+  assert.equal(report.bento.visitTrend.kind, "multi-area");
+  assert.equal(report.bento.visitDistribution.kind, "donut");
+  assert.equal(report.bento.clinicalPrograms.kind, "horizontal-bar");
+  assert.equal(report.bento.clinicalPrograms.data.length, 4);
+  assert.ok(report.bento.clinicalPrograms.data.every((row) => row.unit));
   assert.doesNotMatch(JSON.stringify(report), /Secret/);
 });
 
@@ -213,7 +251,7 @@ test("overview ignores out-of-period rows; facility isolation stays on the API",
     period,
   });
   assert.equal(report.cards.find((card) => card.key === "total_visits").value, 1);
-  assert.equal(report.cards.find((card) => card.key === "referrals_submitted").value, 1);
+  assert.equal(report.cards.find((card) => card.key === "total_referrals").value, 1);
   assert.equal(report.period, period);
 
   const epi = buildRhuReport({
