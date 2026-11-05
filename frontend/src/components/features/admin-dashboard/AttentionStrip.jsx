@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Link } from "react-router";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../ui/card";
 import { buildAttentionItems } from "../../../utils/adminDashboard";
 
 const VISIBLE_NAMES = 5;
@@ -9,33 +10,24 @@ const VISIBLE_NAMES = 5;
 export default function AttentionStrip({ attention }) {
   const items = buildAttentionItems(attention);
 
-  if (items.length === 0) {
-    return (
-      <section
-        aria-label="Needs attention"
-        className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-700"
-      >
-        <CheckCircle2 size={14} className="shrink-0" aria-hidden="true" />
-        <p>✓ All caught up — no pending account tasks.</p>
-      </section>
-    );
-  }
-
   return (
-    <section
-      aria-label="Needs attention"
-      className="rounded-xl border border-amber-200 bg-amber-50 p-4"
-    >
-      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">
-        Needs attention
-      </p>
-
-      <ul className="mt-3 space-y-2">
-        {items.map((item) => (
-          <AttentionItem key={item.key} item={item} />
-        ))}
-      </ul>
-    </section>
+    <Card className="h-full rounded-card shadow-card" aria-label="Needs attention">
+      <CardHeader>
+        <CardTitle>Needs Attention</CardTitle>
+        <CardDescription>
+          Access requests and staff assignment gaps that need MHO action.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {items.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-4 text-sm text-neutral-500">
+            Nothing needs attention today.
+          </p>
+        ) : (
+          items.map((item) => <AttentionItem key={item.key} item={item} />)
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -46,31 +38,34 @@ function AttentionItem({ item }) {
   const listId = `attention-${item.key}-names`;
 
   return (
-    <li>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <AlertTriangle size={15} className="shrink-0 text-amber-600" aria-hidden="true" />
-        <Link
-          to={item.href}
-          className="min-w-0 text-sm font-semibold text-[#0F172A] hover:text-[#B91C1C] hover:underline"
-        >
-          {item.label}
-        </Link>
-
-        {hasNames && (
-          <button
-            type="button"
-            onClick={() => setExpanded((open) => !open)}
-            aria-expanded={expanded}
-            aria-controls={listId}
-            className="text-xs font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
+    <div className="rounded-lg border border-neutral-200 px-3 py-2.5 hover:bg-neutral-50">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            to={item.href}
+            className="flex items-center gap-2 text-sm font-medium text-neutral-900 hover:text-brand-700 hover:underline"
           >
-            {expanded ? "Hide" : "Show"}
-          </button>
-        )}
+            <AlertTriangle className="shrink-0 text-brand-700" size={14} aria-hidden="true" />
+            <span className="min-w-0">{item.label}</span>
+          </Link>
+
+          {hasNames && (
+            <button
+              type="button"
+              onClick={() => setExpanded((open) => !open)}
+              aria-expanded={expanded}
+              aria-controls={listId}
+              className="mt-1 text-xs font-semibold text-brand-700 hover:text-brand-800 hover:underline"
+            >
+              {expanded ? "Hide facilities" : "Show facilities"}
+            </button>
+          )}
+        </div>
+        <span className="text-sm font-semibold tabular-nums text-neutral-900">{item.count}</span>
       </div>
 
       {hasNames && expanded && (
-        <ul id={listId} className="ml-6 mt-1.5 space-y-0.5 text-xs text-slate-700">
+        <ul id={listId} className="mt-2 space-y-0.5 border-t border-neutral-100 pt-2 text-xs text-neutral-600">
           {names.slice(0, VISIBLE_NAMES).map((name, index) => (
             <li key={`${name}-${index}`}>{name}</li>
           ))}
@@ -79,6 +74,6 @@ function AttentionItem({ item }) {
           )}
         </ul>
       )}
-    </li>
+    </div>
   );
 }

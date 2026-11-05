@@ -1,57 +1,100 @@
-import { KeyRound, Mail, UserMinus, UserX } from "lucide-react";
+import { KeyRound, Mail, UserCheck, Users } from "lucide-react";
 import { Link } from "react-router";
 
-export default function OverviewCards({ personnel, pendingResetRequests, pendingInvitations }) {
+export default function OverviewCards({
+  totalAccounts,
+  activeAccounts,
+  pendingInvitations,
+  pendingResetRequests,
+}) {
   const cards = [
-    { title: "Inactive Personnel", value: personnel.inactive, icon: UserX, description: "Inactive BHC and RHU accounts" },
-    { title: "Unassigned Personnel", value: personnel.unassigned, icon: UserMinus, description: "No valid active home facility", warn: personnel.unassigned > 0 },
-    { title: "Pending Reset Requests", value: pendingResetRequests, icon: KeyRound, description: "Awaiting MHO action", warn: pendingResetRequests > 0, to: "/admin/password-reset-requests" },
-    { title: "Pending Invitations", value: pendingInvitations, icon: Mail, description: "Awaiting recipient completion", to: "/admin/account-invites" },
+    {
+      title: "Total Accounts",
+      value: totalAccounts,
+      icon: Users,
+      description: "All registered system accounts",
+      to: "/admin/users",
+    },
+    {
+      title: "Active Accounts",
+      value: activeAccounts,
+      icon: UserCheck,
+      description: "Accounts currently marked active",
+      to: "/admin/users",
+    },
+    {
+      title: "Pending Invitations",
+      value: pendingInvitations,
+      icon: Mail,
+      description: "Awaiting recipient account setup",
+      warn: pendingInvitations > 0,
+      to: "/admin/account-invites",
+    },
+    {
+      title: "Pending Reset Requests",
+      value: pendingResetRequests,
+      icon: KeyRound,
+      description: "Awaiting MHO action",
+      warn: pendingResetRequests > 0,
+      to: "/admin/password-reset-requests",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 xl:grid-cols-4">
+    <div className="grid h-full grid-cols-1 gap-3 sm:grid-cols-2">
       {cards.map(({ title, value, icon: Icon, description, warn, to }) => (
-        <Card key={title} title={title} value={value} icon={<Icon size={17} />} warn={warn} to={to}>
-          <p className="text-[11px] text-neutral-600">{description}</p>
-        </Card>
+        <KpiCard
+          key={title}
+          title={title}
+          value={value}
+          icon={Icon}
+          description={description}
+          warn={warn}
+          to={to}
+        />
       ))}
     </div>
   );
 }
 
-function Card({ to, title, icon, value, warn = false, children }) {
-  const border = warn ? "border-t-amber-400" : "border-t-[#B91C1C]";
-  const iconStyle = warn ? "bg-amber-50 text-amber-700" : "bg-red-50/60 text-[#B91C1C]";
-  const hover = to ? "transition-colors hover:border-neutral-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700" : "";
-  const className = `block h-full min-w-0 rounded-xl border border-[#E8ECF0] border-t-2 bg-white p-3 shadow-sm sm:p-4 ${border} ${hover}`;
-
-  const content = (
+function KpiCard({ title, icon: Icon, value, description, warn = false, to }) {
+  const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 text-[10px] font-semibold uppercase tracking-widest text-[#9CA3AF]">
+      <div className="flex items-start justify-between gap-3">
+        <p className="bhc-kpi-label text-[10px] font-bold uppercase tracking-wider text-neutral-400">
           {title}
         </p>
-        <div className={`shrink-0 rounded-lg p-1.5 ${iconStyle}`} aria-hidden="true">
-          {icon}
-        </div>
+        <span
+          className={`bhc-kpi-icon flex size-9 shrink-0 items-center justify-center rounded-lg ${
+            warn ? "bg-amber-50 text-amber-700" : "bg-neutral-100 text-ink-700"
+          }`}
+        >
+          <Icon size={16} />
+        </span>
       </div>
-
       {value !== undefined && (
-        <p className="mt-2 text-2xl font-bold tracking-tight text-[#0F172A]">{value}</p>
+        <p className="bhc-kpi-value mt-3 text-2xl font-bold tabular-nums text-neutral-900">
+          {value}
+        </p>
       )}
-
-      <div className="mt-1">{children}</div>
+      <p className="bhc-kpi-description mt-1 text-xs text-neutral-500">{description}</p>
     </>
   );
 
   if (to) {
     return (
-      <Link to={to} className={className}>
-        {content}
+      <Link
+        to={to}
+        className="bhc-dashboard-kpi block rounded-card border border-neutral-200 bg-white p-4 shadow-card hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+      >
+        {body}
       </Link>
     );
   }
 
-  return <div className={className}>{content}</div>;
+  return (
+    <article className="bhc-dashboard-kpi rounded-card border border-neutral-200 bg-white p-4 shadow-card">
+      {body}
+    </article>
+  );
 }

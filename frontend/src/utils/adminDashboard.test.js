@@ -33,14 +33,12 @@ test("buildAttentionItems keeps a fixed order and skips zeros", () => {
     stale_priority_referrals: 2,
     facilities_without_staff: [{ type: "bhc", id: 1, name: "Bravo" }],
   });
-  assert.deepEqual(items.map((i) => i.key), ["invites", "facilities", "stale"]);
-  assert.equal(items[0].label, "1 pending invite");
+  assert.deepEqual(items.map((i) => i.key), ["invites", "facilities"]);
+  assert.equal(items[0].label, "1 invite requiring review");
   assert.equal(items[0].href, "/admin/account-invites");
   assert.equal(items[1].label, "1 facility without staff");
   assert.equal(items[1].href, "/admin/staff-assignments");
   assert.deepEqual(items[1].names, ["Bravo"]);
-  assert.equal(items[2].label, "2 priority referrals pending over 2 days");
-  assert.equal(items[2].href, "/admin/reports");
 });
 
 test("buildAttentionItems pluralises every label", () => {
@@ -53,16 +51,15 @@ test("buildAttentionItems pluralises every label", () => {
       { type: "rhu", id: 2, name: "Alpha" },
     ],
   });
-  assert.deepEqual(items.map((i) => i.key), ["resets", "invites", "facilities", "stale"]);
+  assert.deepEqual(items.map((i) => i.key), ["resets", "invites", "facilities"]);
   assert.deepEqual(items.map((i) => i.label), [
     "3 password reset requests",
-    "2 pending invites",
+    "2 invites requiring review",
     "2 facilities without staff",
-    "1 priority referral pending over 2 days",
   ]);
   assert.equal(items[0].href, "/admin/password-reset-requests");
   assert.deepEqual(items[2].names, ["Bravo", "Alpha"]);
-  assert.deepEqual(items.map((i) => i.count), [3, 2, 2, 1]);
+  assert.deepEqual(items.map((i) => i.count), [3, 2, 2]);
   assert.equal(buildAttentionItems({ reset_requests: 1 })[0].label, "1 password reset request");
 });
 
@@ -73,6 +70,18 @@ test("buildAttentionItems returns [] when everything is zero or missing", () => 
   );
   assert.deepEqual(buildAttentionItems(undefined), []);
   assert.deepEqual(buildAttentionItems({}), []);
+});
+
+test("buildAttentionItems ignores stale referrals even when present alone", () => {
+  assert.deepEqual(
+    buildAttentionItems({
+      reset_requests: 0,
+      invites: 0,
+      stale_priority_referrals: 5,
+      facilities_without_staff: [],
+    }),
+    [],
+  );
 });
 
 test("barangaySignals flags each amber signal and counts them separately from no staff", () => {

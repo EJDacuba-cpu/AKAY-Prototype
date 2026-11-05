@@ -1,70 +1,68 @@
 import {
-  ChartNoAxesCombined,
-  FileClock,
+  KeyRound,
+  Mail,
   UserRoundPlus,
   UsersRound,
 } from "lucide-react";
 import { Link } from "react-router";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../ui/card";
+
+const ACTIONS = [
+  {
+    title: "Create Account",
+    description: "Register BHC or RHU staff access.",
+    icon: UserRoundPlus,
+    href: "/admin/users/add",
+  },
+  {
+    title: "Account Directory",
+    description: "Update roles, facilities, and status.",
+    icon: UsersRound,
+    href: "/admin/users",
+  },
+  {
+    title: "Review Invites",
+    description: "Manage invitations needing attention.",
+    icon: Mail,
+    href: "/admin/account-invites",
+  },
+  {
+    title: "Review Reset Requests",
+    description: "Approve or reject password resets.",
+    icon: KeyRound,
+    href: "/admin/password-reset-requests",
+  },
+];
+
 export default function QuickActions() {
   return (
-    <section className="rounded-xl border border-[#E8ECF0] bg-white p-6">
-      <div className="mb-5">
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#B91C1C]">
-          Quick Actions
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        <QuickAction
-          title="Add User Account"
-          description="Register BHC or RHU staff access."
-          icon={<UserRoundPlus size={17} />}
-          href="/admin/users/add"
-        />
-
-        <QuickAction
-          title="Account Directory"
-          description="Update roles, facilities, and status."
-          icon={<UsersRound size={17} />}
-          href="/admin/users"
-        />
-
-        <QuickAction
-          title="Reports"
-          description="Open referral and account summaries."
-          icon={<ChartNoAxesCombined size={17} />}
-          href="/admin/reports"
-        />
-
-        <QuickAction
-          title="Audit Logs"
-          description="Review recorded system activity."
-          icon={<FileClock size={17} />}
-          href="/admin/audit-logs"
-        />
-      </div>
-    </section>
+    <Card className="h-full rounded-card shadow-card">
+      <CardHeader>
+        <CardTitle>Quick Actions</CardTitle>
+        <CardDescription>Frequent account administration tasks.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {ACTIONS.map((action) => (
+          <QuickActionRow key={action.href} {...action} />
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
-function QuickAction({ title, description, icon, href }) {
+function QuickActionRow({ title, description, href, icon: Icon }) {
   return (
     <Link
       to={href}
-      className="group flex items-start gap-3 rounded-xl border border-[#E8ECF0] bg-[#F8FAFC] p-3 transition-all hover:border-[#FCA5A5] hover:bg-white hover:shadow-sm"
+      className="bhc-quick-action flex items-start gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 hover:bg-neutral-50"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FEF2F2] text-[#B91C1C] transition-colors group-hover:bg-[#B91C1C] group-hover:text-white">
-        {icon}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold text-[#0F172A]">
-          {title}
-        </p>
-        <p className="mt-1 text-[11px] leading-relaxed text-[#64748B]">
-          {description}
-        </p>
+      <span className="bhc-quick-icon flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-ink-700">
+        <Icon size={16} />
+      </span>
+      <div className="min-w-0">
+        <p className="bhc-quick-title text-sm font-semibold text-neutral-900">{title}</p>
+        <p className="bhc-quick-description mt-0.5 text-xs text-neutral-500">{description}</p>
       </div>
     </Link>
   );
