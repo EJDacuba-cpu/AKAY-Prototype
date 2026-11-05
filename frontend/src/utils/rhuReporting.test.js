@@ -121,6 +121,43 @@ test("buildIncomingReferralMetrics counts submitted referrals, distinct BHCs, an
   assert.equal(sanJose.completed, 1);
 });
 
+test("buildIncomingReferralMetrics uses referring HCI names from normalized referral rows", () => {
+  const metrics = buildIncomingReferralMetrics(
+    [
+      {
+        id: "1",
+        date: "2026-11-02",
+        referralDateTime: "2026-11-02 08:00:00",
+        status: "Completed",
+        barangay_health_center: { id: 11, name: "BHC San Jose", municipality: "Baliuag" },
+        barangayHealthCenterId: "11",
+        referringHci: "BHC San Jose",
+        barangay: "San Jose",
+        patientName: "Hidden Patient",
+      },
+      {
+        id: "2",
+        date: "2026-11-03",
+        referralDateTime: "2026-11-03 09:15:00",
+        status: "Pending",
+        barangay_health_center: { id: 22, name: "BHC Mabini" },
+        barangayHealthCenterId: "22",
+        referringHci: "BHC Mabini",
+        barangay: "Mabini",
+      },
+    ],
+    period,
+  );
+  assert.equal(metrics.referringBhcs, 2);
+  assert.deepEqual(
+    metrics.bySource.map((row) => row.label),
+    ["BHC Mabini", "BHC San Jose"],
+  );
+  assert.equal(metrics.bySource.every((row) => row.label !== "[object Object]"), true);
+  assert.doesNotMatch(JSON.stringify(metrics), /\[object Object\]/);
+  assert.doesNotMatch(JSON.stringify(metrics), /Hidden Patient/);
+});
+
 test("overview does not sum visits, referrals, and records into one total", () => {
   const report = buildRhuReport({
     visits: [visit({ id: 1 })],

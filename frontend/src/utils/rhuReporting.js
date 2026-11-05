@@ -202,21 +202,33 @@ function getReferralDate(referral = {}) {
   );
 }
 
+function stringLabel(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function objectName(value) {
+  if (!value || typeof value !== "object") return "";
+  return stringLabel(value.name);
+}
+
+// Prefer normalized referringHci. Laravel relations stay objects on barangay_health_center.
 function getReferralSourceLabel(referral = {}) {
-  return (
-    referral.originating_facility ||
-    referral.barangay_health_center ||
-    referral.from_facility ||
-    referral.barangay ||
-    ""
-  );
+  const candidates = [
+    stringLabel(referral.referringHci),
+    objectName(referral.barangay_health_center),
+    objectName(referral.barangayHealthCenter),
+    stringLabel(referral.originating_facility),
+    stringLabel(referral.barangay_health_center),
+    stringLabel(referral.from_facility),
+    stringLabel(referral.barangay),
+  ];
+  return candidates.find(Boolean) || "";
 }
 
 function referralsBySource(cohort) {
   const buckets = new Map();
   for (const referral of cohort) {
-    const rawLabel = String(getReferralSourceLabel(referral) || "").trim();
-    const label = rawLabel || "Unspecified";
+    const label = getReferralSourceLabel(referral) || "Unspecified";
     if (!buckets.has(label)) {
       buckets.set(label, { label, value: 0, completed: 0 });
     }
@@ -238,7 +250,7 @@ export function buildIncomingReferralMetrics(referrals, period) {
   const bySource = referralsBySource(cohort);
   const referringBhcs = new Set(
     cohort
-      .map((referral) => String(getReferralSourceLabel(referral) || "").trim())
+      .map((referral) => getReferralSourceLabel(referral))
       .filter(Boolean),
   ).size;
   let completedCases = 0;
