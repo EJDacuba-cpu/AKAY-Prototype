@@ -30,8 +30,8 @@ test('waiting time reads as minutes, then hours', () => {
   assert.equal(formatWaiting(-4), 'Just arrived');
 });
 
-test('a known status is an info chip; anything else is a neutral chip with its own text', () => {
-  assert.deepEqual(statusChip('waiting'), { label: 'Waiting', tone: 'info' });
+test('Waiting is neutral; In Consultation stays info; unknown statuses stay neutral', () => {
+  assert.deepEqual(statusChip('waiting'), { label: 'Waiting', tone: 'neutral' });
   assert.deepEqual(statusChip('in_consultation'), { label: 'In Consultation', tone: 'info' });
   assert.deepEqual(statusChip('closed'), { label: 'Closed', tone: 'neutral' });
   assert.deepEqual(statusChip(''), { label: 'Unknown', tone: 'neutral' });
@@ -90,25 +90,25 @@ test('a referred visit becomes a display row', () => {
   assert.equal(row.source, 'referral');
   assert.equal(row.sourceLabel, 'Referred');
   assert.equal(row.referralId, 5);
-  assert.equal(row.fromLabel, 'From BHC Poblacion');
+  assert.equal(row.fromLabel, 'Referred from BHC Poblacion');
   assert.equal(row.arrivedTime, '8:12 AM');
   assert.equal(row.carriedOver, false);
   assert.equal(row.arrivalNote, 'Waiting 78 min');
-  assert.deepEqual(row.status, { label: 'Waiting', tone: 'info' });
+  assert.deepEqual(row.status, { label: 'Waiting', tone: 'neutral' });
 });
 
 test('a walk-in has no sending facility', () => {
   const [row] = queueRows([visit()], NOW);
   assert.equal(row.sourceLabel, 'Walk-in');
   assert.equal(row.referralId, null);
-  assert.equal(row.fromLabel, null);
+  assert.equal(row.fromLabel, 'Direct RHU check-in');
 });
 
 test('a walk-in later linked to a referral keeps walk-in labelling and exposes the slip', () => {
   const [row] = queueRows([visit({ referral: { id: 8, sending_bhc: 'BHC Poblacion' } })], NOW);
   assert.equal(row.sourceLabel, 'Walk-in');
   assert.equal(row.referralId, 8);
-  assert.equal(row.fromLabel, null);
+  assert.equal(row.fromLabel, 'Direct RHU check-in');
   assert.deepEqual(
     queueRowActions(row, { canEncode: true, canClose: true }).map((item) => item.label),
     ['Start consultation', 'Review Referral Slip', 'Open patient record', 'Close visit'],
@@ -160,6 +160,20 @@ test('search needs every token in the name; the source switch narrows further', 
   assert.deepEqual(filterQueueRows(rows, { search: '  ', source: 'all' }).map((row) => row.id), [1, 2, 3]);
   assert.deepEqual(filterQueueRows(rows, { search: '', source: 'referral' }).map((row) => row.id), [2]);
   assert.deepEqual(filterQueueRows(rows, { search: 'jose', source: 'walk_in' }).map((row) => row.id), [1]);
+});
+
+test('Visit Progress filter narrows by status without changing entry source', () => {
+  const rows = queueRows([
+    visit({ id: 1, status: 'waiting' }),
+    visit({ id: 2, status: 'in_consultation', source: 'referral', referral: { id: 2, sending_bhc: 'BHC A' } }),
+    visit({ id: 3, status: 'waiting', source: 'referral', referral: { id: 3, sending_bhc: 'BHC B' } }),
+  ], NOW);
+  assert.deepEqual(filterQueueRows(rows, { status: 'waiting' }).map((row) => row.id), [1, 3]);
+  assert.deepEqual(filterQueueRows(rows, { status: 'in_consultation' }).map((row) => row.id), [2]);
+  assert.deepEqual(
+    filterQueueRows(rows, { status: 'waiting', source: 'referral' }).map((row) => row.id),
+    [3],
+  );
 });
 
 test('a check-in search needs at least two visible characters', () => {

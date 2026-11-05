@@ -10,7 +10,7 @@ import {
   QrCode,
   Users,
 } from "lucide-react";
-import { REPORT_CATEGORIES } from "../../../utils/bhcReporting";
+import { REPORT_CATEGORIES } from "../../../utils/bhcReporting.js";
 
 export const LOGO_SRC = "/akay-mark.png";
 export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
@@ -124,7 +124,16 @@ export const menuByRole = {
     {
       section: "Clinical Records",
       items: [
-        { label: "Patients", path: "/rhu/patients", icon: Users },
+        {
+          label: "Patients",
+          path: "/rhu/patients",
+          icon: Users,
+          defaultPath: "/rhu/patients",
+          children: [
+            { label: "Today's Queue", path: "/rhu/patients?view=queue" },
+            { label: "All Patients", path: "/rhu/patients?view=all" },
+          ],
+        },
         { label: "Households", path: "/rhu/families", icon: House },
         {
           label: "Follow-ups",
