@@ -6,7 +6,7 @@ export default function OverviewCards({ personnel, pendingResetRequests, pending
     { title: "Inactive Personnel", value: personnel.inactive, icon: UserX, description: "Inactive BHC and RHU accounts" },
     { title: "Unassigned Personnel", value: personnel.unassigned, icon: UserMinus, description: "No valid active home facility", warn: personnel.unassigned > 0 },
     { title: "Pending Reset Requests", value: pendingResetRequests, icon: KeyRound, description: "Awaiting MHO action", warn: pendingResetRequests > 0, to: "/admin/password-reset-requests" },
-    { title: "Pending Invitations", value: pendingInvitations, icon: Mail, description: "Awaiting recipient completion", to: "/admin/password-reset-requests?tab=invites" },
+    { title: "Pending Invitations", value: pendingInvitations, icon: Mail, description: "Awaiting recipient completion", to: "/admin/account-invites" },
   ];
 
   return (

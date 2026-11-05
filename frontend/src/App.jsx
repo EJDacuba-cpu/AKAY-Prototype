@@ -95,6 +95,7 @@ import AddUser from "./pages/admin/AddUser";
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
 import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
+import AccountInvites from "./pages/admin/AccountInvites";
 
 const MIN_BOOT_LOADER_MS = 800;
 const PUBLIC_BOOT_ROUTES = new Set([
@@ -541,10 +542,22 @@ export default function App() {
         }
       />
       <Route
+        path="/admin/account-management"
+        element={<Navigate to="/admin/users" replace />}
+      />
+      <Route
         path="/admin/password-reset-requests"
         element={
           <ProtectedPage allowedRole="admin">
             <PasswordResetRequests />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/admin/account-invites"
+        element={
+          <ProtectedPage allowedRole="admin">
+            <AccountInvites />
           </ProtectedPage>
         }
       />

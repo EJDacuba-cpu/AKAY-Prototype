@@ -5,8 +5,8 @@ import { matchPath } from "react-router";
 // to the canonical routes below, so they are intentionally absent.
 const PARENT_TRAILS = [
   // Admin
-  ["/admin/users/add", [{ label: "Users", path: "/admin/users" }]],
-  ["/admin/doctors/add", [{ label: "Users", path: "/admin/users" }]],
+  ["/admin/users/add", [{ label: "Account Directory", path: "/admin/users" }]],
+  ["/admin/doctors/add", [{ label: "Account Directory", path: "/admin/users" }]],
 
   // Barangay Health Center
   ["/bhc/medicine-availability/:medicineId", [{ label: "Medicine and Supply", path: "/bhc/medicine-availability" }]],

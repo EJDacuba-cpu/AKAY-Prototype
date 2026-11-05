@@ -33,7 +33,7 @@ export function buildAttentionItems(attention) {
       key: "invites",
       count: count(source.invites),
       noun: ["pending invite", "pending invites"],
-      href: "/admin/password-reset-requests?tab=invites",
+      href: "/admin/account-invites",
     },
     {
       key: "facilities",

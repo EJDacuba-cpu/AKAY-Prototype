@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { menuByRole } from "../components/layout/sidebar/sidebarData.js";
 import { navigationAllowed } from "./dashboardAccess.js";
 import {
+  ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH,
   applySidebarAccess,
   hasSidebarOpenIntent,
   isSidebarPathActive,
@@ -210,6 +211,96 @@ test("Patient Intake parent stays active on intake routes including QR Scanner",
   assert.equal(
     isSidebarPathActive("/rhu/walk-in-check-in", { pathname: "/rhu/walk-in-check-in", search: "?patient_id=9" }, "rhu"),
     true,
+  );
+});
+
+test("Admin Account Management sidebar nests Directory, Reset Requests, and Invites", () => {
+  const accountManagement = menuByRole.admin
+    .flatMap((section) => section.items)
+    .find((item) => item.path === ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH);
+
+  assert.ok(accountManagement?.children?.length);
+  assert.equal(accountManagement.label, "Accounts");
+  assert.equal(accountManagement.defaultPath, "/admin/users");
+  assert.deepEqual(
+    accountManagement.children.map((child) => child.label),
+    ["Account Directory", "Reset Requests", "Invites"],
+  );
+  assert.deepEqual(
+    accountManagement.children.map((child) => child.path),
+    ["/admin/users", "/admin/password-reset-requests", "/admin/account-invites"],
+  );
+
+  const accountability = menuByRole.admin.find((section) => section.section === "Accountability");
+  assert.deepEqual(
+    accountability.items.map((item) => item.label),
+    ["Reports", "Audit Logs"],
+  );
+});
+
+test("Account Management parent stays active on child and account-setup routes", () => {
+  const parent = ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH;
+  for (const pathname of [
+    "/admin/users",
+    "/admin/users/add",
+    "/admin/doctors/add",
+    "/admin/password-reset-requests",
+    "/admin/account-invites",
+  ]) {
+    assert.equal(isSidebarPathActive(parent, { pathname, search: "" }, "admin"), true);
+  }
+  assert.equal(
+    isSidebarPathActive(parent, { pathname: "/admin/facilities", search: "" }, "admin"),
+    false,
+  );
+  assert.equal(
+    isSidebarPathActive("/admin/users", { pathname: "/admin/users/add", search: "" }, "admin"),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive("/admin/users", { pathname: "/admin/account-invites", search: "" }, "admin"),
+    false,
+  );
+  assert.equal(
+    isSidebarPathActive(
+      "/admin/password-reset-requests",
+      { pathname: "/admin/password-reset-requests", search: "" },
+      "admin",
+    ),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive(
+      "/admin/account-invites",
+      { pathname: "/admin/account-invites", search: "" },
+      "admin",
+    ),
+    true,
+  );
+});
+
+test("Account Management open intent stays true on child routes after defaultPath navigation", () => {
+  const openGroup = ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH;
+  assert.equal(
+    hasSidebarOpenIntent({
+      pathname: "/admin/users",
+      state: { openSidebarGroup: openGroup },
+    }),
+    true,
+  );
+  assert.equal(
+    hasSidebarOpenIntent({
+      pathname: "/admin/account-invites",
+      state: { openSidebarGroup: openGroup },
+    }),
+    true,
+  );
+  assert.equal(
+    hasSidebarOpenIntent({
+      pathname: "/admin/facilities",
+      state: { openSidebarGroup: openGroup },
+    }),
+    false,
   );
 });
 

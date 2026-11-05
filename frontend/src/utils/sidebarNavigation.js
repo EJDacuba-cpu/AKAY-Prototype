@@ -8,6 +8,7 @@ export const RHU_PATIENT_VIEW_QUEUE = "queue";
 export const RHU_PATIENT_VIEW_ALL = "all";
 export const RHU_INTAKE_PARENT_PATH = "/rhu/patient-intake";
 export const RHU_MEDICINE_PARENT_PATH = "/rhu/medicine-and-supply";
+export const ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH = "/admin/account-management";
 
 export function isRhuPatientIntakePath(pathname = "") {
   return (
@@ -25,6 +26,17 @@ export function isRhuMedicinePath(pathname = "") {
     pathname === "/rhu/medicine-management" ||
     pathname === "/rhu/to-dispense" ||
     /^\/rhu\/medicine-management\/[^/]+$/.test(pathname)
+  );
+}
+
+export function isAdminAccountManagementPath(pathname = "") {
+  return (
+    pathname === ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH ||
+    pathname === "/admin/users" ||
+    pathname.startsWith("/admin/users/") ||
+    pathname === "/admin/doctors/add" ||
+    pathname === "/admin/password-reset-requests" ||
+    pathname === "/admin/account-invites"
   );
 }
 
@@ -91,6 +103,12 @@ export function hasSidebarOpenIntent(location) {
   ) {
     return true;
   }
+  if (
+    openSidebarGroup === ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH &&
+    isAdminAccountManagementPath(location.pathname)
+  ) {
+    return true;
+  }
   return openSidebarGroup === location.pathname;
 }
 
@@ -152,6 +170,10 @@ export function isSidebarPathActive(path, location, role) {
 
   if (pathname === RHU_MEDICINE_PARENT_PATH) {
     return isRhuMedicinePath(location.pathname);
+  }
+
+  if (pathname === ADMIN_ACCOUNT_MANAGEMENT_PARENT_PATH) {
+    return isAdminAccountManagementPath(location.pathname);
   }
 
   if (location.pathname === pathname) return true;

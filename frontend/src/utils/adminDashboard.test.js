@@ -35,7 +35,7 @@ test("buildAttentionItems keeps a fixed order and skips zeros", () => {
   });
   assert.deepEqual(items.map((i) => i.key), ["invites", "facilities", "stale"]);
   assert.equal(items[0].label, "1 pending invite");
-  assert.equal(items[0].href, "/admin/password-reset-requests?tab=invites");
+  assert.equal(items[0].href, "/admin/account-invites");
   assert.equal(items[1].label, "1 facility without staff");
   assert.equal(items[1].href, "/admin/staff-assignments");
   assert.deepEqual(items[1].names, ["Bravo"]);

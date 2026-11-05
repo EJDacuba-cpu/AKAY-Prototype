@@ -5,7 +5,6 @@ import {
   ClipboardList,
   FileText,
   House,
-  KeyRound,
   LayoutGrid,
   Users,
 } from "lucide-react";
@@ -25,18 +24,25 @@ export const menuByRole = {
     },
     {
       section: "Management",
-      items: [{ label: "Users", path: "/admin/users", icon: Users },
+      items: [
+        {
+          label: "Accounts",
+          path: "/admin/account-management",
+          icon: Users,
+          defaultPath: "/admin/users",
+          children: [
+            { label: "Account Directory", path: "/admin/users" },
+            { label: "Reset Requests", path: "/admin/password-reset-requests" },
+            { label: "Invites", path: "/admin/account-invites" },
+          ],
+        },
         { label: "Facilities", path: "/admin/facilities", icon: Boxes },
-        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays }],
+        { label: "Staff Assignments", path: "/admin/staff-assignments", icon: CalendarDays },
+      ],
     },
     {
       section: "Accountability",
       items: [
-        {
-          label: "Password & Invites",
-          path: "/admin/password-reset-requests",
-          icon: KeyRound,
-        },
         { label: "Reports", path: "/admin/reports", icon: FileText },
         { label: "Audit Logs", path: "/admin/audit-logs", icon: Activity },
       ],
