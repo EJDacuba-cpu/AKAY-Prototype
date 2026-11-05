@@ -78,3 +78,23 @@ test("RHU intake nav locks without rhu.intake or rhu.manage", () => {
   assert.equal(navigationAllowed(historyOnly, "/rhu/patients/9/referrals/5"), true);
   assert.equal(navigationAllowed({ role: "rhu", permissions: ["rhu.intake"] }, "/rhu/patients/9/referrals/5"), false);
 });
+
+test("RHU Patient Intake and walk-in check-in follow intake and register duties", () => {
+  const intakeStaff = { role: "rhu", permissions: ["patients.register", "rhu.intake"] };
+  const historyOnly = { role: "rhu", permissions: ["clinical.history"] };
+  const intakeOnly = { role: "rhu", permissions: ["rhu.intake"] };
+  const registerOnly = { role: "rhu", permissions: ["patients.register"] };
+  const manageOnly = { role: "rhu", permissions: ["rhu.manage"] };
+
+  assert.equal(navigationAllowed(intakeStaff, "/rhu/walk-in-check-in"), true);
+  assert.equal(navigationAllowed(intakeStaff, "/rhu/patient-intake"), true);
+  assert.equal(navigationAllowed(registerOnly, "/rhu/patient-intake"), true);
+  assert.equal(navigationAllowed(registerOnly, "/rhu/walk-in-check-in"), true);
+  assert.equal(navigationAllowed(manageOnly, "/rhu/patient-intake"), true);
+  assert.equal(navigationAllowed(intakeOnly, "/rhu/patient-intake"), true);
+  assert.equal(navigationAllowed(historyOnly, "/rhu/walk-in-check-in"), false);
+  assert.equal(navigationAllowed(historyOnly, "/rhu/patient-intake"), false);
+  assert.equal(navigationAllowed(intakeOnly, "/rhu/walk-in-check-in"), false);
+  assert.equal(navigationAllowed(manageOnly, "/rhu/walk-in-check-in"), false);
+  assert.equal(navigationAllowed(intakeOnly, "/rhu/incoming-referrals"), true);
+});

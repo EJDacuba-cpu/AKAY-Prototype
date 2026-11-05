@@ -60,3 +60,39 @@ test("RHU Patients sidebar children stay query-aware on refresh and bare /rhu/pa
   assert.equal(isSidebarPathActive("/rhu/patients", queueLocation, "rhu"), true);
   assert.equal(isSidebarPathActive("/rhu/patients", allLocation, "rhu"), true);
 });
+
+test("RHU Patient Intake sidebar nests Incoming Referrals and Walk-in Check-in", () => {
+  const intake = menuByRole.rhu
+    .flatMap((section) => section.items)
+    .find((item) => item.path === "/rhu/patient-intake");
+  assert.ok(intake?.children?.length);
+  assert.equal(intake.label, "Patient Intake");
+  assert.equal(intake.defaultPath, "/rhu/incoming-referrals");
+  assert.deepEqual(
+    intake.children.map((c) => c.label),
+    ["Incoming Referrals", "Walk-in Check-in"],
+  );
+  assert.deepEqual(
+    intake.children.map((c) => c.path),
+    ["/rhu/incoming-referrals", "/rhu/walk-in-check-in"],
+  );
+  const flatLabels = menuByRole.rhu.flatMap((s) => s.items).map((i) => i.label);
+  assert.equal(flatLabels.includes("QR Scanner"), false);
+});
+
+test("Patient Intake parent stays active on intake routes including QR Scanner", () => {
+  const parent = "/rhu/patient-intake";
+  for (const pathname of [
+    "/rhu/incoming-referrals",
+    "/rhu/walk-in-check-in",
+    "/rhu/qr-scanner",
+    "/rhu/referrals/TRK-1",
+  ]) {
+    assert.equal(isSidebarPathActive(parent, { pathname, search: "" }, "rhu"), true);
+  }
+  assert.equal(isSidebarPathActive(parent, { pathname: "/rhu/patients", search: "" }, "rhu"), false);
+  assert.equal(
+    isSidebarPathActive("/rhu/walk-in-check-in", { pathname: "/rhu/walk-in-check-in", search: "?patient_id=9" }, "rhu"),
+    true,
+  );
+});

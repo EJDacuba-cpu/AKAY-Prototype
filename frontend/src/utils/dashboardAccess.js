@@ -17,6 +17,12 @@ export function navigationAllowed(user, path = "") {
     permissions.includes("clinical.history")
   ) return true;
   if (/^\/(bhc|rhu)\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
+  if (user?.role === "rhu" && /^\/rhu\/patient-intake(?:\/|$)/.test(path)) {
+    return permissions.includes("rhu.intake") || permissions.includes("rhu.manage") || permissions.includes("patients.register");
+  }
+  if (user?.role === "rhu" && /^\/rhu\/walk-in-check-in(?:\/|$)/.test(path)) {
+    return permissions.includes("patients.register");
+  }
   if (user?.role === "rhu" && /^\/rhu\/(incoming-referrals|qr-scanner|referrals\/[^/]+)(?:\/|$)/.test(path)) {
     return permissions.includes("rhu.intake") || permissions.includes("rhu.manage");
   }

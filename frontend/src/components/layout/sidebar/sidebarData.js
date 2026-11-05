@@ -7,7 +7,6 @@ import {
   House,
   KeyRound,
   LayoutGrid,
-  QrCode,
   Users,
 } from "lucide-react";
 import { REPORT_CATEGORIES } from "../../../utils/bhcReporting.js";
@@ -111,14 +110,18 @@ export const menuByRole = {
       items: [{ label: "Dashboard", path: "/rhu/dashboard", icon: LayoutGrid }],
     },
     {
-      section: "Referrals",
+      section: "Patient Intake",
       items: [
         {
-          label: "Incoming Referrals",
-          path: "/rhu/incoming-referrals",
+          label: "Patient Intake",
+          path: "/rhu/patient-intake",
           icon: ClipboardList,
+          defaultPath: "/rhu/incoming-referrals",
+          children: [
+            { label: "Incoming Referrals", path: "/rhu/incoming-referrals" },
+            { label: "Walk-in Check-in", path: "/rhu/walk-in-check-in" },
+          ],
         },
-        { label: "QR Scanner", path: "/rhu/qr-scanner", icon: QrCode },
       ],
     },
     {

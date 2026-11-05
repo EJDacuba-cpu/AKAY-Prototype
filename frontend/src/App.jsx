@@ -681,6 +681,10 @@ export default function App() {
       />
       {/* RHU Routes */}
       <Route
+        path="/rhu/patient-intake"
+        element={<Navigate to="/rhu/incoming-referrals" replace />}
+      />
+      <Route
         path="/rhu/dashboard"
         element={
           <ProtectedPage allowedRole="rhu">

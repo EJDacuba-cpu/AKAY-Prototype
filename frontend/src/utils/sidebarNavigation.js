@@ -5,6 +5,17 @@ export const PATIENT_VIEW_DIRECTORY = "patients";
 export const PATIENT_VIEW_MONITORING = "monitoring-requests";
 export const RHU_PATIENT_VIEW_QUEUE = "queue";
 export const RHU_PATIENT_VIEW_ALL = "all";
+export const RHU_INTAKE_PARENT_PATH = "/rhu/patient-intake";
+
+export function isRhuPatientIntakePath(pathname = "") {
+  return (
+    pathname === RHU_INTAKE_PARENT_PATH ||
+    pathname === "/rhu/incoming-referrals" ||
+    pathname === "/rhu/walk-in-check-in" ||
+    pathname === "/rhu/qr-scanner" ||
+    /^\/rhu\/referrals\/[^/]+$/.test(pathname)
+  );
+}
 
 /** BHC Patients sidebar children: directory vs monitoring handoffs. */
 export function normalizePatientDirectoryView(searchParams) {
@@ -76,6 +87,10 @@ export function isSidebarPathActive(path, location, role) {
       if (location.pathname !== pathname) return false;
       return actual.get(key) === value;
     });
+  }
+
+  if (pathname === RHU_INTAKE_PARENT_PATH) {
+    return isRhuPatientIntakePath(location.pathname);
   }
 
   if (location.pathname === pathname) return true;
