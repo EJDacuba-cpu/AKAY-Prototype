@@ -33,11 +33,6 @@ class ReferralRoutingService
         return $bhc;
     }
 
-    public function resolveReceivingRhuForBhc(User $user): RuralHealthUnit
-    {
-        return $this->resolveForBhc($user)['rhu'];
-    }
-
     /**
      * @return array{bhc: BarangayHealthCenter, rhu: RuralHealthUnit}
      */

@@ -110,11 +110,6 @@ class User extends Authenticatable
         return $this->belongsTo(self::class, 'created_by');
     }
 
-    public function patients(): HasMany
-    {
-        return $this->hasMany(Patient::class, 'created_by');
-    }
-
     public function notifications(): HasMany
     {
         $query = $this->hasMany(UserNotification::class);
@@ -147,10 +142,5 @@ class User extends Authenticatable
     public function accountInvite(): HasOne
     {
         return $this->hasOne(AccountInvite::class);
-    }
-
-    public function rhuProvider(): HasOne
-    {
-        return $this->hasOne(RhuProvider::class);
     }
 }

@@ -104,9 +104,4 @@ class MonitoringHandoffRequest extends Model
     {
         return $this->belongsTo(User::class, 'reviewed_by');
     }
-
-    public function reviewPatientId(): int
-    {
-        return (int) ($this->linked_patient_id ?: $this->patient_id);
-    }
 }

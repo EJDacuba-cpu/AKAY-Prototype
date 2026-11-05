@@ -17,11 +17,6 @@ class UserSessionRevocationService
         return max(1, (int) config('sanctum.expiration', 480));
     }
 
-    public function expiresAt(): CarbonImmutable
-    {
-        return CarbonImmutable::now()->addMinutes($this->expirationMinutes());
-    }
-
     public function issueToken(User $user, string $name = 'akay-api'): NewAccessToken
     {
         $this->revokeExpiredTokens($user);
