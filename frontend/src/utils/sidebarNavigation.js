@@ -49,6 +49,31 @@ export function normalizeRhuPatientView(searchParams) {
     : RHU_PATIENT_VIEW_QUEUE;
 }
 
+/**
+ * Hide denied `hideWhenDenied` children. Retarget `defaultPath` only when that
+ * exact child was removed. Query-style parents (bare defaultPath, query children)
+ * keep their original defaultPath.
+ */
+export function applySidebarAccess(item, user, navigationAllowed) {
+  const rawChildren = item.children;
+  const children = rawChildren?.filter(
+    (child) => !(child.hideWhenDenied && !navigationAllowed(user, child.path)),
+  );
+  let defaultPath = item.defaultPath;
+  if (rawChildren?.length && children) {
+    const defaultWasAmongRaw = rawChildren.some((child) => child.path === item.defaultPath);
+    const defaultStillPresent = children.some((child) => child.path === item.defaultPath);
+    if (defaultWasAmongRaw && !defaultStillPresent) {
+      defaultPath = children[0]?.path ?? item.defaultPath;
+    }
+  }
+  return {
+    ...item,
+    ...(children ? { children, defaultPath } : {}),
+    locked: !navigationAllowed(user, item.path),
+  };
+}
+
 /** Preserve an explicitly opened menu when route navigation remounts the layout. */
 export function hasSidebarOpenIntent(location) {
   const openSidebarGroup = location.state?.openSidebarGroup;

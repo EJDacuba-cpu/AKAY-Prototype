@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { menuByRole } from "../components/layout/sidebar/sidebarData.js";
+import { navigationAllowed } from "./dashboardAccess.js";
 import {
+  applySidebarAccess,
   hasSidebarOpenIntent,
   isSidebarPathActive,
   normalizeRhuPatientView,
@@ -157,4 +159,79 @@ test("Patient Intake parent stays active on intake routes including QR Scanner",
     isSidebarPathActive("/rhu/walk-in-check-in", { pathname: "/rhu/walk-in-check-in", search: "?patient_id=9" }, "rhu"),
     true,
   );
+});
+
+test("applySidebarAccess leaves query-style defaultPath unchanged when no matching child was removed", () => {
+  const allowAll = () => true;
+  const queryParents = ["bhc", "rhu"].flatMap((role) =>
+    menuByRole[role]
+      .flatMap((section) => section.items)
+      .filter(
+        (item) =>
+          item.children?.length &&
+          !item.children.some((child) => child.path === item.defaultPath),
+      ),
+  );
+  assert.ok(queryParents.some((item) => item.path === "/bhc/patients"));
+  assert.ok(queryParents.some((item) => item.path === "/bhc/referrals"));
+  assert.ok(queryParents.some((item) => item.path === "/bhc/reports"));
+  assert.ok(queryParents.some((item) => item.path === "/rhu/patients"));
+
+  for (const item of queryParents) {
+    const mapped = applySidebarAccess(item, { role: "rhu", permissions: [] }, allowAll);
+    assert.equal(mapped.defaultPath, item.defaultPath, item.path);
+    assert.equal(mapped.children.length, item.children.length, item.path);
+  }
+
+  const patients = menuByRole.rhu
+    .flatMap((section) => section.items)
+    .find((item) => item.path === "/rhu/patients");
+  const filteredQueue = {
+    ...patients,
+    children: patients.children.map((child, index) =>
+      index === 1 ? { ...child, hideWhenDenied: true } : child,
+    ),
+  };
+  const stillBare = applySidebarAccess(filteredQueue, {}, () => false);
+  assert.equal(stillBare.defaultPath, "/rhu/patients");
+  assert.deepEqual(
+    stillBare.children.map((child) => child.path),
+    ["/rhu/patients?view=queue"],
+  );
+});
+
+test("applySidebarAccess retargets defaultPath only after the matching child is denied", () => {
+  const medicine = menuByRole.rhu
+    .flatMap((section) => section.items)
+    .find((item) => item.path === "/rhu/medicine-and-supply");
+  const dispenseOnly = { role: "rhu", permissions: ["items.dispense"] };
+  const inventoryOnly = { role: "rhu", permissions: ["inventory.view"] };
+  const both = { role: "rhu", permissions: ["inventory.view", "items.dispense"] };
+
+  const dispenseMenu = applySidebarAccess(medicine, dispenseOnly, navigationAllowed);
+  assert.deepEqual(dispenseMenu.children.map((child) => child.path), ["/rhu/to-dispense"]);
+  assert.equal(dispenseMenu.defaultPath, "/rhu/to-dispense");
+  assert.equal(dispenseMenu.locked, false);
+
+  const inventoryMenu = applySidebarAccess(medicine, inventoryOnly, navigationAllowed);
+  assert.deepEqual(inventoryMenu.children.map((child) => child.path), ["/rhu/medicine-management"]);
+  assert.equal(inventoryMenu.defaultPath, "/rhu/medicine-management");
+
+  const bothMenu = applySidebarAccess(medicine, both, navigationAllowed);
+  assert.equal(bothMenu.defaultPath, "/rhu/medicine-management");
+  assert.equal(bothMenu.children.length, 2);
+
+  const neither = applySidebarAccess(medicine, { role: "rhu", permissions: [] }, navigationAllowed);
+  assert.deepEqual(neither.children, []);
+  assert.equal(neither.defaultPath, "/rhu/medicine-management");
+  assert.equal(neither.locked, true);
+
+  const reports = applySidebarAccess(
+    { label: "Reports", path: "/rhu/reports" },
+    { role: "rhu", permissions: [] },
+    navigationAllowed,
+  );
+  assert.equal(reports.children, undefined);
+  assert.equal(reports.defaultPath, undefined);
+  assert.equal(reports.locked, true);
 });
