@@ -1,16 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
 import { normalizeRhuReportCategory } from "./rhuReporting.js";
 
-describe("normalizeRhuReportCategory", () => {
-  it("defaults missing and unknown to overview", () => {
-    expect(normalizeRhuReportCategory(null)).toBe("overview");
-    expect(normalizeRhuReportCategory("nope")).toBe("overview");
-  });
+test("normalizeRhuReportCategory defaults missing and unknown to overview", () => {
+  assert.equal(normalizeRhuReportCategory(null), "overview");
+  assert.equal(normalizeRhuReportCategory("nope"), "overview");
+});
 
-  it("maps aliases and slugs", () => {
-    expect(normalizeRhuReportCategory("all")).toBe("overview");
-    expect(normalizeRhuReportCategory("patient-visits")).toBe("patient_visits");
-    expect(normalizeRhuReportCategory("referral-reports")).toBe("referrals");
-    expect(normalizeRhuReportCategory("family_planning")).toBe("family_planning");
-  });
+test("normalizeRhuReportCategory maps aliases and slugs", () => {
+  assert.equal(normalizeRhuReportCategory("all"), "overview");
+  assert.equal(normalizeRhuReportCategory("patient-visits"), "patient_visits");
+  assert.equal(normalizeRhuReportCategory("referral-reports"), "referrals");
+  assert.equal(normalizeRhuReportCategory("family_planning"), "family_planning");
 });
