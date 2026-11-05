@@ -12,7 +12,7 @@ import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
-import "../../components/features/bhc-dashboard/dashboard-theme.css";
+import "../../components/features/dashboard/dashboard-theme.css";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ModuleGate from "../../components/common/access/ModuleGate";
@@ -149,15 +149,15 @@ export default function BHCDashboard() {
         onRetry={() => refetch()}
         loadingMessage="Loading dashboard..."
       >
-        <div className="bhc-dashboard-color mx-auto flex w-full max-w-[1500px] flex-col gap-4">
+        <div className="clinical-dashboard bhc-dashboard-color mx-auto flex w-full max-w-[1500px] flex-col gap-4">
           {isFetching && hasDashboardData ? (
             <div className="flex justify-end">
               <RefreshingIndicator label="Updating dashboard..." />
             </div>
           ) : null}
 
-          <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-7">
               {KPI_CARDS.map((card) => (
                 <ModuleGate
                   key={card.key}
@@ -172,15 +172,17 @@ export default function BHCDashboard() {
                 </ModuleGate>
               ))}
             </div>
-            <WelcomeSummary userName={userName} facilityName={facilityName} />
+            <div className="lg:col-span-5">
+              <WelcomeSummary userName={userName} facilityName={facilityName} />
+            </div>
           </section>
 
-          <section aria-label="Quick actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section aria-label="Quick actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
             {QUICK_ACTIONS.map((action) => (
               <ModuleGate
                 key={action.href}
                 module={action.module}
-                className="rounded-card"
+                className="rounded-card lg:col-span-3"
                 placeholder={<QuickActionCard {...action} locked />}
               >
                 <QuickActionCard {...action} />
@@ -188,16 +190,18 @@ export default function BHCDashboard() {
             ))}
           </section>
 
-          <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
-            <ModuleGate
-              module="history"
-              className="rounded-card"
-              placeholder={<LockedPlaceholder lines={6} className="min-h-72" />}
-            >
-              <ConsultationActivityChart series={summary.consultation_activity?.series || []} />
-            </ModuleGate>
-            <NeedsAttentionCard items={attentionItems} />
-            <div className="xl:col-start-2">
+          <section className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-7">
+              <ModuleGate
+                module="history"
+                className="rounded-card"
+                placeholder={<LockedPlaceholder lines={6} className="min-h-72" />}
+              >
+                <ConsultationActivityChart series={summary.consultation_activity?.series || []} />
+              </ModuleGate>
+            </div>
+            <div className="flex flex-col gap-4 lg:col-span-5">
+              <NeedsAttentionCard items={attentionItems} />
               <RHUReadinessCard availability={doctorAvailability} loading={availabilityLoading} />
             </div>
           </section>
