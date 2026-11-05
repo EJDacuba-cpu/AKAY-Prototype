@@ -24,6 +24,23 @@ export async function listRecentPatientsForCheckIn(limit = 8) {
   return response?.data ?? [];
 }
 
+/**
+ * Pending BHC referrals for one walk-in-eligible patient at this RHU.
+ * Identity only. Does not change referral status or create a visit.
+ */
+export async function listPendingReferralsForCheckIn(patientId) {
+  const response = await apiRequest(
+    `/rhu-visits/patients/${encodeURIComponent(patientId)}/pending-referrals`,
+  );
+  const data = response?.data && typeof response.data === "object" ? response.data : {};
+  const referrals = Array.isArray(data.referrals) ? data.referrals : [];
+  const count = Number(data.count);
+  return {
+    count: Number.isFinite(count) ? count : referrals.length,
+    referrals,
+  };
+}
+
 /** Check an existing patient into today's RHU queue as a walk-in. */
 export async function checkInExistingPatient(patientId, checkInKey) {
   const response = await apiRequest("/rhu-visits", {

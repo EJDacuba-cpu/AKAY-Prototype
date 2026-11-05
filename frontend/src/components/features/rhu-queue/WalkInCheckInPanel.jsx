@@ -10,10 +10,12 @@ import useAccess from "../../../hooks/useAccess";
 import { getRhuPatientById } from "../../../services/patientService";
 import {
   checkInExistingPatient,
+  listPendingReferralsForCheckIn,
   listRecentPatientsForCheckIn,
   searchPatientsForCheckIn,
 } from "../../../services/rhuVisitService";
 import { formatAgeSex, isSearchable, walkInKeyFor } from "../../../utils/rhuQueueView";
+import { walkInReferralCta } from "../../../utils/walkInReferralCta";
 import { queryKeys } from "../../../utils/queryKeys";
 
 const SEARCH_DELAY_MS = 300;
@@ -45,6 +47,10 @@ function samePatient(a, b) {
   return a != null && b != null && String(a) === String(b);
 }
 
+function emptyReferralLookup() {
+  return { patientId: null, loading: false, error: "", data: null };
+}
+
 /**
  * Two-panel walk-in workspace: Find Patient (search + select) and Check-in Details (verify + confirm).
  */
@@ -66,6 +72,8 @@ export default function WalkInCheckInPanel({
   const [selectedError, setSelectedError] = useState("");
   const [saving, setSaving] = useState(false);
   const [successName, setSuccessName] = useState("");
+  const [referralLookup, setReferralLookup] = useState(emptyReferralLookup);
+  const [referralReload, setReferralReload] = useState(0);
   const walkIn = useRef(null);
   const [reloads, setReloads] = useState(0);
   const latest = useRef(0);
@@ -138,6 +146,32 @@ export default function WalkInCheckInPanel({
     return () => clearTimeout(timer);
   }, [query, reloads]);
 
+  useEffect(() => {
+    const patientId = selected?.id;
+    if (!patientId) {
+      setReferralLookup(emptyReferralLookup());
+      return undefined;
+    }
+    let cancelled = false;
+    setReferralLookup({ patientId, loading: true, error: "", data: null });
+    (async () => {
+      try {
+        const data = await listPendingReferralsForCheckIn(patientId);
+        if (!cancelled) setReferralLookup({ patientId, loading: false, error: "", data });
+      } catch (error) {
+        if (!cancelled) {
+          setReferralLookup({
+            patientId,
+            loading: false,
+            error: error.message || "Unable to check pending referrals.",
+            data: null,
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selected?.id, referralReload]);
+
   function markInQueue(patientId, visitId) {
     const apply = (row) => (
       samePatient(row.id, patientId) ? { ...row, active_visit_id: visitId ?? true } : row
@@ -162,12 +196,25 @@ export default function WalkInCheckInPanel({
     setSelectedLoading(false);
     setSelectedError("");
     setSuccessName("");
+    setReferralLookup(emptyReferralLookup());
     walkIn.current = null;
     onClearedSelection?.();
   }
 
   async function confirmCheckIn() {
-    if (!selected || selected.active_visit_id || saving || successName) return;
+    const lookupReady = samePatient(referralLookup.patientId, selected?.id);
+    const pendingBlocks = lookupReady && walkInReferralCta(referralLookup.data).blocked;
+    if (
+      !selected
+      || selected.active_visit_id
+      || saving
+      || successName
+      || selectedLoading
+      || !lookupReady
+      || referralLookup.loading
+      || referralLookup.error
+      || pendingBlocks
+    ) return;
     setSaving(true);
     try {
       walkIn.current = walkInKeyFor(walkIn.current, String(selected.id));
@@ -192,7 +239,19 @@ export default function WalkInCheckInPanel({
   }
 
   const alreadyInQueue = Boolean(selected?.active_visit_id);
-  const canConfirm = Boolean(selected) && !alreadyInQueue && !saving && !successName && !selectedLoading;
+  const lookupReady = samePatient(referralLookup.patientId, selected?.id);
+  const pendingLoading = Boolean(selected) && (!lookupReady || referralLookup.loading);
+  const pendingError = lookupReady && !referralLookup.loading ? referralLookup.error : "";
+  const pendingCta = walkInReferralCta(lookupReady && !referralLookup.loading && !pendingError ? referralLookup.data : null);
+  const pendingBlocks = !alreadyInQueue && pendingCta.blocked;
+  const canConfirm = Boolean(selected)
+    && !alreadyInQueue
+    && !saving
+    && !successName
+    && !selectedLoading
+    && !pendingLoading
+    && !pendingError
+    && !pendingBlocks;
   const listRows = searching ? results : recent;
   const listLabel = searching ? "Matching patients" : "Recent Patient Records";
 
@@ -265,26 +324,30 @@ export default function WalkInCheckInPanel({
                 <DetailField label="Barangay" value={selected.barangay || "—"} />
               </dl>
 
-              <div className="mt-4">
-                <CheckInStatus alreadyInQueue={alreadyInQueue} />
+              <div className="mt-4 space-y-3">
+                <CheckInStatus
+                  alreadyInQueue={alreadyInQueue}
+                  pendingReferral={pendingBlocks}
+                  checking={!alreadyInQueue && pendingLoading}
+                  failed={!alreadyInQueue && Boolean(pendingError)}
+                />
+                {pendingBlocks ? (
+                  <PendingReferralNotice title={pendingCta.title} body={pendingCta.body} />
+                ) : null}
               </div>
 
               <div className="mt-auto border-t border-neutral-100 pt-3">
-                {alreadyInQueue ? (
-                  <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] font-medium text-neutral-700">
-                    Already Checked In
-                  </p>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="brand"
-                    className="w-full sm:w-auto"
-                    disabled={!canConfirm}
-                    onClick={confirmCheckIn}
-                  >
-                    {saving ? "Checking in..." : "Confirm Check-in"}
-                  </Button>
-                )}
+                <DetailsAction
+                  alreadyInQueue={alreadyInQueue}
+                  checking={!alreadyInQueue && pendingLoading}
+                  error={!alreadyInQueue ? pendingError : ""}
+                  links={pendingBlocks ? pendingCta.links : []}
+                  blockedWithoutLink={pendingBlocks && pendingCta.links.length === 0}
+                  canConfirm={canConfirm}
+                  saving={saving}
+                  onConfirm={confirmCheckIn}
+                  onRetry={() => setReferralReload((count) => count + 1)}
+                />
               </div>
             </>
           )}
@@ -393,20 +456,115 @@ function DetailField({ label, value }) {
   );
 }
 
-function CheckInStatus({ alreadyInQueue }) {
+function CheckInStatus({ alreadyInQueue, pendingReferral, checking, failed }) {
+  const tone = alreadyInQueue ? "success" : pendingReferral ? "warning" : "info";
+  const label = alreadyInQueue
+    ? "Already in Today's Queue"
+    : pendingReferral
+      ? "Pending BHC Referral"
+      : failed
+        ? "Referral check failed"
+        : checking
+          ? "Checking referrals..."
+          : "Ready to check in";
   return (
     <div className="flex items-center gap-2 text-[13px]">
       <span
         aria-hidden="true"
         className={[
           "h-2 w-2 shrink-0 rounded-full",
-          alreadyInQueue ? "bg-success-500" : "bg-info-500",
+          tone === "success" ? "bg-success-500" : tone === "warning" ? "bg-warning-500" : "bg-info-500",
         ].join(" ")}
       />
-      <span className={alreadyInQueue ? "font-medium text-success-700" : "text-neutral-700"}>
-        {alreadyInQueue ? "Already in Today's Queue" : "Ready to check in"}
+      <span className={tone === "success" ? "font-medium text-success-700" : tone === "warning" ? "font-medium text-warning-700" : "text-neutral-700"}>
+        {label}
       </span>
     </div>
+  );
+}
+
+function PendingReferralNotice({ title, body }) {
+  return (
+    <div role="status" className="rounded-lg border border-warning-100 bg-warning-50 px-3 py-2.5">
+      <p className="text-[13px] font-semibold text-warning-700">{title}</p>
+      <p className="mt-1 text-[13px] leading-5 text-neutral-700">{body}</p>
+    </div>
+  );
+}
+
+function DetailsAction({
+  alreadyInQueue,
+  checking,
+  error,
+  links,
+  blockedWithoutLink,
+  canConfirm,
+  saving,
+  onConfirm,
+  onRetry,
+}) {
+  if (alreadyInQueue) {
+    return (
+      <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] font-medium text-neutral-700">
+        Already Checked In
+      </p>
+    );
+  }
+  if (checking) {
+    return <p role="status" className="text-[13px] text-neutral-500">Checking referrals...</p>;
+  }
+  if (error) {
+    return (
+      <div className="space-y-2">
+        <p role="alert" className="text-[13px] text-danger">{error}</p>
+        <Button type="button" variant="secondary" onClick={onRetry}>Try again</Button>
+      </div>
+    );
+  }
+  if (links.length === 1) {
+    return (
+      <Button asChild variant="brand" className="w-full sm:w-auto">
+        <Link to={links[0].href}>View Incoming Referral</Link>
+      </Button>
+    );
+  }
+  if (links.length > 1) {
+    return (
+      <ul className="space-y-2">
+        {links.map((link, index) => (
+          <li key={`${link.trackingId}-${index}`}>
+            <Link
+              to={link.href}
+              className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 text-[13px] transition-colors hover:bg-neutral-50"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-ink-800">{link.trackingId}</span>
+                <span className="block truncate text-neutral-600">{link.sendingBhc}</span>
+              </span>
+              <span className="shrink-0 font-medium text-brand-700">View Incoming Referral</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (blockedWithoutLink) {
+    return (
+      <p className="text-[13px] text-neutral-700">
+        Confirm Check-in is unavailable until arrival is verified via Incoming Referrals.
+      </p>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="brand"
+      className="w-full sm:w-auto"
+      disabled={!canConfirm}
+      onClick={onConfirm}
+    >
+      {saving ? "Checking in..." : "Confirm Check-in"}
+    </Button>
   );
 }
 
