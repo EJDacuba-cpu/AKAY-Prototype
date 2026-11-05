@@ -188,6 +188,7 @@ function normalizeReferralStatus(status) {
   return original;
 }
 
+// Mirrors bhcReporting getReferralDate; expects normalized list items (date / referralDateTime).
 function getReferralDate(referral = {}) {
   return (
     referral.dateOfReferral ||

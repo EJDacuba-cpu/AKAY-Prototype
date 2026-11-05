@@ -119,3 +119,20 @@ test("buildIncomingReferralMetrics counts submitted referrals, distinct BHCs, an
   assert.equal(sanJose.value, 2);
   assert.equal(sanJose.completed, 1);
 });
+
+test("buildIncomingReferralMetrics excludes referrals with only raw referral_date (not normalized cohort fields)", () => {
+  const metrics = buildIncomingReferralMetrics(
+    [
+      {
+        id: 99,
+        referral_date: "2026-11-03",
+        status: "Completed",
+        barangay_health_center: "BHC Raw Only",
+      },
+    ],
+    period,
+  );
+  assert.equal(metrics.total, 0);
+  assert.equal(metrics.referringBhcs, 0);
+  assert.equal(metrics.completedCases, 0);
+});
