@@ -29,6 +29,12 @@ export function navigationAllowed(user, path = "") {
   if (user?.role === "rhu" && /^\/rhu\/follow-ups(?:\/|$)/.test(path)) {
     return permissions.includes("followups.manage");
   }
+  if (user?.role === "rhu" && /^\/rhu\/medicine-and-supply(?:\/|$)/.test(path)) {
+    return permissions.includes("inventory.view") || permissions.includes("items.dispense");
+  }
+  if (user?.role === "rhu" && /^\/rhu\/to-dispense(?:\/|$)/.test(path)) {
+    return permissions.includes("items.dispense");
+  }
   const permission = /health-records|follow-ups|referrals|qr-scanner|programs/.test(path)
     ? "clinical.history"
     : /patients/.test(path) ? "patients.register"

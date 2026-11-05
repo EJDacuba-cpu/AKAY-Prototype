@@ -78,7 +78,20 @@ export default function DashboardLayout({
 
   // Unassigned modules stay listed but locked, so every account keeps the same navigation layout.
   const menuSections = (menuByRole[role] || []).map(section => ({ ...section,
-    items: section.items.map(item => ({ ...item, locked: !navigationAllowed(getCurrentUser(), item.path) })),
+    items: section.items.map(item => {
+      const user = getCurrentUser();
+      const children = item.children?.filter(
+        (child) => !(child.hideWhenDenied && !navigationAllowed(user, child.path)),
+      );
+      const defaultPath = item.defaultPath && children && !children.some((child) => child.path === item.defaultPath)
+        ? children[0]?.path ?? item.defaultPath
+        : item.defaultPath;
+      return {
+        ...item,
+        ...(children ? { children, defaultPath } : {}),
+        locked: !navigationAllowed(user, item.path),
+      };
+    }),
   }));
   const user = getCurrentUser() || {
     name: "AKAY User",

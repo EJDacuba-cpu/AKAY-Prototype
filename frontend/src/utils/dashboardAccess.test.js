@@ -79,6 +79,19 @@ test("RHU intake nav locks without rhu.intake or rhu.manage", () => {
   assert.equal(navigationAllowed({ role: "rhu", permissions: ["rhu.intake"] }, "/rhu/patients/9/referrals/5"), false);
 });
 
+test("RHU Medicine parent and To Dispense follow inventory and dispense duties", () => {
+  const inventoryOnly = { role: "rhu", permissions: ["inventory.view"] };
+  const dispenseOnly = { role: "rhu", permissions: ["items.dispense"] };
+
+  assert.equal(navigationAllowed(inventoryOnly, "/rhu/medicine-management"), true);
+  assert.equal(navigationAllowed(inventoryOnly, "/rhu/medicine-and-supply"), true);
+  assert.equal(navigationAllowed(inventoryOnly, "/rhu/to-dispense"), false);
+
+  assert.equal(navigationAllowed(dispenseOnly, "/rhu/to-dispense"), true);
+  assert.equal(navigationAllowed(dispenseOnly, "/rhu/medicine-and-supply"), true);
+  assert.equal(navigationAllowed(dispenseOnly, "/rhu/medicine-management"), false);
+});
+
 test("RHU Patient Intake and walk-in check-in follow intake and register duties", () => {
   const intakeStaff = { role: "rhu", permissions: ["patients.register", "rhu.intake"] };
   const historyOnly = { role: "rhu", permissions: ["clinical.history"] };

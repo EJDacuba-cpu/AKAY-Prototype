@@ -99,6 +99,48 @@ test("Patient Intake open intent stays true on child routes after defaultPath na
   );
 });
 
+test("RHU Medicine and Supply sidebar nests Inventory and To Dispense", () => {
+  const medicine = menuByRole.rhu
+    .flatMap((section) => section.items)
+    .find((item) => item.path === "/rhu/medicine-and-supply");
+  assert.ok(medicine?.children?.length);
+  assert.equal(medicine.label, "Medicine and Supply");
+  assert.equal(medicine.defaultPath, "/rhu/medicine-management");
+  assert.deepEqual(
+    medicine.children.map((c) => c.label),
+    ["Inventory", "To Dispense"],
+  );
+  assert.deepEqual(
+    medicine.children.map((c) => c.path),
+    ["/rhu/medicine-management", "/rhu/to-dispense"],
+  );
+  assert.equal(medicine.children[1].hideWhenDenied, true);
+  const bhc = menuByRole.bhc
+    .flatMap((section) => section.items)
+    .find((item) => item.label === "Medicine and Supply");
+  assert.equal(bhc.path, "/bhc/medicine-availability");
+  assert.equal(bhc.children, undefined);
+});
+
+test("Medicine parent stays active on inventory, details, and to-dispense", () => {
+  const parent = "/rhu/medicine-and-supply";
+  for (const pathname of [
+    "/rhu/medicine-management",
+    "/rhu/medicine-management/med-1",
+    "/rhu/to-dispense",
+  ]) {
+    assert.equal(isSidebarPathActive(parent, { pathname, search: "" }, "rhu"), true);
+  }
+  assert.equal(
+    isSidebarPathActive(parent, { pathname: "/rhu/patients", search: "" }, "rhu"),
+    false,
+  );
+  assert.equal(
+    isSidebarPathActive("/rhu/to-dispense", { pathname: "/rhu/to-dispense", search: "" }, "rhu"),
+    true,
+  );
+});
+
 test("Patient Intake parent stays active on intake routes including QR Scanner", () => {
   const parent = "/rhu/patient-intake";
   for (const pathname of [

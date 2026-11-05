@@ -160,6 +160,17 @@ function Unauthorized() {
   );
 }
 
+function RhuMedicineSupplyRedirect() {
+  const user = getCurrentUser();
+  const permissions = user?.permissions || [];
+  const to = permissions.includes("inventory.view")
+    ? "/rhu/medicine-management"
+    : permissions.includes("items.dispense")
+      ? "/rhu/to-dispense"
+      : "/rhu/medicine-management";
+  return <Navigate to={to} replace />;
+}
+
 function LegacyRHURecordRedirect() {
   const { recordId } = useParams();
   return <Navigate to={`/rhu/health-records/${recordId}`} replace />;
@@ -810,6 +821,7 @@ export default function App() {
         path="/rhu/doctor-schedule"
         element={<Navigate to="/rhu/doctor-availability" replace />}
       />
+      <Route path="/rhu/medicine-and-supply" element={<RhuMedicineSupplyRedirect />} />
       <Route
         path="/rhu/medicine-management"
         element={

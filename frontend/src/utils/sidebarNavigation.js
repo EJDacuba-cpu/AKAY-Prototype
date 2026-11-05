@@ -6,6 +6,7 @@ export const PATIENT_VIEW_MONITORING = "monitoring-requests";
 export const RHU_PATIENT_VIEW_QUEUE = "queue";
 export const RHU_PATIENT_VIEW_ALL = "all";
 export const RHU_INTAKE_PARENT_PATH = "/rhu/patient-intake";
+export const RHU_MEDICINE_PARENT_PATH = "/rhu/medicine-and-supply";
 
 export function isRhuPatientIntakePath(pathname = "") {
   return (
@@ -14,6 +15,15 @@ export function isRhuPatientIntakePath(pathname = "") {
     pathname === "/rhu/walk-in-check-in" ||
     pathname === "/rhu/qr-scanner" ||
     /^\/rhu\/referrals\/[^/]+$/.test(pathname)
+  );
+}
+
+export function isRhuMedicinePath(pathname = "") {
+  return (
+    pathname === RHU_MEDICINE_PARENT_PATH ||
+    pathname === "/rhu/medicine-management" ||
+    pathname === "/rhu/to-dispense" ||
+    /^\/rhu\/medicine-management\/[^/]+$/.test(pathname)
   );
 }
 
@@ -46,6 +56,12 @@ export function hasSidebarOpenIntent(location) {
   if (
     openSidebarGroup === RHU_INTAKE_PARENT_PATH &&
     isRhuPatientIntakePath(location.pathname)
+  ) {
+    return true;
+  }
+  if (
+    openSidebarGroup === RHU_MEDICINE_PARENT_PATH &&
+    isRhuMedicinePath(location.pathname)
   ) {
     return true;
   }
@@ -99,6 +115,10 @@ export function isSidebarPathActive(path, location, role) {
 
   if (pathname === RHU_INTAKE_PARENT_PATH) {
     return isRhuPatientIntakePath(location.pathname);
+  }
+
+  if (pathname === RHU_MEDICINE_PARENT_PATH) {
+    return isRhuMedicinePath(location.pathname);
   }
 
   if (location.pathname === pathname) return true;

@@ -155,8 +155,13 @@ export const menuByRole = {
       items: [
         {
           label: "Medicine and Supply",
-          path: "/rhu/medicine-management",
+          path: "/rhu/medicine-and-supply",
           icon: Boxes,
+          defaultPath: "/rhu/medicine-management",
+          children: [
+            { label: "Inventory", path: "/rhu/medicine-management" },
+            { label: "To Dispense", path: "/rhu/to-dispense", hideWhenDenied: true },
+          ],
         },
         { label: "Reports", path: "/rhu/reports", icon: Activity },
       ],
