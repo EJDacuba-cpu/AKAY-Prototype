@@ -175,3 +175,107 @@ export function buildPatientVisitMetrics(visits, period) {
     charts,
   };
 }
+
+function normalizeReferralStatus(status) {
+  const original = String(status || "").trim();
+  if (!original) return "Pending";
+
+  const raw = original.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (raw === "pending") return "Pending";
+  if (["received", "for monitoring"].includes(raw)) return "Received";
+  if (raw === "no show") return "No-Show";
+  if (["completed", "complete", "done"].includes(raw)) return "Completed";
+  return original;
+}
+
+function getReferralDate(referral = {}) {
+  return (
+    referral.dateOfReferral ||
+    referral.date_of_referral ||
+    referral.referralDate ||
+    referral.date ||
+    referral.referralDateTime ||
+    referral.createdAt ||
+    referral.created_at ||
+    ""
+  );
+}
+
+function getReferralSourceLabel(referral = {}) {
+  return (
+    referral.originating_facility ||
+    referral.barangay_health_center ||
+    referral.from_facility ||
+    referral.barangay ||
+    ""
+  );
+}
+
+function referralsBySource(cohort) {
+  const buckets = new Map();
+  for (const referral of cohort) {
+    const rawLabel = String(getReferralSourceLabel(referral) || "").trim();
+    const label = rawLabel || "Unspecified";
+    if (!buckets.has(label)) {
+      buckets.set(label, { label, value: 0, completed: 0 });
+    }
+    const row = buckets.get(label);
+    row.value += 1;
+    if (normalizeReferralStatus(referral.status) === "Completed") {
+      row.completed += 1;
+    }
+  }
+  return [...buckets.values()].sort(
+    (a, b) => b.value - a.value || a.label.localeCompare(b.label),
+  );
+}
+
+export function buildIncomingReferralMetrics(referrals, period) {
+  const cohort = (Array.isArray(referrals) ? referrals : []).filter((referral) =>
+    isDateInReportPeriod(getReferralDate(referral), period),
+  );
+  const bySource = referralsBySource(cohort);
+  const referringBhcs = new Set(
+    cohort
+      .map((referral) => String(getReferralSourceLabel(referral) || "").trim())
+      .filter(Boolean),
+  ).size;
+  let completedCases = 0;
+  for (const referral of cohort) {
+    if (normalizeReferralStatus(referral.status) === "Completed") {
+      completedCases += 1;
+    }
+  }
+  const total = cohort.length;
+  const trend = trendSeries(
+    cohort.map((referral) => getReferralDate(referral)),
+    period,
+  );
+  const summaryRows = bySource.map((row) => ({
+    label: row.label,
+    value: row.value,
+    note: `${row.completed} completed`,
+  }));
+  const charts = [
+    barChart(
+      "Referrals by Barangay / BHC",
+      "Incoming referrals submitted during this period, grouped by source facility.",
+      period,
+      bySource.length ? bySource : [{ label: "No referrals", value: 0 }],
+      "label",
+      "value",
+      "Referrals",
+      CHART_COLORS.info,
+    ),
+  ];
+
+  return {
+    total,
+    referringBhcs,
+    completedCases,
+    bySource,
+    trend,
+    summaryRows,
+    charts,
+  };
+}

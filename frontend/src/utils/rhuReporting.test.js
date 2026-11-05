@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPatientVisitMetrics, normalizeRhuReportCategory } from "./rhuReporting.js";
+import {
+  buildIncomingReferralMetrics,
+  buildPatientVisitMetrics,
+  normalizeRhuReportCategory,
+} from "./rhuReporting.js";
 
 const period = {
   start: "2026-11-01",
@@ -73,4 +77,45 @@ test("buildPatientVisitMetrics counts repeat patient visits separately", () => {
   );
   assert.equal(metrics.total, 2);
   assert.equal(metrics.completedConsultations, 1);
+});
+
+test("buildIncomingReferralMetrics counts submitted referrals, distinct BHCs, and completed cases without patient rows", () => {
+  const metrics = buildIncomingReferralMetrics(
+    [
+      {
+        id: 1,
+        date: "2026-11-02",
+        status: "Completed",
+        barangay_health_center: "BHC San Jose",
+        patient_name: "Secret",
+      },
+      {
+        id: 2,
+        date: "2026-11-03",
+        status: "Pending",
+        barangay_health_center: "BHC San Jose",
+      },
+      {
+        id: 3,
+        date: "2026-11-03",
+        status: "Received",
+        barangay_health_center: "BHC Mabini",
+      },
+      {
+        id: 4,
+        date: "2026-10-01",
+        status: "Completed",
+        barangay_health_center: "BHC Old",
+      },
+    ],
+    period,
+  );
+  assert.equal(metrics.total, 3);
+  assert.equal(metrics.referringBhcs, 2);
+  assert.equal(metrics.completedCases, 1);
+  assert.doesNotMatch(JSON.stringify(metrics), /Secret/);
+  const sanJose = metrics.bySource.find((row) => row.label === "BHC San Jose");
+  assert.ok(sanJose);
+  assert.equal(sanJose.value, 2);
+  assert.equal(sanJose.completed, 1);
 });
