@@ -286,7 +286,7 @@ export function ConsultationReviewStep({
               {section.rows.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="ehr-consult__review-row grid gap-1 px-5 py-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
+                  className="ehr-consult__review-row grid gap-1 px-5 py-2.5 sm:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)] sm:gap-3"
                 >
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                     {label}

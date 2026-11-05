@@ -81,9 +81,16 @@ export default function NotificationDropdown({
             </button>
           </div>
         ) : latestNotifs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-center px-4">
-            <Inbox size={24} className="text-gray-300 mb-1" />
-            <p className="text-xs text-gray-400">No notifications yet.</p>
+          <div className="flex h-28 flex-col items-center justify-center gap-1.5 px-4 text-center">
+            <Inbox size={20} className="text-neutral-300" aria-hidden="true" />
+            <p className="text-[12px] text-neutral-500">No notifications yet.</p>
+            <button
+              type="button"
+              onClick={onSeeAll}
+              className="text-[11px] font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            >
+              Open notification inbox
+            </button>
           </div>
         ) : (
           latestNotifs.map((notif) => (

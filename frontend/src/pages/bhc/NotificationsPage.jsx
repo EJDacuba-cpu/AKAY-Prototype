@@ -333,32 +333,32 @@ export default function NotificationsPage() {
   const toolbar = () => (
     <div className="border-b border-neutral-200 bg-white px-4 py-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-nowrap items-center gap-1.5">
           <button
             type="button"
             onClick={toggleSelectAllVisible}
             disabled={visibleIds.length === 0 || actionLoading}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 disabled:pointer-events-none disabled:opacity-50"
           >
-            <span className="flex h-4 w-4 items-center justify-center rounded border border-neutral-300 bg-white">
-              {allVisibleSelected && <Check size={12} strokeWidth={3} />}
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded border border-neutral-300 bg-white">
+              {allVisibleSelected && <Check size={10} strokeWidth={3} />}
             </span>
             Select
           </button>
-
           {selectedCount > 0 ? (
             <>
-              <span className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-bold text-ink-800">
-                {selectedCount} selected
+              <span className="shrink-0 text-[11px] font-bold tabular-nums text-ink-800">
+                {selectedCount}
               </span>
               {activeFilter === "trash" ? (
                 <button
                   type="button"
                   onClick={handleRestoreSelected}
                   disabled={actionLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
+                  title="Restore"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
                 >
-                  <RotateCcw size={14} />
+                  <RotateCcw size={13} />
                   Restore
                 </button>
               ) : (
@@ -367,28 +367,31 @@ export default function NotificationsPage() {
                     type="button"
                     onClick={handleMarkSelectedRead}
                     disabled={actionLoading}
-                    className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
+                    title="Mark as read"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
                   >
-                    <CheckCheck size={14} />
-                    Mark as read
+                    <CheckCheck size={13} />
+                    Read
                   </button>
                   <button
                     type="button"
                     onClick={handleMarkSelectedUnread}
                     disabled={actionLoading}
-                    className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
+                    title="Mark as unread"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
                   >
-                    <Mail size={14} />
-                    Mark as unread
+                    <Mail size={13} />
+                    Unread
                   </button>
                   <button
                     type="button"
                     onClick={handleMoveSelectedToTrash}
                     disabled={actionLoading}
-                    className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
+                    title="Move to Trash"
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-danger shadow-xs transition hover:border-danger/30 hover:bg-danger-soft disabled:pointer-events-none disabled:opacity-60"
                   >
-                    <Trash2 size={14} />
-                    Move to Trash
+                    <Trash2 size={13} />
+                    Trash
                   </button>
                 </>
               )}
@@ -403,12 +406,12 @@ export default function NotificationsPage() {
                     : handleRefresh
                 }
                 disabled={viewLoading}
-                className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
               >
                 {viewLoading ? (
-                  <LoaderCircle size={14} className="animate-spin" />
+                  <LoaderCircle size={13} className="animate-spin" />
                 ) : (
-                  <RefreshCw size={14} />
+                  <RefreshCw size={13} />
                 )}
                 Refresh
               </button>
@@ -417,10 +420,10 @@ export default function NotificationsPage() {
                   type="button"
                   onClick={handleMarkAllRead}
                   disabled={counts.unread === 0 || actionLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <CheckCheck size={14} />
-                  Mark all as read
+                  <CheckCheck size={13} />
+                  Mark all
                 </button>
               )}
             </>
@@ -552,15 +555,17 @@ export default function NotificationsPage() {
         </div>
       </header>
       {feedbackBanner()}
-      <div className="grid gap-4 lg:grid-cols-[12rem_minmax(0,1fr)] max-lg:grid-cols-1">
-        <aside className="rounded-xl border border-neutral-200 bg-white p-2 shadow-[var(--shadow-card)]">
-          <div className="flex gap-1 overflow-x-auto lg:block lg:space-y-1 lg:overflow-visible">
+      <div className="grid h-[min(32rem,calc(100dvh-12rem))] min-h-0 gap-4 lg:grid-cols-[12rem_minmax(0,1fr)] max-lg:grid-cols-1">
+        <aside className="flex min-h-0 flex-col rounded-xl border border-neutral-200 bg-white p-2 shadow-[var(--shadow-card)]">
+          <div className="flex gap-1 overflow-x-auto lg:block lg:flex-1 lg:space-y-1 lg:overflow-y-auto lg:overflow-x-visible">
             {filterButtons}
           </div>
         </aside>
-        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[var(--shadow-card)]">
-          {toolbar()}
-          {listBody()}
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[var(--shadow-card)]">
+          <div className="shrink-0">{toolbar()}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {listBody()}
+          </div>
         </section>
       </div>
       {modal()}

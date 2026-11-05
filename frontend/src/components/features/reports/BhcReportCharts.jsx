@@ -9,6 +9,7 @@ import {
   Pie,
   PieChart,
   PolarAngleAxis,
+  PolarGrid,
   RadialBar,
   RadialBarChart,
   XAxis,
@@ -42,13 +43,15 @@ function ChartCard({ chart, className }) {
   if (!chart) return null;
 
   return (
-    <Card className={cn("rounded-card shadow-card print:hidden", className)}>
-      <CardHeader>
+    <Card className={cn("flex h-full flex-col rounded-card shadow-card print:hidden", className)}>
+      <CardHeader className="pb-2">
         <CardTitle>{chart.title}</CardTitle>
         <CardDescription>{chart.description}</CardDescription>
       </CardHeader>
-      <CardContent>
-        {hasChartValues(chart) ? (
+      <CardContent className="flex flex-1 flex-col justify-center">
+        {chart.kind === "radial" ? (
+          <RadialEnrollmentChart chart={chart} animate={animate} />
+        ) : hasChartValues(chart) ? (
           <ChartContainer config={chart.config} className={cn("aspect-auto w-full", CHART_HEIGHT)}>
             {chart.kind === "bar" ? (
               <BarChart data={chart.data} margin={{ left: 4, right: 8, top: 8, bottom: 8 }}>
@@ -83,38 +86,6 @@ function ChartCard({ chart, className }) {
                 </Pie>
                 <ChartLegend content={<ChartLegendContent nameKey="key" />} />
               </PieChart>
-            ) : chart.kind === "radial" ? (
-              <div className="relative mx-auto flex h-full w-full max-w-[280px] items-center justify-center">
-                <RadialBarChart
-                  data={chart.data}
-                  startAngle={90}
-                  endAngle={-270}
-                  innerRadius="72%"
-                  outerRadius="100%"
-                  barSize={14}
-                  className="h-full w-full"
-                >
-                  <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                  <RadialBar
-                    dataKey={chart.valueKey}
-                    background={{ fill: "var(--color-neutral-100)" }}
-                    cornerRadius={999}
-                    isAnimationActive={animate}
-                  >
-                    {chart.data.map((item) => (
-                      <Cell key={item.key} fill={item.fill || "var(--color-brand-600)"} />
-                    ))}
-                  </RadialBar>
-                </RadialBarChart>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-                  <p className="text-3xl font-bold tabular-nums leading-none text-neutral-900 sm:text-4xl">
-                    {chart.enrolled ?? 0}
-                  </p>
-                  <p className="mt-2 max-w-[9rem] text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Patients Enrolled
-                  </p>
-                </div>
-              </div>
             ) : (
               <AreaChart data={chart.data} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
                 <defs>
@@ -143,6 +114,54 @@ function ChartCard({ chart, className }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Count-focused decorative ring — RadialBarChart is the ChartContainer child; label sits outside. */
+function RadialEnrollmentChart({ chart, animate }) {
+  const enrolled = Number(chart.enrolled ?? 0);
+  const countClass =
+    enrolled >= 1000 ? "text-3xl sm:text-4xl" : "text-4xl sm:text-5xl";
+
+  return (
+    <div className={cn("relative mx-auto w-full max-w-[260px]", CHART_HEIGHT)}>
+      <ChartContainer config={chart.config} className="aspect-square h-full w-full">
+        <RadialBarChart
+          data={chart.data}
+          startAngle={90}
+          endAngle={-270}
+          innerRadius={80}
+          outerRadius={110}
+        >
+          <PolarGrid
+            gridType="circle"
+            radialLines={false}
+            stroke="none"
+            className="first:fill-neutral-100 last:fill-white"
+            polarRadius={[96, 74]}
+          />
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
+          <RadialBar
+            dataKey={chart.valueKey}
+            background={{ fill: "var(--color-neutral-100)" }}
+            cornerRadius={10}
+            isAnimationActive={animate}
+          >
+            {chart.data.map((item) => (
+              <Cell key={item.key} fill={item.fill || "var(--color-brand-600)"} />
+            ))}
+          </RadialBar>
+        </RadialBarChart>
+      </ChartContainer>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
+        <p className={cn("font-bold tabular-nums leading-none text-neutral-900", countClass)}>
+          {enrolled.toLocaleString()}
+        </p>
+        <p className="mt-2 max-w-[9rem] text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+          Patients Enrolled
+        </p>
+      </div>
+    </div>
   );
 }
 

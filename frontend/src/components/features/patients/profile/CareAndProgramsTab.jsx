@@ -181,7 +181,25 @@ export default function CareAndProgramsTab({
           </label>
         </div>
         {canReadCareOverview && careOverviewQuery.isError ? (
-          <p role="alert" className="mb-4 rounded-lg border border-alert-100 bg-alert-50 px-4 py-3 text-sm text-alert-700">Could not load Nutrition status. Care Tracking may be incomplete. <Button type="button" variant="link" size="sm" onClick={() => careOverviewQuery.refetch()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
+          <Card role="alert" className="mb-4 flex min-h-56 flex-col rounded-xl border-neutral-200 p-4 shadow-card">
+            <span className="inline-flex w-fit rounded border border-alert-100 bg-alert-50 px-2 py-0.5 text-[11px] font-semibold text-alert-700">
+              Nutrition
+            </span>
+            <p className="mt-2 text-sm font-semibold text-[#111827]">Status unavailable</p>
+            <p className="mt-1 flex-1 text-xs leading-snug text-neutral-500">
+              Could not load Nutrition status. Care Tracking may be incomplete.
+            </p>
+            <div className="flex justify-end pt-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => careOverviewQuery.refetch()}
+                className="h-8 rounded-lg px-3 text-xs"
+              >
+                Retry
+              </Button>
+            </div>
+          </Card>
         ) : null}
         {isError ? (
           <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 p-5 text-sm text-alert-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
