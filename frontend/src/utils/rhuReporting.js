@@ -1,4 +1,4 @@
-import { isDateInReportPeriod, trendSeries } from "./bhcReporting.js";
+import { buildBhcReport, isDateInReportPeriod, trendSeries } from "./bhcReporting.js";
 
 const CHART_COLORS = {
   brand: "var(--color-brand-600)",
@@ -279,4 +279,146 @@ export function buildIncomingReferralMetrics(referrals, period) {
     summaryRows,
     charts,
   };
+}
+
+const CLINICAL_CATEGORIES = new Set([
+  "epi",
+  "maternal",
+  "family_planning",
+  "nutrition",
+  "morbidity",
+  "notifiable",
+  "surveillance",
+]);
+
+function categoryMeta(key) {
+  return RHU_REPORT_CATEGORIES.find((item) => item.key === key) || RHU_REPORT_CATEGORIES[0];
+}
+
+function card(key, label, value, hint) {
+  return { key, label, value: Number(value) || 0, hint };
+}
+
+function reportView({ category, period, ageGroup = "all", notes = [], cards, charts, summary }) {
+  const meta = categoryMeta(category);
+  return {
+    category,
+    categoryLabel: meta.label,
+    period,
+    ageGroup,
+    notes,
+    cards,
+    charts,
+    summary,
+    empty: cards.every((item) => !Number(item.value)),
+    printRows: summary,
+  };
+}
+
+// Facility id is not on visit or referral payloads. Isolation is the API's RHU scope;
+// this builder filters by period and category only.
+export function buildRhuReport({
+  visits = [],
+  patients = [],
+  records = [],
+  referrals = [],
+  category = "overview",
+  period,
+  ageGroup = "all",
+} = {}) {
+  const selected = normalizeRhuReportCategory(category);
+
+  if (CLINICAL_CATEGORIES.has(selected)) {
+    const clinical = buildBhcReport({
+      patients,
+      records,
+      referrals: [],
+      category: selected,
+      period,
+      ageGroup,
+    });
+    return {
+      ...clinical,
+      category: selected,
+      categoryLabel: categoryMeta(selected).label,
+    };
+  }
+
+  if (selected === "patient_visits") {
+    const metrics = buildPatientVisitMetrics(visits, period);
+    return reportView({
+      category: selected,
+      period,
+      ageGroup,
+      cards: [
+        card("total_visits", "Total Visits", metrics.total, "Queue check-ins in period; mistakes excluded"),
+        card("walk_in", "Walk-in", metrics.walkIn, "Visits without a linked referral"),
+        card("referred", "Referred", metrics.referred, "Referral source or linked referral id"),
+        card(
+          "completed_consultations",
+          "Completed Consultations",
+          metrics.completedConsultations,
+          "Closed with consultation completed",
+        ),
+      ],
+      charts: metrics.charts,
+      summary: metrics.summaryRows,
+    });
+  }
+
+  if (selected === "referrals") {
+    const metrics = buildIncomingReferralMetrics(referrals, period);
+    return reportView({
+      category: selected,
+      period,
+      ageGroup,
+      cards: [
+        card("total_referrals", "Total Referrals", metrics.total, "Incoming referrals submitted in period"),
+        card("referring_bhcs", "Referring BHCs", metrics.referringBhcs, "Distinct source facilities"),
+        card("completed_cases", "Completed Cases", metrics.completedCases, "Verified completed workflow status"),
+      ],
+      charts: metrics.charts,
+      summary: metrics.summaryRows,
+    });
+  }
+
+  const visitMetrics = buildPatientVisitMetrics(visits, period);
+  const referralMetrics = buildIncomingReferralMetrics(referrals, period);
+  const summary = [
+    {
+      label: "Total Visits",
+      value: visitMetrics.total,
+      note: "Queue check-ins in period; mistakes excluded",
+    },
+    {
+      label: "Referrals Submitted",
+      value: referralMetrics.total,
+      note: "Incoming referrals submitted in period",
+    },
+    {
+      label: "Completed Consultations",
+      value: visitMetrics.completedConsultations,
+      note: "Visits closed with consultation completed",
+    },
+  ];
+
+  return reportView({
+    category: selected,
+    period,
+    ageGroup,
+    notes: ["Visits, referrals, and consultations are separate counts and are not added together."],
+    cards: [
+      card("total_visits", "Total Visits", visitMetrics.total, summary[0].note),
+      card("referrals_submitted", "Referrals Submitted", referralMetrics.total, summary[1].note),
+      card(
+        "completed_consultations",
+        "Completed Consultations",
+        visitMetrics.completedConsultations,
+        summary[2].note,
+      ),
+      card("referring_bhcs", "Referring BHCs", referralMetrics.referringBhcs, "Distinct source facilities"),
+    ],
+    charts: [visitMetrics.charts[0], visitMetrics.charts[1], referralMetrics.charts[0]].filter(Boolean),
+    summary,
+  });
 }
