@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -166,16 +166,16 @@ function registrationForm(patient) {
   };
 }
 
-const PrototypeRegistration = lazy(() => import("../shared/PrototypeRegistration"));
 const RhuPatientRegistration = lazy(() => import("../rhu/RhuPatientRegistration"));
 
 export function PatientRegistrationPage(props) {
   if (props.role === "rhu") {
     return <Suspense fallback={<p role="status">Loading registration…</p>}><RhuPatientRegistration {...props} /></Suspense>;
   }
-  return props.role && props.role !== "bhc"
-    ? <Suspense fallback={<p role="status">Loading registration…</p>}><PrototypeRegistration {...props} /></Suspense>
-    : <BhcPatientRegistration {...props} />;
+  if (!props.role || props.role === "bhc") {
+    return <BhcPatientRegistration {...props} />;
+  }
+  return <Navigate to="/unauthorized" replace />;
 }
 
 export function EditPatientRegistration() {
