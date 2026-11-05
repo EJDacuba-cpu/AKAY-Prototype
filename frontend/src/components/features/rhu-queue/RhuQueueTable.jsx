@@ -65,7 +65,9 @@ export default function RhuQueueTable({
       <div className="flex min-h-[var(--akay-empty-h,260px)] flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white px-6 text-center shadow-card">
         <p className="text-[14px] font-semibold text-neutral-900">Viewing today's queue needs Health Records access</p>
         <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
-          {canClose ? "You can still check patients in." : "Ask your administrator if you should see it."}
+          {canClose
+            ? "To check patients in, use Walk-in Check-in under Patient Intake in the sidebar."
+            : "Ask your administrator if you should see it."}
         </p>
       </div>
     );
