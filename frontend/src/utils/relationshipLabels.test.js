@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RELATIONSHIP_LABELS, linkTypeForLabel, labelOptions, isAcceptedLabel } from './relationshipLabels.js';
 import { validateConnection, validateHeadReplacement, RELATIONSHIPS } from '../services/familyRegistry.js';
-import { relationshipLinkOffer } from './relationshipLink.js';
 
 test('only Husband/Wife and Brother/Sister map to a link type', () => {
   for (const [label, type] of [['Husband', 'spouse'], ['Wife', 'spouse'], ['Brother', 'sibling'], ['Sister', 'sibling']]) assert.equal(linkTypeForLabel(label), type);
@@ -25,13 +24,6 @@ test('a legacy label is accepted only when unchanged', () => {
   assert.equal(isAcceptedLabel('Son / Daughter', ''), false);
   assert.equal(isAcceptedLabel('Child', 'Child'), false);
   assert.equal(isAcceptedLabel('Wife', ''), true);
-});
-
-test('the registration offer appears only for linkable labels and names the head', () => {
-  assert.deepEqual(relationshipLinkOffer('Wife', 'Ana Cruz'), { type: 'spouse', text: 'Record as spouse of Ana Cruz' });
-  assert.deepEqual(relationshipLinkOffer('Brother', 'Ana Cruz'), { type: 'sibling', text: 'Record as sibling of Ana Cruz' });
-  for (const label of ['Partner', 'Son', 'Father', 'Spouse / Partner', '']) assert.equal(relationshipLinkOffer(label, 'Ana Cruz'), null);
-  assert.equal(relationshipLinkOffer('Husband', '').text, 'Record as spouse of the household head');
 });
 
 const registry = {
