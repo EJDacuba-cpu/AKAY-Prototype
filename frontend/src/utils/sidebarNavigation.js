@@ -41,7 +41,15 @@ export function normalizeRhuPatientView(searchParams) {
 
 /** Preserve an explicitly opened menu when route navigation remounts the layout. */
 export function hasSidebarOpenIntent(location) {
-  return Boolean(location.state?.openSidebarGroup && location.state.openSidebarGroup === location.pathname);
+  const openSidebarGroup = location.state?.openSidebarGroup;
+  if (!openSidebarGroup) return false;
+  if (
+    openSidebarGroup === RHU_INTAKE_PARENT_PATH &&
+    isRhuPatientIntakePath(location.pathname)
+  ) {
+    return true;
+  }
+  return openSidebarGroup === location.pathname;
 }
 
 /** Match query-driven report children to the category actually rendered. */

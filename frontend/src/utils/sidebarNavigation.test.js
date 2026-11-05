@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { menuByRole } from "../components/layout/sidebar/sidebarData.js";
 import {
+  hasSidebarOpenIntent,
   isSidebarPathActive,
   normalizeRhuPatientView,
   RHU_PATIENT_VIEW_ALL,
@@ -78,6 +79,24 @@ test("RHU Patient Intake sidebar nests Incoming Referrals and Walk-in Check-in",
   );
   const flatLabels = menuByRole.rhu.flatMap((s) => s.items).map((i) => i.label);
   assert.equal(flatLabels.includes("QR Scanner"), false);
+});
+
+test("Patient Intake open intent stays true on child routes after defaultPath navigation", () => {
+  const openGroup = "/rhu/patient-intake";
+  assert.equal(
+    hasSidebarOpenIntent({
+      pathname: "/rhu/incoming-referrals",
+      state: { openSidebarGroup: openGroup },
+    }),
+    true,
+  );
+  assert.equal(
+    hasSidebarOpenIntent({
+      pathname: "/rhu/patients",
+      state: { openSidebarGroup: openGroup },
+    }),
+    false,
+  );
 });
 
 test("Patient Intake parent stays active on intake routes including QR Scanner", () => {
