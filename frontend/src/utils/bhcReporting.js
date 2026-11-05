@@ -176,10 +176,23 @@ export function buildBhcReport({
 
 const views = {
   all: (metrics, period) => {
+    const nutrition = metrics.nutrition;
+    const nutritionDistribution = NUTRITION_BMI_CATEGORIES.map((label) => ({
+      label,
+      value: nutrition.categories[label]?.count || 0,
+    }));
     const cards = [
       card("epi-doses", "EPI doses", metrics.epi.doses, "Doses administered"),
       card("maternal-active", "Active maternal enrollments", metrics.maternal.activeEnrollments, "At period end"),
       card("fp-services", "FP services", metrics.familyPlanning.services, "Recorded FP visits"),
+      card(
+        "nutrition-enrolled",
+        "Nutrition enrollments",
+        nutrition.everEnrolled,
+        nutrition.eligible
+          ? `${nutrition.coveragePercent}% of ${nutrition.eligible} eligible`
+          : "Ever enrolled unique patients",
+      ),
       card("morbidity", "Morbidity diagnoses", metrics.morbidity.count, "Eligible reported diagnoses"),
       card("notifiable", "Notifiable diagnoses", metrics.notifiable.count, "Flagged notifiable diagnoses"),
       card("surveillance", "Surveillance entries", metrics.surveillance.count, "Recorded surveillance activity"),
@@ -190,10 +203,20 @@ const views = {
       charts: [
         barChart("Category activity", "Each bar is its own count. These are not a shared total.", period, metricsToActivityBars(metrics), "label", "value", "count"),
         donutChart("Referral status", "Status of referrals sent in this period.", period, metrics.referrals.statusSlices, "Referral status"),
+        barChart(
+          "Nutritional Status Distribution",
+          "Unique adults with a valid paired height and weight in this period. Adult BMI only (age ≥ 18).",
+          period,
+          nutritionDistribution,
+          "label",
+          "value",
+          "Patients",
+        ),
       ],
       summary: [
         ...cards.map((item) => ({ label: item.label, value: item.value, note: item.hint })),
         { label: "RHU-confirmed outcomes", value: metrics.referrals.confirmedOutcomes, note: "Linked RHU feedback; not BHC morbidity" },
+        { label: "Nutrition classified adults", value: nutrition.classifiedCount, note: "Adult BMI assessments in period" },
       ],
     };
   },
@@ -517,6 +540,7 @@ function metricsToActivityBars(metrics) {
     { label: "EPI doses", value: metrics.epi.doses },
     { label: "Maternal consultations", value: metrics.maternal.consultations },
     { label: "FP services", value: metrics.familyPlanning.services },
+    { label: "Nutrition enrollments", value: metrics.nutrition.everEnrolled },
     { label: "Morbidity diagnoses", value: metrics.morbidity.count },
     { label: "Notifiable diagnoses", value: metrics.notifiable.count },
     { label: "Surveillance entries", value: metrics.surveillance.count },

@@ -24,11 +24,14 @@ const CHART_HEIGHT = "h-[280px]";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 export default function BhcReportCharts({ charts = [], className }) {
-  const [primary, secondary] = charts;
+  const [primary, secondary, tertiary] = charts;
   return (
-    <div className={cn("grid grid-cols-1 gap-4 lg:grid-cols-12", className)}>
-      <ChartCard chart={primary} className="lg:col-span-8" />
-      <ChartCard chart={secondary} className="lg:col-span-4" />
+    <div className={cn("flex flex-col gap-4", className)}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <ChartCard chart={primary} className="lg:col-span-8" />
+        <ChartCard chart={secondary} className="lg:col-span-4" />
+      </div>
+      {tertiary ? <ChartCard chart={tertiary} className="w-full" /> : null}
     </div>
   );
 }

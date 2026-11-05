@@ -245,8 +245,37 @@ test("All Categories does not sum mixed units into one total", () => {
   assert.equal(cardValue(result, "epi-doses"), 1);
   assert.equal(cardValue(result, "fp-services"), 1);
   assert.equal(cardValue(result, "referrals"), 1);
+  assert.equal(cardValue(result, "nutrition-enrolled"), 0);
+  assert.equal(result.cards.length, 8);
   assert.equal(values.reduce((sum, value) => sum + value, 0) === 1, false);
   assert.equal(result.summary.some((row) => /RHU-confirmed/.test(row.label)), true);
+});
+
+test("All Categories includes Nutrition card, activity bar, and full-width status chart", () => {
+  const result = buildBhcReport({
+    patients: [{ id: "a1", birthdate: "1990-01-01" }],
+    records: [
+      {
+        id: 1,
+        patientId: "a1",
+        dateOfVisit: "2026-10-05",
+        vital_signs: { weight: 70, height: 170 },
+        selectedPrograms: ["Nutrition"],
+        category: "Nutrition",
+        finalized_at: "2026-10-05T10:00:00Z",
+      },
+    ],
+    referrals: [],
+    category: "all",
+    period: period("monthly"),
+  });
+  assert.equal(result.cards.length, 8);
+  assert.equal(cardValue(result, "nutrition-enrolled"), 1);
+  assert.equal(result.charts.length, 3);
+  assert.equal(result.charts[0].kind, "bar");
+  assert.ok(result.charts[0].data.some((item) => item.label === "Nutrition enrollments" && item.value === 1));
+  assert.equal(result.charts[2].title, "Nutritional Status Distribution");
+  assert.equal(result.charts[2].kind, "bar");
 });
 
 test("empty persisted data stays zero rather than placeholder figures", () => {
