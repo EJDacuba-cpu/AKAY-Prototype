@@ -15,6 +15,7 @@ import {
   normalizeVaccineName,
 } from "./healthRecordPrograms.js";
 import { getPrenatalEnrollment, isActivePrenatalEnrollment } from "./prenatalEnrollment.js";
+import { buildNutritionReportMetrics, NUTRITION_BMI_CATEGORIES } from "./nutritionReporting.js";
 import { getSurveillanceReportEntries } from "./surveillance.js";
 
 export const REPORT_CATEGORIES = Object.freeze([
@@ -22,6 +23,7 @@ export const REPORT_CATEGORIES = Object.freeze([
   Object.freeze({ key: "epi", slug: "epi", label: "EPI / Immunization" }),
   Object.freeze({ key: "maternal", slug: "maternal", label: "Maternal Care" }),
   Object.freeze({ key: "family_planning", slug: "family-planning", label: "Family Planning" }),
+  Object.freeze({ key: "nutrition", slug: "nutrition", label: "Nutrition Report" }),
   Object.freeze({ key: "morbidity", slug: "morbidity", label: "Morbidity" }),
   Object.freeze({ key: "notifiable", slug: "notifiable", label: "Notifiable Diseases" }),
   Object.freeze({ key: "surveillance", slug: "surveillance", label: "Community Surveillance" }),
@@ -57,6 +59,9 @@ const CATEGORY_ALIASES = Object.freeze({
   "maternal-prenatal": "maternal",
   "family-planning": "family_planning",
   family_planning: "family_planning",
+  nutrition: "nutrition",
+  "nutrition-care": "nutrition",
+  "nutrition-report": "nutrition",
   morbidity: "morbidity",
   notifiable: "notifiable",
   "notifiable-diseases": "notifiable",
@@ -132,22 +137,35 @@ export function buildBhcReport({
   referrals = [],
   category = "all",
   period,
+  ageGroup = "all",
 } = {}) {
   const selected = normalizeReportCategory(category);
   const epi = buildEpiMetrics(records, period);
   const maternal = buildMaternalMetrics(patients, records, period);
   const familyPlanning = buildFamilyPlanningMetrics(records, period);
+  const nutrition = buildNutritionReportMetrics({ patients, records, period, ageGroup });
   const morbidity = buildDiagnosisMetrics(records, period, "morbidity");
   const notifiable = buildDiagnosisMetrics(records, period, "notifiable");
   const surveillance = buildSurveillanceMetrics(records, period);
   const referralMetrics = buildReferralMetrics(referrals, period);
-  const metrics = { epi, maternal, familyPlanning, morbidity, notifiable, surveillance, referrals: referralMetrics };
+  const metrics = {
+    epi,
+    maternal,
+    familyPlanning,
+    nutrition,
+    morbidity,
+    notifiable,
+    surveillance,
+    referrals: referralMetrics,
+  };
   const view = views[selected](metrics, period);
 
   return {
     category: selected,
     categoryLabel: REPORT_CATEGORIES.find((item) => item.key === selected)?.label || "All Categories",
     period,
+    ageGroup: nutrition.ageGroup,
+    notes: view.notes || [],
     cards: view.cards,
     charts: view.charts,
     summary: view.summary,
@@ -236,6 +254,67 @@ const views = {
         { label: "New acceptors", value: newAcceptors, note: "Client type" },
         { label: "FP services", value: services, note: "Visits" },
         ...methods.map((item) => ({ label: item.label, value: item.value, note: "Method" })),
+      ],
+    };
+  },
+  nutrition: (metrics, period) => {
+    const {
+      categories,
+      classifiedCount,
+      notApplicableCount,
+      incompleteAdultCount,
+      everEnrolled,
+      eligible,
+      coveragePercent,
+      notes,
+    } = metrics.nutrition;
+    const cards = NUTRITION_BMI_CATEGORIES.map((label) => {
+      const row = categories[label] || { count: 0, percent: 0 };
+      return card(
+        `bmi-${label.toLowerCase()}`,
+        label,
+        row.count,
+        classifiedCount ? `${row.percent}% of classified adults` : "No adult classifications in period",
+      );
+    });
+    const distribution = NUTRITION_BMI_CATEGORIES.map((label) => ({
+      label,
+      value: categories[label]?.count || 0,
+    }));
+    return {
+      cards,
+      notes,
+      charts: [
+        barChart(
+          "Nutritional Status Distribution",
+          "Unique adults with a valid paired height and weight in this period.",
+          period,
+          distribution,
+          "label",
+          "value",
+          "Patients",
+        ),
+        radialChart(
+          "Nutrition Enrollment",
+          "Unique patients ever enrolled in Nutrition Care vs eligible registered patients.",
+          period,
+          { enrolled: everEnrolled, eligible, coveragePercent },
+        ),
+      ],
+      summary: [
+        ...NUTRITION_BMI_CATEGORIES.map((label) => ({
+          label,
+          value: categories[label]?.count || 0,
+          note: classifiedCount
+            ? `${categories[label]?.percent || 0}% of ${classifiedCount} classified adults`
+            : "No adult classifications",
+        })),
+        { label: "Classified adults", value: classifiedCount, note: "Valid paired measurements, age ≥ 18" },
+        { label: "Not applicable (under 18)", value: notApplicableCount, note: "Excluded from BMI categories" },
+        { label: "Incomplete adult measurements", value: incompleteAdultCount, note: "Missing paired weight/height" },
+        { label: "Ever enrolled", value: everEnrolled, note: "Unique Nutrition enrollments on or before period end" },
+        { label: "Eligible registered patients", value: eligible, note: "Matching age filter" },
+        { label: "Enrollment coverage", value: `${coveragePercent}%`, note: "Ever enrolled ÷ eligible" },
       ],
     };
   },
@@ -499,6 +578,30 @@ function donutChart(title, description, period, data, seriesLabel) {
     valueKey: "value",
     seriesLabel,
     config,
+  };
+}
+
+function radialChart(title, description, period, { enrolled = 0, eligible = 0, coveragePercent = 0 } = {}) {
+  const coverage = Math.max(0, Math.min(100, Number(coveragePercent) || 0));
+  return {
+    kind: "radial",
+    title,
+    description,
+    periodLabel: period?.label || "",
+    valueKey: "coverage",
+    enrolled: Number(enrolled) || 0,
+    eligible: Number(eligible) || 0,
+    coveragePercent: coverage,
+    data: [
+      {
+        key: "coverage",
+        coverage,
+        fill: CHART_COLORS.brand,
+      },
+    ],
+    config: {
+      coverage: { label: "Coverage", color: CHART_COLORS.brand },
+    },
   };
 }
 

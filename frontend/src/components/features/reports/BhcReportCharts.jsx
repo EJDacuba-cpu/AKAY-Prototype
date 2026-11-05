@@ -8,6 +8,9 @@ import {
   Cell,
   Pie,
   PieChart,
+  PolarAngleAxis,
+  RadialBar,
+  RadialBarChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -77,6 +80,45 @@ function ChartCard({ chart, className }) {
                 </Pie>
                 <ChartLegend content={<ChartLegendContent nameKey="key" />} />
               </PieChart>
+            ) : chart.kind === "radial" ? (
+              <div className="relative h-full w-full">
+                <RadialBarChart
+                  data={chart.data}
+                  startAngle={90}
+                  endAngle={-270}
+                  innerRadius="68%"
+                  outerRadius="100%"
+                  barSize={18}
+                >
+                  <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                  <RadialBar
+                    dataKey={chart.valueKey}
+                    background={{ fill: "var(--color-neutral-100)" }}
+                    cornerRadius={10}
+                    isAnimationActive={animate}
+                  >
+                    {chart.data.map((item) => (
+                      <Cell key={item.key} fill={item.fill || `var(--color-${chart.valueKey})`} />
+                    ))}
+                  </RadialBar>
+                  <ChartTooltip
+                    content={(
+                      <ChartTooltipContent
+                        hideLabel
+                        periodLabel={chart.periodLabel}
+                        nameKey="key"
+                      />
+                    )}
+                  />
+                </RadialBarChart>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
+                  <p className="text-3xl font-bold tabular-nums text-neutral-900">{chart.enrolled ?? 0}</p>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Patients Enrolled</p>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    {chart.coveragePercent ?? 0}% of {chart.eligible ?? 0} eligible
+                  </p>
+                </div>
+              </div>
             ) : (
               <AreaChart data={chart.data} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
                 <defs>
@@ -119,6 +161,9 @@ function ChartEmpty() {
 }
 
 function hasChartValues(chart) {
+  if (chart?.kind === "radial") {
+    return Number(chart.enrolled) > 0 || Number(chart.eligible) > 0;
+  }
   return Array.isArray(chart?.data) && chart.data.some((item) => Number(item[chart.valueKey]) > 0);
 }
 

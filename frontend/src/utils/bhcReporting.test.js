@@ -26,7 +26,62 @@ test("normalizeReportCategory maps legacy slugs and defaults to all", () => {
   assert.equal(normalizeReportCategory("epi-target-client-list"), "epi");
   assert.equal(normalizeReportCategory("community-based-surveillance"), "surveillance");
   assert.equal(normalizeReportCategory("follow-ups"), "all");
+  assert.equal(normalizeReportCategory("nutrition-care"), "nutrition");
   assert.equal(normalizeReportCategory(""), "all");
+});
+
+test("nutrition report cards and radial coverage use unique adult BMI and ever enrolled", () => {
+  const patients = [
+    { id: "a1", birthdate: "1990-01-01" },
+    { id: "a2", birthdate: "1988-06-01" },
+    { id: "c1", birthdate: "2020-01-01" },
+  ];
+  const records = [
+    {
+      id: 1,
+      patientId: "a1",
+      dateOfVisit: "2026-10-05",
+      vital_signs: { weight: 50, height: 170 },
+      selectedPrograms: ["Nutrition"],
+      category: "Nutrition",
+      finalized_at: "2026-10-05T10:00:00Z",
+    },
+    {
+      id: 2,
+      patientId: "a2",
+      dateOfVisit: "2026-10-08",
+      vital_signs: { weight: 90, height: 170 },
+      selectedPrograms: ["Nutrition"],
+      category: "Nutrition",
+      finalized_at: "2026-10-08T10:00:00Z",
+    },
+    {
+      id: 3,
+      patientId: "c1",
+      dateOfVisit: "2026-10-08",
+      vital_signs: { weight: 20, height: 110 },
+      selectedPrograms: ["Nutrition"],
+      category: "Nutrition",
+      finalized_at: "2026-10-08T10:00:00Z",
+    },
+  ];
+  const result = buildBhcReport({
+    patients,
+    records,
+    referrals: [],
+    category: "nutrition",
+    period: period("monthly"),
+    ageGroup: "all",
+  });
+  assert.equal(result.category, "nutrition");
+  assert.equal(result.categoryLabel, "Nutrition Report");
+  assert.equal(cardValue(result, "bmi-underweight"), 1);
+  assert.equal(cardValue(result, "bmi-obese"), 1);
+  assert.equal(result.charts[0].kind, "bar");
+  assert.equal(result.charts[1].kind, "radial");
+  assert.equal(result.charts[1].enrolled, 3);
+  assert.equal(result.charts[1].eligible, 3);
+  assert.equal(summaryValue(result, "Not applicable (under 18)"), 1);
 });
 
 test("monthly period is the current month through today", () => {

@@ -30,9 +30,14 @@ export default function BHCReports() {
   const category = normalizeReportCategory(searchParams.get("type"));
   const [appliedPeriod, setAppliedPeriod] = useState(() => {
     const initial = prepareBhcReportPeriod({ preset: "monthly" });
-    return { selection: initial.selection, period: initial.period };
+    return {
+      selection: { ...initial.selection, ageGroup: "all" },
+      period: initial.period,
+    };
   });
   const period = appliedPeriod.period;
+  const ageGroup = appliedPeriod.selection?.ageGroup || "all";
+  const isNutrition = category === "nutrition";
 
   const {
     data: patients = [],
@@ -82,8 +87,9 @@ export default function BHCReports() {
         referrals: Array.isArray(referrals) ? referrals : [],
         category,
         period,
+        ageGroup,
       }),
-    [patients, records, referrals, category, period],
+    [patients, records, referrals, category, period, ageGroup],
   );
 
   function retryReports() {
@@ -120,10 +126,20 @@ export default function BHCReports() {
               <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{category === "all" ? "Reports & Analytics" : report.categoryLabel}</h1>
               <p className="mt-1 text-[13px] text-neutral-600">
                 {facilityName} · {period.label}
+                {isNutrition && ageGroup !== "all" ? ` · Age ${ageGroup}` : ""}
               </p>
+              {isNutrition ? (
+                <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
+                  Adult BMI categories apply only to assessments at age 18 or older. Younger patients are Not Applicable for status cards.
+                </p>
+              ) : null}
             </div>
             <div className="no-print flex flex-wrap items-center justify-end gap-2">
-              <BhcReportPeriodFilter applied={appliedPeriod} onApply={setAppliedPeriod} />
+              <BhcReportPeriodFilter
+                applied={appliedPeriod}
+                onApply={setAppliedPeriod}
+                includeAgeGroup={isNutrition}
+              />
               <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>
                 <FileText size={14} />
                 Export PDF
@@ -196,6 +212,8 @@ export default function BHCReports() {
             categoryLabel={report.categoryLabel}
             cards={report.cards}
             summary={report.summary}
+            notes={report.notes}
+            ageGroup={isNutrition ? ageGroup : ""}
           />
         </div>
       </PageStateWrapper>
@@ -203,17 +221,25 @@ export default function BHCReports() {
   );
 }
 
-function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary }) {
+function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary, notes = [], ageGroup = "" }) {
   return (
     <section id="bhc-report-print" className="print-only">
       <h1 className="text-base font-bold text-neutral-900">AKAY BHC Reports</h1>
       <p className="mt-1 text-[12px] text-neutral-600">{facilityName}</p>
       <p className="mt-1 text-[12px] text-neutral-600">
         {categoryLabel} · {periodLabel}
+        {ageGroup && ageGroup !== "all" ? ` · Age ${ageGroup}` : ""}
       </p>
       <p className="mt-1 text-[11px] text-neutral-500">
         Generated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
       </p>
+      {notes.length ? (
+        <ul className="mt-3 list-disc pl-4 text-[11px] text-neutral-600">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
       <table className="mt-4 w-full text-left text-[12px]">
         <thead>
           <tr>
