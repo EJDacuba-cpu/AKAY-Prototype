@@ -125,16 +125,12 @@ function MedicineInventoryWorkspace({ role }) {
                       <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
                     </div>
                     <div className="medicine-inventory-pagination">
-                      {totalPages === 1 ? (
-                        <nav aria-label="Inventory pagination" className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3">
-                          <span className="text-xs text-neutral-600">Page <span className="font-semibold text-ink-800">1</span> of 1</span>
-                          <div className="flex items-center gap-1.5">
-                            <Button variant="secondary" size="compact" disabled>Previous</Button>
-                            <Button variant="secondary" size="compact" aria-current="page">1</Button>
-                            <Button variant="secondary" size="compact" disabled>Next</Button>
-                          </div>
-                        </nav>
-                      ) : <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+                      <TablePagination
+                        currentPage={page}
+                        totalPages={totalPages}
+                        onPageChange={setPage}
+                        alwaysShow
+                      />
                     </div>
                   </div>
                 </>
