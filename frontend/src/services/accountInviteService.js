@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { normalizePasswordInviteSummary } from "../utils/passwordInviteSummary";
 
 export function verifyInvite(token) {
   return apiRequest(`/auth/invites/verify?token=${encodeURIComponent(token)}`, { auth: false });
@@ -34,6 +35,6 @@ export async function updateInviteEmail(id, email) {
 
 export async function getPasswordInviteSummary() {
   const response = await apiRequest("/password-invites/summary");
-  const data = unwrapData(response) || {};
-  return { resetRequests: data.reset_requests ?? 0, invites: data.invites ?? 0 };
+  // Do not zero-fill missing fields — Admin Reports must show Unavailable instead of fake zeros.
+  return normalizePasswordInviteSummary(unwrapData(response));
 }

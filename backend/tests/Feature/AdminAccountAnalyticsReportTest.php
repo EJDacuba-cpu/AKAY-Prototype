@@ -69,6 +69,10 @@ class AdminAccountAnalyticsReportTest extends TestCase
         $this->assertSame(0, $analytics['other_accounts']);
         $this->assertSame(4, $totals['active'] + $totals['inactive']);
         $this->assertSame($totals['accounts'], $totals['canonical_accounts'] + $analytics['other_accounts']);
+        $this->assertSame(
+            $totals['accounts'],
+            $this->sumMatrixCells($analytics['matrix']) + $analytics['other_accounts']
+        );
         $this->assertSame(1, $totals['by_role']['admin']);
         $this->assertSame(1, $totals['by_role']['bhc']);
         $this->assertSame(2, $totals['by_role']['rhu']);
@@ -99,6 +103,55 @@ class AdminAccountAnalyticsReportTest extends TestCase
             $analytics['totals']['accounts'],
             $analytics['totals']['canonical_accounts'] + $analytics['other_accounts']
         );
+        $this->assertSame(
+            $analytics['totals']['accounts'],
+            $this->sumMatrixCells($analytics['matrix']) + $analytics['other_accounts']
+        );
+        $this->assertSame(0, $analytics['matrix']['admin']['inactive']);
+        $this->assertSame(1, $analytics['matrix']['admin']['active']);
+    }
+
+    public function test_canonical_role_with_noncanonical_status_counts_as_other(): void
+    {
+        $this->actingAdmin();
+        \DB::table('users')->insert([
+            'name' => 'Odd Status',
+            'email' => 'odd-status@example.test',
+            'password' => bcrypt('password123'),
+            'role' => User::ROLE_BHC,
+            'status' => 'suspended', // non-canonical status
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $analytics = $this->getJson('/api/reports/admin')->assertOk()->json('data.account_analytics');
+
+        $this->assertSame(1, $analytics['other_accounts']);
+        $this->assertSame(2, $analytics['totals']['accounts']);
+        $this->assertSame(1, $analytics['totals']['canonical_accounts']);
+        $this->assertSame(0, $analytics['matrix']['bhc']['active']);
+        $this->assertSame(0, $analytics['matrix']['bhc']['inactive']);
+        $this->assertSame(0, $analytics['totals']['by_role']['bhc']);
+        $this->assertSame(
+            $analytics['totals']['accounts'],
+            $analytics['totals']['canonical_accounts'] + $analytics['other_accounts']
+        );
+        $this->assertSame(
+            $analytics['totals']['accounts'],
+            $this->sumMatrixCells($analytics['matrix']) + $analytics['other_accounts']
+        );
+    }
+
+    private function sumMatrixCells(array $matrix): int
+    {
+        $sum = 0;
+        foreach ($matrix as $statuses) {
+            foreach ($statuses as $count) {
+                $sum += (int) $count;
+            }
+        }
+
+        return $sum;
     }
 
     public function test_non_admin_cannot_access_admin_report(): void

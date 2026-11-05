@@ -98,11 +98,15 @@ class ReportController extends Controller
             ->groupBy('role', 'status')
             ->get();
 
+        // One grouped snapshot only — derive database total from these rows so a
+        // concurrent insert/delete cannot desync User::count() from the matrix.
         $otherAccounts = 0;
+        $accounts = 0;
         foreach ($rows as $row) {
             $role = (string) $row->role;
             $status = (string) $row->status;
             $total = (int) $row->total;
+            $accounts += $total;
             if (isset($matrix[$role]) && array_key_exists($status, $matrix[$role])) {
                 $matrix[$role][$status] = $total;
             } else {
@@ -122,7 +126,6 @@ class ReportController extends Controller
         }
 
         $canonicalAccounts = $active + $inactive;
-        $accounts = (int) User::query()->count();
 
         return [
             'roles' => $roles,
