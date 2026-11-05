@@ -53,7 +53,23 @@ export function duplicatePrompt(error) {
   };
 }
 
-/** Where to go after a patient is saved: RHU returns to the queue without checking the patient in. */
+export const WALK_IN_CHECK_IN_PATH = '/rhu/walk-in-check-in';
+
+export function registerForWalkInCheckInPath() {
+  return '/rhu/patients/add?check_in=1';
+}
+
+export function walkInCheckInPathForPatient(patientId) {
+  return `${WALK_IN_CHECK_IN_PATH}?patient_id=${encodeURIComponent(String(patientId))}`;
+}
+
+export function patientIdFromWalkInSearch(search) {
+  const id = new URLSearchParams(search || '').get('patient_id');
+  return id && id.trim() ? id.trim() : null;
+}
+
+/** Where to go after a patient is saved: check-in flow returns to Walk-in Check-in; RHU default is Today's Queue. */
 export function postSaveDestination({ checkIn, role, patientsPath, patientId }) {
-  return checkIn || role === "rhu" ? patientsPath : `${patientsPath}/${patientId}`;
+  if (checkIn) return walkInCheckInPathForPatient(patientId);
+  return role === 'rhu' ? patientsPath : `${patientsPath}/${patientId}`;
 }
