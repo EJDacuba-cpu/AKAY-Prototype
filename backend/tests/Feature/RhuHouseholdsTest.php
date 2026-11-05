@@ -18,6 +18,8 @@ class RhuHouseholdsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $patientSequence = 0;
+
     protected function tearDown(): void
     {
         Carbon::setTestNow();
@@ -35,12 +37,22 @@ class RhuHouseholdsTest extends TestCase
 
     private function register(array $household = [], array $patient = [])
     {
+        $this->patientSequence++;
         $household = $household ?: ['kind' => 'new', 'serial_mode' => 'auto'];
         if (($household['kind'] ?? '') === 'new' && ! array_key_exists('address', $household)) {
             $household['address'] = $this->address();
         }
 
-        return $this->postJson('/api/patients', [...['first_name' => 'Adult', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '1990-01-01'], ...$patient, 'household' => $household]);
+        // Unique defaults avoid RHU possible-duplicate 409s across multi-patient fixtures.
+        // Explicit $patient keys still win (for example a minor birthdate).
+        $defaults = [
+            'first_name' => 'Adult'.$this->patientSequence,
+            'last_name' => 'Patient'.$this->patientSequence,
+            'sex' => 'Female',
+            'birthdate' => '1990-01-01',
+        ];
+
+        return $this->postJson('/api/patients', [...$defaults, ...$patient, 'household' => $household]);
     }
 
     private function address(): array
