@@ -461,6 +461,45 @@ class RhuVisitQueueService
     }
 
     /**
+     * Pending BHC referrals for a walk-in-eligible patient at this RHU.
+     * Intake identity only; status is not changed and no visit is created.
+     *
+     * @return array{count: int, referrals: list<array{referral_id: int, tracking_id: string|null, status: string, sending_bhc: string|null, referred_at: string|null}>}
+     */
+    public function pendingReferralsForCheckIn(User $user, int $patientId): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $patient = Patient::query()->whereKey($patientId)->firstOrFail();
+        abort_unless(
+            $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)->whereKey($patient->id)->exists(),
+            403,
+            self::DENIED_MESSAGE
+        );
+
+        $referrals = Referral::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->where('patient_id', $patient->id)
+            ->where('status', Referral::STATUS_PENDING)
+            ->orderBy('id')
+            ->get()
+            ->map(function (Referral $referral): array {
+                $summary = ReferralArrivalSummary::for($referral);
+
+                return [
+                    'referral_id' => $summary['referral_id'],
+                    'tracking_id' => $summary['tracking_id'],
+                    'status' => $summary['status'],
+                    'sending_bhc' => $summary['sending_bhc'],
+                    'referred_at' => $summary['referred_at'],
+                ];
+            })
+            ->values()
+            ->all();
+
+        return ['count' => count($referrals), 'referrals' => $referrals];
+    }
+
+    /**
      * Active patients this RHU can see with the same first name, last name
      * (trimmed, case-insensitive) and birthdate. Without a birthdate nothing is
      * matched: a name alone is not enough to call someone a duplicate.

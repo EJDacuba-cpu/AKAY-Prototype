@@ -15,6 +15,12 @@ class EnforceActionPermissions
         $path = $request->path();
         $read = $request->isMethod('get');
         $permission = match (true) {
+            // Walk-in Check-in may read pending referrals without clinical fields.
+            str_ends_with($path, '/pending-referrals') => (
+                ActionPermissions::allows($request->user(), 'patients.register')
+                || ActionPermissions::allows($request->user(), 'rhu.intake')
+                || ActionPermissions::allows($request->user(), 'rhu.manage')
+            ) ? null : 'patients.register',
             // BHC dashboard sections are gated in the payload, not by a single duty.
             str_contains($path, '/bhc/dashboard') => null,
             // Either consultations.encode or clinical.history; the controller checks.
