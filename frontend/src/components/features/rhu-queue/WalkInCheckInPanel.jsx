@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -22,6 +21,8 @@ function toCheckInRow(patient) {
     barangay: patient?.barangay || "",
     age: patient?.age ?? "",
     sex: patient?.sex || "",
+    philhealth_number: patient?.philhealth_number || patient?.philHealthNumber || "",
+    contact_number: patient?.contact_number || patient?.contactNumber || "",
     active_visit_id: patient?.active_visit_id ?? null,
   };
 }
@@ -31,12 +32,10 @@ function toCheckInRow(patient) {
  * Shared by the Walk-in Check-in page.
  */
 export default function WalkInCheckInPanel({
-  registerPath,
   selectedPatientId = null,
   onClearedSelection,
   onCheckedIn,
 }) {
-  const navigate = useNavigate();
   const client = useQueryClient();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -94,8 +93,7 @@ export default function WalkInCheckInPanel({
     return () => clearTimeout(timer);
   }, [query, reloads]);
 
-  // The confirm dialog is portaled above a parent modal. Swallow Escape here so
-  // it only closes the confirm, and never the walk-in modal behind it.
+  // Swallow Escape on the confirm so it never closes a parent shell behind it.
   useEffect(() => {
     if (!pending) return undefined;
     function onKeyDown(event) {
@@ -150,20 +148,23 @@ export default function WalkInCheckInPanel({
   const busy = savingId !== null || pending !== null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {selectedPatientId ? (
-        <section aria-label="Selected patient" className="overflow-hidden rounded-xl border border-neutral-200">
+        <section
+          aria-label="Selected patient"
+          className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm shadow-black/[0.02]"
+        >
           {selectedError ? (
-            <p role="alert" className="px-3 py-4 text-center text-[13px] text-danger">{selectedError}</p>
+            <p role="alert" className="px-3.5 py-5 text-center text-[13px] text-danger sm:px-4">{selectedError}</p>
           ) : selected ? (
             <ul>
               <ResultRow patient={selected} saving={savingId === selected.id} busy={busy} onCheckIn={() => setPending(selected)} />
             </ul>
           ) : (
-            <p role="status" className="px-3 py-4 text-center text-[13px] text-neutral-500">Loading patient...</p>
+            <p role="status" className="px-3.5 py-5 text-center text-[13px] text-neutral-500 sm:px-4">Loading patient...</p>
           )}
           {onClearedSelection ? (
-            <div className="flex justify-end border-t border-neutral-100 px-3 py-2">
+            <div className="flex justify-end border-t border-neutral-100 px-3.5 py-2 sm:px-4">
               <Button type="button" variant="ghost" size="compact" disabled={busy} onClick={onClearedSelection}>
                 Clear selected patient
               </Button>
@@ -172,34 +173,50 @@ export default function WalkInCheckInPanel({
         </section>
       ) : null}
 
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder="Name, PhilHealth number or contact number"
-        label="Search patients to check in"
-      />
-      <div aria-live="polite" className="min-h-[200px]">
-        {status.error ? (
-          <p role="alert" className="py-8 text-center text-[13px] text-danger">{status.error}</p>
-        ) : !isSearchable(query) ? (
-          <p className="py-8 text-center text-[13px] text-neutral-500">Type at least two characters to search this RHU's patients.</p>
-        ) : status.loading ? (
-          <p role="status" className="py-8 text-center text-[13px] text-neutral-500">Searching...</p>
-        ) : results.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-neutral-500">No matching patient. Register them as a new patient.</p>
-        ) : (
-          <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
-            {results.map((patient) => (
-              <ResultRow key={patient.id} patient={patient} saving={savingId === patient.id} busy={busy} onCheckIn={() => setPending(patient)} />
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="flex justify-end">
-        <Button type="button" variant="secondary" disabled={busy} onClick={() => navigate(registerPath)}>
-          Register New Patient
-        </Button>
-      </div>
+      <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm shadow-black/[0.02]">
+        <div className="border-b border-neutral-100 px-3.5 py-3 sm:px-4">
+          <h2 className="text-sm font-semibold text-ink-800">Find a Patient</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Search existing records before registering a new patient.
+          </p>
+        </div>
+        <div className="space-y-3 px-3.5 py-3 sm:px-4">
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Name, PhilHealth number or contact number"
+            label="Search patients to check in"
+            className="max-w-xl"
+          />
+          <div aria-live="polite">
+            {status.error ? (
+              <p role="alert" className="py-5 text-center text-[13px] text-danger">{status.error}</p>
+            ) : !isSearchable(query) ? (
+              <p className="py-5 text-center text-[13px] text-neutral-500">
+                Type at least two characters to search this RHU's patients.
+              </p>
+            ) : status.loading ? (
+              <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Searching...</p>
+            ) : results.length === 0 ? (
+              <p className="py-5 text-center text-[13px] text-neutral-500">
+                No matching patient. Use Register New Patient above if they are new.
+              </p>
+            ) : (
+              <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
+                {results.map((patient) => (
+                  <ResultRow
+                    key={patient.id}
+                    patient={patient}
+                    saving={savingId === patient.id}
+                    busy={busy}
+                    onCheckIn={() => setPending(patient)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
 
       {pending ? createPortal(
         <ConfirmationModal
@@ -221,12 +238,18 @@ export default function WalkInCheckInPanel({
 }
 
 function ResultRow({ patient, saving, busy, onCheckIn }) {
-  const details = [formatAgeSex(patient), patient.birthdate, patient.barangay].filter(Boolean).join(" · ");
+  const details = [
+    formatAgeSex(patient),
+    patient.birthdate,
+    patient.philhealth_number,
+    patient.contact_number,
+    patient.barangay,
+  ].filter(Boolean).join(" · ");
   return (
-    <li className="flex min-h-14 items-center justify-between gap-3 px-3 py-2">
+    <li className="flex min-h-14 items-center justify-between gap-3 px-3 py-2 sm:px-3.5">
       <div className="min-w-0 leading-tight">
         <p className="truncate text-[13px] font-semibold text-neutral-900">{patient.full_name}</p>
-        {details && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{details}</p>}
+        {details ? <p className="mt-0.5 truncate text-[12px] text-neutral-500">{details}</p> : null}
       </div>
       {patient.active_visit_id ? (
         <span className="shrink-0 text-[12px] font-medium text-neutral-600">Already in today's queue</span>
