@@ -157,8 +157,8 @@ export function WizardFooter({
 /**
  * Final step - the disposition, and the save.
  *
- * `NextActionSection` supplies the card grid and the conditional fields; this
- * wrapper only adds the wizard chrome and the primary action.
+ * Care-plan / next-steps UI is passed as `children`; this wrapper only adds
+ * the wizard chrome and the primary action.
  */
 export function NextActionStep({
   visitDate,
