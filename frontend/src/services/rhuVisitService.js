@@ -18,6 +18,12 @@ export async function searchPatientsForCheckIn(query) {
   return response?.data ?? [];
 }
 
+/** Newest walk-in-eligible patients for the check-in desk preview (identity only). */
+export async function listRecentPatientsForCheckIn(limit = 8) {
+  const response = await apiRequest(`/rhu-visits/recent-patients?limit=${encodeURIComponent(limit)}`);
+  return response?.data ?? [];
+}
+
 /** Check an existing patient into today's RHU queue as a walk-in. */
 export async function checkInExistingPatient(patientId, checkInKey) {
   const response = await apiRequest("/rhu-visits", {

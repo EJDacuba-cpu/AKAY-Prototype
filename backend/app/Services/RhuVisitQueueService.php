@@ -33,6 +33,10 @@ class RhuVisitQueueService
 
     private const SEARCH_MAX_TOKENS = 5;
 
+    private const RECENT_PATIENTS_DEFAULT = 8;
+
+    private const RECENT_PATIENTS_MAX = 10;
+
     private const CLOSE_NOTE_MAX_LENGTH = 500;
 
     public function __construct(private readonly FacilityAccessService $facilityAccess)
@@ -435,6 +439,25 @@ class RhuVisitQueueService
         }
 
         return $this->withActiveVisitIds($rhuId, $patients->orderBy('id')->limit(10)->get());
+    }
+
+    /**
+     * Newest walk-in-eligible patients for the check-in desk preview (identity only).
+     *
+     * @return list<array{patient: Patient, active_visit_id: int|null}>
+     */
+    public function recentPatients(User $user, ?int $limit = null): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $take = max(1, min(self::RECENT_PATIENTS_MAX, $limit ?? self::RECENT_PATIENTS_DEFAULT));
+
+        $patients = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
+            ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
+            ->orderByDesc('id')
+            ->limit($take)
+            ->get();
+
+        return $this->withActiveVisitIds($rhuId, $patients);
     }
 
     /**

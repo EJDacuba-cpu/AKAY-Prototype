@@ -57,6 +57,7 @@ class EnforceActionPermissions
             str_contains($path, '/reports') => 'reports.view',
             str_contains($path, '/referral-routing') => 'consultations.encode',
             str_ends_with($path, '/rhu-visits/patient-search') => 'patients.register',
+            str_ends_with($path, '/rhu-visits/recent-patients') => 'patients.register',
             str_contains($path, '/rhu-visits') && str_ends_with($path, '/start') => 'consultations.encode',
             str_contains($path, '/rhu-visits') && str_ends_with($path, '/resume') => (
                 ActionPermissions::allows($request->user(), 'consultations.encode')
