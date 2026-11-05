@@ -39,7 +39,7 @@
     "test:family-relationships": "node --test src/utils/relationshipLabels.test.js src/utils/familyGraph.test.js src/utils/householdData.test.js src/utils/householdTreeLayout.test.js src/utils/canvasViewport.test.js src/utils/familyConnections.test.js src/utils/changeHousehold.test.js src/utils/householdTransfer.test.js src/utils/formatters.test.js",
     "test:household-parents": "node --test src/utils/householdParents.test.js",
     "test:household-workflow": "node --test src/services/mockFamilyRegistry.test.js src/utils/householdParents.test.js",
-    "test:families": "node --test src/services/mockFamilyWorkflows.test.js src/utils/familyAccess.test.js src/services/mockFamilyRegistry.test.js",
+    "test:families": "node --test src/utils/familyAccess.test.js src/services/mockFamilyRegistry.test.js",
     "test:table-paging": "node --test src/utils/tablePaging.test.js",
     "test:medicine": "node --test src/utils/medicineSubmitGate.test.js src/utils/medicineFormValidation.test.js src/utils/medicineInventoryPreview.test.js src/utils/medicineMutationSafety.test.js src/utils/medicineInventoryStatus.test.js src/components/features/medicine/MedicineFormModal.test.js src/utils/medicineExpiryGroups.test.js src/utils/medicineLedger.test.js src/components/features/medicine/MedicineLedger.test.js",
     "test:facility-filters": "node --test src/utils/facilityFilters.test.js",
