@@ -246,7 +246,7 @@ function EmptyBody({ narrowed, onClear }) {
       <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
         {narrowed
           ? "Try a different name, or clear search and filters."
-          : "Referred patients appear here once their arrival is confirmed. Check in a walk-in to add one."}
+          : "Referred patients appear here once their arrival is confirmed. To add a walk-in, use Walk-in Check-in under Patient Intake in the sidebar."}
       </p>
       {narrowed && (
         <button
