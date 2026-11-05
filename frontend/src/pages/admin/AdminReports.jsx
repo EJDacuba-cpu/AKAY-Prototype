@@ -494,7 +494,7 @@ function PrintCountTable({ caption, headers, rows }) {
   );
 }
 
-function PrintArticle({ report, generatedLabel }) {
+function PrintArticle({ report, generatedLabel, pending }) {
   const access = report.accessRequests;
   const numeric = (value) => ({ value: formatCount(value), numeric: true });
 
@@ -593,7 +593,11 @@ function PrintArticle({ report, generatedLabel }) {
 
       <section className="mt-4">
         <h2 className="text-[12px] font-bold uppercase tracking-wider text-neutral-700">Pending access requests</h2>
-        {access?.available ? (
+        {pending ? (
+          <p className="mt-2 text-[12px] text-neutral-800" role="status">
+            Pending access requests are still loading.
+          </p>
+        ) : access?.available ? (
           <>
             <p className="mt-2 text-[12px] text-neutral-700">{access.scopeLabel}</p>
             <PrintCountTable
@@ -751,7 +755,7 @@ export default function AdminReports() {
             </div>
 
             <SummaryTable report={report} />
-            <PrintArticle report={report} generatedLabel={generatedLabel} />
+            <PrintArticle report={report} generatedLabel={generatedLabel} pending={summaryPending} />
           </div>
         ) : (
           <ConnectionErrorState
