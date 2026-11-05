@@ -84,41 +84,34 @@ function ChartCard({ chart, className }) {
                 <ChartLegend content={<ChartLegendContent nameKey="key" />} />
               </PieChart>
             ) : chart.kind === "radial" ? (
-              <div className="relative h-full w-full">
+              <div className="relative mx-auto flex h-full w-full max-w-[280px] items-center justify-center">
                 <RadialBarChart
                   data={chart.data}
                   startAngle={90}
                   endAngle={-270}
-                  innerRadius="68%"
+                  innerRadius="72%"
                   outerRadius="100%"
-                  barSize={18}
+                  barSize={14}
+                  className="h-full w-full"
                 >
                   <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
                   <RadialBar
                     dataKey={chart.valueKey}
                     background={{ fill: "var(--color-neutral-100)" }}
-                    cornerRadius={10}
+                    cornerRadius={999}
                     isAnimationActive={animate}
                   >
                     {chart.data.map((item) => (
-                      <Cell key={item.key} fill={item.fill || `var(--color-${chart.valueKey})`} />
+                      <Cell key={item.key} fill={item.fill || "var(--color-brand-600)"} />
                     ))}
                   </RadialBar>
-                  <ChartTooltip
-                    content={(
-                      <ChartTooltipContent
-                        hideLabel
-                        periodLabel={chart.periodLabel}
-                        nameKey="key"
-                      />
-                    )}
-                  />
                 </RadialBarChart>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
-                  <p className="text-3xl font-bold tabular-nums text-neutral-900">{chart.enrolled ?? 0}</p>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Patients Enrolled</p>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    {chart.coveragePercent ?? 0}% of {chart.eligible ?? 0} eligible
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                  <p className="text-3xl font-bold tabular-nums leading-none text-neutral-900 sm:text-4xl">
+                    {chart.enrolled ?? 0}
+                  </p>
+                  <p className="mt-2 max-w-[9rem] text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Patients Enrolled
                   </p>
                 </div>
               </div>
@@ -164,9 +157,8 @@ function ChartEmpty() {
 }
 
 function hasChartValues(chart) {
-  if (chart?.kind === "radial") {
-    return Number(chart.enrolled) > 0 || Number(chart.eligible) > 0;
-  }
+  // Count-focused radial always renders (including zero) so the card stays a count viz.
+  if (chart?.kind === "radial") return true;
   return Array.isArray(chart?.data) && chart.data.some((item) => Number(item[chart.valueKey]) > 0);
 }
 

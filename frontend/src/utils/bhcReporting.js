@@ -319,9 +319,9 @@ const views = {
         ),
         radialChart(
           "Nutrition Enrollment",
-          "Unique patients ever enrolled in Nutrition Care vs eligible registered patients.",
+          "Unique patients ever enrolled in Nutrition Care, including closed enrollments.",
           period,
-          { enrolled: everEnrolled, eligible, coveragePercent },
+          { enrolled: everEnrolled },
         ),
       ],
       summary: [
@@ -605,26 +605,26 @@ function donutChart(title, description, period, data, seriesLabel) {
   };
 }
 
-function radialChart(title, description, period, { enrolled = 0, eligible = 0, coveragePercent = 0 } = {}) {
-  const coverage = Math.max(0, Math.min(100, Number(coveragePercent) || 0));
+/** Decorative ring only — fill is fixed so the chart never reads as coverage progress. */
+const RADIAL_DECORATIVE_FILL = 78;
+
+function radialChart(title, description, period, { enrolled = 0 } = {}) {
   return {
     kind: "radial",
     title,
     description,
     periodLabel: period?.label || "",
-    valueKey: "coverage",
+    valueKey: "ring",
     enrolled: Number(enrolled) || 0,
-    eligible: Number(eligible) || 0,
-    coveragePercent: coverage,
     data: [
       {
-        key: "coverage",
-        coverage,
+        key: "enrolled",
+        ring: RADIAL_DECORATIVE_FILL,
         fill: CHART_COLORS.brand,
       },
     ],
     config: {
-      coverage: { label: "Coverage", color: CHART_COLORS.brand },
+      ring: { label: "Patients enrolled", color: CHART_COLORS.brand },
     },
   };
 }

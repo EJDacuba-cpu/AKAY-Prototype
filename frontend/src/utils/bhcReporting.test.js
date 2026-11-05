@@ -31,7 +31,7 @@ test("normalizeReportCategory maps legacy slugs and defaults to all", () => {
   assert.equal(normalizeReportCategory(""), "all");
 });
 
-test("nutrition report cards and radial coverage use unique adult BMI and ever enrolled", () => {
+test("nutrition report cards and radial count use unique adult BMI and ever enrolled", () => {
   const patients = [
     { id: "a1", birthdate: "1990-01-01" },
     { id: "a2", birthdate: "1988-06-01" },
@@ -85,7 +85,9 @@ test("nutrition report cards and radial coverage use unique adult BMI and ever e
   assert.equal(result.charts[0].kind, "bar");
   assert.equal(result.charts[1].kind, "radial");
   assert.equal(result.charts[1].enrolled, 3);
-  assert.equal(result.charts[1].eligible, 3);
+  assert.equal(result.charts[1].eligible, undefined);
+  assert.equal(result.charts[1].coveragePercent, undefined);
+  assert.match(result.charts[1].description, /ever enrolled/i);
   assert.equal(summaryValue(result, "Not applicable (under 18)"), 1);
 });
 
