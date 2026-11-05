@@ -89,25 +89,37 @@ class StaffRoleAccountTest extends TestCase
 
     public function test_duty_unavailable_at_tier_rejected(): void
     {
+        $this->assertNotContains('referrals.submit', StaffRoles::available('rhu'));
+
         $this->postJson('/api/users', $this->payload(['permissions' => [...StaffRoles::defaults('encoder'), 'rhu.manage']]))
             ->assertUnprocessable()->assertJsonFragment(['rhu.manage is not available to BHC accounts.']);
-        $this->postJson('/api/users', $this->rhuPayload('nurse', ['permissions' => [...StaffRoles::defaults('nurse'), 'items.dispense']]))
-            ->assertUnprocessable()->assertJsonFragment(['items.dispense is not available to RHU accounts.']);
+        // referrals.submit is BHC-only; items.dispense is intentionally grantable at RHU.
+        $this->postJson('/api/users', $this->rhuPayload('nurse', ['permissions' => [...StaffRoles::defaults('nurse'), 'referrals.submit']]))
+            ->assertUnprocessable()->assertJsonFragment(['referrals.submit is not available to RHU accounts.']);
     }
 
     public function test_rhu_clinical_duties_are_grantable_and_not_default(): void
     {
-        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake', 'followups.manage'] as $duty) {
+        foreach (['consultations.encode', 'consultations.finalize', 'records.correct', 'rhu.intake', 'followups.manage', 'items.dispense'] as $duty) {
             $this->assertContains($duty, StaffRoles::available('rhu'));
             $this->assertNotContains($duty, StaffRoles::defaults('nurse'));
             $this->assertNotContains($duty, StaffRoles::defaults('doctor'));
         }
-        $this->assertNotContains('items.dispense', StaffRoles::available('rhu'));
 
         $this->postJson('/api/users', $this->rhuPayload('nurse', [
             'email' => 'encode-nurse@example.test',
             'permissions' => [...StaffRoles::defaults('nurse'), 'consultations.encode'],
         ]))->assertCreated();
+
+        // Nurse defaults already include inventory.view, the items.dispense prerequisite.
+        $this->postJson('/api/users', $this->rhuPayload('nurse', [
+            'email' => 'dispense-nurse@example.test',
+            'permissions' => [...StaffRoles::defaults('nurse'), 'items.dispense'],
+        ]))->assertCreated();
+        $this->assertEqualsCanonicalizing(
+            [...StaffRoles::defaults('nurse'), 'items.dispense'],
+            User::where('email', 'dispense-nurse@example.test')->value('permissions')
+        );
     }
 
     public function test_licensed_duty_on_encoder_needs_no_acknowledgement_and_is_audited(): void
