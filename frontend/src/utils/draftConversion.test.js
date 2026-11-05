@@ -135,6 +135,7 @@ test("convertLegacyDraft: the converted care plan restores as the same checkbox 
     bhcFollowUp: true,
     referToRhu: true,
     referralMultipleIssues: false,
+    serviceReferrals: [],
   });
 });
 

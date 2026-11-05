@@ -82,11 +82,13 @@ test("normalizeProvider keeps internal notes off the BHC coordination helpers", 
     expected_available_at: "2026-10-23T14:00:00+08:00",
     awaiting_rhu_update: false,
   });
+  // Freeze "now" before the expected return so this case stays non-overdue.
+  const now = new Date("2026-10-22T08:00:00+08:00");
   assert.equal(provider.internalNotes, "Locum covering OR");
   assert.equal(provider.remarks, "AM clinic only");
-  assert.equal(bhcCoordinationText(provider).includes("Locum covering OR"), false);
-  assert.match(bhcCoordinationText(provider), /AM clinic only/);
-  assert.match(bhcCoordinationText(provider), /Expected return:/);
+  assert.equal(bhcCoordinationText(provider, now).includes("Locum covering OR"), false);
+  assert.match(bhcCoordinationText(provider, now), /AM clinic only/);
+  assert.match(bhcCoordinationText(provider, now), /Expected return:/);
 });
 
 test("overdue expected return becomes Awaiting RHU Update for BHC", () => {
