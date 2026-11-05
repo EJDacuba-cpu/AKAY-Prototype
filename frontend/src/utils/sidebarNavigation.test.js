@@ -114,6 +114,7 @@ test("RHU Medicine and Supply sidebar nests Inventory and To Dispense", () => {
     medicine.children.map((c) => c.path),
     ["/rhu/medicine-management", "/rhu/to-dispense"],
   );
+  assert.equal(medicine.children[0].hideWhenDenied, true);
   assert.equal(medicine.children[1].hideWhenDenied, true);
   const bhc = menuByRole.bhc
     .flatMap((section) => section.items)

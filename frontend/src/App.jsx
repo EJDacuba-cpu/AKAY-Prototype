@@ -83,6 +83,7 @@ import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
+import RhuToDispense from "./pages/rhu/RhuToDispense";
 import FeedbackReturnSlip from "./pages/rhu/FeedbackReturnSlip";
 import RHUReports from "./pages/rhu/RHUReports";
 
@@ -840,6 +841,14 @@ export default function App() {
       />
 
       <Route path="/rhu/medicine-management/:medicineId" element={<ProtectedPage allowedRole="rhu" module="inventory"><MedicineDetailsPage role="rhu" /></ProtectedPage>} />
+      <Route
+        path="/rhu/to-dispense"
+        element={
+          <ProtectedPage allowedRole="rhu" module="dispensing">
+            <RhuToDispense />
+          </ProtectedPage>
+        }
+      />
 
       {/* NEW: Dynamic route with trackingId param */}
       <Route

@@ -159,7 +159,7 @@ export const menuByRole = {
           icon: Boxes,
           defaultPath: "/rhu/medicine-management",
           children: [
-            { label: "Inventory", path: "/rhu/medicine-management" },
+            { label: "Inventory", path: "/rhu/medicine-management", hideWhenDenied: true },
             { label: "To Dispense", path: "/rhu/to-dispense", hideWhenDenied: true },
           ],
         },

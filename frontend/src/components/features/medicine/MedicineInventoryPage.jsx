@@ -9,7 +9,6 @@ import MedicineInventoryTable from './MedicineInventoryTable';
 import MedicineInventoryFilters from './MedicineInventoryFilters';
 import MedicineFormModal from './MedicineFormModal';
 import MedicineActionDialog from './MedicineActionDialog';
-import RhuToDispenseTab from './RhuToDispenseTab';
 import usePagedRows from '../../../hooks/usePagedRows';
 import useFacilityCalendarDate from '../../../hooks/useFacilityCalendarDate';
 import { getCurrentUser } from '../../../utils/auth';
@@ -25,9 +24,6 @@ function MedicineInventoryWorkspace({ role }) {
   const user = getCurrentUser();
   const client = useQueryClient();
   const canManage = (user?.permissions || []).includes('inventory.manage');
-  const canDispense = (user?.permissions || []).includes('items.dispense');
-  const showDispenseDesk = role === 'rhu' && canDispense;
-  const [desk, setDesk] = useState('inventory');
   const [filters, setFilters] = useState(defaults);
   const [dialog, setDialog] = useState(null);
   const listKey = queryKeys.medicineAvailability(role, user);
@@ -50,21 +46,12 @@ function MedicineInventoryWorkspace({ role }) {
   }
   return (
     <DashboardLayout role={role} title="Medicine and Supply">
-      {showDispenseDesk ? (
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Button variant={desk === "inventory" ? "brand" : "secondary"} size="sm" onClick={() => setDesk("inventory")}>Inventory</Button>
-          <Button variant={desk === "dispense" ? "brand" : "secondary"} size="sm" onClick={() => setDesk("dispense")}>To dispense</Button>
-        </div>
-      ) : null}
-      {showDispenseDesk && desk === "dispense" ? (
-        <RhuToDispenseTab />
-      ) : (
         <PageStateWrapper skeleton="medicine" isLoading={query.isLoading} isError={query.isError} isFetching={query.isFetching} hasData={items.length > 0} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine inventory…">
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Medicine and Supply</h1>
-                <p className="mt-1 text-[13px] text-neutral-600">{role.toUpperCase()} medicine and supply inventory.</p>
+                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{role === "rhu" ? "Inventory" : "Medicine and Supply"}</h1>
+                <p className="mt-1 text-[13px] text-neutral-600">{role === "rhu" ? "RHU medicine and supply inventory." : `${role.toUpperCase()} medicine and supply inventory.`}</p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <SearchFilterCluster
@@ -138,7 +125,6 @@ function MedicineInventoryWorkspace({ role }) {
             })()}
           </div>
         </PageStateWrapper>
-      )}
       {canManage && dialog?.mode === "add" && <MedicineFormModal open mode="add" onClose={() => setDialog(null)} onSubmit={add} />}
       {canManage && dialog?.medicineId && <MedicineActionDialog key={`${dialog.medicineId}-${dialog.mode}`} intent={dialog} user={user} role={role} onClose={() => setDialog(null)} />}
     </DashboardLayout>
