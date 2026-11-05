@@ -75,6 +75,7 @@ import IncomingReferrals from "./pages/rhu/IncomingReferrals";
 import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
 import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
+import RhuWalkInCheckIn from "./pages/rhu/RhuWalkInCheckIn";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RhuReferralSlip from "./pages/rhu/RhuReferralSlip";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
@@ -732,6 +733,14 @@ export default function App() {
           </ProtectedPage>
         }
       />
+      <Route
+        path="/rhu/walk-in-check-in"
+        element={
+          <ProtectedPage allowedRole="rhu" module="patients">
+            <RhuWalkInCheckIn />
+          </ProtectedPage>
+        }
+      />
 
       <Route
         path="/rhu/patients/:patientId/referrals/:referralId"
@@ -865,7 +874,7 @@ export default function App() {
       />
       <Route
         path="/rhu/walk-in-patients"
-        element={<Navigate to="/rhu/patients/add" replace />}
+        element={<Navigate to="/rhu/walk-in-check-in" replace />}
       />
 
       {/* Notifications Route */}
