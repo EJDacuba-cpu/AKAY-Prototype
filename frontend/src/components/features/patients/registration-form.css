@@ -1,18 +1,139 @@
-/*
- * Patient registration: flat, sharp-cornered clinical form surface.
- * Scoped to `.ehr-form` so shared inputs, buttons and pickers keep their
- * defaults everywhere else in the app.
- */
-.ehr-form :is(input, select, textarea, button, fieldset):not([type="radio"], [type="checkbox"]) {
-  border-radius: 0;
+/* Registration page styles stay scoped to the shared BHC/RHU form. */
+.patient-registration {
+  padding: 24px;
+  background: var(--color-bg);
 }
 
-.ehr-form :is(input, select, textarea, button) {
+.patient-registration > div:first-child {
+  margin-bottom: 24px;
+}
+
+.patient-registration > div:first-child a {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.patient-registration > div:first-child h1 {
+  color: var(--color-text);
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.patient-registration > div:first-child p {
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.patient-registration .registration-columns {
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+  gap: 28px;
+}
+
+.patient-registration .registration-columns > div {
+  display: grid;
+  gap: 28px;
+}
+
+.patient-registration .registration-panel {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--color-surface);
+}
+
+.patient-registration .registration-panel > div:first-child > div:first-child:has(> svg) {
+  display: none;
+}
+
+.patient-registration .registration-panel h2 {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.patient-registration .registration-guardian h2 {
+  margin-bottom: 6px;
+}
+
+.patient-registration .registration-guardian > p {
+  margin-bottom: 20px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.patient-registration .registration-guardian-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.patient-registration .registration-panel > div:first-child p {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.patient-registration .ehr-form label {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.patient-registration .ehr-form :is(input, select, textarea, button[role="combobox"], button[name="birthDate"]) {
+  border-radius: 8px;
+}
+
+.patient-registration .ehr-form :is(input, select, textarea, button):focus-visible {
+  border-color: var(--color-primary-hover);
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
   box-shadow: none;
 }
 
-.ehr-form :is(input, select, textarea):focus-visible,
-.ehr-form button[role="combobox"]:focus {
-  border-color: #dc2626;
-  box-shadow: 0 0 0 1px rgb(220 38 38 / 0.2);
+.patient-registration .ehr-form input[type="radio"] {
+  accent-color: var(--color-primary);
+}
+
+.patient-registration .ehr-form > div:last-child {
+  margin-top: 24px;
+  border-color: var(--color-border);
+  padding-top: 18px;
+}
+
+.patient-registration .ehr-form > div:last-child button {
+  min-height: 38px;
+  border-radius: 999px;
+  padding-inline: 20px;
+}
+
+@media (max-width: 1023px) {
+  .patient-registration .registration-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .patient-registration {
+    padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .patient-registration .registration-columns,
+  .patient-registration .registration-columns > div {
+    gap: 20px;
+  }
+
+  .patient-registration .registration-panel {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 479px) {
+  .patient-registration .registration-guardian-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

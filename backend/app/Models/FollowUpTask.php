@@ -127,9 +127,4 @@ class FollowUpTask extends Model
     {
         return $this->belongsToMany(ConditionMonitoring::class, 'condition_monitoring_follow_up_task');
     }
-
-    public function isSuperseded(): bool
-    {
-        return $this->rescheduled_to_id !== null;
-    }
 }

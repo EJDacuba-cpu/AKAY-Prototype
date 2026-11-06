@@ -27,7 +27,6 @@ const GUARDIAN_FIELDS = [
   ["Previously reported parent / guardian", ["parentName", "parent_name"]],
   ["Guardian", ["guardianName", "guardian_name"]],
   ["Guardian relationship", ["guardianRelationship", "guardian_relationship"]],
-  ["Guardian contact", ["guardianContactNumber", "guardian_contact_number"]],
 ];
 
 const INPUT_CLASS =
@@ -217,7 +216,13 @@ export default function RegistrationSections({
       <ProfileSection id="contact" title="Contact & Address" actions={actionsFor("contact")}>
         {editingSection === "contact" ? (
           <EditGrid>
-            <EditField label="Contact number" name="contactNumber" value={form.contactNumber} onChange={onChange} />
+            <div className="space-y-3">
+              <EditField label="Contact number" name="contactNumber" value={form.contactNumber} onChange={onChange} />
+              <div className="space-y-1.5">
+                <EditField label="Other Contact Number" name="guardianContactNumber" type="tel" value={form.guardianContactNumber} onChange={onChange} error={fieldErrors.guardianContactNumber} aria-describedby="profile-other-contact-hint" />
+                <p id="profile-other-contact-hint" className="text-xs text-neutral-600">Contact number of a mother, father, or guardian.</p>
+              </div>
+            </div>
             <EditSelect label="PhilHealth membership" name="philHealthStatus" value={form.philHealthStatus} onChange={onChange}>
               <option value="">Select membership</option>
               <option>With PhilHealth</option>
@@ -247,6 +252,7 @@ export default function RegistrationSections({
           <FieldList
             rows={[
               ["Contact", read(["contact", "contactNumber", "contact_number"])],
+              ["Other Contact Number", read(["guardianContactNumber", "guardian_contact_number"])],
               ["PhilHealth", philHealth],
               ["Address", address],
             ]}
@@ -293,7 +299,6 @@ export default function RegistrationSections({
             <EditGrid>
               <EditField label="Guardian name" name="guardianName" value={form.guardianName} onChange={onChange} />
               <EditField label="Guardian relationship" name="guardianRelationship" value={form.guardianRelationship} onChange={onChange} />
-              <EditField label="Guardian contact" name="guardianContactNumber" value={form.guardianContactNumber} onChange={onChange} />
             </EditGrid>
           ) : (
             <FieldList rows={familyRows.length ? familyRows : [['Guardian', '']]} />

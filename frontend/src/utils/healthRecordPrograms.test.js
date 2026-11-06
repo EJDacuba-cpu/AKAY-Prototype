@@ -6,6 +6,7 @@ import {
   getServiceTypeLabel,
   getSpecializedRecordPrograms,
   getSpecializedRecordType,
+  isNutritionRecord,
   isTbRecord,
   matchesClassificationFilter,
   matchesServiceTypeFilter,
@@ -45,6 +46,7 @@ test("returns all applicable programs once and in the configured order", () => {
     { id: 4, category: "Immunization" },
     { id: 5, category: "Maternal" },
     { id: 6, category: "Immunization" },
+    { id: 7, category: "Nutrition", monitoring_data: { selectedPrograms: ["Nutrition"] } },
   ];
 
   const programs = getSpecializedRecordPrograms(records);
@@ -55,12 +57,12 @@ test("returns all applicable programs once and in the configured order", () => {
   );
   assert.deepEqual(
     programs.map(({ count }) => count),
-    [2, 1, 1, 1],
+    [2, 1, 1, 1, 1],
   );
 });
 
 test("the Hypertension / Diabetic program is gone from specialized records", () => {
-  assert.deepEqual(SPECIALIZED_RECORD_PROGRAMS.map(({ key }) => key), ["epi", "maternal", "familyPlanning", "tb"]);
+  assert.deepEqual(SPECIALIZED_RECORD_PROGRAMS.map(({ key }) => key), ["epi", "maternal", "familyPlanning", "tb", "nutrition"]);
   for (const name of [
     "isNcdRecord",
     "getHypertensionDiabeticData",
@@ -101,6 +103,17 @@ test("isTbRecord is the tbRecords detector, so text never puts a record in the T
   const record = { id: 3, category: "Maternal", chiefComplaint: "Fever after football game" };
   assert.equal(isTbRecord(record), false);
   assert.deepEqual(getSpecializedRecordPrograms([record]).map(({ key }) => key), ["maternal"]);
+});
+
+test("a Nutrition record is its own specialized program", () => {
+  const record = { id: 11, category: "Nutrition", monitoring_data: { selectedPrograms: ["Nutrition"], primaryProgram: "Nutrition" } };
+  assert.equal(isNutritionRecord(record), true);
+  assert.equal(isNutritionRecord({ category: "General Consultation", monitoring_data: { selectedPrograms: ["Maternal"] } }), false);
+  assert.equal(getSpecializedRecordType(record), "nutrition");
+  assert.deepEqual(
+    getSpecializedRecordPrograms([record]).map(({ key, label, count }) => [key, label, count]),
+    [["nutrition", "Nutrition", 1]],
+  );
 });
 
 test("a General Consultation record with only TB data lands in the TB specialized tab", () => {

@@ -74,12 +74,72 @@ class ReportController extends Controller
 
         return response()->json([
             'data' => [
+                'account_analytics' => $this->accountAnalytics(),
                 'users_by_role' => User::selectRaw('role, count(*) as total')->groupBy('role')->pluck('total', 'role'),
                 'users_by_status' => User::selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),
                 'audit_logs_by_module' => AuditLog::selectRaw('module, count(*) as total')->groupBy('module')->pluck('total', 'module'),
                 'system_activity_total' => AuditLog::count(),
             ],
         ]);
+    }
+
+    private function accountAnalytics(): array
+    {
+        $roles = [User::ROLE_ADMIN, User::ROLE_BHC, User::ROLE_RHU];
+        $statuses = [User::STATUS_ACTIVE, User::STATUS_INACTIVE];
+
+        $matrix = [];
+        foreach ($roles as $role) {
+            $matrix[$role] = array_fill_keys($statuses, 0);
+        }
+
+        $rows = User::query()
+            ->selectRaw('role, status, count(*) as total')
+            ->groupBy('role', 'status')
+            ->get();
+
+        // One grouped snapshot only — derive database total from these rows so a
+        // concurrent insert/delete cannot desync User::count() from the matrix.
+        $otherAccounts = 0;
+        $accounts = 0;
+        foreach ($rows as $row) {
+            $role = (string) $row->role;
+            $status = (string) $row->status;
+            $total = (int) $row->total;
+            $accounts += $total;
+            if (isset($matrix[$role]) && array_key_exists($status, $matrix[$role])) {
+                $matrix[$role][$status] = $total;
+            } else {
+                $otherAccounts += $total;
+            }
+        }
+
+        $active = 0;
+        $inactive = 0;
+        $byRole = [];
+        foreach ($roles as $role) {
+            $roleActive = $matrix[$role][User::STATUS_ACTIVE];
+            $roleInactive = $matrix[$role][User::STATUS_INACTIVE];
+            $byRole[$role] = $roleActive + $roleInactive;
+            $active += $roleActive;
+            $inactive += $roleInactive;
+        }
+
+        $canonicalAccounts = $active + $inactive;
+
+        return [
+            'roles' => $roles,
+            'statuses' => $statuses,
+            'matrix' => $matrix,
+            'totals' => [
+                'accounts' => $accounts,
+                'canonical_accounts' => $canonicalAccounts,
+                'active' => $active,
+                'inactive' => $inactive,
+                'by_role' => $byRole,
+            ],
+            'other_accounts' => $otherAccounts,
+        ];
     }
 
     private function referralReport($query): array

@@ -1,6 +1,20 @@
 # AKAY Current State / Handoff
 
-**Status date:** 2026-10-23
+**Status date:** 2026-11-06
+
+## Safe facility reference seeding (2026-11-06)
+
+`DatabaseSeeder` now delegates to `FacilitySeeder`, the single definition of the existing 14 Bulakan BHCs and Rural Health Unit Bulakan. To add missing facilities without resetting the database, run from `backend`:
+
+```sh
+php artisan db:seed --class=FacilitySeeder --no-interaction
+```
+
+The seeder inserts missing records only inside one transaction. It preserves existing IDs, names, addresses, contact details, status, default RHU assignments (including null), and timestamps. It never deletes unrelated facilities. BHCs match by barangay or canonical name, so renamed BHCs and legacy canonical names with blank barangay are preserved. New BHCs are active and point to the default RHU.
+
+Identity conflicts abort and roll back the entire seed. If Rural Health Unit Bulakan cannot be found but other RHUs exist, explicitly identify/resolve the intended default RHU in facility management before retrying; the seeder will not guess or recreate a possibly renamed RHU. Multiple BHC matches or a canonical name belonging to a different barangay also require explicit correction. This is a serial administrative setup command. No schema, controller, stored procedure, or frontend change is involved. Reload the Facilities page after seeding to refresh its cached list.
+
+Verification: 66 focused seeder/facility/permission/account feature tests passed (249 assertions), scoped Pint and PHP syntax checks passed, and a read-only code review found no actionable issues. The dedicated seeder was executed against the configured PostgreSQL database: 14 active BHCs in 14 distinct barangays, one active RHU, and all 14 new BHCs linked to it. Laravel list controllers return 14 BHCs and one RHU. A second seeder run preserved every facility column, ID and timestamp. Authenticated browser refresh was not verified from this session.
 
 ## RHU Families and FSN persistence (2026-10-23)
 

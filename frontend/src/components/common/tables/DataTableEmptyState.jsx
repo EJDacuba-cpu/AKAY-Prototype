@@ -5,6 +5,7 @@ export default function DataTableEmptyState({
   icon,
   title = "No records found.",
   description = "Try adjusting your search or filter criteria.",
+  action = null,
   minHeight = "min-h-[var(--akay-empty-h,260px)]",
 }) {
   return (
@@ -20,6 +21,7 @@ export default function DataTableEmptyState({
               {description}
             </p>
           )}
+          {action ? <div className="mt-4">{action}</div> : null}
         </div>
       </td>
     </tr>

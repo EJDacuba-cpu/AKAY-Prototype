@@ -1231,24 +1231,6 @@ class HealthRecordController extends Controller
         );
     }
 
-    /** @param  array<int, array<string, mixed>>  $medicines */
-    private function assertRhuPrescribedMedicines(User $user, array $medicines): void
-    {
-        $ids = collect($medicines)->pluck('medicine_id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
-        if ($ids->isEmpty()) {
-            return;
-        }
-        $count = \App\Models\Medicine::query()
-            ->whereIn('id', $ids)
-            ->where('rural_health_unit_id', $user->rural_health_unit_id)
-            ->count();
-        if ($count !== $ids->count()) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'prescribed_medicines' => ['One or more selected medicines are not available at this RHU.'],
-            ]);
-        }
-    }
-
     /**
      * @param  array<int, array<string, mixed>>  $diagnoses
      * @return array<int, array<string, mixed>>

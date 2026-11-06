@@ -102,11 +102,6 @@ class RhuProvider extends Model
         return $query->where('is_active', true)->whereNotNull('user_id');
     }
 
-    public function isAvailable(): bool
-    {
-        return $this->availability_status === self::STATUS_AVAILABLE;
-    }
-
     public function isEffectivelyAvailable(?Carbon $now = null): bool
     {
         if (! $this->isOfficial() || ! $this->is_active) {

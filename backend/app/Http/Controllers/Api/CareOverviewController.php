@@ -10,6 +10,7 @@ use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Services\ActionPermissions;
 use App\Services\FacilityAccessService;
+use App\Services\NutritionEnrollment;
 use Illuminate\Http\Request;
 
 /**
@@ -146,6 +147,7 @@ class CareOverviewController extends Controller
                 'confirmed_at' => $c->confirmed_at?->toISOString(),
                 'recommended_at' => $c->bhc_monitoring_recommended_at?->toISOString(),
             ])->values(),
+            'nutrition_care' => NutritionEnrollment::summary($patient),
         ]]);
     }
 

@@ -157,8 +157,8 @@ export function WizardFooter({
 /**
  * Final step - the disposition, and the save.
  *
- * `NextActionSection` supplies the card grid and the conditional fields; this
- * wrapper only adds the wizard chrome and the primary action.
+ * Care-plan / next-steps UI is passed as `children`; this wrapper only adds
+ * the wizard chrome and the primary action.
  */
 export function NextActionStep({
   visitDate,
@@ -286,7 +286,7 @@ export function ConsultationReviewStep({
               {section.rows.map(({ label, value }) => (
                 <div
                   key={label}
-                  className="ehr-consult__review-row grid gap-1 px-5 py-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4"
+                  className="ehr-consult__review-row grid gap-1 px-5 py-2.5 sm:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)] sm:gap-3"
                 >
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">
                     {label}

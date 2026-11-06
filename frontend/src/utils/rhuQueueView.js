@@ -41,10 +41,11 @@ export function walkInKeyFor(current, patientId, makeId) {
   return current && current.patientId === patientId ? current : { patientId, key: newCheckInKey(makeId) };
 }
 
-/** Waiting and in-consultation are the chips Phase 5 knows; anything else stays a neutral fallback. */
+/** Waiting and in-consultation are the stamps Phase 5 knows; anything else stays a neutral fallback. */
 export function statusChip(status) {
   const raw = String(status ?? '').trim();
-  if (raw === 'waiting') return { label: 'Waiting', tone: 'info' };
+  // Waiting is gray; In Consultation keeps a distinct info/cyan tone for scanability.
+  if (raw === 'waiting') return { label: 'Waiting', tone: 'neutral' };
   if (raw === 'in_consultation') return { label: 'In Consultation', tone: 'info' };
   if (raw === 'closed') return { label: 'Closed', tone: 'neutral' };
   return { label: raw === '' ? 'Unknown' : titleCase(raw), tone: 'neutral' };
@@ -151,7 +152,12 @@ export function queueRows(visits, now = new Date()) {
       source: visit.source,
       sourceLabel: visit.source === 'referral' ? 'Referred' : 'Walk-in',
       referralId,
-      fromLabel: visit.source === 'referral' && bhc ? `From ${bhc}` : null,
+      fromLabel:
+        visit.source === 'referral'
+          ? bhc
+            ? `Referred from ${bhc}`
+            : null
+          : 'Direct RHU check-in',
       arrivedTime: hasArrival ? TIME.format(arrived) : '—',
       carriedOver,
       arrivalNote: carriedOver
@@ -163,11 +169,19 @@ export function queueRows(visits, now = new Date()) {
   });
 }
 
-/** Every search token must appear in the name; `source` is 'all', 'referral' or 'walk_in'. */
-export function filterQueueRows(rows, { search = '', source = 'all' } = {}) {
+/**
+ * Every search token must appear in the name.
+ * `source` is 'all', 'referral' or 'walk_in'.
+ * `status` is 'all', 'waiting' or 'in_consultation' (Visit Progress filter; not the entry tabs).
+ */
+export function filterQueueRows(
+  rows,
+  { search = '', source = 'all', status = 'all' } = {},
+) {
   const tokens = search.toLowerCase().split(/\s+/).filter(Boolean);
   return rows.filter((row) => {
     if (source !== 'all' && row.source !== source) return false;
+    if (status !== 'all' && row.statusKey !== status) return false;
     const name = row.name.toLowerCase();
     return tokens.every((token) => name.includes(token));
   });

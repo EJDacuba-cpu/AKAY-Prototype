@@ -86,6 +86,8 @@ function includeOutcomeStep(options = {}) {
   return options.includeHistory !== false;
 }
 
+const PROGRAMS_WITHOUT_FORMS = new Set(["Nutrition"]);
+
 const PROGRAM_STEP_DETAILS = {
   Maternal: {
     label: "Prenatal",
@@ -122,6 +124,7 @@ export function getProgramFormSteps(selectedPrograms = [], primaryProgram = "") 
 
   const steps = [];
   for (const program of ordered) {
+    if (PROGRAMS_WITHOUT_FORMS.has(program)) continue;
     const classification = PROGRAM_CLASSIFICATIONS[program];
     if (!classification) continue;
 

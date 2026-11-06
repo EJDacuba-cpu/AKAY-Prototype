@@ -7,13 +7,13 @@ import { setPermission } from "./accessPolicy.js";
 
 const items = role => menuByRole[role].flatMap(section => section.items);
 
-test("Families is not an Admin/MHO module", () => {
-  assert.ok(!items("admin").some(item => /famil/i.test(item.label) || /famil/i.test(item.path)));
+test("Households is not an Admin/MHO module", () => {
+  assert.ok(!items("admin").some(item => /famil|household/i.test(item.label) || /famil/i.test(item.path)));
 });
 
-test("BHC lists Families directly below Patients, and RHU keeps its placement", () => {
+test("BHC lists Households directly below Patients, and RHU keeps its placement", () => {
   const bhc = items("bhc").map(item => item.label);
-  assert.equal(bhc[bhc.indexOf("Patients") + 1], "Families");
+  assert.equal(bhc[bhc.indexOf("Patients") + 1], "Households");
   assert.ok(items("rhu").some(item => item.path === "/rhu/families"));
 });
 

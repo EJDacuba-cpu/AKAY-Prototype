@@ -243,3 +243,13 @@ test("RHU ITR Interview mounts Family then Past Medical then Social, with no His
   assert.doesNotMatch(workspace, /currentStepKey === HISTORY_STEP/);
   assert.doesNotMatch(workspace, /locked=\{!canViewBackground/);
 });
+
+test("BHC consultation panel wires Nutrition enrollment without a Nutrition form", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const workspace = readFileSync(join(here, "../pages/bhc/ConsultationWorkspace.jsx"), "utf8");
+  assert.match(workspace, /getNutritionEnrollment/);
+  assert.match(workspace, /nutritionProgramCopy/);
+  assert.match(workspace, /payload\.nutritionIntent/);
+  assert.match(workspace, /nutritionIntent \? \{ nutritionIntent \}/);
+  assert.doesNotMatch(workspace, /NutritionAssessment/);
+});

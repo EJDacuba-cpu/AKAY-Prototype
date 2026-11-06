@@ -1,0 +1,52 @@
+.account-directory-content ::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+}
+
+.account-directory-content input {
+  caret-color: var(--color-primary);
+}
+
+.account-directory-sheet td {
+  overflow: hidden;
+}
+
+.account-directory-sheet td:last-child {
+  overflow: visible;
+  padding-inline: 8px;
+}
+
+.account-directory-sheet th:last-child {
+  padding-inline: 8px;
+}
+
+.account-directory-sheet td button[aria-haspopup="menu"] {
+  border-radius: var(--radius-pill, 999px);
+  border-color: transparent;
+  background: transparent;
+}
+
+.account-directory-sheet td button[aria-haspopup="menu"]:hover {
+  background: var(--color-surface-2);
+}
+
+@media (max-width: 767px) {
+  .account-directory-heading {
+    width: 100%;
+  }
+
+  .account-directory-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .account-directory-controls .search-filter-cluster {
+    flex: 1;
+  }
+}
+
+@media (max-width: 479px) {
+  .account-directory-controls > a {
+    width: 100%;
+  }
+}

@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\IncomingReferralController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MonitoringHandoffController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\NutritionCareController;
 use App\Http\Controllers\Api\PasswordResetRequestController;
 use App\Http\Controllers\Api\PatientBackgroundController;
 use App\Http\Controllers\Api\PatientBackgroundHistoryController;
@@ -95,6 +96,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::apiResource('patients', PatientController::class);
         Route::apiResource('health-records', HealthRecordController::class);
         Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
+        Route::post('patients/{patient}/nutrition-care/close', [NutritionCareController::class, 'close']);
         Route::get('patients/{patient}/background-history', PatientBackgroundHistoryController::class);
         Route::patch('patients/{patient}/background', PatientBackgroundController::class);
         Route::get('patients/{patient}/conditions', [PatientConditionController::class, 'index']);
@@ -159,6 +161,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::get('/rhu-visits', [RhuVisitController::class, 'index']);
             Route::post('/rhu-visits', [RhuVisitController::class, 'store']);
             Route::get('/rhu-visits/patient-search', [RhuVisitController::class, 'patientSearch']);
+            Route::get('/rhu-visits/recent-patients', [RhuVisitController::class, 'recentPatients']);
+            Route::get('/rhu-visits/patients/{patient}/pending-referrals', [RhuVisitController::class, 'pendingReferrals'])->whereNumber('patient');
             Route::post('/rhu-visits/{visit}/close', [RhuVisitController::class, 'close'])->whereNumber('visit');
             Route::post('/rhu-visits/{visit}/start', [RhuVisitController::class, 'start'])->whereNumber('visit');
             Route::post('/rhu-visits/{visit}/resume', [RhuVisitController::class, 'resume'])->whereNumber('visit');

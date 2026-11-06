@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\BarangayHealthCenter;
+use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\ActionPermissions;
+use App\Services\NutritionEnrollment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use App\Services\StaffRoles;
@@ -422,5 +424,72 @@ class ConsultationProgramsTest extends TestCase
             'patient_id' => $this->patient->id, 'classification' => 'Maternal',
             'payload' => ['selectedPrograms' => ['Maternal'], 'primaryProgram' => 'Maternal', 'formStep' => str_repeat('x', 101)],
         ])->assertUnprocessable()->assertJsonValidationErrors(['payload.formStep']);
+    }
+
+    public function test_nutrition_is_a_valid_selected_program(): void
+    {
+        $id = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', $this->nutritionPayload())
+            ->assertCreated()
+            ->assertJsonPath('data.category', 'Nutrition')
+            ->assertJsonPath('data.monitoring_data.selectedPrograms', ['Nutrition'])
+            ->assertJsonPath('data.monitoring_data.primaryProgram', 'Nutrition')
+            ->assertJsonPath('data.monitoring_data.nutritionIntent', NutritionEnrollment::INTENT_ENROLL)
+            ->json('data.id');
+
+        $this->assertTrue(NutritionEnrollment::stateFor($this->patient->id)['enrolled']);
+        $this->assertSame(NutritionEnrollment::STATUS_ACTIVE, NutritionEnrollment::stateFor($this->patient->id)['status']);
+        $this->assertNotNull(HealthRecord::findOrFail($id)->finalized_at);
+    }
+
+    public function test_draft_stores_nutrition_intent(): void
+    {
+        $draft = $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $this->patient->id,
+            'classification' => 'Nutrition',
+            'payload' => [
+                'selectedPrograms' => ['Nutrition'],
+                'primaryProgram' => 'Nutrition',
+                'nutritionIntent' => NutritionEnrollment::INTENT_CONTINUE,
+                'chiefComplaint' => 'Nutrition follow-up',
+            ],
+        ])->assertCreated()->json('data.id');
+
+        $this->getJson("/api/health-record-drafts/$draft")->assertOk()
+            ->assertJsonPath('data.classification', 'Nutrition')
+            ->assertJsonPath('data.payload.selectedPrograms', ['Nutrition'])
+            ->assertJsonPath('data.payload.nutritionIntent', NutritionEnrollment::INTENT_CONTINUE);
+
+        $this->assertFalse(NutritionEnrollment::stateFor($this->patient->id)['enrolled']);
+    }
+
+    public function test_finalize_rejects_nutrition_enroll_while_already_active(): void
+    {
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', $this->nutritionPayload())
+            ->assertCreated();
+
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', $this->nutritionPayload())
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['monitoring_data.nutritionIntent']);
+
+        $this->assertSame(1, HealthRecord::query()->where('patient_id', $this->patient->id)->count());
+        $this->assertTrue(NutritionEnrollment::stateFor($this->patient->id)['enrolled']);
+    }
+
+    private function nutritionPayload(): array
+    {
+        return [
+            'patient_id' => $this->patient->id,
+            'consultation_workflow' => HealthRecord::WORKFLOW_BHC_GENERAL_V2,
+            'category' => 'Nutrition',
+            'chief_complaint' => 'Nutrition counseling',
+            'treatment_notes' => 'Dietary counseling given',
+            'care_plan' => ['condition_cards' => true, 'shared_condition_referral' => true],
+            'diagnoses' => [],
+            'monitoring_data' => [
+                'selectedPrograms' => ['Nutrition'],
+                'primaryProgram' => 'Nutrition',
+                'nutritionIntent' => NutritionEnrollment::INTENT_ENROLL,
+            ],
+        ];
     }
 }

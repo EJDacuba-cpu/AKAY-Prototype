@@ -322,6 +322,12 @@ export function isFamilyPlanningRecord(record = {}) {
   return hasAnyTerm(record, ["family planning", "fp"]);
 }
 
+export function isNutritionRecord(record = {}) {
+  const explicit = record.selectedPrograms ?? record.monitoringData?.selectedPrograms ?? record.monitoring_data?.selectedPrograms;
+  if (Array.isArray(explicit)) return explicit.includes("Nutrition");
+  return hasAnyTerm(record, ["nutrition"]);
+}
+
 const TB_SERVICE_TYPE = "TB DOTS / TB Monitoring";
 
 /**
@@ -355,6 +361,7 @@ export function getSpecializedRecordType(record = {}) {
   if (isMaternalRecord(record)) return "maternal";
   if (isFamilyPlanningRecord(record)) return "familyPlanning";
   if (isTbRecord(record)) return "tb";
+  if (isNutritionRecord(record)) return "nutrition";
   return "";
 }
 
@@ -363,6 +370,7 @@ export const SPECIALIZED_RECORD_PROGRAMS = Object.freeze([
   Object.freeze({ key: "maternal", label: "Prenatal / Maternal" }),
   Object.freeze({ key: "familyPlanning", label: "Family Planning" }),
   Object.freeze({ key: "tb", label: "TB DOTS" }),
+  Object.freeze({ key: "nutrition", label: "Nutrition" }),
 ]);
 
 export function getSpecializedRecordPrograms(records = []) {
@@ -372,7 +380,7 @@ export function getSpecializedRecordPrograms(records = []) {
 
   for (const record of Array.isArray(records) ? records : []) {
     const selected = getConsultationPrograms(record);
-    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning" })[key]))] : [getSpecializedRecordType(record)];
+    const keys = selected.length ? [...new Set(selected.map(key => ({ EPI: "epi", Maternal: "maternal", "Family Planning": "familyPlanning", Nutrition: "nutrition" })[key]))] : [getSpecializedRecordType(record)];
     if (isTbRecord(record) && !keys.includes("tb")) keys.push("tb");
     keys.forEach(key => groupedRecords.get(key)?.push(record));
   }

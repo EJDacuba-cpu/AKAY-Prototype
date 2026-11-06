@@ -22,10 +22,19 @@ import {
   EPI_EXTRA_INDICATORS,
   EPI_FIC_AGE_LIMIT_MONTHS,
 } from "./careTrackingConfig.js";
+import { calculateAgeInYears } from "./maternalRisk.js";
+import {
+  nutritionCareFacts,
+  nutritionHistoryFromApi,
+  nutritionMeasurementHistory,
+  nutritionReadingsFromApi,
+  summarizeNutritionHistory,
+} from "./nutritionCare.js";
+import { resolveNutritionCare } from "./nutritionEnrollment.js";
 
 /**
  * Care Tracking: derives one read-only status card per clinical program
- * (Maternal, Family Planning, EPI, TB) from the patient's existing health
+ * (Maternal, Family Planning, EPI, Nutrition, TB) from the patient's existing health
  * records. There is no enrollment step - a program appears once the patient
  * is eligible for it or already has records in it (the same `applicable ||
  * hasHistory` rule as programApplicability.js), and its status is worked out
@@ -500,6 +509,52 @@ function buildEpiEntry(patient, records) {
 }
 
 // ---------------------------------------------------------------------------
+// Nutrition
+// ---------------------------------------------------------------------------
+
+function patientBirthDate(patient = {}) {
+  return patient?.birthdate || patient?.birthDate || patient?.dateOfBirth || patient?.date_of_birth || "";
+}
+
+function closureEnrollmentDate(nutritionCare) {
+  const closures = Array.isArray(nutritionCare?.closures) ? nutritionCare.closures : [];
+  const last = closures[closures.length - 1];
+  return last?.enrolledOn || last?.enrolled_on || "";
+}
+
+export function buildNutritionEntry(patient, records, today, { nutritionCare } = {}) {
+  const state = resolveNutritionCare(records, nutritionCare);
+  const age = calculateAgeInYears(patientBirthDate(patient), today);
+  const history = state.fromApi
+    ? nutritionHistoryFromApi(nutritionCare)
+    : state.episodeStartedOn
+      ? nutritionMeasurementHistory(records, {
+        startedOn: state.episodeStartedOn,
+        closedOn: state.closedOn,
+        age,
+      })
+      : [];
+  const readings = state.fromApi ? nutritionReadingsFromApi(nutritionCare) : summarizeNutritionHistory(history);
+  const enrolledOn = state.fromApi
+    ? (state.enrolledOn || closureEnrollmentDate(nutritionCare) || state.episodeStartedOn)
+    : state.episodeStartedOn;
+
+  return {
+    key: "nutrition",
+    label: "Nutrition Care",
+    status: state.status,
+    statusTone: state.enrolled ? "success" : "neutral",
+    facts: nutritionCareFacts({ enrolledOn, ...readings }),
+    lastVisit: history.length ? history[history.length - 1].dateRecorded : "",
+    nextVisit: "",
+    flags: [],
+    action: state.enrolled ? { type: "close-nutrition-care", label: "Close Nutrition Care" } : null,
+    records: state.episodeRecords,
+    measurementHistory: history,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -530,5 +585,6 @@ export function getCareTracking(patient = {}, records = [], today = new Date(), 
       measurementFact: latestFbsFact,
     }),
     buildTbEntry(list, today, conditionByIdentity(conditions, "tuberculosis")),
+    buildNutritionEntry(patient, list, today, { nutritionCare: options.nutritionCare }),
   ].filter(Boolean);
 }

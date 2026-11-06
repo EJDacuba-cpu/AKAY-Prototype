@@ -3,6 +3,7 @@ import { Activity } from "lucide-react";
 import { Link } from "react-router";
 
 import { ConnectionErrorState, InlineSpinner } from "../../common";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../ui/card";
 import { apiRequest, unwrapList } from "../../../services/apiClient";
 import { activityLabel } from "../../../utils/adminDashboard";
 import { errorStateVariant } from "../../../utils/errorStateVariant";
@@ -19,8 +20,9 @@ export default function RecentActivity() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["admin-dashboard", "recent-activity"],
-    queryFn: async () => unwrapList(await apiRequest("/audit-logs?per_page=5")),
+    queryKey: ["admin-dashboard", "recent-activity", "account"],
+    queryFn: async () =>
+      unwrapList(await apiRequest("/audit-logs?type=account&per_page=5")),
     retry: false,
   });
 
@@ -41,73 +43,68 @@ export default function RecentActivity() {
   }));
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
-      <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
+    <Card className="h-full overflow-hidden rounded-card shadow-card">
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
         <div>
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            Recent Account Activity
-          </h2>
-          <p className="mt-1 text-xs text-[#9CA3AF]">
-            Latest account and referral actions for MHO review.
-          </p>
+          <CardTitle>Recent Administrative Activity</CardTitle>
+          <CardDescription>
+            Latest account-management and administrator events.
+          </CardDescription>
         </div>
-
         <Link
           to="/admin/audit-logs"
-          className="text-xs font-semibold text-[#B91C1C] hover:text-[#7F1D1D] hover:underline"
+          className="shrink-0 text-xs font-semibold text-brand-700 hover:underline"
         >
           View Audit Logs
         </Link>
-      </div>
+      </CardHeader>
 
-      {isLoading ? (
-        <div className="px-6 py-8">
-          <InlineSpinner label="Loading activity..." />
-        </div>
-      ) : isError ? (
-        <ConnectionErrorState
-          size="compact"
-          variant={errorStateVariant(error)}
-          onRetry={() => refetch()}
-          retrying={isFetching}
-        />
-      ) : (
-        <div className="divide-y divide-[#F3F4F6]">
-          {recentActivities.length === 0 ? (
-            <div className="px-6 py-8 text-center text-sm text-[#9CA3AF]">
-              No audit activity yet.
-            </div>
-          ) : recentActivities.map((activity, index) => (
-            <div
-              key={activity.id ?? `${activity.action}-${activity.time}-${index}`}
-              className="flex items-start gap-4 px-6 py-4 hover:bg-[#F9FAFB]"
-            >
-              <div className="mt-0.5 rounded-lg bg-[#FEF2F2] p-2 text-[#B91C1C]">
-                <Activity size={15} />
-              </div>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="px-6 py-8">
+            <InlineSpinner label="Loading activity..." />
+          </div>
+        ) : isError ? (
+          <div className="px-4 pb-4">
+            <ConnectionErrorState
+              size="compact"
+              variant={errorStateVariant(error)}
+              onRetry={() => refetch()}
+              retrying={isFetching}
+            />
+          </div>
+        ) : recentActivities.length === 0 ? (
+          <p className="mx-6 mb-6 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-sm text-neutral-500">
+            No account activity yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-neutral-100 border-t border-neutral-200">
+            {recentActivities.map((activity, index) => (
+              <div
+                key={activity.id ?? `${activity.action}-${activity.time}-${index}`}
+                className="flex items-start gap-4 px-6 py-4 hover:bg-neutral-50"
+              >
+                <div className="mt-0.5 rounded-lg bg-neutral-100 p-2 text-ink-700">
+                  <Activity size={15} aria-hidden="true" />
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[#1A1A1A]">
-                  {activity.action}
-                </p>
-                <p className="mt-1 text-xs text-[#6B7280]">
-                  {activity.user}
-                </p>
-              </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-neutral-900">{activity.action}</p>
+                  <p className="mt-1 text-xs text-neutral-500">{activity.user}</p>
+                </div>
 
-              <div className="text-right">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                  {activity.type}
-                </span>
-                <p className="mt-1 text-[10px] text-[#9CA3AF]">
-                  {activity.time}
-                </p>
+                <div className="text-right">
+                  <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-700">
+                    {activity.type}
+                  </span>
+                  <p className="mt-1 text-[10px] text-neutral-500">{activity.time}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

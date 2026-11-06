@@ -33,6 +33,10 @@ class RhuVisitQueueService
 
     private const SEARCH_MAX_TOKENS = 5;
 
+    private const RECENT_PATIENTS_DEFAULT = 8;
+
+    private const RECENT_PATIENTS_MAX = 10;
+
     private const CLOSE_NOTE_MAX_LENGTH = 500;
 
     public function __construct(private readonly FacilityAccessService $facilityAccess)
@@ -435,6 +439,76 @@ class RhuVisitQueueService
         }
 
         return $this->withActiveVisitIds($rhuId, $patients->orderBy('id')->limit(10)->get());
+    }
+
+    /**
+     * Newest patients eligible for a direct walk-in from the check-in desk preview.
+     * Excludes anyone already in today's queue or with a Pending referral to this RHU
+     * (those arrivals belong in Incoming Referrals). Manual search is unchanged.
+     *
+     * @return list<array{patient: Patient, active_visit_id: int|null}>
+     */
+    public function recentPatients(User $user, ?int $limit = null): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $take = max(1, min(self::RECENT_PATIENTS_MAX, $limit ?? self::RECENT_PATIENTS_DEFAULT));
+
+        $patients = $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)
+            ->where(fn ($inactive) => $inactive->whereNull('status')->orWhere('status', '!=', 'inactive'))
+            ->whereDoesntHave('referrals', fn ($referrals) => $referrals
+                ->where('rural_health_unit_id', $rhuId)
+                ->where('status', Referral::STATUS_PENDING))
+            ->whereNotExists(function ($active) use ($rhuId): void {
+                $active->selectRaw('1')
+                    ->from((new RhuVisitQueueEntry)->getTable())
+                    ->whereColumn('patient_id', (new Patient)->getTable().'.id')
+                    ->where('rural_health_unit_id', $rhuId)
+                    ->whereNull('closed_at');
+            })
+            ->orderByDesc('id')
+            ->limit($take)
+            ->get();
+
+        return $this->withActiveVisitIds($rhuId, $patients);
+    }
+
+    /**
+     * Pending BHC referrals for a walk-in-eligible patient at this RHU.
+     * Intake identity only; status is not changed and no visit is created.
+     *
+     * @return array{count: int, referrals: list<array{referral_id: int, tracking_id: string|null, status: string, sending_bhc: string|null, referred_at: string|null}>}
+     */
+    public function pendingReferralsForCheckIn(User $user, int $patientId): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $patient = Patient::query()->whereKey($patientId)->firstOrFail();
+        abort_unless(
+            $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)->whereKey($patient->id)->exists(),
+            403,
+            self::DENIED_MESSAGE
+        );
+
+        $referrals = Referral::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->where('patient_id', $patient->id)
+            ->where('status', Referral::STATUS_PENDING)
+            ->orderBy('id')
+            ->get()
+            ->map(function (Referral $referral): array {
+                $summary = ReferralArrivalSummary::for($referral);
+
+                return [
+                    'referral_id' => $summary['referral_id'],
+                    'tracking_id' => $summary['tracking_id'],
+                    'status' => $summary['status'],
+                    'sending_bhc' => $summary['sending_bhc'],
+                    'referred_at' => $summary['referred_at'],
+                ];
+            })
+            ->values()
+            ->all();
+
+        return ['count' => count($referrals), 'referrals' => $referrals];
     }
 
     /**

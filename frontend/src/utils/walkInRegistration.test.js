@@ -5,7 +5,10 @@ import {
   isCheckInFlow,
   newCheckInKey,
   newWalkIn,
+  patientIdFromWalkInSearch,
   postSaveDestination,
+  registerForWalkInCheckInPath,
+  walkInCheckInPathForPatient,
   withCheckIn,
   withDuplicateConfirm,
 } from './walkInRegistration.js';
@@ -56,10 +59,27 @@ test('other errors are not duplicate prompts', () => {
   assert.equal(duplicatePrompt({ status: 409, code: 'POSSIBLE_DUPLICATE_PATIENT' }), null);
 });
 
-test('after saving, RHU registration returns to the queue without implying a check-in', () => {
-  assert.equal(postSaveDestination({ checkIn: true, patientsPath: '/rhu/patients', patientId: '9' }), '/rhu/patients');
-  assert.equal(postSaveDestination({ role: 'rhu', patientsPath: '/rhu/patients', patientId: '9' }), '/rhu/patients');
-  assert.equal(postSaveDestination({ checkIn: false, patientsPath: '/bhc/patients', patientId: '9' }), '/bhc/patients/9');
+test('check-in flow returns to Walk-in Check-in with the new patient selected', () => {
+  assert.equal(
+    postSaveDestination({ checkIn: true, patientsPath: '/rhu/patients', patientId: '9' }),
+    '/rhu/walk-in-check-in?patient_id=9',
+  );
+  assert.equal(
+    postSaveDestination({ role: 'rhu', patientsPath: '/rhu/patients', patientId: '9' }),
+    '/rhu/patients',
+  );
+  assert.equal(
+    postSaveDestination({ checkIn: false, patientsPath: '/bhc/patients', patientId: '9' }),
+    '/bhc/patients/9',
+  );
+});
+
+test('walk-in path helpers round-trip patient_id', () => {
+  assert.equal(registerForWalkInCheckInPath(), '/rhu/patients/add?check_in=1');
+  assert.equal(walkInCheckInPathForPatient(42), '/rhu/walk-in-check-in?patient_id=42');
+  assert.equal(patientIdFromWalkInSearch('?patient_id=42'), '42');
+  assert.equal(patientIdFromWalkInSearch(''), null);
+  assert.equal(patientIdFromWalkInSearch('?patient_id='), null);
 });
 
 test('duplicate confirmation does not attach a check-in command', () => {

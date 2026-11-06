@@ -46,10 +46,24 @@ class RhuVisitController extends Controller
         $query = $request->validate(['q' => ['nullable', 'string', 'max:100']])['q'] ?? '';
         $results = $this->visits->searchPatients($request->user(), $query);
 
-        return response()->json(['data' => array_map(fn (array $row): array => [
-            ...PatientIdentity::response($row['patient'], false),
-            'active_visit_id' => $row['active_visit_id'],
-        ], $results)]);
+        return response()->json(['data' => $this->presentCheckInPatients($results)]);
+    }
+
+    /** Newest walk-in-eligible patients for the check-in desk (identity + active visit only). */
+    public function recentPatients(Request $request)
+    {
+        $limit = $request->validate(['limit' => ['sometimes', 'integer', 'min:1', 'max:10']])['limit'] ?? null;
+        $results = $this->visits->recentPatients($request->user(), $limit);
+
+        return response()->json(['data' => $this->presentCheckInPatients($results)]);
+    }
+
+    /** Pending referrals for Walk-in Check-in. Does not change status or enqueue a visit. */
+    public function pendingReferrals(Request $request, int $patient)
+    {
+        return response()->json([
+            'data' => $this->visits->pendingReferralsForCheckIn($request->user(), $patient),
+        ]);
     }
 
     public function show(Request $request, int $visit)
@@ -114,5 +128,17 @@ class RhuVisitController extends Controller
             ],
             'patient' => PatientIdentity::response($entry->patient, false),
         ];
+    }
+
+    /**
+     * @param  list<array{patient: \App\Models\Patient, active_visit_id: int|null}>  $results
+     * @return list<array<string, mixed>>
+     */
+    private function presentCheckInPatients(array $results): array
+    {
+        return array_map(fn (array $row): array => [
+            ...PatientIdentity::response($row['patient'], false),
+            'active_visit_id' => $row['active_visit_id'],
+        ], $results);
     }
 }

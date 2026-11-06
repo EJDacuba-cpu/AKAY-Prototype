@@ -22,6 +22,9 @@ export function buildAttentionItems(attention) {
   const source = attention || {};
   const facilities = Array.isArray(source.facilities_without_staff) ? source.facilities_without_staff : [];
 
+  // Dashboard Needs Attention is limited to actionable MHO account/staff tasks.
+  // Recipient-awaiting invitations belong on the Pending Invitations KPI (`pending_invitations`),
+  // not here — `attention.invites` means invites that still need administrator review.
   const items = [
     {
       key: "resets",
@@ -32,8 +35,8 @@ export function buildAttentionItems(attention) {
     {
       key: "invites",
       count: count(source.invites),
-      noun: ["pending invite", "pending invites"],
-      href: "/admin/password-reset-requests?tab=invites",
+      noun: ["invite requiring review", "invites requiring review"],
+      href: "/admin/account-invites",
     },
     {
       key: "facilities",
@@ -41,12 +44,6 @@ export function buildAttentionItems(attention) {
       noun: ["facility without staff", "facilities without staff"],
       href: "/admin/staff-assignments",
       names: facilities.map((facility) => facility.name),
-    },
-    {
-      key: "stale",
-      count: count(source.stale_priority_referrals),
-      noun: ["priority referral pending over 2 days", "priority referrals pending over 2 days"],
-      href: "/admin/reports",
     },
   ];
 

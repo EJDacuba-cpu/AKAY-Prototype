@@ -255,17 +255,19 @@
 }
 .ehr-consult__review-sections {
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
 }
 .ehr-consult__review-card {
   min-width: 0;
   border-radius: var(--radius-modal);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 .ehr-consult__review-card-header {
   border-start-start-radius: inherit;
   border-start-end-radius: inherit;
   background: var(--color-surface);
+  padding-block: 0.5rem;
 }
 .ehr-consult__review-card h3 {
   font-size: 14px;
@@ -288,17 +290,14 @@
 .ehr-consult__review-card dd > span[class~="text-[#9CA3AF]"] {
   color: var(--color-text-muted);
 }
-@media (min-width: 1280px) {
-  .ehr-consult__review-sections {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-  .ehr-consult__review-card:first-child {
-    grid-column: 1 / -1;
-  }
-  .ehr-consult__review-card:not(:first-child) .ehr-consult__review-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+.ehr-consult__review-row {
+  grid-template-columns: minmax(8rem, 10rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding-block: 0.625rem;
+}
+@media (min-width: 640px) {
+  .ehr-consult__review-row {
+    grid-template-columns: minmax(8rem, 10rem) minmax(0, 1fr);
   }
 }
 

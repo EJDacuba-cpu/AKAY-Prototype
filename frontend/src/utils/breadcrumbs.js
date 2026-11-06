@@ -5,11 +5,12 @@ import { matchPath } from "react-router";
 // to the canonical routes below, so they are intentionally absent.
 const PARENT_TRAILS = [
   // Admin
-  ["/admin/users/add", [{ label: "Users", path: "/admin/users" }]],
-  ["/admin/doctors/add", [{ label: "Users", path: "/admin/users" }]],
+  ["/admin/users/add", [{ label: "Account Directory", path: "/admin/users" }]],
+  ["/admin/doctors/add", [{ label: "Account Directory", path: "/admin/users" }]],
+  ["/admin/staff-assignments/add", [{ label: "Staff Assignments", path: "/admin/staff-assignments" }]],
 
   // Barangay Health Center
-  ["/bhc/medicine-availability/:medicineId", [{ label: "Health Commodities", path: "/bhc/medicine-availability" }]],
+  ["/bhc/medicine-availability/:medicineId", [{ label: "Medicine and Supply", path: "/bhc/medicine-availability" }]],
   ["/bhc/patients/add", [{ label: "Patients", path: "/bhc/patients" }]],
   ["/bhc/patients/monitoring-requests/:requestId", [{ label: "Patients", path: "/bhc/patients?view=monitoring-requests" }]],
   ["/bhc/patients/:patientId", [{ label: "Patients", path: "/bhc/patients" }]],
@@ -52,9 +53,9 @@ const PARENT_TRAILS = [
   ],
   [
     "/rhu/medicine-management/add",
-    [{ label: "Health Commodities", path: "/rhu/medicine-management" }],
+    [{ label: "Medicine and Supply", path: "/rhu/medicine-management" }],
   ],
-  ["/rhu/medicine-management/:medicineId", [{ label: "Health Commodities", path: "/rhu/medicine-management" }]],
+  ["/rhu/medicine-management/:medicineId", [{ label: "Medicine and Supply", path: "/rhu/medicine-management" }]],
 ];
 
 // A consultation opened for a specific patient lives under that patient, even
@@ -89,7 +90,7 @@ export function getBreadcrumbs(pathname, title, search = "") {
   if (family && ["bhc", "rhu"].includes(family.params.role)) {
     const base = `/${family.params.role}/families`;
     const [householdId, action] = family.params["*"].split("/");
-    if (householdId) return [{ label: "Families", path: base }, ...(householdId !== "new" && action ? [{ label: "Family", path: `${base}/${householdId}` }] : []), current];
+    if (householdId) return [{ label: "Households", path: base }, ...(householdId !== "new" && action ? [{ label: "Household", path: `${base}/${householdId}` }] : []), current];
   }
   const patientTrail = getPatientConsultationTrail(pathname, search);
   if (patientTrail) return [...patientTrail, current];

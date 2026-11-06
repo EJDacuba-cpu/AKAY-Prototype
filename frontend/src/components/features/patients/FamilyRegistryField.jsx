@@ -97,7 +97,7 @@ export default function FamilyRegistryField({
 
   // The patient becomes the head, so a minor can't start a household of their own.
   const emptyActions = connection
-    ? <p className="text-xs text-gray-700">To start a separate household for an existing patient, use Add Family in the Families module.</p>
+    ? <p className="text-xs text-gray-700">To start a separate household for an existing patient, use Add Family in the Households module.</p>
     : eligibility.code === "minor"
     ? <p className="text-xs text-gray-700">{eligibility.reason}</p>
     : <div className="flex flex-col items-center gap-1.5">

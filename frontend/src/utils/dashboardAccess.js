@@ -17,11 +17,23 @@ export function navigationAllowed(user, path = "") {
     permissions.includes("clinical.history")
   ) return true;
   if (/^\/(bhc|rhu)\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
+  if (user?.role === "rhu" && /^\/rhu\/patient-intake(?:\/|$)/.test(path)) {
+    return permissions.includes("rhu.intake") || permissions.includes("rhu.manage") || permissions.includes("patients.register");
+  }
+  if (user?.role === "rhu" && /^\/rhu\/walk-in-check-in(?:\/|$)/.test(path)) {
+    return permissions.includes("patients.register");
+  }
   if (user?.role === "rhu" && /^\/rhu\/(incoming-referrals|qr-scanner|referrals\/[^/]+)(?:\/|$)/.test(path)) {
     return permissions.includes("rhu.intake") || permissions.includes("rhu.manage");
   }
   if (user?.role === "rhu" && /^\/rhu\/follow-ups(?:\/|$)/.test(path)) {
     return permissions.includes("followups.manage");
+  }
+  if (user?.role === "rhu" && /^\/rhu\/medicine-and-supply(?:\/|$)/.test(path)) {
+    return permissions.includes("inventory.view") || permissions.includes("items.dispense");
+  }
+  if (user?.role === "rhu" && /^\/rhu\/to-dispense(?:\/|$)/.test(path)) {
+    return permissions.includes("items.dispense");
   }
   const permission = /health-records|follow-ups|referrals|qr-scanner|programs/.test(path)
     ? "clinical.history"

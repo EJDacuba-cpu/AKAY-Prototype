@@ -1,3 +1,4 @@
+import "./sidebar-account-card.css";
 import {
   ChevronDown,
   ChevronRight,
@@ -6,7 +7,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import LogoMark, { LogoWordmark } from "./LogoMark";
 import { RESTRICTED_MESSAGE } from "../../common/access/RestrictedArea";
@@ -27,6 +28,7 @@ export default function DesktopSidebar({
   onToggle,
   onLogout,
 }) {
+  const navigate = useNavigate();
   const [hoverLabel, setHoverLabel] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
 
@@ -36,7 +38,7 @@ export default function DesktopSidebar({
       let changed = false;
       menuSections.forEach((section) => {
         section.items.forEach((item) => {
-          if (item.children?.length && isMenuActive(item.path) && !next[item.path]) {
+          if (item.children?.length && isMenuActive(item.path) && !Object.hasOwn(next, item.path)) {
             next[item.path] = true;
             changed = true;
           }
@@ -143,7 +145,7 @@ export default function DesktopSidebar({
                 const Icon = item.icon;
                 const active = isMenuActive(item.path);
                 const hasChildren = item.children?.length > 0;
-                const groupExpanded = active || expandedGroups[item.path];
+                const groupExpanded = expandedGroups[item.path] ?? active;
 
                 const content = (
                   <>
@@ -187,12 +189,15 @@ export default function DesktopSidebar({
                         type="button"
                         aria-label={item.label}
                         aria-expanded={groupExpanded}
-                        onClick={() =>
+                        onClick={() => {
+                          hideCollapsedLabel();
+                          if (!expanded) onToggle();
                           setExpandedGroups((current) => ({
                             ...current,
-                            [item.path]: !groupExpanded,
-                          }))
-                        }
+                            [item.path]: (!active && Boolean(item.defaultPath)) || !expanded || !groupExpanded,
+                          }));
+                          if (!active && item.defaultPath) navigate(item.defaultPath, { state: { openSidebarGroup: item.path } });
+                        }}
                         {...tooltipHandlers(item.label)}
                         className={`${navItemClass(active)} ${itemLayout}`}
                       >
@@ -213,6 +218,7 @@ export default function DesktopSidebar({
                               <Link
                                 key={child.path}
                                 to={child.path}
+                                aria-current={childActive ? "page" : undefined}
                                 className={childLinkClass(childActive)}
                               >
                                 {childActive && (
@@ -247,12 +253,16 @@ export default function DesktopSidebar({
 
       <div className="shrink-0 p-3 pt-2">
         {expanded && (
-          <div className="mb-1.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-neutral-900">
+          <div className="sidebar-account-card">
+            <span className="sidebar-account-shape" aria-hidden="true" />
+            <div className="relative min-w-0">
+              <p className="truncate text-[13px] font-semibold leading-5 text-ink-800" title={user.name}>
                 {user.name}
               </p>
-              <p className="truncate text-[11px] text-neutral-500">
+              <p
+                className="truncate text-[11px] leading-4 text-brand-800"
+                title={[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
+              >
                 {[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
               </p>
             </div>

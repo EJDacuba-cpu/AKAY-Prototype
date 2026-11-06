@@ -17,6 +17,8 @@ class RegistrationRelationshipLinkTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $patientSequence = 0;
+
     private function staff(array $permissions = ['patients.register', 'families.view', 'families.manage']): User
     {
         $facility = BarangayHealthCenter::create(['name' => 'Link BHC '.uniqid()]);
@@ -33,7 +35,17 @@ class RegistrationRelationshipLinkTest extends TestCase
 
     private function register(array $household, array $patient = [])
     {
-        return $this->postJson('/api/patients', [...['first_name' => 'Adult', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '1990-01-01'], ...$patient, 'household' => $household]);
+        $this->patientSequence++;
+        // Unique defaults avoid RHU possible-duplicate 409s across multi-patient fixtures.
+        // Explicit $patient keys still win (for example sex or a minor birthdate).
+        $defaults = [
+            'first_name' => 'Adult'.$this->patientSequence,
+            'last_name' => 'Patient'.$this->patientSequence,
+            'sex' => 'Female',
+            'birthdate' => '1990-01-01',
+        ];
+
+        return $this->postJson('/api/patients', [...$defaults, ...$patient, 'household' => $household]);
     }
 
     private function newHead(): array

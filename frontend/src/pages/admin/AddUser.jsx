@@ -333,11 +333,11 @@ export default function AddUser() {
       open
       tone={created.inviteSent ? "success" : "warning"}
       title={created.inviteSent ? "Account created with setup pending" : "Account created, invitation not sent"}
-      description={created.inviteSent ? "The account was saved as Active with setup pending. An invitation was emailed; they cannot sign in until they set a password from that message. The mail provider accepting the message is not proof it arrived." : "The account was saved as Active with setup pending, but the invitation email could not be sent. Resend it from Password & Invites after checking the address."}
+      description={created.inviteSent ? "The account was saved as Active with setup pending. An invitation was emailed; they cannot sign in until they set a password from that message. The mail provider accepting the message is not proof it arrived." : "The account was saved as Active with setup pending, but the invitation email could not be sent. Resend it from Invites after checking the address."}
       onClose={() => navigate("/admin/users")}
       actions={created.inviteSent
         ? [{ label: "Add another account", onClick: addAnother }, { label: "Done", variant: "primary", onClick: () => navigate("/admin/users") }]
-        : [{ label: "Done", onClick: () => navigate("/admin/users") }, { label: "Resend from Password & Invites", variant: "primary", onClick: () => navigate("/admin/password-reset-requests?tab=invites") }]}
+        : [{ label: "Done", onClick: () => navigate("/admin/users") }, { label: "Resend from Invites", variant: "primary", onClick: () => navigate("/admin/account-invites") }]}
     />}
   </DashboardLayout>;
 }

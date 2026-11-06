@@ -488,37 +488,6 @@ class FacilityAccessService
         abort_unless($allowed, 403, self::DENIED_MESSAGE);
     }
 
-    public function canDispenseMedicine(
-        User $user,
-        Medicine $medicine,
-        HealthRecord $record
-    ): bool {
-        return $this->canDispenseMedicineForBarangayHealthCenter(
-            $user,
-            $medicine,
-            $record->barangay_health_center_id
-        );
-    }
-
-    public function canDispenseMedicineForBarangayHealthCenter(
-        User $user,
-        Medicine $medicine,
-        mixed $barangayHealthCenterId
-    ): bool {
-        return $user->isBhc()
-            && ActionPermissions::allows($user, 'items.dispense')
-            && $this->hasValidFacilityAssignment($user)
-            && $medicine->rural_health_unit_id === null
-            && $this->sameAssignedId(
-                $barangayHealthCenterId,
-                $user->barangay_health_center_id
-            )
-            && $this->sameAssignedId(
-                $medicine->barangay_health_center_id,
-                $user->barangay_health_center_id
-            );
-    }
-
     /**
      * Parent of a record this RHU was referred: read-only previous-visit context.
      * Unrelated BHC records stay outside this set.

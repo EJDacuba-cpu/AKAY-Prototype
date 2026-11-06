@@ -5,21 +5,18 @@ import { FileText, Printer } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
-  DatePickerField,
   PageStateWrapper,
   RefreshingIndicator,
-  SegmentedFilter,
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
+import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { getCurrentUser } from "../../utils/auth";
 import {
-  PERIOD_PRESETS,
-  REPORT_CATEGORIES,
   buildBhcReport,
   normalizeReportCategory,
-  resolveReportPeriod,
 } from "../../utils/bhcReporting";
 import { queryKeys } from "../../utils/queryKeys";
 import { getAllHealthRecords } from "../../services/healthRecordService";
@@ -29,16 +26,18 @@ import { getAllReferrals } from "../../services/referrals";
 export default function BHCReports() {
   const user = getCurrentUser();
   const facilityName = user?.facility || user?.assignedBarangayHealthCenter || "Barangay Health Center";
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const category = normalizeReportCategory(searchParams.get("type"));
-  const [periodPreset, setPeriodPreset] = useState("monthly");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-
-  const period = useMemo(
-    () => resolveReportPeriod({ preset: periodPreset, from: customFrom, to: customTo }),
-    [periodPreset, customFrom, customTo],
-  );
+  const [appliedPeriod, setAppliedPeriod] = useState(() => {
+    const initial = prepareBhcReportPeriod({ preset: "monthly" });
+    return {
+      selection: { ...initial.selection, ageGroup: "all" },
+      period: initial.period,
+    };
+  });
+  const period = appliedPeriod.period;
+  const ageGroup = appliedPeriod.selection?.ageGroup || "all";
+  const isNutrition = category === "nutrition";
 
   const {
     data: patients = [],
@@ -88,13 +87,10 @@ export default function BHCReports() {
         referrals: Array.isArray(referrals) ? referrals : [],
         category,
         period,
+        ageGroup,
       }),
-    [patients, records, referrals, category, period],
+    [patients, records, referrals, category, period, ageGroup],
   );
-
-  function selectCategory(slug) {
-    setSearchParams({ type: slug });
-  }
 
   function retryReports() {
     refetchPatients();
@@ -127,12 +123,29 @@ export default function BHCReports() {
         <div className="flex flex-col gap-5">
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-xl font-bold text-neutral-900">Reports & Analytics</h1>
-              <p className="mt-1 text-sm text-neutral-500">
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                {category === "all"
+                  ? "Reports & Analytics"
+                  : isNutrition
+                    ? "Nutrition Report"
+                    : report.categoryLabel}
+              </h1>
+              <p className="mt-1 text-[13px] text-neutral-600">
                 {facilityName} · {period.label}
+                {isNutrition && ageGroup !== "all" ? ` · Age ${ageGroup}` : ""}
               </p>
+              {isNutrition ? (
+                <p className="mt-1 max-w-2xl text-[12px] text-neutral-500">
+                  Adult BMI categories apply only to assessments at age 18 or older. Younger patients are Not Applicable for status cards.
+                </p>
+              ) : null}
             </div>
-            <div className="no-print flex flex-wrap items-center gap-2">
+            <div className="no-print flex flex-wrap items-center justify-end gap-2">
+              <BhcReportPeriodFilter
+                applied={appliedPeriod}
+                onApply={setAppliedPeriod}
+                includeAgeGroup={isNutrition}
+              />
               <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>
                 <FileText size={14} />
                 Export PDF
@@ -143,48 +156,6 @@ export default function BHCReports() {
               </Button>
             </div>
           </header>
-
-          <div className="no-print flex flex-col gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <SegmentedFilter
-                label="Reporting period"
-                visibleLabel="Reporting period"
-                value={periodPreset}
-                onChange={setPeriodPreset}
-                options={PERIOD_PRESETS}
-              />
-              {periodPreset === "custom" ? (
-                <div className="flex flex-wrap items-end gap-3">
-                  <DatePickerField
-                    label="From"
-                    name="report-from"
-                    value={customFrom}
-                    onChange={setCustomFrom}
-                    disableFuture
-                  />
-                  <DatePickerField
-                    label="To"
-                    name="report-to"
-                    value={customTo}
-                    onChange={setCustomTo}
-                    disableFuture
-                  />
-                  {!customFrom ? (
-                    <p className="pb-2 text-xs text-neutral-500">Choose a start date for the custom range.</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <div className="-mx-1 overflow-x-auto px-1">
-              <SegmentedFilter
-                label="Report category"
-                value={REPORT_CATEGORIES.find((item) => item.key === category)?.slug || "all"}
-                onChange={selectCategory}
-                wrap
-                options={REPORT_CATEGORIES.map((item) => ({ value: item.slug, label: item.label }))}
-              />
-            </div>
-          </div>
 
           {refreshing ? (
             <div className="no-print flex justify-end">
@@ -244,9 +215,11 @@ export default function BHCReports() {
           <PrintReport
             facilityName={facilityName}
             periodLabel={period.label}
-            categoryLabel={report.categoryLabel}
+            categoryLabel={isNutrition ? "Nutrition Report" : report.categoryLabel}
             cards={report.cards}
             summary={report.summary}
+            notes={report.notes}
+            ageGroup={isNutrition ? ageGroup : ""}
           />
         </div>
       </PageStateWrapper>
@@ -254,17 +227,25 @@ export default function BHCReports() {
   );
 }
 
-function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary }) {
+function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary, notes = [], ageGroup = "" }) {
   return (
     <section id="bhc-report-print" className="print-only">
       <h1 className="text-base font-bold text-neutral-900">AKAY BHC Reports</h1>
       <p className="mt-1 text-[12px] text-neutral-600">{facilityName}</p>
       <p className="mt-1 text-[12px] text-neutral-600">
         {categoryLabel} · {periodLabel}
+        {ageGroup && ageGroup !== "all" ? ` · Age ${ageGroup}` : ""}
       </p>
       <p className="mt-1 text-[11px] text-neutral-500">
         Generated {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
       </p>
+      {notes.length ? (
+        <ul className="mt-3 list-disc pl-4 text-[11px] text-neutral-600">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
       <table className="mt-4 w-full text-left text-[12px]">
         <thead>
           <tr>

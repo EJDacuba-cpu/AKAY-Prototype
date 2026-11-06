@@ -4,7 +4,54 @@
  * scheduled for), active monitoring with no pending follow-up, and the
  * confirmed conditions BHC is recommended to start monitoring. A monitoring's
  * `conditionStatus` is null (and `legacy` true) when it predates confirmation.
+ * `nutritionCare` is the Nutrition Care summary; a missing payload stays
+ * Not Enrolled with an empty measurement history.
  */
+function mapNutritionMeasurementHistory(rows) {
+  const seen = new Set();
+  const history = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const healthRecordId = row?.health_record_id ?? row?.healthRecordId;
+    if (healthRecordId === undefined || healthRecordId === null || seen.has(String(healthRecordId))) continue;
+    seen.add(String(healthRecordId));
+    history.push({
+      healthRecordId,
+      dateRecorded: row.date_recorded ?? row.dateRecorded ?? "",
+      weightKg: row.weight_kg ?? row.weightKg ?? null,
+      heightCm: row.height_cm ?? row.heightCm ?? null,
+      bmi: row.bmi ?? null,
+    });
+  }
+  return history;
+}
+
+function mapNutritionClosures(rows) {
+  return (Array.isArray(rows) ? rows : []).map((closure) => ({
+    id: closure?.id ?? null,
+    reason: closure?.reason || "",
+    closedOn: closure?.closed_on || closure?.closedOn || null,
+    note: closure?.note ?? null,
+    closedByName: closure?.closed_by_name || closure?.closedByName || null,
+    startedHealthRecordId: closure?.started_health_record_id ?? closure?.startedHealthRecordId ?? null,
+    enrolledOn: closure?.enrolled_on || closure?.enrolledOn || "",
+  }));
+}
+
+export function mapNutritionCare(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  return {
+    status: source.status || "Not Enrolled",
+    enrolled: source.enrolled === true,
+    enrolledOn: source.enrolled_on || source.enrolledOn || null,
+    latestWeightKg: source.latest_weight_kg ?? source.latestWeightKg ?? null,
+    latestHeightCm: source.latest_height_cm ?? source.latestHeightCm ?? null,
+    latestBmi: source.latest_bmi ?? source.latestBmi ?? null,
+    latestBmiCategory: source.latest_bmi_category ?? source.latestBmiCategory ?? null,
+    measurementHistory: mapNutritionMeasurementHistory(source.measurement_history || source.measurementHistory),
+    closures: mapNutritionClosures(source.closures),
+  };
+}
+
 export function mapCareOverview(data) {
   const source = data && typeof data === "object" ? data : {};
   return {
@@ -53,5 +100,6 @@ export function mapCareOverview(data) {
       confirmedAt: r.confirmed_at,
       recommendedAt: r.recommended_at,
     })),
+    nutritionCare: mapNutritionCare(source.nutrition_care),
   };
 }

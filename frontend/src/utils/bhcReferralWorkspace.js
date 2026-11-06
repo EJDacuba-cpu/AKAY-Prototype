@@ -1,5 +1,24 @@
-export const TAB_SENT = "sent";
-export const TAB_WAITING = "waiting";
+export const VIEW_SENT = "sent";
+export const VIEW_WAITING = "waiting";
+/** @deprecated Prefer VIEW_SENT */
+export const TAB_SENT = VIEW_SENT;
+/** @deprecated Prefer VIEW_WAITING */
+export const TAB_WAITING = VIEW_WAITING;
+
+export function normalizeReferralView(searchParams) {
+  const params =
+    searchParams instanceof URLSearchParams
+      ? searchParams
+      : new URLSearchParams(searchParams || "");
+  const view = params.get("view");
+  const tab = params.get("tab");
+  if (view === VIEW_WAITING || tab === VIEW_WAITING) return VIEW_WAITING;
+  return VIEW_SENT;
+}
+
+export function referralViewSearch(view) {
+  return view === VIEW_WAITING ? `?view=${VIEW_WAITING}` : "";
+}
 
 export const WAITING_EMPTY_TITLE = "No referrals waiting to submit.";
 export const WAITING_EMPTY_DESCRIPTION =
@@ -70,8 +89,12 @@ export function discardReasonError(reason) {
 }
 
 export default {
+  VIEW_SENT,
+  VIEW_WAITING,
   TAB_SENT,
   TAB_WAITING,
+  normalizeReferralView,
+  referralViewSearch,
   waitingHoldCard,
   consultationFinalizeLabel,
   unavailableReferralGuidance,

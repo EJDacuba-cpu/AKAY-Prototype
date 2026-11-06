@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
@@ -7,19 +7,22 @@ import {
   ActionMenu,
   ConnectionErrorState,
   DataTableEmptyState,
-  ModuleToolbar,
   ModuleTableCard,
+  PlainStatusStamp,
+  SearchField,
+  SearchFilterCluster,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
 import { Button } from "../../components/ui/button";
+import ReferralListFilters from "../../components/features/referrals/ReferralListFilters";
 import { getReferrals } from "../../services/referrals";
 import { getReferralHolds } from "../../services/referralHolds";
 import {
-  TAB_SENT,
-  TAB_WAITING,
+  VIEW_WAITING,
   WAITING_EMPTY_DESCRIPTION,
   WAITING_EMPTY_TITLE,
+  normalizeReferralView,
   waitingHoldCard,
 } from "../../utils/bhcReferralWorkspace";
 import {
@@ -38,13 +41,14 @@ import usePagedRows from "../../hooks/usePagedRows";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_FILTER_OPTIONS,
-  getAttentionBadgeClass,
+  ATTENTION_PRIORITY,
   getReferralAttention,
   normalizeAttention,
 } from "../../utils/referralAttention";
 import { errorStateVariant } from "../../utils/errorStateVariant";
+import { copyText } from "../../utils/clipboard";
 
-const DEFAULT_FILTERS = {
+const SENT_DEFAULT_FILTERS = {
   search: "",
   dateRange: "all",
   dateFrom: "",
@@ -54,6 +58,22 @@ const DEFAULT_FILTERS = {
   receivingFacility: "",
 };
 
+const WAITING_DEFAULT_FILTERS = {
+  search: "",
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
+  urgency: ATTENTION_FILTER_ALL,
+  receivingFacility: "",
+};
+
+const DATE_PRESETS = [
+  { value: "all", label: "All dates" },
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This week" },
+  { value: "this_month", label: "This month" },
+  { value: "custom", label: "Custom date" },
+];
 
 function getReferralClassification(referral) {
   return formatDisplayValue(
@@ -118,11 +138,29 @@ function getSubmittedDate(referral) {
   );
 }
 
+function getHoldDate(hold) {
+  return getDateValue(hold.consultationDate || hold.createdAt);
+}
+
+function getHoldUrgency(hold) {
+  return normalizeAttention(hold.urgencyLevel || hold.urgency);
+}
+
 export default function Referrals() {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [sentFilters, setSentFilters] = useState(SENT_DEFAULT_FILTERS);
+  const [waitingFilters, setWaitingFilters] = useState(WAITING_DEFAULT_FILTERS);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab =
-    searchParams.get("tab") === TAB_WAITING ? TAB_WAITING : TAB_SENT;
+  const activeView = normalizeReferralView(searchParams);
+  const isWaiting = activeView === VIEW_WAITING;
+  const pageTitle = isWaiting ? "Waiting to Submit" : "Sent Referrals";
+
+  useEffect(() => {
+    if (searchParams.get("tab") !== VIEW_WAITING) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    next.set("view", VIEW_WAITING);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const {
     data: referralsData = [],
@@ -136,10 +174,11 @@ export default function Referrals() {
     retry: false,
   });
 
-  // DOC-14 blocked attempts waiting on RHU availability (plan 4.3/4.4). Same
-  // data source as the notification bell, surfaced here so a BHW does not
-  // have to wait for the push.
-  const { data: referralHoldsData = [] } = useQuery({
+  const {
+    data: referralHoldsData = [],
+    isLoading: holdsLoading,
+    isFetching: holdsFetching,
+  } = useQuery({
     queryKey: queryKeys.referralHolds(),
     queryFn: getReferralHolds,
     retry: false,
@@ -153,10 +192,11 @@ export default function Referrals() {
     () => (Array.isArray(referralsData) ? referralsData : []),
     [referralsData],
   );
-  const loading = isLoading && referrals.length === 0;
-  const hasLoadError = Boolean(loadError) && !loading;
+  const loading =
+    (isWaiting ? holdsLoading && referralHolds.length === 0 : isLoading && referrals.length === 0);
+  const hasLoadError = Boolean(loadError) && !loading && !isWaiting;
 
-  const receivingFacilityOptions = useMemo(
+  const sentFacilityOptions = useMemo(
     () =>
       Array.from(
         new Set(referrals.map(getReferralDestination).filter(Boolean)),
@@ -164,12 +204,24 @@ export default function Referrals() {
     [referrals],
   );
 
+  const waitingFacilityOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          referralHolds
+            .map((hold) => hold.ruralHealthUnitName || waitingHoldCard(hold).receivingRhu)
+            .filter(Boolean),
+        ),
+      ).sort(),
+    [referralHolds],
+  );
+
   const filteredReferrals = useMemo(() => {
     return referrals.filter((referral) => {
-      const searchTerm = filters.search.toLowerCase();
+      const searchTerm = sentFilters.search.toLowerCase();
       const patientName = getReferralPatientName(referral).toLowerCase();
       const matchesSearch =
-        !filters.search ||
+        !sentFilters.search ||
         patientName.includes(searchTerm) ||
         referral.trackingId?.toLowerCase().includes(searchTerm) ||
         referral.chiefComplaint?.toLowerCase().includes(searchTerm) ||
@@ -177,20 +229,20 @@ export default function Referrals() {
 
       const matchesStatus = matchesReferralStatus(
         referral.status,
-        filters.status,
+        sentFilters.status,
       );
       const matchesUrgency =
-        filters.urgency === ATTENTION_FILTER_ALL ||
-        getReferralUrgency(referral) === filters.urgency;
+        sentFilters.urgency === ATTENTION_FILTER_ALL ||
+        getReferralUrgency(referral) === sentFilters.urgency;
       const matchesFacility =
-        !filters.receivingFacility ||
-        getReferralDestination(referral) === filters.receivingFacility;
+        !sentFilters.receivingFacility ||
+        getReferralDestination(referral) === sentFilters.receivingFacility;
       const matchesDate = isDateInPreset(
         getSubmittedDate(referral),
-        filters.dateRange,
+        sentFilters.dateRange,
         {
-          from: filters.dateFrom,
-          to: filters.dateTo,
+          from: sentFilters.dateFrom,
+          to: sentFilters.dateTo,
         },
       );
 
@@ -202,97 +254,144 @@ export default function Referrals() {
         matchesDate
       );
     });
-  }, [referrals, filters]);
+  }, [referrals, sentFilters]);
+
+  const filteredHolds = useMemo(() => {
+    return referralHolds.filter((hold) => {
+      const card = waitingHoldCard(hold);
+      const searchTerm = waitingFilters.search.toLowerCase();
+      const matchesSearch =
+        !waitingFilters.search ||
+        card.patientName.toLowerCase().includes(searchTerm) ||
+        card.reason.toLowerCase().includes(searchTerm) ||
+        String(hold.chiefComplaint || "")
+          .toLowerCase()
+          .includes(searchTerm);
+
+      const urgency = getHoldUrgency(hold);
+      const matchesUrgency =
+        waitingFilters.urgency === ATTENTION_FILTER_ALL ||
+        urgency === waitingFilters.urgency;
+      const matchesFacility =
+        !waitingFilters.receivingFacility ||
+        card.receivingRhu === waitingFilters.receivingFacility;
+      const matchesDate = isDateInPreset(getHoldDate(hold), waitingFilters.dateRange, {
+        from: waitingFilters.dateFrom,
+        to: waitingFilters.dateTo,
+      });
+
+      return matchesSearch && matchesUrgency && matchesFacility && matchesDate;
+    });
+  }, [referralHolds, waitingFilters]);
 
   const {
-    page: currentPage,
-    setPage: setCurrentPage,
-    totalPages,
+    page: sentPage,
+    setPage: setSentPage,
+    totalPages: sentTotalPages,
     pageRows: paginatedReferrals,
-  } = usePagedRows(filteredReferrals, filters);
+  } = usePagedRows(filteredReferrals, sentFilters);
 
-  const dropdownFilters = [
+  const {
+    page: waitingPage,
+    setPage: setWaitingPage,
+    totalPages: waitingTotalPages,
+    pageRows: paginatedHolds,
+  } = usePagedRows(filteredHolds, waitingFilters);
+
+  const sentFilterFields = [
     {
       key: "dateRange",
       label: "Referral Date",
-      value: filters.dateRange,
-      dateFromValue: filters.dateFrom,
-      dateToValue: filters.dateTo,
       resetValue: "all",
       type: "datePresets",
-      presets: [
-        { value: "all", label: "All dates" },
-        { value: "today", label: "Today" },
-        { value: "this_week", label: "This week" },
-        { value: "this_month", label: "This month" },
-        { value: "custom", label: "Custom date" },
-      ],
+      presets: DATE_PRESETS,
+      fullWidth: true,
     },
     {
       key: "status",
       label: "Status",
-      value: filters.status,
       resetValue: "All",
-      type: "select",
-      options: [
-        "All",
-        "Pending",
-        "Received",
-        "Completed",
-        "No-Show",
-      ],
+      options: ["All", "Pending", "Received", "Completed", "No-Show"],
     },
     {
       key: "urgency",
       label: "Urgency",
-      value: filters.urgency,
       resetValue: ATTENTION_FILTER_ALL,
-      type: "select",
       options: ATTENTION_FILTER_OPTIONS,
     },
     {
       key: "receivingFacility",
       label: "Receiving Facility",
-      value: filters.receivingFacility,
       resetValue: "",
-      type: "select",
       placeholder: "All Facilities",
-      options: receivingFacilityOptions,
+      options: sentFacilityOptions,
+      fullWidth: true,
     },
   ];
-  const activeFilters = createActiveFilterChips(filters, dropdownFilters);
-  const activeFilterCount = activeFilters.length;
 
-  function updateFilter(key, value) {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  }
+  const waitingFilterFields = [
+    {
+      key: "dateRange",
+      label: "Held Date",
+      resetValue: "all",
+      type: "datePresets",
+      presets: DATE_PRESETS,
+      fullWidth: true,
+    },
+    {
+      key: "urgency",
+      label: "Urgency",
+      resetValue: ATTENTION_FILTER_ALL,
+      options: ATTENTION_FILTER_OPTIONS,
+    },
+    {
+      key: "receivingFacility",
+      label: "Receiving Facility",
+      resetValue: "",
+      placeholder: "All Facilities",
+      options: waitingFacilityOptions,
+      fullWidth: true,
+    },
+  ];
+
+  const activeFilters = createActiveFilterChips(
+    isWaiting ? waitingFilters : sentFilters,
+    (isWaiting ? waitingFilterFields : sentFilterFields).map((field) => ({
+      ...field,
+      value: (isWaiting ? waitingFilters : sentFilters)[field.key],
+      dateFromValue: (isWaiting ? waitingFilters : sentFilters).dateFrom,
+      dateToValue: (isWaiting ? waitingFilters : sentFilters).dateTo,
+    })),
+  );
+  const activeFilterCount = activeFilters.length;
+  const filters = isWaiting ? waitingFilters : sentFilters;
+  const setFilters = isWaiting ? setWaitingFilters : setSentFilters;
+  const defaults = isWaiting ? WAITING_DEFAULT_FILTERS : SENT_DEFAULT_FILTERS;
+  const filterFields = isWaiting ? waitingFilterFields : sentFilterFields;
 
   function clearFilters() {
-    setFilters(DEFAULT_FILTERS);
+    setFilters(defaults);
   }
 
   function removeFilter(key) {
     const resetValues = {
-      search: "",
-      dateRange: "all",
-      dateFrom: "",
-      dateTo: "",
-      status: "All",
-      urgency: ATTENTION_FILTER_ALL,
-      receivingFacility: "",
+      ...defaults,
     };
     if (key === "dateRange") {
       setFilters((prev) => ({
         ...prev,
-        dateRange: "all",
+        dateRange: defaults.dateRange,
         dateFrom: "",
         dateTo: "",
       }));
       return;
     }
-
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
+
+  const narrowed = Boolean(filters.search.trim()) || activeFilterCount > 0;
+  const resultCount = isWaiting ? filteredHolds.length : filteredReferrals.length;
+  const totalCount = isWaiting ? referralHolds.length : referrals.length;
 
   if (hasLoadError) {
     return (
@@ -307,182 +406,311 @@ export default function Referrals() {
     );
   }
 
-  function selectTab(tab) {
-    const next = new URLSearchParams(searchParams);
-    if (tab === TAB_WAITING) next.set("tab", TAB_WAITING);
-    else next.delete("tab");
-    setSearchParams(next, { replace: true });
-  }
-
   return (
-    <DashboardLayout role="bhc" title="Referrals">
-      <SoftLoadingArea skeleton="table"
+    <DashboardLayout role="bhc" title={pageTitle}>
+      <SoftLoadingArea
+        skeleton="table"
         isLoading={loading}
-        message="Loading referrals..."
+        message={isWaiting ? "Loading waiting referrals..." : "Loading referrals..."}
         scope="area"
       >
         {!loading ? (
-          <div
-            role="tablist"
-            aria-label="Referral lists"
-            className="mb-3 flex items-center gap-1 shadow-[inset_0_-1px_0_#E5E7EB]"
-          >
-            {[
-              { key: TAB_SENT, label: "Sent Referrals", count: referrals.length },
-              { key: TAB_WAITING, label: "Waiting to Submit", count: referralHolds.length },
-            ].map((tab) => {
-              const active = tab.key === activeTab;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => selectTab(tab.key)}
-                  className={`inline-flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 pb-2.5 pt-2 text-[13px] font-medium ${
-                    active
-                      ? "border-[#DC2626] text-[#111827]"
-                      : "border-transparent text-[#6B7280] hover:border-[#D1D5DB] hover:text-[#111827]"
-                  }`}
-                >
-                  {tab.label}
-                  <span
-                    className={`rounded-sm px-1.5 py-px text-[11px] font-medium tabular-nums ${
-                      active ? "bg-[#FEF2F2] text-[#B91C1C]" : "bg-[#F3F4F6] text-[#6B7280]"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="mb-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                  {isWaiting ? "Waiting to Submit" : "Sent Referrals"}
+                </h1>
+                <p className="mt-1 text-[13px] text-neutral-600">
+                  {isWaiting
+                    ? "Unsent referrals waiting on RHU doctor availability."
+                    : "Track submitted referrals and RHU updates."}
+                </p>
+              </div>
+              <SearchFilterCluster
+                search={
+                  <SearchField
+                    value={filters.search}
+                    onChange={(search) =>
+                      setFilters((current) => ({ ...current, search }))
+                    }
+                    placeholder={
+                      isWaiting
+                        ? "Search patient, reason, or complaint"
+                        : "Search patient, ID, or complaint"
+                    }
+                    label={isWaiting ? "Search waiting referrals" : "Search referrals"}
+                  />
+                }
+                filter={
+                  <ReferralListFilters
+                    fields={filterFields}
+                    applied={filters}
+                    activeCount={activeFilterCount}
+                    activeFilters={activeFilters}
+                    onApply={(next) =>
+                      setFilters((current) => ({ ...current, ...next }))
+                    }
+                    onRemoveFilter={removeFilter}
+                    onClearAll={clearFilters}
+                  />
+                }
+              />
+            </div>
           </div>
         ) : null}
 
-        {activeTab === TAB_WAITING ? (
-          <WaitingToSubmitList holds={referralHolds} />
-        ) : (
+        {isWaiting ? (
+          loading ? null : (
+            <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
+                {`${resultCount} of ${totalCount} waiting`}
+              </p>
+              {holdsFetching && referralHolds.length > 0 ? (
+                <span className="text-xs text-neutral-500">Updating…</span>
+              ) : null}
+            </div>
+            <ModuleTableCard
+              minWidth="min-w-[1000px]"
+              fixedRows
+              refreshing={holdsFetching && referralHolds.length > 0}
+              footer={
+                <TablePagination
+                  currentPage={waitingPage}
+                  totalPages={waitingTotalPages}
+                  onPageChange={setWaitingPage}
+                />
+              }
+            >
+              <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                <tr>
+                  <th className="px-4">Patient</th>
+                  <th className="px-3">Consultation</th>
+                  <th className="px-3">RHU</th>
+                  <th className="px-3">Urgency</th>
+                  <th className="px-3">Reason</th>
+                  <th className="px-2 text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {filteredHolds.length > 0 ? (
+                  paginatedHolds.map((hold) => {
+                    const card = waitingHoldCard(hold);
+                    return (
+                      <tr
+                        key={card.id}
+                        className="h-14 transition-colors hover:bg-neutral-50"
+                      >
+                        <td className="px-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink-800">
+                              {card.patientName}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] text-warning-700">
+                              {card.status}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 text-sm text-neutral-600">
+                          {formatDate(card.consultationDate, "—")}
+                        </td>
+                        <td className="px-3 text-sm text-neutral-600">
+                          {card.receivingRhu}
+                        </td>
+                        <td className="px-3">
+                          <UrgencyBadge urgency={getHoldUrgency(hold)} />
+                        </td>
+                        <td className="max-w-[240px] px-3">
+                          <p className="truncate text-sm text-ink-800" title={card.reason}>
+                            {card.reason}
+                          </p>
+                        </td>
+                        <td className="px-2 text-right">
+                          <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                            <Button
+                              asChild
+                              variant="secondary"
+                              size="compact"
+                              className="rounded-full"
+                            >
+                              <Link to={card.detailsPath}>{card.viewLabel}</Link>
+                            </Button>
+                            <Button asChild variant="brand" size="compact">
+                              <Link to={card.submitPath}>{card.submitLabel}</Link>
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <DataTableEmptyState
+                    colSpan={6}
+                    icon={<ClipboardList size={20} className="text-[#94A3B8]" />}
+                    title={
+                      narrowed
+                        ? "No waiting referrals match"
+                        : WAITING_EMPTY_TITLE
+                    }
+                    description={
+                      narrowed
+                        ? "Try a different search, or clear filters to see the full list again."
+                        : WAITING_EMPTY_DESCRIPTION
+                    }
+                    action={
+                      narrowed ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={clearFilters}
+                        >
+                          Clear search and filters
+                        </Button>
+                      ) : null
+                    }
+                  />
+                )}
+              </tbody>
+            </ModuleTableCard>
+            </>
+          )
+        ) : loading ? null : (
           <>
-        {!loading ? (
-          <ModuleToolbar
-            searchValue={filters.search}
-            onSearchChange={(value) => updateFilter("search", value)}
-            searchPlaceholder="Search by patient, ID, or complaint..."
-            filters={dropdownFilters}
-            activeFilterCount={activeFilterCount}
-            activeFilters={activeFilters}
-            onApplyFilters={(nextFilters) =>
-              setFilters((prev) => ({ ...prev, ...nextFilters }))
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
+              {`${resultCount} of ${totalCount} referrals`}
+            </p>
+            {isFetching && referrals.length > 0 ? (
+              <span className="text-xs text-neutral-500">Updating…</span>
+            ) : null}
+          </div>
+          <ModuleTableCard
+            minWidth="min-w-[640px]"
+            fixedRows
+            refreshing={isFetching && referrals.length > 0}
+            footer={
+              <TablePagination
+                currentPage={sentPage}
+                totalPages={sentTotalPages}
+                onPageChange={setSentPage}
+              />
             }
-            onClearFilters={clearFilters}
-            onRemoveFilter={removeFilter}
-            filterDescription="Narrow the referrals list."
-          />
-        ) : null}
-
-        {loading ? null : (
-        <ModuleTableCard
-          title="Sent Referrals"
-          count={filteredReferrals.length}
-          subtitle="Track submitted referrals and RHU updates."
-          minWidth="min-w-[1100px]"
-          fixedRows
-          refreshing={isFetching && referrals.length > 0}
-          footer={
-            <TablePagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
-          }
-        >
-            <thead>
-              <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <th className="whitespace-nowrap px-4 py-3">ID</th>
-                <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                <th className="whitespace-nowrap px-4 py-3">RHU</th>
-                <th className="whitespace-nowrap px-4 py-3">Classification</th>
-                <th className="whitespace-nowrap px-4 py-3">Urgency</th>
-                <th className="whitespace-nowrap px-4 py-3">Date</th>
-                <th className="whitespace-nowrap px-4 py-3">Status</th>
-                <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+          >
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              <tr>
+                <th className="px-4">Referral No.</th>
+                <th className="px-3">Patient</th>
+                <th className="px-3">Status</th>
+                <th className="px-2 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-neutral-100">
               {filteredReferrals.length > 0 ? (
                 paginatedReferrals.map((referral) => {
                   const patientName = getReferralPatientName(referral);
                   const destinationFacility = getReferralDestination(referral);
+                  const service = getReferralClassification(referral);
+                  const trackingId = referral.trackingId || referral.id || "";
+                  const submittedDate = getSubmittedDate(referral);
+                  const priority = normalizeAttention(getReferralUrgency(referral));
 
                   return (
-                  <tr
-                    key={referral.trackingId || referral.id}
-                    className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
-                        {referral.trackingId}
-                      </span>
-                    </td>
+                    <tr
+                      key={trackingId || referral.id}
+                      className="h-14 transition-colors hover:bg-neutral-50"
+                    >
+                      <td className="px-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-sm font-semibold tabular-nums text-brand-700">
+                            {trackingId || "—"}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                            {submittedDate
+                              ? formatDate(submittedDate, submittedDate)
+                              : "Date not recorded"}
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-4 py-3.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-[#111827]">
-                          {patientName}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          {referral.ageSex}
-                        </p>
-                      </div>
-                    </td>
+                      <td className="px-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink-800">
+                            {patientName}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                            {destinationFacility}
+                            {" · "}
+                            {service}
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-4 py-3.5 text-[13px] text-[#6B7280]">
-                      {destinationFacility}
-                    </td>
+                      <td className="px-3">
+                        <div className="min-w-0">
+                          <StatusBadge
+                            status={referral.statusDisplay || referral.status}
+                          />
+                          <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                            {priority} priority
+                          </p>
+                        </div>
+                      </td>
 
-                    <td className="px-4 py-3.5">
-                      <ClassificationBadge
-                        classification={getReferralClassification(referral)}
-                      />
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <UrgencyBadge urgency={getReferralUrgency(referral)} />
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                      {getSubmittedDate(referral) || "—"}
-                    </td>
-
-                    <td className="whitespace-nowrap px-4 py-3.5">
-                      <StatusBadge status={referral.statusDisplay || referral.status} />
-                    </td>
-
-                    <td className="px-4 py-3.5 text-right">
-                      <ActionMenu
-                        title={patientName}
-                        subtitle={referral.trackingId}
-                        viewLink={`/bhc/referrals/${
-                          referral.trackingId || referral.id
-                        }`}
-                        viewLabel="View Referral"
-                      />
-                    </td>
-                  </tr>
+                      <td className="px-2 text-right">
+                        <ActionMenu
+                          title={patientName}
+                          subtitle={trackingId}
+                          viewLink={`/bhc/referrals/${trackingId}`}
+                          viewLabel="View Details"
+                          actions={[
+                            {
+                              label: "Copy Referral No.",
+                              disabled: !trackingId,
+                              onClick: () => {
+                                if (trackingId) void copyText(String(trackingId));
+                              },
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
                   );
                 })
               ) : (
                 <DataTableEmptyState
-                  colSpan={8}
+                  colSpan={4}
                   icon={<ClipboardList size={20} className="text-[#94A3B8]" />}
-                  title="No referrals yet."
-                  description="Tap Refer to start."
+                  title={
+                    narrowed ? "No referrals match" : "No referrals yet."
+                  }
+                  description={
+                    narrowed
+                      ? "Try a different search, or clear filters to see the full list again."
+                      : "Tap Refer to start."
+                  }
+                  action={
+                    narrowed ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={clearFilters}
+                      >
+                        Clear search and filters
+                      </Button>
+                    ) : null
+                  }
                 />
               )}
             </tbody>
-        </ModuleTableCard>
-        )}
+          </ModuleTableCard>
           </>
         )}
       </SoftLoadingArea>
@@ -490,107 +718,39 @@ export default function Referrals() {
   );
 }
 
-function StatusBadge({ status }) {
-  const displayStatus = formatReferralStatus(status);
-  const map = {
-    "Pending RHU Review": "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Pending: "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]",
-    Received: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "Received by RHU": "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
-    "Under Assessment": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-    Completed: "border-[#A7F3D0] bg-[#ECFDF5] text-[#047857]",
-    "No-Show": "border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-        map[displayStatus] || "border-[#CBD5E1] bg-[#F1F5F9] text-[#475569]"
-      }`}
-    >
-      {displayStatus}
-    </span>
-  );
+function referralStatusTone(displayStatus) {
+  if (displayStatus === "Completed") return "success";
+  if (
+    displayStatus === "Received" ||
+    displayStatus === "Received by RHU"
+  ) {
+    return "info";
+  }
+  if (
+    displayStatus === "Under Assessment" ||
+    displayStatus === "No-Show"
+  ) {
+    return "warning";
+  }
+  return "neutral";
 }
 
-function ClassificationBadge({ classification }) {
-  const map = {
-    "General Consultation": "bg-slate-100 text-slate-700",
-    "Maternal Care": "bg-pink-50 text-pink-700",
-    Maternal: "bg-pink-50 text-pink-700",
-    Immunization: "bg-emerald-50 text-emerald-700",
-  };
-
+function StatusBadge({ status }) {
+  const displayStatus = formatReferralStatus(status);
   return (
-    <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-[11px] font-semibold ${
-        map[classification] || "bg-slate-100 text-slate-700"
-      }`}
-    >
-      {classification}
-    </span>
+    <PlainStatusStamp
+      label={displayStatus}
+      tone={referralStatusTone(displayStatus)}
+    />
   );
 }
 
 function UrgencyBadge({ urgency }) {
   const attention = normalizeAttention(urgency);
-
   return (
-    <span
-      className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-semibold ${getAttentionBadgeClass(
-        attention,
-      )}`}
-    >
-      {attention}
-    </span>
-  );
-}
-
-function WaitingToSubmitList({ holds }) {
-  if (!holds.length) {
-    return (
-      <div className="border-t border-b border-[#E5E7EB] bg-white px-4 py-10 text-center">
-        <ClipboardList size={20} className="mx-auto text-[#94A3B8]" />
-        <p className="mt-3 text-sm font-semibold text-[#111827]">{WAITING_EMPTY_TITLE}</p>
-        <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[#6B7280]">
-          {WAITING_EMPTY_DESCRIPTION}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-t border-b border-[#E5E7EB] bg-white">
-      <ul className="divide-y divide-[#F1F5F9]">
-        {holds.map((hold) => {
-          const card = waitingHoldCard(hold);
-          return (
-            <li
-              key={card.id}
-              className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold text-[#111827]">
-                  {card.patientName}
-                </p>
-                <p className="mt-0.5 text-[11px] text-[#6B7280]">
-                  {formatDate(card.consultationDate, "Date not recorded")} · {card.receivingRhu}
-                </p>
-                <p className="mt-1 text-[12px] text-[#374151]">{card.reason}</p>
-                <p className="mt-1 text-[11px] font-medium text-[#B54708]">{card.status}</p>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Button asChild variant="ghost" className="h-8 rounded-none border border-[#D1D5DB] px-3 text-[11px] font-semibold text-[#111827] hover:bg-[#F9FAFB]">
-                  <Link to={card.detailsPath}>{card.viewLabel}</Link>
-                </Button>
-                <Button asChild className="h-8 rounded-none bg-[#DC2626] px-3 text-[11px] font-semibold text-white hover:bg-[#B91C1C]">
-                  <Link to={card.submitPath}>{card.submitLabel}</Link>
-                </Button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <PlainStatusStamp
+      label={attention}
+      tone={attention === ATTENTION_PRIORITY ? "warning" : "neutral"}
+    />
   );
 }

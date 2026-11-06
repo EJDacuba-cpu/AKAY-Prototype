@@ -18,8 +18,8 @@ export default function SegmentedFilter({ options, value, onChange, label, visib
       <div
         className={
           wrap
-            ? "flex flex-wrap gap-0.5 rounded-lg bg-neutral-100 p-0.5"
-            : "inline-flex shrink-0 rounded-lg bg-neutral-100 p-0.5"
+            ? "flex flex-wrap gap-1 rounded-full bg-neutral-100 p-1"
+            : "inline-flex shrink-0 rounded-full bg-neutral-100 p-1"
         }
       >
         {options.map((option) => {
@@ -30,9 +30,9 @@ export default function SegmentedFilter({ options, value, onChange, label, visib
               type="button"
               aria-pressed={active}
               onClick={() => onChange(option.value)}
-              className={`h-8 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
+              className={`h-8 whitespace-nowrap rounded-full px-3 text-[12px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 ${
                 active
-                  ? "bg-white text-neutral-900 shadow-xs ring-1 ring-neutral-200"
+                  ? "bg-white text-ink-800 shadow-xs"
                   : "text-neutral-600 hover:text-neutral-900"
               }`}
             >

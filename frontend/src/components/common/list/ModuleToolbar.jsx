@@ -1,7 +1,11 @@
 import { Link } from "react-router";
-import { Search, SlidersHorizontal, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import FilterPopover from "../filters/FilterPopover";
+import { Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import ListFilterPopover, {
+  pickFilterValues,
+} from "../filters/ListFilterPopover";
+import SearchFilterCluster from "../filters/SearchFilterCluster";
+import { Button } from "../../ui/button";
 import { formatDisplayValue } from "../../../utils/formatters";
 
 function getInitialValues(fields) {
@@ -59,6 +63,7 @@ export default function ModuleToolbar({
   onClearFilters,
   onRemoveFilter,
   filterDescription = "Narrow the list.",
+  filterControl = null,
   primaryActionLabel,
   primaryActionTo,
   primaryActionIcon,
@@ -72,12 +77,21 @@ export default function ModuleToolbar({
   // when submitted (Enter or the Search button), so the draft is local.
   const isClinical = variant === "clinical";
   const [searchDraft, setSearchDraft] = useState(searchValue);
-  const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
-  const [draft, setDraft] = useState(() => getInitialValues(filters));
   const toolbarRef = useRef(null);
   const searchInputRef = useRef(null);
-  const filtersOpen = controlledFiltersOpen ?? internalFiltersOpen;
   const shouldShowFilters = showFilters && (filters.length > 0 || onFilterClick);
+  const useCluster = Boolean(shouldShowFilters || filterControl);
+  const popoverFields = useMemo(
+    () =>
+      filters.map((field) => ({
+        ...field,
+        resetValue: Object.prototype.hasOwnProperty.call(field, "resetValue")
+          ? field.resetValue
+          : getResetValue(field),
+      })),
+    [filters],
+  );
+  const appliedFilters = useMemo(() => getInitialValues(filters), [filters]);
 
   useEffect(() => {
     setSearchDraft(searchValue);
@@ -86,30 +100,7 @@ export default function ModuleToolbar({
   useEffect(() => {
     if (!disabled) return;
     setSearchOpen(false);
-    setInternalFiltersOpen(false);
   }, [disabled]);
-
-  useEffect(() => {
-    if (!filtersOpen) return undefined;
-
-    function handleKeyDown(event) {
-      if (event.key === "Escape") setInternalFiltersOpen(false);
-    }
-
-    function handlePointerDown(event) {
-      if (!toolbarRef.current?.contains(event.target)) {
-        setInternalFiltersOpen(false);
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("mousedown", handlePointerDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [filtersOpen]);
 
   function toggleSearch() {
     if (disabled) return;
@@ -143,36 +134,6 @@ export default function ModuleToolbar({
     setSearchDraft("");
     onSearchChange?.("");
     searchInputRef.current?.focus();
-  }
-
-  function openFilters() {
-    if (disabled) return;
-    setDraft(getInitialValues(filters));
-
-    if (onFilterClick) {
-      onFilterClick();
-      return;
-    }
-
-    setInternalFiltersOpen((current) => !current);
-  }
-
-  function closeFilters() {
-    setInternalFiltersOpen(false);
-  }
-
-  function resetDraft() {
-    setDraft(getResetValues(filters));
-  }
-
-  function applyFilters() {
-    onApplyFilters?.(draft);
-    setInternalFiltersOpen(false);
-  }
-
-  function clearFilters() {
-    onClearFilters?.();
-    setInternalFiltersOpen(false);
   }
 
   const primaryActionClass =
@@ -214,103 +175,163 @@ export default function ModuleToolbar({
       >
         {heading}
         <div className="module-toolbar__controls flex min-w-0 items-center justify-end gap-2 sm:ml-auto">
-          {isClinical ? (
-            <form className="clinical-search" role="search" onSubmit={submitSearch}>
-              <Search size={16} className="clinical-search__icon" aria-hidden="true" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchDraft}
-                onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder={searchPlaceholder}
-                aria-label={searchPlaceholder.replace(/\.{3}$/, "")}
-                disabled={disabled}
-                className="clinical-search__input"
-              />
-              {(searchDraft || searchValue) && (
+          {(() => {
+            const searchControl = isClinical ? (
+              <form className="clinical-search" role="search" onSubmit={submitSearch}>
+                <Search size={16} className="clinical-search__icon" aria-hidden="true" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  aria-label={searchPlaceholder.replace(/\.{3}$/, "")}
+                  disabled={disabled}
+                  className="clinical-search__input"
+                />
+                {(searchDraft || searchValue) && (
+                  <button
+                    type="button"
+                    onClick={clearClinicalSearch}
+                    disabled={disabled}
+                    className="clinical-search__clear"
+                    aria-label="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                <button type="submit" disabled={disabled} className="clinical-search__submit">
+                  Search
+                </button>
+              </form>
+            ) : useCluster ? (
+              <div className="relative w-full">
+                <Search
+                  aria-hidden="true"
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchValue}
+                  onChange={(event) => onSearchChange?.(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  aria-label={searchPlaceholder.replace(/\.{3}$/, "")}
+                  disabled={disabled}
+                  className="h-8 w-full rounded-full border-0 bg-transparent pl-9 pr-8 text-[13px] text-ink-800 outline-none placeholder:text-neutral-500"
+                />
+                {searchValue ? (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    disabled={disabled}
+                    className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-ink-800"
+                    aria-label="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div
+                className={`group relative flex h-10 items-center rounded-xl border border-[#E5E7EB] bg-white shadow-sm transition-all duration-300 ${
+                  searchOpen
+                    ? "w-full sm:w-[min(72vw,360px)]"
+                    : "w-full hover:border-red-100 hover:bg-red-50/30 sm:w-10"
+                }`}
+              >
                 <button
                   type="button"
-                  onClick={clearClinicalSearch}
+                  onClick={toggleSearch}
                   disabled={disabled}
-                  className="clinical-search__clear"
-                  aria-label="Clear search"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#64748B] transition-colors hover:text-[#B91C1C]"
+                  aria-label="Search"
                 >
-                  <X size={14} />
+                  <Search size={16} />
                 </button>
-              )}
-              <button type="submit" disabled={disabled} className="clinical-search__submit">
-                Search
-              </button>
-            </form>
-          ) : (
-          <div
-            className={`group relative flex h-10 items-center rounded-xl border border-[#E5E7EB] bg-white shadow-sm transition-all duration-300 ${
-              searchOpen
-                ? "w-full sm:w-[min(72vw,360px)]"
-                : "w-full hover:border-red-100 hover:bg-red-50/30 sm:w-10"
-            }`}
-          >
-            <button
-              type="button"
-              onClick={toggleSearch}
-              disabled={disabled}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#64748B] transition-colors hover:text-[#B91C1C]"
-              aria-label="Search"
-            >
-              <Search size={16} />
-            </button>
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchValue}
-              onFocus={() => setSearchOpen(true)}
-              onBlur={handleSearchBlur}
-              onChange={(event) => onSearchChange?.(event.target.value)}
-              placeholder={searchPlaceholder}
-              disabled={disabled}
-              className={`h-10 min-w-0 bg-transparent pr-9 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] ${
-                searchOpen ? "w-full opacity-100" : "w-full opacity-100 sm:w-0 sm:opacity-0"
-              }`}
-            />
-            {(searchOpen || searchValue) && (
-              <button
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={clearSearch}
-                disabled={disabled}
-                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]"
-                aria-label={
-                  searchValue ? "Clear and collapse search" : "Collapse search"
-                }
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-          )}
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchValue}
+                  onFocus={() => setSearchOpen(true)}
+                  onBlur={handleSearchBlur}
+                  onChange={(event) => onSearchChange?.(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  disabled={disabled}
+                  className={`h-10 min-w-0 bg-transparent pr-9 text-[13px] text-[#0F172A] outline-none transition-all placeholder:text-[#94A3B8] ${
+                    searchOpen ? "w-full opacity-100" : "w-full opacity-100 sm:w-0 sm:opacity-0"
+                  }`}
+                />
+                {(searchOpen || searchValue) && (
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={clearSearch}
+                    disabled={disabled}
+                    className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]"
+                    aria-label={
+                      searchValue ? "Clear and collapse search" : "Collapse search"
+                    }
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            );
 
-          {shouldShowFilters && (
-            <button
-              type="button"
-              onClick={openFilters}
-              disabled={disabled}
-              aria-expanded={filtersOpen}
-              aria-haspopup="dialog"
-              className={`flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-[12px] font-semibold shadow-sm transition-colors ${
-                filtersOpen || activeFilterCount > 0
-                  ? "border-red-100 bg-red-50 text-[#B91C1C]"
-                  : "border-[#E5E7EB] bg-white text-[#64748B] hover:border-red-100 hover:bg-red-50/40 hover:text-[#B91C1C]"
-              }`}
-            >
-              <SlidersHorizontal size={14} />
-              {filtersLabel}
-              {activeFilterCount > 0 && (
-                <span className="rounded-full bg-[#B91C1C] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-          )}
+            const builtInFilter =
+              shouldShowFilters && filters.length > 0 && !onFilterClick ? (
+                <ListFilterPopover
+                  fields={popoverFields}
+                  applied={appliedFilters}
+                  activeFilters={activeFilters}
+                  activeCount={activeFilterCount}
+                  label={filtersLabel === "Filters" ? "Filter" : filtersLabel}
+                  onApply={onApplyFilters}
+                  onRemoveFilter={onRemoveFilter}
+                  onClearAll={onClearFilters}
+                  pickValues={(current) =>
+                    pickFilterValues(current, popoverFields)
+                  }
+                  buildDefaults={() => getResetValues(popoverFields)}
+                />
+              ) : shouldShowFilters && onFilterClick ? (
+                <Button
+                  type="button"
+                  variant="filter"
+                  size="sm"
+                  onClick={onFilterClick}
+                  disabled={disabled}
+                  aria-expanded={controlledFiltersOpen}
+                  aria-haspopup="dialog"
+                  aria-pressed={activeFilterCount > 0}
+                  className="gap-2 py-0 pl-1.5 pr-3"
+                >
+                  Filter
+                  {activeFilterCount > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[10px] font-bold text-white">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+              ) : null;
+
+            const filterNode = filterControl || builtInFilter;
+
+            if (useCluster) {
+              return (
+                <SearchFilterCluster search={searchControl} filter={filterNode} />
+              );
+            }
+
+            return (
+              <>
+                {searchControl}
+                {filterNode}
+              </>
+            );
+          })()}
         </div>
 
         {(primaryAction || actions) && (
@@ -325,22 +346,6 @@ export default function ModuleToolbar({
           </div>
         )}
       </div>
-
-      {filtersOpen && filters.length > 0 && !onFilterClick && !disabled && (
-        <FilterPopover
-          title="Filters"
-          subtitle={filterDescription}
-          filters={draft}
-          config={filters}
-          activeFilters={activeFilters}
-          onRemoveFilter={onRemoveFilter}
-          onClearAll={clearFilters}
-          onChange={setDraft}
-          onReset={resetDraft}
-          onApply={applyFilters}
-          onClose={closeFilters}
-        />
-      )}
     </div>
   );
 }

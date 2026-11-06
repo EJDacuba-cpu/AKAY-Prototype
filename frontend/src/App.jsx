@@ -75,6 +75,7 @@ import IncomingReferrals from "./pages/rhu/IncomingReferrals";
 import RHUReferralDetails from "./pages/rhu/ReferralDetails";
 import QRScanner from "./pages/rhu/QRScanner";
 import RhuPatientsWorkspace from "./pages/rhu/RhuPatientsWorkspace";
+import RhuWalkInCheckIn from "./pages/rhu/RhuWalkInCheckIn";
 import RHUPatientDetails from "./pages/rhu/RHUPatientDetails";
 import RhuReferralSlip from "./pages/rhu/RhuReferralSlip";
 import RHUAddPatient from "./pages/rhu/RHUAddPatient";
@@ -82,6 +83,7 @@ import RhuConsultationWorkspace from "./pages/rhu/RhuConsultationWorkspace";
 import RHURecordDetails from "./pages/rhu/RHURecordDetails";
 import DoctorSchedule from "./pages/rhu/DoctorSchedule";
 import MedicineManagement from "./pages/rhu/MedicineManagement";
+import RhuToDispense from "./pages/rhu/RhuToDispense";
 import FeedbackReturnSlip from "./pages/rhu/FeedbackReturnSlip";
 import RHUReports from "./pages/rhu/RHUReports";
 
@@ -93,6 +95,7 @@ import AddUser from "./pages/admin/AddUser";
 import AdminReports from "./pages/admin/AdminReports";
 import AuditLogs from "./pages/admin/AuditLogs";
 import PasswordResetRequests from "./pages/admin/PasswordResetRequests";
+import AccountInvites from "./pages/admin/AccountInvites";
 
 const MIN_BOOT_LOADER_MS = 800;
 const PUBLIC_BOOT_ROUTES = new Set([
@@ -157,6 +160,17 @@ function Unauthorized() {
       </div>
     </div>
   );
+}
+
+function RhuMedicineSupplyRedirect() {
+  const user = getCurrentUser();
+  const permissions = user?.permissions || [];
+  const to = permissions.includes("inventory.view")
+    ? "/rhu/medicine-management"
+    : permissions.includes("items.dispense")
+      ? "/rhu/to-dispense"
+      : "/rhu/medicine-management";
+  return <Navigate to={to} replace />;
 }
 
 function LegacyRHURecordRedirect() {
@@ -471,6 +485,7 @@ export default function App() {
       <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
+      <Route path="/admin/staff-assignments/add" element={<ProtectedPage allowedRole="admin"><StaffAssignments mode="create" /></ProtectedPage>} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
@@ -528,10 +543,22 @@ export default function App() {
         }
       />
       <Route
+        path="/admin/account-management"
+        element={<Navigate to="/admin/users" replace />}
+      />
+      <Route
         path="/admin/password-reset-requests"
         element={
           <ProtectedPage allowedRole="admin">
             <PasswordResetRequests />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/admin/account-invites"
+        element={
+          <ProtectedPage allowedRole="admin">
+            <AccountInvites />
           </ProtectedPage>
         }
       />
@@ -681,6 +708,10 @@ export default function App() {
       />
       {/* RHU Routes */}
       <Route
+        path="/rhu/patient-intake"
+        element={<Navigate to="/rhu/incoming-referrals" replace />}
+      />
+      <Route
         path="/rhu/dashboard"
         element={
           <ProtectedPage allowedRole="rhu">
@@ -725,6 +756,14 @@ export default function App() {
         element={
           <ProtectedPage allowedRole="rhu" module="patients">
             <RHUAddPatient />
+          </ProtectedPage>
+        }
+      />
+      <Route
+        path="/rhu/walk-in-check-in"
+        element={
+          <ProtectedPage allowedRole="rhu" module="patients">
+            <RhuWalkInCheckIn />
           </ProtectedPage>
         }
       />
@@ -797,6 +836,7 @@ export default function App() {
         path="/rhu/doctor-schedule"
         element={<Navigate to="/rhu/doctor-availability" replace />}
       />
+      <Route path="/rhu/medicine-and-supply" element={<RhuMedicineSupplyRedirect />} />
       <Route
         path="/rhu/medicine-management"
         element={
@@ -815,6 +855,14 @@ export default function App() {
       />
 
       <Route path="/rhu/medicine-management/:medicineId" element={<ProtectedPage allowedRole="rhu" module="inventory"><MedicineDetailsPage role="rhu" /></ProtectedPage>} />
+      <Route
+        path="/rhu/to-dispense"
+        element={
+          <ProtectedPage allowedRole="rhu" module="dispensing">
+            <RhuToDispense />
+          </ProtectedPage>
+        }
+      />
 
       {/* NEW: Dynamic route with trackingId param */}
       <Route
@@ -861,7 +909,7 @@ export default function App() {
       />
       <Route
         path="/rhu/walk-in-patients"
-        element={<Navigate to="/rhu/patients/add" replace />}
+        element={<Navigate to="/rhu/walk-in-check-in" replace />}
       />
 
       {/* Notifications Route */}

@@ -20,7 +20,7 @@ export default function useRhuVisits({ enabled = true, poll = true } = {}) {
     refetch,
   } = useQuery({
     queryKey: queryKeys.rhuVisits(),
-    queryFn: listRhuVisits,
+    queryFn: () => listRhuVisits(),
     enabled,
     staleTime: 0,
     refetchInterval: poll ? REFRESH_MS : false,

@@ -8,6 +8,10 @@ import {
   Cell,
   Pie,
   PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  RadialBar,
+  RadialBarChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -21,11 +25,14 @@ const CHART_HEIGHT = "h-[280px]";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 export default function BhcReportCharts({ charts = [], className }) {
-  const [primary, secondary] = charts;
+  const [primary, secondary, tertiary] = charts;
   return (
-    <div className={cn("grid grid-cols-1 gap-4 lg:grid-cols-12", className)}>
-      <ChartCard chart={primary} className="lg:col-span-8" />
-      <ChartCard chart={secondary} className="lg:col-span-4" />
+    <div className={cn("flex flex-col gap-4", className)}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <ChartCard chart={primary} className="lg:col-span-8" />
+        <ChartCard chart={secondary} className="lg:col-span-4" />
+      </div>
+      {tertiary ? <ChartCard chart={tertiary} className="w-full" /> : null}
     </div>
   );
 }
@@ -36,13 +43,15 @@ function ChartCard({ chart, className }) {
   if (!chart) return null;
 
   return (
-    <Card className={cn("rounded-card shadow-card print:hidden", className)}>
-      <CardHeader>
+    <Card className={cn("flex h-full flex-col rounded-card shadow-card print:hidden", className)}>
+      <CardHeader className="pb-2">
         <CardTitle>{chart.title}</CardTitle>
         <CardDescription>{chart.description}</CardDescription>
       </CardHeader>
-      <CardContent>
-        {hasChartValues(chart) ? (
+      <CardContent className="flex flex-1 flex-col justify-center">
+        {chart.kind === "radial" ? (
+          <RadialEnrollmentChart chart={chart} animate={animate} />
+        ) : hasChartValues(chart) ? (
           <ChartContainer config={chart.config} className={cn("aspect-auto w-full", CHART_HEIGHT)}>
             {chart.kind === "bar" ? (
               <BarChart data={chart.data} margin={{ left: 4, right: 8, top: 8, bottom: 8 }}>
@@ -108,6 +117,54 @@ function ChartCard({ chart, className }) {
   );
 }
 
+/** Count-focused decorative ring — RadialBarChart is the ChartContainer child; label sits outside. */
+function RadialEnrollmentChart({ chart, animate }) {
+  const enrolled = Number(chart.enrolled ?? 0);
+  const countClass =
+    enrolled >= 1000 ? "text-3xl sm:text-4xl" : "text-4xl sm:text-5xl";
+
+  return (
+    <div className={cn("relative mx-auto w-full max-w-[260px]", CHART_HEIGHT)}>
+      <ChartContainer config={chart.config} className="aspect-square h-full w-full">
+        <RadialBarChart
+          data={chart.data}
+          startAngle={90}
+          endAngle={-270}
+          innerRadius={80}
+          outerRadius={110}
+        >
+          <PolarGrid
+            gridType="circle"
+            radialLines={false}
+            stroke="none"
+            className="first:fill-neutral-100 last:fill-white"
+            polarRadius={[96, 74]}
+          />
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
+          <RadialBar
+            dataKey={chart.valueKey}
+            background={{ fill: "var(--color-neutral-100)" }}
+            cornerRadius={10}
+            isAnimationActive={animate}
+          >
+            {chart.data.map((item) => (
+              <Cell key={item.key} fill={item.fill || "var(--color-brand-600)"} />
+            ))}
+          </RadialBar>
+        </RadialBarChart>
+      </ChartContainer>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
+        <p className={cn("font-bold tabular-nums leading-none text-neutral-900", countClass)}>
+          {enrolled.toLocaleString()}
+        </p>
+        <p className="mt-2 max-w-[9rem] text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+          Patients Enrolled
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ChartEmpty() {
   return (
     <div className={cn("flex flex-col items-center justify-center gap-2 text-center", CHART_HEIGHT)}>
@@ -119,6 +176,8 @@ function ChartEmpty() {
 }
 
 function hasChartValues(chart) {
+  // Count-focused radial always renders (including zero) so the card stays a count viz.
+  if (chart?.kind === "radial") return true;
   return Array.isArray(chart?.data) && chart.data.some((item) => Number(item[chart.valueKey]) > 0);
 }
 

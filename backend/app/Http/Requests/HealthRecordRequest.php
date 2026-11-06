@@ -6,6 +6,7 @@ use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
+use App\Services\NutritionEnrollment;
 use App\Services\PrenatalEnrollment;
 use App\Services\LegacyMonitoringReview;
 use App\Services\PatientBackground;
@@ -346,6 +347,7 @@ class HealthRecordRequest extends FormRequest
             'monitoring_data.followUpTaskId' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.follow_up_task_id' => ['nullable', 'integer', 'exists:follow_up_tasks,id'],
             'monitoring_data.prenatalIntent' => ['nullable', 'in:enroll,continue'],
+            'monitoring_data.nutritionIntent' => ['nullable', 'in:enroll,continue'],
             // Physical examination findings. Stored in the existing JSON column
             // rather than a new one - no schema change was needed.
             'monitoring_data.physicalExam' => ['nullable', 'string'],
@@ -673,6 +675,13 @@ class HealthRecordRequest extends FormRequest
                         (int) $this->input('patient_id'),
                         $this->input('monitoring_data.prenatalIntent'),
                         $this->input('maternal_data.lmp')
+                    );
+                }
+                if (is_array($programs) && in_array('Nutrition', $programs, true)) {
+                    NutritionEnrollment::validateIntent(
+                        $validator,
+                        (int) $this->input('patient_id'),
+                        $this->input('monitoring_data.nutritionIntent')
                     );
                 }
             }

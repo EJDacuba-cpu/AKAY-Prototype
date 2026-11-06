@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Mail\GmailApiTransport;
+use Google\Client as GoogleClient;
+use Google\Service\Gmail as GmailService;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -23,6 +27,36 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+    Mail::extend('gmail_api', function (array $config = []) {
+        $clientId = config('services.google_gmail.client_id');
+        $clientSecret = config('services.google_gmail.client_secret');
+        $refreshToken = config('services.google_gmail.refresh_token');
+
+        if (! $clientId || ! $clientSecret || ! $refreshToken) {
+            throw new \RuntimeException(
+                'Gmail API credentials are not configured.'
+            );
+        }
+
+        $client = new GoogleClient();
+        $client->setClientId($clientId);
+        $client->setClientSecret($clientSecret);
+
+        $result = $client->fetchAccessTokenWithRefreshToken(
+            $refreshToken
+        );
+
+        if (! isset($result['access_token'])) {
+            throw new \RuntimeException(
+                'Gmail API authorization failed.'
+            );
+        }
+
+        return new GmailApiTransport(
+            new GmailService($client)
+        );
+    });
+
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(120)->by($request->user()?->id ?: $request->ip());
         });

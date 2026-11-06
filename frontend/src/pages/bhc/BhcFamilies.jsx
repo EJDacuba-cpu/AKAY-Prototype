@@ -4,9 +4,8 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { ArrowLeft, MapPin, Plus, User, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { ConnectionErrorState, RefreshingIndicator } from '../../components/common';
+import { ConnectionErrorState, RefreshingIndicator, SearchField, SearchFilterCluster } from '../../components/common';
 import NoticeModal from '../../components/common/modals/NoticeModal';
-import ModuleToolbar from '../../components/common/list/ModuleToolbar';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Select } from '../../components/ui/select';
@@ -28,7 +27,6 @@ import { addressText, addressValues, canHeadHousehold, NO_PUROK_FILTER, patientN
 // Matches DESKTOP_QUERY in PatientsModule and clinical-directory.css.
 const DESKTOP_QUERY='(min-width: 1024px)';
 const NO_FILTERS={purok:'',barangay:''};
-const NO_SORT={key:'',direction:'asc'};
 const familyBase = role => `/${role}/families`;
 const facilityLabel = role => role === 'rhu' ? 'RHU' : 'BHC';
 function FamilyFrame({role='bhc',title,children}) {
@@ -45,11 +43,11 @@ export function QueryState({query,label='Loading households…',skeleton}) {
   if(query.error) {
     // A 404 has nothing to retry; the back link above is the way out.
     const missing=query.error.status === 404;
-    return <div role="alert" className="rounded-card border border-neutral-200 bg-white"><ConnectionErrorState size="compact" variant={errorStateVariant(query.error)} title={missing ? 'Household not found' : undefined} message={missing ? 'We could not find this household. Go back to Families and choose another.' : undefined} onRetry={missing ? undefined : ()=>query.refetch()} retrying={query.isFetching}/></div>;
+    return <div role="alert" className="rounded-card border border-neutral-200 bg-white"><ConnectionErrorState size="compact" variant={errorStateVariant(query.error)} title={missing ? 'Household not found' : undefined} message={missing ? 'We could not find this household. Go back to Households and choose another.' : undefined} onRetry={missing ? undefined : ()=>query.refetch()} retrying={query.isFetching}/></div>;
   }
   return <div role="status"><span className="sr-only">{label}</span><div aria-hidden="true">{skeleton}</div></div>;
 }
-function BackLink({to,children='Back to Families'}) {
+function BackLink({to,children='Back to Households'}) {
   return <Link to={to} className="inline-flex min-h-10 items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16}/>{children}</Link>;
 }
 export function BhcFamiliesDirectory({role='bhc'}={}) {
@@ -62,15 +60,14 @@ function Directory({scope,role}) {
   const [draft,setDraft]=useState('');
   const [search,setSearch]=useState('');
   const [filters,setFilters]=useState(NO_FILTERS);
-  const [sort,setSort]=useState(NO_SORT);
   const isDesktop=useMediaQuery(DESKTOP_QUERY);
   const canManage=access.can('families.manage');
-  // ModuleToolbar clinical search submits on Enter; this still applies a short delay if the draft changes.
+  // Live search matches Health Commodities; short delay avoids a request per keystroke.
   useEffect(()=>{const timer=setTimeout(()=>setSearch(draft.trim()),300);return ()=>clearTimeout(timer);},[draft]);
   const noPurok=filters.purok === NO_PUROK_FILTER;
   const query=useInfiniteQuery({
-    queryKey:[...scope.key,'list',search,filters.purok,filters.barangay,sort.key,sort.direction],
-    queryFn:({pageParam})=>getHouseholds({role,search,page:pageParam,barangay:filters.barangay,purok:noPurok ? '' : filters.purok,withoutPurok:noPurok,sort:sort.key,direction:sort.direction}),
+    queryKey:[...scope.key,'list',search,filters.purok,filters.barangay],
+    queryFn:({pageParam})=>getHouseholds({role,search,page:pageParam,barangay:filters.barangay,purok:noPurok ? '' : filters.purok,withoutPurok:noPurok}),
     initialPageParam:1,
     getNextPageParam:last=>last.meta.current_page < last.meta.last_page ? last.meta.current_page + 1 : undefined,
     retry:false,placeholderData:keepPreviousData,
@@ -88,17 +85,41 @@ function Directory({scope,role}) {
   const emptyRegistry=!narrowed && total === 0;
   const hasFilterChoices=options.puroks.length > 0 || options.hasWithoutPurok || options.barangays.length > 1 || chips.length > 0;
   function clearAll() {setDraft('');setSearch('');setFilters(NO_FILTERS);}
-  // Ascending, then descending, then back to newest first.
-  function toggleSort(key) {setSort(previous=>previous.key !== key ? {key,direction:'asc'} : previous.direction === 'asc' ? {key,direction:'desc'} : NO_SORT);}
-  const heading=<div className="clinical-directory__heading min-w-0"><h1 className="clinical-directory__title">Families</h1><p className="clinical-directory__count">{query.isPending || query.error ? 'Households registered in your '+facilityLabel(role) : `${total} ${narrowed ? (total === 1 ? 'household found' : 'households found') : (total === 1 ? 'registered household' : 'registered households')}`}</p></div>;
   const addPath=`${base}/new`;
-  return <DashboardLayout role={role} title="Families">
+  return <DashboardLayout role={role} title="Households">
     <div className="clinical-directory">
       <div className="clinical-directory__layout">
         <div className="clinical-directory__main">
-          <ModuleToolbar variant="clinical" heading={heading} searchValue={draft} onSearchChange={setDraft} searchPlaceholder="Search FSN, household head or address" showFilters={false}
-            primaryActionTo={isDesktop && canManage ? addPath : undefined} primaryActionLabel={isDesktop && canManage ? 'Add Family' : undefined} primaryActionIcon={<Plus size={14} strokeWidth={2.5}/>}
-            actions={hasFilterChoices && <FamilyDirectoryFilter applied={filters} options={options} onApply={setFilters}/>}/>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 shrink">
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Households</h1>
+              <p className="mt-1 text-[13px] text-neutral-600">
+                Households registered in your {facilityLabel(role)}.
+              </p>
+            </div>
+            <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+              <SearchFilterCluster
+                className="max-w-full"
+                search={
+                  <SearchField
+                    value={draft}
+                    onChange={setDraft}
+                    placeholder="Search FSN, household head or address"
+                    label="Search families"
+                  />
+                }
+                filter={hasFilterChoices ? <FamilyDirectoryFilter applied={filters} options={options} onApply={setFilters}/> : null}
+              />
+              {isDesktop && canManage ? (
+                <Button asChild variant="brand" size="sm" className="shrink-0">
+                  <Link to={addPath}>
+                    <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+                    Add Family
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
           <div className="clinical-directory__results akay-scrollbar relative min-w-0">
             {!query.isPending && !query.error && (chips.length > 0 || (query.isFetching && !query.isFetchingNextPage)) && <div className="mb-3 flex min-h-7 flex-wrap items-center gap-2">
               {chips.map(chip=><span key={chip.key} className="inline-flex h-7 items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 pl-3 pr-1 text-xs text-ink-800">{chip.label}<button type="button" aria-label={`Remove filter ${chip.label}`} onClick={()=>setFilters(previous=>({...previous,[chip.key]:''}))} className="flex h-5 w-5 items-center justify-center rounded-full text-neutral-500 outline-none hover:bg-neutral-200 hover:text-ink-800 focus-visible:ring-2 focus-visible:ring-ink-400/50"><X size={12} aria-hidden="true"/></button></span>)}
@@ -107,7 +128,7 @@ function Directory({scope,role}) {
             </div>}
             {!query.isPending && !query.error && <p role="status" className="sr-only">{total} {total === 1 ? 'household' : 'households'}{narrowed ? ' found' : ''}</p>}
             {query.isPending || query.error ? <QueryState query={query} skeleton={DirectorySkeleton}/> : <>
-              {items.length ? <FamilyDirectoryTable items={items} base={base} dimmed={query.isPlaceholderData} sort={sort} onSort={toggleSort} footer={query.hasNextPage && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3"><p className="text-sm text-neutral-500">Showing {items.length} of {total}</p><Button variant="secondary" size="sm" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Show more'}</Button></div>}/> : <div className={`${SHEET} flex min-h-[324px] flex-col items-center justify-center gap-2 px-6 py-12 text-center`}><h2 className="text-sm font-semibold text-ink-800">{emptyRegistry ? 'No families registered yet' : 'No households found'}</h2><p className="max-w-sm text-[13px] text-neutral-500">{emptyRegistry ? 'Register a patient to start the first household, or use Add Family for a patient who is already registered.' : 'Try a different search, or clear the search and filters.'}</p>{narrowed && <Button variant="secondary" size="sm" className="mt-2" onClick={clearAll}>Clear search and filters</Button>}</div>}
+              {items.length ? <FamilyDirectoryTable items={items} base={base} dimmed={query.isPlaceholderData} footer={query.hasNextPage && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3"><p className="text-sm text-neutral-500">Showing {items.length} of {total}</p><Button variant="secondary" size="sm" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Show more'}</Button></div>}/> : <div className={`${SHEET} flex min-h-[324px] flex-col items-center justify-center gap-2 px-6 py-12 text-center`}><h2 className="text-sm font-semibold text-ink-800">{emptyRegistry ? 'No families registered yet' : 'No households found'}</h2><p className="max-w-sm text-[13px] text-neutral-500">{emptyRegistry ? 'Register a patient to start the first household, or use Add Family for a patient who is already registered.' : 'Try a different search, or clear the search and filters.'}</p>{narrowed && <Button variant="secondary" size="sm" className="mt-2" onClick={clearAll}>Clear search and filters</Button>}</div>}
             </>}
           </div>
           {!isDesktop && canManage && <div className="clinical-directory__fab-anchor"><Link to={addPath} className="patients-fab" aria-label="Add Family"><Plus size={24} strokeWidth={2.25} aria-hidden="true"/><span className="patients-fab__tooltip" aria-hidden="true">Add Family</span></Link></div>}

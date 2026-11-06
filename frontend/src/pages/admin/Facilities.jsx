@@ -139,10 +139,13 @@ export default function Facilities() {
         loadingMessage="Loading facilities..."
       >
         <div className="mx-auto w-full max-w-[1500px] space-y-5">
-          <p className="max-w-3xl text-sm text-slate-600">
-            Manage facilities and approved referral destinations. Nurse work access is managed
-            separately in Staff Assignments.
-          </p>
+          <header className="max-w-3xl">
+            <h1 className="text-[17px] font-bold leading-[1.3] tracking-tight text-ink-800">Facilities</h1>
+            <p className="mt-1 text-[13px] leading-5 text-neutral-600">
+              Manage facilities and approved referral destinations. Nurse work access is managed
+              separately in Staff Assignments.
+            </p>
+          </header>
 
           {isFetching && (
             <div className="flex justify-end">

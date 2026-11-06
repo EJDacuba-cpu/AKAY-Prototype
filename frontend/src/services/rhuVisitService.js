@@ -1,8 +1,9 @@
 import { apiRequest } from "./apiClient";
 
-/** Active visits in today's RHU queue, oldest first. */
-export async function listRhuVisits() {
-  const response = await apiRequest("/rhu-visits");
+/** Active visits in today's RHU queue, oldest first. Pass includeClosed for reporting. */
+export async function listRhuVisits({ includeClosed = false } = {}) {
+  const path = includeClosed ? "/rhu-visits?include_closed=1" : "/rhu-visits";
+  const response = await apiRequest(path);
   return response?.data ?? [];
 }
 
@@ -16,6 +17,29 @@ export async function getRhuVisit(visitId) {
 export async function searchPatientsForCheckIn(query) {
   const response = await apiRequest(`/rhu-visits/patient-search?q=${encodeURIComponent(query)}`);
   return response?.data ?? [];
+}
+
+/** Newest walk-in-eligible patients for the check-in desk preview (identity only). */
+export async function listRecentPatientsForCheckIn(limit = 8) {
+  const response = await apiRequest(`/rhu-visits/recent-patients?limit=${encodeURIComponent(limit)}`);
+  return response?.data ?? [];
+}
+
+/**
+ * Pending BHC referrals for one walk-in-eligible patient at this RHU.
+ * Identity only. Does not change referral status or create a visit.
+ */
+export async function listPendingReferralsForCheckIn(patientId) {
+  const response = await apiRequest(
+    `/rhu-visits/patients/${encodeURIComponent(patientId)}/pending-referrals`,
+  );
+  const data = response?.data && typeof response.data === "object" ? response.data : {};
+  const referrals = Array.isArray(data.referrals) ? data.referrals : [];
+  const count = Number(data.count);
+  return {
+    count: Number.isFinite(count) ? count : referrals.length,
+    referrals,
+  };
 }
 
 /** Check an existing patient into today's RHU queue as a walk-in. */

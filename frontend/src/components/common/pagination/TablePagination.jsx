@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "../../ui/button";
 
 function getPaginationRange(currentPage, totalPages) {
   const safeTotalPages = Math.max(Number(totalPages) || 0, 1);
@@ -51,6 +51,8 @@ export default function TablePagination({
   currentPage = 1,
   totalPages = 1,
   onPageChange = () => {},
+  alwaysShow = false,
+  disabled = false,
 }) {
   const displayTotalPages = Math.max(Number(totalPages) || 0, 1);
 
@@ -62,26 +64,29 @@ export default function TablePagination({
   const isFirstPage = safeCurrentPage <= 1;
   const isLastPage = safeCurrentPage >= displayTotalPages;
 
-  if (displayTotalPages <= 1) return null;
+  if (!alwaysShow && displayTotalPages <= 1) return null;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-neutral-100 bg-white px-4 py-3 select-none sm:flex-row sm:items-center sm:justify-between">
-      <span className="text-xs font-medium text-neutral-500">
+    <nav
+      aria-label="Pagination"
+      className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3 select-none"
+    >
+      <span className="text-xs text-neutral-600" aria-live="polite">
         Page{" "}
-        <span className="font-bold text-ink-700">{safeCurrentPage}</span> of{" "}
-        <span className="font-bold text-neutral-900">{displayTotalPages}</span>
+        <span className="font-semibold text-ink-800">{safeCurrentPage}</span> of{" "}
+        {displayTotalPages}
       </span>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <button
+        <Button
           type="button"
-          onClick={() => !isFirstPage && onPageChange(safeCurrentPage - 1)}
-          disabled={isFirstPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
-          aria-label="Previous page"
+          variant="secondary"
+          size="compact"
+          disabled={disabled || isFirstPage}
+          onClick={() => !disabled && !isFirstPage && onPageChange(safeCurrentPage - 1)}
         >
-          <ChevronLeft size={14} />
-        </button>
+          Previous
+        </Button>
 
         {paginationRange.map((pageNumber, index) =>
           pageNumber === "..." ? (
@@ -92,29 +97,35 @@ export default function TablePagination({
               ...
             </span>
           ) : (
-            <button
+            <Button
               key={`page-${pageNumber}`}
               type="button"
-              onClick={() => onPageChange(pageNumber)}
-              data-active={safeCurrentPage === pageNumber}
+              variant="secondary"
+              size="compact"
               aria-current={safeCurrentPage === pageNumber ? "page" : undefined}
-              className="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-neutral-200 bg-white px-2 text-xs font-semibold text-neutral-600 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 data-[active=true]:border-ink-700 data-[active=true]:bg-ink-700 data-[active=true]:text-white data-[active=true]:shadow-none"
+              disabled={disabled}
+              className={
+                safeCurrentPage === pageNumber
+                  ? "border-ink-700 bg-ink-700 text-white hover:border-ink-700 hover:bg-ink-700 hover:text-white"
+                  : undefined
+              }
+              onClick={() => !disabled && onPageChange(pageNumber)}
             >
               {pageNumber}
-            </button>
+            </Button>
           ),
         )}
 
-        <button
+        <Button
           type="button"
-          onClick={() => !isLastPage && onPageChange(safeCurrentPage + 1)}
-          disabled={isLastPage}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-xs transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-40"
-          aria-label="Next page"
+          variant="secondary"
+          size="compact"
+          disabled={disabled || isLastPage}
+          onClick={() => !disabled && !isLastPage && onPageChange(safeCurrentPage + 1)}
         >
-          <ChevronRight size={14} />
-        </button>
+          Next
+        </Button>
       </div>
-    </div>
+    </nav>
   );
 }

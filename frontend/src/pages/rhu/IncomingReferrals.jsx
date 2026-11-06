@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  CheckCircle2,
-  Clock,
   Copy,
   Eye,
   QrCode,
@@ -18,6 +16,7 @@ import {
   ListToolbar,
   ModuleTableCard,
   PageStateWrapper,
+  PlainStatusStamp,
   TablePagination,
 } from "../../components/common";
 import {
@@ -34,9 +33,8 @@ import usePagedRows from "../../hooks/usePagedRows";
 import {
   ATTENTION_FILTER_ALL,
   ATTENTION_FILTER_OPTIONS,
-  getAttentionBadgeStyle,
+  ATTENTION_PRIORITY,
   getReferralAttention,
-  isPriority,
   normalizeAttention,
 } from "../../utils/referralAttention";
 
@@ -280,69 +278,36 @@ function ActionMenu({ referral }) {
   );
 }
 
-function StatusBadge({ status, animate = false }) {
-  const displayStatus = formatReferralStatus(formatDisplayValue(status, "Pending"));
-  const map = {
-    Pending: {
-      bg: "#F1F5F9",
-      text: "#475569",
-      border: "#CBD5E1",
-      dot: "#94A3B8",
-    },
-    Received: {
-      bg: "#EFF6FF",
-      text: "#1D4ED8",
-      border: "#BFDBFE",
-      dot: "#3B82F6",
-    },
-    Completed: {
-      bg: "#ECFDF5",
-      text: "#047857",
-      border: "#A7F3D0",
-      dot: "#10B981",
-    },
-    "No-Show": {
-      bg: "#FFFBEB",
-      text: "#B45309",
-      border: "#FDE68A",
-      dot: "#F59E0B",
-    },
-  };
+function referralStatusTone(displayStatus) {
+  if (displayStatus === "Completed") return "success";
+  if (displayStatus === "Received") return "info";
+  if (displayStatus === "No-Show") return "warning";
+  return "neutral";
+}
 
-  const s = map[displayStatus] || map.Pending;
+function StatusBadge({ status, animate = false }) {
+  const displayStatus = formatReferralStatus(
+    formatDisplayValue(status, "Pending"),
+  );
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        animate ? "anim-status-pop" : ""
-      }`}
-      style={{ backgroundColor: s.bg, borderColor: s.border, color: s.text }}
-    >
-      <span
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: s.dot }}
+    <span className={animate ? "anim-status-pop inline-flex" : "inline-flex"}>
+      <PlainStatusStamp
+        label={displayStatus}
+        tone={referralStatusTone(displayStatus)}
       />
-      {displayStatus}
     </span>
   );
 }
 
 function UrgencyBadge({ urgency }) {
   const attention = normalizeAttention(urgency);
-  const style = getAttentionBadgeStyle(attention);
 
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-md border border-slate-100 px-2 py-0.5 text-[10px] font-semibold"
-      style={{ backgroundColor: style.bg, color: style.text }}
-    >
-      {isPriority(attention) ? (
-        <Clock size={11} />
-      ) : (
-        <CheckCircle2 size={11} />
-      )}
-      {attention}
-    </span>
+    <PlainStatusStamp
+      label={attention}
+      tone={attention === ATTENTION_PRIORITY ? "warning" : "neutral"}
+    />
   );
 }
 
@@ -455,18 +420,25 @@ function getReferralDetailsPath(referral = {}) {
   return `/rhu/referrals/${encodeURIComponent(target)}`;
 }
 
-function formatReferralSubmittedAt(referral) {
+function formatReferralSubmittedDate(referral) {
   const date = getReferralSubmittedAt(referral);
-  if (!date) return "No date recorded";
+  if (!date) return null;
 
-  return `${date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "2-digit",
     year: "numeric",
-  })} · ${date.toLocaleTimeString(undefined, {
+  });
+}
+
+function formatReferralSubmittedClock(referral) {
+  const date = getReferralSubmittedAt(referral);
+  if (!date) return null;
+
+  return date.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-  })}`;
+  });
 }
 
 function isSameDay(a, b) {
@@ -621,7 +593,6 @@ export default function IncomingReferrals() {
     setPage: setCurrentPage,
     totalPages,
     pageRows: paginatedReferrals,
-    startIndex,
   } = usePagedRows(filtered, filters);
 
   const toolbarFilters = [
@@ -667,6 +638,16 @@ export default function IncomingReferrals() {
         <div className="space-y-4">
         {!loading && (
           <ListToolbar
+            heading={
+              <div className="min-w-0">
+                <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
+                  Incoming Referrals
+                </h1>
+                <p className="mt-1 text-[13px] text-neutral-600">
+                  Review BHC referrals and confirm patient arrivals.
+                </p>
+              </div>
+            }
             searchValue={filters.search}
             onSearchChange={(value) => handleFilterChange("search", value)}
             searchPlaceholder="Search by patient name, BHC, or tracking ID..."
@@ -691,45 +672,61 @@ export default function IncomingReferrals() {
         )}
 
         {loading ? null : (
+        <>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
+            {filtered.length} of {referrals.length} referrals
+          </p>
+          {isBackgroundRefreshing ? (
+            <span className="text-xs text-neutral-500">Updating referrals...</span>
+          ) : null}
+        </div>
         <ModuleTableCard
-          title="Referral Tracking"
-          count={filtered.length}
+          title={
+            <>
+              Referral Tracking
+              <span className="ml-2 font-normal tabular-nums text-[#94A3B8]">
+                {filtered.length}
+              </span>
+            </>
+          }
           subtitle="BHC-RHU referral records and tracking status."
-          minWidth="min-w-[1120px]"
-          fixedRows
-          refreshing={isBackgroundRefreshing}
-          refreshingLabel="Updating referrals..."
+          minWidth="min-w-[1000px]"
+          minHeight={filtered.length > 0 ? undefined : "min-h-0"}
+          bodyMinHeight={filtered.length > 0 ? undefined : "min-h-0"}
+          fixedRows={filtered.length > 0}
           footer={
             <TablePagination
               currentPage={currentPage}
               totalPages={totalPages}
               onPageChange={setCurrentPage}
+              alwaysShow
             />
           }
         >
-              <thead>
-                <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                  <th className="whitespace-nowrap px-4 py-3">Queue No.</th>
-                  <th className="whitespace-nowrap px-4 py-3">Tracking ID</th>
-                  <th className="whitespace-nowrap px-4 py-3">Date/Time</th>
-                  <th className="whitespace-nowrap px-4 py-3">Patient</th>
-                  <th className="whitespace-nowrap px-4 py-3">Referring BHC</th>
-                  <th className="whitespace-nowrap px-4 py-3">Urgency</th>
-                  <th className="whitespace-nowrap px-4 py-3">Status</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">Actions</th>
+              <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                <tr>
+                  <th className="px-4">Patient</th>
+                  <th className="px-3">Tracking ID</th>
+                  <th className="px-3">Date Submitted</th>
+                  <th className="px-3">Referring BHC</th>
+                  <th className="px-3">Urgency</th>
+                  <th className="px-3">Status</th>
+                  <th className="px-2 text-right">Actions</th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-neutral-100">
                 {filtered.length === 0 ? (
                   <DataTableEmptyState
-                    colSpan={8}
+                    colSpan={7}
                     icon={<Search size={20} className="text-[#94A3B8]" />}
                     title="No referrals match your filters"
                     description="Try adjusting your search or filters."
+                    minHeight="min-h-[220px]"
                   />
                 ) : (
-                  paginatedReferrals.map((referral, index) => {
+                  paginatedReferrals.map((referral) => {
                     const animated = animatedIds.has(referral.trackingId);
                     const isTerminal = referral.status === "Completed";
                     const patientName = getReferralPatientName(referral);
@@ -737,6 +734,9 @@ export default function IncomingReferrals() {
                       referral.ageSex,
                       "Age / Sex not recorded",
                     );
+                    const submittedDate = formatReferralSubmittedDate(referral);
+                    const submittedTime = formatReferralSubmittedClock(referral);
+                    const referringBhc = getReferringHci(referral);
 
                     return (
                       <tr
@@ -744,54 +744,61 @@ export default function IncomingReferrals() {
                         onClick={() =>
                           navigate(getReferralDetailsPath(referral))
                         }
-                        className={`group cursor-pointer transition-colors duration-150 hover:bg-[#FAFBFD] ${
+                        className={`h-14 cursor-pointer transition-colors hover:bg-neutral-50 ${
                           isTerminal ? "bg-slate-50/30" : ""
                         }`}
                       >
-                        <td className="whitespace-nowrap px-4 py-3.5">
-                          <span className="text-[12px] font-bold text-slate-500">
-                            #{startIndex + index + 1}
-                          </span>
+                        <td className="px-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink-800">
+                              {patientName}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                              {ageSex}
+                            </p>
+                          </div>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5">
-                          <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 font-mono text-[11px] font-semibold text-[#B91C1C] transition-colors duration-200 group-hover:border-[#FECACA] group-hover:bg-[#FEF2F2]">
-                            {referral.trackingId}
-                          </span>
-                        </td>
-
-                        <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                          {formatReferralSubmittedAt(referral)}
-                        </td>
-
-                        <td className="whitespace-nowrap px-4 py-3.5">
-                          <p className="text-[13px] font-semibold text-[#111827]">
-                            {patientName}
-                          </p>
-                          <p className="mt-0.5 text-[10.5px] text-slate-400">
-                            {ageSex}
+                        <td className="px-3">
+                          <p className="truncate font-mono text-sm font-semibold tabular-nums text-brand-700">
+                            {referral.trackingId || "—"}
                           </p>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                          {getReferringHci(referral)}
+                        <td className="px-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-ink-800">
+                              {submittedDate || "No date recorded"}
+                            </p>
+                            {submittedTime ? (
+                              <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                                {submittedTime}
+                              </p>
+                            ) : null}
+                          </div>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5">
+                        <td className="px-3">
+                          <p className="truncate text-sm text-neutral-600" title={referringBhc}>
+                            {referringBhc}
+                          </p>
+                        </td>
+
+                        <td className="px-3">
                           <UrgencyBadge
                             urgency={getReferralUrgency(referral)}
                           />
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5">
+                        <td className="px-3">
                           <StatusBadge
                             status={referral.status}
                             animate={animated}
                           />
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end">
+                        <td className="px-2 text-right">
+                          <div className="inline-flex items-center justify-end">
                             <ActionMenu referral={referral} />
                           </div>
                         </td>
@@ -801,6 +808,7 @@ export default function IncomingReferrals() {
                 )}
               </tbody>
         </ModuleTableCard>
+        </>
         )}
         </div>
       </PageStateWrapper>

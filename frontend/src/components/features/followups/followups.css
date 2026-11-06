@@ -1,0 +1,144 @@
+/* Shared BHC/RHU follow-up workspace. */
+.followups-page {
+  padding: 24px;
+  background: var(--color-bg);
+}
+
+.followups-page .followup-modern-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.followups-page .followup-heading h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.followups-page .followup-board {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.followups-page .followup-board-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.followups-page .followup-board-heading h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.followups-page .followup-board-count {
+  color: var(--color-text-muted);
+}
+
+.followups-page .followup-board-header .fu-cal-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.followups-page .followup-board-header .fu-cal-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.followups-page .followup-view-switch {
+  flex-shrink: 0;
+}
+
+.followups-page .followup-date-navigation {
+  border-radius: 999px;
+  border-color: var(--color-border);
+  padding: 3px;
+}
+
+.followups-page .followup-date-navigation button {
+  border-radius: 999px;
+  min-height: 30px;
+  color: var(--color-text-secondary);
+}
+
+.followups-page .followup-board-body {
+  padding: 0;
+}
+
+.followups-page .followup-list-sheet {
+  min-width: 0;
+}
+
+.followups-page .followup-board-body .followup-list-sheet table {
+  width: 100%;
+}
+
+/* Calendar panes keep a little inset so grids are not flush to the card edge. */
+.followups-page .followup-board-body > :not(.followup-list-sheet) {
+  padding: 16px 20px 20px;
+}
+
+.followups-page .followup-board :is(button, a):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.followups-page .followup-board :is(th, td) {
+  font-family: inherit;
+}
+
+.followups-page .followup-board th {
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  height: 44px;
+  padding-block: 10px;
+  letter-spacing: 0.02em;
+}
+
+.followups-page .followup-board td {
+  color: var(--color-text-secondary);
+}
+
+.followups-page .followup-board td p {
+  color: var(--color-text-secondary);
+}
+
+.followups-page .followup-board a {
+  color: var(--color-primary);
+}
+
+@media (max-width: 767px) {
+  .followups-page {
+    padding: 16px;
+  }
+
+  .followups-page .followup-modern-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .followups-page .followup-board-header {
+    flex-wrap: wrap;
+    padding: 14px 16px;
+  }
+
+  .followups-page .followup-board-body > :not(.followup-list-sheet) {
+    padding: 12px 16px 16px;
+  }
+}

@@ -102,6 +102,14 @@ import {
   shouldPrefillPrenatalBaseline,
   shouldSeedMaternalFromPrenatalFollowUp,
 } from "../../utils/prenatalEnrollment";
+import {
+  NUTRITION_INTENT_CONTINUE,
+  NUTRITION_INTENT_ENROLL,
+  NUTRITION_STATUS_ACTIVE,
+  NUTRITION_STATUS_NOT_ENROLLED,
+  getNutritionEnrollment,
+  nutritionProgramCopy,
+} from "../../utils/nutritionEnrollment";
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
   localConsultationKey,
@@ -715,6 +723,8 @@ export default function ConsultationWorkspace() {
   );
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [primaryProgram, setPrimaryProgram] = useState("");
+  // Draft resume keeps the saved enroll/continue until care-overview or records settle.
+  const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical
   // Assessment or Treatment). UI position only - saved in the one draft.
   const [formStep, setFormStep] = useState(
@@ -1140,6 +1150,12 @@ export default function ConsultationWorkspace() {
     queryFn: () => getHealthRecordsByPatient(selectedPatientId),
     enabled: Boolean(selectedPatientId),
   });
+  const careOverviewQuery = useQuery({
+    queryKey: queryKeys.careOverview(selectedPatientId),
+    queryFn: () => getCareOverview(selectedPatientId),
+    enabled: Boolean(selectedPatientId),
+    staleTime: 30_000,
+  });
   const patientRecordsForHeight = bodyHistoryQuery.data;
   const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecordsForHeight, "ongoing").findings, [patientRecordsForHeight]);
   function changeBodyReassessments(next) {
@@ -1156,6 +1172,16 @@ export default function ConsultationWorkspace() {
       Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : [],
     ),
     [selectedPatient, patientRecordsForHeight],
+  );
+  const nutritionRecordsReady = Array.isArray(patientRecordsForHeight);
+  const nutritionEnrollment = useMemo(
+    () => getNutritionEnrollment(
+      selectedPatient || {},
+      nutritionRecordsReady ? patientRecordsForHeight : [],
+      dateOfVisit || new Date(),
+      careOverviewQuery.isSuccess ? careOverviewQuery.data?.nutritionCare : undefined,
+    ),
+    [selectedPatient, nutritionRecordsReady, patientRecordsForHeight, dateOfVisit, careOverviewQuery.isSuccess, careOverviewQuery.data],
   );
   const prenatalHistory = useMemo(
     () => collectPrenatalHistory(Array.isArray(patientRecordsForHeight) ? patientRecordsForHeight : []),
@@ -1201,6 +1227,17 @@ export default function ConsultationWorkspace() {
     loadFailed: maternalLoadFailed,
   });
   const prenatalIntent = selectedPrograms.includes("Maternal") ? prenatalEnrollment.intent : "";
+  const nutritionEnrollmentKnown = careOverviewQuery.isSuccess || (careOverviewQuery.isError && nutritionRecordsReady);
+  const nutritionSelected = selectedPrograms.includes("Nutrition");
+  const nutritionIntent = nutritionSelected
+    ? (nutritionEnrollmentKnown ? nutritionEnrollment.intent : (restoredNutritionIntent || nutritionEnrollment.intent))
+    : "";
+  const nutritionPanelEnrolled = nutritionEnrollmentKnown
+    ? nutritionEnrollment.enrolled
+    : restoredNutritionIntent === NUTRITION_INTENT_CONTINUE;
+  const nutritionPanelStatus = nutritionEnrollmentKnown
+    ? nutritionEnrollment.status
+    : (nutritionPanelEnrolled ? NUTRITION_STATUS_ACTIVE : NUTRITION_STATUS_NOT_ENROLLED);
   const riskFlags = useMemo(
     () => getMaternalRiskFlags({
       birthdate: getEffectivePatientBirthdate(selectedPatient),
@@ -1486,6 +1523,7 @@ export default function ConsultationWorkspace() {
       selectedPrograms,
       primaryProgram,
       prenatalIntent,
+      nutritionIntent,
       consultationMode,
       // Review & Save has no phase of its own in a draft; it resumes on Next Step.
       wizardPhase,
@@ -1822,6 +1860,11 @@ export default function ConsultationWorkspace() {
     setHealthRecordType(normalizeRecordType(restoredClassification(draft.classification, restoredPrimary)));
     setSelectedPrograms(restoredPrograms);
     setPrimaryProgram(restoredPrimary);
+    setRestoredNutritionIntent(
+      payload.nutritionIntent === NUTRITION_INTENT_ENROLL || payload.nutritionIntent === NUTRITION_INTENT_CONTINUE
+        ? payload.nutritionIntent
+        : "",
+    );
     setConsultationMode(restoredPrograms.length ? payload.consultationMode || (draft.classification === "General Consultation" ? "general" : "program") : "general");
     setDateOfVisit(payload.dateOfVisit || toDateInputValue());
     setTimeOfVisit(payload.timeOfVisit || toTimeInputValue());
@@ -3026,6 +3069,9 @@ export default function ConsultationWorkspace() {
     queryClient.invalidateQueries({ queryKey: ["patient-records-height", selectedPatientId] });
     queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(selectedPatientId)] });
     queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records"] });
+    if (selectedPatientId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(selectedPatientId) });
+    }
     if (formData.needsReferral || formData.needs_referral) {
       queryClient.invalidateQueries({ queryKey: queryKeys.referrals("bhc") });
       queryClient.invalidateQueries({ queryKey: queryKeys.incomingReferrals("rhu") });
@@ -3567,6 +3613,7 @@ export default function ConsultationWorkspace() {
         ...(consultationMode ? { selectedPrograms, primaryProgram } : {}),
         ...(isMaternal ? { prenatalIntent } : {}),
         ...nextActionsMonitoring,
+        ...(nutritionIntent ? { nutritionIntent } : {}),
       },
       createdByRole: userRole,
       linkedTrackingId: "",
@@ -4067,14 +4114,22 @@ export default function ConsultationWorkspace() {
           hideAction: maternalReadonlyActive,
         })
       : null;
+    const nutritionCopy = key === "Nutrition"
+      ? nutritionProgramCopy({
+          enrolled: nutritionPanelEnrolled,
+          included: nutritionSelected,
+          status: nutritionPanelStatus,
+        })
+      : null;
     return {
       key,
-      title: key === "Maternal" ? maternalCopy.title : key,
+      title: key === "Maternal" ? maternalCopy.title : nutritionCopy?.title || key,
       description: key === "Maternal"
         ? maternalCopy.description
-        : key === "EPI"
-          ? "Immunization and child vaccination services."
-          : RECORD_TYPE_DETAILS[classification]?.description,
+        : nutritionCopy?.description
+          || (key === "EPI"
+            ? "Immunization and child vaccination services."
+            : RECORD_TYPE_DETAILS[classification]?.description),
       icon: RECORD_TYPE_DETAILS[classification]?.icon || Stethoscope,
       disabled: !eligibility.eligible || Boolean(maternalControl?.disabled),
       disabledReason: !eligibility.eligible ? eligibility.message : (maternalControl?.disabledReason || eligibility.message),
@@ -4082,9 +4137,9 @@ export default function ConsultationWorkspace() {
       busy: Boolean(maternalControl?.busy),
       actionLabel: maternalControl?.actionLabel,
       hideAction: Boolean(maternalCopy?.hideAction || maternalControl?.hideAction),
-      enrollLabel: maternalCopy?.enrollLabel,
-      statusLabel: maternalCopy?.statusLabel,
-      statusTone: maternalCopy?.statusTone,
+      enrollLabel: maternalCopy?.enrollLabel || nutritionCopy?.enrollLabel,
+      statusLabel: maternalCopy?.statusLabel || nutritionCopy?.statusLabel,
+      statusTone: maternalCopy?.statusTone || nutritionCopy?.statusTone,
     };
   }), selectedPatientLoading);
 
@@ -5250,7 +5305,7 @@ export default function ConsultationWorkspace() {
             ? [
                 {
                   label: "Open Waiting to Submit",
-                  onClick: () => navigate("/bhc/referrals?tab=waiting"),
+                  onClick: () => navigate("/bhc/referrals?view=waiting"),
                 },
               ]
             : []),

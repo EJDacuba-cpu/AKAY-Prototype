@@ -81,9 +81,17 @@ export function getMonthGridDays(monthDate) {
 
 export function formatWeekRangeLabel(weekStart, weekEnd) {
   const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
-  const startLabel = weekStart.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  if (sameMonth) {
+    const month = weekStart.toLocaleDateString("en-US", { month: "long" });
+    return `${month} ${weekStart.getDate()} – ${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+  }
+
+  const startLabel = weekStart.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+  });
   const endLabel = weekEnd.toLocaleDateString("en-US", {
-    month: sameMonth ? undefined : "long",
+    month: "long",
     day: "numeric",
     year: "numeric",
   });
@@ -97,6 +105,37 @@ export function formatMonthLabel(date) {
 
 export function formatDayHeaderLabel(date) {
   return date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
+/** Primary + meta lines for the follow-up calendar board heading. */
+export function formatCalendarBoardHeading(viewMode, currentDate, weekStart, weekEnd) {
+  if (viewMode === "day") {
+    return {
+      primary: currentDate.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+      meta: currentDate.toLocaleDateString("en-US", { weekday: "long" }),
+    };
+  }
+
+  if (viewMode === "month") {
+    return {
+      primary: formatMonthLabel(currentDate),
+      meta: "Month view",
+    };
+  }
+
+  const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
+  const primary = sameMonth
+    ? `${weekStart.toLocaleDateString("en-US", { month: "long" })} ${weekStart.getDate()} – ${weekEnd.getDate()}`
+    : `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+
+  return {
+    primary,
+    meta: `${weekStart.getFullYear()} · Week view`,
+  };
 }
 
 export function toDateInputValue(date) {

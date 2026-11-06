@@ -1,0 +1,18 @@
+.staff-assignments input {
+  caret-color: var(--color-primary);
+}
+
+.staff-assignments ::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+}
+
+@media (max-width: 639px) {
+  .staff-assignment-header {
+    align-items: flex-start;
+  }
+
+  .staff-assignment-list-toolbar .search-filter-cluster {
+    width: 100%;
+  }
+}

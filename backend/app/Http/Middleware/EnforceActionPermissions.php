@@ -15,6 +15,12 @@ class EnforceActionPermissions
         $path = $request->path();
         $read = $request->isMethod('get');
         $permission = match (true) {
+            // Walk-in Check-in may read pending referrals without clinical fields.
+            str_ends_with($path, '/pending-referrals') => (
+                ActionPermissions::allows($request->user(), 'patients.register')
+                || ActionPermissions::allows($request->user(), 'rhu.intake')
+                || ActionPermissions::allows($request->user(), 'rhu.manage')
+            ) ? null : 'patients.register',
             // BHC dashboard sections are gated in the payload, not by a single duty.
             str_contains($path, '/bhc/dashboard') => null,
             // Either consultations.encode or clinical.history; the controller checks.
@@ -42,6 +48,7 @@ class EnforceActionPermissions
                     ? null
                     : 'consultations.encode',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
+            str_contains($path, '/nutrition-care') => 'consultations.finalize',
             // BHC and RHU history now opens through the patient directory/profile.
             // Reading these does not confer registration/update authority; facility scopes still apply.
             str_contains($path, '/patients') && $read
@@ -56,6 +63,7 @@ class EnforceActionPermissions
             str_contains($path, '/reports') => 'reports.view',
             str_contains($path, '/referral-routing') => 'consultations.encode',
             str_ends_with($path, '/rhu-visits/patient-search') => 'patients.register',
+            str_ends_with($path, '/rhu-visits/recent-patients') => 'patients.register',
             str_contains($path, '/rhu-visits') && str_ends_with($path, '/start') => 'consultations.encode',
             str_contains($path, '/rhu-visits') && str_ends_with($path, '/resume') => (
                 ActionPermissions::allows($request->user(), 'consultations.encode')
