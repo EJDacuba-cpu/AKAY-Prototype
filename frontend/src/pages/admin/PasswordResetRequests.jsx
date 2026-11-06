@@ -26,13 +26,14 @@ export default function PasswordResetRequests() {
   return (
     <DashboardLayout role="admin" title="Reset Requests">
       <div className="mx-auto w-full max-w-[1500px]">
-        <div className="mb-4 min-w-0">
+        <ResetRequestsTab rolesData={rolesData} toolbarLead={
+          <div className="min-w-0 sm:max-w-[34rem]">
           <h2 className="text-[17px] font-bold tracking-tight text-ink-800">Reset Requests</h2>
           <p className="mt-1 max-w-xl text-[13px] text-neutral-600">
             Review requests and send secure one-time reset links. Links expire after 60 minutes.
           </p>
         </div>
-        <ResetRequestsTab rolesData={rolesData} />
+        } />
       </div>
     </DashboardLayout>
   );

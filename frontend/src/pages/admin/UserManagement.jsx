@@ -12,15 +12,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, MoreHorizontal, Pencil, Plus, UserCheck, UserX } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import "./user-management.css";
+import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
+import SearchFilterCluster from "../../components/common/filters/SearchFilterCluster";
+import { Button } from "../../components/ui/button";
+import { tableBodyHeight } from "../../utils/tablePaging";
 import AccountDetailsModal from "../../components/features/accounts/AccountDetailsModal";
 import EditAccountModal from "../../components/features/accounts/EditAccountModal";
 import AccountStatusBadge from "../../components/features/accounts/AccountStatusBadge";
 import {
   ConfirmationModal,
-  FixedTable,
   PageStateWrapper,
   SearchField,
-  SegmentedFilter,
   TablePagination,
 } from "../../components/common";
 import useNotification from "../../hooks/useNotification";
@@ -46,24 +49,7 @@ const DEFAULT_FILTERS = {
   status: "All Status",
 };
 
-const STATUS_SEGMENTS = [
-  { value: "All Status", label: "All" },
-  { value: "Active", label: "Active" },
-  { value: "Inactive", label: "Inactive" },
-];
-
-const ROLE_SEGMENTS = [
-  { value: "All Roles", label: "All" },
-  { value: "Admin", label: "Admin" },
-  { value: "BHC", label: "BHC" },
-  { value: "RHU", label: "RHU" },
-];
-
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
-const FILTER_CAPTION = "text-[12px] font-medium text-neutral-600";
-const SELECT_CLASS =
-  "h-9 min-w-[168px] rounded-md border border-neutral-200 bg-white px-3 text-[13px] text-neutral-900 shadow-xs outline-none transition-colors hover:border-neutral-300 focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
-
 export default function UserManagement() {
   const queryClient = useQueryClient();
   const notify = useNotification();
@@ -215,67 +201,33 @@ export default function UserManagement() {
         onRetry={() => refetch()}
         loadingMessage="Loading accounts..."
       >
-      <div className="mx-auto w-full max-w-[1500px] space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-3">
-          <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 sm:max-w-[320px]">
-            <span className={FILTER_CAPTION}>Search</span>
-            <SearchField
-              value={filters.search}
-              onChange={(value) => updateFilters({ search: value })}
-              placeholder="Search name, email, role, or facility"
-              label="Search accounts"
-            />
+      <div className="account-directory-content mx-auto w-full max-w-[1500px] space-y-4">
+        <header className="account-directory-header flex flex-wrap items-center justify-between gap-4">
+          <div className="account-directory-heading min-w-0">
+            <h1 className="account-directory-title text-[18px] leading-[1.3] font-bold tracking-tight text-ink-800">User accounts</h1>
+            <p className="account-directory-subtitle mt-1 text-[13px] text-neutral-600">Manage staff accounts, roles, and facility access.</p>
           </div>
-          <Link
-            to="/admin/users/add"
-            className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-ink-700 px-4 text-[13px] font-medium text-white shadow-xs transition-colors hover:bg-ink-600 active:bg-ink-800 focus-visible:ring-offset-2 ${FOCUS_RING}`}
-          >
-            <Plus size={14} strokeWidth={2.25} aria-hidden="true" />
-            Add user account
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
-          <SegmentedFilter
-            label="Filter by status"
-            visibleLabel="Status"
-            options={STATUS_SEGMENTS}
-            value={filters.status}
-            onChange={(value) => updateFilters({ status: value })}
-          />
-          <SegmentedFilter
-            label="Filter by account type"
-            visibleLabel="Type"
-            options={ROLE_SEGMENTS}
-            value={filters.role}
-            onChange={(value) => updateFilters({ role: value })}
-          />
-          <label className={`flex flex-col gap-1.5 ${FILTER_CAPTION}`}>
-            Facility
-            <select
-              value={filters.facility}
-              onChange={(event) => updateFilters({ facility: event.target.value })}
-              className={SELECT_CLASS}
-            >
-              {facilityOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-          <label className={`flex flex-col gap-1.5 ${FILTER_CAPTION}`}>
-            Role
-            <select
-              value={filters.position}
-              onChange={(event) => updateFilters({ position: event.target.value })}
-              className={SELECT_CLASS}
-            >
-              {positionOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-neutral-600">
+          <div className="account-directory-controls flex max-w-full flex-wrap items-center justify-end gap-2">
+            <SearchFilterCluster search={<SearchField value={filters.search} onChange={(value) => updateFilters({search:value})} placeholder="Search accounts" label="Search name, email, role, or facility" />} filter={
+              <ListFilterPopover ariaLabel="Account filters"
+                fields={[
+                  {key:"status",label:"Status",resetValue:DEFAULT_FILTERS.status,options:[{value:"All Status",label:"All statuses"},"Active","Inactive"]},
+                  {key:"role",label:"Account type",resetValue:DEFAULT_FILTERS.role,options:[{value:"All Roles",label:"All types"},"Admin","BHC","RHU"]},
+                  {key:"facility",label:"Facility",resetValue:DEFAULT_FILTERS.facility,options:facilityOptions,fullWidth:true},
+                  {key:"position",label:"Staff role",resetValue:DEFAULT_FILTERS.position,options:positionOptions,fullWidth:true},
+                ]}
+                applied={filters}
+                activeFilters={[{key:"status",label:"Status"},{key:"role",label:"Type"},{key:"facility",label:"Facility"},{key:"position",label:"Role"}].filter(({key})=>filters[key]!==DEFAULT_FILTERS[key]).map(({key,label})=>({key,label:label+": "+filters[key]}))}
+                onApply={updateFilters}
+                onRemoveFilter={(key)=>updateFilters({[key]:DEFAULT_FILTERS[key]})}
+                onClearAll={()=>setFilters({...DEFAULT_FILTERS,search:filters.search})}
+                buildDefaults={()=>({status:DEFAULT_FILTERS.status,role:DEFAULT_FILTERS.role,facility:DEFAULT_FILTERS.facility,position:DEFAULT_FILTERS.position})}
+              />
+            } />
+            <Button asChild variant="default" size="sm" className="rounded-full text-[13px]"><Link to="/admin/users/add"><Plus size={14} aria-hidden="true"/>Add user account</Link></Button>
+          </div>
+        </header>
+        <div className="account-directory-count flex min-h-6 flex-wrap items-center gap-x-3 gap-y-2 text-[12px] text-neutral-600">
           <span aria-live="polite">
             {narrowed
               ? `Showing ${visibleUsers.length} of ${users.length} ${accountsWord}`
@@ -345,10 +297,10 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
   );
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-      <div className="hidden md:block">
-        <FixedTable minWidth="min-w-[900px]">
-          <thead className="border-b border-neutral-200 bg-neutral-50 text-[12px] font-medium text-neutral-500">
+    <div className="account-directory-sheet medicine-inventory-sheet flex min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <div className="hidden overflow-y-auto md:block" style={{ height: tableBodyHeight() }}>
+        <table className="w-full table-fixed text-left"><caption className="sr-only">User accounts</caption><colgroup><col className="w-[30%]"/><col className="w-[24%]"/><col className="w-[27%]"/><col className="w-[13%]"/><col className="w-[6%]"/></colgroup>
+          <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
             <tr>
               {["Account", "Role", "Home facility", "Status"].map((label) => (
                 <th key={label} scope="col" className="px-4">{label}</th>
@@ -365,7 +317,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
               </tr>
             ) : (
               pageRows.map((user) => (
-                <tr key={user.id} className="transition-colors hover:bg-neutral-50">
+                <tr key={user.id} className="h-14 transition-colors hover:bg-neutral-50">
                   <td className="px-4">
                     <AccountCell user={user} />
                   </td>
@@ -389,7 +341,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
               ))
             )}
           </tbody>
-        </FixedTable>
+        </table>
       </div>
 
       <div className="divide-y divide-neutral-100 md:hidden">
@@ -422,7 +374,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
         )}
       </div>
 
-      {users.length > 0 && <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+      <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
       {detailsUser && <AccountDetailsModal accountId={detailsUser.id} account={detailsUser} rolesData={rolesData} onClose={() => setDetailsUser(null)} />}
       {editUser && <EditAccountModal accountId={editUser.id} account={editUser} onClose={() => setEditUser(null)} />}
     </div>
