@@ -5,9 +5,11 @@ import {
   ConnectionErrorState,
   FixedTable,
   ListToolbar,
+  RefreshingIndicator,
   SoftLoadingArea,
   TablePagination,
 } from "../../components/common";
+import { Button } from "../../components/ui/button";
 import { apiRequest, unwrapList } from "../../services/apiClient";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 
@@ -33,6 +35,7 @@ export default function AuditLogs() {
     total: 0,
     lastPage: 1,
   });
+  const [hasLoadedData, setHasLoadedData] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -84,17 +87,11 @@ export default function AuditLogs() {
           total: response.total || 0,
           lastPage: response.last_page || 1,
         });
+        setHasLoadedData(true);
       })
       .catch((error) => {
         if (!active) return;
 
-        setLogs([]);
-        setPagination({
-          currentPage: 1,
-          perPage: LOGS_PER_PAGE,
-          total: 0,
-          lastPage: 1,
-        });
         setLoadError(error);
       })
       .finally(() => {
@@ -163,12 +160,21 @@ export default function AuditLogs() {
 
   const paginatedLogs = logs;
   const totalPages = Math.max(1, pagination.lastPage);
+  const isInitialLoading = isLoading && !hasLoadedData;
+  const isRefreshing = isLoading && hasLoadedData;
 
   useEffect(() => {
-    if (currentPage > totalPages) {
+    if (!isLoading && !loadError && hasLoadedData && currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
-  }, [currentPage, totalPages]);
+  }, [currentPage, totalPages, isLoading, loadError, hasLoadedData]);
+
+  function changePage(nextPage) {
+    if (isLoading || nextPage === pagination.currentPage) return;
+    // A failed request keeps its target page; retrying that target needs a new request.
+    if (nextPage === currentPage) setReloadKey((key) => key + 1);
+    else setCurrentPage(nextPage);
+  }
 
   function updateFilters(updater) {
     setCurrentPage(1);
@@ -198,12 +204,18 @@ export default function AuditLogs() {
     <DashboardLayout role="admin" title="Audit Logs">
       <div className="mx-auto w-full max-w-[1500px]">
         <SoftLoadingArea skeleton="table"
-          isLoading={isLoading}
+          isLoading={isInitialLoading}
           message="Loading audit logs..."
           scope="page"
         >
-          {!isLoading && (
+          {!isInitialLoading && (
             <ListToolbar
+              heading={
+                <div className="min-w-0">
+                  <h1 className="text-[17px] font-bold leading-[1.3] tracking-tight text-ink-800">Audit logs</h1>
+                  <p className="mt-1 text-[13px] text-neutral-600">Review recorded system activity by action, user, and module.</p>
+                </div>
+              }
               searchValue={filters.search}
               onSearchChange={(value) => {
                 updateFilters((prev) => ({ ...prev, search: value }));
@@ -215,16 +227,16 @@ export default function AuditLogs() {
               onApplyFilters={applyDropdownFilters}
               onClearFilters={clearFilters}
               onRemoveFilter={removeFilter}
-              disabled={isLoading}
+              disabled={isInitialLoading}
             />
           )}
 
-          {!isLoading && loadError && (
+          {!isInitialLoading && loadError && !hasLoadedData && (
             <ConnectionErrorState variant={errorStateVariant(loadError)} onRetry={() => setReloadKey((key) => key + 1)} />
           )}
 
-          {!isLoading && !loadError && (
-          <div className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
+          {!isInitialLoading && hasLoadedData && (
+          <div aria-busy={isRefreshing} className="flex flex-col overflow-hidden rounded-xl border border-[#E8ECF0] bg-white">
             <div className="flex items-center justify-between border-b border-[#E8ECF0] px-6 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -235,7 +247,15 @@ export default function AuditLogs() {
                   actions.
                 </p>
               </div>
+              {isRefreshing && <RefreshingIndicator label="Updating logs..." />}
             </div>
+
+            {loadError && (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 px-6 py-3 text-[13px] text-alert-700">
+                <p>Could not update logs. The last loaded results are still shown.</p>
+                <Button type="button" variant="secondary" size="compact" onClick={() => setReloadKey((key) => key + 1)} disabled={isLoading}>Retry</Button>
+              </div>
+            )}
 
             <FixedTable minWidth="min-w-[1050px]">
                 <thead>
@@ -252,7 +272,7 @@ export default function AuditLogs() {
                 </thead>
 
                 <tbody className="divide-y divide-[#F3F4F6]">
-                  {isLoading ? null : paginatedLogs.length === 0 ? (
+                  {paginatedLogs.length === 0 ? (
                     <tr>
                       <td
                         colSpan={8}
@@ -308,13 +328,12 @@ export default function AuditLogs() {
                 </tbody>
             </FixedTable>
 
-            {!isLoading && !loadError && (
               <TablePagination
-                currentPage={currentPage}
+                currentPage={pagination.currentPage}
                 totalPages={totalPages}
-                onPageChange={setCurrentPage}
+                onPageChange={changePage}
+                disabled={isLoading}
               />
-            )}
           </div>
           )}
         </SoftLoadingArea>

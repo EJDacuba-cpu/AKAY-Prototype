@@ -20,13 +20,14 @@ export default function AccountInvites() {
   return (
     <DashboardLayout role="admin" title="Invites">
       <div className="mx-auto w-full max-w-[1500px]">
-        <div className="mb-4 min-w-0">
+        <InvitesTab rolesData={rolesData} toolbarLead={
+          <div className="min-w-0 sm:max-w-[34rem]">
           <h2 className="text-[17px] font-bold tracking-tight text-ink-800">Invites</h2>
           <p className="mt-1 max-w-xl text-[13px] text-neutral-600">
             New accounts set their own password from a one-time invite link. Links expire after 48 hours.
           </p>
         </div>
-        <InvitesTab rolesData={rolesData} />
+        } />
       </div>
     </DashboardLayout>
   );

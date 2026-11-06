@@ -1,0 +1,34 @@
+.sidebar-account-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-bottom: 6px;
+  border: 1px solid var(--color-brand-200);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 10px 12px;
+}
+
+.sidebar-account-shape {
+  position: absolute;
+  z-index: -1;
+  right: -35px;
+  bottom: -40px;
+  width: 84px;
+  height: 84px;
+  transform: rotate(24deg);
+  border-radius: 24px;
+  background: var(--color-brand-100);
+  pointer-events: none;
+}
+
+.sidebar-account-shape::after {
+  position: absolute;
+  top: -18px;
+  left: -20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--color-brand-50);
+  content: "";
+}

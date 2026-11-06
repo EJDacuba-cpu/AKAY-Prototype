@@ -52,6 +52,7 @@ export default function TablePagination({
   totalPages = 1,
   onPageChange = () => {},
   alwaysShow = false,
+  disabled = false,
 }) {
   const displayTotalPages = Math.max(Number(totalPages) || 0, 1);
 
@@ -81,8 +82,8 @@ export default function TablePagination({
           type="button"
           variant="secondary"
           size="compact"
-          disabled={isFirstPage}
-          onClick={() => !isFirstPage && onPageChange(safeCurrentPage - 1)}
+          disabled={disabled || isFirstPage}
+          onClick={() => !disabled && !isFirstPage && onPageChange(safeCurrentPage - 1)}
         >
           Previous
         </Button>
@@ -102,12 +103,13 @@ export default function TablePagination({
               variant="secondary"
               size="compact"
               aria-current={safeCurrentPage === pageNumber ? "page" : undefined}
+              disabled={disabled}
               className={
                 safeCurrentPage === pageNumber
                   ? "border-ink-700 bg-ink-700 text-white hover:border-ink-700 hover:bg-ink-700 hover:text-white"
                   : undefined
               }
-              onClick={() => onPageChange(pageNumber)}
+              onClick={() => !disabled && onPageChange(pageNumber)}
             >
               {pageNumber}
             </Button>
@@ -118,8 +120,8 @@ export default function TablePagination({
           type="button"
           variant="secondary"
           size="compact"
-          disabled={isLastPage}
-          onClick={() => !isLastPage && onPageChange(safeCurrentPage + 1)}
+          disabled={disabled || isLastPage}
+          onClick={() => !disabled && !isLastPage && onPageChange(safeCurrentPage + 1)}
         >
           Next
         </Button>

@@ -7,6 +7,7 @@ const PARENT_TRAILS = [
   // Admin
   ["/admin/users/add", [{ label: "Account Directory", path: "/admin/users" }]],
   ["/admin/doctors/add", [{ label: "Account Directory", path: "/admin/users" }]],
+  ["/admin/staff-assignments/add", [{ label: "Staff Assignments", path: "/admin/staff-assignments" }]],
 
   // Barangay Health Center
   ["/bhc/medicine-availability/:medicineId", [{ label: "Medicine and Supply", path: "/bhc/medicine-availability" }]],

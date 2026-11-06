@@ -1,3 +1,4 @@
+import "./sidebar-account-card.css";
 import {
   ChevronDown,
   ChevronRight,
@@ -252,12 +253,16 @@ export default function DesktopSidebar({
 
       <div className="shrink-0 p-3 pt-2">
         {expanded && (
-          <div className="mb-1.5 rounded-xl border border-neutral-200/80 bg-white px-2.5 py-2 shadow-xs">
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium text-neutral-900">
+          <div className="sidebar-account-card">
+            <span className="sidebar-account-shape" aria-hidden="true" />
+            <div className="relative min-w-0">
+              <p className="truncate text-[13px] font-semibold leading-5 text-ink-800" title={user.name}>
                 {user.name}
               </p>
-              <p className="truncate text-[11px] text-neutral-500">
+              <p
+                className="truncate text-[11px] leading-4 text-brand-800"
+                title={[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
+              >
                 {[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
               </p>
             </div>

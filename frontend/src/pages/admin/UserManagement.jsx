@@ -208,8 +208,18 @@ export default function UserManagement() {
             <p className="account-directory-subtitle mt-1 text-[13px] text-neutral-600">Manage staff accounts, roles, and facility access.</p>
           </div>
           <div className="account-directory-controls flex max-w-full flex-wrap items-center justify-end gap-2">
-            <SearchFilterCluster search={<SearchField value={filters.search} onChange={(value) => updateFilters({search:value})} placeholder="Search accounts" label="Search name, email, role, or facility" />} filter={
-              <ListFilterPopover ariaLabel="Account filters"
+            <SearchFilterCluster
+              search={
+                <SearchField
+                  value={filters.search}
+                  onChange={(value) => updateFilters({ search: value })}
+                  placeholder="Search accounts"
+                  label="Search name, email, role, or facility"
+                />
+              }
+              filter={
+              <ListFilterPopover
+                ariaLabel="Account filters"
                 fields={[
                   {key:"status",label:"Status",resetValue:DEFAULT_FILTERS.status,options:[{value:"All Status",label:"All statuses"},"Active","Inactive"]},
                   {key:"role",label:"Account type",resetValue:DEFAULT_FILTERS.role,options:[{value:"All Roles",label:"All types"},"Admin","BHC","RHU"]},
@@ -217,14 +227,32 @@ export default function UserManagement() {
                   {key:"position",label:"Staff role",resetValue:DEFAULT_FILTERS.position,options:positionOptions,fullWidth:true},
                 ]}
                 applied={filters}
-                activeFilters={[{key:"status",label:"Status"},{key:"role",label:"Type"},{key:"facility",label:"Facility"},{key:"position",label:"Role"}].filter(({key})=>filters[key]!==DEFAULT_FILTERS[key]).map(({key,label})=>({key,label:label+": "+filters[key]}))}
+                activeFilters={[
+                  { key: "status", label: "Status" },
+                  { key: "role", label: "Type" },
+                  { key: "facility", label: "Facility" },
+                  { key: "position", label: "Role" },
+                ]
+                  .filter(({ key }) => filters[key] !== DEFAULT_FILTERS[key])
+                  .map(({ key, label }) => ({ key, label: `${label}: ${filters[key]}` }))}
                 onApply={updateFilters}
-                onRemoveFilter={(key)=>updateFilters({[key]:DEFAULT_FILTERS[key]})}
-                onClearAll={()=>setFilters({...DEFAULT_FILTERS,search:filters.search})}
-                buildDefaults={()=>({status:DEFAULT_FILTERS.status,role:DEFAULT_FILTERS.role,facility:DEFAULT_FILTERS.facility,position:DEFAULT_FILTERS.position})}
+                onRemoveFilter={(key) => updateFilters({ [key]: DEFAULT_FILTERS[key] })}
+                onClearAll={() => setFilters((current) => ({ ...DEFAULT_FILTERS, search: current.search }))}
+                buildDefaults={() => ({
+                  status: DEFAULT_FILTERS.status,
+                  role: DEFAULT_FILTERS.role,
+                  facility: DEFAULT_FILTERS.facility,
+                  position: DEFAULT_FILTERS.position,
+                })}
               />
-            } />
-            <Button asChild variant="default" size="sm" className="rounded-full text-[13px]"><Link to="/admin/users/add"><Plus size={14} aria-hidden="true"/>Add user account</Link></Button>
+              }
+            />
+            <Button asChild variant="default" size="sm" className="rounded-full text-[13px]">
+              <Link to="/admin/users/add">
+                <Plus size={14} aria-hidden="true" />
+                Add user account
+              </Link>
+            </Button>
           </div>
         </header>
         <div className="account-directory-count flex min-h-6 flex-wrap items-center gap-x-3 gap-y-2 text-[12px] text-neutral-600">
@@ -298,8 +326,16 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
 
   return (
     <div className="account-directory-sheet medicine-inventory-sheet flex min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
-      <div className="hidden overflow-y-auto md:block" style={{ height: tableBodyHeight() }}>
-        <table className="w-full table-fixed text-left"><caption className="sr-only">User accounts</caption><colgroup><col className="w-[30%]"/><col className="w-[24%]"/><col className="w-[27%]"/><col className="w-[13%]"/><col className="w-[6%]"/></colgroup>
+      <div className="hidden overflow-auto md:block" style={{ height: tableBodyHeight() }}>
+        <table className="w-full min-w-[900px] table-fixed text-left">
+          <caption className="sr-only">User accounts</caption>
+          <colgroup>
+            <col className="w-[30%]" />
+            <col className="w-[24%]" />
+            <col className="w-[27%]" />
+            <col className="w-[13%]" />
+            <col className="w-[6%]" />
+          </colgroup>
           <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
             <tr>
               {["Account", "Role", "Home facility", "Status"].map((label) => (

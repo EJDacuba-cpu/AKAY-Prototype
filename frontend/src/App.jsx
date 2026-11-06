@@ -485,6 +485,7 @@ export default function App() {
       <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
+      <Route path="/admin/staff-assignments/add" element={<ProtectedPage allowedRole="admin"><StaffAssignments mode="create" /></ProtectedPage>} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />

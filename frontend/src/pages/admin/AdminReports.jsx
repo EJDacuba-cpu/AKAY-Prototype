@@ -1,3 +1,4 @@
+import "./admin-report-metrics.css";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, FileText, Printer } from "lucide-react";
@@ -16,7 +17,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import { PageStateWrapper, RefreshingIndicator } from "../../components/common";
 import ConnectionErrorState from "../../components/common/ConnectionErrorState";
 import { Button } from "../../components/ui/button";
-import { Select } from "../../components/ui/select";
+import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import { getPasswordInviteSummary } from "../../services/accountInviteService";
 import { loadAdminAccountAnalytics } from "../../services/adminReportsService";
 import {
@@ -41,9 +42,6 @@ const ROLE_COLORS = {
 
 const ACTIVE_COLOR = "#B91C1C";
 const INACTIVE_COLOR = "#CBD5E1";
-
-const filterSelectClass =
-  "h-8 w-auto min-w-[9.25rem] rounded-full border-neutral-200 px-3 py-0 text-[12px] text-neutral-800 shadow-xs sm:text-[12px]";
 
 const PRINT_CSS = `
   @page { size: A4 portrait; margin: 14mm; }
@@ -200,68 +198,37 @@ function openPrintDialog() {
   window.print();
 }
 
-function FilterControls({ draft, applied, onDraftChange, onApply, onClear }) {
-  const dirty = !sameFilters(draft, applied);
-  const canClear = !filtersAreClear(draft) || !filtersAreClear(applied);
+function ReportHeaderActions({ applied, onApply }) {
+  const fields = [
+    { key: "role", label: "Role", resetValue: DEFAULT_ACCOUNT_FILTERS.role, options: ROLE_OPTIONS },
+    { key: "status", label: "Account status", resetValue: DEFAULT_ACCOUNT_FILTERS.status, options: STATUS_OPTIONS },
+  ];
+  const activeFilters = fields
+    .filter((field) => applied[field.key] !== field.resetValue)
+    .map((field) => ({
+      key: field.key,
+      label: `${field.label}: ${field.options.find((option) => option.value === applied[field.key])?.label || applied[field.key]}`,
+    }));
 
   return (
-    <form onSubmit={onApply} className="no-print flex flex-col gap-2 lg:items-end">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-[12px] font-medium text-neutral-600">
-          Role
-          <Select
-            className={filterSelectClass}
-            value={draft.role}
-            onChange={(event) => onDraftChange({ ...draft, role: event.target.value })}
-          >
-            {ROLE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex items-center gap-2 text-[12px] font-medium text-neutral-600">
-          Account Status
-          <Select
-            className={filterSelectClass}
-            value={draft.status}
-            onChange={(event) => onDraftChange({ ...draft, status: event.target.value })}
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <Button type="submit" variant={dirty ? "brand" : "secondary"} size="compact" disabled={!dirty}>
-          Apply
-        </Button>
-        <Button type="button" variant="ghost" size="compact" onClick={onClear} disabled={!canClear}>
-          Clear
-        </Button>
-        <span className="mx-1 hidden h-5 w-px bg-neutral-200 sm:block" aria-hidden="true" />
-        <Button
-          type="button"
-          variant="secondary"
-          size="compact"
-          title="Opens the browser print dialog. Choose Save as PDF."
-          aria-describedby="admin-account-pdf-hint"
-          onClick={openPrintDialog}
-        >
-          <FileText size={14} />
-          Export PDF
-        </Button>
-        <Button type="button" variant="brand" size="compact" onClick={openPrintDialog}>
-          <Printer size={14} />
-          Print
-        </Button>
-      </div>
-      <p id="admin-account-pdf-hint" className="max-w-md text-[11px] leading-relaxed text-neutral-500 lg:text-right">
-        Export PDF and Print open the browser print dialog. Choose Save as PDF there to download this snapshot.
-      </p>
-    </form>
+    <div className="report-header-actions flex flex-wrap items-center gap-2">
+      <ListFilterPopover
+        ariaLabel="Account analytics filters"
+        fields={fields}
+        applied={applied}
+        activeFilters={activeFilters}
+        onApply={onApply}
+        onRemoveFilter={(key) => onApply({ ...applied, [key]: DEFAULT_ACCOUNT_FILTERS[key] })}
+        onClearAll={() => onApply({ ...DEFAULT_ACCOUNT_FILTERS })}
+        buildDefaults={() => ({ ...DEFAULT_ACCOUNT_FILTERS })}
+      />
+      <Button type="button" variant="brand" size="sm" onClick={openPrintDialog}>
+        <Printer size={14} aria-hidden="true" />Print
+      </Button>
+      <Button type="button" variant="secondary" size="sm" title="Opens the print dialog. Choose Save as PDF." onClick={openPrintDialog}>
+        <FileText size={14} aria-hidden="true" />Export PDF
+      </Button>
+    </div>
   );
 }
 
@@ -338,6 +305,18 @@ function RolePanel({ report }) {
   );
 }
 
+function ReportMetricCard({ label, value }) {
+  return (
+    <article className="report-metric">
+      <span className="report-metric-shape" aria-hidden="true" />
+      <div className="relative min-w-0">
+        <p className="report-metric-label text-[10px] font-bold uppercase tracking-wide">{label}</p>
+        <p className="mt-1 text-2xl font-bold tabular-nums text-ink-800">{formatCount(value)}</p>
+      </div>
+    </article>
+  );
+}
+
 function StatusPanel({ report }) {
   const chartLabel = report.statusByRole
     .map((row) => `${row.label}: ${formatCount(row.active)} active, ${formatCount(row.inactive)} inactive`)
@@ -364,28 +343,19 @@ function StatusPanel({ report }) {
 
   return (
     <section className="rounded-card border border-neutral-200 bg-white p-4 shadow-card">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{report.filterLabel}</p>
-      <h2 className="mt-1 text-sm font-semibold text-neutral-900">Active and inactive by role</h2>
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <article className="rounded-lg border border-red-100 bg-red-50/70 px-3 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-red-800/80">Total Active</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{formatCount(report.statusTotals.active)}</p>
-        </article>
-        <article className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Total Inactive</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{formatCount(report.statusTotals.inactive)}</p>
-        </article>
-      </div>
-      <div className="mt-4">
-        {report.emptyKind === "none" ? (
-          <div className="relative h-52" role="img" aria-label={`Active and inactive by role. ${chartLabel}`}>
-            <Bar data={data} options={barOptions} />
-          </div>
-        ) : (
-          <EmptyNotice report={report} />
-        )}
-      </div>
-    </section>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">{report.filterLabel}</p>
+                  <h2 className="mt-1 text-sm font-semibold text-neutral-900">Active and inactive by role</h2>
+                  <div className="mt-4 grid grid-cols-2 gap-3"><ReportMetricCard label="Total Active" value={report.statusTotals.active} /><ReportMetricCard label="Total Inactive" value={report.statusTotals.inactive} /></div>
+              <div className="mt-4">
+                    {report.emptyKind === "none" ? (
+                      <div className="relative h-52" role="img" aria-label={`Active and inactive by role. ${chartLabel}`}>
+                        <Bar data={data} options={barOptions} />
+                      </div>
+                    ) : (
+                      <EmptyNotice report={report} />
+                    )}
+                  </div>
+                </section>
   );
 }
 
@@ -402,14 +372,8 @@ function AccessPanel({ access, pending, retrying, onRetry }) {
         </p>
       ) : access?.available ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <article className="rounded-lg border border-neutral-200 px-3 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Pending Invitations</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{formatCount(access.pendingInvitations)}</p>
-          </article>
-          <article className="rounded-lg border border-neutral-200 px-3 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Pending Password Resets</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{formatCount(access.pendingPasswordResets)}</p>
-          </article>
+          <ReportMetricCard label="Pending Invitations" value={access.pendingInvitations} />
+          <ReportMetricCard label="Pending Password Resets" value={access.pendingPasswordResets} />
         </div>
       ) : (
         <div className="mt-4 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-6 text-center">
@@ -620,7 +584,6 @@ function PrintArticle({ report, generatedLabel, pending }) {
 }
 
 export default function AdminReports() {
-  const [draftFilters, setDraftFilters] = useState(() => ({ ...DEFAULT_ACCOUNT_FILTERS }));
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...DEFAULT_ACCOUNT_FILTERS }));
 
   const analyticsQuery = useQuery({
@@ -665,15 +628,9 @@ export default function AdminReports() {
   const analyticsRefreshing = analyticsQuery.isFetching && !analyticsQuery.isLoading;
   const summaryPending = summaryQuery.isPending;
 
-  function applyFilters(event) {
-    event.preventDefault();
-    if (sameFilters(draftFilters, appliedFilters)) return;
-    setAppliedFilters({ role: draftFilters.role, status: draftFilters.status });
-  }
-
-  function clearFilters() {
-    setDraftFilters({ ...DEFAULT_ACCOUNT_FILTERS });
-    setAppliedFilters({ ...DEFAULT_ACCOUNT_FILTERS });
+  function applyFilters(next) {
+    if (sameFilters(next, appliedFilters)) return;
+    setAppliedFilters({ role: next.role, status: next.status });
   }
 
   return (
@@ -692,19 +649,12 @@ export default function AdminReports() {
         {report?.ok ? (
           <div className="flex flex-col gap-5">
             <style>{PRINT_CSS}</style>
-            <header className="no-print flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <header className="report-header no-print flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Account & Role Analytics</h1>
                 <p className="mt-1 text-[13px] text-neutral-600">System Administration · Current Account Snapshot</p>
-                <p className="mt-2 text-[12px] font-medium text-neutral-700">View · {report.filterLabel}</p>
               </div>
-              <FilterControls
-                draft={draftFilters}
-                applied={appliedFilters}
-                onDraftChange={setDraftFilters}
-                onApply={applyFilters}
-                onClear={clearFilters}
-              />
+              <ReportHeaderActions applied={appliedFilters} onApply={applyFilters} />
             </header>
 
             {analyticsRefreshing ? (
