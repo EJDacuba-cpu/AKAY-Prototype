@@ -8,8 +8,11 @@ let notificationCacheIdentity = "";
 let notificationPage = { current: 1, last: 1, total: 0 };
 let loadingPromise = null;
 let lastFetchedAt = 0;
+// Readiness is independent of staleness: invalidation must retain a successful empty frame.
+let hasLoadedInboxCache = false;
 let lastLoadError = null;
 let trashCache = [];
+let hasLoadedTrashCache = false;
 let notificationCounts = null;
 let activeIdentity;
 let sessionVersion = 0;
@@ -54,8 +57,10 @@ export function resetNotificationSessionCache() {
   notificationPage = { current: 1, last: 1, total: 0 };
   loadingPromise = null;
   lastFetchedAt = 0;
+  hasLoadedInboxCache = false;
   lastLoadError = null;
   trashCache = [];
+  hasLoadedTrashCache = false;
   notificationCounts = null;
   emitUpdate({ reason: "session-reset", soundEligible: false });
 }
@@ -208,6 +213,7 @@ export async function refreshNotifications({
         total: paginator.total ?? notificationCache.length,
       };
       lastFetchedAt = Date.now();
+      hasLoadedInboxCache = true;
       lastLoadError = null;
       emitUpdate({ reason: "fetch", soundEligible });
       return notificationCache;
@@ -248,6 +254,14 @@ export function getNotificationPageInfo() {
   return notificationPage;
 }
 
+export function hasLoadedNotifications(identity = activeIdentity) {
+  return hasLoadedInboxCache && Boolean(identity?.userId) && buildNotificationIdentity(identity) === notificationCacheIdentity;
+}
+
+export function hasLoadedTrash(identity = activeIdentity) {
+  return hasLoadedTrashCache && Boolean(identity?.userId) && buildNotificationIdentity(identity) === notificationCacheIdentity;
+}
+
 export function hasMoreNotifications() {
   return notificationPage.current < notificationPage.last;
 }
@@ -282,6 +296,7 @@ export async function refreshTrashedNotifications({ page = 1, append = false, se
   if (version !== sessionVersion || requestVersion !== trashVersion) return trashCache;
   const rows = unwrapList(response).map(normalizeNotification);
   trashCache = append ? [...trashCache, ...rows] : rows;
+  hasLoadedTrashCache = true;
   emitUpdate({ reason: "trash-fetch", soundEligible: false });
   return trashCache;
 }

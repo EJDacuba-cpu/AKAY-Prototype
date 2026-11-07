@@ -12,6 +12,7 @@ export default function PageLoadingFallback({
   minHeight = "min-h-[calc(100dvh-9rem)]",
   skeleton,
   bodyOnly = false,
+  skeletonOptions,
 }) {
   useEffect(() => {
     dispatchContentLoadingStart();
@@ -24,8 +25,8 @@ export default function PageLoadingFallback({
       aria-busy="true"
       aria-live="polite"
     >
-      <div className="px-1 py-4 sm:px-0">
-        <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} />
+      <div>
+        <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} options={skeletonOptions} />
       </div>
     </div>
   );

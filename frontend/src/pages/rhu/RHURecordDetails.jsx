@@ -51,7 +51,7 @@ export default function RHURecordDetails() {
   const {
     data: details,
     error,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     refetch,
   } = useQuery({
@@ -127,13 +127,13 @@ export default function RHURecordDetails() {
     return () => clearTimeout(timer);
   }, [shouldAutoPrint, record, setSearchParams, location.state]);
 
-  const loading = isLoading || (!details && isFetching);
+  const loading = Boolean(recordId) && !details && (isLoading || isFetching);
   const detailsUpdating = isFetching && !loading && Boolean(details);
 
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
-        <SoftLoadingArea skeleton="details"
+        <SoftLoadingArea skeleton="record-details" skeletonOptions={{ role: "rhu" }}
           isLoading
           message="Loading health record details..."
           minHeight="min-h-[520px]"
@@ -144,7 +144,7 @@ export default function RHURecordDetails() {
     );
   }
 
-  if (error && error?.status !== 404) {
+  if (error && error?.status !== 404 && (!details || [401, 403].includes(error?.status))) {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <ConnectionErrorState

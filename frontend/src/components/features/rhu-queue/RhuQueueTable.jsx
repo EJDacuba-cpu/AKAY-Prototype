@@ -92,7 +92,7 @@ export default function RhuQueueTable({
         </p>
       )}
 
-      <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading today's queue..." scope="area">
+      <SoftLoadingArea skeleton="queue" bodyOnly isLoading={loading} message="Loading today's queue..." scope="area">
         {!loading && (
           <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-3.5 py-3 sm:px-4">

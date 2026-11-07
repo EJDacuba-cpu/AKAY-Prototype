@@ -3,7 +3,8 @@ import {
   ConnectionErrorState,
   FixedTable,
   ModuleToolbar,
-  SoftLoadingArea,
+  PageSkeletonLoader,
+  RefreshingIndicator,
   TablePagination,
 } from "../../common";
 import { STATUS_OPTIONS } from "../../../utils/accessRequestStatus";
@@ -37,6 +38,7 @@ export default function AccessRequestTable({
   emptyMessage,
   emptyHint,
   loading = false,
+  refreshing = false,
   error = "",
   onRetry,
   filters,
@@ -48,20 +50,20 @@ export default function AccessRequestTable({
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
   const narrowed = Boolean(filters.search) || filters.status !== "all";
 
+  if (loading) return <PageSkeletonLoader skeleton="access-requests" message="Loading access requests..." options={{ columns: columns.length + 2, rowHeight: COMPACT_ROW, headHeight: COMPACT_HEAD, action: false }} />;
+
   return (
-    <div className="space-y-4">
-      {/* Outside the loading area, so search and the status switch stay usable while a tab loads. */}
+    <div className="space-y-4" aria-busy={refreshing || undefined}>
       <AccessToolbar
         lead={toolbarLead}
         filters={filters}
         onFiltersChange={onFiltersChange}
         searchPlaceholder={searchPlaceholder}
       />
+      {refreshing && <div className="flex justify-end"><RefreshingIndicator label="Updating requests..." /></div>}
 
       {/* The panel the page's tabs control: the tabs sit in the toolbar above it, not inside it. */}
       <div role={panelLabelledBy ? "tabpanel" : undefined} id={panelLabelledBy ? "access-tabpanel" : undefined} aria-labelledby={panelLabelledBy}>
-      <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading..." scope="area">
-        {!loading && (
           <div>
             {rows.length === 0 && error ? (
               // The server's message is shown as a toast; this keeps a way to try again on the page.
@@ -129,8 +131,6 @@ export default function AccessRequestTable({
               </div>
             )}
           </div>
-        )}
-      </SoftLoadingArea>
       </div>
     </div>
   );

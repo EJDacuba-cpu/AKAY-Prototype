@@ -31,7 +31,7 @@ function RecordFilter({ label, options, value, onChange }) {
   );
 }
 
-export default function PatientRecordsTab({ patientId, records = [], referrals, followUps, isLoading, isFetching, isError, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
+export default function PatientRecordsTab({ patientId, records = [], referrals, followUps, isLoading, isFetching, isError, hasData = records.length > 0, error, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.patientRecordView(role, patientId);
   // Session memory only: search can contain a complaint, so never put it in the URL or browser storage.
@@ -45,6 +45,14 @@ export default function PatientRecordsTab({ patientId, records = [], referrals, 
 
   function changeFilters(patch) {
     queryClient.setQueryData(queryKey, current => ({ filters: { ...current.filters, ...patch }, page: 1 }));
+  }
+
+  if (isLoading && !hasData && ![401, 403].includes(error?.status)) {
+    return (
+      <section aria-label="Health Records" className="space-y-3 p-4">
+        <SoftLoadingArea skeleton="health-records" bodyOnly skeletonOptions={{ toolbar: true, minWidth: 760 }} isLoading message="Loading health records..." minHeight="min-h-[320px]" />
+      </section>
+    );
   }
 
   return (
@@ -64,14 +72,13 @@ export default function PatientRecordsTab({ patientId, records = [], referrals, 
         <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-neutral-300 text-xs text-neutral-900">Clear</Button>
       </div>
       {dateError && <p id="record-date-error" role="alert" className="text-xs text-neutral-900">{dateError}</p>}
-      {isError ? (
+      {isError && (!hasData || [401, 403].includes(error?.status)) ? (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
           Unable to load health records.<Button variant="ghost" size="sm" onClick={onRetry}>Retry</Button>
         </div>
-      ) : isLoading ? (
-        <SoftLoadingArea skeleton="health-records" isLoading message="Loading health records..." minHeight="min-h-[320px]"><div className="min-h-[320px]" /></SoftLoadingArea>
       ) : (
         <>
+          {isError && hasData && <p role="status" className="text-sm text-neutral-600">Unable to refresh health records. Showing the last history that loaded.</p>}
           {isFetching && <RefreshingIndicator label="Updating health records..." />}
           <HealthRecordsTable records={sliceRows(filtered, page)} currentPage={page} totalPages={totalPages} onPageChange={next => queryClient.setQueryData(queryKey, current => ({ ...current, page: next }))} detailsState={detailsState} emptyTitle={records.length ? "No matching records" : "No health records yet"} basePath={basePath} />
         </>

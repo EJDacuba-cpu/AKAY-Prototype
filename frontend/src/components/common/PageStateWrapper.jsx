@@ -12,15 +12,17 @@ export default function PageStateWrapper({
   loadingMessage = "Loading...",
   skeleton,
   bodyOnly = false,
+  skeletonOptions,
   errorTitle,
   errorMessage,
   children,
 }) {
-  if (isLoading && !hasData) {
-    return <PageLoadingFallback message={loadingMessage} skeleton={skeleton} bodyOnly={bodyOnly} />;
+  const accessDenied = isError && [401, 403].includes(error?.status);
+  if (isLoading && !hasData && !accessDenied) {
+    return <PageLoadingFallback message={loadingMessage} skeleton={skeleton} bodyOnly={bodyOnly} skeletonOptions={skeletonOptions} />;
   }
 
-  if (isError && !hasData) {
+  if (isError && (!hasData || accessDenied)) {
     return (
       <ConnectionErrorState
         fullPage

@@ -192,7 +192,7 @@ export default function UserManagement() {
 
   return (
     <DashboardLayout role="admin" title="Account Directory">
-      <PageStateWrapper skeleton="table"
+      <PageStateWrapper skeleton="accounts"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

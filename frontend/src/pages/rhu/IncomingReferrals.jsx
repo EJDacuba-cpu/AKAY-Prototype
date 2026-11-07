@@ -487,8 +487,8 @@ export default function IncomingReferrals() {
   });
 
   const {
-    data: referralsData = [],
-    isLoading,
+    data: referralsData,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -505,7 +505,7 @@ export default function IncomingReferrals() {
     [referralsData],
   );
   const loading = isLoading && referrals.length === 0;
-  const isBackgroundRefreshing = isFetching && referrals.length > 0;
+  const isBackgroundRefreshing = isFetching && Array.isArray(referralsData);
 
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -626,16 +626,18 @@ export default function IncomingReferrals() {
     <DashboardLayout role="rhu" title="Incoming Referrals">
       <style>{keyframes}</style>
 
-      <PageStateWrapper skeleton="table"
+      <PageStateWrapper skeleton="referrals"
+        skeletonOptions={{ role: "rhu", view: "incoming", columns: 7, minWidth: 1000, mobileCards: false }}
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
-        hasData={referrals.length > 0}
+        hasData={Array.isArray(referralsData)}
         error={loadError}
         onRetry={() => refetch()}
         loadingMessage="Loading referrals..."
       >
         <div className="space-y-4">
+        {loadError && Array.isArray(referralsData) && <p role="status" className="text-sm text-neutral-600">Unable to refresh referrals. Showing the last list that loaded.</p>}
         {!loading && (
           <ListToolbar
             heading={

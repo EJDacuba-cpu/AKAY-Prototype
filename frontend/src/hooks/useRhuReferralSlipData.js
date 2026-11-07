@@ -40,11 +40,11 @@ export default function useRhuReferralSlipData({ patientId, referralId, enabled 
   const errors = [patientQuery.error, listQuery.error, referralQuery.error, recordQuery.error];
   // A deleted/unavailable source record is different from a failed connection.
   const recordError = Number(recordQuery.error?.status) === 404 ? null : recordQuery.error;
-  const unauthorized = !canViewHistory || errors.some((error) => Number(error?.status) === 403);
+  const unauthorized = !canViewHistory || errors.some((error) => [401, 403].includes(Number(error?.status)));
   const loading = active && (
-    (patientQuery.isLoading && !patientQuery.data) ||
-    ((listQuery.isLoading || (fetchById && referralQuery.isPending)) && !referral) ||
-    (Boolean(linkedId) && recordQuery.isLoading)
+    (patientQuery.isPending && !patientQuery.data) ||
+    ((listQuery.isPending || (fetchById && referralQuery.isPending)) && !referral) ||
+    (Boolean(linkedId) && recordQuery.isPending)
   );
   const loadError = active && !unauthorized && (
     (!referral && (patientQuery.error || listQuery.error || referralQuery.error)) || recordError

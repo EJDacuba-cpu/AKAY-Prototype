@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Edit3, PackageMinus, PackagePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { ConfirmationModal, PageStateWrapper } from '../../components/common';
+import { ConfirmationModal, PageStateWrapper, RefreshingIndicator } from '../../components/common';
 import { Button } from '../../components/ui/button';
 import MedicineFormModal from '../../components/features/medicine/MedicineFormModal';
 import MedicineActionDialog from '../../components/features/medicine/MedicineActionDialog';
@@ -89,7 +89,8 @@ function MedicineDetailsRoute({ role, medicineId }) {
     } catch (failure) { setRemoveError(failure.message || 'Unable to remove this item.'); setDialog(null); }
     finally { gate.current = false; setRemoving(false); }
   }
-  return <DashboardLayout role={role} title="Medicine Details"><PageStateWrapper skeleton="medicine" isLoading={query.isLoading} isError={query.isError} hasData={Boolean(query.data)} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine details…">
+  return <DashboardLayout role={role} title="Medicine Details"><PageStateWrapper skeleton="medicine-details" isLoading={query.isPending} isError={query.isError} hasData={Boolean(query.data)} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine details…">
+    {query.isFetching && query.data && <div className="mb-3 flex justify-end"><RefreshingIndicator label="Updating medicine details..." /></div>}
     {query.data && <MedicineDetailsContent medicine={query.data} role={role} canManage={canManage} onEdit={() => setDialog({ mode: 'edit', item: query.data })} onRemove={() => setDialog({ mode: 'remove' })} onAction={(mode, groupId) => setDialog({ mode, groupId, medicineId })} history={<MedicineInventoryHistory key={medicineId} item={query.data} user={user} />} />}
     {removeError && <p role="alert" className="mt-3 text-sm text-alert-700">{removeError}</p>}
   </PageStateWrapper>

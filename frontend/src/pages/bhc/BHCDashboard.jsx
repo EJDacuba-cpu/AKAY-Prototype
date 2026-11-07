@@ -118,7 +118,7 @@ export default function BHCDashboard() {
   const { availability: doctorAvailability, isLoading: availabilityLoading } = useDoctorAvailability();
   const {
     data,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -140,7 +140,7 @@ export default function BHCDashboard() {
   return (
     <DashboardLayout role="bhc" title="Dashboard">
       <PageStateWrapper
-        skeleton="dashboard"
+        skeleton="bhc-dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

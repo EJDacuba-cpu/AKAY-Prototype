@@ -1,6 +1,7 @@
 import { getNotificationCategory } from "../../utils/notificationCategory";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { useEffect, useMemo, useState } from "react";
-import { ConnectionErrorState } from "../../components/common";
+import { ConnectionErrorState, PageSkeletonLoader } from "../../components/common";
 import { useNavigate } from "react-router";
 import {
   Bell,
@@ -60,9 +61,12 @@ export default function NotificationsPage() {
     notifications,
     trashedNotifications,
     trashLoading,
+    hasLoadedTrash,
+    trashError,
     notificationCounts,
     notificationsError,
     notificationsLoading,
+    hasLoadedNotifications,
     hasMoreNotifications,
     loadMoreNotifications,
     markAsRead,
@@ -100,7 +104,7 @@ export default function NotificationsPage() {
   // filter over the Inbox array (which never contains trashed rows).
   useEffect(() => {
     if (activeFilter === "trash") {
-      void refreshTrash({ search: searchTerm });
+      void refreshTrash({ search: searchTerm }).catch(() => {});
     }
   }, [activeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -110,7 +114,7 @@ export default function NotificationsPage() {
   useEffect(() => {
     const handle = setTimeout(() => {
       if (activeFilter === "trash") {
-        void refreshTrash({ search: searchTerm });
+        void refreshTrash({ search: searchTerm }).catch(() => {});
       } else {
         void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
       }
@@ -140,10 +144,12 @@ export default function NotificationsPage() {
   const currentFilter = FILTERS.find((filter) => filter.key === activeFilter);
   const isViewingTrash = activeFilter === "trash";
   const viewLoading = isViewingTrash ? trashLoading : notificationsLoading;
-  const showInitialLoading =
-    viewLoading && filteredNotifications.length === 0 && !notificationsError;
+  const viewError = isViewingTrash ? trashError : notificationsError;
+  const hasLoadedView = isViewingTrash ? hasLoadedTrash : hasLoadedNotifications;
+  const showInitialLoading = !isViewingTrash && !hasLoadedNotifications && notifications.length === 0 && !notificationsError;
+  const showInitialTrashLoading = isViewingTrash && !hasLoadedTrash && trashedNotifications.length === 0 && !trashError;
   const showRefreshing =
-    viewLoading && filteredNotifications.length > 0 && !notificationsError;
+    viewLoading && !showInitialLoading && !showInitialTrashLoading && !viewError;
 
   useEffect(() => {
     setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id)));
@@ -199,6 +205,10 @@ export default function NotificationsPage() {
   }
 
   function handleRefresh() {
+    if (isViewingTrash) {
+      void refreshTrash({ search: searchTerm }).catch(() => {});
+      return;
+    }
     void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
   }
 
@@ -340,11 +350,7 @@ export default function NotificationsPage() {
             <>
               <button
                 type="button"
-                onClick={
-                  isViewingTrash
-                    ? () => refreshTrash({ search: searchTerm })
-                    : handleRefresh
-                }
+                onClick={handleRefresh}
                 disabled={viewLoading}
                 className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 shadow-xs transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-800 disabled:pointer-events-none disabled:opacity-60"
               >
@@ -388,9 +394,9 @@ export default function NotificationsPage() {
   );
 
   const listBody = () =>
-    showInitialLoading ? (
-      <NotificationInboxSkeleton />
-    ) : notificationsError ? (
+    showInitialTrashLoading ? (
+      <PageSkeletonLoader skeleton="notifications" bodyOnly message="Loading trash..." />
+    ) : viewError && !hasLoadedView ? (
       <ConnectionErrorState variant="error" onRetry={handleRefresh} retrying={viewLoading} />
     ) : filteredNotifications.length === 0 ? (
       <NotificationEmptyState
@@ -471,6 +477,13 @@ export default function NotificationsPage() {
     );
   });
 
+  const deniedError = [notificationsError, trashError].find(error => [401, 403].includes(Number(error?.status)));
+  if (deniedError) return <ConnectionErrorState variant={errorStateVariant(deniedError)} onRetry={() => {
+    if (deniedError === trashError) void refreshTrash({ search: searchTerm }).catch(() => {});
+    else void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
+  }} retrying={deniedError === trashError ? trashLoading : notificationsLoading} />;
+  if (showInitialLoading) return <PageSkeletonLoader skeleton="notifications" message="Loading notifications..." />;
+
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3 px-1 py-1">
@@ -503,6 +516,10 @@ export default function NotificationsPage() {
         </aside>
         <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[var(--shadow-card)]">
           <div className="shrink-0">{toolbar()}</div>
+          {viewError && hasLoadedView && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-3 text-sm text-neutral-600">
+            <p>{viewError.message || "Notifications could not be refreshed."}</p>
+            <button type="button" onClick={handleRefresh} disabled={viewLoading} className="font-semibold text-ink-700 underline underline-offset-2 disabled:opacity-50">Try again</button>
+          </div>}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {listBody()}
           </div>
@@ -583,24 +600,6 @@ function NotificationEmptyState({ title, searchTerm }) {
       <h3 className="text-sm font-semibold text-slate-400">
         {searchTerm ? "No matching notifications." : title}
       </h3>
-    </div>
-  );
-}
-
-
-function NotificationInboxSkeleton() {
-  return (
-    <div className="divide-y divide-slate-100">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="grid grid-cols-[36px_1fr_auto] gap-3 px-4 py-4">
-          <div className="h-4 w-4 rounded border border-slate-200 bg-slate-100" />
-          <div className="space-y-2">
-            <div className="h-3 w-44 rounded bg-slate-100" />
-            <div className="h-3 w-full max-w-md rounded bg-slate-100" />
-          </div>
-          <div className="h-3 w-16 rounded bg-slate-100" />
-        </div>
-      ))}
     </div>
   );
 }

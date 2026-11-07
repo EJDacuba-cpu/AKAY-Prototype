@@ -6,7 +6,7 @@ import { Eye, FileText } from "lucide-react";
 import {
   DataTableEmptyState,
   ModuleTableCard,
-  SoftLoadingArea,
+  PageStateWrapper,
   TablePagination,
 } from "../../components/common";
 import { getFamilyPlanningHealthRecords } from "../../services/healthRecordService";
@@ -235,9 +235,12 @@ export function FamilyPlanningReportSection({
   reportFilters = {},
 }) {
   const {
-    data: recordsData = [],
-    isLoading,
+    data: recordsData,
+    isPending: isLoading,
     isFetching,
+    isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.familyPlanningRecords(role),
     queryFn: async () => {
@@ -251,7 +254,7 @@ export function FamilyPlanningReportSection({
     [recordsData],
   );
   const loading = isLoading && records.length === 0;
-  const refreshing = isFetching && records.length > 0;
+  const refreshing = isFetching && Array.isArray(recordsData);
 
   const filteredRecords = useMemo(() => {
     const searchLower = String(reportFilters.search || "").trim().toLowerCase();
@@ -318,22 +321,26 @@ export function FamilyPlanningReportSection({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-[17px] font-bold tracking-tight text-ink-800">
-          Family Planning Reports
-        </h2>
-        <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
-          Target Client List and summaries generated from saved Family Planning
-          health records.
-        </p>
-      </div>
-
-      <SoftLoadingArea skeleton="reports"
+      <PageStateWrapper skeleton="tcl" skeletonOptions={{ columns: 16 }}
         isLoading={loading}
-        message="Loading family planning report..."
-        scope="area"
-        className="space-y-4"
+        isError={isError}
+        isFetching={isFetching}
+        hasData={Array.isArray(recordsData)}
+        error={error}
+        onRetry={() => refetch()}
+        loadingMessage="Loading family planning report..."
       >
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-[17px] font-bold tracking-tight text-ink-800">
+              Family Planning Reports
+            </h2>
+            <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
+              Target Client List and summaries generated from saved Family Planning
+              health records.
+            </p>
+          </div>
+
         {!loading && (
           <>
             <ModuleTableCard
@@ -495,7 +502,8 @@ export function FamilyPlanningReportSection({
             </div>
           </>
         )}
-      </SoftLoadingArea>
+        </div>
+      </PageStateWrapper>
     </section>
   );
 }

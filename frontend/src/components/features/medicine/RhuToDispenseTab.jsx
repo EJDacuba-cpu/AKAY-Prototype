@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { ModalButton, ModalFooter, ModalShell, PageStateWrapper, SearchField } from "../../common";
+import { ModalButton, ModalFooter, ModalShell, PageStateWrapper, RefreshingIndicator, SearchField } from "../../common";
 import { Button } from "../../ui/button";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import RhuPrescriptionReviewModal from "./RhuPrescriptionReviewModal";
@@ -71,16 +71,28 @@ export default function RhuToDispenseTab() {
 
   return (
     <PageStateWrapper
-      skeleton="medicine"
-      isLoading={queue.isLoading}
+      skeleton="dispensing"
+      skeletonOptions={{ footer: false, minWidth: 0 }}
+      isLoading={queue.isPending}
       isError={queue.isError}
       isFetching={queue.isFetching}
-      hasData
+      hasData={Array.isArray(queue.data)}
       error={queue.error}
       onRetry={() => queue.refetch()}
       loadingMessage="Loading prescriptions to dispense…"
     >
-      <div className="space-y-4">
+      <div className="space-y-4" aria-busy={queue.isFetching}>
+        <div>
+          <h1 className="text-[17px] font-bold tracking-tight text-ink-800">To Dispense</h1>
+          <p className="mt-1 text-[13px] text-neutral-600">Review prescriptions and confirm medicines given.</p>
+        </div>
+        {queue.isFetching && <RefreshingIndicator label="Updating prescriptions..." />}
+        {queue.isError && Array.isArray(queue.data) && (
+          <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-neutral-600">
+            Couldn't refresh prescriptions. Showing the last list that loaded.
+            <Button variant="link" size="compact" disabled={queue.isFetching} onClick={() => queue.refetch()}>Retry</Button>
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-neutral-600">{rows.length} of {(queue.data || []).length} visits</p>
           <div className="w-full sm:max-w-xs">

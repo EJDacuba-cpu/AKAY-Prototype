@@ -180,7 +180,7 @@ export default function StaffAssignments({ mode = "directory" }) {
 
   return (
     <DashboardLayout role="admin" title={creating ? "Add Nurse Assignment" : "Staff Assignments"}>
-      <PageStateWrapper skeleton="table" isLoading={loading} isError={Boolean(loadError)} hasData={!loading && !loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
+      <PageStateWrapper skeleton={creating ? "assignment-form" : "assignments"} isLoading={loading} isError={Boolean(loadError)} hasData={!loading && !loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
         <div className="staff-assignments staff-assignment-content mx-auto w-full max-w-[1500px] space-y-4">
           {creating && <Button type="button" variant="link" size="sm" className="h-auto px-0 py-0 text-[12px] text-neutral-600" onClick={cancelForm} disabled={busy}><ArrowLeft size={14} aria-hidden="true" />Back to Staff Assignments</Button>}
           <header className="staff-assignment-header flex flex-wrap items-center justify-between gap-4">

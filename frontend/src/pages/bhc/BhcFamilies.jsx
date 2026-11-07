@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { ArrowLeft, MapPin, Plus, User, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { ConnectionErrorState, RefreshingIndicator, SearchField, SearchFilterCluster } from '../../components/common';
+import { ConnectionErrorState, PageSkeletonLoader, RefreshingIndicator, SearchField, SearchFilterCluster } from '../../components/common';
 import NoticeModal from '../../components/common/modals/NoticeModal';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -29,23 +29,20 @@ const DESKTOP_QUERY='(min-width: 1024px)';
 const NO_FILTERS={purok:'',barangay:''};
 const familyBase = role => `/${role}/families`;
 const facilityLabel = role => role === 'rhu' ? 'RHU' : 'BHC';
+const accessDenied = error => [401,403].includes(Number(error?.status));
 function FamilyFrame({role='bhc',title,children}) {
   return <DashboardLayout role={role} title={title}><div className="w-full min-w-0 space-y-5 text-neutral-900">{children}</div></DashboardLayout>;
 }
 const TITLE='text-2xl font-bold leading-tight tracking-tight text-ink-800';
 const HEADING='text-sm font-bold text-ink-800';
-const pulse='animate-pulse rounded-card bg-neutral-100';
 const SHEET='rounded-card border border-neutral-200 bg-white shadow-[var(--shadow-card)]';
-const DirectorySkeleton=<div className={`${SHEET} min-h-[324px] overflow-hidden`}><div className="h-12 bg-white"/>{[0,1,2,3,4].map(key=><div key={key} className="flex h-16 items-center gap-6 border-t border-neutral-100 px-4"><div className="h-3 w-24 animate-pulse rounded bg-neutral-100"/><div className="h-3 w-48 animate-pulse rounded bg-neutral-100"/><div className="hidden h-3 w-64 animate-pulse rounded bg-neutral-100 md:block"/></div>)}</div>;
-const DetailsSkeleton=<div className="space-y-5"><div className={`${pulse} h-16`}/><div className={`${pulse} h-64`}/></div>;
-const FormSkeleton=<div className="w-full max-w-7xl space-y-5"><div className={`${pulse} h-48`}/><div className={`${pulse} h-24`}/></div>;
-export function QueryState({query,label='Loading households…',skeleton}) {
+export function QueryState({query,label='Loading households…',skeleton='family-directory',bodyOnly=false,options={}}) {
   if(query.error) {
     // A 404 has nothing to retry; the back link above is the way out.
     const missing=query.error.status === 404;
     return <div role="alert" className="rounded-card border border-neutral-200 bg-white"><ConnectionErrorState size="compact" variant={errorStateVariant(query.error)} title={missing ? 'Household not found' : undefined} message={missing ? 'We could not find this household. Go back to Households and choose another.' : undefined} onRetry={missing ? undefined : ()=>query.refetch()} retrying={query.isFetching}/></div>;
   }
-  return <div role="status"><span className="sr-only">{label}</span><div aria-hidden="true">{skeleton}</div></div>;
+  return <PageSkeletonLoader skeleton={skeleton} message={label} bodyOnly={bodyOnly} options={options}/>;
 }
 function BackLink({to,children='Back to Households'}) {
   return <Link to={to} className="inline-flex min-h-10 items-center gap-2 text-sm text-neutral-600"><ArrowLeft size={16}/>{children}</Link>;
@@ -86,6 +83,8 @@ function Directory({scope,role}) {
   const hasFilterChoices=options.puroks.length > 0 || options.hasWithoutPurok || options.barangays.length > 1 || chips.length > 0;
   function clearAll() {setDraft('');setSearch('');setFilters(NO_FILTERS);}
   const addPath=`${base}/new`;
+  if(accessDenied(query.error)) return <DashboardLayout role={role} title="Households"><QueryState query={query}/></DashboardLayout>;
+  if(query.isPending && !query.data) return <DashboardLayout role={role} title="Households"><QueryState query={query} options={{role,canManage,action:canManage,minWidth:720,mobileCards:false,rowHeight:56,headHeight:44}}/></DashboardLayout>;
   return <DashboardLayout role={role} title="Households">
     <div className="clinical-directory">
       <div className="clinical-directory__layout">
@@ -127,7 +126,7 @@ function Directory({scope,role}) {
               {query.isFetching && !query.isFetchingNextPage && <RefreshingIndicator label="Updating…"/>}
             </div>}
             {!query.isPending && !query.error && <p role="status" className="sr-only">{total} {total === 1 ? 'household' : 'households'}{narrowed ? ' found' : ''}</p>}
-            {query.isPending || query.error ? <QueryState query={query} skeleton={DirectorySkeleton}/> : <>
+            {!query.data && query.error ? <QueryState query={query}/> : <>
               {items.length ? <FamilyDirectoryTable items={items} base={base} dimmed={query.isPlaceholderData} footer={query.hasNextPage && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3"><p className="text-sm text-neutral-500">Showing {items.length} of {total}</p><Button variant="secondary" size="sm" disabled={query.isFetchingNextPage} onClick={()=>query.fetchNextPage()}>{query.isFetchingNextPage ? 'Loading…' : 'Show more'}</Button></div>}/> : <div className={`${SHEET} flex min-h-[324px] flex-col items-center justify-center gap-2 px-6 py-12 text-center`}><h2 className="text-sm font-semibold text-ink-800">{emptyRegistry ? 'No families registered yet' : 'No households found'}</h2><p className="max-w-sm text-[13px] text-neutral-500">{emptyRegistry ? 'Register a patient to start the first household, or use Add Family for a patient who is already registered.' : 'Try a different search, or clear the search and filters.'}</p>{narrowed && <Button variant="secondary" size="sm" className="mt-2" onClick={clearAll}>Clear search and filters</Button>}</div>}
             </>}
           </div>
@@ -157,8 +156,10 @@ export function BhcFamilyDetails({role='bhc'}={}) {
     const next=event.key === 'Home' ? 'tree' : event.key === 'End' ? 'list' : view === 'tree' ? 'list' : 'tree';
     setView(next);document.getElementById(`family-tab-${next}`)?.focus();
   }
+  if(accessDenied(query.error) || (query.isPending && !item)) return <FamilyFrame role={role} title="Family Details"><QueryState query={query} label="Loading household…" skeleton="family-details" options={{view,canManage:access.can('families.manage'),canRegister:access.can('patients.register')}}/></FamilyFrame>;
   const viewTabs=<div role="tablist" aria-label="Family view" className="inline-flex gap-1 rounded-full border border-neutral-200 bg-neutral-100 p-1">{tabs.map(([key,label])=><button key={key} type="button" role="tab" id={`family-tab-${key}`} aria-selected={view === key} aria-controls={`family-panel-${key}`} tabIndex={view === key ? 0 : -1} onClick={()=>setView(key)} onKeyDown={moveTab} className={`h-7 rounded-full px-4 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 ${view === key ? 'bg-ink-700 text-white' : 'text-neutral-600 hover:text-neutral-900'}`}>{label}</button>)}</div>;
-  return <FamilyFrame role={role} title="Family Details"><BackLink to={base}/>{query.isPending || query.error ? <QueryState query={query} label="Loading household…" skeleton={DetailsSkeleton}/> : item.archivedAt ? <p role="status" className={`${SHEET} px-6 py-10 text-center text-sm text-neutral-600`}>This household is archived.</p> : <>
+  return <FamilyFrame role={role} title="Family Details"><BackLink to={base}/>{!item && query.error ? <QueryState query={query} label="Loading household…" skeleton="family-details"/> : item.archivedAt ? <p role="status" className={`${SHEET} px-6 py-10 text-center text-sm text-neutral-600`}>This household is archived.</p> : <>
+    {query.isFetching && <div className="flex justify-end"><RefreshingIndicator label="Updating household..."/></div>}
     <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2.5"><h1 className={TITLE}>{head ? `${head.lastName} Household` : 'Household'}</h1><span className="rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 font-mono text-xs text-neutral-600">{item.serialNumber}</span></div>
       <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-neutral-600"><span className="inline-flex items-center gap-1.5"><User size={14} className="text-neutral-500" aria-hidden="true"/>Head: <b className="font-semibold text-ink-800">{head ? patientName(head) : 'Not assigned'}</b></span><span className="inline-flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0 text-neutral-500" aria-hidden="true"/>{addressText(item.address) || 'No address recorded'}</span><span className="inline-flex items-center gap-1.5"><Users size={14} className="text-neutral-500" aria-hidden="true"/>{item.members.length} {item.members.length === 1 ? 'member' : 'members'}</span></p></div>
       <div className="flex flex-wrap gap-2">{access.can('families.manage') && <Button asChild variant="secondary"><Link to={`${base}/${item.id}/edit`}>Edit Family</Link></Button>}{access.can('patients.register') && <Button asChild variant="brand"><Link to={`/${role}/patients/add?household=${item.id}`}><Plus size={17}/>Register Member</Link></Button>}</div></header>
@@ -175,7 +176,8 @@ export function BhcFamilyForm({role='bhc'}={}) {
   const {householdId}=useParams();
   const scope=useHouseholdScope(role);
   const query=useQuery({queryKey:[...scope.key,'detail',householdId],queryFn:()=>getHouseholdById(householdId, role),enabled:Boolean(householdId),retry:false});
-  if(householdId && !query.data && (query.isPending || query.error)) return <FamilyFrame role={role} title="Edit Family"><BackLink to={familyBase(role)}/><QueryState query={query} label="Loading household…" skeleton={FormSkeleton}/></FamilyFrame>;
+  if(accessDenied(query.error)) return <FamilyFrame role={role} title="Edit Family"><QueryState query={query}/></FamilyFrame>;
+  if(householdId && !query.data && (query.isPending || query.error)) return <FamilyFrame role={role} title="Edit Family">{query.error && <BackLink to={familyBase(role)}/>}<QueryState query={query} label="Loading household…" skeleton="family-form"/></FamilyFrame>;
   return <FamilyEditor key={`${scope.identity}:${householdId || 'new'}`} scope={scope} role={role} initialItem={query.data} refreshError={Boolean(query.error)} onRefresh={()=>query.refetch()}/>;
 }
 function FamilyEditor({scope,role,initialItem,refreshError,onRefresh}) {

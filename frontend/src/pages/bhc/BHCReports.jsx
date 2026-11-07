@@ -41,7 +41,7 @@ export default function BHCReports() {
 
   const {
     data: patients = [],
-    isLoading: patientsLoading,
+    isPending: patientsLoading,
     isFetching: patientsFetching,
     dataUpdatedAt: patientsUpdatedAt,
     error: patientsError,
@@ -53,7 +53,7 @@ export default function BHCReports() {
   });
   const {
     data: records = [],
-    isLoading: recordsLoading,
+    isPending: recordsLoading,
     isFetching: recordsFetching,
     dataUpdatedAt: recordsUpdatedAt,
     error: recordsError,
@@ -65,7 +65,7 @@ export default function BHCReports() {
   });
   const {
     data: referrals = [],
-    isLoading: referralsLoading,
+    isPending: referralsLoading,
     isFetching: referralsFetching,
     dataUpdatedAt: referralsUpdatedAt,
     error: referralsError,
@@ -77,7 +77,8 @@ export default function BHCReports() {
   });
 
   const loading = patientsLoading || recordsLoading || referralsLoading;
-  const loadError = patientsError || recordsError || referralsError || null;
+  const reportErrors = [patientsError, recordsError, referralsError];
+  const loadError = reportErrors.find(error => [401, 403].includes(error?.status)) || reportErrors.find(Boolean) || null;
   const refreshing = !loading && (patientsFetching || recordsFetching || referralsFetching);
   const report = useMemo(
     () =>
@@ -112,6 +113,7 @@ export default function BHCReports() {
 
       <PageStateWrapper
         skeleton="reports"
+        skeletonOptions={{ role: "bhc", category, cardCount: report.cards.length, chartCount: report.charts.length }}
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={refreshing}

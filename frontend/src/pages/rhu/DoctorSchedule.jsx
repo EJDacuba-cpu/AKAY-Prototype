@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Stethoscope } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { ConnectionErrorState, RefreshingIndicator, SuccessModal } from "../../components/common";
+import { ConnectionErrorState, PageSkeletonLoader, RefreshingIndicator, SuccessModal } from "../../components/common";
 import useAccess from "../../hooks/useAccess";
 import DoctorAvailabilityModal from "../../components/features/rhu/DoctorAvailabilityModal";
 import DoctorDayAbsencesModal from "../../components/features/rhu/DoctorDayAbsencesModal";
@@ -45,7 +45,7 @@ function errorMessage(caught, fallback) {
 export default function DoctorSchedule() {
   const access = useAccess();
   const canManage = access.can(MANAGE_PERMISSION);
-  const { providers, isLoading, isFetching, error, refetch } = useRhuProviders();
+  const { providers, isPending: isLoading, isFetching, dataUpdatedAt, error, refetch } = useRhuProviders();
   const { update, createUnavailability, removeUnavailability } = useProviderMutations();
 
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
@@ -184,7 +184,13 @@ export default function DoctorSchedule() {
     }
   }
 
-  const ready = !isLoading && !error && doctors.length > 0;
+  const ready = doctors.length > 0;
+
+  if (isLoading) return (
+    <DashboardLayout role="rhu" title="Doctor Availability">
+      <PageSkeletonLoader skeleton="doctor-calendar" message="Loading doctor availability..." />
+    </DashboardLayout>
+  );
 
   return (
     <DashboardLayout role="rhu" title="Doctor Availability">
@@ -198,22 +204,14 @@ export default function DoctorSchedule() {
               Set who is on duty and schedule absences. Referrals stay blocked after an absence until you confirm Available.
             </p>
           </div>
-          {isFetching && doctors.length > 0 ? (
+          {isFetching && dataUpdatedAt > 0 ? (
             <div className="shrink-0">
               <RefreshingIndicator label="Updating roster..." />
             </div>
           ) : null}
         </div>
 
-        {isLoading ? (
-          <div
-            className="grid gap-4 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-rows-[minmax(0,1fr)]"
-            aria-hidden="true"
-          >
-            <div className="h-[28rem] animate-pulse rounded-card bg-neutral-100 xl:h-full" />
-            <div className="h-[26rem] animate-pulse rounded-card bg-neutral-100 xl:h-full" />
-          </div>
-        ) : error ? (
+        {error && (!dataUpdatedAt || [401, 403].includes(Number(error.status))) ? (
           <div className="rounded-card border border-neutral-200 bg-white p-6">
             <ConnectionErrorState
               size="compact"

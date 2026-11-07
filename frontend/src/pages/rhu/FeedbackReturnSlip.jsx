@@ -487,7 +487,7 @@ export default function FeedbackReturnSlip() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
-        <SoftLoadingArea skeleton="form"
+        <SoftLoadingArea skeleton="feedback-form" skeletonOptions={{ selected: Boolean(routeTrackingId) }}
           isLoading
           message="Loading referral feedback..."
           minHeight="min-h-[420px]"

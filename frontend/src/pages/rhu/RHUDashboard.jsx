@@ -249,9 +249,10 @@ export default function RHUDashboard() {
 
   const trackedQueries = queries.filter((query) => query.isEnabled !== false);
   const hasAnySuccess = trackedQueries.some((query) => query.isSuccess);
-  const isLoading = trackedQueries.some((query) => query.isLoading) && !hasAnySuccess;
+  const isLoading = trackedQueries.some((query) => query.isPending) && !hasAnySuccess;
   const hasDashboardData = hasAnySuccess || doctors.length > 0 || trackedQueries.length === 0;
   const isFetching = trackedQueries.some((query) => query.isFetching);
+  const authorizationError = trackedQueries.map(query => query.error).find(error => [401, 403].includes(error?.status));
   const hardError =
     canHistory &&
     !hasAnySuccess &&
@@ -268,12 +269,12 @@ export default function RHUDashboard() {
   return (
     <DashboardLayout role="rhu" title="Dashboard">
       <PageStateWrapper
-        skeleton="dashboard"
+        skeleton="rhu-dashboard"
         isLoading={isLoading && !hasAnySuccess}
-        isError={Boolean(hardError)}
+        isError={Boolean(authorizationError || hardError)}
         isFetching={isFetching}
         hasData={hasDashboardData}
-        error={hardError ? activeVisitsQuery.error || allVisitsQuery.error || referralsQuery.error : null}
+        error={authorizationError || (hardError ? activeVisitsQuery.error || allVisitsQuery.error || referralsQuery.error : null)}
         onRetry={() => queries.forEach((query) => query.refetch())}
         loadingMessage="Loading dashboard..."
       >

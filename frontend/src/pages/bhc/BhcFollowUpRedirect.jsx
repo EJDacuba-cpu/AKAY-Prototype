@@ -14,7 +14,7 @@ import { queryKeys } from "../../utils/queryKeys";
  */
 export default function BhcFollowUpRedirect() {
   const { taskId } = useParams();
-  const { data: task, error, isLoading } = useQuery({
+  const { data: task, error, isPending: isLoading } = useQuery({
     queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
     queryFn: () => getFollowUpTask(taskId),
     enabled: Boolean(taskId),
@@ -29,7 +29,7 @@ export default function BhcFollowUpRedirect() {
     return (
       <DashboardLayout role="bhc" title="Follow-ups">
         <SoftLoadingArea
-          skeleton="details"
+          skeleton="record-details" skeletonOptions={{ role: "bhc" }}
           isLoading
           message="Opening follow-up..."
           minHeight="min-h-[240px]"

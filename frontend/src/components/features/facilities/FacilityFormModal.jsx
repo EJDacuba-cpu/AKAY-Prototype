@@ -67,12 +67,12 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
     try {
       const body = {
         name: form.name,
-        barangay: form.barangay,
         address: form.address,
         contact_information: form.contact_information,
         status: form.status,
         ...(isBhc
           ? {
+              barangay: form.barangay,
               rural_health_unit_id: defaultRhuId,
               alternative_rhu_ids: form.alternative_rhu_ids.filter((id) => id !== defaultRhuId),
             }
@@ -119,7 +119,7 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          {TEXT_FIELDS.map(({ key, label, required, wide }) => (
+          {TEXT_FIELDS.filter(({ key }) => isBhc || key !== "barangay").map(({ key, label, required, wide }) => (
             <label key={key} className={`block text-sm ${wide ? "sm:col-span-2" : ""}`}>
               {label}
               <Input

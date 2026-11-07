@@ -48,7 +48,7 @@ export default function RHUReports() {
 
   const {
     data: patients = [],
-    isLoading: patientsLoading,
+    isPending: patientsLoading,
     isFetching: patientsFetching,
     dataUpdatedAt: patientsUpdatedAt,
     error: patientsError,
@@ -60,7 +60,7 @@ export default function RHUReports() {
   });
   const {
     data: records = [],
-    isLoading: recordsLoading,
+    isPending: recordsLoading,
     isFetching: recordsFetching,
     dataUpdatedAt: recordsUpdatedAt,
     error: recordsError,
@@ -72,7 +72,7 @@ export default function RHUReports() {
   });
   const {
     data: referrals = [],
-    isLoading: referralsLoading,
+    isPending: referralsLoading,
     isFetching: referralsFetching,
     dataUpdatedAt: referralsUpdatedAt,
     error: referralsError,
@@ -84,7 +84,7 @@ export default function RHUReports() {
   });
   const {
     data: visits = [],
-    isLoading: visitsLoading,
+    isPending: visitsLoading,
     isFetching: visitsFetching,
     dataUpdatedAt: visitsUpdatedAt,
     error: visitsError,
@@ -96,7 +96,8 @@ export default function RHUReports() {
   });
 
   const loading = patientsLoading || recordsLoading || referralsLoading || visitsLoading;
-  const loadError = patientsError || recordsError || referralsError || visitsError || null;
+  const reportErrors = [patientsError, recordsError, referralsError, visitsError];
+  const loadError = reportErrors.find(error => [401, 403].includes(error?.status)) || reportErrors.find(Boolean) || null;
   const refreshing =
     !loading && (patientsFetching || recordsFetching || referralsFetching || visitsFetching);
   const report = useMemo(
@@ -134,6 +135,7 @@ export default function RHUReports() {
 
       <PageStateWrapper
         skeleton="reports"
+        skeletonOptions={{ role: "rhu", category, cardCount: report.cards.length, chartCount: report.charts.length }}
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={refreshing}

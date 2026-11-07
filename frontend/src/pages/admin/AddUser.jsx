@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { Check, HandHeart, Hospital, House, Keyboard, Lock, ScanLine, ShieldCheck, Stethoscope, Syringe, UserRound } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { ConnectionErrorState, PageSkeletonLoader } from "../../components/common";
 import Input from "../../components/common/atoms/Input";
 import { Button } from "../../components/ui/button";
 import ConfirmationModal from "../../components/common/modals/ConfirmationModal";
@@ -17,6 +18,7 @@ import { getBarangayHealthCenters, getRuralHealthUnits } from "../../services/fa
 import { getStaffRoles } from "../../services/staffRolesService";
 import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "../../utils/accountForm";
 import { fieldState } from "../../utils/fieldState";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
@@ -37,6 +39,12 @@ const card = selected => `flex min-h-24 items-center gap-3 rounded-xl border p-4
 const EMAIL_TAKEN = "Email is already taken.";
 const pulse = "animate-pulse rounded bg-slate-200 motion-reduce:animate-none";
 
+export function AccountFormLoadState({ error, onRetry }) {
+  return error
+    ? <ConnectionErrorState variant={errorStateVariant(error)} onRetry={onRetry} />
+    : <PageSkeletonLoader skeleton="account-form" message="Loading account..." options={{ step: "facility" }} />;
+}
+
 export default function AddUser() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -55,11 +63,15 @@ export default function AddUser() {
   // Set once an account is created: whether the invite email went out. Shows the success modal.
   const [created, setCreated] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loadedId, setLoadedId] = useState(undefined);
+  const [loadFailure, setLoadFailure] = useState(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [touched, setTouched] = useState({});
   const [takenEmails, setTakenEmails] = useState({});
   const [checkingEmail, setCheckingEmail] = useState(false);
   const emailChecks = useRef(new Map());
+  const loaded = loadedId === id;
+  const loadError = loadFailure?.id === id ? loadFailure.error : null;
 
   const admin = form.role === TIERS.admin;
   const keys = admin ? [STEPS.facility, STEPS.personal, STEPS.review] : [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];
@@ -74,7 +86,6 @@ export default function AddUser() {
   const role = roleFor(rolesData, form.staff_role);
   const defaults = roleDefaults(rolesData, form.staff_role);
   const review = reviewPermissions({ permissions: form.permissions, defaults, licensedRole: Boolean(role?.licensed) });
-  const editLoading = Boolean(id) && !loaded;
 
   useEffect(() => {
     let active = true;
@@ -88,11 +99,24 @@ export default function AddUser() {
         const permissions = withRequirements(u.permissions ?? roleDefaults(roles, u.staff_role));
         setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
         setOriginalTier(u.role);
+      } else {
+        setForm(empty);
+        setOriginalTier("");
       }
-      setLoaded(true);
-    }).catch(e => { if (active) setNotice({ title: "Could not load the form", messages: [e.message] }); });
+      // Each account opens on its own first step, even when only userId changes.
+      setStep(0);
+      setReached(0);
+      setConfirmed(false);
+      setErrors({});
+      setTouched({});
+      setLoadedId(id);
+      setLoadFailure(null);
+    }).catch(e => {
+      if (!active) return;
+      setLoadFailure({ id, error: e });
+    });
     return () => { active = false; };
-  }, [id]);
+  }, [id, loadAttempt]);
 
   // A new account opens Role & Access on the first role of its tier, so there is nothing to click before reviewing the duties.
   useEffect(() => {
@@ -251,19 +275,21 @@ export default function AddUser() {
     ...(id ? [] : [["Sign-in", "Emailed invitation; setup stays pending until they set a password"]]),
   ];
   const [title, subtitle] = HEADINGS[current];
-  const centered = current === STEPS.facility && !editLoading;
+  const centered = current === STEPS.facility;
   const stepList = labels.map((label, i) => ({ label, i, hint: HEADINGS[keys[i]][1], done: i < step, locked: i > reached, here: i === step }));
-  // The Facility step draws its own choices; every other step (and the edit-mode skeleton) shares this body.
-  const formSteps = <>
-    {editLoading && <div aria-busy="true" aria-label="Loading account" className="space-y-4"><span className={`block h-10 w-full ${pulse}`} /><span className={`block h-10 w-2/3 ${pulse}`} /><span className={`block h-10 w-1/2 ${pulse}`} /></div>}
+  if (!loaded) return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
+    <AccountFormLoadState error={loadError} onRetry={() => { setLoadFailure(null); setLoadAttempt(attempt => attempt + 1); }} />
+  </DashboardLayout>;
 
-    {!editLoading && current === STEPS.personal && <div className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2">
+  // The Facility step draws its own choices; every other step shares this body.
+  const formSteps = <>
+    {current === STEPS.personal && <div className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2">
       <Field className="md:col-span-2" label="Full name" error={fieldError("name")} state={stateOf("name")}><Input value={form.name} onChange={e => change("name", e.target.value)} onBlur={() => blur("name")} /></Field>
       <Field label="Email" error={fieldError("email")} state={stateOf("email")}><Input type="email" value={form.email} onChange={e => change("email", e.target.value)} onBlur={() => blur("email")} /></Field>
       <Field label="Contact number" error={fieldError("contact_number")} state={stateOf("contact_number")}><Input type="tel" inputMode="numeric" placeholder="09XX XXX XXXX" value={form.contact_number} onChange={e => change("contact_number", e.target.value)} onBlur={() => blur("contact_number")} /></Field>
     </div>}
 
-    {!editLoading && current === STEPS.access && <>
+    {current === STEPS.access && <>
       {rolesData
         ? <div role="group" aria-label="Role" className="grid gap-3 sm:grid-cols-3">{rolesForTier(rolesData, form.role).map(r => {
           const Icon = ROLE_ICONS[r.key] || UserRound;
@@ -276,7 +302,7 @@ export default function AddUser() {
         : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}
     </>}
 
-    {!editLoading && current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
+    {current === STEPS.review && <PermissionReviewSummary review={admin ? null : review} details={details} confirmed={confirmed} onConfirm={value => { setConfirmed(value); setErrors({}); }} confirmationLabel={ACCOUNT_CONFIRMATION} error={errors.confirmed} />}
   </>;
 
   return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">

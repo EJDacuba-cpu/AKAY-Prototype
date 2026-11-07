@@ -57,6 +57,7 @@ export default function InvitesTab({ rolesData, toolbarLead = null }) {
         emptyMessage="No invites yet"
         emptyHint="Adding a user in Users emails them an invitation. They cannot sign in until they set a password from that message."
         loading={list.loading}
+        refreshing={list.refreshing}
         error={list.error}
         onRetry={list.refresh}
         filters={list.filters}

@@ -636,8 +636,8 @@ export default function AdminReports() {
   return (
     <DashboardLayout role="admin" title="Reports">
       <PageStateWrapper
-        skeleton="reports"
-        isLoading={analyticsQuery.isLoading}
+        skeleton="admin-reports"
+        isLoading={analyticsQuery.isPending}
         isError={analyticsQuery.isError}
         isFetching={analyticsQuery.isFetching}
         hasData={analyticsQuery.dataUpdatedAt > 0}

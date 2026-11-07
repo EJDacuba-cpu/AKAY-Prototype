@@ -31,6 +31,65 @@ function deferred() {
   return { promise, resolve };
 }
 
+test("inbox readiness distinguishes initial failure from a successfully empty frame and survives refresh", async () => {
+  let result = () => Promise.reject(new Error("Offline"));
+  const api = await loadService(async () => result());
+  assert.equal(api.hasLoadedNotifications(admin), false);
+  await api.refreshNotifications({ identity: admin });
+  assert.equal(api.hasLoadedNotifications(admin), false);
+  result = () => page([]);
+  await api.refreshNotifications({ identity: admin, force: true });
+  assert.equal(api.hasLoadedNotifications(admin), true);
+  assert.equal(api.hasLoadedNotifications(staff), false);
+  const pending = deferred();
+  result = () => pending.promise;
+  const refresh = api.refreshNotifications({ identity: admin, force: true });
+  assert.equal(api.hasLoadedNotifications(admin), true);
+  pending.resolve(page([]));
+  await refresh;
+  result = () => Promise.reject(new Error("Offline again"));
+  await api.refreshNotifications({ identity: admin, force: true });
+  assert.equal(api.hasLoadedNotifications(admin), true);
+  api.resetNotificationSessionCache();
+  assert.equal(api.hasLoadedNotifications(admin), false);
+});
+
+test("access-action invalidation preserves inbox readiness while revalidating an empty cache", async () => {
+  const pending = deferred();
+  let calls = 0;
+  const api = await loadService(async url => url === "/notifications/counts" ? { data: { unread: 0 } } : ++calls === 1 ? page([]) : pending.promise);
+  await api.refreshNotifications({ identity: admin });
+  const refresh = api.notifyNotificationChange();
+  assert.equal(api.hasLoadedNotifications(admin), true);
+  pending.resolve(page([]));
+  await refresh;
+  assert.equal(api.hasLoadedNotifications(admin), true);
+});
+
+test("trash readiness separates failed-first, successful-empty and background refresh states", async () => {
+  let result = () => Promise.reject(new Error("Trash offline"));
+  const api = await loadService(async url => url.startsWith('/notifications/trash') ? result() : page([]));
+  await api.refreshNotifications({ identity: admin });
+  assert.equal(api.hasLoadedTrash(admin), false);
+  await assert.rejects(api.refreshTrashedNotifications(), /Trash offline/);
+  assert.equal(api.hasLoadedTrash(admin), false);
+  result = () => page([]);
+  await api.refreshTrashedNotifications();
+  assert.equal(api.hasLoadedTrash(admin), true);
+  assert.equal(api.hasLoadedTrash(staff), false);
+  const pending = deferred();
+  result = () => pending.promise;
+  const refresh = api.refreshTrashedNotifications();
+  assert.equal(api.hasLoadedTrash(admin), true);
+  pending.resolve(page([]));
+  await refresh;
+  result = () => Promise.reject(new Error("Refresh failed"));
+  await assert.rejects(api.refreshTrashedNotifications(), /Refresh failed/);
+  assert.equal(api.hasLoadedTrash(admin), true);
+  api.resetNotificationSessionCache();
+  assert.equal(api.hasLoadedTrash(admin), false);
+});
+
 test("read/unread refresh keeps identity, rows and authoritative counts", async () => {
   let read = false;
   const api = await loadService(async (url, options = {}) => {
