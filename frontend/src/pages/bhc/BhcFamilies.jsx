@@ -1,5 +1,6 @@
+import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useBlocker, useNavigate, useParams } from 'react-router';
+import { Navigate, useBlocker, useNavigate, useParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MapPin, Plus, User, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';

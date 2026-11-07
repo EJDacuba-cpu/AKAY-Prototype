@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from "react-router";
+import { PatientRegistrationEntryLink } from "../../components/features/patients/PatientRegistrationEntry";
+import { useSearchParams } from "react-router";
 import { Plus } from "lucide-react";
 
 import WalkInCheckInPanel from "../../components/features/rhu-queue/WalkInCheckInPanel";
@@ -7,7 +8,6 @@ import { Button } from "../../components/ui/button";
 import { patientIdFromWalkInSearch, registerForWalkInCheckInPath } from "../../utils/walkInRegistration";
 
 export default function RhuWalkInCheckIn() {
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selectedId = patientIdFromWalkInSearch(params);
   const registerPath = registerForWalkInCheckInPath();
@@ -23,13 +23,12 @@ export default function RhuWalkInCheckIn() {
             </p>
           </div>
           <Button
-            type="button"
+            asChild
             variant="brand"
             className="shrink-0 self-start"
-            onClick={() => navigate(registerPath)}
           >
-            <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
-            Register New Patient
+            <PatientRegistrationEntryLink to={registerPath}><Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+            Register New Patient</PatientRegistrationEntryLink>
           </Button>
         </div>
 

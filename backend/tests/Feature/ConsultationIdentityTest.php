@@ -117,18 +117,15 @@ class ConsultationIdentityTest extends TestCase
         );
     }
 
-    public function test_two_consultations_for_the_same_patient_are_two_drafts(): void
+    public function test_a_patient_has_one_active_consultation_even_when_the_second_tab_mints_a_new_uuid(): void
     {
         $first = (string) Str::uuid();
         $second = (string) Str::uuid();
 
         $firstId = $this->createDraft($first)->assertCreated()->json('data.id');
-        $secondId = $this->createDraft($second)->assertCreated()->json('data.id');
-
-        $this->assertNotSame($firstId, $secondId);
-        $this->assertSame(2, HealthRecordDraft::where('patient_id', $this->patient->id)->count());
+        $this->createDraft($second)->assertConflict()->assertJsonPath('draft_id', $firstId);
+        $this->assertSame(1, HealthRecordDraft::where('patient_id', $this->patient->id)->count());
         $this->assertDatabaseHas('health_record_drafts', ['public_id' => $firstId, 'consultation_uuid' => $first]);
-        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $secondId, 'consultation_uuid' => $second]);
     }
 
     public function test_reconnecting_without_a_draft_id_never_splits_one_consultation_in_two(): void
@@ -161,7 +158,7 @@ class ConsultationIdentityTest extends TestCase
         $this->assertSame(1, HealthRecordDraft::where('consultation_uuid', $uuid)->count());
     }
 
-    public function test_a_discarded_draft_never_blocks_its_consultation_from_saving_again(): void
+    public function test_a_discarded_consultation_cannot_resurrect_but_a_fresh_identity_can_start(): void
     {
         $uuid = (string) Str::uuid();
         $publicId = $this->createDraft($uuid)->assertCreated()->json('data.id');
@@ -169,9 +166,9 @@ class ConsultationIdentityTest extends TestCase
             ->deleteJson("/api/health-record-drafts/{$publicId}")
             ->assertSuccessful();
 
-        // Uniqueness covers ACTIVE rows only.
-        $this->createDraft($uuid)->assertCreated();
-        $this->assertSame(1, HealthRecordDraft::query()
+        $this->createDraft($uuid)->assertConflict()->assertJsonPath('code', 'CLINICAL_RECOVERY_ENDED');
+        $this->createDraft((string) Str::uuid())->assertCreated();
+        $this->assertSame(0, HealthRecordDraft::query()
             ->where('consultation_uuid', $uuid)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->count());
@@ -231,9 +228,11 @@ class ConsultationIdentityTest extends TestCase
         $this->updateDraft($publicId, 1, null)->assertOk();
     }
 
-    public function test_legacy_drafts_with_null_identity_never_collide_with_each_other(): void
+    public function test_legacy_null_identities_use_distinct_patient_slots_and_cannot_split_one_patient(): void
     {
         $this->createDraft(null)->assertCreated();
+        $this->createDraft(null)->assertConflict();
+        $this->patient = Patient::create(['first_name' => 'Another', 'last_name' => 'Legacy patient', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
         $this->createDraft(null)->assertCreated();
 
         $this->assertSame(2, HealthRecordDraft::whereNull('consultation_uuid')->count());
@@ -258,6 +257,7 @@ class ConsultationIdentityTest extends TestCase
     {
         $taken = (string) Str::uuid();
         $owning = $this->createDraft($taken)->assertCreated()->json('data.id');
+        $this->patient = Patient::create(['first_name' => 'Another', 'last_name' => 'Adopting patient', 'sex' => 'Female', 'barangay_health_center_id' => $this->bhc->id]);
         $legacy = $this->createDraft(null)->assertCreated()->json('data.id');
 
         $this->updateDraft($legacy, 1, $taken)

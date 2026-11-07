@@ -1,6 +1,7 @@
+import { INITIAL_FORM_STATE } from "../../utils/patientRegistrationDefaults";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, Navigate, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -41,7 +42,13 @@ import HistoricalParentLinks from "../../components/features/patients/Historical
 import { isAcceptedLabel } from "../../utils/relationshipLabels";
 import BhcPatientRegistration from "./BhcPatientRegistration";
 import { registrationErrors } from "../../utils/householdData";
-import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS } from "../../utils/patientRegistrationPayload";
+import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS, registrationRecoveryEnabled, registrationDraftSnapshot, restoreRegistrationDraft } from "../../utils/patientRegistrationPayload";
+import useFormDraft from "../../hooks/useFormDraft";
+import { getCurrentUser } from "../../utils/auth";
+import { formDraftOwnerContext } from "../../utils/formDraftRequest";
+import { readRegistrationEntry, consumeRegistrationEntry } from "../../utils/patientRegistrationEntry";
+import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
+import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
 import {
   ADDRESS_FIELDS, connectionForPatient,
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
@@ -125,39 +132,7 @@ const EDUCATION_COMPLETED_SELECT_OPTIONS = [
 ];
 
 // Initial State Definition
-const INITIAL_FORM_STATE = {
-  firstName: "",
-  middleName: "",
-  lastName: "",
-  birthDate: "",
-  age: "",
-  sex: "",
-  civilStatus: "",
-  occupation: "",
-  educationLevel: "",
-  educationCompleted: "",
-  spouseName: "",
-  spouseOccupation: "",
-  contactNumber: "",
-  philHealthStatus: "",
-  philHealthNumber: "",
-  purokArea: "",
 
-  streetAddress: "",
-  barangay: "",
-  municipality: "Bulakan",
-
-  motherName: "",
-  motherBirthDate: "",
-  fatherName: "",
-  fatherBirthDate: "",
-  guardianName: "",
-  guardianRelationship: "",
-  guardianContactNumber: "",
-  familySerialNumber: "",
-
-  nhtsStatus: "",
-};
 
 function registrationForm(patient) {
   return {
@@ -191,9 +166,15 @@ export function RegistrationForm({
   registry, savedPatientOverride, savePatient, live = false, householdEnabled = true, initialConnection,
   onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
   walkIn, onNewWalkIn,
+  onRecoveryHouseholdChange, onRecoveryWalkIn, householdRecoveryLoading = false, householdRecoveryError = "",
 }) {
   const navigate = useNavigate();
   const client = useQueryClient();
+  const location = useLocation();
+  const owner = formDraftOwnerContext(getCurrentUser() || {});
+  const entryPath = location.pathname + location.search + location.hash;
+  const [preparedEntry, setPreparedEntry] = useState(() => !patientId && live ? readRegistrationEntry(client, owner, entryPath) : null);
+  const preparedEngine = preparedEntry?.options.owner === owner ? preparedEntry : null;
   const [createdPatientId, setCreatedPatientId] = useState("");
   const editingPatientId = patientId || createdPatientId || undefined;
   const savedPatient = savedPatientOverride || registry.patients.find((patient) => patient.id === editingPatientId);
@@ -220,6 +201,47 @@ export function RegistrationForm({
   const [duplicates, setDuplicates] = useState(null);
   const [form, setForm] = useState(() => initialConnection ? stageConnection(registrationForm(savedPatient),registry,initialConnection,{preserveParentLinks:live}) : registrationForm(savedPatient));
   const [fieldErrors, setFieldErrors] = useState({});
+  const [restoredHouseholdVersion, setRestoredHouseholdVersion] = useState(undefined);
+  const householdVersion = restoredHouseholdVersion !== undefined ? restoredHouseholdVersion
+    : householdConnection?.kind === "existing" ? registry.households.find((row) => String(row.id) === String(householdConnection.householdId))?.version ?? null : null;
+  const recoveryEnabled = registrationRecoveryEnabled({ role, live, patientId, createdPatientId });
+  const snapshot = registrationDraftSnapshot({ form, connection: householdConnection, headReplacement, householdVersion, walkIn });
+  const [draftBaseline, setDraftBaseline] = useState(() => snapshot);
+  const draft = useFormDraft({
+    formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
+    value: snapshot, initialValue: draftBaseline,
+    preparedEngine,
+    onEntryConsumed: () => consumeRegistrationEntry(client, owner, entryPath, preparedEngine),
+    normalizeSnapshot: (payload) => {
+      const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
+      return registrationDraftSnapshot(restored);
+    },
+    onRestore: (payload) => {
+      const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
+      setForm(restored.form);
+      setHouseholdConnection(restored.connection);
+      setHeadReplacement(restored.headReplacement);
+      setRestoredHouseholdVersion(restored.householdVersion);
+      setModals({ confirm: false, success: false });
+      setDuplicates(null);
+      setFieldErrors({});
+      setHouseholdReviewPending(Boolean(restored.connection?.kind === "existing" && !Number.isInteger(restored.householdVersion)));
+      onRecoveryHouseholdChange?.(restored.connection?.kind === "existing" ? restored.connection.householdId : "");
+      if (role === "rhu") { onRecoveryWalkIn?.(restored.walkIn); checkInKeyRef.current = restored.walkIn?.key || ""; }
+    },
+  });
+  const leaveBlocker = useBlocker(({ currentLocation, nextLocation }) =>
+    recoveryEnabled && draft.ready && draft.hasPendingChanges && currentLocation.pathname + currentLocation.search !== nextLocation.pathname + nextLocation.search,
+  );
+  const leaveBlockerRef = useRef(leaveBlocker);
+  useEffect(() => { leaveBlockerRef.current = leaveBlocker; });
+  useEffect(() => {
+    if (leaveBlocker.state !== "blocked" || !draft.engine) return undefined;
+    let active = true;
+    draft.engine.flushBeforeLeave().then(() => { if (active) leaveBlockerRef.current.proceed(); })
+      .catch((error) => { if (active) { toast.error(error.message); leaveBlockerRef.current.reset(); } });
+    return () => { active = false; };
+  }, [leaveBlocker.state, draft.engine]);
   const ageDisplay = formatAgeDisplay(form.birthDate);
   const ageYears = calculateAge(form.birthDate);
   const hasBirthDate = Boolean(form.birthDate);
@@ -316,6 +338,7 @@ function handleBirthDateChange(valueOrEvent) {
     }));
   }
   function handleHouseholdChange(connection, replacement) {
+    setRestoredHouseholdVersion(undefined);
     setHouseholdConnection(connection);
     setHeadReplacement(replacement || null);
     setForm((current) => stageConnection(current, registry, connection, {preserveParentLinks:live}));
@@ -392,7 +415,7 @@ function handleBirthDateChange(valueOrEvent) {
   }
 
   const handleSubmit = async (options = {}) => {
-    if (saving || !validateForm()) {
+    if (saving || leaveBlocker.state === "blocked" || !draft.ready || householdRecoveryLoading || !validateForm()) {
       setModals((current) => ({ ...current, confirm: false }));
       return;
     }
@@ -400,7 +423,12 @@ function handleBirthDateChange(valueOrEvent) {
     try {
       setSaving(true);
       const patientData = buildPatientPayload();
-      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement, options);
+      const draftOptions = recoveryEnabled ? await draft.prepareCommit() : undefined;
+      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement, { ...options, draftOptions, householdVersion });
+      if (recoveryEnabled) {
+        try { await draft.complete(); }
+        catch { toast.error("The patient was saved. Recovery cleanup will be checked when you reopen registration."); }
+      }
       const savedId = saved?.id ? String(saved.id) : "";
       setCreatedPatientId(savedId);
       setForm(registrationForm(saved));
@@ -424,6 +452,10 @@ function handleBirthDateChange(valueOrEvent) {
   };
 
   function registerAnother() {
+    setPreparedEntry(null);
+    const nextWalkIn = walkIn ? onNewWalkIn?.() : null;
+    setDraftBaseline(registrationDraftSnapshot({ form: INITIAL_FORM_STATE, walkIn: nextWalkIn }));
+    setRestoredHouseholdVersion(undefined);
     setForm({ ...INITIAL_FORM_STATE });
     setHouseholdConnection(null);
     setHeadReplacement(null);
@@ -432,7 +464,7 @@ function handleBirthDateChange(valueOrEvent) {
     setCheckInError("");
     setModals({ confirm: false, success: false });
     checkInKeyRef.current = "";
-    if (walkIn) onNewWalkIn?.();
+    onRecoveryHouseholdChange?.("");
     navigate(walkIn || role === "rhu" ? `${patientsPath}/add${walkIn ? "?check_in=1" : ""}` : `${patientsPath}/add`);
   }
 
@@ -520,6 +552,9 @@ function handleBirthDateChange(valueOrEvent) {
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-gray-600">
                 {pageDescription}
               </p>
+              {recoveryEnabled && <FormDraftStatus className="mt-2" {...draft.statusProps} />}
+              {householdRecoveryLoading && <p role="status" className="mt-2 text-sm text-neutral-600">Loading the saved household selection...</p>}
+              {householdRecoveryError && <p role="alert" className="mt-2 text-sm text-alert-700">{householdRecoveryError} <Button variant="secondary" onClick={onRefresh}>Retry</Button></p>}
             </div>
           </div>
         </div>
@@ -529,6 +564,7 @@ function handleBirthDateChange(valueOrEvent) {
           onSubmit={handleFormSubmit}
           className="ehr-form ml-0 mr-auto w-full max-w-7xl min-w-0"
         >
+          <fieldset disabled={saving || leaveBlocker.state === "blocked" || !draft.ready || householdRecoveryLoading} className="min-w-0">
           <div className="registration-columns grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             {/* LEFT COLUMN */}
             <div className="min-w-0 space-y-4">
@@ -878,6 +914,7 @@ function handleBirthDateChange(valueOrEvent) {
               {saving ? "Saving patient..." : "Save Patient"}
             </button>
           </div>
+          </fieldset>
         </form>
       </DashboardLayout>
 
@@ -907,6 +944,12 @@ function handleBirthDateChange(valueOrEvent) {
         <PatientRegistrationSuccess householdEnabled={householdEnabled} live={live} serialNumber={form.familySerialNumber} />
         {checkInError && <p role="alert" className="mt-3 text-sm text-alert-700">{checkInError}</p>}
       </ModalShell>}
+      {recoveryEnabled && !draft.ready && !draft.entryProps.checking && <FormDraftRecoveryDialog
+        {...draft.entryProps} title="Unfinished Registration" contextLabel="New patient registration"
+        description="An unfinished patient registration was found. Choose how you want to continue."
+        resumeLabel="Resume Registration" resuming={Boolean(draft.busy)} cancelLabel={draft.error ? "Cancel" : ""}
+        onClose={() => navigate(backPath)}
+      />}
       {modals.confirm && <ModalShell
         title="Save Patient?" appearance="plain"
         onClose={() => setModals((current) => ({ ...current, confirm: false }))}

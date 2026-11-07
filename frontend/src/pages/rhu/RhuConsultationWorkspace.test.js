@@ -23,6 +23,40 @@ test("referred interview has separate RHU fields, optional concern, and draft re
   assert.doesNotMatch(workspace, /setChiefComplaint\([^\n]*(?:referral|slip)/i);
 });
 
+test("Back to Queue flushes pending drafts and keeps the form when save fails", () => {
+  const leave = workspace.match(/if \(previous === EXIT_STEP\) \{[\s\S]*?navigate\("\/rhu\/patients"\)/);
+  assert.ok(leave, "expected Back to Queue leave path");
+  assert.match(leave[0], /flushBeforeLeave/);
+  assert.match(leave[0], /toast\.error/);
+  assert.match(leave[0], /have not synced|not synced/i);
+});
+
+test("RHU autosave status shows error and conflict even when shared form drafts are disabled", () => {
+  assert.match(workspace, /<FormDraftStatus[\s\S]*?autosave\.status/);
+  assert.match(workspace, /autosave\.error\?\.message \|\| autosave\.conflict\?\.message/);
+  assert.doesNotMatch(workspace, /autosave\.status === "saving" \? \(/);
+});
+
+test("Resume gates editing and autosave until the visit draft is hydrated", () => {
+  assert.match(workspace, /recoveryReady = recovery.ready/);
+  assert.match(workspace, /enabled:\s*RHU_DRAFTS_ENABLED && recoveryReady/);
+  assert.match(workspace, /assessmentLocked = encodeLocked \|\| !recoveryReady/);
+  assert.doesNotMatch(workspace, /useState\(!FORM_DRAFTS_ENABLED \|\| !RHU_DRAFTS_ENABLED\)/);
+});
+
+test("workspace reuses shared recovery and gates the form before rendering interview", () => {
+  assert.match(workspace, /useRhuConsultationRecovery/);
+  assert.match(workspace, /handoff: entryHandoff/);
+  assert.ok(workspace.indexOf('if (RHU_DRAFTS_ENABLED && !recoveryReady)') < workspace.indexOf('<ConsultationWorkspaceBody>'));
+  assert.doesNotMatch(workspace, /lookupHealthRecordDraft|hydrateRhuConsultationDraft/);
+});
+
+test("sticky draft status lives in the header and is not duplicated in the action bar", () => {
+  assert.match(workspace, /ehr-consult__draft-status/);
+  assert.match(workspace, /hasPendingChanges\s*\?\s*"pending"/);
+  assert.doesNotMatch(workspace, /secondaryAction=\{[\s\S]*FormDraftStatus/);
+});
+
 test("full referral overlay stays inside the mounted ITR", () => {
   for (const text of ["ModalShell", "BhcReferralSlip", "referralSlipOpen", "setReferralSlipOpen(false)"]) assert.ok(workspace.includes(text), text);
   assert.doesNotMatch(workspace, /reviewReferralSlipPath|navigate\(.*referrals/);

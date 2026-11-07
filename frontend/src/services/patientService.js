@@ -191,8 +191,8 @@ export async function saveBhcPatients() {
   return getBhcPatients();
 }
 
-export async function createBhcPatient(data) {
-  const response = await apiRequest("/patients", { method: "POST", body: toPayload(data) });
+export async function createBhcPatient(data, options = {}) {
+  const response = await apiRequest("/patients", { ...options, method: "POST", body: toPayload(data) });
   return normalizePatient(unwrapData(response));
 }
 
@@ -294,8 +294,8 @@ export async function savePatient(patientData) {
   return createPatient(patientData);
 }
 
-export async function createPatient(patientData) {
-  return createBhcPatient(patientData);
+export async function createPatient(patientData, options = {}) {
+  return createBhcPatient(patientData, options);
 }
 
 export async function updatePatient(patientId, patientData) {

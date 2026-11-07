@@ -1,3 +1,4 @@
+import { PatientRegistrationEntryLink as Link } from "../patients/PatientRegistrationEntry";
 import {
   ArrowRight,
   ClipboardList,
@@ -7,7 +8,6 @@ import {
   Stethoscope,
 } from "lucide-react";
 
-import { Link } from "react-router";
 
 import { stagger } from "../../../utils/animation";
 

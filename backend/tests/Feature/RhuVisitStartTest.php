@@ -11,6 +11,7 @@ use App\Models\RuralHealthUnit;
 use App\Models\User;
 use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -129,6 +130,48 @@ class RhuVisitStartTest extends TestCase
         $this->as($this->encoder())->postJson("/api/rhu-visits/{$visit->id}/start", [
             'follow_up_task_ids' => [$second->id, $first->id],
         ])->assertOk()->assertJsonPath('data.continued_follow_up_task_ids', [$second->id, $first->id]);
+    }
+
+    public function test_explicit_fresh_entry_rechecks_follow_ups_without_replacing_the_started_uuid(): void
+    {
+        $visit = $this->visit();
+        $user = $this->encoder();
+        $selected = $this->pendingTask($visit, 'Old choice');
+        $next = $this->pendingTask($visit, 'New choice');
+        $uuid = $this->as($user)->postJson("/api/rhu-visits/{$visit->id}/start", [
+            'follow_up_task_ids' => [$selected->id],
+        ])->assertOk()->json('data.consultation_uuid');
+
+        $this->postJson("/api/rhu-visits/{$visit->id}/start", [
+            'entry_consultation_uuid' => $uuid, 'follow_up_task_ids' => [$next->id],
+        ])->assertOk()->assertJsonPath('data.consultation_uuid', $uuid)
+            ->assertJsonPath('data.continued_follow_up_task_ids', [$next->id]);
+        $this->assertDatabaseCount('health_record_drafts', 0);
+
+        $next->update(['state' => FollowUpTask::STATE_FULFILLED, 'fulfilled_at' => now()]);
+        $this->postJson("/api/rhu-visits/{$visit->id}/start", [
+            'entry_consultation_uuid' => $uuid, 'follow_up_task_ids' => [$next->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('follow_up_task_ids.0');
+    }
+
+    public function test_explicit_fresh_entry_cannot_reselect_an_existing_draft_or_another_identity(): void
+    {
+        $visit = $this->visit();
+        $user = $this->encoder();
+        $uuid = $this->as($user)->postJson("/api/rhu-visits/{$visit->id}/start")->assertOk()->json('data.consultation_uuid');
+        $this->postJson('/api/health-record-drafts', [
+            'patient_id' => $visit->patient_id, 'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid, 'classification' => 'General Consultation',
+            'payload' => ['chiefComplaint' => 'Preserve this draft'],
+        ])->assertCreated();
+        $this->postJson("/api/rhu-visits/{$visit->id}/start", [
+            'entry_consultation_uuid' => $uuid, 'follow_up_task_ids' => [],
+        ])->assertConflict();
+        $this->postJson("/api/rhu-visits/{$visit->id}/start", [
+            'entry_consultation_uuid' => (string) Str::uuid(), 'follow_up_task_ids' => [],
+        ])->assertConflict();
+        $this->assertSame($uuid, $visit->fresh()->consultation_uuid);
+        $this->assertDatabaseCount('health_record_drafts', 1);
     }
 
     public function test_start_rejects_ineligible_or_foreign_follow_up_ids_and_stays_waiting(): void

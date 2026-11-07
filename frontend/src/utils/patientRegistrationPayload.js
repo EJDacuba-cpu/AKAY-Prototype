@@ -16,6 +16,76 @@ export const EDUCATION_COMPLETED_OPTIONS = ['Level', 'Graduate'];
 
 const blank = (value) => (value === null || value === undefined ? '' : String(value));
 
+export const REGISTRATION_DRAFT_FIELDS = "firstName middleName lastName birthDate age sex civilStatus occupation educationLevel educationCompleted spouseName spouseOccupation contactNumber philHealthStatus philHealthNumber purokArea streetAddress barangay municipality motherName motherBirthDate fatherName fatherBirthDate guardianName guardianRelationship guardianContactNumber familySerialNumber nhtsStatus patientClassification motherPatientId fatherPatientId".split(" ");
+const snapshotError = () => Object.assign(new Error("The registration recovery snapshot is invalid. Keep it and retry."), { code: "DRAFT_SNAPSHOT_INVALID" });
+function scalarFields(value, keys) {
+  const result = {};
+  for (const key of keys) {
+    if (!Object.hasOwn(value || {}, key)) continue;
+    if (value[key] !== null && typeof value[key] === "object") throw snapshotError();
+    result[key] = value[key] ?? "";
+  }
+  return result;
+}
+function registrationConnection(value) {
+  if (!value) return null;
+  if (!["existing", "new"].includes(value.kind)) throw snapshotError();
+  const result = scalarFields(value, ["kind", "householdId", "relationship", "headPatientId"]);
+  if (value.household) result.household = {
+    ...scalarFields(value.household, ["serialMode", "serialNumber"]),
+    address: scalarFields(value.household.address, ["streetAddress", "purokArea", "barangay", "municipality"]),
+  };
+  if (value.relationshipLink) result.relationshipLink = scalarFields(value.relationshipLink, ["type"]);
+  return result;
+}
+function registrationReplacement(value) {
+  if (!value) return null;
+  return { ...scalarFields(value, ["householdId", "headPatientId", "version"]), relationships: scalarFields(value.relationships, Object.keys(value.relationships || {})) };
+}
+
+export function registrationRecoveryEnabled({ role, live, patientId, createdPatientId }) {
+  return Boolean(live && ["bhc", "rhu"].includes(role) && !patientId && !createdPatientId);
+}
+
+/** Raw unfinished input only: final serializers intentionally omit hidden fields. */
+export function registrationDraftSnapshot({ form, connection = null, headReplacement = null, householdVersion = null, walkIn = null }) {
+  return { registration: {
+    form: scalarFields(form, REGISTRATION_DRAFT_FIELDS),
+    ...(connection ? { connection: registrationConnection(connection) } : {}),
+    ...(headReplacement ? { headReplacement: registrationReplacement(headReplacement) } : {}),
+    householdVersion: householdVersion ?? null,
+    ...(walkIn?.key ? { walkIn: { key: String(walkIn.key) } } : {}),
+  } };
+}
+
+export function restoreRegistrationDraft(payload, defaults) {
+  let saved = payload?.registration;
+  if (!saved) {
+    const names = {
+      first_name: "firstName", middle_name: "middleName", last_name: "lastName", birthdate: "birthDate", sex: "sex",
+      contact_number: "contactNumber", street_address: "streetAddress", barangay: "barangay", municipality: "municipality", purok_area: "purokArea",
+      civil_status: "civilStatus", occupation: "occupation", education_level: "educationLevel", education_completed: "educationCompleted",
+      philhealth_status: "philHealthStatus", philhealth_number: "philHealthNumber", spouse_name: "spouseName", spouse_occupation: "spouseOccupation",
+      mother_name: "motherName", mother_birth_date: "motherBirthDate", father_name: "fatherName", father_birth_date: "fatherBirthDate",
+      guardian_name: "guardianName", guardian_relationship: "guardianRelationship", guardian_contact_number: "guardianContactNumber",
+      family_serial_number: "familySerialNumber", nhts_status: "nhtsStatus", patient_category: "patientClassification",
+    };
+    const form = Object.fromEntries(Object.entries(names).filter(([key]) => Object.hasOwn(payload || {}, key)).map(([key, target]) => [target, payload[key]]));
+    if (!Object.keys(form).length) throw snapshotError();
+    const household = payload.household;
+    const connection = !household ? null : household.kind === "existing"
+      ? { kind: "existing", householdId: String(household.household_id), relationship: household.relationship || "" }
+      : { kind: "new", headPatientId: "self", household: { serialMode: household.serial_mode || "auto", serialNumber: household.serial_number || "", address: household.address || {} } };
+    saved = { form, connection, householdVersion: household?.version ?? null };
+  }
+  if (!saved.form || typeof saved.form !== "object" || Array.isArray(saved.form)) throw snapshotError();
+  return {
+    form: { ...defaults, ...scalarFields(saved.form, REGISTRATION_DRAFT_FIELDS) },
+    connection: registrationConnection(saved.connection), headReplacement: registrationReplacement(saved.headReplacement),
+    householdVersion: saved.householdVersion ?? null, walkIn: saved.walkIn?.key ? { key: String(saved.walkIn.key) } : null,
+  };
+}
+
 /** The patient's saved Education (a Patient Information field), "" when not recorded. */
 export function readEducation(patient = {}) {
   return {

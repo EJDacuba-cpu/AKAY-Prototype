@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -11,7 +10,6 @@ import useRhuVisits from "../../../hooks/useRhuVisits";
 import { checkInExistingPatient } from "../../../services/rhuVisitService";
 import { queryKeys } from "../../../utils/queryKeys";
 import { profileQueueAction, walkInKeyFor } from "../../../utils/rhuQueueView";
-import { startOrResumeRhuConsultation } from "../../../utils/rhuVisitConsultation";
 import RhuStartConsultationModal from "./RhuStartConsultationModal";
 
 const BUTTON_CLASS =
@@ -32,6 +30,7 @@ export default function ProfileQueueAction({ patientId, patientName }) {
   const { visits, loading } = useRhuVisits({ enabled: canViewQueue, poll: false });
   const [saving, setSaving] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
+  const [entryChecking, setEntryChecking] = useState(false);
   // Kept across a failed attempt so a retry for this patient is recognised by the server.
   const walkIn = useRef(null);
 
@@ -50,28 +49,6 @@ export default function ProfileQueueAction({ patientId, patientName }) {
     await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
   }
 
-  async function openConsultation(mode) {
-    if (mode === "start") {
-      setStartOpen(true);
-      return;
-    }
-    setSaving(true);
-    try {
-      const { path } = await startOrResumeRhuConsultation({
-        mode,
-        visitId: state.visitId,
-        patientId,
-      });
-      await refreshVisits();
-      navigate(path);
-    } catch (error) {
-      toast.error(error?.message || "Unable to resume this consultation.");
-      await refreshVisits();
-    } finally {
-      setSaving(false);
-    }
-  }
-
   if (state.kind === "start" || state.kind === "resume") {
     const starting = state.kind === "start";
     return (
@@ -79,8 +56,8 @@ export default function ProfileQueueAction({ patientId, patientName }) {
         <p className="font-medium text-neutral-800">
           In today&apos;s queue <span aria-hidden="true">·</span> <span className="text-neutral-600">{state.label}</span>
         </p>
-        <button type="button" disabled={saving} onClick={() => openConsultation(starting ? "start" : "resume")} className={BUTTON_CLASS}>
-          {saving ? (
+        <button type="button" disabled={saving || startOpen} aria-busy={entryChecking || undefined} onClick={() => { setEntryChecking(true); setStartOpen(true); }} className={BUTTON_CLASS}>
+          {entryChecking ? <><ButtonSpinner />Checking...</> : saving ? (
             <>
               <ButtonSpinner />
               Opening consultation...
@@ -88,22 +65,22 @@ export default function ProfileQueueAction({ patientId, patientName }) {
           ) : starting ? (
             "Start Consultation"
           ) : (
-            "Resume Consultation"
+            "Open Consultation"
           )}
         </button>
-        {startOpen && createPortal(
+        {startOpen && (
           <RhuStartConsultationModal
             patientId={patientId}
             visitId={state.visitId}
             patientName={patientName}
+            onCheckingChange={setEntryChecking}
             onClose={() => setStartOpen(false)}
-            onStarted={async (path) => {
-              setStartOpen(false);
-              await refreshVisits();
+            onStarted={(path) => {
+              void refreshVisits();
               navigate(path);
+              setStartOpen(false);
             }}
-          />,
-          document.body,
+          />
         )}
       </div>
     );

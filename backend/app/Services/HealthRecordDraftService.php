@@ -11,6 +11,7 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
+use Closure;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
@@ -25,7 +26,8 @@ class HealthRecordDraftService
 {
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
-        private readonly HealthRecordDraftPayloadService $payloads
+        private readonly HealthRecordDraftPayloadService $payloads,
+        private readonly FormDraftRecoveryKeyService $recoveryKeys,
     ) {}
 
     public function listFor(User $user, int $perPage): LengthAwarePaginator
@@ -40,6 +42,30 @@ class HealthRecordDraftService
             ->with('patient:id,first_name,middle_name,last_name')
             ->latest('last_saved_at')
             ->paginate($perPage);
+    }
+
+    public function lookupFor(User $user, int $patientId, mixed $visitId = null): ?HealthRecordDraft
+    {
+        $this->ensureEncoder($user);
+        $this->authorizedPatient($user, $patientId);
+        if ($user->isRhu()) {
+            // Queue entry checks before Start. Only this read may inspect a
+            // waiting visit; writes still require authorizedRhuVisit().
+            $visit = RhuVisitQueueEntry::query()
+                ->whereKey((int) $visitId)
+                ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                ->where('patient_id', $patientId)
+                ->whereIn('status', [RhuVisitQueueEntry::STATUS_WAITING, RhuVisitQueueEntry::STATUS_IN_CONSULTATION])
+                ->whereNull('closed_at')->first();
+            if ($visit === null) {
+                throw ValidationException::withMessages([
+                    'rhu_visit_id' => ['This visit is not open for this patient at your RHU.'],
+                ]);
+            }
+        }
+        $this->expireOwnedDrafts($user, patientId: $patientId, visitId: $visitId);
+
+        return $this->findActiveSlot($user, $patientId, $visitId)?->load('patient:id,first_name,middle_name,last_name');
     }
 
     /**
@@ -68,6 +94,29 @@ class HealthRecordDraftService
     {
         $this->ensureEncoder($user);
         $patient = $this->authorizedPatient($user, (int) $data['patient_id'], $data['rhu_visit_id'] ?? null);
+        // Expire the old target before entering a different UUID boundary.
+        $this->expireOwnedDrafts($user, patientId: (int) $patient->id, visitId: $data['rhu_visit_id'] ?? null);
+        $uuid = $this->normalizeConsultationUuid($data['consultation_uuid'] ?? null);
+        if ($user->isRhu()) {
+            $uuid = $this->authorizedRhuVisit($user, $patient, $data['rhu_visit_id'] ?? null, $uuid)->consultation_uuid;
+            $data['consultation_uuid'] = $uuid;
+        }
+        $create = function () use ($user, $data, $uuid) {
+            if ($uuid !== null) {
+                $this->recoveryKeys->assertClinicalActive($uuid);
+                $this->recoveryKeys->bindClinicalIdentity($uuid, $user->isRhu() ? 'rhu:'.$user->rural_health_unit_id : 'bhc:'.$user->barangay_health_center_id, $user->isRhu() ? 'visit:'.$data['rhu_visit_id'] : 'patient:'.$data['patient_id']);
+            }
+
+            return $this->createWithinIdentity($user, $data);
+        };
+
+        return $uuid ? $this->recoveryKeys->withClinicalIdentity($uuid, $create) : $create();
+    }
+
+    private function createWithinIdentity(User $user, array $data): HealthRecordDraft
+    {
+        $this->ensureEncoder($user);
+        $patient = $this->authorizedPatient($user, (int) $data['patient_id'], $data['rhu_visit_id'] ?? null);
         $consultationUuid = $this->normalizeConsultationUuid(
             $data['consultation_uuid'] ?? null
         );
@@ -81,19 +130,22 @@ class HealthRecordDraftService
         if ($existing = $this->findActiveByConsultationUuid($user, $consultationUuid)) {
             throw new DraftConsultationExistsException($existing);
         }
-
         $payload = $this->payloads->sanitize($data['payload']);
         $this->authorizeBackgroundUpdate($user, $payload);
         $this->authorizeMedicineSelections($user, $payload);
         $ciphertext = $this->encrypt($payload);
+        if ($existing = $this->findActiveSlot($user, (int) $patient->id, $data['rhu_visit_id'] ?? null)) {
+            throw new DraftConsultationExistsException($existing);
+        }
 
         try {
-            return $this->insertDraft($user, $patient, $data, $ciphertext, $consultationUuid);
+            return $this->insertDraft($user, $patient, $data, $ciphertext, $consultationUuid, $payload);
         } catch (QueryException $exception) {
             // Two creates for one consultation raced past the check above; the
             // partial unique index let exactly one through. Answer the loser the
             // same way as if it had arrived second.
-            $existing = $this->findActiveByConsultationUuid($user, $consultationUuid);
+            $existing = $this->findActiveByConsultationUuid($user, $consultationUuid)
+                ?? $this->findActiveSlot($user, (int) $patient->id, $data['rhu_visit_id'] ?? null);
             if ($existing !== null) {
                 throw new DraftConsultationExistsException($existing);
             }
@@ -107,17 +159,30 @@ class HealthRecordDraftService
         Patient $patient,
         array $data,
         string $ciphertext,
-        ?string $consultationUuid
+        ?string $consultationUuid,
+        array $payload,
     ): HealthRecordDraft {
         return DB::transaction(function () use (
             $user,
             $patient,
             $data,
             $ciphertext,
-            $consultationUuid
+            $consultationUuid,
+            $payload,
         ): HealthRecordDraft {
-            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $current = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            app(WorkingFacilityService::class)->select($current, $user->workingFacility['key'] ?? null);
+            $user = $current;
+            $this->ensureEncoder($user);
+            $this->authorizeBackgroundUpdate($user, $payload);
+            $this->authorizeMedicineSelections($user, $payload);
+            $patient = Patient::query()->whereKey($patient->id)->lockForUpdate()->firstOrFail();
+            abort_unless($this->facilityAccess->canAccessPatient($user, $patient), 403);
+            if ($existing = $this->findActiveSlot($user, (int) $patient->id, $data['rhu_visit_id'] ?? null)) {
+                throw new DraftConsultationExistsException($existing);
+            }
             $activeCount = HealthRecordDraft::query()
+                ->where('owner_user_id', $user->id)
                 ->where('status', HealthRecordDraft::STATUS_ACTIVE)
                 ->where('expires_at', '>', now())
                 ->count();
@@ -176,7 +241,34 @@ class HealthRecordDraftService
         return $draft;
     }
 
+    private function findActiveSlot(User $user, int $patientId, mixed $visitId): ?HealthRecordDraft
+    {
+        return HealthRecordDraft::query()->tap(fn ($query) => $this->applyFacilityScope($query, $user))
+            ->where('patient_id', $patientId)->where('status', 'active')->where('expires_at', '>', now())
+            ->when($user->isRhu(), fn ($query) => $query->where('rhu_visit_id', $visitId), fn ($query) => $query->whereNull('rural_health_unit_id'))
+            ->first();
+    }
+
     public function update(User $user, string $publicId, array $data): HealthRecordDraft
+    {
+        return $this->withDraftIdentity($user, $publicId, function () use ($user, $publicId, $data) {
+            return $this->updateWithinIdentity($user, $publicId, $data);
+        }, $data['consultation_uuid'] ?? null);
+    }
+
+    /** Read only the authorized identity before acquiring any domain lock. */
+    public function withDraftIdentity(User $user, string $publicId, Closure $action, ?string $adoptedUuid = null, bool $requireMatching = false): mixed
+    {
+        $this->ensureDraftAccess($user);
+        $draft = HealthRecordDraft::query()->where('public_id', $publicId)
+            ->tap(fn ($query) => $this->applyFacilityScope($query, $user))->firstOrFail();
+        abort_if($requireMatching && $draft->consultation_uuid && $adoptedUuid && strcasecmp($draft->consultation_uuid, $adoptedUuid) !== 0, 409, 'The draft belongs to another consultation.');
+        $uuid = $draft->consultation_uuid ?? $this->normalizeConsultationUuid($adoptedUuid);
+
+        return $uuid ? $this->recoveryKeys->withClinicalIdentity($uuid, $action) : $action();
+    }
+
+    private function updateWithinIdentity(User $user, string $publicId, array $data): HealthRecordDraft
     {
         return DB::transaction(function () use ($user, $publicId, $data) {
             $draft = $this->loadOwnedActive($user, $publicId);
@@ -210,6 +302,11 @@ class HealthRecordDraftService
                 throw new DraftConsultationExistsException(
                     $this->findActiveByConsultationUuid($user, $adoptedUuid)
                 );
+            }
+
+            if ($uuid = $draft->consultation_uuid ?? $adoptedUuid) {
+                $this->recoveryKeys->assertClinicalActive($uuid);
+                $this->recoveryKeys->bindClinicalIdentity($uuid, $draft->rural_health_unit_id ? 'rhu:'.$draft->rural_health_unit_id : 'bhc:'.$draft->barangay_health_center_id, $draft->rhu_visit_id ? 'visit:'.$draft->rhu_visit_id : 'patient:'.$draft->patient_id);
             }
 
             $updated = HealthRecordDraft::query()
@@ -252,13 +349,22 @@ class HealthRecordDraftService
         });
     }
 
-    public function discard(User $user, string $publicId): HealthRecordDraft
+    public function discard(User $user, string $publicId, ?int $version = null): HealthRecordDraft
+    {
+        return $this->withDraftIdentity($user, $publicId, fn () => DB::transaction(fn () => $this->discardWithinIdentity($user, $publicId, $version)));
+    }
+
+    private function discardWithinIdentity(User $user, string $publicId, ?int $version): HealthRecordDraft
     {
         $draft = $this->loadOwnedActive($user, $publicId);
         $this->assertEditor($user, $draft);
+        if ($version !== null && (int) $draft->version !== $version) {
+            throw new DraftVersionConflictException;
+        }
         $updated = HealthRecordDraft::query()
             ->whereKey($draft->id)
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
+            ->where('version', $draft->version)
             ->update([
                 'status' => HealthRecordDraft::STATUS_DISCARDED,
                 'encrypted_payload' => null,
@@ -266,10 +372,13 @@ class HealthRecordDraftService
             ]);
 
         if ($updated !== 1) {
-            throw (new ModelNotFoundException)->setModel(HealthRecordDraft::class);
+            throw new DraftVersionConflictException;
         }
 
-        return $draft->fresh();
+        $draft = $draft->fresh();
+        $this->recoveryKeys->retireClinical($draft);
+
+        return $draft;
     }
 
     public function payload(HealthRecordDraft $draft): array
@@ -422,6 +531,7 @@ class HealthRecordDraftService
             'encrypted_payload' => null,
             'consumed_health_record_id' => $healthRecordId,
         ]);
+        $this->recoveryKeys->retireClinical($draft);
     }
 
     private function normalizeConsultationUuid(mixed $value): ?string
@@ -652,24 +762,30 @@ class HealthRecordDraftService
         );
     }
 
-    private function expireOwnedDrafts(User $user, ?string $publicId = null): void
+    private function expireOwnedDrafts(User $user, ?string $publicId = null, ?int $patientId = null, mixed $visitId = null): void
     {
         HealthRecordDraft::query()
             ->tap(fn ($query) => $this->applyFacilityScope($query, $user))
             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
             ->where('expires_at', '<=', now())
             ->when($publicId, fn ($query) => $query->where('public_id', $publicId))
+            ->when($patientId, fn ($query) => $query->where('patient_id', $patientId))
+            ->when($visitId, fn ($query) => $query->where('rhu_visit_id', $visitId))
             ->select([
                 'id',
                 'public_id',
                 'owner_user_id',
                 'barangay_health_center_id',
+                'rural_health_unit_id',
+                'rhu_visit_id',
+                'patient_id',
+                'consultation_uuid',
                 'classification',
                 'version',
             ])
             ->chunkById(100, function ($drafts): void {
                 foreach ($drafts as $draft) {
-                    DB::transaction(function () use ($draft): void {
+                    $expire = function () use ($draft): void {
                         $updated = HealthRecordDraft::query()
                             ->whereKey($draft->id)
                             ->where('status', HealthRecordDraft::STATUS_ACTIVE)
@@ -683,6 +799,9 @@ class HealthRecordDraftService
                             return;
                         }
 
+                        $draft->status = HealthRecordDraft::STATUS_EXPIRED;
+                        $this->recoveryKeys->retireClinical($draft);
+
                         AuditLog::create([
                             'user_id' => $draft->owner_user_id,
                             'action' => 'draft_expired',
@@ -695,7 +814,12 @@ class HealthRecordDraftService
                                 "version={$draft->version}",
                             ]).'.',
                         ]);
-                    });
+                    };
+                    if ($draft->consultation_uuid) {
+                        $this->recoveryKeys->withClinicalIdentity($draft->consultation_uuid, $expire);
+                    } else {
+                        DB::transaction($expire);
+                    }
                 }
             });
     }

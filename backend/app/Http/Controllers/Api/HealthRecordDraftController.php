@@ -52,6 +52,14 @@ class HealthRecordDraftController extends Controller
         return response()->json(['data' => $this->drafts->metadata($draft)], 201);
     }
 
+    public function lookup(Request $request)
+    {
+        $data = $request->validate(['patient_id' => 'required|integer|min:1', 'rhu_visit_id' => 'nullable|integer|min:1']);
+        $draft = $this->drafts->lookupFor($request->user(), (int) $data['patient_id'], $data['rhu_visit_id'] ?? null);
+
+        return response()->json(['data' => $draft ? $this->drafts->metadata($draft) : null]);
+    }
+
     public function show(Request $request, string $draft, AuditLogger $auditLogger)
     {
         [$record, $payload, $medicineSelections] = $this->safely(
@@ -99,11 +107,12 @@ class HealthRecordDraftController extends Controller
 
     public function destroy(Request $request, string $draft, AuditLogger $auditLogger)
     {
+        $data = $request->validate(['version' => 'sometimes|required|integer|min:1']);
         $record = $this->safely(
             $request,
             'discard',
             'Unable to discard this draft safely. Please try again.',
-            fn () => $this->drafts->discard($request->user(), $draft)
+            fn () => $this->drafts->discard($request->user(), $draft, isset($data['version']) ? (int) $data['version'] : null)
         );
         $this->audit($auditLogger, $request, 'draft_discarded', $record);
 
@@ -114,6 +123,7 @@ class HealthRecordDraftController extends Controller
     {
         $data = $request->validate(['action' => ['required', 'in:claim,takeover,submit,return'], 'version' => ['required', 'integer', 'min:1'], 'note' => ['nullable', 'string', 'max:2000']]);
         $record = $this->drafts->transition($request->user(), $draft, $data['action'], $data['version'], $data['note'] ?? null);
+
         return response()->json(['data' => $this->drafts->metadata($record)]);
     }
 

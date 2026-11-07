@@ -51,6 +51,17 @@
 .ehr-consult__header > div {
   margin-bottom: 0;
 }
+.ehr-consult--rhu .ehr-consult__header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: color-mix(in srgb, var(--color-surface, #fff) 92%, transparent);
+  backdrop-filter: blur(6px);
+  padding-block: 6px 8px;
+}
+.ehr-consult--rhu .ehr-consult__draft-status {
+  max-width: min(100%, 22rem);
+}
 
 .ehr-consult .rounded {
   border-radius: var(--radius-input);

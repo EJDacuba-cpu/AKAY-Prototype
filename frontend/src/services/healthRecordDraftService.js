@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { clinicalDraftRequest } from "../utils/clinicalDraftRequest";
 
 function normalizeDraft(draft = {}) {
   return {
@@ -27,13 +28,14 @@ function normalizeDraft(draft = {}) {
   };
 }
 
-export async function listHealthRecordDrafts() {
+export async function listHealthRecordDrafts({ draftOwnerContext } = {}) {
   const drafts = [];
   let page = 1;
 
   while (true) {
     const response = await apiRequest(
       `/health-record-drafts?per_page=15&page=${page}`,
+      draftOwnerContext ? { draftOwnerContext } : {},
     );
     drafts.push(...unwrapList(response).map(normalizeDraft));
     const lastPage = Math.max(1, Number(response?.data?.last_page || 1));
@@ -44,58 +46,54 @@ export async function listHealthRecordDrafts() {
   return drafts;
 }
 
+export async function lookupHealthRecordDraft({ patientId, rhuVisitId, draftOwnerContext }) {
+  const query = new URLSearchParams({ patient_id: String(patientId), ...(rhuVisitId ? { rhu_visit_id: String(rhuVisitId) } : {}) });
+  const response = await apiRequest(`/health-record-drafts/lookup?${query}`, draftOwnerContext ? { draftOwnerContext } : {});
+  return response?.data ? normalizeDraft(response.data) : null;
+}
+
 export async function createHealthRecordDraft({
   patientId,
   classification,
   consultationUuid,
   rhuVisitId,
   payload,
+  draftOwnerContext,
 }) {
   const response = await apiRequest("/health-record-drafts", {
     method: "POST",
-    body: {
-      patient_id: patientId,
-      classification,
-      consultation_uuid: consultationUuid || null,
-      ...(rhuVisitId ? { rhu_visit_id: Number(rhuVisitId) } : {}),
-      payload,
-    },
+    ...(draftOwnerContext ? { draftOwnerContext } : {}),
+    body: clinicalDraftRequest({ patientId, classification, consultationUuid, rhuVisitId, payload }),
   });
   return normalizeDraft(unwrapData(response));
 }
 
-export async function getHealthRecordDraft(draftId) {
-  const response = await apiRequest(`/health-record-drafts/${draftId}`);
+export async function getHealthRecordDraft(draftId, { claim = true, draftOwnerContext } = {}) {
+  const options = draftOwnerContext ? { draftOwnerContext } : {};
+  const response = await apiRequest(`/health-record-drafts/${draftId}`, options);
   const draft = normalizeDraft(unwrapData(response));
-  if (!draft.canEdit) return draft;
-  const claimed = await transitionDraft(draftId, "claim", draft.version);
+  if (!draft.canEdit || !claim) return draft;
+  const claimed = await transitionDraft(draftId, "claim", draft.version, undefined, options);
   return { ...draft, ...claimed, payload: draft.payload, medicineSelections: draft.medicineSelections };
 }
 
-export async function transitionDraft(draftId, action, version, note) {
-  const response = await apiRequest(`/health-record-drafts/${draftId}/transition`, { method: "POST", body: { action, version, note } });
+export async function transitionDraft(draftId, action, version, note, options = {}) {
+  const response = await apiRequest(`/health-record-drafts/${draftId}/transition`, { ...options, method: "POST", body: { action, version, note } });
   return normalizeDraft(unwrapData(response));
 }
 
 export async function updateHealthRecordDraft(
   draftId,
-  { patientId, classification, consultationUuid, payload, version },
+  { patientId, classification, consultationUuid, rhuVisitId, payload, version, draftOwnerContext },
 ) {
   const response = await apiRequest(`/health-record-drafts/${draftId}`, {
     method: "PUT",
-    body: {
-      patient_id: patientId,
-      classification,
-      // Adopted server-side only by a draft that has none yet; an identity
-      // that is already set is never reassigned.
-      consultation_uuid: consultationUuid || null,
-      payload,
-      version,
-    },
+    ...(draftOwnerContext ? { draftOwnerContext } : {}),
+    body: clinicalDraftRequest({ patientId, classification, consultationUuid, rhuVisitId, payload, version }),
   });
   return normalizeDraft(unwrapData(response));
 }
 
-export async function discardHealthRecordDraft(draftId) {
-  await apiRequest(`/health-record-drafts/${draftId}`, { method: "DELETE" });
+export async function discardHealthRecordDraft(draftId, version, options = {}) {
+  await apiRequest(`/health-record-drafts/${draftId}`, { ...options, method: "DELETE", ...(version !== undefined ? { body: { version } } : {}) });
 }

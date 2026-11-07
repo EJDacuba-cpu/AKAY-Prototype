@@ -1,5 +1,6 @@
+import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 

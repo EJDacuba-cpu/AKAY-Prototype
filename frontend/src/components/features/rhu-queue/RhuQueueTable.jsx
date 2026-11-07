@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import {
   ActionMenu,
+  ButtonSpinner,
   ConnectionErrorState,
   FixedTable,
   PlainStatusStamp,
@@ -24,7 +25,7 @@ const SOURCE_OPTIONS = [
 
 /**
  * Today's Queue for the RHU: who is waiting, where they came from and since when.
- * `rows` are display rows from `queueRows()`. Start / Resume navigate to the RHU ITR workspace.
+ * `rows` are display rows from `queueRows()`. Start / Open share the recovery entry boundary.
  * Page chrome (title, Check in, Search+Filter) lives on the workspace; this owns the sheet.
  */
 export default function RhuQueueTable({
@@ -41,8 +42,9 @@ export default function RhuQueueTable({
   canFinalize = false,
   canClose = false,
   onClearFilters,
-  onStart,
-  onResume,
+  onOpen,
+  entryBusy = false,
+  checkingVisitId = null,
   onCloseVisit,
 }) {
   const [source, setSource] = useState("all");
@@ -153,8 +155,9 @@ export default function RhuQueueTable({
                       canEncode={canEncode}
                       canFinalize={canFinalize}
                       canClose={canClose}
-                      onStart={onStart}
-                      onResume={onResume}
+                      onOpen={onOpen}
+                      entryBusy={entryBusy}
+                      checking={String(checkingVisitId) === String(row.id)}
                       onCloseVisit={onCloseVisit}
                     />
                   ))
@@ -177,11 +180,10 @@ export default function RhuQueueTable({
   );
 }
 
-function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume, onCloseVisit }) {
+function QueueRowView({ row, canEncode, canFinalize, canClose, onOpen, entryBusy, checking, onCloseVisit }) {
   const entryTone = row.source === "referral" ? "info" : "neutral";
   const actions = queueRowActions(row, { canEncode, canFinalize, canClose }).map((item) => {
-    if (item.action === "start") return { ...item, onClick: () => onStart?.(row) };
-    if (item.action === "resume") return { ...item, onClick: () => onResume?.(row) };
+    if (item.action === "open") return { ...item, disabled: entryBusy, onClick: () => { if (!entryBusy) onOpen?.(row); } };
     if (item.action === "close") return { ...item, onClick: () => onCloseVisit?.(row) };
     return item;
   });
@@ -226,12 +228,12 @@ function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume
         <PlainStatusStamp label={row.status.label} tone={row.status.tone} appearance="plain" />
       </td>
       <td className="px-4 text-right">
-        <ActionMenu
+        {checking ? <button type="button" disabled aria-busy="true" className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600"><ButtonSpinner />Checking...</button> : <ActionMenu
           showHeader={false}
           title={row.name}
           triggerLabel={`Actions for ${row.name}`}
           actions={actions}
-        />
+        />}
       </td>
     </tr>
   );

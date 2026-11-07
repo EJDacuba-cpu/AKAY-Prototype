@@ -45,6 +45,7 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
   const typeLabel = type.toUpperCase();
   const activeRhus = rhus.filter((rhu) => rhu.status === "active");
   const defaultRhuId = Number(form.rural_health_unit_id);
+  const close = () => { if (!busy) onClose(); };
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -92,17 +93,18 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
     }
   }
 
+
   return (
     <ModalShell
       title={`${form.id ? "Edit" : "Add"} ${typeLabel}`}
       subtitle={form.id ? form.name : `Register a new ${typeLabel} facility.`}
       size="xl"
-      onClose={onClose}
+      onClose={close}
       closeDisabled={busy}
       initialFocusRef={nameRef}
       footer={
         <>
-          <ModalButton onClick={onClose} disabled={busy}>
+          <ModalButton onClick={close} disabled={busy}>
             Cancel
           </ModalButton>
           <ModalButton type="submit" form={FORM_ID} variant="primary" disabled={busy}>
@@ -112,6 +114,7 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
       }
     >
       <form id={FORM_ID} onSubmit={save} className="space-y-4">
+        <fieldset disabled={busy} className="min-w-0 space-y-4">
         {error && (
           <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
             {error}
@@ -180,6 +183,7 @@ export default function FacilityFormModal({ type, facility, rhus, onSaved, onClo
             </p>
           </>
         )}
+        </fieldset>
       </form>
     </ModalShell>
   );

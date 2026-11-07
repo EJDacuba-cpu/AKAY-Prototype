@@ -7,6 +7,7 @@ import {
   isForcedSessionInvalidation,
 } from "../utils/sessionPrivacy";
 import { CHANGE_PASSWORD_PATH } from "../utils/passwordChange";
+import { formDraftRequestOptions } from "../utils/formDraftRequest";
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
@@ -142,6 +143,7 @@ function createTimeoutError() {
 }
 
 async function sendRequest(endpoint, options = {}) {
+  options = formDraftRequestOptions(options, getStoredAuthUser() || {});
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     throw createOfflineError();
   }

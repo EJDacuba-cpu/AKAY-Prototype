@@ -45,6 +45,20 @@ Artisan::command('health-record-drafts:prune {--dry-run : Count eligible drafts 
     $this->info("Expired: {$result['expired']}; pruned: {$result['pruned']}.");
 })->purpose('Expire and prune health-record drafts without exposing clinical payloads');
 
+Artisan::command('health-record-drafts:preflight-slots {--json : Print the identifier-only conflict report}', function (\App\Services\ClinicalDraftSlotPreflight $preflight) {
+    $conflicts = $preflight->conflicts();
+    if ($this->option('json')) {
+        $this->line(json_encode(['clear' => $conflicts === [], 'conflicts' => $conflicts], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+    } else {
+        $this->info(count($conflicts).' active draft slot conflict(s). No drafts were changed.');
+        foreach ($conflicts as $conflict) {
+            $this->line($conflict['slot'].': '.implode(', ', $conflict['draft_ids']));
+        }
+    }
+
+    return $conflicts === [] ? Command::SUCCESS : Command::FAILURE;
+})->purpose('Report legacy duplicate clinical draft slots without reading clinical payloads');
+
 Artisan::command('referral-holds:prune {--dry-run : Count eligible holds without changing them}', function (ReferralHoldPruner $pruner) {
     $count = $pruner->prune((bool) $this->option('dry-run'));
 
@@ -100,3 +114,9 @@ Schedule::command('notifications:prune')
     ->dailyAt(config('operations.scheduler.notification_prune_time'))
     ->timezone(config('app.timezone'))
     ->withoutOverlapping(config('operations.scheduler.notification_prune_overlap_minutes'));
+
+Artisan::command('form-drafts:prune', function (\App\Services\FormDraftService $drafts) {
+    $drafts->prune();
+    $this->info('Expired recovery payloads removed.');
+})->purpose('Remove expired generic form recovery payloads and keys');
+Schedule::command('form-drafts:prune')->daily()->withoutOverlapping();

@@ -1171,6 +1171,7 @@ export async function createHealthRecord(recordData, role = "bhc", options = {})
   const consultationUuid = String(options.consultationUuid || "").trim();
   const response = await apiRequest("/health-records", {
     method: "POST",
+    ...(options.draftOwnerContext ? { draftOwnerContext: options.draftOwnerContext } : {}),
     headers: {
       "Idempotency-Key": idempotencyKey,
       ...(draftId ? { "X-Health-Record-Draft-ID": draftId, "X-Draft-Version": String(options.draftVersion || "") } : {}),

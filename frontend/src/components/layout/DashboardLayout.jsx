@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, Menu } from "lucide-react";
 import WorkingFacility from "./WorkingFacility";
+import { PatientRegistrationEntryProvider } from "../features/patients/PatientRegistrationEntry";
 import TopBarBreadcrumbs from "./TopBarBreadcrumbs";
 import { getBreadcrumbs } from "../../utils/breadcrumbs";
 import { navigationAllowed } from "../../utils/dashboardAccess";
@@ -12,6 +13,9 @@ import {
 } from "../../utils/sidebarNavigation";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
+import { FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
+import { formDraftOwnerContext } from "../../utils/formDraftRequest";
+import { prepareDraftLogout, draftLogoutDescription, hasActiveFormDraft } from "../../services/formDraftSession";
 import {
   formatDisplayValue,
   formatFacilityName,
@@ -70,6 +74,8 @@ export default function DashboardLayout({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [logoutDraftDescription, setLogoutDraftDescription] = useState("Make sure your work is saved before signing out.");
+  const [logoutChecking, setLogoutChecking] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeLoadingComplete, setRouteLoadingComplete] = useState(false);
   const [contentLoadingCount, setContentLoadingCount] = useState(0);
@@ -213,15 +219,22 @@ export default function DashboardLayout({
     };
   }, []);
 
-  function handleLogoutRequest() {
-    if (logoutLoading) return;
+  async function handleLogoutRequest() {
+    if (logoutLoading || logoutChecking) return;
     setIsNotifOpen(false);
     setMobileDrawerOpen(false);
     setLogoutModalOpen(true);
+    if (FORM_DRAFTS_ENABLED || hasActiveFormDraft(formDraftOwnerContext(getCurrentUser() || {}))) {
+      setLogoutChecking(true);
+      try {
+        const report = await prepareDraftLogout(formDraftOwnerContext(getCurrentUser() || {}));
+        setLogoutDraftDescription(draftLogoutDescription(report));
+      } finally { setLogoutChecking(false); }
+    }
   }
 
   async function handleConfirmLogout() {
-    if (logoutLoading) return;
+    if (logoutLoading || logoutChecking) return;
 
     setLogoutLoading(true);
     try {
@@ -266,6 +279,7 @@ export default function DashboardLayout({
   };
 
   return (
+    <PatientRegistrationEntryProvider role={role}>
     <div className="relative flex h-dvh overflow-hidden bg-[var(--color-shell)] text-neutral-900">
       <style>
         {`
@@ -412,16 +426,17 @@ export default function DashboardLayout({
       <ConfirmationModal
         open={logoutModalOpen}
         title="Log out?"
-        description="Signing out will discard unfinished form data on this device."
+        description={logoutChecking ? "Checking unfinished input before signing out…" : logoutDraftDescription}
         confirmText="Log out"
-        cancelText="Cancel"
-        loading={logoutLoading}
-        loadingText="Logging out..."
+        cancelText="Keep Working"
+        loading={logoutLoading || logoutChecking}
+        loadingText={logoutChecking ? "Checking drafts..." : "Logging out..."}
         onCancel={() => {
-          if (!logoutLoading) setLogoutModalOpen(false);
+          if (!logoutLoading && !logoutChecking) setLogoutModalOpen(false);
         }}
         onConfirm={handleConfirmLogout}
       />
     </div>
+    </PatientRegistrationEntryProvider>
   );
 }

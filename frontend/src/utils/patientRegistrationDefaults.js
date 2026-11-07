@@ -1,0 +1,33 @@
+export const INITIAL_FORM_STATE = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  birthDate: "",
+  age: "",
+  sex: "",
+  civilStatus: "",
+  occupation: "",
+  educationLevel: "",
+  educationCompleted: "",
+  spouseName: "",
+  spouseOccupation: "",
+  contactNumber: "",
+  philHealthStatus: "",
+  philHealthNumber: "",
+  purokArea: "",
+
+  streetAddress: "",
+  barangay: "",
+  municipality: "Bulakan",
+
+  motherName: "",
+  motherBirthDate: "",
+  fatherName: "",
+  fatherBirthDate: "",
+  guardianName: "",
+  guardianRelationship: "",
+  guardianContactNumber: "",
+  familySerialNumber: "",
+
+  nhtsStatus: "",
+};

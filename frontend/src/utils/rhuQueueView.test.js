@@ -42,12 +42,12 @@ test('the row menu follows visit progress and duties', () => {
   const waiting = queueRows([visit()], NOW)[0];
   const inConsult = queueRows([visit({ status: 'in_consultation' })], NOW)[0];
   assert.deepEqual(queueRowActions(waiting, { canEncode: true, canClose: true }).map((item) => item.label), [
-    'Start consultation',
+    'Start Consultation',
     'Open patient record',
     'Close visit',
   ]);
   assert.deepEqual(queueRowActions(inConsult, { canEncode: true, canClose: true }).map((item) => item.label), [
-    'Resume consultation',
+    'Open Consultation',
     'Open patient record',
   ]);
   assert.deepEqual(queueRowActions(waiting, { canEncode: false, canClose: true }).map((item) => item.label), [
@@ -55,21 +55,21 @@ test('the row menu follows visit progress and duties', () => {
     'Close visit',
   ]);
   assert.deepEqual(queueRowActions(waiting, { canEncode: true, canClose: false }).map((item) => item.label), [
-    'Start consultation',
+    'Start Consultation',
     'Open patient record',
   ]);
-  assert.equal(queueRowActions(waiting, { canEncode: true, canClose: true }).find((item) => item.action === 'start').to, undefined);
+  assert.equal(queueRowActions(waiting, { canEncode: true, canClose: true }).find((item) => item.action === 'open').to, undefined);
   assert.equal(
-    queueRowActions(inConsult, { canEncode: false, canFinalize: true }).some((item) => item.action === 'resume'),
+    queueRowActions(inConsult, { canEncode: false, canFinalize: true }).some((item) => item.action === 'open'),
     true,
   );
   assert.equal(
-    queueRowActions(inConsult, { canEncode: false, canFinalize: false }).some((item) => item.action === 'resume'),
+    queueRowActions(inConsult, { canEncode: false, canFinalize: false }).some((item) => item.action === 'open'),
     false,
   );
   const referred = queueRows([visit({ source: 'referral', referral: { id: 5, sending_bhc: 'BHC Poblacion' } })], NOW)[0];
   assert.deepEqual(queueRowActions(referred, { canEncode: true, canClose: true }).map((item) => item.label), [
-    'Start consultation',
+    'Start Consultation',
     'Review Referral Slip',
     'Open patient record',
     'Close visit',
@@ -111,7 +111,7 @@ test('a walk-in later linked to a referral keeps walk-in labelling and exposes t
   assert.equal(row.fromLabel, 'Direct RHU check-in');
   assert.deepEqual(
     queueRowActions(row, { canEncode: true, canClose: true }).map((item) => item.label),
-    ['Start consultation', 'Review Referral Slip', 'Open patient record', 'Close visit'],
+    ['Start Consultation', 'Review Referral Slip', 'Open patient record', 'Close visit'],
   );
   assert.equal(
     queueRowActions(row, { canEncode: true, canClose: true }).find((item) => item.label === 'Review Referral Slip').to,

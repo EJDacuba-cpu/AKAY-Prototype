@@ -66,6 +66,14 @@ class HealthRecordDraftPayloadService
             'clinicalOutcome' => self::SCALAR,
             'activate' => self::SCALAR,
             'manageToBhc' => self::SCALAR,
+            'nextAction' => self::SCALAR,
+            'receivingBhcId' => self::SCALAR,
+            'monitoringRecommendation' => self::SCALAR,
+            'tbManagement' => [
+                'diagnosisType' => self::SCALAR,
+                'drugResistance' => self::SCALAR,
+                'openTreatmentCard' => self::SCALAR,
+            ],
             'referral' => [
                 'urgencyLevel' => self::SCALAR,
                 'receivingRhuId' => self::SCALAR,
@@ -462,6 +470,11 @@ class HealthRecordDraftPayloadService
         'rhuFollowUp' => self::SCALAR,
         'manageToBhc' => self::SCALAR,
         'rhuVisitId' => self::SCALAR,
+        // RHU referred-visit optional second concern (workspace local draft keys;
+        // finalize still maps them through monitoring_data.additionalConcern).
+        'showAdditionalConcern' => self::SCALAR,
+        'additionalChiefComplaint' => self::SCALAR,
+        'additionalHistoryOfPresentIllness' => self::SCALAR,
     ];
 
     /**
@@ -661,6 +674,12 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.clinicalOutcome' => ['nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])],
             'payload.diagnoses.*.activate' => ['nullable', 'boolean'],
             'payload.diagnoses.*.manageToBhc' => ['nullable', 'boolean'],
+            'payload.diagnoses.*.nextAction' => ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc'])],
+            'payload.diagnoses.*.receivingBhcId' => ['nullable', 'integer', 'min:1'],
+            'payload.diagnoses.*.monitoringRecommendation' => ['nullable', 'string', 'max:5000'],
+            'payload.diagnoses.*.tbManagement.diagnosisType' => ['nullable', 'string', 'max:50'],
+            'payload.diagnoses.*.tbManagement.drugResistance' => ['nullable', 'string', 'max:100'],
+            'payload.diagnoses.*.tbManagement.openTreatmentCard' => ['nullable', 'boolean'],
             'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(\App\Models\Referral::ATTENTION_LEVELS)],
             'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
             'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],
@@ -714,6 +733,9 @@ class HealthRecordDraftPayloadService
             'payload.rhuFollowUp' => ['nullable', 'boolean'],
             'payload.manageToBhc' => ['nullable', 'boolean'],
             'payload.rhuVisitId' => ['nullable', 'integer'],
+            'payload.showAdditionalConcern' => ['nullable', 'boolean'],
+            'payload.additionalChiefComplaint' => ['nullable', 'string', 'max:2000'],
+            'payload.additionalHistoryOfPresentIllness' => ['nullable', 'string', 'max:5000'],
             'payload.maternalData.previousPregnancyHistory' => ['nullable', 'array', 'max:30'],
             'payload.maternalData.laboratoryEntries' => ['nullable', 'array', 'max:30'],
             'payload.maternalData.laboratoryEntries.*.test' => [

@@ -6,6 +6,8 @@ import {
 } from "../services/healthRecordDraftService";
 import * as defaultLocalDraftVault from "../services/localDraftVault";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../utils/sessionPrivacy";
+import { registerFormDraftCoordinator } from "../services/formDraftSession";
+import { createDraftCheckpointScheduler } from "../services/draftCheckpointScheduler";
 
 /**
  * Online-first autosave for encrypted health-record drafts, with an on-device
@@ -145,6 +147,9 @@ export default function useDraftAutosave({
   const localWriteSeqRef = useRef(0);
   const localWritesRef = useRef(Promise.resolve());
   const finalizedRef = useRef(false);
+  const sessionEpochRef = useRef(0);
+  const checkpointSchedulerRef = useRef(null);
+  const invalidateSession = useCallback(() => { sessionEpochRef.current++; }, []);
 
   const clearDebounceTimer = useCallback(() => {
     if (debounceTimerRef.current) {
@@ -167,6 +172,7 @@ export default function useDraftAutosave({
    * encrypt, so the UI can say so instead of implying the work is protected.
    */
   const persistLocalNow = useCallback(async () => {
+    const epoch = sessionEpochRef.current;
     const params = paramsRef.current;
     const target = params.localDraft;
     if (!target?.ownerKey || !target?.consultationKey) return false;
@@ -178,6 +184,7 @@ export default function useDraftAutosave({
 
     const record = params.buildLocalRecord?.();
     if (!record || finalizedRef.current) return false;
+    if (serializePayload(latestPayloadRef.current) === lastSavedSerializedRef.current && !hasLocalCopyRef.current) return false;
     if (record.draft && draftRef.current) {
       record.draft.id = draftRef.current.id;
       record.draft.version = draftRef.current.version;
@@ -191,10 +198,13 @@ export default function useDraftAutosave({
           ownerKey: target.ownerKey,
           consultationKey: target.consultationKey,
           record,
+          base: { serverPayload: lastSavedSerializedRef.current, pendingPayload: serializePayload(pendingSaveRef.current?.payload), version: draftRef.current?.version ?? null },
+          synced: serializedAtWrite === lastSavedSerializedRef.current,
         }),
       );
       localWritesRef.current = write;
       await write;
+      if (epoch !== sessionEpochRef.current) return false;
       hasLocalCopyRef.current = true;
       lastLocalSerializedRef.current = serializedAtWrite;
       // A newer write already landed; do not report this stale one.
@@ -209,6 +219,12 @@ export default function useDraftAutosave({
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    const scheduler = createDraftCheckpointScheduler({ write: persistLocalNow, delay: LOCAL_PERSIST_DEBOUNCE_MS });
+    checkpointSchedulerRef.current = scheduler;
+    return () => scheduler.close();
+  }, [persistLocalNow]);
 
   // Stop autosave before deleting recovery, so a late timer cannot recreate it.
   const completeConsultation = useCallback(async () => {
@@ -351,6 +367,7 @@ export default function useDraftAutosave({
   const runSave = useCallback(
     async () => {
       const params = paramsRef.current;
+      const epoch = sessionEpochRef.current;
       if (!params.enabled || finalizedRef.current) return;
       // Conflict/validation pause halts autosave until reload; manual save overrides.
       if (pausedRef.current) return;
@@ -401,6 +418,7 @@ export default function useDraftAutosave({
         classification: params.classification,
         payload: payloadToSave,
         ...(params.rhuVisitId ? { rhuVisitId: Number(params.rhuVisitId) } : {}),
+        ...(params.vault.prepareLocalDraft && params.localDraft ? { draftOwnerContext: params.localDraft.ownerKey } : {}),
       };
 
       try {
@@ -410,6 +428,8 @@ export default function useDraftAutosave({
               version: current.version,
             })
           : await params.createDraft(request);
+
+        if (epoch !== sessionEpochRef.current || finalizedRef.current) return;
 
         lastSavedSerializedRef.current = nextSerialized;
         draftRef.current = { id: saved.id, version: saved.version };
@@ -423,6 +443,10 @@ export default function useDraftAutosave({
         // its job and may finally be removed.
         const hadLocalCopy = hasLocalCopyRef.current;
         // Recovery is retained until the official Health Record is confirmed.
+        if (params.localDraft && params.vault.acknowledgeLocalDraft) {
+          await params.vault.acknowledgeLocalDraft({ ...params.localDraft, payload: payloadToSave }).catch(() => {});
+        }
+        if (epoch !== sessionEpochRef.current || finalizedRef.current) return;
 
         if (isMountedRef.current) {
           setLastSavedAt(saved.lastSavedAt || null);
@@ -434,18 +458,20 @@ export default function useDraftAutosave({
         }
         params.onDraftSaved?.(saved);
       } catch (err) {
-        handleSaveError(err);
+        if (epoch === sessionEpochRef.current) handleSaveError(err);
       } finally {
-        inFlightRef.current = false;
-        // A change arrived mid-flight: re-run if still dirty.
-        if (rerunRef.current) {
-          rerunRef.current = false;
-          if (
-            !pausedRef.current &&
-            serializePayload(latestPayloadRef.current) !==
-              lastSavedSerializedRef.current
-          ) {
-            void runSaveRef.current?.("rerun");
+        if (epoch === sessionEpochRef.current) {
+          inFlightRef.current = false;
+          // A change arrived mid-flight: re-run if still dirty.
+          if (rerunRef.current) {
+            rerunRef.current = false;
+            if (
+              !pausedRef.current &&
+              serializePayload(latestPayloadRef.current) !==
+                lastSavedSerializedRef.current
+            ) {
+              void runSaveRef.current?.("rerun");
+            }
           }
         }
       }
@@ -482,8 +508,20 @@ export default function useDraftAutosave({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      invalidateSession();
     };
-  }, []);
+  }, [invalidateSession]);
+
+  useEffect(() => {
+    if (!enabled || !localDraft || !vault.prepareLocalDraft) return undefined;
+    let active = true;
+    vault.prepareLocalDraft(localDraft).then(() => {
+      if (active && serializePayload(latestPayloadRef.current) !== lastSavedSerializedRef.current) void persistLocalNow();
+    }).catch(() => { if (active) setLocalStatus("unavailable"); });
+    return () => { active = false; };
+  // The opaque identity, not each render's object, owns the prepared key.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, localDraft?.ownerKey, localDraft?.consultationKey, localDraft?.contextKey, vault, persistLocalNow]);
 
   // Adopt draft identity owned by the page (resume, discard, or server-advanced
   // version). Keyed on id/version so the hook's own version bumps don't reseed.
@@ -607,18 +645,12 @@ export default function useDraftAutosave({
     }
   }, [sectionKey, enabled, persistLocalNow]);
 
-  // While offline, checkpoint edits on this device quickly. This is what makes
+  // Checkpoint edits on this device quickly, including while online. This makes
   // a refresh, tab close, or PC restart survivable; the 20s server debounce is
   // far too slow to rely on, and no request is being made anyway.
   useEffect(() => {
-    if (!enabled || !serialized || finalizedRef.current) return undefined;
-    if (serialized === lastLocalSerializedRef.current) return undefined;
-
-    const timer = setTimeout(() => {
-      void persistLocalNow();
-    }, LOCAL_PERSIST_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [serialized, enabled, status, persistLocalNow]);
+    checkpointSchedulerRef.current?.changed(Boolean(enabled && serialized && !finalizedRef.current && serialized !== lastLocalSerializedRef.current && serialized !== lastSavedSerializedRef.current));
+  }, [serialized, enabled, status]);
 
   // Flush immediately when the connection returns, bypassing backoff.
   useEffect(() => {
@@ -674,6 +706,8 @@ export default function useDraftAutosave({
   // Reset every trace of draft state when the sensitive session is cleared.
   useEffect(() => {
     function resetSensitiveDraftState() {
+      invalidateSession();
+      paramsRef.current.vault.clearMemory?.();
       clearDebounceTimer();
       clearRetryTimer();
       draftRef.current = null;
@@ -709,15 +743,16 @@ export default function useDraftAutosave({
         SENSITIVE_SESSION_CLEARED_EVENT,
         resetSensitiveDraftState,
       );
-  }, [clearDebounceTimer, clearRetryTimer]);
+  }, [clearDebounceTimer, clearRetryTimer, invalidateSession]);
 
   // Final cleanup: no orphaned timers left behind on unmount.
   useEffect(() => {
     return () => {
+      if (paramsRef.current.enabled && !finalizedRef.current) void persistLocalNow();
       clearDebounceTimer();
       clearRetryTimer();
     };
-  }, [clearDebounceTimer, clearRetryTimer]);
+  }, [clearDebounceTimer, clearRetryTimer, persistLocalNow]);
 
   /**
    * Force an immediate save. Resolves TRUE only when the latest edits are
@@ -761,6 +796,18 @@ export default function useDraftAutosave({
     await waitForInFlight();
     return isSaved();
   }, [clearDebounceTimer]);
+
+  useEffect(() => {
+    if (!enabled || !localDraft?.ownerKey || !vault.prepareLocalDraft) return undefined;
+    return registerFormDraftCoordinator({
+      options: { owner: localDraft.ownerKey },
+      flushBeforeLeave: async () => { await persistLocalNow(); return flushBeforeLeave(); },
+      hasUnprotectedChanges: () => {
+        const current = serializePayload(latestPayloadRef.current);
+        return current !== lastSavedSerializedRef.current && current !== lastLocalSerializedRef.current;
+      },
+    });
+  }, [enabled, localDraft?.ownerKey, vault, persistLocalNow, flushBeforeLeave]);
 
   const resolveConflict = useCallback((mode) => {
     if (mode === "reload") {

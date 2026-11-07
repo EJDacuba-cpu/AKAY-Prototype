@@ -32,7 +32,8 @@ test("desktop and mobile label both next actions and keep record navigation/clas
   const html = render(createElement(Table, { records }));
   assert.match(html, /<th[^>]*>Next Action<\/th>/);
   assert.match(html, /<dt[^>]*>Next Action<\/dt>/);
-  assert.equal((html.match(/Follow-up Scheduled, RHU Referral \(Pending\)/g) || []).length, 2);
+  const visibleText = html.replace(/<[^>]*>/g, "");
+  assert.equal((visibleText.match(/Follow-up Scheduled, RHU Referral \(Pending\)/g) || []).length, 2);
   assert.doesNotMatch(html, />Outcome<|BHC Follow-up/);
   assert.match(html, /Initial Consultation/);
   assert.match(html, /href="\/bhc\/health-records\/10"/);

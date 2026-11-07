@@ -64,10 +64,10 @@ export const CLOSE_REASONS = [
 export function queueRowActions(row, { canEncode = false, canFinalize = false, canClose = false } = {}) {
   const actions = [];
   if (row?.statusKey === 'waiting' && canEncode) {
-    actions.push({ label: 'Start consultation', action: 'start' });
+    actions.push({ label: 'Start Consultation', action: 'open' });
   }
   if (row?.statusKey === 'in_consultation' && (canEncode || canFinalize)) {
-    actions.push({ label: 'Resume consultation', action: 'resume' });
+    actions.push({ label: 'Open Consultation', action: 'open' });
   }
   if (row?.referralId && row?.patientId) {
     actions.push({
