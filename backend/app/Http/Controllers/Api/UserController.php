@@ -9,6 +9,7 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AccountActivationService;
 use App\Services\AccountInviteService;
+use App\Services\AdminAccessNotificationService;
 use App\Services\AuditLogger;
 use App\Services\RhuDoctorRosterService;
 use App\Services\StaffRoles;
@@ -135,7 +136,10 @@ class UserController extends Controller
             }
 
             if ($previousStatus !== $user->status && $user->status === User::STATUS_INACTIVE) {
+                app(AdminAccessNotificationService::class)->accountDeactivated($user, $request->user());
                 $notifications->notifyUser($user, 'Account deactivated', 'Your AKAY account has been deactivated.', 'account_deactivated');
+            } elseif ($previousStatus !== $user->status && $user->status === User::STATUS_ACTIVE) {
+                app(AdminAccessNotificationService::class)->accountReactivated($user);
             }
 
             $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions));
@@ -155,6 +159,7 @@ class UserController extends Controller
     ) {
         DB::transaction(function () use ($request, $user, $auditLogger, $sessions, $roster): void {
             $user->update(['status' => User::STATUS_INACTIVE]);
+            app(AdminAccessNotificationService::class)->accountDeactivated($user, $request->user());
             $roster->syncFromAccount($user, $request->user(), $request, $auditLogger);
             $sessions->revokeAllTokens($user, 'account-deactivated');
             $auditLogger->log($request, 'deactivated', 'users', "Deactivated user {$user->email}.");

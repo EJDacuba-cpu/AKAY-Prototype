@@ -1,3 +1,4 @@
+import { getNotificationCategory } from "../../utils/notificationCategory";
 import { useEffect, useMemo, useState } from "react";
 import { ConnectionErrorState } from "../../components/common";
 import { useNavigate } from "react-router";
@@ -29,67 +30,6 @@ const FILTERS = [
   { key: "system", label: "System", icon: Settings, empty: "No system notifications." },
   { key: "trash", label: "Trash", icon: Trash2, empty: "Trash is empty." },
 ];
-
-function normalizeText(value = "") {
-  return String(value || "").toLowerCase();
-}
-
-function getNotificationCategory(notification = {}) {
-  const source = [
-    notification.type,
-    notification.entityType,
-    notification.category,
-    notification.title,
-    notification.message,
-  ]
-    .map(normalizeText)
-    .join(" ");
-
-  if (
-    [
-      "follow_up",
-      "followup",
-      "follow-up",
-      "no_show",
-      "no show",
-      "due_today",
-      "due today",
-      "rescheduled",
-    ].some((keyword) => source.includes(keyword))
-  ) {
-    return "followups";
-  }
-
-  if (
-    [
-      "referral",
-      "incoming_referral",
-      "referral_received",
-      "referral_completed",
-      "referral_no_show",
-    ].some((keyword) => source.includes(keyword))
-  ) {
-    return "referrals";
-  }
-
-  if (
-    ["medicine", "inventory", "low_stock", "low stock", "expiring", "expired"].some(
-      (keyword) => source.includes(keyword),
-    )
-  ) {
-    return "medicine";
-  }
-
-  if (
-    ["system", "account", "user", "role"].some((keyword) =>
-      source.includes(keyword),
-    )
-  ) {
-    return "system";
-  }
-
-  return "system";
-}
 
 function getCategoryLabel(category) {
   return FILTERS.find((filter) => filter.key === category)?.label || "System";

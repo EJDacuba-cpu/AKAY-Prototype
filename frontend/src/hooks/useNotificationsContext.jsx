@@ -143,14 +143,14 @@ export function NotificationProvider({ children }) {
 
   const refreshNotifications = useCallback(
     ({ force = false, maxAgeMs = 60_000, soundEligible = false, search = "" } = {}) => {
-      if (pendingFetchRef.current) return pendingFetchRef.current;
+      if (pendingFetchRef.current && !force) return pendingFetchRef.current;
 
       const nextContext = getNotificationUserContext();
       setUserContext(nextContext);
       setNotificationsLoading(true);
       setNotificationsError(null);
 
-      pendingFetchRef.current = fetchNotifications({
+      const pending = fetchNotifications({
         force,
         maxAgeMs,
         soundEligible,
@@ -158,7 +158,7 @@ export function NotificationProvider({ children }) {
         search,
       })
         .then((nextNotifications) => {
-          if (isMountedRef.current) {
+          if (isMountedRef.current && JSON.stringify(getNotificationUserContext()) === JSON.stringify(nextContext)) {
             applyNotificationsWithAlertCheck(nextNotifications, {
               allowSound: soundEligible === true,
             });
@@ -167,11 +167,13 @@ export function NotificationProvider({ children }) {
           return nextNotifications;
         })
         .finally(() => {
-          pendingFetchRef.current = null;
-          if (isMountedRef.current) setNotificationsLoading(false);
+          if (pendingFetchRef.current === pending) {
+            pendingFetchRef.current = null;
+            if (isMountedRef.current) setNotificationsLoading(false);
+          }
         });
-
-      return pendingFetchRef.current;
+      pendingFetchRef.current = pending;
+      return pending;
     },
     [applyNotificationsWithAlertCheck],
   );
@@ -252,8 +254,8 @@ export function NotificationProvider({ children }) {
   }, [syncNotificationsFromCache]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification) => !notification.isRead).length,
-    [notifications],
+    () => notificationCounts?.unread ?? notifications.filter((notification) => !notification.isRead).length,
+    [notifications, notificationCounts],
   );
 
   const getLatestNotifications = useCallback(

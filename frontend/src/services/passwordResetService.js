@@ -1,9 +1,11 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { notifyNotificationChange } from "./notificationService";
 
 export const PASSWORD_RESET_REQUESTS_UPDATED_EVENT =
   "akay:password-reset-requests-updated";
 
 function dispatchUpdate() {
+  void notifyNotificationChange();
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent(PASSWORD_RESET_REQUESTS_UPDATED_EVENT),

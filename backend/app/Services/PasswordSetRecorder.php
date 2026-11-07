@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\DB;
 class PasswordSetRecorder
 {
     public const ROUTE_INVITE = 'invite';
+
     public const ROUTE_RESET = 'reset';
+
     public const ROUTE_TEMPORARY_PASSWORD = 'temporary_password';
 
     private const INVITE_VIA = [
@@ -67,6 +69,8 @@ class PasswordSetRecorder
                     'expires_at' => null,
                     'updated_at' => $now,
                 ]);
+
+            app(AdminAccessNotificationService::class)->resolveForUser($user, $completeInvite);
         });
     }
 }

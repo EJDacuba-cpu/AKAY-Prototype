@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { notifyNotificationChange } from "./notificationService";
 
 export const ADMIN_ACCOUNTS_UPDATED_EVENT = "akay:admin-accounts-updated";
 
@@ -97,6 +98,7 @@ export async function updateAdminAccountStatus(id, status) {
       status: String(status).toLowerCase() === "active" ? "active" : "inactive",
     },
   });
+  void notifyNotificationChange();
   const updated = normalizeAccount(unwrapData(response));
   accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
   dispatchUpdate();
@@ -110,6 +112,7 @@ export async function getAdminAccount(id) {
 /** Saves the edited name and/or contact number (only the fields passed), and refreshes the cached copy. */
 export async function updateAdminAccountProfile(id, changes) {
   const response = await apiRequest(`/users/${id}`, { method: "PATCH", body: changes });
+  void notifyNotificationChange();
   const updated = normalizeAccount(unwrapData(response));
   accountCache = accountCache.map((account) => (account.id === String(id) ? updated : account));
   dispatchUpdate();

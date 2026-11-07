@@ -1,4 +1,5 @@
 import { apiRequest, unwrapData, unwrapList } from "./apiClient";
+import { notifyNotificationChange } from "./notificationService";
 import { normalizePasswordInviteSummary } from "../utils/passwordInviteSummary";
 
 export function verifyInvite(token) {
@@ -25,11 +26,13 @@ export async function getAccountInvites(params = {}) {
 
 export async function resendInvite(id) {
   const response = await apiRequest(`/account-invites/${id}/resend`, { method: "POST" });
+  void notifyNotificationChange();
   return unwrapData(response);
 }
 
 export async function updateInviteEmail(id, email) {
   const response = await apiRequest(`/account-invites/${id}/email`, { method: "PATCH", body: { email } });
+  void notifyNotificationChange();
   return unwrapData(response);
 }
 

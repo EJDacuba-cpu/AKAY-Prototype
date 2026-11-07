@@ -8,16 +8,17 @@ use App\Models\PasswordResetRequest;
 use App\Models\User;
 use App\Services\AccessRequestStatus;
 use App\Services\AccountActivationService;
+use App\Services\AdminAccessNotificationService;
 use App\Services\AuditLogger;
 use App\Services\PasswordSetRecorder;
 use App\Services\PasswordSetService;
-use App\Services\UserNotificationService;
 use App\Support\FrontendUrl;
 use App\Support\MaskedEmail;
+use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Throwable;
@@ -26,54 +27,26 @@ class PasswordResetRequestController extends Controller
 {
     private const PUBLIC_MESSAGE = 'Your password reset request has been submitted. Please wait for admin approval.';
 
-    public function request(Request $request, UserNotificationService $notifications, AuditLogger $auditLogger)
+    public function request(Request $request, AdminAccessNotificationService $notifications, AuditLogger $auditLogger)
     {
         $validated = $request->validate([
             'email' => ['required', 'email'],
         ]);
 
         $email = Str::lower(trim($validated['email']));
-        $user = User::query()
-            ->whereRaw('lower(email) = ?', [$email])
-            ->with(['barangayHealthCenter', 'ruralHealthUnit'])
-            ->first();
-
-        if (! $user || ! $user->isActive() || ! app(AccountActivationService::class)->isActivated($user)) {
-            $auditLogger->log($request, 'password reset requested', 'auth', 'Password reset requested for '.MaskedEmail::mask($email).'.');
-
-            return response()->json(['message' => self::PUBLIC_MESSAGE]);
-        }
-
-        $resetRequest = PasswordResetRequest::query()
-            ->where('email', $email)
-            ->where('status', PasswordResetRequest::STATUS_PENDING)
-            ->latest()
-            ->first();
-
-        if (! $resetRequest) {
-            $resetRequest = PasswordResetRequest::create([
+        DB::transaction(function () use ($email, $notifications): void {
+            // Lock the existing account: concurrent submissions cannot create two pending requests.
+            $user = User::whereRaw('lower(email) = ?', [$email])->lockForUpdate()->first();
+            if (! $user || ! $user->isActive() || ! app(AccountActivationService::class)->isActivated($user)) {
+                return;
+            }
+            $reset = PasswordResetRequest::firstOrCreate([
                 'user_id' => $user->id,
-                'email' => $email,
                 'status' => PasswordResetRequest::STATUS_PENDING,
-                'requested_at' => now(),
-            ]);
-        }
-
-        $admins = User::query()
-            ->where('role', User::ROLE_ADMIN)
-            ->where('status', User::STATUS_ACTIVE)
-            ->get();
-
-        $notifications->notifyUsersOnce(
-            $admins,
-            'Password reset requested',
-            "Password reset requested by {$user->name}.",
-            'password_reset_request',
-            null,
-            '/admin/password-reset-requests',
-            'password_reset_request',
-            $resetRequest->id,
-        );
+            ], ['email' => $email, 'requested_at' => now()]);
+            $reset->setRelation('user', $user);
+            $notifications->resetRequested($reset);
+        });
 
         $auditLogger->log($request, 'password reset requested', 'auth', 'Password reset requested for '.MaskedEmail::mask($email).'.');
 
@@ -114,15 +87,24 @@ class PasswordResetRequestController extends Controller
             return response()->json(['message' => 'This password reset link is invalid or expired.'], 422);
         }
 
-        DB::transaction(function () use ($request, $resetRequest, $validated, $auditLogger, $passwords): void {
+        return $this->withLockedRequest($resetRequest, function (PasswordResetRequest $resetRequest) use ($request, $validated, $auditLogger, $passwords) {
+            $resetRequest->load('user');
+            if (! $resetRequest->isApprovedTokenUsable()
+                || ! hash_equals((string) $resetRequest->reset_token_hash, hash('sha256', $validated['token']))
+                || ! $resetRequest->user?->isActive()
+                || ! app(AccountActivationService::class)->isActivated($resetRequest->user)
+                || ! app(AccountActivationService::class)->sameMailbox($resetRequest->email, $resetRequest->user->email)) {
+                return response()->json(['message' => 'This password reset link is invalid or expired.'], 422);
+            }
+
             // Clears any temporary-password flags, completes this request and any other open invite or reset
             // request for the user, and ends every session.
             $passwords->set($resetRequest->user, $validated['password'], PasswordSetRecorder::ROUTE_RESET, 'password-reset');
 
             $auditLogger->log($request, 'password reset completed', 'auth', 'Password reset completed for '.MaskedEmail::mask($resetRequest->email).'.');
-        });
 
-        return response()->json(['message' => 'Password changed successfully. You may now sign in.']);
+            return response()->json(['message' => 'Password changed successfully. You may now sign in.']);
+        });
     }
 
     public function index(Request $request)
@@ -168,90 +150,101 @@ class PasswordResetRequestController extends Controller
 
     public function approve(Request $request, PasswordResetRequest $passwordResetRequest, AuditLogger $auditLogger)
     {
-        if ($passwordResetRequest->status !== PasswordResetRequest::STATUS_PENDING) {
-            return response()->json(['message' => 'Only pending password reset requests can be approved.'], 422);
-        }
+        return $this->withLockedRequest($passwordResetRequest, function (PasswordResetRequest $passwordResetRequest) use ($request, $auditLogger) {
+            if ($passwordResetRequest->status !== PasswordResetRequest::STATUS_PENDING) {
+                return response()->json(['message' => 'Only pending password reset requests can be approved.'], 422);
+            }
 
-        $passwordResetRequest->load('user');
-        if (! $passwordResetRequest->user
-            || ! $passwordResetRequest->user->isActive()
-            || ! app(AccountActivationService::class)->isActivated($passwordResetRequest->user)) {
-            return response()->json(['message' => 'This request cannot be approved because the account is inactive or missing.'], 422);
-        }
+            $passwordResetRequest->load('user');
+            if (! $passwordResetRequest->user
+                || ! $passwordResetRequest->user->isActive()
+                || ! app(AccountActivationService::class)->isActivated($passwordResetRequest->user)) {
+                return response()->json(['message' => 'This request cannot be approved because the account is inactive or missing.'], 422);
+            }
 
-        $passwordResetRequest->forceFill([
-            'approved_by' => $request->user()->id,
-            'approved_at' => now(),
-            'admin_note' => $request->input('admin_note'),
-        ]);
-        $this->deliver($passwordResetRequest, $this->issueResetLink($passwordResetRequest));
+            $passwordResetRequest->forceFill([
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+                'admin_note' => $request->input('admin_note'),
+            ]);
+            $this->deliver($passwordResetRequest, $this->issueResetLink($passwordResetRequest));
 
-        $auditLogger->log($request, 'password reset approved', 'auth', 'Password reset approved for '.MaskedEmail::mask($passwordResetRequest->email).'.');
+            $auditLogger->log($request, 'password reset approved', 'auth', 'Password reset approved for '.MaskedEmail::mask($passwordResetRequest->email).'.');
 
-        return response()->json([
-            'message' => $passwordResetRequest->delivery === PasswordResetRequest::DELIVERY_SENT
-                ? 'Password reset approved. A secure reset link was sent to the user.'
-                : 'Password reset approved, but the email could not be sent. Resend it or copy the link.',
-            'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'approver'])),
-        ]);
+            return response()->json([
+                'message' => $passwordResetRequest->delivery === PasswordResetRequest::DELIVERY_SENT
+                    ? 'Password reset approved. A secure reset link was sent to the user.'
+                    : 'Password reset approved, but the email could not be sent. Resend it or copy the link.',
+                'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'approver'])),
+            ]);
+        });
     }
 
     /** Resend: a fresh link and a new 60-minute window; the previous link stops working. */
     public function resend(Request $request, PasswordResetRequest $passwordResetRequest, AuditLogger $auditLogger)
     {
-        if ($refusal = $this->refuseIfNotDeliverable($passwordResetRequest)) {
-            return $refusal;
-        }
+        return $this->withLockedRequest($passwordResetRequest, function (PasswordResetRequest $passwordResetRequest) use ($request, $auditLogger) {
+            if ($refusal = $this->refuseIfNotDeliverable($passwordResetRequest)) {
+                return $refusal;
+            }
 
-        $this->deliver($passwordResetRequest, $this->issueResetLink($passwordResetRequest));
+            $this->deliver($passwordResetRequest, $this->issueResetLink($passwordResetRequest));
 
-        $auditLogger->log($request, 'reset link resent', 'auth', 'Reset link resent to '.MaskedEmail::mask($passwordResetRequest->email).'.');
+            $auditLogger->log($request, 'reset link resent', 'auth', 'Reset link resent to '.MaskedEmail::mask($passwordResetRequest->email).'.');
 
-        return response()->json([
-            'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'approver'])),
-        ]);
+            return response()->json([
+                'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'approver'])),
+            ]);
+        });
     }
 
     /** Copy link: a fresh one-time link for the MHO to share another way. Nothing is emailed. */
     public function link(Request $request, PasswordResetRequest $passwordResetRequest, AuditLogger $auditLogger)
     {
-        if ($refusal = $this->refuseIfNotDeliverable($passwordResetRequest)) {
-            return $refusal;
-        }
+        return $this->withLockedRequest($passwordResetRequest, function (PasswordResetRequest $passwordResetRequest) use ($request, $auditLogger) {
+            if ($refusal = $this->refuseIfNotDeliverable($passwordResetRequest)) {
+                return $refusal;
+            }
 
-        $url = $this->buildResetUrl($this->issueResetLink($passwordResetRequest));
-        $passwordResetRequest->forceFill(['delivery' => PasswordResetRequest::DELIVERY_COPIED])->save();
+            $url = $this->buildResetUrl($this->issueResetLink($passwordResetRequest));
+            $passwordResetRequest->forceFill(['delivery' => PasswordResetRequest::DELIVERY_COPIED])->save();
+            app(AdminAccessNotificationService::class)->resetResolved($passwordResetRequest);
 
-        $auditLogger->log($request, 'reset link copied', 'auth', 'Reset link copied for '.MaskedEmail::mask($passwordResetRequest->email).'.');
+            $auditLogger->log($request, 'reset link copied', 'auth', 'Reset link copied for '.MaskedEmail::mask($passwordResetRequest->email).'.');
 
-        return response()->json(['data' => ['url' => $url]]);
+            return response()->json(['data' => ['url' => $url]]);
+        });
     }
 
     public function reject(Request $request, PasswordResetRequest $passwordResetRequest, AuditLogger $auditLogger)
     {
-        $validated = $request->validate([
-            'admin_note' => ['nullable', 'string', 'max:1000'],
-        ]);
+        return $this->withLockedRequest($passwordResetRequest, function (PasswordResetRequest $passwordResetRequest) use ($request, $auditLogger) {
+            $validated = $request->validate([
+                'admin_note' => ['nullable', 'string', 'max:1000'],
+            ]);
 
-        if (! in_array($passwordResetRequest->status, [PasswordResetRequest::STATUS_PENDING, PasswordResetRequest::STATUS_APPROVED], true)) {
-            return response()->json(['message' => 'This password reset request can no longer be rejected.'], 422);
-        }
+            if (! in_array($passwordResetRequest->status, [PasswordResetRequest::STATUS_PENDING, PasswordResetRequest::STATUS_APPROVED], true)) {
+                return response()->json(['message' => 'This password reset request can no longer be rejected.'], 422);
+            }
 
-        $passwordResetRequest->update([
-            'status' => PasswordResetRequest::STATUS_REJECTED,
-            'rejected_by' => $request->user()->id,
-            'rejected_at' => now(),
-            'reset_token_hash' => null,
-            'expires_at' => null,
-            'admin_note' => $validated['admin_note'] ?? null,
-        ]);
+            $passwordResetRequest->update([
+                'status' => PasswordResetRequest::STATUS_REJECTED,
+                'rejected_by' => $request->user()->id,
+                'rejected_at' => now(),
+                'reset_token_hash' => null,
+                'expires_at' => null,
+                'admin_note' => $validated['admin_note'] ?? null,
+            ]);
 
-        $auditLogger->log($request, 'password reset rejected', 'auth', 'Password reset rejected for '.MaskedEmail::mask($passwordResetRequest->email).'.');
+            app(AdminAccessNotificationService::class)->resetResolved($passwordResetRequest);
 
-        return response()->json([
-            'message' => 'Password reset request rejected.',
-            'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'rejecter'])),
-        ]);
+            $auditLogger->log($request, 'password reset rejected', 'auth', 'Password reset rejected for '.MaskedEmail::mask($passwordResetRequest->email).'.');
+
+            return response()->json([
+                'message' => 'Password reset request rejected.',
+                'data' => $this->toResponse($passwordResetRequest->fresh(['user.barangayHealthCenter', 'user.ruralHealthUnit', 'rejecter'])),
+            ]);
+        });
     }
 
     /** Only a sent-out (approved) or timed-out (expired) request for an active account can get a new link. */
@@ -293,6 +286,7 @@ class PasswordResetRequestController extends Controller
     /** Never throws: a mail failure is recorded on the request so the admin can resend or copy the link. */
     private function deliver(PasswordResetRequest $resetRequest, string $token): void
     {
+        $wasFailed = $resetRequest->delivery === PasswordResetRequest::DELIVERY_FAILED;
         $resetRequest->loadMissing('user');
 
         try {
@@ -308,6 +302,7 @@ class PasswordResetRequestController extends Controller
             ]);
             $resetRequest->forceFill(['delivery' => PasswordResetRequest::DELIVERY_FAILED])->save();
         }
+        app(AdminAccessNotificationService::class)->resetDeliveryChanged($resetRequest, $wasFailed);
     }
 
     /** Anything but a non-empty string (for example `?token[]=x`) is treated as an unknown link. */
@@ -342,6 +337,15 @@ class PasswordResetRequestController extends Controller
         }
 
         return $resetRequest;
+    }
+
+    private function withLockedRequest(PasswordResetRequest $reset, Closure $action)
+    {
+        return DB::transaction(function () use ($reset, $action) {
+            User::whereKey($reset->user_id)->lockForUpdate()->first();
+
+            return $action(PasswordResetRequest::whereKey($reset->id)->lockForUpdate()->firstOrFail());
+        });
     }
 
     private function buildResetUrl(string $token): string

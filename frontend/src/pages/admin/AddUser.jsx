@@ -12,6 +12,7 @@ import FacilityPickerModal from "../../components/features/access/FacilityPicker
 import PermissionMatrix from "../../components/features/access/PermissionMatrix";
 import PermissionReviewSummary, { ACCOUNT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
 import { apiRequest, unwrapData } from "../../services/apiClient";
+import { notifyNotificationChange } from "../../services/notificationService";
 import { getBarangayHealthCenters, getRuralHealthUnits } from "../../services/facilityService";
 import { getStaffRoles } from "../../services/staffRolesService";
 import { STEPS, isValidEmail, routeServerErrors, validateAccountStep } from "../../utils/accountForm";
@@ -215,6 +216,7 @@ export default function AddUser() {
     };
     try {
       const result = await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
+      void notifyNotificationChange();
       if (id) navigate("/admin/users");
       else setCreated({ inviteSent: result?.invite?.delivery !== "failed" });
     }
