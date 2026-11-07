@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
+import FixedTable from "../../../common/tables/FixedTable";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import searchIcon from "../../../../assets/figma/search.svg";
 
@@ -48,31 +49,40 @@ export default function DispensedMedicinesSection({ rows = [], isLoading = false
           {rows.length === 0 ? "No medicines dispensed for this patient." : "No dispensed medicines match this filter."}
         </p>
       ) : (
-        <div className="overflow-x-auto border border-neutral-200 bg-white">
-          <table className="w-full min-w-[680px] text-left text-xs">
-            <thead className="bg-neutral-50 text-xs font-medium text-neutral-500">
+        <div className="overflow-hidden border border-neutral-200 bg-white">
+          <FixedTable minWidth="min-w-[680px]" lockHeight={false}>
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
               <tr>
-                <th scope="col" className="px-4 py-3">Date</th>
-                <th scope="col" className="px-4 py-3">Medicine / Formulation</th>
-                <th scope="col" className="px-4 py-3">Quantity</th>
-                <th scope="col" className="px-4 py-3">Program</th>
-                <th scope="col" className="px-4 py-3">Dispensed By</th>
+                <th scope="col" className="px-4">Date</th>
+                <th scope="col" className="px-3">Medicine / Formulation</th>
+                <th scope="col" className="px-3">Quantity</th>
+                <th scope="col" className="px-3">Program</th>
+                <th scope="col" className="px-3">Dispensed By</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200">
-              {visibleRows.map((row) => (
-                <tr key={row.id} className="hover:bg-neutral-50/70">
-                  <td className="whitespace-nowrap px-4 py-3 text-[#475569]">{formatShortDate(row.date)}</td>
-                  <td className="px-4 py-3 font-semibold text-[#111827]">
-                    {onViewRecord && row.recordId ? <button type="button" onClick={() => onViewRecord(row.recordId)} className="text-left hover:text-ink-700 hover:underline">{row.name}</button> : row.name}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-[#111827]">{row.quantity || "—"}</td>
-                  <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{row.programs.map((program) => <span key={program} className="border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10px] text-[#475569]">{program}</span>)}</div></td>
-                  <td className="whitespace-nowrap px-4 py-3 text-[#475569]">{row.dispensedBy || "Not recorded"}</td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-neutral-100">
+              {visibleRows.map((row) => {
+                const programs = row.programs.join(", ");
+                return (
+                  <tr key={row.id} className="h-14 transition-colors hover:bg-neutral-50">
+                    <td className="px-4 text-[13px] text-neutral-600">{formatShortDate(row.date)}</td>
+                    <td className="px-3 text-[13px] font-semibold text-ink-800">
+                      {onViewRecord && row.recordId ? (
+                        <button type="button" onClick={() => onViewRecord(row.recordId)} className="truncate text-left hover:text-ink-700 hover:underline" title={row.name}>
+                          {row.name}
+                        </button>
+                      ) : (
+                        <span title={row.name}>{row.name}</span>
+                      )}
+                    </td>
+                    <td className="px-3 text-[13px] text-ink-800">{row.quantity || "—"}</td>
+                    <td className="max-w-[180px] px-3 text-[13px] text-neutral-600" title={programs}>{programs}</td>
+                    <td className="px-3 text-[13px] text-neutral-600">{row.dispensedBy || "Not recorded"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
-          </table>
+          </FixedTable>
         </div>
       )}
     </section>

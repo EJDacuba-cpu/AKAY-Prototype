@@ -3,7 +3,7 @@ import { normalizeHousehold, normalizeHouseholdPatient } from '../utils/househol
 
 const prefix = (role = 'bhc') => `/${role === 'rhu' ? 'rhu' : 'bhc'}/households`;
 
-export async function getHouseholds({role='bhc', lookup=false,search='',purok='',barangay='',withoutPurok=false,sort='',direction='asc',page=1,per_page=20} = {}) {
+export async function getHouseholds({role='bhc', lookup=false,search='',purok='',barangay='',withoutPurok=false,sort='',direction='asc',page=1,per_page=10} = {}) {
   const params=new URLSearchParams({search,page:String(page),per_page:String(per_page)});
   if(sort) {params.set('sort',sort);params.set('direction',direction);}
   if(purok) params.set('purok',purok);

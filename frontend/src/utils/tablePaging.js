@@ -1,7 +1,17 @@
 // One place for the table paging numbers. Changing a value here changes every list screen.
+// Pair with `.akay-fixed-table` (FixedTable or fixedTableVars) so rows cannot wrap taller.
 export const TABLE_PAGE_SIZE = 10;
 export const TABLE_ROW_HEIGHT = 56;
 export const TABLE_HEAD_HEIGHT = 44;
+
+/** CSS custom properties for `.akay-fixed-table` — use on any list that cannot mount FixedTable. */
+export function fixedTableVars(pageSize = TABLE_PAGE_SIZE) {
+  return {
+    "--akay-head-h": `${TABLE_HEAD_HEIGHT}px`,
+    "--akay-row-h": `${TABLE_ROW_HEIGHT}px`,
+    "--akay-empty-h": `${pageSize * TABLE_ROW_HEIGHT}px`,
+  };
+}
 
 // Card lists load more instead of paging: Patients is 2 columns x 5 rows, Facilities fills 1, 2 or 3 columns.
 export const PATIENTS_LOAD_BATCH = 10;

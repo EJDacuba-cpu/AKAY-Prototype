@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   clampPage,
+  fixedTableVars,
   hasMoreItems,
   nextVisibleCount,
   pageCount,
@@ -43,6 +44,11 @@ test("table heights follow the 44px header and 56px rows", () => {
   assert.equal(tableBodyHeight(), 604);
   assert.equal(tableEmptyHeight(), 560);
   assert.equal(tableBodyHeight(2), 156);
+  assert.deepEqual(fixedTableVars(), {
+    "--akay-head-h": "44px",
+    "--akay-row-h": "56px",
+    "--akay-empty-h": "560px",
+  });
 });
 
 test("nextVisibleCount and hasMoreItems drive the Load more button", () => {

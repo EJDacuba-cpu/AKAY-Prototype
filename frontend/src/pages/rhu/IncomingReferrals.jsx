@@ -694,9 +694,7 @@ export default function IncomingReferrals() {
           }
           subtitle="BHC-RHU referral records and tracking status."
           minWidth="min-w-[1000px]"
-          minHeight={filtered.length > 0 ? undefined : "min-h-0"}
-          bodyMinHeight={filtered.length > 0 ? undefined : "min-h-0"}
-          fixedRows={filtered.length > 0}
+          fixedRows
           footer={
             <TablePagination
               currentPage={currentPage}

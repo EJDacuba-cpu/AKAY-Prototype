@@ -12,14 +12,11 @@ import { actionLabel, menuSections } from "../../../utils/accountAccess";
 import { roleFor } from "../../../utils/staffRoles";
 import AccessStatusBadge from "./AccessStatusBadge";
 import usePagedRows from "../../../hooks/usePagedRows";
+import { TABLE_HEAD_HEIGHT, TABLE_ROW_HEIGHT } from "../../../utils/tablePaging";
 
 export const DEFAULT_FILTERS = { search: "", status: "all" };
 
 const STATUS_SEGMENTS = [{ value: "all", label: "All" }, ...STATUS_OPTIONS];
-
-// A denser table than the shared 56px rows: the account is two short lines and the status reason sits beside its chip.
-const COMPACT_ROW = 44;
-const COMPACT_HEAD = 36;
 
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
 
@@ -50,7 +47,7 @@ export default function AccessRequestTable({
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
   const narrowed = Boolean(filters.search) || filters.status !== "all";
 
-  if (loading) return <PageSkeletonLoader skeleton="access-requests" message="Loading access requests..." options={{ columns: columns.length + 2, rowHeight: COMPACT_ROW, headHeight: COMPACT_HEAD, action: false }} />;
+  if (loading) return <PageSkeletonLoader skeleton="access-requests" message="Loading access requests..." options={{ columns: columns.length + 2, rowHeight: TABLE_ROW_HEIGHT, headHeight: TABLE_HEAD_HEIGHT, action: false }} />;
 
   return (
     <div className="space-y-4" aria-busy={refreshing || undefined}>
@@ -71,7 +68,7 @@ export default function AccessRequestTable({
             ) : (
               <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
                 <div className="hidden lg:block">
-                  <FixedTable minWidth="min-w-[880px]" rowHeight={COMPACT_ROW} headHeight={COMPACT_HEAD}>
+                  <FixedTable minWidth="min-w-[880px]">
                     <TableHead columns={columns} />
                     <tbody className="divide-y divide-neutral-100">
                       {rows.length === 0 ? (

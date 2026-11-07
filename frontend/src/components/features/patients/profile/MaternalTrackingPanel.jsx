@@ -1,5 +1,6 @@
 import { Card } from "../../../ui/card";
 import { Button } from "../../../ui/button";
+import FixedTable from "../../../common/tables/FixedTable";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import calendarIcon from "../../../../assets/figma/tracking-icon.svg";
 
@@ -70,23 +71,29 @@ export default function MaternalTrackingPanel({ summary, status, onViewRecords }
 
       <div className="mt-5">
         <h4 className="mb-3 text-sm font-bold text-[#111827]">Prenatal Laboratory Result</h4>
-        <div className="overflow-x-auto border border-neutral-200 bg-white">
-          <table className="w-full min-w-[520px] text-left text-xs">
-            <thead className="bg-neutral-50 text-xs font-medium text-neutral-500">
-              <tr><th scope="col" className="px-4 py-3">Test</th><th scope="col" className="px-4 py-3">Result</th><th scope="col" className="px-4 py-3">Date</th></tr>
+        <div className="overflow-hidden border border-neutral-200 bg-white">
+          <FixedTable minWidth="min-w-[520px]" lockHeight={false}>
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              <tr>
+                <th scope="col" className="px-4">Test</th>
+                <th scope="col" className="px-3">Result</th>
+                <th scope="col" className="px-3">Date</th>
+              </tr>
             </thead>
-            <tbody className="divide-y divide-[#F3F4F6]">
+            <tbody className="divide-y divide-neutral-100">
               {summary.labs.map((lab) => (
-                <tr key={lab.label}>
-                  <th scope="row" className="px-4 py-3 font-semibold text-[#111827]">{lab.label}</th>
-                  <td className={`px-4 py-3 ${lab.value ? "font-medium text-[#111827]" : "italic text-neutral-500"}`}>{lab.value || "Not recorded"}</td>
-                  <td className="px-4 py-3 text-neutral-500">
+                <tr key={lab.label} className="h-14">
+                  <th scope="row" className="px-4 text-left text-[13px] font-semibold text-ink-800">{lab.label}</th>
+                  <td className={`px-3 text-[13px] ${lab.value ? "font-medium text-ink-800" : "italic text-neutral-500"}`} title={lab.value || "Not recorded"}>
+                    {lab.value || "Not recorded"}
+                  </td>
+                  <td className="px-3 text-[13px] text-neutral-500">
                     {lab.date ? <span className="inline-flex items-center gap-1.5"><img src={calendarIcon} alt="" />{formatShortDate(lab.date)}</span> : "—"}
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </FixedTable>
         </div>
       </div>
       <Button type="button" variant="link" size="sm" onClick={onViewRecords} className="mt-3 h-auto rounded-lg p-0 text-xs">View maternal health records</Button>

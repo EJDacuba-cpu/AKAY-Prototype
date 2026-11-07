@@ -1,5 +1,6 @@
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
+import FixedTable from "../../../common/tables/FixedTable";
 import { formatBmi } from "../../../../utils/bmi";
 import { calculateAgeInYears } from "../../../../utils/maternalRisk";
 import { nutritionBmiCategory } from "../../../../utils/nutritionCare";
@@ -54,29 +55,29 @@ export default function NutritionTrackingPanel({ history = [], status = "", pati
         {rows.length === 0 ? (
           <p className="border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">No measurements recorded yet.</p>
         ) : (
-          <div className="overflow-x-auto border border-neutral-200 bg-white">
-            <table className="w-full min-w-[520px] text-left text-xs">
-              <thead className="bg-neutral-50 text-xs font-medium text-neutral-500">
+          <div className="overflow-hidden border border-neutral-200 bg-white">
+            <FixedTable minWidth="min-w-[520px]" lockHeight={false}>
+              <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
                 <tr>
-                  <th scope="col" className="px-4 py-3">Consultation date</th>
-                  <th scope="col" className="px-4 py-3">Weight (kg)</th>
-                  <th scope="col" className="px-4 py-3">Height/Length (cm)</th>
-                  <th scope="col" className="px-4 py-3">BMI</th>
+                  <th scope="col" className="px-4">Consultation date</th>
+                  <th scope="col" className="px-3">Weight (kg)</th>
+                  <th scope="col" className="px-3">Height/Length (cm)</th>
+                  <th scope="col" className="px-3">BMI</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F3F4F6]">
+              <tbody className="divide-y divide-neutral-100">
                 {rows.map((row) => (
-                  <tr key={row.healthRecordId ?? row.dateRecorded}>
-                    <th scope="row" className="px-4 py-3 font-semibold text-[#111827]">
+                  <tr key={row.healthRecordId ?? row.dateRecorded} className="h-14">
+                    <th scope="row" className="px-4 text-left text-[13px] font-semibold text-ink-800">
                       {row.dateRecorded ? formatShortDate(row.dateRecorded, "—") : "—"}
                     </th>
-                    <td className="px-4 py-3 tabular-nums text-neutral-800">{displayAmount(row.weightKg)}</td>
-                    <td className="px-4 py-3 tabular-nums text-neutral-800">{displayAmount(row.heightCm)}</td>
-                    <td className="px-4 py-3 tabular-nums text-neutral-800">{displayBmi(row, birthdate)}</td>
+                    <td className="px-3 text-[13px] tabular-nums text-ink-800">{displayAmount(row.weightKg)}</td>
+                    <td className="px-3 text-[13px] tabular-nums text-ink-800">{displayAmount(row.heightCm)}</td>
+                    <td className="px-3 text-[13px] tabular-nums text-ink-800">{displayBmi(row, birthdate)}</td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </FixedTable>
           </div>
         )}
       </Card>

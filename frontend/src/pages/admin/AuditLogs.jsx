@@ -258,25 +258,25 @@ export default function AuditLogs() {
             )}
 
             <FixedTable minWidth="min-w-[1050px]">
-                <thead>
-                  <tr className="bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                    <th className="px-6 py-3">Log ID</th>
-                    <th className="px-4 py-3">Action</th>
-                    <th className="px-4 py-3">Module</th>
-                    <th className="px-4 py-3">Performed By</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Details</th>
-                    <th className="px-4 py-3">Date / Time</th>
-                    <th className="px-4 py-3">Type</th>
+                <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                  <tr>
+                    <th className="px-6">Log ID</th>
+                    <th className="px-4">Action</th>
+                    <th className="px-4">Module</th>
+                    <th className="px-4">Performed By</th>
+                    <th className="px-4">Role</th>
+                    <th className="px-4">Details</th>
+                    <th className="px-4">Date / Time</th>
+                    <th className="px-4">Type</th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-[#F3F4F6]">
+                <tbody className="divide-y divide-neutral-100">
                   {paginatedLogs.length === 0 ? (
                     <tr>
                       <td
                         colSpan={8}
-                        className="px-6 py-0 text-center text-sm text-[#9CA3AF]"
+                        className="px-6 py-0 text-center text-sm text-neutral-500"
                       >
                         <div className="flex min-h-[var(--akay-empty-h,260px)] items-center justify-center">
                           No audit logs found.
@@ -287,39 +287,39 @@ export default function AuditLogs() {
                     paginatedLogs.map((log) => (
                       <tr
                         key={log.id}
-                        className="transition-colors hover:bg-[#F9FAFB]"
+                        className="h-14 transition-colors hover:bg-neutral-50"
                       >
-                        <td className="whitespace-nowrap px-6 py-3.5">
-                          <span className="rounded-md bg-[#F3F4F6] px-2 py-1 font-mono text-xs font-medium text-[#0F172A]">
+                        <td className="px-6">
+                          <span className="rounded-md bg-neutral-100 px-2 py-1 font-mono text-xs font-medium text-ink-800">
                             {log.id}
                           </span>
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-sm font-semibold text-[#1A1A1A]">
+                        <td className="px-4 text-sm font-semibold text-ink-800">
                           {log.action}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                        <td className="px-4 text-sm text-neutral-600">
                           {log.module}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#6B7280]">
+                        <td className="px-4 text-sm text-neutral-600">
                           {log.performedBy}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5">
+                        <td className="px-4">
                           <RoleBadge role={log.role} />
                         </td>
 
-                        <td className="px-4 py-3.5 text-sm text-[#6B7280]">
+                        <td className="max-w-[240px] px-4 text-sm text-neutral-600" title={log.details || undefined}>
                           {log.details || "-"}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5 text-sm text-[#9CA3AF]">
+                        <td className="px-4 text-sm text-neutral-500">
                           {log.dateTime || "-"}
                         </td>
 
-                        <td className="whitespace-nowrap px-4 py-3.5">
+                        <td className="px-4">
                           <TypeBadge type={log.level} />
                         </td>
                       </tr>

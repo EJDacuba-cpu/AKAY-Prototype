@@ -13,7 +13,7 @@ import usePagedRows from '../../../hooks/usePagedRows';
 import useFacilityCalendarDate from '../../../hooks/useFacilityCalendarDate';
 import { getCurrentUser } from '../../../utils/auth';
 import { queryKeys } from '../../../utils/queryKeys';
-import { resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
+import { fixedTableVars, resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
 import { getMedicineExpiryStatus, getMedicineStockStatus } from '../../../utils/medicineInventoryStatus';
 import { retainCalendarData } from '../../../utils/medicineLedger';
 import { addBhcMedicine, addRhuMedicine, loadMedicineAvailability } from '../../../services/medicineService';
@@ -107,8 +107,8 @@ function MedicineInventoryWorkspace({ role }) {
                   <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">{filtered.length} of {items.length} items</p>
                   {query.isFetching && Array.isArray(query.data) && <RefreshingIndicator label="Updating inventory…" />}
                 </div>
-                <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px` }}>
-                  <div className="medicine-inventory-body">
+                <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px`, ...fixedTableVars() }}>
+                  <div className="medicine-inventory-body akay-fixed-table">
                     <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
                   </div>
                   <div className="medicine-inventory-pagination">

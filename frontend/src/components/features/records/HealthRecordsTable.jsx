@@ -38,22 +38,22 @@ export default function HealthRecordsTable({ records = [], currentPage = 1, tota
       </div>
       <div className="hidden md:block">
         <FixedTable minWidth="min-w-[760px]">
-          <thead>
-            <tr className="bg-slate-50 text-xs font-semibold text-slate-600">
-              {["Record ID", "Date of Visit", "Chief Complaint", "Visit Type", "Next Action", "View"].map(label => <th key={label} scope="col" className="whitespace-nowrap px-4 py-3">{label}</th>)}
+          <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+            <tr>
+              {["Record ID", "Date of Visit", "Chief Complaint", "Visit Type", "Next Action", "View"].map(label => <th key={label} scope="col" className="px-4">{label}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-sm text-slate-900">
+          <tbody className="divide-y divide-neutral-100 text-sm text-ink-800">
             {records.length === 0 ? (
-              <tr><td colSpan={6} style={{ height: "var(--akay-empty-h)" }} className="px-4 text-center text-slate-600">{emptyTitle}</td></tr>
+              <tr><td colSpan={6} style={{ height: "var(--akay-empty-h)" }} className="px-4 text-center text-neutral-600">{emptyTitle}</td></tr>
             ) : records.map(record => (
-              <tr key={getRecordId(record)} className="hover:bg-slate-50">
-                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">{getRecordIdLabel(record)}</td>
-                <td className="whitespace-nowrap px-4 py-3">{formatDate(getRecordDateValue(record), "Not recorded")}</td>
-                <td className="max-w-[240px] truncate px-4 py-3">{formatDisplayValue(record.chiefComplaint, "Not recorded")}</td>
-                <td className="whitespace-nowrap px-4 py-3">{getRecordVisitTypeLabel(record)}</td>
-                <td className="px-4 py-3">{record.outcomeText}</td>
-                <td className="px-4 py-3">{viewLink(record)}</td>
+              <tr key={getRecordId(record)} className="h-14 transition-colors hover:bg-neutral-50">
+                <td className="px-4 font-mono text-xs">{getRecordIdLabel(record)}</td>
+                <td className="px-4">{formatDate(getRecordDateValue(record), "Not recorded")}</td>
+                <td className="max-w-[240px] px-4" title={formatDisplayValue(record.chiefComplaint, "Not recorded")}>{formatDisplayValue(record.chiefComplaint, "Not recorded")}</td>
+                <td className="px-4">{getRecordVisitTypeLabel(record)}</td>
+                <td className="max-w-[200px] px-4" title={record.outcomeText || undefined}>{record.outcomeText}</td>
+                <td className="px-4">{viewLink(record)}</td>
               </tr>
             ))}
           </tbody>
