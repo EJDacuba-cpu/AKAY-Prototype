@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { Button } from "../../ui/button";
+import { DatePickerField } from "../forms/DatePickerField";
 import ListFilterChips from "./ListFilterChips";
 import { isDraftDefault, pickFilterValues } from "./listFilterPopoverUtils.js";
 
@@ -11,8 +12,6 @@ const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50";
 const FILTER_SELECT =
   "h-8 w-full min-w-0 cursor-pointer appearance-none rounded-full border border-neutral-200 bg-white pl-3 pr-8 text-[13px] text-ink-800 outline-none focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
-const DATE_INPUT =
-  "h-8 w-full min-w-0 rounded-full border border-neutral-200 bg-white px-3 text-[13px] text-ink-800 outline-none focus:border-ink-400 focus:ring-2 focus:ring-ink-400/30";
 
 function normalizeOption(option) {
   if (typeof option === "string") return { value: option, label: option };
@@ -111,6 +110,16 @@ export default function ListFilterPopover({
         collisionPadding={12}
         aria-label={ariaLabel}
         className="w-[min(calc(100vw-1.5rem),370px)] max-w-[370px] overflow-hidden rounded-card p-0"
+        onPointerDownOutside={(event) => {
+          if (event.target?.closest?.("[data-akay-datepicker]")) {
+            event.preventDefault();
+          }
+        }}
+        onFocusOutside={(event) => {
+          if (event.target?.closest?.("[data-akay-datepicker]")) {
+            event.preventDefault();
+          }
+        }}
       >
         <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2.5">
           <p className="text-[13px] font-semibold text-ink-800">{ariaLabel}</p>
@@ -180,23 +189,13 @@ export default function ListFilterPopover({
                     onChange={updateDraft}
                   />
                 ) : field.type === "date" ? (
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <label
-                      htmlFor={`list-filter-${field.key}`}
-                      className="text-[10px] font-bold uppercase tracking-wide text-neutral-600"
-                    >
-                      {field.label}
-                    </label>
-                    <input
-                      id={`list-filter-${field.key}`}
-                      type="date"
-                      value={draft[field.key] || ""}
-                      onChange={(event) =>
-                        updateDraft(field.key, event.target.value)
-                      }
-                      className={DATE_INPUT}
-                    />
-                  </div>
+                  <DatePickerField
+                    label={field.label}
+                    name={field.key}
+                    value={draft[field.key] || ""}
+                    allowClear
+                    onChange={(value) => updateDraft(field.key, value)}
+                  />
                 ) : (
                   <FilterSelect
                     id={`list-filter-${field.key}`}
@@ -252,36 +251,20 @@ function DatePresetField({ field, draft, onChange }) {
       />
       {draft[field.key] === customValue ? (
         <div className="grid grid-cols-2 gap-2">
-          <div className="flex min-w-0 flex-col gap-1">
-            <label
-              htmlFor={`list-filter-${field.key}-from`}
-              className="text-[10px] font-bold uppercase tracking-wide text-neutral-600"
-            >
-              From
-            </label>
-            <input
-              id={`list-filter-${field.key}-from`}
-              type="date"
-              value={draft[fromKey] || ""}
-              onChange={(event) => onChange(fromKey, event.target.value)}
-              className={DATE_INPUT}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <label
-              htmlFor={`list-filter-${field.key}-to`}
-              className="text-[10px] font-bold uppercase tracking-wide text-neutral-600"
-            >
-              To
-            </label>
-            <input
-              id={`list-filter-${field.key}-to`}
-              type="date"
-              value={draft[toKey] || ""}
-              onChange={(event) => onChange(toKey, event.target.value)}
-              className={DATE_INPUT}
-            />
-          </div>
+          <DatePickerField
+            label="From"
+            name={`${field.key}-from`}
+            value={draft[fromKey] || ""}
+            allowClear
+            onChange={(value) => onChange(fromKey, value)}
+          />
+          <DatePickerField
+            label="To"
+            name={`${field.key}-to`}
+            value={draft[toKey] || ""}
+            allowClear
+            onChange={(value) => onChange(toKey, value)}
+          />
         </div>
       ) : null}
     </div>

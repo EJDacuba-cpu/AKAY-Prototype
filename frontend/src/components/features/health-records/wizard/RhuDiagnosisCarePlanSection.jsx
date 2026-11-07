@@ -1,6 +1,6 @@
 import { Trash2 } from "lucide-react";
 
-import { TimePickerField } from "../../../common/forms/DatePickerField";
+import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
@@ -43,14 +43,14 @@ function DiagnosisFollowUp({ entry, schedule, errors, disabled, onFollowUpChange
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-2">
       <div className="grid gap-3 md:grid-cols-2">
-        <FieldInput
+        <DatePickerField
           label="Follow-up Date"
           required
-          type="date"
           name={`followUpSchedule.${purposeKey}.date`}
           value={followUp.date}
           error={errors[`followUpSchedule.${purposeKey}.date`]}
-          onChange={(event) => onFollowUpChange({ ...followUp, date: event.target.value })}
+          disabled={disabled}
+          onChange={(value) => onFollowUpChange({ ...followUp, date: value })}
         />
         <TimePickerField
           label="Follow-up Time"

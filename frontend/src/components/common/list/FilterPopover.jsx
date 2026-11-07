@@ -1,5 +1,6 @@
 import { RotateCcw, X } from "lucide-react";
 import { formatDisplayValue } from "../../../utils/formatters";
+import { DatePickerField } from "../forms/DatePickerField";
 
 function formatOption(option) {
   if (typeof option === "string") {
@@ -149,11 +150,12 @@ function FilterSection({ field, draft, value, onUpdateDraft }) {
 
 function DateInput({ value, onChange }) {
   return (
-    <input
-      type="date"
+    <DatePickerField
+      hideLabel
+      label="Date"
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-9 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#0F172A] outline-none transition-colors focus:border-[#FCA5A5] focus:bg-white focus:ring-2 focus:ring-[#B91C1C]/10"
+      allowClear
+      onChange={onChange}
     />
   );
 }

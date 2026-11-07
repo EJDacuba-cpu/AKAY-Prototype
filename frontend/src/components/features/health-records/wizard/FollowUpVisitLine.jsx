@@ -3,8 +3,8 @@ import { CARE_OUTCOMES } from '../../../../utils/conditionCards';
 import { continuedPurposeKey } from '../../../../utils/continuedConcerns';
 import { isScheduledServiceFollowUp } from '../../../../utils/followUpSchedules';
 import { Button } from '../../../ui/button';
-import { TimePickerField } from '../../../common/forms/DatePickerField';
-import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from '../fields/ClinicalFields';
+import { DatePickerField, TimePickerField } from '../../../common/forms/DatePickerField';
+import { FieldError, FieldTextarea, RadioChoiceGroup } from '../fields/ClinicalFields';
 
 const OPTIONS = Object.entries(CARE_OUTCOMES).map(([value, label]) => ({ value, label }));
 
@@ -68,7 +68,7 @@ export default function FollowUpVisitLine({ followUps = [], decisions = [], sche
                 {outcome === 'bhc_follow_up' && (
                   <fieldset disabled={disabled} className="space-y-3">
                     <div className="grid gap-3 md:grid-cols-2">
-                      <FieldInput label="Follow-up Date" required type="date" name={`followUpSchedule.${key}.date`} value={schedule.date} error={errors[`followUpSchedule.${key}.date`]} onChange={(event) => onScheduleChange(task.id, { ...schedule, date: event.target.value })} />
+                      <DatePickerField label="Follow-up Date" required name={`followUpSchedule.${key}.date`} value={schedule.date} error={errors[`followUpSchedule.${key}.date`]} disabled={disabled} onChange={(date) => onScheduleChange(task.id, { ...schedule, date })} />
                       <TimePickerField label="Follow-up Time (optional)" name={`followUpSchedule.${key}.time`} value={schedule.time || ''} error={errors[`followUpSchedule.${key}.time`]} disabled={disabled} onChange={(time) => onScheduleChange(task.id, { ...schedule, time })} />
                     </div>
                     <FieldTextarea label="Follow-up Reason" required maxLength={150} rows={2} name={`followUpSchedule.${key}.purpose`} value={schedule.purpose} error={errors[`followUpSchedule.${key}.purpose`]} onChange={(event) => onScheduleChange(task.id, { ...schedule, purpose: event.target.value })} />

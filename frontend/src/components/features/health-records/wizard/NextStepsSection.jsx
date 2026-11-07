@@ -1,5 +1,5 @@
 import { cloneElement, isValidElement } from "react";
-import { TimePickerField } from "../../../common/forms/DatePickerField";
+import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import { formatDate } from "../../../../utils/formatters";
@@ -145,14 +145,14 @@ function FollowUpFields({ followUp, errors, disabled, reasonRequired, hint, onFo
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
-        <FieldInput
+        <DatePickerField
           label="Follow-up Date"
           required
-          type="date"
           name={dateName}
           value={followUp.date || ""}
           error={errors.followUpDate || errors[dateName]}
-          onChange={(event) => onFollowUpChange("date", event.target.value)}
+          disabled={disabled}
+          onChange={(value) => onFollowUpChange("date", value)}
         />
         <TimePickerField
           label="Follow-up Time"

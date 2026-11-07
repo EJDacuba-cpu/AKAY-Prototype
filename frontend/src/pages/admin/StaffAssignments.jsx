@@ -7,10 +7,10 @@ import { PageStateWrapper, SearchField, SearchFilterCluster, TablePagination } f
 import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { Card } from "../../components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import PermissionReviewDialog from "../../components/features/access/PermissionReviewDialog";
 import { ASSIGNMENT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
 import { apiRequest, unwrapList } from "../../services/apiClient";
@@ -207,8 +207,31 @@ export default function StaffAssignments({ mode = "directory" }) {
                       <div className="space-y-3">
                         <div><label htmlFor={`${id}-assignment_type`} className={LABEL_CLASS}>Assignment type</label><Select {...inputProps("assignment_type")}><option value="temporary">Temporary · end date required</option><option value="ongoing">Ongoing · until revoked</option></Select><FieldError id={id} field="assignment_type" message={errors.assignment_type} /></div>
                         <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                          <div className="min-w-0"><label htmlFor={`${id}-starts_on`} className={LABEL_CLASS}>Start date</label><Input {...inputProps("starts_on")} type="date" required /><FieldError id={id} field="starts_on" message={errors.starts_on} /></div>
-                          {form.assignment_type === "temporary" && <div className="min-w-0"><label htmlFor={`${id}-ends_on`} className={LABEL_CLASS}>End date</label><Input {...inputProps("ends_on")} type="date" min={form.starts_on} required /><FieldError id={id} field="ends_on" message={errors.ends_on} /></div>}
+                          <div className="min-w-0">
+                            <DatePickerField
+                              label="Start date"
+                              name="starts_on"
+                              value={form.starts_on}
+                              required
+                              disabled={busy}
+                              error={errors.starts_on}
+                              onChange={(value) => changeField("starts_on", value)}
+                            />
+                          </div>
+                          {form.assignment_type === "temporary" && (
+                            <div className="min-w-0">
+                              <DatePickerField
+                                label="End date"
+                                name="ends_on"
+                                value={form.ends_on}
+                                minDate={form.starts_on}
+                                required
+                                disabled={busy}
+                                error={errors.ends_on}
+                                onChange={(value) => changeField("ends_on", value)}
+                              />
+                            </div>
+                          )}
                         </div>
                         {form.assignment_type === "ongoing" && <p className="text-[12px] leading-5 text-neutral-600">Access continues from the start date until this assignment is revoked.</p>}
                       </div>

@@ -5,6 +5,7 @@ import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../ui/dropdown-menu";
 import { SoftLoadingArea, RefreshingIndicator } from "../../../common";
+import { DatePickerField } from "../../../common/forms/DatePickerField";
 import HealthRecordsTable from "../../records/HealthRecordsTable";
 import { DEFAULT_RECORD_FILTERS, DEFAULT_RECORD_VIEW, filterPatientRecords, patientRecordRows } from "../../../../utils/patientRecordHistory";
 import { queryKeys } from "../../../../utils/queryKeys";
@@ -61,17 +62,25 @@ export default function PatientRecordsTab({ patientId, records = [], referrals, 
         <label className="space-y-1 text-xs text-neutral-600">Search
           <Input type="search" aria-label="Search health records" value={filters.search} onChange={event => changeFilters({ search: event.target.value })} placeholder="Record ID or chief complaint" className="h-9 text-xs sm:text-xs" />
         </label>
-        <label className="space-y-1 text-xs text-neutral-600">Date from
-          <Input type="date" value={filters.dateFrom} onChange={event => changeFilters({ dateFrom: event.target.value })} className="h-9 text-xs sm:text-xs" />
-        </label>
-        <label className="space-y-1 text-xs text-neutral-600">Date to
-          <Input type="date" value={filters.dateTo} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? "record-date-error" : undefined} onChange={event => changeFilters({ dateTo: event.target.value })} className="h-9 text-xs sm:text-xs" />
-        </label>
+        <DatePickerField
+          label="Date from"
+          name="dateFrom"
+          value={filters.dateFrom}
+          allowClear
+          onChange={(dateFrom) => changeFilters({ dateFrom })}
+        />
+        <DatePickerField
+          label="Date to"
+          name="dateTo"
+          value={filters.dateTo}
+          allowClear
+          error={dateError}
+          onChange={(dateTo) => changeFilters({ dateTo })}
+        />
         <RecordFilter label="Next Action" options={NEXT_ACTIONS} value={filters.outcome} onChange={outcome => changeFilters({ outcome })} />
         <RecordFilter label="Visit Type" options={VISITS} value={filters.visitType} onChange={visitType => changeFilters({ visitType })} />
         <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-neutral-300 text-xs text-neutral-900">Clear</Button>
       </div>
-      {dateError && <p id="record-date-error" role="alert" className="text-xs text-neutral-900">{dateError}</p>}
       {isError && (!hasData || [401, 403].includes(error?.status)) ? (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
           Unable to load health records.<Button variant="ghost" size="sm" onClick={onRetry}>Retry</Button>

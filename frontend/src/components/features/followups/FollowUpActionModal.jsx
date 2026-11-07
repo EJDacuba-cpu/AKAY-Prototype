@@ -4,6 +4,10 @@ import {
   ModalButton,
   ModalShell,
 } from "../../common";
+import {
+  DatePickerField,
+  TimePickerField,
+} from "../../common/forms/DatePickerField";
 
 export default function FollowUpActionModal({
   modal,
@@ -70,28 +74,18 @@ export default function FollowUpActionModal({
             </p>
           ) : (
             <>
-              <div>
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  New Follow-up Date
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Follow-up Time (optional)
-                </label>
-                <input
-                  type="time"
-                  value={dueTime}
-                  onChange={(event) => setDueTime(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-[#B91C1C]/40 focus:bg-white"
-                />
-              </div>
+              <DatePickerField
+                label="New Follow-up Date"
+                name="dueDate"
+                value={dueDate}
+                onChange={setDueDate}
+              />
+              <TimePickerField
+                label="Follow-up Time (optional)"
+                name="dueTime"
+                value={dueTime}
+                onChange={setDueTime}
+              />
             </>
           )}
           <div>

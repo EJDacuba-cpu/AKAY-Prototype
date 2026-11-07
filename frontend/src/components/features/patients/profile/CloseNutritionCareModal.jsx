@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import ModalShell, { ModalButton } from "../../../common/modals/ModalShell";
-import { Input } from "../../../ui/input";
+import { DatePickerField } from "../../../common/forms/DatePickerField";
 import { getFacilityCalendarDate } from "../../../../utils/medicineInventoryStatus";
 import { formatShortDate } from "../../../../utils/patientProfile";
 
@@ -89,28 +89,22 @@ export default function CloseNutritionCareModal({
           ))}
         </div>
 
-        <label className="block" htmlFor="nutrition-closed-on">
-          <span className="text-[12px] font-medium text-neutral-600">Close date</span>
-          <Input
-            id="nutrition-closed-on"
-            type="date"
-            value={closedOn}
-            min={minDate || undefined}
-            max={today}
-            required
-            aria-invalid={Boolean(closedOn) && Boolean(dateError)}
-            aria-describedby={dateError ? "nutrition-closed-on-error" : undefined}
-            onChange={(event) => setClosedOn(event.target.value)}
-            className="mt-1 h-9 text-sm"
-          />
-        </label>
-        {dateError ? (
-          <p id="nutrition-closed-on-error" className="text-[12px] text-alert-700">{dateError}</p>
-        ) : (
+        <DatePickerField
+          label="Close date"
+          name="nutrition-closed-on"
+          value={closedOn}
+          minDate={minDate || undefined}
+          maxDate={today}
+          disableFuture
+          required
+          error={dateError}
+          onChange={setClosedOn}
+        />
+        {!dateError ? (
           <p className="text-[12px] text-neutral-500">
             {minDate ? `On or after ${formatShortDate(minDate)}, and on or before today.` : "On or before today."}
           </p>
-        )}
+        ) : null}
 
         <label className="block" htmlFor="nutrition-close-note">
           <span className="text-[12px] font-medium text-neutral-600">Note</span>

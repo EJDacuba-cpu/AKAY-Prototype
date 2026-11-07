@@ -3,6 +3,7 @@ import { formatLongDate } from "../../../../utils/formatters";
 import { parentInformation } from "../../../../utils/parentLinks";
 import HistoricalParentLinks from '../HistoricalParentLinks';
 import { Input } from "../../../ui/input";
+import { DatePickerField } from "../../../common/forms/DatePickerField";
 import {
   EDUCATION_COMPLETED_OPTIONS,
   EDUCATION_LEVEL_OPTIONS,
@@ -156,7 +157,18 @@ export default function RegistrationSections({
             <EditField label="First name" name="firstName" value={form.firstName} onChange={onChange} error={fieldErrors.firstName} required />
             <EditField label="Middle name" name="middleName" value={form.middleName} onChange={onChange} />
             <EditField label="Last name" name="lastName" value={form.lastName} onChange={onChange} error={fieldErrors.lastName} required />
-            <EditField label="Birthday" name="birthDate" type="date" value={form.birthDate} onChange={onChange} error={fieldErrors.birthDate} required />
+            <DatePickerField
+              label="Birthday"
+              name="birthDate"
+              value={form.birthDate}
+              mode="birthdate"
+              disableFuture
+              required
+              error={fieldErrors.birthDate}
+              onChange={(value) =>
+                onChange({ target: { name: "birthDate", value } })
+              }
+            />
             <EditField label="Age" name="age" value={form.age} readOnly />
             <EditSelect label="Sex" name="sex" value={form.sex} onChange={onChange} error={fieldErrors.sex} required>
               <option value="">Select sex</option>
