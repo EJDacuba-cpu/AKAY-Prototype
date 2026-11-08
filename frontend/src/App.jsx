@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   Navigate,
@@ -28,6 +29,7 @@ import {
   getStoredAuthToken,
   restoreCurrentUserSession,
 } from "./utils/auth";
+import { getAuthRecoveryError, subscribeToAuthRecovery } from "./services/apiClient";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import { FullScreenAkayLoader } from "./components/common";
 import LockedModulePage from "./components/common/access/LockedModulePage";
@@ -306,7 +308,12 @@ export default function App() {
   const [, setSessionEpoch] = useState(0);
   const [isRevalidatingBfcache, setIsRevalidatingBfcache] = useState(false);
   const [restoreRetryKey, setRestoreRetryKey] = useState(0);
-  const [shouldRestoreStoredSession] = useState(
+  const recoveryError = useSyncExternalStore(
+    subscribeToAuthRecovery,
+    getAuthRecoveryError,
+    getAuthRecoveryError,
+  );
+  const [shouldRestoreStoredSession, setShouldRestoreStoredSession] = useState(
     () => !isPublicBootRoute(location.pathname),
   );
   const { isReady: isBootLoaderReady, restoreError } = useAuthBootLoaderReady(
@@ -458,8 +465,11 @@ export default function App() {
     return <FullScreenAkayLoader />;
   }
 
-  if (restoreError) {
-    return <SessionRestoreUnavailable onRetry={() => setRestoreRetryKey((key) => key + 1)} />;
+  if (restoreError || (recoveryError && !isPublicBootRoute(location.pathname))) {
+    return <SessionRestoreUnavailable onRetry={() => {
+      setShouldRestoreStoredSession(true);
+      setRestoreRetryKey((key) => key + 1);
+    }} />;
   }
 
   return (
