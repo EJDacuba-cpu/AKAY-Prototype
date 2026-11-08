@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -141,6 +141,9 @@ import { createClinicalDraftRecovery } from "../../services/clinicalDraftRecover
 import RhuConsultationRecoveryDialog from "../../components/features/rhu-queue/RhuConsultationRecoveryDialog";
 import useRhuConsultationRecovery from "../../hooks/useRhuConsultationRecovery";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
+import { LaboratoryTestsEditor } from "../../components/features/health-records/LaboratoryEvidence";
+import { getLaboratoryAttachments, getPatientLaboratoryTests } from "../../services/laboratoryService";
+import { evidenceOptions, laboratoryErrors, laboratorySummary, restoreLaboratoryTests } from "../../utils/laboratoryTests";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import { getConsultationPatientQuery } from "../../services/consultationPatientQuery";
@@ -228,6 +231,17 @@ export default function RhuConsultationWorkspace() {
   const [height, setHeight] = useState("");
   const [fbs, setFbs] = useState("");
   const [physicalExam, setPhysicalExam] = useState("");
+  const [laboratoryTests, setLaboratoryTests] = useState([]);
+  const [laboratoryOperationCount, setLaboratoryOperationCount] = useState(0);
+  const laboratoryBusy = laboratoryOperationCount > 0;
+  function setLaboratoryBusy(busy) {
+    setLaboratoryOperationCount(current => Math.max(0, current + (busy ? 1 : -1)));
+  }
+  const laboratoryHistory = useQuery({
+    queryKey: ["patient-laboratory-tests", patientId],
+    queryFn: () => getPatientLaboratoryTests(patientId),
+    enabled: Boolean(patientId) && canViewBackground,
+  });
   const [bodyFindings, setBodyFindings] = useState([]);
   const [bodyFindingReassessments, setBodyFindingReassessments] = useState([]);
   const [selectedPrograms, setSelectedPrograms] = useState([]);
@@ -493,6 +507,11 @@ export default function RhuConsultationWorkspace() {
   const encodeLocked = !canEncode;
   const finalizeLocked = !canFinalize;
   const assessmentLocked = encodeLocked || !recoveryReady || saving || Boolean(saveSuccess);
+  const laboratoryAttachmentQueries = useQueries({ queries: laboratoryTests.map(entry => ({
+    queryKey: ["laboratory-attachments", patientId, consultationUuid, entry.id],
+    queryFn: () => getLaboratoryAttachments({ patientId, visitId: visit?.id, consultationUuid, testId: entry.id }),
+    enabled: recoveryReady && Boolean(visit?.id && consultationUuid),
+  })) });
   const clinicalLocked = finalizeLocked || !recoveryReady || saving || Boolean(saveSuccess);
 
   const draftPayload = useMemo(
@@ -517,6 +536,7 @@ export default function RhuConsultationWorkspace() {
       height,
       fbs,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       selectedPrograms,
@@ -569,6 +589,7 @@ export default function RhuConsultationWorkspace() {
       height,
       fbs,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       selectedPrograms,
@@ -629,6 +650,7 @@ export default function RhuConsultationWorkspace() {
     setHeight(payload.height || "");
     setFbs(payload.fbs || "");
     setPhysicalExam(payload.physicalExam || "");
+    setLaboratoryTests(restoreLaboratoryTests(payload));
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
     setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
     const programs = getConsultationPrograms(payload);
@@ -710,6 +732,7 @@ export default function RhuConsultationWorkspace() {
       }
     }
     if (currentStepKey === ASSESSMENT_STEP) {
+      Object.assign(errors, laboratoryErrors(laboratoryTests));
       Object.assign(errors, vitalSignsErrors({ systolicBp, diastolicBp, pulse, spo2, temp, weight, height, fbs }));
     }
     if (currentStepKey === programStepKey("Maternal") && selectedPrograms.includes("Maternal")) {
@@ -753,6 +776,7 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function handlePrevious() {
+    if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
       setNextScreen(includeTb ? TB_INTAKE_STEP : NEXT_STEP);
@@ -849,7 +873,11 @@ export default function RhuConsultationWorkspace() {
   }
 
   function handleDiagnosisChange(next) {
-    setDiagnoses((current) => current.map((row) => (row.id === next.id ? next : row)));
+    setDiagnoses((current) => current.map((row) => (row.id === next.id ? {
+      ...next,
+      laboratoryEvidenceConfirmed: row.receivingBhcId !== next.receivingBhcId || row.nextAction !== next.nextAction || row.name !== next.name
+        ? false : next.laboratoryEvidenceConfirmed,
+    } : row)));
     const action = diagnosisNextAction(next);
     const purposeKey = entryPurposeKey(next.id);
     setFollowUpSchedules((current) => {
@@ -956,7 +984,9 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function saveRecord() {
+    if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     const errors = {
+      ...laboratoryErrors(laboratoryTests),
       ...validateCurrent(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
       ...(canViewBackground
@@ -1012,6 +1042,7 @@ export default function RhuConsultationWorkspace() {
             ...(nutritionIntent ? { nutritionIntent } : {}),
           },
           physicalExam,
+          laboratoryTests,
           bodyFindings,
           bodyFindingReassessments,
           systolicBp,
@@ -1083,6 +1114,9 @@ export default function RhuConsultationWorkspace() {
       }
     } catch (error) {
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
+      if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
+        goToStepKey(NEXT_STEP);
+      }
       setValidationErrors(fieldErrors);
       const first = findFirstErrorStepKey(fieldErrors, stepOrder, stepOptions);
       if (first) goToStepKey(first);
@@ -1182,6 +1216,7 @@ export default function RhuConsultationWorkspace() {
       rows: [
         { label: "BP", value: systolicBp || diastolicBp ? `${systolicBp || "?"}/${diastolicBp || "?"} mmHg` : "" },
         { label: "Physical Findings", value: physicalExam },
+        ...laboratoryTests.map((entry, index) => ({ label: `Laboratory test ${index + 1}`, value: laboratorySummary(entry) })),
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
         { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
@@ -1465,6 +1500,28 @@ export default function RhuConsultationWorkspace() {
                         />
                       </label>
                     </div>
+                    <LaboratoryTestsEditor
+                      tests={laboratoryTests}
+                      onChange={(next) => {
+                        clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
+                        setLaboratoryTests(next);
+                        const available = new Set(next.map(test => `current:${test.id}`));
+                        setDiagnoses(current => current.map(entry => ({ ...entry, laboratoryEvidenceConfirmed: false,
+                          laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
+                        })));
+                      }}
+                      context={{ patientId, visitId: visit?.id, consultationUuid }}
+                      disabled={assessmentLocked || saving || laboratoryBusy}
+                      errors={validationErrors}
+                      onAttachmentsChange={(id, files) => {
+                        const ids = files.map(file => file.id).sort().join(",");
+                        setDiagnoses(current => current.map(entry => (entry.laboratoryEvidence || []).some(item => item.reference === `current:${id}` && [...(item.attachmentIds || [])].sort().join(",") !== ids) ? { ...entry, laboratoryEvidenceConfirmed: false } : entry));
+                      }}
+                      onBusyChange={(busy) => {
+                        setLaboratoryBusy(busy);
+                        if (busy) setDiagnoses(current => current.map(entry => ({ ...entry, laboratoryEvidenceConfirmed: false })));
+                      }}
+                    />
                     <div className="mt-6 border-t border-[#E5E7EB] pt-4">
                       <BodyFindingsList
                         findings={bodyFindings}
@@ -1524,6 +1581,8 @@ export default function RhuConsultationWorkspace() {
               {programFormSteps.some((step) => step.key === currentStepKey) && currentStepKey === programStepKey("Maternal") && (
                 <fieldset disabled={assessmentLocked}>
                   <PrenatalAssessmentForm
+                    laboratoryContext="rhu"
+                    laboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
                     maternalData={maternalData}
                     expectedDeliveryDate={expectedDeliveryDate}
                     aog={aog}
@@ -1577,6 +1636,8 @@ export default function RhuConsultationWorkspace() {
                     </p>
                   ) : null}
                   <TbTreatmentCardForm
+                    laboratoryContext="rhu"
+                    laboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
                     value={tbData}
                     onChange={(next) => { clearErrorsStartingWith(["tbData", "tb_data"]); setTbData(next); }}
                     errors={validationErrors}
@@ -1589,6 +1650,10 @@ export default function RhuConsultationWorkspace() {
               {currentStepKey === NEXT_STEP && (
                 <fieldset disabled={clinicalLocked} className="min-w-0">
                   <RhuDiagnosisCarePlanSection
+                    laboratoryOptions={evidenceOptions(laboratoryTests.map((entry, index) => ({ ...entry, attachments: laboratoryAttachmentQueries[index]?.data?.data || [], attachmentsReady: laboratoryAttachmentQueries[index]?.isSuccess === true })), laboratoryHistory.data || [])}
+                    laboratoryLoading={laboratoryHistory.isFetching}
+                    laboratoryError={laboratoryHistory.isError}
+                    onRefreshLaboratory={() => { laboratoryHistory.refetch(); laboratoryAttachmentQueries.forEach(query => query.refetch()); }}
                     diagnoses={diagnoses}
                     diagnosisDraft={diagnosisDraft}
                     onDiagnosisDraftChange={setDiagnosisDraft}
@@ -1662,7 +1727,7 @@ export default function RhuConsultationWorkspace() {
           continueLabel={wizardPhase === WIZARD_REVIEW ? "Finalize Consultation" : "Next"}
           continueBusy={saving}
           continueBusyLabel="Saving..."
-          continueDisabled={!recoveryReady || (wizardPhase === WIZARD_REVIEW && !canFinalize)}
+          continueDisabled={!recoveryReady || laboratoryBusy || (wizardPhase === WIZARD_REVIEW && !canFinalize)}
         />
       {isReferred && canViewBackground && referralSlipOpen && (
         <ModalShell open size="wide" title="BHC Referral Slip" onClose={() => setReferralSlipOpen(false)} bodyClassName="max-h-[min(80vh,720px)] overflow-y-auto">

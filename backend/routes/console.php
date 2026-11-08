@@ -1,8 +1,12 @@
 <?php
 
+use App\Models\LaboratoryAttachment;
+use App\Services\ClinicalDraftSlotPreflight;
 use App\Services\DeploymentReadinessService;
 use App\Services\FollowUpNotificationService;
+use App\Services\FormDraftService;
 use App\Services\HealthRecordDraftPruner;
+use App\Services\LaboratoryAttachmentStorage;
 use App\Services\NotificationPruner;
 use App\Services\ReferralHoldPruner;
 use App\Services\ReferralNoShowService;
@@ -14,6 +18,22 @@ use Symfony\Component\Console\Command\Command;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('laboratory-attachments:prune {--dry-run}', function (LaboratoryAttachmentStorage $storage) {
+    $count = 0;
+    // Tombstones include interrupted upload intents. A short grace period
+    // avoids racing an upload still in progress. Final evidence is retained.
+    LaboratoryAttachment::query()->whereNull('health_record_id')->whereNotNull('removed_at')
+        ->whereNull('purged_at')->where('removed_at', '<', now()->subHour())->each(function ($attachment) use ($storage, &$count) {
+            if (! $this->option('dry-run')) {
+                $storage->purge($attachment);
+            }
+            $count++;
+        });
+    $this->info("{$count} staged attachment cleanup candidate(s).");
+})->purpose('Retry tracked laboratory upload/removal cleanup; never purge finalized evidence');
+
+Schedule::command('laboratory-attachments:prune')->daily()->withoutOverlapping();
 
 Artisan::command('referrals:mark-no-show {--dry-run : Count eligible referrals without changing them}', function () {
     $dryRun = (bool) $this->option('dry-run');
@@ -45,7 +65,7 @@ Artisan::command('health-record-drafts:prune {--dry-run : Count eligible drafts 
     $this->info("Expired: {$result['expired']}; pruned: {$result['pruned']}.");
 })->purpose('Expire and prune health-record drafts without exposing clinical payloads');
 
-Artisan::command('health-record-drafts:preflight-slots {--json : Print the identifier-only conflict report}', function (\App\Services\ClinicalDraftSlotPreflight $preflight) {
+Artisan::command('health-record-drafts:preflight-slots {--json : Print the identifier-only conflict report}', function (ClinicalDraftSlotPreflight $preflight) {
     $conflicts = $preflight->conflicts();
     if ($this->option('json')) {
         $this->line(json_encode(['clear' => $conflicts === [], 'conflicts' => $conflicts], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
@@ -115,7 +135,7 @@ Schedule::command('notifications:prune')
     ->timezone(config('app.timezone'))
     ->withoutOverlapping(config('operations.scheduler.notification_prune_overlap_minutes'));
 
-Artisan::command('form-drafts:prune', function (\App\Services\FormDraftService $drafts) {
+Artisan::command('form-drafts:prune', function (FormDraftService $drafts) {
     $drafts->prune();
     $this->info('Expired recovery payloads removed.');
 })->purpose('Remove expired generic form recovery payloads and keys');

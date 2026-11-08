@@ -62,6 +62,7 @@ class FormDraftCoordinator {
 
   async init() {
     this.closed = false;
+    this.recoveryReplacement = null;
     this.unregister ||= registerFormDraftCoordinator(this);
     if (!this.latest) this.latest = copy(this.initial);
     const epoch = ++this.epoch;
@@ -145,6 +146,7 @@ class FormDraftCoordinator {
 
   checkpoint() {
     if (this.invalidSnapshot) return Promise.reject(this.invalidSnapshot);
+    if (this.options.preferLatestRecovery && this.awaitingRender) return Promise.reject(problem("DRAFT_NOT_READY", "Wait for the restored registration to open before saving."));
     const epoch = this.epoch;
     const operation = this.localQueue.catch(() => {}).then(async () => {
       this.assertLive(epoch);
@@ -156,10 +158,12 @@ class FormDraftCoordinator {
         slot: this.slot, key: this.key, descriptor: this.descriptor,
         ownerTag: this.ownerTag, unsynced: serialized(payload) !== this.confirmed || !this.draft,
         transactionUuid: this.transactionUuid, expectedRevision: this.localRevision,
+        replaceTransactionUuid: this.recoveryReplacement,
         snapshot: { payload, baseRevision: this.options.baseRevision ?? null, serverVersion: this.draft?.version ?? null, serverPayload: this.confirmed, pendingPayload: this.pendingPayload || null },
       });
       this.assertLive(epoch);
       this.localRevision = row.revision;
+      this.recoveryReplacement = null;
       this.local = row;
       this.lastLocal = serialized(payload);
       this.patch({ deviceSavedAt: row.savedAt, warning: "", status: this.online() ? "device-only" : "offline" });
@@ -235,6 +239,7 @@ class FormDraftCoordinator {
   }
 
   async resume(source = "auto") {
+    if (this.options.preferLatestRecovery) return this.resumeLatestRecovery(source);
     if (this.closed || this.state.busy) return false;
     const currentInput = this.state.hasPendingChanges ? copy(this.latest) : null;
     const epoch = ++this.epoch;
@@ -304,6 +309,105 @@ class FormDraftCoordinator {
       if (dirty) this.queueAutosave();
       return true;
     } catch (error) { if (this.live(epoch)) this.patch({ busy: false, error: error.message, status: "error" }); return false; }
+  }
+
+  // Opted into only by Walk-in Check-in -> Register New Patient. Other forms
+  // keep the existing recovery decisions above.
+  async resumeLatestRecovery(source) {
+    if (this.closed || this.state.busy) return false;
+    const currentInput = this.state.hasPendingChanges ? copy(this.latest) : null;
+    const epoch = ++this.epoch;
+    this.clearTimers();
+    this.patch({ busy: true, error: "" });
+    try {
+      await this.localQueue.catch(() => {});
+      this.assertLive(epoch);
+      const current = await this.api.lookup(this.identity);
+      this.assertLive(epoch);
+      if (!current) {
+        const status = await this.api.status(this.identity, this.transactionUuid);
+        this.assertLive(epoch);
+        if (status && ["consumed", "discarded", "expired"].includes(status.status)) { await this.init(); return false; }
+      }
+      const server = current ? await this.api.detail(current.id) : null;
+      this.assertLive(epoch);
+      const row = this.localAvailable ? await this.vault.inspect(this.slot) : null;
+      this.assertLive(epoch);
+      let local, descriptor, key;
+      if (row && !row.terminal && !row.reserved && source !== "server") {
+        descriptor = await this.api.key(this.identity, row.transactionUuid, row);
+        this.assertLive(epoch);
+        key = await importRecoveryKey(descriptor.key_material);
+        local = await this.vault.open(this.slot, key);
+        const checked = await this.vault.inspect(this.slot);
+        this.assertLive(epoch);
+        if (checked?.revision !== row.revision || checked?.transactionUuid !== row.transactionUuid || checked?.terminal) {
+          throw new Error("The device copy changed in another tab. Retry to load its latest entries.");
+        }
+      }
+      const normalize = (payload) => {
+        const valid = assertFormDraftPayload(this.identity.form_type, payload);
+        return assertFormDraftPayload(this.identity.form_type, this.options.normalizeSnapshot ? this.options.normalizeSnapshot(valid) : valid);
+      };
+      // Validate both independently. A malformed copy must not mask a valid one,
+      // and neither copy is modified during recovery or a failed restore.
+      let deviceValue, serverValue, invalid;
+      try { if (currentInput || local) deviceValue = normalize(currentInput || local.payload); } catch (error) { invalid = error; }
+      try { if (server) serverValue = normalize(server.payload); } catch (error) { invalid = error; }
+      let choice = source;
+      if (source === "auto") {
+        if (!deviceValue) choice = "server";
+        else if (!serverValue) choice = "device";
+        else if (serialized(deviceValue) === serialized(serverValue)) choice = "server";
+        else if (local && row.transactionUuid === server.transaction_uuid) {
+          const version = local.serverVersion;
+          const sameBase = local.serverPayload === serialized(server.payload);
+          const pendingSaved = local.pendingPayload === serialized(server.payload);
+          const unchangedInput = !currentInput || serialized(currentInput) === serialized(local.payload);
+          // Acknowledgement and revision links establish causal order. Device
+          // savedAt and server last_saved_at use different clocks.
+          if (unchangedInput && row.unsynced === false && Number.isInteger(server.version) && server.version >= (version ?? 0)) choice = "server";
+          else if (version === server.version || sameBase || pendingSaved) choice = "device";
+          else if (unchangedInput && Number.isInteger(version) && server.version > version && serialized(local.payload) === local.serverPayload) choice = "server";
+        }
+        if (choice === "auto") {
+          this.draft = server;
+          this.local = row;
+          this.patch({ ready: false, decision: true, conflict: true, status: "conflict", busy: false,
+            error: "Both copies contain different entries and their order cannot be verified. Choose the copy to continue. Both are kept until restoration succeeds." });
+          return false;
+        }
+      }
+      const payload = choice === "device" ? deviceValue : serverValue;
+      if (!payload) throw invalid || new Error("This recovery copy is unavailable.");
+      this.options.onRestore(copy(payload));
+      this.assertLive(epoch);
+      const targetUuid = server?.transaction_uuid || row?.transactionUuid || this.transactionUuid;
+      const deviceRow = row && !row.terminal && !row.reserved ? row : null;
+      const sameTransaction = deviceRow?.transactionUuid === targetUuid;
+      this.transactionUuid = targetUuid;
+      this.latest = payload;
+      this.invalidSnapshot = null;
+      this.draft = server;
+      this.confirmed = serialized(server?.payload || this.initial);
+      this.awaitingRender = serialized(payload);
+      this.local = sameTransaction ? deviceRow : null;
+      this.localRevision = row?.revision ?? this.localRevision;
+      this.lastLocal = local && sameTransaction ? serialized(local.payload) : null;
+      this.key = sameTransaction ? key : null;
+      this.descriptor = sameTransaction && descriptor ? { key_id: descriptor.key_id, key_version: descriptor.key_version, expires_at: descriptor.expires_at } : null;
+      // Keep a different transaction's ciphertext until the form acknowledges
+      // hydration and a later checkpoint can replace it atomically.
+      this.recoveryReplacement = deviceRow && !sameTransaction ? deviceRow.transactionUuid : null;
+      const dirty = serialized(payload) !== this.confirmed;
+      this.patch({ transactionUuid: targetUuid, ready: true, decision: false, conflict: false, busy: false, error: "",
+        hasPendingChanges: dirty, status: dirty || !server ? "device-only" : "saved", lastSavedAt: server?.last_saved_at || "", deviceSavedAt: deviceRow?.savedAt || "" });
+      return true;
+    } catch (error) {
+      if (this.live(epoch)) this.patch({ ready: false, decision: true, busy: false, status: "error",
+        error: `Unable to restore registration. Your draft is still saved. Retry. ${error.message || ""}` });
+      return false;
+    }
   }
 
   async discard() {

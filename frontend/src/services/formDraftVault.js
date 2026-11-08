@@ -123,16 +123,18 @@ export function createFormDraftVault({ store = indexedDbStore, now = Date.now } 
       }
       return decryptRecord(key, `${slot}:${row.transactionUuid}`, row);
     },
-    async write({ slot, key, descriptor, transactionUuid, expectedRevision = 0, snapshot, ownerTag, unsynced = true }) {
+    async write({ slot, key, descriptor, transactionUuid, expectedRevision = 0, snapshot, ownerTag, unsynced = true, replaceTransactionUuid }) {
       const expiry = Math.min(Date.parse(descriptor.expires_at), now() + 7 * DAY);
       if (!Number.isFinite(expiry) || expiry <= now()) {
         throw failure("DRAFT_RECOVERY_EXPIRED", "The device recovery key has expired. Save online before leaving.");
       }
       const encrypted = await encryptRecord(key, `${slot}:${transactionUuid}`, snapshot);
       return store.change(slot, (current) => {
+        const replacing = replaceTransactionUuid && current && !current.terminal && current.transactionUuid === replaceTransactionUuid;
         if ((current?.revision || 0) !== expectedRevision ||
             (current?.terminal && current.transactionUuid === transactionUuid) ||
-            (current && !current.terminal && current.transactionUuid !== transactionUuid)) {
+            (replaceTransactionUuid && !replacing) ||
+            (current && !current.terminal && current.transactionUuid !== transactionUuid && !replacing)) {
           throw failure("LOCAL_DRAFT_CONFLICT", "This form has newer recovery input in another tab. Reopen it before editing.");
         }
         return {

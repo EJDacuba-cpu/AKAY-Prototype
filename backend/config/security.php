@@ -44,7 +44,7 @@ $cspPolicy = implode(' ', [
     "style-src 'self' 'unsafe-inline';",
     "img-src 'self' data: blob:;",
     "font-src 'self';",
-    'frame-src https://challenges.cloudflare.com;',
+    'frame-src blob: https://challenges.cloudflare.com;',
     'connect-src '.implode(' ', array_unique($connectSources)).';',
     "media-src 'self' blob:;",
     "worker-src 'self' blob:;",

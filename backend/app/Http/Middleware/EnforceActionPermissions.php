@@ -47,6 +47,7 @@ class EnforceActionPermissions
                     || ActionPermissions::allows($request->user(), 'consultations.finalize'))
                     ? null
                     : 'consultations.encode',
+            str_contains($path, '/laboratory-tests') => $read ? 'clinical.history' : 'records.correct',
             str_contains($path, '/health-records') => $read ? 'clinical.history' : 'consultations.finalize',
             str_contains($path, '/nutrition-care') => 'consultations.finalize',
             // BHC and RHU history now opens through the patient directory/profile.

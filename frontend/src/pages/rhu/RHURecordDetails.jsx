@@ -21,6 +21,7 @@ import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
 } from "../../components/features/health-records/BhcHealthRecordPrintDocument";
 import { Button } from "../../components/ui/button";
+import LaboratoryRecordPanel from "../../components/features/health-records/LaboratoryRecordPanel";
 
 import {
   formatLongDate,
@@ -236,6 +237,7 @@ export default function RHURecordDetails() {
             onBack={returnToProfile}
             onPrint={() => window.print()}
           />
+          <LaboratoryRecordPanel recordId={recordId} patientId={record.patientId || record.patient_id} />
         </div>
 
         <div className="hidden print:block">

@@ -590,6 +590,18 @@ class HealthRecordDraftService
         });
     }
 
+    public function authorizeLaboratoryDraft(User $user, string $uuid, bool $write): void
+    {
+        $draft = HealthRecordDraft::query()->where('consultation_uuid', $uuid)
+            ->where('status', HealthRecordDraft::STATUS_ACTIVE)->first();
+        if ($draft) {
+            $this->loadOwnedActive($user, $draft->public_id);
+            if ($write) {
+                $this->assertEditor($user, $draft);
+            }
+        }
+    }
+
     private function assertEditor(User $user, HealthRecordDraft $draft, bool $encoding = true): void
     {
         abort_unless((int) $draft->editor_user_id === (int) $user->id && $draft->editor_expires_at?->isFuture(), 409, 'Your editing session ended or was taken over. Reopen the consultation.');

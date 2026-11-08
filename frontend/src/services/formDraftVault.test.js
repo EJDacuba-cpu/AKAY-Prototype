@@ -106,3 +106,21 @@ test("retention sweep removes expired ciphertext even when its form is never reo
   assert.equal(store.rows.get("forgotten").ciphertext, null);
   assert.equal(store.rows.get("forgotten").terminal, true);
 });
+
+test("recovered transaction replacement is atomic and rejects a changed device revision", async () => {
+  const store = memoryStore();
+  const vault = createFormDraftVault({ store });
+  const key = await importRecoveryKey(material);
+  const input = { slot: "slot", key, descriptor, transactionUuid: "old", snapshot: { payload: "protected input" } };
+  const before = await vault.write(input);
+  const replacement = { ...input, transactionUuid: "resumed", replaceTransactionUuid: "old", expectedRevision: before.revision, snapshot: { payload: "restored input" } };
+  await assert.rejects(vault.write({ ...replacement, descriptor: { ...descriptor, expires_at: "2000-01-01T00:00:00Z" } }), { code: "DRAFT_RECOVERY_EXPIRED" });
+  assert.deepEqual(await vault.inspect("slot"), before);
+  await vault.write({ ...input, expectedRevision: before.revision, snapshot: { payload: "new entries from another tab" } });
+  await assert.rejects(vault.write(replacement), { code: "LOCAL_DRAFT_CONFLICT" });
+  assert.equal((await vault.open("slot", key)).payload, "new entries from another tab");
+  const latest = await vault.inspect("slot");
+  await vault.write({ ...replacement, expectedRevision: latest.revision });
+  assert.equal((await vault.open("slot", key)).payload, "restored input");
+  assert.equal((await vault.inspect("slot")).transactionUuid, "resumed");
+});

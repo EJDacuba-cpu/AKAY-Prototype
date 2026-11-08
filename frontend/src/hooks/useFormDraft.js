@@ -12,28 +12,37 @@ const disabledState = { ready: true, decision: false, status: "idle", error: "",
 const noSubscribe = () => () => {};
 const disabledSnapshot = () => disabledState;
 
-export default function useFormDraft({ formType, mode, contextKey, value, initialValue, onRestore, normalizeSnapshot, preparedEngine = null, onEntryConsumed, enabled = FORM_DRAFTS_ENABLED, baseRevision = null }) {
+export default function useFormDraft({ formType, mode, contextKey, value, initialValue, onRestore, normalizeSnapshot, preparedEngine = null, onEntryConsumed, enabled = FORM_DRAFTS_ENABLED, baseRevision = null, preferLatestRecovery = false }) {
   const queryClient = useQueryClient();
   const owner = formDraftOwnerContext(getCurrentUser() || {});
   const engine = useMemo(() => enabled ? preparedEngine || createFormDraftCoordinator({
     identity: { form_type: formType, mode, context_key: contextKey }, owner,
-    initialValue, baseRevision, normalizeSnapshot, onRestore: () => {},
+    initialValue, baseRevision, normalizeSnapshot, preferLatestRecovery, onRestore: () => {},
     vault: formDraftVault, api: createFormDraftApi({ owner, queryClient }),
   }) : null,
   // The baseline belongs to the opened form identity. Typing/refetch must not replace it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [enabled, owner, formType, mode, contextKey, queryClient, preparedEngine]);
+  [enabled, owner, formType, mode, contextKey, queryClient, preparedEngine, preferLatestRecovery]);
   const restoredEntry = useRef(null);
   const lifetime = useRef(null);
   useEffect(() => {
     engine?.setRestoreHandler(onRestore);
     if (engine && engine === preparedEngine && restoredEntry.current !== engine) {
       restoredEntry.current = engine;
-      onEntryConsumed?.();
-      onRestore(JSON.parse(JSON.stringify(engine.latest)));
+      if (preferLatestRecovery) {
+        try { onRestore(JSON.parse(JSON.stringify(engine.latest))); onEntryConsumed?.(); }
+        catch (error) { engine.patch({ ready: false, decision: true, busy: false, status: "error", error: `Unable to restore registration. Your draft is still saved. Retry. ${error.message || ""}` }); }
+      } else {
+        onEntryConsumed?.();
+        onRestore(JSON.parse(JSON.stringify(engine.latest)));
+      }
     }
-  }, [engine, preparedEngine, onRestore, onEntryConsumed]);
+  }, [engine, preparedEngine, onRestore, onEntryConsumed, preferLatestRecovery]);
   const state = useSyncExternalStore(engine?.subscribe || noSubscribe, engine?.getSnapshot || disabledSnapshot, engine?.getSnapshot || disabledSnapshot);
+  useEffect(() => {
+    // A failed handoff can succeed on Retry after the initial effect ran.
+    if (preferLatestRecovery && engine === preparedEngine && state.ready) onEntryConsumed?.();
+  }, [engine, preparedEngine, state.ready, preferLatestRecovery, onEntryConsumed]);
   const inputSnapshot = JSON.stringify(value);
   useEffect(() => {
     if (!engine) return;

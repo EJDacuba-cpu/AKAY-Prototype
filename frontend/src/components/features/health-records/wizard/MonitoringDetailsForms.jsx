@@ -19,6 +19,7 @@ function TbDotsDetails({ tbData, onTbDataChange, recordId, referenceCaseNumber =
         onChange={onTbDataChange}
         recordId={recordId}
         referenceCaseNumber={caseNumber}
+        mode="dots"
       />
     </div>
   );

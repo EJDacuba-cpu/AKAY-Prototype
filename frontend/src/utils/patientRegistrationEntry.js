@@ -4,6 +4,11 @@ export function registrationTarget(to, role) {
   return url.origin === "https://akay.local" && url.pathname === `/${role}/patients/add` ? `${url.pathname}${url.search}${url.hash}` : null;
 }
 
+export function isWalkInRegistrationRecovery(to, role) {
+  const target = registrationTarget(to, role);
+  return role === "rhu" && Boolean(target) && new URL(target, "https://akay.local").searchParams.get("check_in") === "1";
+}
+
 const key = (owner, path) => ["registration-entry", owner, path];
 export function storeRegistrationEntry(client, owner, path, engine, now = Date.now()) {
   engine.clearTimers();

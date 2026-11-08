@@ -394,6 +394,9 @@ class HealthRecordController extends Controller
                         PatientBackground::visitIncludesMaternal($data)
                     ),
                 ]);
+                if ($rhuItr) {
+                    app(\App\Services\LaboratoryEvidenceService::class)->finalize($request, $record, $data['laboratory_tests'] ?? []);
+                }
                 // Discontinue first: a legacy row being discontinued must not be
                 // auto-linked by a confirmation of the same condition.
                 if ($legacyDiscontinuations !== []) {
@@ -664,6 +667,7 @@ class HealthRecordController extends Controller
             'record' => $healthRecord,
             'patient' => $healthRecord->patient,
             'tb' => $healthRecord->tb_data,
+            'universalLaboratoryTests' => app(\App\Services\LaboratoryEvidenceService::class)->present($healthRecord),
         ])->setPaper('legal', 'landscape');
 
         $caseNumber = $healthRecord->tb_data['diagnosis']['tbCaseNumber'] ?? $healthRecord->id;

@@ -22,7 +22,7 @@ const browserHeaders = (apiBaseUrl, reportOnly = false) => {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    "frame-src https://challenges.cloudflare.com",
+    "frame-src blob: https://challenges.cloudflare.com",
     `connect-src ${[...new Set(connectSources)].join(" ")}`,
     "media-src 'self' blob:",
     "worker-src 'self' blob:",

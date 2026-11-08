@@ -80,6 +80,10 @@ class MonitoringHandoffService
                     : MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED,
                 'created_by' => $user->id,
             ]);
+            app(HandoffLaboratoryEvidence::class)->share(
+                $request, $handoff, $entry['laboratoryEvidence'] ?? [],
+                ($entry['laboratoryEvidenceConfirmed'] ?? false) === true,
+            );
             $this->auditLogger->log(
                 $request,
                 'created',

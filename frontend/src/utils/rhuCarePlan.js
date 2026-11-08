@@ -178,6 +178,9 @@ export function rhuCarePlanErrors(diagnoses = [], {
       if (!text(entry.monitoringRecommendation)) {
         errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
       }
+      if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
+        errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+      }
     }
   }
   return errors;
@@ -194,6 +197,10 @@ export function diagnosesForRhuSave(diagnoses = []) {
       manageToBhc: fields.nextAction === "manage_to_bhc",
       receivingBhcId: fields.receivingBhcId,
       monitoringRecommendation: fields.monitoringRecommendation,
+      ...(fields.nextAction === "manage_to_bhc" ? {
+        laboratoryEvidence: entry.laboratoryEvidence || [],
+        laboratoryEvidenceConfirmed: entry.laboratoryEvidenceConfirmed === true,
+      } : {}),
     };
   });
 }

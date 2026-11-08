@@ -123,6 +123,7 @@ import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreShar
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import { concernFollowUpTaskIds, continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, linkedScheduledFollowUpReviewRows, pruneContinuedSchedules, setContinuedSchedule, stripServiceConcernSchedules } from "../../utils/continuedConcerns";
 import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
+import MonitoringLaboratoryEvidence from "../../components/features/health-records/MonitoringLaboratoryEvidence";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import LegacyBackgroundRecoveryPanel from "../../components/features/health-records/wizard/LegacyBackgroundRecoveryPanel";
@@ -4405,9 +4406,11 @@ export default function ConsultationWorkspace() {
         }}
         recordId={null}
       />
+      {canViewBackground && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
     </LockedFormContent>
   ) : (
     <div className="ehr-consult__care-plan">
+    {canViewBackground && (continuedMonitorings.length > 0 || startingConditions.length > 0) && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
     <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
     <FollowUpVisitLine followUps={continuedFollowUps} decisions={continuedDecisions} schedules={followUpSchedules} errors={validationErrors} legacyConditionNames={continuedFollowUps.length ? legacyConditionNames : []} disabled={conditionFieldsLocked} onOutcomeChange={handleContinuedOutcome} onScheduleChange={handleContinuedSchedule} />
     <NextStepsSection

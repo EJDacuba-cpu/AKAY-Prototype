@@ -9,7 +9,7 @@ import { createFormDraftApi } from "../../../services/formDraftService";
 import { formDraftVault } from "../../../services/formDraftVault";
 import { formDraftOwnerContext } from "../../../utils/formDraftRequest";
 import { getCurrentUser } from "../../../utils/auth";
-import { registrationTarget, storeRegistrationEntry, releaseRegistrationEntry } from "../../../utils/patientRegistrationEntry";
+import { registrationTarget, isWalkInRegistrationRecovery, storeRegistrationEntry, releaseRegistrationEntry } from "../../../utils/patientRegistrationEntry";
 import { INITIAL_FORM_STATE } from "../../../utils/patientRegistrationDefaults";
 import { registrationDraftSnapshot, restoreRegistrationDraft } from "../../../utils/patientRegistrationPayload";
 
@@ -71,6 +71,7 @@ export function PatientRegistrationEntryProvider({ role, children }) {
     const initialValue = registrationDraftSnapshot({ form: INITIAL_FORM_STATE });
     const coordinator = createFormDraftCoordinator({
       identity: { form_type: "patient", mode: "create", context_key: "new" }, owner, initialValue,
+      preferLatestRecovery: isWalkInRegistrationRecovery(path, role),
       normalizeSnapshot: (payload) => registrationDraftSnapshot(restoreRegistrationDraft(payload, INITIAL_FORM_STATE)),
       onRestore: () => {}, vault: formDraftVault, api: createFormDraftApi({ owner, queryClient: client }),
     });

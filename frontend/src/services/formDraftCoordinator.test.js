@@ -284,3 +284,197 @@ test("typing after a server save immediately stops displaying Saved", async () =
   f.offline(); engine.setValue({ first_name: "Offline typing" });
   assert.equal(engine.getSnapshot().status, "offline");
 });
+
+async function walkInRecovery() {
+  const f = fixture();
+  f.options.preferLatestRecovery = true;
+  f.options.initialValue = registrationDraftSnapshot({ form: { firstName: "", lastName: "" } });
+  f.options.normalizeSnapshot = (payload) => registrationDraftSnapshot(restoreRegistrationDraft(payload, { firstName: "", lastName: "" }));
+  const first = createFormDraftCoordinator(f.options);
+  await first.init();
+  const saved = registrationDraftSnapshot({ form: { firstName: "Saved", lastName: "Patient", birthDate: "2020-", occupation: "Retained hidden field" },
+    connection: { kind: "existing", householdId: "3", relationship: "Son" }, householdVersion: 4, walkIn: { key: "saved-walk-in-key" } });
+  first.setValue(saved);
+  await first.flush();
+  first.close();
+  f.calls.length = 0;
+  const reopen = async () => { const engine = createFormDraftCoordinator(f.options); await engine.init(); return engine; };
+  return { ...f, saved, reopen };
+}
+
+test("walk-in Resume hands saved fields and household/walk-in intent to the exact registration route without a second decision or submission", async () => {
+  const f = await walkInRecovery();
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.equal(engine.getSnapshot().conflict, false);
+  assert.deepEqual(f.restored.at(-1), f.saved);
+  const rows = new Map();
+  const client = { setQueryData: (key, value) => rows.set(JSON.stringify(key), value), getQueryData: (key) => rows.get(JSON.stringify(key)), removeQueries: ({ queryKey }) => rows.delete(JSON.stringify(queryKey)) };
+  const path = "/rhu/patients/add?check_in=1";
+  storeRegistrationEntry(client, f.options.owner, path, engine);
+  const prepared = readRegistrationEntry(client, f.options.owner, path);
+  assert.equal(prepared, engine);
+  assert.equal(consumeRegistrationEntry(client, f.options.owner, path, prepared), true);
+  prepared.setValue(structuredClone(prepared.latest), true);
+  assert.equal(prepared.isReadyForValue(f.saved), true);
+  assert.equal(prepared.getSnapshot().decision, false);
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in matching copies resume automatically even across transaction identities and stay protected until hydration", async () => {
+  const f = await walkInRecovery();
+  f.remote({ ...f.server(), transaction_uuid: "other-transaction" });
+  const before = structuredClone([...f.rows.values()][0]);
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.equal(engine.getSnapshot().conflict, false);
+  assert.deepEqual([...f.rows.values()][0], before);
+  await assert.rejects(engine.checkpoint(), { code: "DRAFT_NOT_READY" });
+  engine.setValue(engine.latest, true);
+  engine.setValue(registrationDraftSnapshot({ form: { firstName: "Continued" } }));
+  await engine.checkpoint();
+  assert.equal([...f.rows.values()][0].transactionUuid, "other-transaction");
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in Resume restores newer unsynced device entries based on the current server revision", async () => {
+  const f = await walkInRecovery();
+  const editing = await f.reopen();
+  await editing.resume(); editing.setValue(editing.latest, true);
+  const newer = registrationDraftSnapshot({ form: { firstName: "Latest device", birthDate: "2021-" }, walkIn: { key: "same-registration" } });
+  editing.setValue(newer); await editing.checkpoint(); editing.close();
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.deepEqual(engine.latest, f.options.normalizeSnapshot(newer));
+  assert.equal(engine.getSnapshot().conflict, false);
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in Resume selects a newer server revision over an acknowledged older device copy", async () => {
+  const f = await walkInRecovery();
+  const newest = registrationDraftSnapshot({ form: { firstName: "Latest server" } });
+  f.remote({ ...f.server(), version: 3, payload: newest });
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.deepEqual(engine.latest, f.options.normalizeSnapshot(newest));
+  assert.equal(engine.getSnapshot().conflict, false);
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in Resume recognizes a lost save response using its confirmed payload link", async () => {
+  const f = await walkInRecovery();
+  const editing = await f.reopen();
+  await editing.resume(); editing.setValue(editing.latest, true);
+  const newer = registrationDraftSnapshot({ form: { firstName: "Unsent after lost response" } });
+  editing.setValue(newer); await editing.checkpoint(); editing.close();
+  // Same server payload under a higher revision: the recorded base still
+  // proves the device edits descend from it.
+  f.remote({ ...f.server(), version: 2 });
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.deepEqual(engine.latest, f.options.normalizeSnapshot(newer));
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in unorderable copies stay intact until a deliberate choice, regardless of device clock", async () => {
+  const f = await walkInRecovery();
+  const editing = await f.reopen();
+  await editing.resume(); editing.setValue(editing.latest, true);
+  editing.setValue(registrationDraftSnapshot({ form: { firstName: "Device branch" } })); await editing.checkpoint(); editing.close();
+  f.remote({ ...f.server(), version: 2, payload: registrationDraftSnapshot({ form: { firstName: "Server branch" } }), last_saved_at: "2000-01-01T00:00:00Z" });
+  const before = structuredClone([...f.rows.values()][0]);
+  const server = structuredClone(f.server());
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), false);
+  assert.equal(engine.getSnapshot().conflict, true);
+  assert.deepEqual([...f.rows.values()][0], before);
+  assert.deepEqual(f.server(), server);
+  assert.equal(f.restored.length, 1); // Only the earlier editing session.
+  assert.equal(await engine.resume("server"), true);
+  assert.equal(engine.latest.registration.form.firstName, "Server branch");
+  assert.deepEqual([...f.rows.values()][0], before); // No destructive checkpoint during Resume.
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in recovery network, key and hydration failures retain both drafts and allow retry", async () => {
+  for (const failure of ["detail", "key", "onRestore"]) {
+    const f = await walkInRecovery();
+    f.remote({ ...f.server(), transaction_uuid: "different-transaction" });
+    const before = structuredClone([...f.rows.values()][0]);
+    const server = structuredClone(f.server());
+    const original = failure === "onRestore" ? f.options.onRestore : f.api[failure];
+    if (failure === "onRestore") f.options.onRestore = () => { throw new Error("Hydration failed"); };
+    else f.api[failure] = async () => { throw new Error("Recovery temporarily unavailable"); };
+    const engine = await f.reopen();
+    assert.equal(await engine.resume(), false);
+    assert.equal(engine.getSnapshot().ready, false);
+    assert.match(engine.getSnapshot().error, /draft is still saved.*Retry/);
+    assert.deepEqual([...f.rows.values()][0], before);
+    assert.deepEqual(f.server(), server);
+    if (failure === "onRestore") engine.setRestoreHandler(original);
+    else f.api[failure] = original;
+    assert.equal(await engine.resume(), true);
+    assert.deepEqual(f.calls, []);
+  }
+});
+
+test("walk-in recovery uses a valid device snapshot if the server payload is malformed", async () => {
+  const f = await walkInRecovery();
+  f.remote({ ...f.server(), payload: { registration: { form: "malformed" } } });
+  const before = structuredClone([...f.rows.values()][0]);
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), true);
+  assert.deepEqual(engine.latest, f.saved);
+  assert.deepEqual([...f.rows.values()][0], before);
+  assert.deepEqual(f.calls, []);
+});
+
+test("other draft workflows keep the existing cross-transaction choice", async () => {
+  const f = await walkInRecovery();
+  f.options.preferLatestRecovery = false;
+  f.remote({ ...f.server(), transaction_uuid: "other-transaction" });
+  const engine = await f.reopen();
+  assert.equal(await engine.resume(), false);
+  assert.equal(engine.getSnapshot().conflict, true);
+  assert.equal(engine.getSnapshot().ready, false);
+});
+
+test("walk-in Resume cannot revive a registration completed in another session", async () => {
+  const f = await walkInRecovery();
+  const engine = await f.reopen();
+  f.consumed();
+  assert.equal(await engine.resume(), false);
+  assert.equal(f.restored.length, 0);
+  assert.equal(engine.getSnapshot().decision, false);
+  assert.deepEqual(f.calls, []);
+});
+
+test("walk-in failed snapshot validation and decryption preserve ciphertext and server input", async () => {
+  for (const failure of ["normalizeSnapshot", "open"]) {
+    const f = await walkInRecovery();
+    const before = structuredClone([...f.rows.values()][0]);
+    const server = structuredClone(f.server());
+    if (failure === "normalizeSnapshot") f.options.normalizeSnapshot = () => { throw new Error("Invalid snapshot"); };
+    else f.vault.open = async () => { throw new Error("Cannot decrypt copy"); };
+    const engine = await f.reopen();
+    assert.equal(await engine.resume(), false);
+    assert.match(engine.getSnapshot().error, /draft is still saved.*Retry/);
+    assert.equal(f.restored.length, 0);
+    assert.deepEqual([...f.rows.values()][0], before);
+    assert.deepEqual(f.server(), server);
+    assert.deepEqual(f.calls, []);
+  }
+});
+
+test("walk-in uncheckpointed entries cannot be replaced by an acknowledged older device copy", async () => {
+  const f = await walkInRecovery();
+  const engine = await f.reopen();
+  await engine.resume(); engine.setValue(engine.latest, true);
+  engine.setValue(registrationDraftSnapshot({ form: { firstName: "Unsaved in open form" } }));
+  f.remote({ ...f.server(), version: 2, payload: registrationDraftSnapshot({ form: { firstName: "Other session" } }) });
+  assert.equal(await engine.resume(), false);
+  assert.equal(engine.getSnapshot().conflict, true);
+  assert.equal(await engine.resume("device"), true);
+  assert.equal(engine.latest.registration.form.firstName, "Unsaved in open form");
+  assert.deepEqual(f.calls, []);
+});

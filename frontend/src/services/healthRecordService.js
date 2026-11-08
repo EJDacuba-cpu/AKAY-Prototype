@@ -839,6 +839,7 @@ function toPayload(record = {}, { partial = false } = {}) {
     ...(record.consultationWorkflow ? { consultation_workflow: record.consultationWorkflow } : {}),
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
+    ...(record.consultationWorkflow === "rhu_itr_v1" ? { laboratory_tests: record.laboratoryTests || [] } : {}),
     body_findings: serializeBodyFindings(record.bodyFindings),
     history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,

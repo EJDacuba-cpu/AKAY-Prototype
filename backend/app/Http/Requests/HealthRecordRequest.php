@@ -213,6 +213,18 @@ class HealthRecordRequest extends FormRequest
             $rules['care_plan.referral_multiple_issues'] = ['prohibited'];
         }
 
+        $rules = [...$rules, ...\App\Services\LaboratoryEvidenceService::rules()];
+        if (! $rhuItr) {
+            $rules['laboratory_tests'] = ['prohibited'];
+        }
+        $rules['diagnoses.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];
+        $rules['diagnoses.*.laboratoryEvidence.*'] = ['array:reference,version,attachmentIds'];
+        $rules['diagnoses.*.laboratoryEvidence.*.reference'] = ['required', 'string', 'max:80'];
+        $rules['diagnoses.*.laboratoryEvidence.*.version'] = ['required', 'integer', 'min:0'];
+        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds'] = ['nullable', 'array', 'max:10'];
+        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds.*'] = ['uuid'];
+        $rules['diagnoses.*.laboratoryEvidenceConfirmed'] = ['nullable', 'boolean'];
+
         return $rules;
     }
 

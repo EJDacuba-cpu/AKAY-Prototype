@@ -195,6 +195,8 @@ async function sendRequest(endpoint, options = {}) {
 
   if (response.status === 204) return null;
 
+  if (response.ok && options.responseType === "blob") return response.blob();
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(serverErrorMessage(payload));

@@ -1,9 +1,10 @@
 import { Trash2 } from "lucide-react";
+import { LaboratoryEvidencePicker } from "../LaboratoryEvidence";
 
 import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
-import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
+import { FieldError, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
 import { entryPurposeKey } from "../../../../utils/followUpSchedules";
@@ -158,6 +159,7 @@ function FollowUpConditionReferences({ references = [] }) {
 }
 
 function DiagnosisCard({
+  laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
   registry, existingTbCase, onChange, onFollowUpChange, onRemove,
 }) {
@@ -266,6 +268,17 @@ function DiagnosisCard({
                 placeholder="What should the BHC monitor, and why?"
                 onChange={(event) => onChange({ ...entry, monitoringRecommendation: event.target.value })}
               />
+              <LaboratoryEvidencePicker
+                options={laboratoryOptions}
+                loading={laboratoryLoading}
+                loadError={laboratoryError}
+                onRefresh={onRefreshLaboratory}
+                selected={entry.laboratoryEvidence || []}
+                confirmed={entry.laboratoryEvidenceConfirmed === true}
+                disabled={disabled}
+                error={errors[`${key}.laboratoryEvidence`] || errors[`${key}.laboratoryEvidenceConfirmed`] || errors.laboratoryEvidence || errors.laboratoryEvidenceConfirmed}
+                onChange={(laboratoryEvidence, laboratoryEvidenceConfirmed) => onChange({ ...entry, laboratoryEvidence, laboratoryEvidenceConfirmed })}
+              />
             </fieldset>
           )}
         </>
@@ -277,6 +290,7 @@ function DiagnosisCard({
 }
 
 export default function RhuDiagnosisCarePlanSection({
+  laboratoryOptions = [], laboratoryLoading = false, laboratoryError = false, onRefreshLaboratory,
   diagnoses = [],
   diagnosisDraft = "",
   onDiagnosisDraftChange,
@@ -342,6 +356,10 @@ export default function RhuDiagnosisCarePlanSection({
         <div className="mt-4 space-y-4">
           {diagnoses.map((entry) => (
             <DiagnosisCard
+              laboratoryOptions={laboratoryOptions}
+              laboratoryLoading={laboratoryLoading}
+              laboratoryError={laboratoryError}
+              onRefreshLaboratory={onRefreshLaboratory}
               key={entry.id}
               entry={entry}
               schedules={schedules}

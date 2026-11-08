@@ -136,6 +136,19 @@
                 <td style="text-align:left">{{ $dash($row[1]['result'] ?? null) }}</td>
             </tr>
         @endforeach
+        @foreach (($universalLaboratoryTests ?? []) as $test)
+            <tr>
+                <td style="text-align:left">{{ $test['testName'] }}</td>
+                <td>{{ $dash($test['collectionDate'] ?? null) }}</td>
+                <td>{{ $dash($test['examinationDate'] ?? null) }}</td>
+                <td style="text-align:left">
+                    {{ $test['resultStatus'] }}: {{ $dash($test['result'] ?? null) }}
+                    @if (!empty($test['addenda']))
+                        <div style="font-size:8px">Laboratory addendum #{{ $test['version'] }}. Original: {{ $test['original']['resultStatus'] }} — {{ $dash($test['original']['result'] ?? null) }}</div>
+                    @endif
+                </td>
+            </tr>
+        @endforeach
     </table>
 
     <div class="section-title">D. Diagnosis &amp; E. TB Disease Classification</div>

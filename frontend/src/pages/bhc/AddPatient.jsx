@@ -46,7 +46,7 @@ import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS, registrationRecov
 import useFormDraft from "../../hooks/useFormDraft";
 import { getCurrentUser } from "../../utils/auth";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { readRegistrationEntry, consumeRegistrationEntry } from "../../utils/patientRegistrationEntry";
+import { readRegistrationEntry, consumeRegistrationEntry, isWalkInRegistrationRecovery } from "../../utils/patientRegistrationEntry";
 import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
 import {
@@ -211,6 +211,7 @@ export function RegistrationForm({
     formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
     value: snapshot, initialValue: draftBaseline,
     preparedEngine,
+    preferLatestRecovery: isWalkInRegistrationRecovery(entryPath, role),
     onEntryConsumed: () => consumeRegistrationEntry(client, owner, entryPath, preparedEngine),
     normalizeSnapshot: (payload) => {
       const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);

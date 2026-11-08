@@ -6,6 +6,7 @@ use App\Exceptions\ClinicalRecoveryEndedException;
 use App\Models\FormDraft;
 use App\Models\HealthRecord;
 use App\Models\HealthRecordDraft;
+use App\Models\LaboratoryAttachment;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
 use Closure;
@@ -44,6 +45,7 @@ class FormDraftRecoveryKeyService
             $this->heldClinicalIdentity = $uuid;
             try {
                 $this->adoptExistingClinicalIdentity($uuid);
+
                 return $action();
             } finally {
                 $this->heldClinicalIdentity = null;
@@ -67,7 +69,9 @@ class FormDraftRecoveryKeyService
         }
         $terminal = HealthRecord::where('consultation_uuid', $uuid)->exists() ? 'consumed'
             : $drafts->first(fn ($draft) => $draft->status !== 'active')?->status;
-        if (! $terminal && $drafts->isNotEmpty() && $drafts->every(fn ($draft) => $draft->expires_at?->lte(now()))) $terminal = 'expired';
+        if (! $terminal && $drafts->isNotEmpty() && $drafts->every(fn ($draft) => $draft->expires_at?->lte(now()))) {
+            $terminal = 'expired';
+        }
         if ($terminal && DB::table('clinical_recovery_identities')->where('consultation_uuid', $uuid)->value('status') === 'active') {
             // Metadata only: domain expiry/discard and visit rotation remain on
             // their existing guarded workflow, never on a recovery-key read.
@@ -126,6 +130,10 @@ class FormDraftRecoveryKeyService
         abort_unless($identity->status === 'active' || $identity->status === $status, 409);
         DB::table('clinical_recovery_identities')->where('consultation_uuid', $uuid)->update(['status' => $status, 'updated_at' => now()]);
         DB::table('form_draft_recovery_keys')->where('form_type', 'consultation')->where('transaction_uuid', $uuid)->update(['encrypted_key' => null, 'status' => $status]);
+        if (in_array($status, ['discarded', 'expired'], true)) {
+            LaboratoryAttachment::query()->where('consultation_uuid', $uuid)
+                ->whereNull('health_record_id')->whereNull('removed_at')->update(['removed_at' => now()]);
+        }
         if (in_array($status, ['discarded', 'expired'], true) && str_starts_with($identity->facility_scope ?? '', 'rhu:') && str_starts_with($identity->context_key ?? '', 'visit:')) {
             // The queue visit is still in progress. Fresh work must get a fresh
             // identity without creating another visit or completing this one.

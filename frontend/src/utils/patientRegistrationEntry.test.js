@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registrationTarget, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
+import { registrationTarget, isWalkInRegistrationRecovery, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
 
 const fixture = () => {
   const rows = new Map();
@@ -8,6 +8,16 @@ const fixture = () => {
   const engine = { identity: { form_type: "patient", mode: "create", context_key: "new" }, options: { owner: "actor" }, closed: false, getSnapshot: () => ({ ready: true }), clearTimers() {}, close() { this.closed = true; } };
   return { client, engine };
 };
+
+test("latest-copy recovery is limited to new RHU walk-in registration", () => {
+  assert.equal(isWalkInRegistrationRecovery("/rhu/patients/add?check_in=1", "rhu"), true);
+  assert.equal(isWalkInRegistrationRecovery("/rhu/patients/add?household=3&check_in=1#details", "rhu"), true);
+  for (const [path, role] of [
+    ["/rhu/patients/add", "rhu"], ["/rhu/patients/add?check_in=0", "rhu"],
+    ["/bhc/patients/add?check_in=1", "bhc"], ["/rhu/patients/7/edit?check_in=1", "rhu"],
+    ["/rhu/patients/add?check_in=1", "bhc"], ["//elsewhere.test/rhu/patients/add?check_in=1", "rhu"],
+  ]) assert.equal(isWalkInRegistrationRecovery(path, role), false);
+});
 
 test("registration entry matches new BHC/RHU registration, preserving household and walk-in queries", () => {
   assert.equal(registrationTarget("/bhc/patients/add?household=12", "bhc"), "/bhc/patients/add?household=12");

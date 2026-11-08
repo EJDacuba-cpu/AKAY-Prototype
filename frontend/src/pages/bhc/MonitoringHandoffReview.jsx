@@ -18,6 +18,7 @@ import { formatDisplayValue, formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import useAccess from "../../hooks/useAccess";
 import { errorStateVariant } from "../../utils/errorStateVariant";
+import { LaboratoryEvidenceList } from "../../components/features/health-records/LaboratoryEvidence";
 
 const STATUS_LABELS = {
   pending_review: "Pending Review",
@@ -183,6 +184,10 @@ export default function MonitoringHandoffReview() {
               </ul>
             </section>
           )}
+          <section className="min-w-0 space-y-3 border-b border-neutral-200 p-4 sm:p-5">
+            <h2 className="text-sm font-semibold text-ink-900">RHU Laboratory Evidence</h2>
+            <LaboratoryEvidenceList entries={request.laboratory_evidence || []} emptyMessage={request.status === "linkage_needed" ? "Verify and link this patient to review authorized laboratory evidence." : "No laboratory evidence shared with this request."} />
+          </section>
           {linkedName && (
             <section className="border-b border-neutral-200 p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-ink-900">Linked BHC patient</h2>

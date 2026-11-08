@@ -104,6 +104,10 @@ export function normalizeDiagnoses(list) {
       // The BHC follow-up flag belongs to a referral only.
       ...(item.carePlan === "refer" && item.bhcFollowUp === true ? { bhcFollowUp: true } : {}),
       ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
+      ...(Array.isArray(item.laboratoryEvidence) ? {
+        laboratoryEvidence: item.laboratoryEvidence.map(selection => ({ reference: selection.reference, version: selection.version, attachmentIds: selection.attachmentIds || [] })),
+        laboratoryEvidenceConfirmed: item.laboratoryEvidenceConfirmed === true,
+      } : {}),
       ...(Object.hasOwn(item, "activate") || Object.hasOwn(item, "nextAction") || item.manageToBhc === true
         ? rhuDiagnosisFields(item)
         : {}),
