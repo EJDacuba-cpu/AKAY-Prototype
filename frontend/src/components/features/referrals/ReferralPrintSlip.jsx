@@ -1,3 +1,4 @@
+import { formatFacilityName, formatPatientName } from "../../../utils/formatters";
 import ReferralQrCode from "./ReferralQrCode";
 import { getReferralAttention } from "../../../utils/referralAttention";
 
@@ -7,31 +8,13 @@ export function buildReferralSlipData(referral = {}, patient = null) {
   return {
     trackingId: referral.trackingId || referral.tracking_id || "",
     referralId: referral.id || referral.referral_id || "",
-    patientName:
-      referral.patientName ||
-      patient?.fullName ||
-      patient?.name ||
-      referral.patient?.full_name ||
-      referral.patient?.name ||
-      [patient?.firstName, patient?.middleName, patient?.lastName]
-        .filter(Boolean)
-        .join(" ") ||
-      "Not recorded",
-    sendingFacility:
-      referral.referringHci ||
-      referral.referringFacility ||
-      referral.referringBHC ||
-      referral.bhc ||
-      referral.barangayHealthCenter?.name ||
-      referral.barangay_health_center?.name ||
-      "Barangay Health Center",
-    receivingRhu:
-      referral.receivingFacility ||
-      referral.destinationFacility ||
-      referral.referredFacility ||
-      referral.ruralHealthUnit?.name ||
-      referral.rural_health_unit?.name ||
-      "Rural Health Unit",
+    patientName: formatPatientName(referral.patientName || referral.patient_name || patient || referral.patient, "Not recorded"),
+    sendingFacility: formatFacilityName(
+      referral.referringHci || referral.referringFacility || referral.referringBHC ||
+      referral.bhc || referral.barangayHealthCenter || referral.barangay_health_center, "Not recorded"),
+    receivingRhu: formatFacilityName(
+      referral.receivingFacility || referral.destinationFacility || referral.referredFacility ||
+      referral.ruralHealthUnit || referral.rural_health_unit, "Not recorded"),
     urgency: getReferralAttention(referral),
     dateTimeSent: referralDate ? formatDateTime(referralDate) : "Not recorded",
   };
@@ -48,9 +31,11 @@ export default function ReferralPrintSlip({
 
   return (
     <section
+      data-referral-id={slip.referralId}
+      data-tracking-id={slip.trackingId}
+      data-print-key={slip.referralId || slip.trackingId}
       className={`referral-print-area mx-auto bg-white text-[#111827] ${printOnly ? "hidden print:block" : ""} ${className}`}
     >
-      <style>{printStyles}</style>
       <div className="mx-auto w-[80mm] max-w-full border border-dashed border-slate-300 bg-white px-4 py-4 font-mono text-[11px] leading-tight shadow-sm print:w-full print:border-0 print:px-0 print:py-0 print:shadow-none">
         <header className="border-b border-dashed border-slate-400 pb-3 text-center">
           <h1 className="text-base font-black tracking-[0.18em] text-[#B91C1C]">
@@ -74,6 +59,7 @@ export default function ReferralPrintSlip({
         </div>
 
         <div className="border-b border-dashed border-slate-400 py-3 text-center">
+          <div data-print-qr>
           <ReferralQrCode
             referralId={slip.referralId}
             refreshKey={qrRefreshKey}
@@ -81,6 +67,7 @@ export default function ReferralPrintSlip({
             className="mx-auto inline-flex rounded-md border border-slate-200 p-1 print:border-0"
             imageClassName="h-[39mm] w-[39mm]"
           />
+          </div>
           <p className="mt-2 text-[10px] font-black uppercase tracking-wide">
             Scan to verify referral
           </p>
@@ -139,29 +126,3 @@ function formatDateTime(value) {
     minute: "2-digit",
   });
 }
-
-const printStyles = `
-  @media print {
-    @page {
-      size: 80mm auto;
-      margin: 4mm;
-    }
-
-    body * {
-      visibility: hidden !important;
-    }
-
-    .referral-print-area,
-    .referral-print-area * {
-      visibility: visible !important;
-    }
-
-    .referral-print-area {
-      position: absolute !important;
-      inset: 0 auto auto 0 !important;
-      width: 80mm !important;
-      margin: 0 !important;
-      background: #ffffff !important;
-    }
-  }
-`;

@@ -1,3 +1,5 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
+import { prepareReferralPrint } from "../../utils/referralPrinting";
 import ReferralDestinationPicker from "../../components/features/health-records/ReferralDestinationPicker";
 import { showsDiagnosisRow } from "../../utils/consultationWorkflow";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -70,6 +72,11 @@ const keyframes = `
 const stagger = (i) => ({ animationDelay: `${i * 65}ms` });
 
 export default function CreateReferral() {
+  const handlePrint = usePrintDocument(".referral-print-area", {
+    title: "AKAY Referral Verification Slip",
+    prepare: prepareReferralPrint,
+  });
+
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -957,7 +964,7 @@ export default function CreateReferral() {
               Go to Referrals
             </button>
             <button
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               <Printer size={14} /> Print Slip
@@ -1148,7 +1155,7 @@ export default function CreateReferral() {
             >
               View Details
             </ModalButton>
-            <ModalButton variant="primary" onClick={() => window.print()}>
+            <ModalButton variant="primary" onClick={handlePrint}>
               <Printer size={14} />
               Print Slip
             </ModalButton>
@@ -1169,7 +1176,7 @@ export default function CreateReferral() {
                 </div>
                 <div className="flex flex-col items-center px-5 py-6">
                   <ReferralQrCode
-                    referralId={submittedReferral.id}
+                    referralId={submittedReferral?.id}
                     size={148}
                     className="rounded-xl border border-slate-200 p-2"
                     imageClassName="h-36 w-36"
@@ -1188,21 +1195,21 @@ export default function CreateReferral() {
                   <Info label="Tracking ID" value={successTrackingId} mono />
                   <Info
                     label="Patient"
-                    value={submittedReferral.patientName || patient?.name}
+                    value={submittedReferral?.patientName || patient?.name}
                     highlight
                   />
                   <Info
                     label="Urgency"
                     value={
-                      submittedReferral.urgencyLevel ||
-                      submittedReferral.urgency ||
+                      submittedReferral?.urgencyLevel ||
+                      submittedReferral?.urgency ||
                       form.urgencyLevel
                     }
                     highlight
                   />
                   <Info
                     label="Receiving Facility"
-                    value={submittedReferral.receivingFacility}
+                    value={submittedReferral?.receivingFacility}
                     highlight
                   />
                   <Info label="PhilHealth" value={successPhilHealth} />

@@ -1,3 +1,6 @@
+import usePrintDocument from "../../../hooks/usePrintDocument";
+import { getCurrentUser } from "../../../utils/auth";
+import { formatFacilityName } from "../../../utils/formatters";
 import { ModalButton, ModalFooter, ModalShell } from "../../common";
 import RhuPrescriptionPrintSlip from "./RhuPrescriptionPrintSlip";
 
@@ -7,6 +10,19 @@ export default function RhuPrescriptionReviewModal({
   onClose,
   onDispense,
 }) {
+  const user = getCurrentUser();
+  const printFacility = formatFacilityName(
+    user?.ruralHealthUnit || user?.rural_health_unit || user?.facility || user?.assignedRuralHealthUnit,
+    facility || "Not recorded",
+  );
+  const handlePrint = usePrintDocument(".rhu-prescription-print", {
+    title: "AKAY Prescription",
+    validate: () => {
+      if (!row?.id || !row.prescriptionText?.trim()) {
+        throw new Error("The saved prescription is unavailable. Reload the prescription and retry printing.");
+      }
+    },
+  });
   if (!row) return null;
   const given = row.status === "given";
 
@@ -20,7 +36,7 @@ export default function RhuPrescriptionReviewModal({
       footer={
         <ModalFooter>
           <ModalButton onClick={onClose}>Close</ModalButton>
-          <ModalButton onClick={() => window.print()}>Print</ModalButton>
+          <ModalButton onClick={handlePrint}>Print</ModalButton>
           <ModalButton variant="primary" disabled={given} onClick={onDispense}>
             Dispense
           </ModalButton>
@@ -35,9 +51,10 @@ export default function RhuPrescriptionReviewModal({
         ) : null}
       </div>
       <RhuPrescriptionPrintSlip
+        recordId={row.id}
         patientName={row.patientName}
         visitDate={row.visitDate}
-        facility={facility}
+        facility={printFacility}
         prescriptionText={row.prescriptionText}
       />
     </ModalShell>

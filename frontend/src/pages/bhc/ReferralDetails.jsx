@@ -1,3 +1,5 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
+import { prepareReferralPrint } from "../../utils/referralPrinting";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -45,6 +47,14 @@ export default function ReferralDetails() {
   const fromPatient = Boolean(origin?.path?.startsWith("/bhc/patients/") && patientReturn.path === origin.path);
   const back = fromPatient ? patientReturn : { path: "/bhc/referrals", state: null };
   const backLabel = fromPatient ? "Back to Patient" : "Back to Referrals";
+
+  const handlePrint = usePrintDocument(".referral-print-area", {
+    title: "AKAY Referral Verification Slip",
+    prepare: prepareReferralPrint,
+    loading: isFetching || qrRegenerating,
+    error,
+    onRetry: () => refetch(),
+  });
 
   async function handleRegenerateQr() {
     if (!referral?.id || qrRegenerating) return;
@@ -119,7 +129,7 @@ export default function ReferralDetails() {
               <h2 id="verification-title" className="text-sm font-semibold text-ink-900">Referral Verification Slip</h2>
               <p className="mt-1 max-w-prose text-sm text-neutral-600">Present the secure QR code to the receiving RHU for verification.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="brand" size="sm" onClick={() => window.print()} disabled={qrRegenerating}>
+                <Button variant="brand" size="sm" onClick={handlePrint} disabled={qrRegenerating}>
                   <Printer size={15} />Print Referral Slip
                 </Button>
                 <Button variant="secondary" size="sm" onClick={handleRegenerateQr} disabled={qrRegenerating}>

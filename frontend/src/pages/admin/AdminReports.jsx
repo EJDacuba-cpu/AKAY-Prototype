@@ -1,3 +1,4 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
 import "./admin-report-metrics.css";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -88,8 +89,7 @@ const PRINT_CSS = `
     }
     #admin-account-report-print td.num,
     #admin-account-report-print th.num { text-align: right; }
-    #admin-account-report-print tr,
-    #admin-account-report-print section { break-inside: avoid; page-break-inside: avoid; }
+    #admin-account-report-print tr { break-inside: avoid; page-break-inside: avoid; }
   }
 `;
 
@@ -194,11 +194,7 @@ async function loadValidatedAnalytics() {
   return parsed.analytics;
 }
 
-function openPrintDialog() {
-  window.print();
-}
-
-function ReportHeaderActions({ applied, onApply }) {
+function ReportHeaderActions({ applied, onApply, onPrint }) {
   const fields = [
     { key: "role", label: "Role", resetValue: DEFAULT_ACCOUNT_FILTERS.role, options: ROLE_OPTIONS },
     { key: "status", label: "Account status", resetValue: DEFAULT_ACCOUNT_FILTERS.status, options: STATUS_OPTIONS },
@@ -222,10 +218,10 @@ function ReportHeaderActions({ applied, onApply }) {
         onClearAll={() => onApply({ ...DEFAULT_ACCOUNT_FILTERS })}
         buildDefaults={() => ({ ...DEFAULT_ACCOUNT_FILTERS })}
       />
-      <Button type="button" variant="brand" size="sm" onClick={openPrintDialog}>
+      <Button type="button" variant="brand" size="sm" onClick={onPrint}>
         <Printer size={14} aria-hidden="true" />Print
       </Button>
-      <Button type="button" variant="secondary" size="sm" title="Opens the print dialog. Choose Save as PDF." onClick={openPrintDialog}>
+      <Button type="button" variant="secondary" size="sm" title="Opens the print dialog. Choose Save as PDF." onClick={onPrint}>
         <FileText size={14} aria-hidden="true" />Export PDF
       </Button>
     </div>
@@ -458,12 +454,12 @@ function PrintCountTable({ caption, headers, rows }) {
   );
 }
 
-function PrintArticle({ report, generatedLabel, pending }) {
+export function PrintArticle({ report, generatedLabel, pending, printState = "ready", printKey = "" }) {
   const access = report.accessRequests;
   const numeric = (value) => ({ value: formatCount(value), numeric: true });
 
   return (
-    <article id="admin-account-report-print" className="print-only">
+    <article id="admin-account-report-print" data-print-state={printState} data-print-key={printKey} className="print-only">
       <h1 className="text-base font-bold text-neutral-900">Account & Role Analytics</h1>
       <p className="mt-1 text-[12px] text-neutral-600">System Administration · Current Account Snapshot</p>
       <p className="mt-1 text-[11px] text-neutral-500">Generated {generatedLabel}</p>
@@ -628,6 +624,15 @@ export default function AdminReports() {
   const analyticsRefreshing = analyticsQuery.isFetching && !analyticsQuery.isLoading;
   const summaryPending = summaryQuery.isPending;
 
+  const printLoading = analyticsQuery.isFetching || summaryQuery.isFetching || summaryPending;
+  const printError = analyticsQuery.error || summaryQuery.error;
+  const handlePrint = usePrintDocument("#admin-account-report-print", {
+    title: "AKAY Account & Role Analytics",
+    loading: printLoading,
+    error: printError,
+    onRetry: () => Promise.all([analyticsQuery.refetch(), summaryQuery.refetch()]),
+  });
+
   function applyFilters(next) {
     if (sameFilters(next, appliedFilters)) return;
     setAppliedFilters({ role: next.role, status: next.status });
@@ -648,13 +653,13 @@ export default function AdminReports() {
       >
         {report?.ok ? (
           <div className="flex flex-col gap-5">
-            <style>{PRINT_CSS}</style>
+            <style data-print-shell-style>{PRINT_CSS}</style>
             <header className="report-header no-print flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Account & Role Analytics</h1>
                 <p className="mt-1 text-[13px] text-neutral-600">System Administration · Current Account Snapshot</p>
               </div>
-              <ReportHeaderActions applied={appliedFilters} onApply={applyFilters} />
+              <ReportHeaderActions applied={appliedFilters} onApply={applyFilters} onPrint={handlePrint} />
             </header>
 
             {analyticsRefreshing ? (
@@ -705,7 +710,9 @@ export default function AdminReports() {
             </div>
 
             <SummaryTable report={report} />
-            <PrintArticle report={report} generatedLabel={generatedLabel} pending={summaryPending} />
+            <PrintArticle report={report} generatedLabel={generatedLabel} pending={summaryPending}
+              printState={printLoading ? "loading" : printError ? "error" : "ready"}
+              printKey={JSON.stringify([appliedFilters, analyticsQuery.dataUpdatedAt, summaryQuery.dataUpdatedAt])} />
           </div>
         ) : (
           <ConnectionErrorState

@@ -446,6 +446,32 @@ const printReferral = {
   trackingId: "TRK-77",
 };
 
+test("print preserves newborn age zero and the record's original facility across role/facility changes", () => {
+  const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: { id: 9002, barangay_health_center_id: 11, barangay_health_center: { name: "Original BHC" } },
+    patient: { age: 0, sex: "Female", barangayHealthCenterId: 12, barangayHealthCenter: { name: "Transferred BHC" } },
+    documentRole: "rhu", recordId: "9002", patientName: "Synthetic Newborn",
+  }));
+  assert.match(html, /0 yrs/);
+  assert.match(html, /Original BHC/);
+  assert.match(html, /BHC Health Record/);
+  assert.doesNotMatch(html, /Transferred BHC|RHU Health Record/);
+});
+
+test("print keeps laboratory results and addendum provenance without inventing missing facility or results", () => {
+  const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: { id: 9002 }, recordId: "9002", patientName: "Synthetic Patient", documentRole: "rhu",
+    laboratoryEntries: [{ recordId: 1, testName: "Synthetic test", resultStatus: "Result Available", result: "Current saved result", original: { resultStatus: "Requested", result: "" },
+      addenda: [{ id: 2, reason: "Saved correction reason", createdBy: 42, createdAt: "2026-11-05T10:00:00+08:00", data: { resultStatus: "Result Available", result: "Current saved result" } }] }],
+  }));
+  assert.match(html, /Facility not recorded/);
+  assert.match(html, /Current saved result/);
+  assert.match(html, /Saved correction reason/);
+  assert.match(html, /Staff #42/);
+  assert.match(html, /Requested/);
+  assert.doesNotMatch(html, /<button/);
+});
+
 test("BHC print document uses A4 ledger layout and the same saved record values", () => {
   const html = wrap(
     createElement(BhcHealthRecordPrintDocument, {
