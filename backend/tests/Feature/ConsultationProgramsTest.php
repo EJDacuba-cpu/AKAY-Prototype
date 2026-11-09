@@ -32,6 +32,12 @@ class ConsultationProgramsTest extends TestCase
 
     public function test_secondary_program_data_round_trips_without_changing_primary_category(): void
     {
+        // Historical clinical details may be carried forward, never registered by BHC.
+        HealthRecord::create([
+            'patient_id' => $this->patient->id, 'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->patient->barangay_health_center_id,
+            'tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TEST-001']],
+        ]);
         $response = $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'patient_id' => $this->patient->id,
             'category' => 'Maternal',

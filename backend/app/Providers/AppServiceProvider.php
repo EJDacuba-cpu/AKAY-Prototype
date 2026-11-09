@@ -38,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
             );
         }
 
-        $client = new GoogleClient();
+        $client = $this->app->make(GoogleClient::class);
         $client->setClientId($clientId);
         $client->setClientSecret($clientSecret);
 

@@ -74,6 +74,10 @@ class PatientConditions
                 $identity = $this->clinicalRegistry->conditionIdentity($match['key'] ?? null, $name);
             }
 
+            if ($identity === 'tuberculosis' || app(TbClinicalAuthority::class)->isTbName($name)) {
+                TbClinicalAuthority::ensurePhysician($user);
+            }
+
             if (isset($seen[$identity])) {
                 throw ValidationException::withMessages(["{$prefix}.{$i}.name" => 'This condition is listed twice.']);
             }

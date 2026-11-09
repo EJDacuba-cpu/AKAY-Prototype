@@ -104,11 +104,11 @@ import {
   restoreRhuFollowUpSchedules,
 } from "../../utils/rhuCarePlan";
 import {
-  diagnosesOpenDsTbTreatmentCard,
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
-  tbCaseNumberRequired,
+  rhuTbAssessmentErrors,
 } from "../../utils/rhuTbCaseManagement";
+import { canConfirmTbDiagnosis } from "../../utils/tbAssessment";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
@@ -195,6 +195,7 @@ export default function RhuConsultationWorkspace() {
   const [unsyncedRecovery, setUnsyncedRecovery] = useState(false);
   const canEncode = access.can("consultations.encode");
   const canFinalize = access.can("consultations.finalize");
+  const canConfirmTb = canConfirmTbDiagnosis(currentUser);
   const canViewBackground = access.can("clinical.history");
   const visitId = Number(params.get("visitId") || 0) || null;
   const patientId = String(params.get("patientId") || "");
@@ -461,7 +462,6 @@ export default function RhuConsultationWorkspace() {
   const consultationUuid = visit?.consultation_uuid || visit?.consultationUuid || "";
   const existingTbCase = useMemo(() => existingRegisteredTbCase(patientRecords), [patientRecords]);
   const includeTb = useMemo(() => {
-    if (diagnosesOpenDsTbTreatmentCard(diagnoses)) return true;
     return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
   }, [diagnoses, existingTbCase, registry]);
   useEffect(() => {
@@ -744,12 +744,8 @@ export default function RhuConsultationWorkspace() {
         Object.assign(errors, stagedHistoryErrors(historyUpdateForSave(), { sections: ["obstetric"] }));
       }
     }
-    if (includeTb && currentStepKey === TB_INTAKE_STEP && canFinalize) {
-      if (tbCaseNumberRequired(diagnoses, existingTbCase) && !String(tbData.diagnosis?.tbCaseNumber || "").trim()) {
-        errors["tbData.diagnosis.tbCaseNumber"] = "TB case number is required to register this DS-TB treatment case.";
-      }
-    }
     if (currentStepKey === NEXT_STEP && canFinalize) {
+      Object.assign(errors, rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }));
       Object.assign(errors, rhuCarePlanErrors(diagnoses, {
         schedules: followUpSchedules,
         catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
@@ -988,6 +984,7 @@ export default function RhuConsultationWorkspace() {
     if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     const errors = {
       ...laboratoryErrors(laboratoryTests),
+      ...rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }),
       ...validateCurrent(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
       ...(canViewBackground
@@ -1647,7 +1644,7 @@ export default function RhuConsultationWorkspace() {
                     onChange={(next) => { clearErrorsStartingWith(["tbData", "tb_data"]); setTbData(next); }}
                     errors={validationErrors}
                     mode="encode"
-                    readOnly={assessmentLocked}
+                    readOnly
                     referenceCaseNumber={existingTbCase?.tbCaseNumber || ""}
                   />
                 </fieldset>
@@ -1683,6 +1680,7 @@ export default function RhuConsultationWorkspace() {
                     onPrescriptionTextChange={setPrescriptionText}
                     registry={registry}
                     existingTbCase={existingTbCase}
+                    canConfirmTb={canConfirmTb}
                     conditionReferences={conditionReferences}
                     errors={validationErrors}
                     disabled={clinicalLocked}

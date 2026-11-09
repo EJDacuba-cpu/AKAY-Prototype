@@ -61,7 +61,7 @@ class RhuItrConsultationTest extends TestCase
             'consultations.encode',
             'consultations.finalize',
             'followups.manage',
-        ]);
+        ], ['staff_role' => 'doctor']);
     }
 
     private function patient(array $attributes = []): Patient

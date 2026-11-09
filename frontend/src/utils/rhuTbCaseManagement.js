@@ -1,5 +1,7 @@
 import { matchConditionKey } from "./carePlan.js";
 import { getRecordDateValue, getTbData } from "./healthRecordPrograms.js";
+import { tbManagementFields } from "./tbAssessment.js";
+export { tbManagementFields, tbManagementFor } from "./tbAssessment.js";
 
 export const TB_DIAGNOSIS_TYPES = Object.freeze({
   tb_disease: "TB Disease",
@@ -26,27 +28,26 @@ export function emptyTbManagement() {
   };
 }
 
-export function tbManagementFields(entry = {}) {
-  const stored = entry?.tbManagement || entry?.tb_management || {};
-  return {
-    diagnosisType: String(stored.diagnosisType || stored.diagnosis_type || "").trim(),
-    drugResistance: String(stored.drugResistance || stored.drug_resistance || "").trim(),
-    openTreatmentCard: stored.openTreatmentCard === true || stored.open_treatment_card === true,
-  };
-}
-
-export function tbManagementFor(entry, next = {}) {
-  return {
-    ...entry,
-    tbManagement: {
-      ...tbManagementFields(entry),
-      ...next,
-    },
-  };
-}
-
 export function isRecognizedTbDiagnosis(name, registry = {}) {
-  return matchConditionKey(name, registry) === "tuberculosis";
+  return matchConditionKey(name, registry) === "tuberculosis"
+    || /\b(?:TB|PTB|LTBI|tuberculosis|tuberculous)\b/iu.test(String(name || ""));
+}
+
+export function rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }) {
+  const errors = {};
+  for (const entry of diagnoses || []) {
+    if (!isRecognizedTbDiagnosis(entry.name, registry)) continue;
+    const key = `diagnoses.${entry.id}.tbManagement`;
+    if (!canConfirmTb) {
+      errors[key] = "The RHU physician must review and finalize the TB assessment.";
+    } else {
+      const management = tbManagementFields(entry);
+      if (management.diagnosisType === "tb_disease" && !management.drugResistance) {
+        errors[`${key}.drugResistance`] = "Select drug resistance for TB Disease.";
+      }
+    }
+  }
+  return errors;
 }
 
 export function isTbInfection(entry) {

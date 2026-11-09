@@ -77,38 +77,42 @@ function DiagnosisFollowUp({ entry, schedule, errors, disabled, onFollowUpChange
   );
 }
 
-function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, onChange }) {
+function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, canConfirmTb, errors, onChange }) {
   if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
   const management = tbManagementFields(entry);
   const blocked = isTbInfection(entry) || isDrTb(entry);
   const canOpen = canOpenDsTbTreatmentCard(entry);
   const registered = String(existingTbCase?.tbCaseNumber || "").trim();
   return (
-    <fieldset disabled={disabled} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-3">
+    <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-3">
       <div>
         <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
         <p className="mt-0.5 text-xs text-[#545F73]">
-          Evaluation does not register a treatment case. Opening Form 4B is a separate decision from confirming an Active Patient Condition.
+          Evaluation does not register a treatment case. Form 4B registration is a separate physician action after this consultation is finalized.
         </p>
       </div>
+      {!canConfirmTb && <p className="text-xs text-[#545F73]">Only the RHU physician may confirm the TB assessment. Staff may prepare the consultation for physician review.</p>}
+      <FieldError error={errors[`diagnoses.${entry.id}.tbManagement`]} />
       {registered ? (
         <p className="text-xs text-[#0B1C30]">
           Registered treatment case <span className="font-semibold">{registered}</span> is referenced for this patient. A new TB case number is not requested.
         </p>
       ) : null}
       <RadioChoiceGroup
-        label="TB classification"
+        label="Diagnosis type"
         name={`diagnoses.${entry.id}.tbManagement.diagnosisType`}
         options={TB_DIAGNOSIS_TYPE_OPTIONS}
         value={management.diagnosisType}
+        error={errors[`diagnoses.${entry.id}.tbManagement.diagnosisType`]}
         onChange={(value) => onChange(tbManagementFor(entry, { diagnosisType: value, openTreatmentCard: false }))}
       />
       {management.diagnosisType === "tb_disease" && (
         <RadioChoiceGroup
-          label="Drug resistance"
+          label="Drug Susceptibility Classification"
           name={`diagnoses.${entry.id}.tbManagement.drugResistance`}
           options={TB_DRUG_RESISTANCE_OPTIONS}
           value={management.drugResistance}
+          error={errors[`diagnoses.${entry.id}.tbManagement.drugResistance`]}
           onChange={(value) => onChange(tbManagementFor(entry, { drugResistance: value, openTreatmentCard: false }))}
         />
       )}
@@ -118,21 +122,7 @@ function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, on
         </p>
       )}
       {canOpen && !registered && (
-        <label className="flex cursor-pointer items-start gap-3 px-1 py-1">
-          <input
-            type="checkbox"
-            name={`diagnoses.${entry.id}.tbManagement.openTreatmentCard`}
-            checked={management.openTreatmentCard}
-            onChange={(event) => onChange(tbManagementFor(entry, { openTreatmentCard: event.target.checked }))}
-            className="mt-1 h-4 w-4 accent-[#B70011]"
-          />
-          <span>
-            <span className="block text-sm font-semibold text-[#0B1C30]">Open DS-TB Treatment Card (Form 4B)</span>
-            <span className="mt-0.5 block text-xs text-[#545F73]">
-              Registers this confirmed drug-susceptible TB case. Leave off to evaluate without creating a treatment record.
-            </span>
-          </span>
-        </label>
+        <p className="text-xs text-[#545F73]">This assessment is eligible for DS-TB Form 4B. Register the treatment case separately after finalization.</p>
       )}
     </fieldset>
   );
@@ -161,7 +151,7 @@ function FollowUpConditionReferences({ references = [] }) {
 function DiagnosisCard({
   laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
-  registry, existingTbCase, onChange, onFollowUpChange, onRemove,
+  registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
 }) {
   const action = diagnosisNextAction(entry);
   const confirmed = diagnosisActivateConfirmed(entry, conditions);
@@ -188,7 +178,7 @@ function DiagnosisCard({
           type="checkbox"
           name={`${key}.activate`}
           checked={Boolean(entry.activate) || Boolean(existing) || Boolean(entry.continued)}
-          disabled={disabled || Boolean(existing) || Boolean(entry.continued)}
+          disabled={disabled || Boolean(existing) || Boolean(entry.continued) || (isRecognizedTbDiagnosis(entry.name, registry) && !canConfirmTb)}
           onChange={(event) => onChange({ ...entry, activate: event.target.checked })}
           className="mt-1 h-4 w-4 accent-[#B70011]"
         />
@@ -206,6 +196,8 @@ function DiagnosisCard({
         entry={entry}
         registry={registry}
         existingTbCase={existingTbCase}
+        canConfirmTb={canConfirmTb}
+        errors={errors}
         disabled={disabled}
         onChange={onChange}
       />
@@ -312,6 +304,7 @@ export default function RhuDiagnosisCarePlanSection({
   onPrescriptionTextChange,
   registry = {},
   existingTbCase = null,
+  canConfirmTb = false,
   conditionReferences = [],
   errors = {},
   disabled = false,
@@ -370,6 +363,7 @@ export default function RhuDiagnosisCarePlanSection({
               isReferralVisit={isReferralVisit}
               registry={registry}
               existingTbCase={existingTbCase}
+              canConfirmTb={canConfirmTb}
               onChange={(next) => onChangeDiagnosis?.(next)}
               onFollowUpChange={onFollowUpChange}
               onRemove={() => onRemoveDiagnosis?.(entry.id)}

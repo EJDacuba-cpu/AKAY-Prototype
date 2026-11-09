@@ -70,8 +70,18 @@ class FormsFinalizationChecklistTest extends TestCase
         $this->assertSame('2026-03-10', $record->maternal_data['tetanusDiphtheriaStatus']['td2']);
     }
 
-    public function test_tb_comorbidity_screening_fields_are_accepted_and_persisted(): void
+    public function test_historical_tb_comorbidity_fields_are_carried_forward_unchanged(): void
     {
+        HealthRecord::create([
+            'patient_id' => $this->patient->id, 'category' => 'General Consultation',
+            'barangay_health_center_id' => $this->bhc->id,
+            'tb_data' => ['comorbidities' => [
+                'hivStatus' => 'reactive', 'hivTestDate' => '2026-04-01',
+                'artStatus' => 'on_art', 'artStartDate' => '2026-04-05',
+                'cptStatus' => 'on_cpt', 'cptStartDate' => '2026-04-05',
+                'otherComorbidities' => 'Diabetes Mellitus',
+            ]],
+        ]);
         $recordId = $this->postChecklistRecord([
             'category' => 'TB DOTS',
             'tb_data' => [

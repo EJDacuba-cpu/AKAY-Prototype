@@ -558,6 +558,7 @@ class HealthRecordDraftPayloadService
         unset($payload['surveillanceTags']);
 
         $sanitized = $this->sanitizeNode($payload, $this->schema(), 'payload');
+        $sanitized = TbAssessment::normalizeDraft($sanitized);
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
         $validator->after(function ($validator) use ($sanitized): void {

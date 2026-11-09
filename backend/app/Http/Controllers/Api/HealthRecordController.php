@@ -134,6 +134,7 @@ class HealthRecordController extends Controller
         } else {
             $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         }
+        app(\App\Services\TbClinicalAuthority::class)->authorizeRecord($request->user(), $patient, $data);
         // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
         // A request without the discriminator runs every legacy step below unchanged.
         $v2 = $request->isBhcGeneralV2();

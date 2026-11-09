@@ -13,6 +13,7 @@ use App\Services\PatientBackground;
 use App\Services\PatientConditions;
 use App\Services\ReportingEntries;
 use App\Services\VitalSigns;
+use App\Services\TbAssessment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -214,6 +215,8 @@ class HealthRecordRequest extends FormRequest
         }
 
         $rules = [...$rules, ...\App\Services\LaboratoryEvidenceService::rules()];
+        $rules = [...$rules, ...TbAssessment::rules()];
+        $rules['diagnoses.*.tb_management'] = ['prohibited'];
         if (! $rhuItr) {
             $rules['laboratory_tests'] = ['prohibited'];
         }
@@ -406,7 +409,10 @@ class HealthRecordRequest extends FormRequest
             'family_planning_data.advice_given' => ['nullable', 'string'],
             'family_planning_data.medicinesSupplies' => ['nullable', 'string'],
             'family_planning_data.medicines_supplies' => ['nullable', 'string'],
-            'tb_data' => ['nullable', 'array'],
+            'tb_data' => ['nullable', 'array:caseFinding,laboratory,diagnosis,classification,comorbidities,regimen,treatmentSupporter,phases,adverseEvents,doseCalendar,outcome'],
+            'tb_data.outcome' => ['nullable', 'array:status,date'],
+            'tb_data.outcome.status' => ['nullable', Rule::in(['cured', 'treatment_completed', 'treatment_failed', 'lost_to_follow_up', 'died', 'not_evaluated'])],
+            'tb_data.outcome.date' => ['nullable', 'date'],
             'tb_data.caseFinding' => ['nullable', 'array'],
             'tb_data.caseFinding.diagnosingFacility' => ['nullable', 'string', 'max:255'],
             'tb_data.caseFinding.ntpFacilityCode' => ['nullable', 'string', 'max:100'],
@@ -671,6 +677,7 @@ class HealthRecordRequest extends FormRequest
                 return;
             }
             VitalSigns::validate($validator, $this->all());
+            TbAssessment::validate($validator, $this->diagnosesInput());
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,
