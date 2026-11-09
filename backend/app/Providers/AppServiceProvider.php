@@ -6,6 +6,7 @@ use App\Mail\GmailApiTransport;
 use Google\Client as GoogleClient;
 use Google\Service\Gmail as GmailService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -33,6 +34,10 @@ class AppServiceProvider extends ServiceProvider
         $refreshToken = config('services.google_gmail.refresh_token');
 
         if (! $clientId || ! $clientSecret || ! $refreshToken) {
+            Log::warning('Gmail API initialization failed.', [
+                'category' => 'gmail_credentials_missing',
+            ]);
+
             throw new \RuntimeException(
                 'Gmail API credentials are not configured.'
             );
@@ -42,11 +47,30 @@ class AppServiceProvider extends ServiceProvider
         $client->setClientId($clientId);
         $client->setClientSecret($clientSecret);
 
-        $result = $client->fetchAccessTokenWithRefreshToken(
-            $refreshToken
-        );
+        try {
+            $result = $client->fetchAccessTokenWithRefreshToken(
+                $refreshToken
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('Gmail API initialization failed.', [
+                'category' => 'gmail_oauth_authorization_failed',
+                'oauth_error' => 'unclassified',
+            ]);
+
+            throw $exception;
+        }
 
         if (! isset($result['access_token'])) {
+            $oauthError = $result['error'] ?? null;
+            $oauthError = in_array($oauthError, ['invalid_grant', 'invalid_client'], true)
+                ? $oauthError
+                : 'unclassified';
+
+            Log::warning('Gmail API initialization failed.', [
+                'category' => 'gmail_oauth_authorization_failed',
+                'oauth_error' => $oauthError,
+            ]);
+
             throw new \RuntimeException(
                 'Gmail API authorization failed.'
             );

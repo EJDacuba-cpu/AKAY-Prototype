@@ -142,6 +142,7 @@ class AccountInviteService
             Log::warning('Account invite email failed.', [
                 'account_invite_id' => $invite->id,
                 'recipient' => MaskedEmail::mask($invite->email),
+                'category' => 'invite_email_delivery_failed',
                 'error' => get_class($e),
             ]);
             $invite->forceFill(['delivery' => AccountInvite::DELIVERY_FAILED])->save();
