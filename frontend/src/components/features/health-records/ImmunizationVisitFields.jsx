@@ -1,6 +1,6 @@
 import {
   ClinicalCheckbox,
-  ClinicalSection,
+  ClinicalSectionCard as ClinicalSection,
   FieldEyebrow,
   FieldInput,
   FieldTextarea,
@@ -51,8 +51,8 @@ function isEssentialService(label) {
  * The EPI visit form, in the order the clinical flow reads:
  * measurements -> screening -> vaccines -> breastfeeding -> supplies -> remarks.
  *
- * Renders its own sections, so callers place it directly in the form card
- * rather than wrapping it in another titled section.
+ * Each section owns its consultation card, so callers place this in the form
+ * stack rather than wrapping it in another card.
  *
  * Shared by the BHC and RHU record pages, which pass DIFFERENT `vaccineOptions`
  * on purpose. The two facilities record different vaccine label sets ("HEPA B"
@@ -138,7 +138,7 @@ export default function ImmunizationVisitFields({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {ageWarning}
 
       {!hideBasicMonitoring && (

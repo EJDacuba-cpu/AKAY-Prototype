@@ -116,7 +116,7 @@ import {
   localConsultationKey,
 } from "../../utils/savedDrafts";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
-import { RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
+import { ClinicalSectionCard, RadioChoiceGroup } from "../../components/features/health-records/fields/ClinicalFields";
 import NextStepsSection from "../../components/features/health-records/wizard/NextStepsSection";
 import ConditionCardsSection from "../../components/features/health-records/wizard/ConditionCardsSection";
 import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
@@ -4989,11 +4989,68 @@ export default function ConsultationWorkspace() {
         )}
 
 
-        {/* ImmunizationVisitFields renders its own titled sections, so it is
-            placed directly in the card rather than inside a FormSection. */}
+        {/* Each EPI section owns its card, matching the other consultation steps. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
-          <div className="anim-fade-up" style={stagger(2)}>
-            {immunizationVaccineEntries.length > 0 && <section className="mb-4 space-y-3 rounded-none border border-gray-200 p-4"><h3 className="text-sm font-semibold">Vaccine Administration — Inventory</h3><p className="text-xs text-gray-600">Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies.</p>{immunizationVaccineEntries.map((entry, index) => <fieldset key={entry.vaccineName} disabled={!(currentUser?.permissions || []).includes("items.dispense")} className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"><legend className="text-sm font-medium">{entry.vaccineName}</legend><select aria-label={entry.vaccineName + " inventory item"} className="rounded-none border border-gray-200 p-2" value={entry.medicineId || ""} onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}><option value="">Select inventory item</option>{bhcMedicineInventory.map(item => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}</select><input aria-label={entry.vaccineName + " inventory quantity"} className="rounded-none border border-gray-200 p-2" type="number" min="1" step="1" placeholder="Stock-unit quantity" value={entry.inventoryQuantity || ""} onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={entry.confirmedGiven === true} onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)} />Confirmed Administered</label><div className="@xl:col-span-3"><MedicineAllocationFields medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))} quantity={entry.inventoryQuantity} value={entry} disabled={!(currentUser?.permissions || []).includes("items.dispense")} onChange={next => { updateVaccineInventory(index, "allocations", next.allocations); updateVaccineInventory(index, "override_reason", next.override_reason); }} /></div></fieldset>)}</section>}
+          <div className="anim-fade-up space-y-4" style={stagger(2)}>
+            {immunizationVaccineEntries.length > 0 && (
+              <ClinicalSectionCard
+                title="Vaccine Administration — Inventory"
+                subtitle="Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies."
+              >
+                <div className="space-y-3">
+                  {immunizationVaccineEntries.map((entry, index) => (
+                    <fieldset
+                      key={entry.vaccineName}
+                      disabled={!(currentUser?.permissions || []).includes("items.dispense")}
+                      className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"
+                    >
+                      <legend className="text-sm font-medium">{entry.vaccineName}</legend>
+                      <select
+                        aria-label={entry.vaccineName + " inventory item"}
+                        className="rounded-none border border-gray-200 p-2"
+                        value={entry.medicineId || ""}
+                        onChange={event => updateVaccineInventory(index, "medicineId", event.target.value)}
+                      >
+                        <option value="">Select inventory item</option>
+                        {bhcMedicineInventory.map(item => (
+                          <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label={entry.vaccineName + " inventory quantity"}
+                        className="rounded-none border border-gray-200 p-2"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Stock-unit quantity"
+                        value={entry.inventoryQuantity || ""}
+                        onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)}
+                      />
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={entry.confirmedGiven === true}
+                          onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)}
+                        />
+                        Confirmed Administered
+                      </label>
+                      <div className="@xl:col-span-3">
+                        <MedicineAllocationFields
+                          medicine={bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId))}
+                          quantity={entry.inventoryQuantity}
+                          value={entry}
+                          disabled={!(currentUser?.permissions || []).includes("items.dispense")}
+                          onChange={next => {
+                            updateVaccineInventory(index, "allocations", next.allocations);
+                            updateVaccineInventory(index, "override_reason", next.override_reason);
+                          }}
+                        />
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              </ClinicalSectionCard>
+            )}
             <ImmunizationVisitFields
               vaccineOptions={epiVaccineOptions}
               birthDate={patientBirthDate}

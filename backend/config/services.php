@@ -21,6 +21,8 @@ return [
         'client_id' => env('GOOGLE_GMAIL_CLIENT_ID'),
         'client_secret' => env('GOOGLE_GMAIL_CLIENT_SECRET'),
         'refresh_token' => env('GOOGLE_GMAIL_REFRESH_TOKEN'),
+        'sender_email' => env('GOOGLE_GMAIL_SENDER_EMAIL'),
+        
     ],
 
     'resend' => [

@@ -4,6 +4,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { HealthRecordFormSkeleton } from "../../components/common/loading/SkeletonLoaders";
 import { Card } from "../../components/ui/card";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import ModalShell from "../../components/common/modals/ModalShell";
@@ -1286,7 +1287,11 @@ export default function RhuConsultationWorkspace() {
 
   if (RHU_DRAFTS_ENABLED && !recoveryReady) {
     return <DashboardLayout role="rhu" title="RHU Consultation">
-      {entryHandoff || recovery.checking ? <p role="status" className="flex items-center gap-2 py-6 text-sm text-neutral-600">Loading consultation details...</p> : <RhuConsultationRecoveryDialog recovery={recovery} patientName={formatPatientName(patient)} onClose={() => navigate("/rhu/patients")} />}
+      {entryHandoff || recovery.checking ? (
+        <HealthRecordFormSkeleton message="Loading consultation details..." />
+      ) : (
+        <RhuConsultationRecoveryDialog recovery={recovery} patientName={formatPatientName(patient)} onClose={() => navigate("/rhu/patients")} />
+      )}
     </DashboardLayout>;
   }
 
