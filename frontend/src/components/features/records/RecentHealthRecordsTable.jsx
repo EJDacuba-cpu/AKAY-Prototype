@@ -2,6 +2,7 @@ import { Eye, FileText } from "lucide-react";
 import { Link } from "react-router";
 
 import SectionCard from "../../common/cards/SectionCard";
+import FixedTable from "../../common/tables/FixedTable";
 import {
   formatDisplayValue,
   formatPatientName,
@@ -17,74 +18,56 @@ export default function RecentHealthRecordsTable({ records, delay = 0 }) {
       icon={<FileText size={14} />}
       delay={delay}
     >
-      <div
-        className="akay-scrollbar overflow-x-auto px-1 pb-2 scroll-smooth"
-      >
-        <table className="w-full min-w-[760px] text-left">
-          <thead>
-            <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-              <th className="px-4 py-3">Patient</th>
-              <th className="px-4 py-3">Record Type</th>
-              <th className="px-4 py-3">Chief Complaint</th>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3 text-right">Action</th>
-            </tr>
-          </thead>
+      <FixedTable minWidth="min-w-[760px]" lockHeight={false}>
+        <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+          <tr>
+            <th className="px-4">Patient</th>
+            <th className="px-3">Record Type</th>
+            <th className="px-3">Chief Complaint</th>
+            <th className="px-3">Date</th>
+            <th className="px-3 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-100">
+          {records.map((record) => {
+            const patientName = formatPatientName(
+              record.patientName || record.patient,
+              "Unnamed Patient",
+            );
+            const visitType = formatDisplayValue(
+              record.visitType,
+              "General Consultation",
+            );
+            const concern = formatDisplayValue(record.concern, "Not recorded");
+            const date = formatDisplayValue(record.date, "No Date");
 
-          <tbody className="divide-y divide-[#F8FAFC]">
-            {records.map((record) => {
-              const patientName = formatPatientName(
-                record.patientName || record.patient,
-                "Unnamed Patient",
-              );
-              const visitType = formatDisplayValue(
-                record.visitType,
-                "General Consultation",
-              );
-              const concern = formatDisplayValue(record.concern, "Not recorded");
-              const date = formatDisplayValue(record.date, "No Date");
-
-              return (
+            return (
               <tr
                 key={`${patientName}-${visitType}`}
-                className="group transition-colors duration-150 hover:bg-[#FAFBFD]"
+                className="h-14 transition-colors hover:bg-neutral-50"
               >
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                  <span className="text-[13px] font-semibold text-[#0F172A]">
-                      {patientName}
-                    </span>
-                  </div>
+                <td className="px-4 text-[13px] font-semibold text-ink-800">
+                  {patientName}
                 </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#6B7280]">
-                  {visitType}
-                </td>
-
-                <td className="px-4 py-3.5 text-[13px] text-[#6B7280]">
+                <td className="px-3 text-[13px] text-neutral-600">{visitType}</td>
+                <td className="max-w-[240px] px-3 text-[13px] text-neutral-600" title={concern}>
                   {concern}
                 </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#9CA3AF]">
-                  {date}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-3.5 text-right">
+                <td className="px-3 text-[13px] text-neutral-500">{date}</td>
+                <td className="px-3 text-right">
                   <Link
                     to="/bhc/health-records"
-                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-[#B91C1C] transition-all duration-200 hover:bg-[#FEF2F2] active:scale-[0.96]"
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold text-brand-700 transition-colors hover:bg-brand-50"
                   >
                     <Eye size={13} />
                     View
                   </Link>
                 </td>
               </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+            );
+          })}
+        </tbody>
+      </FixedTable>
     </SectionCard>
   );
 }
-

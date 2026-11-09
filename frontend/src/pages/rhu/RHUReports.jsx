@@ -1,3 +1,4 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
@@ -48,7 +49,7 @@ export default function RHUReports() {
 
   const {
     data: patients = [],
-    isLoading: patientsLoading,
+    isPending: patientsLoading,
     isFetching: patientsFetching,
     dataUpdatedAt: patientsUpdatedAt,
     error: patientsError,
@@ -60,7 +61,7 @@ export default function RHUReports() {
   });
   const {
     data: records = [],
-    isLoading: recordsLoading,
+    isPending: recordsLoading,
     isFetching: recordsFetching,
     dataUpdatedAt: recordsUpdatedAt,
     error: recordsError,
@@ -72,7 +73,7 @@ export default function RHUReports() {
   });
   const {
     data: referrals = [],
-    isLoading: referralsLoading,
+    isPending: referralsLoading,
     isFetching: referralsFetching,
     dataUpdatedAt: referralsUpdatedAt,
     error: referralsError,
@@ -84,7 +85,7 @@ export default function RHUReports() {
   });
   const {
     data: visits = [],
-    isLoading: visitsLoading,
+    isPending: visitsLoading,
     isFetching: visitsFetching,
     dataUpdatedAt: visitsUpdatedAt,
     error: visitsError,
@@ -96,7 +97,8 @@ export default function RHUReports() {
   });
 
   const loading = patientsLoading || recordsLoading || referralsLoading || visitsLoading;
-  const loadError = patientsError || recordsError || referralsError || visitsError || null;
+  const reportErrors = [patientsError, recordsError, referralsError, visitsError];
+  const loadError = reportErrors.find(error => [401, 403].includes(error?.status)) || reportErrors.find(Boolean) || null;
   const refreshing =
     !loading && (patientsFetching || recordsFetching || referralsFetching || visitsFetching);
   const report = useMemo(
@@ -113,27 +115,23 @@ export default function RHUReports() {
     [visits, patients, records, referrals, category, period, ageGroup],
   );
 
+  const handlePrint = usePrintDocument("#rhu-report-print", {
+    title: `AKAY RHU Reports - ${report.categoryLabel} - ${period.label}`,
+    loading: loading || refreshing,
+    error: loadError,
+    onRetry: retryReports,
+  });
+
   function retryReports() {
-    refetchPatients();
-    refetchRecords();
-    refetchReferrals();
-    refetchVisits();
+    return Promise.all([refetchPatients(), refetchRecords(), refetchReferrals(), refetchVisits()]);
   }
 
   return (
     <DashboardLayout role="rhu" title="Reports">
-      <style>{`
-        @page { size: landscape; margin: 12mm; }
-        @media print {
-          body * { visibility: hidden !important; }
-          #rhu-report-print, #rhu-report-print * { visibility: visible !important; }
-          #rhu-report-print { position: absolute; inset: 0; width: 100%; background: white !important; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
 
       <PageStateWrapper
         skeleton="reports"
+        skeletonOptions={{ role: "rhu", category, cardCount: report.cards.length, chartCount: report.charts.length }}
         isLoading={loading}
         isError={Boolean(loadError)}
         isFetching={refreshing}
@@ -173,11 +171,11 @@ export default function RHUReports() {
                 onApply={setAppliedPeriod}
                 includeAgeGroup={isNutrition}
               />
-              <Button type="button" variant="secondary" size="compact" onClick={() => window.print()}>
+              <Button type="button" variant="secondary" size="compact" onClick={handlePrint}>
                 <FileText size={14} />
                 Export PDF
               </Button>
-              <Button type="button" variant="brand" size="compact" onClick={() => window.print()}>
+              <Button type="button" variant="brand" size="compact" onClick={handlePrint}>
                 <Printer size={14} />
                 Print
               </Button>
@@ -246,6 +244,8 @@ export default function RHUReports() {
           )}
 
           <PrintReport
+            printState={loading || refreshing ? "loading" : loadError ? "error" : "ready"}
+            printKey={JSON.stringify([category, period, ageGroup, patientsUpdatedAt, recordsUpdatedAt, referralsUpdatedAt, visitsUpdatedAt])}
             facilityName={facilityName}
             periodLabel={period.label}
             categoryLabel={isNutrition ? "Nutrition Report" : report.categoryLabel}
@@ -260,9 +260,9 @@ export default function RHUReports() {
   );
 }
 
-function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary, notes = [], ageGroup = "" }) {
+export function PrintReport({ printState = "ready", printKey = "", facilityName, periodLabel, categoryLabel, cards, summary, notes = [], ageGroup = "" }) {
   return (
-    <section id="rhu-report-print" className="print-only">
+    <section id="rhu-report-print" data-print-state={printState} data-print-key={printKey} className="print-only">
       <h1 className="text-base font-bold text-neutral-900">AKAY RHU Reports</h1>
       <p className="mt-1 text-[12px] text-neutral-600">{facilityName}</p>
       <p className="mt-1 text-[12px] text-neutral-600">
@@ -279,7 +279,7 @@ function PrintReport({ facilityName, periodLabel, categoryLabel, cards, summary,
           ))}
         </ul>
       ) : null}
-      <table className="mt-4 w-full text-left text-[12px]">
+      <table className="akay-summary-print-table mt-4 w-full text-left text-[12px]">
         <thead>
           <tr>
             <th className="border-b border-neutral-300 py-1.5">Indicator</th>

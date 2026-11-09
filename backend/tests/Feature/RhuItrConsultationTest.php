@@ -61,7 +61,7 @@ class RhuItrConsultationTest extends TestCase
             'consultations.encode',
             'consultations.finalize',
             'followups.manage',
-        ]);
+        ], ['staff_role' => 'doctor']);
     }
 
     private function patient(array $attributes = []): Patient
@@ -120,6 +120,66 @@ class RhuItrConsultationTest extends TestCase
                 'chief_complaint' => 'Cough and fever',
                 ...$overrides,
             ]);
+    }
+
+    public function test_discarded_rhu_recovery_gets_a_fresh_identity_on_the_same_started_visit(): void
+    {
+        $patient = $this->patient();
+        $encoder = $this->encoder();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($encoder, $visit);
+        $input = ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'visit:'.$visit->id, 'transaction_uuid' => $uuid];
+        $key = $this->postJson('/api/form-drafts/device-key', $input)->assertOk()->json('data');
+        $this->postJson('/api/form-drafts/clinical-discard', [...$input, 'key_id' => $key['key_id']])->assertNoContent();
+        $fresh = $visit->fresh();
+        $this->assertSame('in_consultation', $fresh->status);
+        $this->assertNull($fresh->closed_at);
+        $this->assertNotSame($uuid, $fresh->consultation_uuid);
+        $this->assertDatabaseCount('rhu_visit_queue_entries', 1);
+        $this->postJson('/api/form-drafts/device-key', [...$input, 'transaction_uuid' => $fresh->consultation_uuid])->assertOk();
+        $this->postJson('/api/form-drafts/device-key', $input)->assertConflict();
+    }
+
+    public function test_queue_entry_can_check_a_waiting_visit_without_starting_or_creating_a_draft(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $this->as($this->encoder())->getJson("/api/health-record-drafts/lookup?patient_id={$patient->id}&rhu_visit_id={$visit->id}")
+            ->assertOk()->assertJsonPath('data', null);
+        $this->assertNull($visit->fresh()->consultation_uuid);
+        $this->assertSame('waiting', $visit->fresh()->status);
+        $this->assertDatabaseCount('health_record_drafts', 0);
+
+        $otherPatient = $this->patient();
+        $this->getJson("/api/health-record-drafts/lookup?patient_id={$otherPatient->id}&rhu_visit_id={$visit->id}")
+            ->assertUnprocessable();
+    }
+
+    public function test_discarding_a_server_rhu_draft_preserves_visit_and_retires_old_identity(): void
+    {
+        $patient = $this->patient();
+        $encoder = $this->encoder();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($encoder, $visit);
+        $id = $this->postJson('/api/health-record-drafts', ['patient_id' => $patient->id, 'classification' => 'General Consultation', 'consultation_uuid' => $uuid, 'rhu_visit_id' => $visit->id, 'payload' => ['chiefComplaint' => 'Partial']])->assertCreated()->json('data.id');
+        $this->deleteJson('/api/health-record-drafts/'.$id, ['version' => 1])->assertNoContent();
+        $this->assertNotSame($uuid, $visit->fresh()->consultation_uuid);
+        $this->assertSame('in_consultation', $visit->fresh()->status);
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'discarded']);
+    }
+
+    public function test_lost_rhu_finalize_response_can_replay_after_the_visit_has_completed(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+        $input = ['consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1, 'consultation_uuid' => $uuid, 'rhu_visit_id' => $visit->id, 'patient_id' => $patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Partial'];
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', $input)->assertCreated();
+        $this->postJson('/api/health-records', $input)->assertOk()->assertJsonPath('idempotent_replay', true);
+        $this->assertDatabaseCount('health_records', 1);
+        $this->assertSame(RhuVisitQueueEntry::CLOSE_REASON_COMPLETED, $visit->fresh()->close_reason);
+        $this->postJson('/api/health-records', [...$input, 'chief_complaint' => 'Changed'])->assertConflict();
     }
 
     public function test_rhu_itr_stores_additional_concern_without_changing_the_referral_snapshot(): void
@@ -275,6 +335,79 @@ class RhuItrConsultationTest extends TestCase
         $this->postRecord($encoder, $patient, $visit, $uuid)->assertForbidden();
         $this->assertSame(RhuVisitQueueEntry::STATUS_IN_CONSULTATION, $visit->fresh()->status);
         $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_rhu_draft_persists_additional_concern_fields_for_back_to_queue_resume(): void
+    {
+        $patient = $this->patient();
+        $encoder = $this->encoder();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($encoder, $visit);
+
+        $created = $this->as($encoder)->postJson('/api/health-record-drafts', [
+            'patient_id' => $patient->id,
+            'classification' => 'General Consultation',
+            'consultation_uuid' => $uuid,
+            'rhu_visit_id' => $visit->id,
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'chiefComplaint' => 'Today RHU complaint',
+                'showAdditionalConcern' => true,
+                'additionalChiefComplaint' => 'Second concern',
+                'additionalHistoryOfPresentIllness' => 'Since dawn',
+            ],
+        ])->assertCreated();
+
+        $draftId = $created->json('data.id');
+        $this->getJson('/api/health-record-drafts/'.$draftId)
+            ->assertOk()
+            ->assertJsonPath('data.payload.chiefComplaint', 'Today RHU complaint')
+            ->assertJsonPath('data.payload.showAdditionalConcern', true)
+            ->assertJsonPath('data.payload.additionalChiefComplaint', 'Second concern')
+            ->assertJsonPath('data.payload.additionalHistoryOfPresentIllness', 'Since dawn');
+
+        $this->postRecord($encoder, $patient, $visit, $uuid, [
+            'chief_complaint' => 'Today RHU complaint',
+            'monitoring_data' => [
+                'additionalConcern' => [
+                    'chiefComplaint' => 'Second concern',
+                    'historyOfPresentIllness' => 'Since dawn',
+                ],
+            ],
+        ])->assertForbidden();
+        $this->assertSame(RhuVisitQueueEntry::STATUS_IN_CONSULTATION, $visit->fresh()->status);
+        $this->assertDatabaseCount('health_records', 0);
+    }
+
+    public function test_rhu_care_plan_draft_flush_can_be_finalized_at_the_current_revision(): void
+    {
+        $patient = $this->patient();
+        $user = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($user, $visit);
+        $input = [
+            'patient_id' => $patient->id, 'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid, 'classification' => 'General Consultation',
+            'payload' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'wizardPhase' => 'review', 'chiefComplaint' => 'Hypertension review',
+                'diagnoses' => [[
+                    'id' => 'd1', 'name' => 'Hypertension', 'activate' => true,
+                    'nextAction' => 'rhu_follow_up', 'receivingBhcId' => '', 'monitoringRecommendation' => '',
+                    'tbManagement' => ['diagnosisType' => '', 'drugResistance' => '', 'openTreatmentCard' => false],
+                ]],
+            ],
+        ];
+        $created = $this->as($user)->postJson('/api/health-record-drafts', $input)->assertCreated();
+        $id = $created->json('data.id');
+        $updated = $this->putJson('/api/health-record-drafts/'.$id, [...$input, 'version' => $created->json('data.version')])
+            ->assertOk();
+        $this->getJson('/api/health-record-drafts/'.$id)->assertOk()
+            ->assertJsonPath('data.payload.diagnoses.0.nextAction', 'rhu_follow_up');
+        $this->withHeaders(['X-Health-Record-Draft-ID' => $id, 'X-Draft-Version' => (string) $updated->json('data.version')]);
+        $this->postRecord($user, $patient, $visit, $uuid)->assertCreated();
+        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $id, 'status' => 'consumed']);
+        $this->assertDatabaseCount('health_records', 1);
     }
 
     public function test_referred_bhc_findings_and_rhu_reassessments_remain_accessible_without_patient_rhu_assignment(): void

@@ -1,5 +1,6 @@
+import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
@@ -76,11 +77,11 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   });
   const {
     patients,
+    hasData: hasPatientData,
     filteredPatients,
     loading,
     filters,
     setFilters,
-    error,
     queryError,
     refetchPatients,
     isRefreshing,
@@ -169,8 +170,12 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     hasMore: hasMorePatients,
     loadMore: loadMorePatients,
   } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
-  const showInitialLoading = loading && patients.length === 0;
-  const showRefreshOverlay = isRefreshing && patients.length > 0;
+  const hasData = showHandoffs ? Array.isArray(handoffsQuery.data) : hasPatientData;
+  const activeError = showHandoffs ? handoffsQuery.error : queryError;
+  const activeRefreshing = showHandoffs ? handoffsQuery.isFetching : isRefreshing;
+  const activeRetry = showHandoffs ? handoffsQuery.refetch : refetchPatients;
+  const showInitialLoading = showHandoffs ? handoffsQuery.isPending && !hasData : loading && !hasData;
+  const showRefreshOverlay = activeRefreshing && hasData;
 
   useEffect(() => {
     // The card list scrolls on its own: a new search/filter starts at the top.
@@ -227,7 +232,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     setFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
-  if (error) {
+  if (activeError && (!hasData || [401, 403].includes(activeError.status))) {
     return (
       <Shell
         embedded={embedded}
@@ -236,9 +241,9 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
       >
         <ConnectionErrorState
           fullPage
-          onRetry={() => refetchPatients()}
-          retrying={isRefreshing}
-          variant={errorStateVariant(queryError)}
+          onRetry={() => activeRetry()}
+          retrying={activeRefreshing}
+          variant={errorStateVariant(activeError)}
         />
       </Shell>
     );
@@ -250,9 +255,12 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
       role={role}
       title={showHandoffs ? "Monitoring Requests" : "Patients"}
     >
-      <SoftLoadingArea skeleton="table"
+      {activeError && hasData && <p role="status" className="mb-3 text-sm text-neutral-600">Unable to refresh this list. Showing the last list that loaded.</p>}
+      <SoftLoadingArea skeleton="patients"
+        bodyOnly={embedded}
+        skeletonOptions={{ role, canRegister, view: showHandoffs ? "monitoring" : "directory" }}
         isLoading={showInitialLoading}
-        message="Loading patients..."
+        message={showHandoffs ? "Loading monitoring requests..." : "Loading patients..."}
         scope="area"
         className="clinical-directory clinical-directory--patients"
       >

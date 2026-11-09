@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 import { ModalButton, ModalShell } from '../../common';
 import { Input } from '../../ui/input';
+import { DatePickerField } from '../../common/forms/DatePickerField';
 import { createIdempotencyKey } from '../../../utils/idempotency';
 import { groupLabel } from '../../../utils/medicineExpiryGroups';
 import { actionGroups, validateStockAction } from '../../../utils/medicineLedger';
@@ -57,10 +58,16 @@ export default function MedicineInventoryActionModal({ open, mode, item, initial
       <p className="text-sm leading-relaxed text-neutral-600">{descriptions[mode]}</p>
       <p className="rounded-lg bg-neutral-100 px-3 py-2.5 text-sm text-ink-800">Recorded Stock: <strong className="tabular-nums">{formatStockQuantity(item.quantity, item.unit)}</strong></p>
       {restock ? <div className="space-y-2">
-        <label htmlFor={`${id}-expiry`} className="block text-xs font-semibold text-neutral-600">Received Stock Expiry</label>
-        <Input id={`${id}-expiry`} type="date" value={form.expiryDate} disabled={pending || form.expiryNotApplicable} aria-invalid={Boolean(errors.expiryDate)} aria-describedby={errors.expiryDate ? `${id}-expiry-error` : undefined} onChange={e => update('expiryDate', e.target.value)} />
+        <DatePickerField
+          label="Received Stock Expiry"
+          name={`${id}-expiry`}
+          value={form.expiryDate}
+          disabled={pending || form.expiryNotApplicable}
+          error={errors.expiryDate}
+          allowClear
+          onChange={(value) => update('expiryDate', value)}
+        />
         {item.itemType === 'health_supply' && <label className="flex items-start gap-2 text-xs text-neutral-600"><input type="checkbox" className="mt-0.5 accent-brand-600" checked={form.expiryNotApplicable} disabled={pending} onChange={e => { update('expiryNotApplicable', e.target.checked); update('expiryDate', ''); }} />Not Applicable — no manufacturer-defined expiry</label>}
-        {errors.expiryDate && <p id={`${id}-expiry-error`} role="alert" className="text-xs text-alert-700">{errors.expiryDate}</p>}
       </div> : <div className="space-y-2">
         <label htmlFor={`${id}-group`} className="block text-xs font-semibold text-neutral-600">Expiry Group</label>
         <select id={`${id}-group`} required className={fieldClass} value={form.expiry_group_id} disabled={pending || Boolean(initialGroupId)} aria-invalid={Boolean(errors.expiry_group_id)} aria-describedby={`${id}-group-note`} onChange={e => update('expiry_group_id', e.target.value)}>

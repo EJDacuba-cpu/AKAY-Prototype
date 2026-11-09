@@ -7,6 +7,8 @@ use App\Exceptions\RhuVisitDuplicateActiveException;
 use App\Exceptions\RhuVisitStateException;
 use App\Models\AuditLog;
 use App\Models\FollowUpTask;
+use App\Models\HealthRecord;
+use App\Models\HealthRecordDraft;
 use App\Models\Patient;
 use App\Models\Referral;
 use App\Models\RhuVisitQueueEntry;
@@ -211,14 +213,28 @@ class RhuVisitQueueService
      *
      * @param  list<int>  $followUpTaskIds
      */
-    public function start(User $user, int $entryId, array $followUpTaskIds = []): RhuVisitQueueEntry
+    public function start(User $user, int $entryId, array $followUpTaskIds = [], ?string $entryConsultationUuid = null): RhuVisitQueueEntry
     {
         $this->authorizeRhuUser($user);
         ActionPermissions::ensure($user, 'consultations.encode');
 
+        // Explicit fresh entry may select follow-ups on an already-started,
+        // empty visit (including after discard). Serialize with draft creation.
+        if ($entryConsultationUuid !== null) {
+            return app(FormDraftRecoveryKeyService::class)->withClinicalIdentity(
+                $entryConsultationUuid,
+                fn () => $this->startWithinIdentity($user, $entryId, $followUpTaskIds, $entryConsultationUuid)
+            );
+        }
+
+        return $this->startWithinIdentity($user, $entryId, $followUpTaskIds);
+    }
+
+    private function startWithinIdentity(User $user, int $entryId, array $followUpTaskIds, ?string $entryConsultationUuid = null): RhuVisitQueueEntry
+    {
         $started = null;
         $conflict = null;
-        DB::transaction(function () use ($user, $entryId, $followUpTaskIds, &$started, &$conflict): void {
+        DB::transaction(function () use ($user, $entryId, $followUpTaskIds, $entryConsultationUuid, &$started, &$conflict): void {
             $entry = $this->lockedVisit($user, $entryId);
             if ($entry->closed_at !== null || $entry->status === RhuVisitQueueEntry::STATUS_CLOSED) {
                 $conflict = ['errorCode' => 'VISIT_CLOSED', 'message' => 'A closed visit cannot be started.', 'id' => $entry->id];
@@ -226,7 +242,20 @@ class RhuVisitQueueService
             }
             if ($entry->status === RhuVisitQueueEntry::STATUS_IN_CONSULTATION
                 && filled($entry->consultation_uuid)) {
+                if ($entryConsultationUuid !== null) {
+                    if (strcasecmp($entry->consultation_uuid, $entryConsultationUuid) !== 0
+                        || HealthRecordDraft::where('consultation_uuid', $entryConsultationUuid)->where('status', HealthRecordDraft::STATUS_ACTIVE)->exists()
+                        || HealthRecord::where('consultation_uuid', $entryConsultationUuid)->exists()) {
+                        $conflict = ['errorCode' => 'CONSULTATION_ENTRY_CHANGED', 'message' => 'The consultation changed. Reopen it and review its unfinished work.', 'id' => $entry->id];
+                        return;
+                    }
+                    $entry->update(['continued_follow_up_task_ids' => $this->eligibleFollowUpTaskIds($entry, $followUpTaskIds)]);
+                }
                 $started = $entry;
+                return;
+            }
+            if ($entryConsultationUuid !== null) {
+                $conflict = ['errorCode' => 'CONSULTATION_ENTRY_CHANGED', 'message' => 'The consultation changed. Reopen it from the queue.', 'id' => $entry->id];
                 return;
             }
             if ($entry->status !== RhuVisitQueueEntry::STATUS_WAITING || filled($entry->consultation_uuid)) {

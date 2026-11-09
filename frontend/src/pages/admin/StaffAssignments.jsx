@@ -7,10 +7,10 @@ import { PageStateWrapper, SearchField, SearchFilterCluster, TablePagination } f
 import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { Card } from "../../components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import PermissionReviewDialog from "../../components/features/access/PermissionReviewDialog";
 import { ASSIGNMENT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
 import { apiRequest, unwrapList } from "../../services/apiClient";
@@ -18,7 +18,7 @@ import { NURSE_ASSIGNMENT_DUTIES, PERMISSION_CATALOG, PERMISSION_GROUPS, suggest
 import { reviewPermissions, setPermission } from "../../utils/accessPolicy";
 import usePagedRows from "../../hooks/usePagedRows";
 import useNotification from "../../hooks/useNotification";
-import { tableBodyHeight } from "../../utils/tablePaging";
+import { fixedTableVars, tableBodyHeight } from "../../utils/tablePaging";
 
 const DEFAULT_FILTERS = { search: "", status: "all" };
 const FIELD_CLASS = "h-9 rounded-lg border-neutral-200 text-[13px] text-ink-800 shadow-none";
@@ -180,7 +180,7 @@ export default function StaffAssignments({ mode = "directory" }) {
 
   return (
     <DashboardLayout role="admin" title={creating ? "Add Nurse Assignment" : "Staff Assignments"}>
-      <PageStateWrapper skeleton="table" isLoading={loading} isError={Boolean(loadError)} hasData={!loading && !loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
+      <PageStateWrapper skeleton={creating ? "assignment-form" : "assignments"} isLoading={loading} isError={Boolean(loadError)} hasData={!loading && !loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
         <div className="staff-assignments staff-assignment-content mx-auto w-full max-w-[1500px] space-y-4">
           {creating && <Button type="button" variant="link" size="sm" className="h-auto px-0 py-0 text-[12px] text-neutral-600" onClick={cancelForm} disabled={busy}><ArrowLeft size={14} aria-hidden="true" />Back to Staff Assignments</Button>}
           <header className="staff-assignment-header flex flex-wrap items-center justify-between gap-4">
@@ -207,8 +207,31 @@ export default function StaffAssignments({ mode = "directory" }) {
                       <div className="space-y-3">
                         <div><label htmlFor={`${id}-assignment_type`} className={LABEL_CLASS}>Assignment type</label><Select {...inputProps("assignment_type")}><option value="temporary">Temporary · end date required</option><option value="ongoing">Ongoing · until revoked</option></Select><FieldError id={id} field="assignment_type" message={errors.assignment_type} /></div>
                         <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                          <div className="min-w-0"><label htmlFor={`${id}-starts_on`} className={LABEL_CLASS}>Start date</label><Input {...inputProps("starts_on")} type="date" required /><FieldError id={id} field="starts_on" message={errors.starts_on} /></div>
-                          {form.assignment_type === "temporary" && <div className="min-w-0"><label htmlFor={`${id}-ends_on`} className={LABEL_CLASS}>End date</label><Input {...inputProps("ends_on")} type="date" min={form.starts_on} required /><FieldError id={id} field="ends_on" message={errors.ends_on} /></div>}
+                          <div className="min-w-0">
+                            <DatePickerField
+                              label="Start date"
+                              name="starts_on"
+                              value={form.starts_on}
+                              required
+                              disabled={busy}
+                              error={errors.starts_on}
+                              onChange={(value) => changeField("starts_on", value)}
+                            />
+                          </div>
+                          {form.assignment_type === "temporary" && (
+                            <div className="min-w-0">
+                              <DatePickerField
+                                label="End date"
+                                name="ends_on"
+                                value={form.ends_on}
+                                minDate={form.starts_on}
+                                required
+                                disabled={busy}
+                                error={errors.ends_on}
+                                onChange={(value) => changeField("ends_on", value)}
+                              />
+                            </div>
+                          )}
                         </div>
                         {form.assignment_type === "ongoing" && <p className="text-[12px] leading-5 text-neutral-600">Access continues from the start date until this assignment is revoked.</p>}
                       </div>
@@ -239,9 +262,9 @@ export default function StaffAssignments({ mode = "directory" }) {
           </div>
 
           <div className="staff-assignment-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-            <div className="overflow-auto" style={{ height: tableBodyHeight() }}>
+            <div className="akay-fixed-table overflow-x-auto overflow-y-hidden" style={{ height: tableBodyHeight(), ...fixedTableVars() }}>
               {pageRows.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center"><h2 className="text-[14px] font-semibold text-ink-800">{narrowed ? "No matching assignments" : "No nurse assignments yet"}</h2><p className="max-w-md text-[13px] leading-5 text-neutral-600">{narrowed ? "Try a different search or clear the status filter." : "Assignments give RHU-based nurses additional access to a BHC for the duties you approve."}</p>{narrowed ? <Button variant="secondary" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear search and filters</Button> : !noEligibility ? <Button variant="secondary" size="sm" onClick={openForm}><Plus size={14} />Add Assignment</Button> : null}</div> : <>
-                <table className="hidden w-full min-w-[1000px] table-fixed text-left md:table"><caption className="sr-only">Nurse assignments to barangay health centers</caption><colgroup><col className="w-[23%]" /><col className="w-[23%]" /><col className="w-[24%]" /><col className="w-[12%]" /><col className="w-[10%]" /><col className="w-[8%]" /></colgroup><thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600"><tr>{["Nurse", "Destination BHC", "Assignment period", "Duties", "Status", "Actions"].map((label) => <th key={label} scope="col" className="px-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-neutral-100">{pageRows.map((row) => <tr key={row.id} className="h-14 hover:bg-neutral-50"><td className="px-3"><p className="truncate text-[13px] font-semibold text-ink-800" title={row.user?.name}>{row.user?.name || "Not recorded"}</p>{row.user?.rural_health_unit?.name && <p className="truncate text-[11px] text-neutral-600" title={row.user.rural_health_unit.name}>{row.user.rural_health_unit.name}</p>}</td><td className="px-3"><p className="truncate text-[13px] text-ink-800" title={row.barangay_health_center?.name}>{row.barangay_health_center?.name || "Not recorded"}</p></td><td className="px-3"><p className="text-[12px] tabular-nums text-ink-800">{row.starts_on?.slice(0, 10) || "Not recorded"} → {row.ends_on?.slice(0, 10) || "Until revoked"}</p><p className="mt-0.5 text-[11px] capitalize text-neutral-600">{row.assignment_type}</p></td><td className="px-3"><AssignmentDuties permissions={row.permissions} /></td><td className="px-3"><AssignmentStatus row={row} today={today} /></td><td className="px-2">{!row.revoked_at ? <Button variant="ghost" size="compact" className="rounded-full px-2 text-[12px] text-alert-700 hover:bg-alert-50 hover:text-alert-800" disabled={busy} onClick={() => revoke(row)} aria-label={`Revoke assignment for ${row.user?.name || "nurse"}`}>Revoke</Button> : <span className="text-[12px] text-neutral-600">—</span>}</td></tr>)}</tbody></table>
+                <table className="hidden w-full min-w-[1000px] table-fixed border-separate border-spacing-0 text-left md:table"><caption className="sr-only">Nurse assignments to barangay health centers</caption><colgroup><col className="w-[23%]" /><col className="w-[23%]" /><col className="w-[24%]" /><col className="w-[12%]" /><col className="w-[10%]" /><col className="w-[8%]" /></colgroup><thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600"><tr>{["Nurse", "Destination BHC", "Assignment period", "Duties", "Status", "Actions"].map((label) => <th key={label} scope="col" className="px-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-neutral-100">{pageRows.map((row) => <tr key={row.id} className="h-14 hover:bg-neutral-50"><td className="px-3"><p className="truncate text-[13px] font-semibold text-ink-800" title={row.user?.name}>{row.user?.name || "Not recorded"}</p>{row.user?.rural_health_unit?.name && <p className="truncate text-[11px] text-neutral-600" title={row.user.rural_health_unit.name}>{row.user.rural_health_unit.name}</p>}</td><td className="px-3"><p className="truncate text-[13px] text-ink-800" title={row.barangay_health_center?.name}>{row.barangay_health_center?.name || "Not recorded"}</p></td><td className="px-3"><p className="text-[12px] tabular-nums text-ink-800">{row.starts_on?.slice(0, 10) || "Not recorded"} → {row.ends_on?.slice(0, 10) || "Until revoked"}</p><p className="mt-0.5 text-[11px] capitalize text-neutral-600">{row.assignment_type}</p></td><td className="px-3"><AssignmentDuties permissions={row.permissions} /></td><td className="px-3"><AssignmentStatus row={row} today={today} /></td><td className="px-2">{!row.revoked_at ? <Button variant="ghost" size="compact" className="rounded-full px-2 text-[12px] text-alert-700 hover:bg-alert-50 hover:text-alert-800" disabled={busy} onClick={() => revoke(row)} aria-label={`Revoke assignment for ${row.user?.name || "nurse"}`}>Revoke</Button> : <span className="text-[12px] text-neutral-600">—</span>}</td></tr>)}</tbody></table>
                 <div className="divide-y divide-neutral-100 md:hidden">{pageRows.map((row) => <article key={row.id} className="space-y-3 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-[13px] font-semibold text-ink-800">{row.user?.name || "Not recorded"}</h2><p className="mt-1 text-[12px] text-neutral-600">{row.barangay_health_center?.name || "Not recorded"}</p></div><AssignmentStatus row={row} today={today} /></div><p className="text-[12px] tabular-nums text-neutral-600">{row.starts_on?.slice(0, 10) || "Not recorded"} → {row.ends_on?.slice(0, 10) || "Until revoked"} · {row.assignment_type}</p><div className="flex items-center justify-between gap-3"><AssignmentDuties permissions={row.permissions} />{!row.revoked_at && <Button variant="secondary" size="compact" disabled={busy} onClick={() => revoke(row)}>Revoke assignment</Button>}</div></article>)}</div>
               </>}
             </div>

@@ -1,3 +1,5 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
+import { getLaboratoryTests } from "../../services/laboratoryService";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router";
 import { getPatientRecordReturn } from "../../utils/profileNavigation";
 import { useEffect, useRef } from "react";
@@ -21,6 +23,7 @@ import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
 } from "../../components/features/health-records/BhcHealthRecordPrintDocument";
 import { Button } from "../../components/ui/button";
+import LaboratoryRecordPanel from "../../components/features/health-records/LaboratoryRecordPanel";
 
 import {
   formatLongDate,
@@ -51,7 +54,7 @@ export default function RHURecordDetails() {
   const {
     data: details,
     error,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     refetch,
   } = useQuery({
@@ -59,6 +62,7 @@ export default function RHURecordDetails() {
     queryFn: async () => {
       const recordData = await getHealthRecordById(recordId);
       let existingReferral;
+      let printError = null;
       try {
         existingReferral = await getReferralByHealthRecordId(recordId);
         const linkedTrackingId =
@@ -73,19 +77,21 @@ export default function RHURecordDetails() {
         ) {
           existingReferral = await getReferralByTrackingId(linkedTrackingId);
         }
-      } catch {
+      } catch (failure) {
+        printError = failure;
         existingReferral = null;
       }
       let patientData = recordData?.patient || null;
       if (recordData?.patientId) {
         try {
           patientData = await getPatientById(recordData.patientId);
-        } catch {
+        } catch (failure) {
+          printError = failure;
           patientData = recordData?.patient || null;
         }
       }
 
-      return { record: recordData, patient: patientData, linkedReferral: existingReferral };
+      return { record: recordData, patient: patientData, linkedReferral: existingReferral, printError };
     },
     enabled: Boolean(recordId),
     retry: (failureCount, requestError) =>
@@ -95,6 +101,18 @@ export default function RHURecordDetails() {
   const record = details?.record || (details?.id ? details : null);
   const patient = details?.patient || record?.patient || null;
   const linkedReferral = details?.linkedReferral || null;
+  const laboratoryQuery = useQuery({
+    queryKey: ["record-laboratory-tests", recordId],
+    queryFn: () => getLaboratoryTests(recordId),
+    enabled: Boolean(record),
+  });
+  const handlePrint = usePrintDocument("#health-record-print", {
+    title: `AKAY Health Record #${recordId}`,
+    loading: isLoading || isFetching || laboratoryQuery.isPending || laboratoryQuery.isFetching,
+    error: error || details?.printError || laboratoryQuery.error,
+    onRetry: () => Promise.all([refetch(), laboratoryQuery.refetch()]),
+  });
+
   function returnToProfile() {
     if (!location.state?.patientProfile && window.history.state?.idx > 0) {
       navigate(-1);
@@ -109,11 +127,13 @@ export default function RHURecordDetails() {
   }
 
   useEffect(() => {
-    if (!shouldAutoPrint || !record || hasAutoPrintedRef.current) return;
-    hasAutoPrintedRef.current = true;
+    hasAutoPrintedRef.current = false;
+  }, [recordId]);
 
-    const timer = setTimeout(() => {
-      window.print();
+  useEffect(() => {
+    if (!shouldAutoPrint || !record || isFetching || laboratoryQuery.isFetching || laboratoryQuery.isPending || hasAutoPrintedRef.current) return;
+    hasAutoPrintedRef.current = true;
+    void handlePrint().then(() => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -122,18 +142,16 @@ export default function RHURecordDetails() {
         },
         { replace: true, state: location.state },
       );
-    }, 250);
+    });
+  }, [shouldAutoPrint, record, isFetching, handlePrint, setSearchParams, location.state, laboratoryQuery.isFetching, laboratoryQuery.isPending]);
 
-    return () => clearTimeout(timer);
-  }, [shouldAutoPrint, record, setSearchParams, location.state]);
-
-  const loading = isLoading || (!details && isFetching);
+  const loading = Boolean(recordId) && !details && (isLoading || isFetching);
   const detailsUpdating = isFetching && !loading && Boolean(details);
 
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
-        <SoftLoadingArea skeleton="details"
+        <SoftLoadingArea skeleton="record-details" skeletonOptions={{ role: "rhu" }}
           isLoading
           message="Loading health record details..."
           minHeight="min-h-[520px]"
@@ -144,7 +162,7 @@ export default function RHURecordDetails() {
     );
   }
 
-  if (error && error?.status !== 404) {
+  if (error && error?.status !== 404 && (!details || [401, 403].includes(error?.status))) {
     return (
       <DashboardLayout role="rhu" title="Health Record Details">
         <ConnectionErrorState
@@ -213,7 +231,7 @@ export default function RHURecordDetails() {
 
   return (
     <DashboardLayout role="rhu" title="Health Record Details">
-      <style>{BHC_HEALTH_RECORD_PRINT_PAGE_STYLES}</style>
+      <style data-print-shell-style>{BHC_HEALTH_RECORD_PRINT_PAGE_STYLES}</style>
       <div className="min-h-[520px]">
         <div className="print:hidden">
           <BhcHealthRecordWorkspace
@@ -234,12 +252,16 @@ export default function RHURecordDetails() {
             isUpdating={detailsUpdating}
             bodyFindingsHistory={<BodyFindingRecordHistory record={record} />}
             onBack={returnToProfile}
-            onPrint={() => window.print()}
+            onPrint={handlePrint}
           />
+          <LaboratoryRecordPanel recordId={recordId} patientId={record.patientId || record.patient_id} />
         </div>
 
         <div className="hidden print:block">
           <BhcHealthRecordPrintDocument
+            documentRole="rhu"
+            printState={isFetching || laboratoryQuery.isPending || laboratoryQuery.isFetching ? "loading" : error || details?.printError || laboratoryQuery.error ? "error" : "ready"}
+            laboratoryEntries={laboratoryQuery.data?.data || []}
             record={record}
             patient={patient}
             linkedReferral={linkedReferral}

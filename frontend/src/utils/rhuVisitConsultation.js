@@ -12,10 +12,10 @@ export {
  * Start or resume through the existing RHU visit APIs. The same visit and
  * consultation identity are reused; a second queue row is never created.
  */
-export async function startOrResumeRhuConsultation({ mode, visitId, patientId, followUpIds } = {}) {
+export async function startOrResumeRhuConsultation({ mode, visitId, patientId, followUpIds, entryConsultationUuid } = {}) {
   const visit = mode === "resume"
     ? await resumeRhuVisit(visitId)
-    : await startRhuVisit(visitId, { followUpTaskIds: followUpIds ?? [] });
+    : await startRhuVisit(visitId, { followUpTaskIds: followUpIds ?? [], entryConsultationUuid });
   const id = visit?.id || visitId;
   const pid = patientId || visit?.patient?.id;
   return { visit, path: rhuConsultationPath(id, pid, visitContinuedFollowUpIds(visit)) };

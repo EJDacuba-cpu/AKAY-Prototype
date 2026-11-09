@@ -14,26 +14,29 @@ export default function PatientReferralsTab({
   isLoading = false,
   isFetching = false,
   isError = false,
+  hasData = referrals.length > 0,
+  error,
   onRetry,
 }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(referrals, referrals.length);
 
   return (
     <section aria-label="Referrals" className="space-y-3 p-4">
-      {isError && referrals.length === 0 ? (
+      {isError && (!hasData || [401, 403].includes(error?.status)) ? (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
           Unable to load referral history.
           <button type="button" onClick={onRetry} className="text-[13px] font-medium text-ink-700 hover:underline">
             Retry
           </button>
         </div>
-      ) : isLoading && referrals.length === 0 ? (
-        <SoftLoadingArea skeleton="table" bodyOnly isLoading message="Loading referrals..." minHeight="min-h-[320px]">
+      ) : isLoading && !hasData ? (
+        <SoftLoadingArea skeleton="profile-referrals" bodyOnly isLoading message="Loading referrals..." minHeight="min-h-[320px]">
           <div className="min-h-[320px]" />
         </SoftLoadingArea>
       ) : (
         <>
-          {isFetching && referrals.length > 0 && <RefreshingIndicator label="Updating referrals..." />}
+          {isError && hasData && <p role="status" className="text-sm text-neutral-600">Unable to refresh referrals. Showing the last history that loaded.</p>}
+          {isFetching && hasData && <RefreshingIndicator label="Updating referrals..." />}
           <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
             <div className="md:hidden">
               {pageRows.length === 0 ? (

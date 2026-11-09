@@ -7,6 +7,7 @@ import {
   isForcedSessionInvalidation,
 } from "../utils/sessionPrivacy";
 import { CHANGE_PASSWORD_PATH } from "../utils/passwordChange";
+import { formDraftRequestOptions } from "../utils/formDraftRequest";
 
 const TOKEN_KEY = "akay_auth_token";
 const USER_KEY = "akay_auth_user";
@@ -16,6 +17,16 @@ const SESSION_REQUEST_HEADERS = { "X-AKAY-Session": "1" };
 let accessToken = null;
 let authenticatedUser = null;
 let refreshPromise = null;
+let authRecoveryError = null;
+
+export function getAuthRecoveryError() {
+  return authRecoveryError;
+}
+
+export function subscribeToAuthRecovery(onChange) {
+  window.addEventListener("akay:auth-changed", onChange);
+  return () => window.removeEventListener("akay:auth-changed", onChange);
+}
 
 export function getAuthToken() {
   return accessToken;
@@ -74,6 +85,7 @@ export function normalizeUser(user = {}) {
 }
 
 export function storeAuthSession({ token, user }) {
+  if (token && user) authRecoveryError = null;
   if (token) accessToken = token;
   if (user) {
     const normalized = normalizeUser(user);
@@ -108,6 +120,7 @@ export async function selectWorkingFacility(key) {
 }
 
 export function clearAuthSession() {
+  authRecoveryError = null;
   accessToken = null;
   authenticatedUser = null;
   announceAuthChange();
@@ -142,6 +155,7 @@ function createTimeoutError() {
 }
 
 async function sendRequest(endpoint, options = {}) {
+  options = formDraftRequestOptions(options, getStoredAuthUser() || {});
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     throw createOfflineError();
   }
@@ -193,6 +207,8 @@ async function sendRequest(endpoint, options = {}) {
 
   if (response.status === 204) return null;
 
+  if (response.ok && options.responseType === "blob") return response.blob();
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(serverErrorMessage(payload));
@@ -223,13 +239,23 @@ export async function refreshAuthSession() {
       .then((response) => {
         if (!response?.token || !response?.user) {
           const error = new Error("Unable to restore authenticated session.");
-          error.status = 401;
-          error.code = "SESSION_INVALID";
+          // An incomplete response does not prove that the credential was rejected.
+          error.code = "SESSION_RESTORE_UNAVAILABLE";
           throw error;
         }
 
         storeAuthSession({ token: response.token, user: response.user });
         return getStoredAuthUser();
+      })
+      .catch(async (error) => {
+        if (isForcedSessionInvalidation(error?.status, error?.payload)) {
+          await invalidateFrontendSession(error);
+        } else {
+          // Retain credentials and drafts, but gate protected UI until Retry verifies them.
+          authRecoveryError = error;
+          announceAuthChange();
+        }
+        throw error;
       })
       .finally(() => {
         refreshPromise = null;
@@ -247,7 +273,37 @@ async function invalidateFrontendSession(error) {
   clearAuthSession();
 }
 
+function waitForSessionRefresh(signal) {
+  signal?.throwIfAborted();
+  const refresh = refreshAuthSession();
+  if (!signal) return refresh;
+
+  // One cancelled caller must not cancel the shared refresh for other requests.
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    refresh.then(
+      (user) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(user);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+    // Refresh may synchronously trigger cancellation before the listener is attached.
+    if (signal.aborted) {
+      signal.removeEventListener("abort", onAbort);
+      onAbort();
+    }
+  });
+}
+
 export async function apiRequest(endpoint, options = {}) {
+  options.signal?.throwIfAborted();
+  if (options.auth !== false && authRecoveryError) throw authRecoveryError;
+
   try {
     return await sendRequest(endpoint, options);
   } catch (error) {
@@ -257,16 +313,21 @@ export async function apiRequest(endpoint, options = {}) {
       options.retryAfterRefresh !== false;
 
     if (canRefresh) {
-      try {
-        await refreshAuthSession();
-        return await sendRequest(endpoint, {
-          ...options,
-          retryAfterRefresh: false,
-        });
-      } catch (refreshError) {
-        await invalidateFrontendSession(refreshError);
-        throw refreshError;
+      await waitForSessionRefresh(options.signal);
+      options.signal?.throwIfAborted();
+
+      // Never repeat a clinical write automatically, even after a successful refresh.
+      if (!["GET", "HEAD", "OPTIONS"].includes((options.method || "GET").toUpperCase())) {
+        const retryError = new Error(
+          "Your session was restored. This request was not retried. Check its status before submitting again.",
+          { cause: error },
+        );
+        retryError.code = "AUTH_RECOVERED_RETRY_REQUIRED";
+        throw retryError;
       }
+
+      // Replay has its own normal error handling, with at most one refresh per request.
+      return apiRequest(endpoint, { ...options, retryAfterRefresh: false });
     }
 
     // The account still has a temporary password: every protected call is refused until it is changed.

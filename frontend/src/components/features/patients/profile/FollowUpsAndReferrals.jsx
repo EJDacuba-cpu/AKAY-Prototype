@@ -68,6 +68,8 @@ export function ReferralsSection({
   isLoading = false,
   isFetching = false,
   isError = false,
+  hasData = referrals.length > 0,
+  error,
   selectedKey = "",
   onView,
   onSelect,
@@ -77,13 +79,14 @@ export function ReferralsSection({
       id="referrals"
       title="Referrals"
       meta={referrals.length ? `${referrals.length} total` : null}
-      actions={isFetching && referrals.length > 0 ? <RefreshingIndicator label="Updating referrals..." /> : null}
+      actions={isFetching && hasData ? <RefreshingIndicator label="Updating referrals..." /> : null}
     >
-      {isLoading && referrals.length === 0 ? (
-        <SoftLoadingArea isLoading message="Loading referrals..." minHeight="min-h-[96px]">
+      {isError && hasData && ![401, 403].includes(error?.status) && <p role="status" className="mb-3 text-sm text-neutral-600">Unable to refresh referrals. Showing the last history that loaded.</p>}
+      {isLoading && !hasData && ![401, 403].includes(error?.status) ? (
+        <SoftLoadingArea skeleton="profile-referrals" bodyOnly skeletonOptions={{ view: "list", rows: 3 }} isLoading message="Loading referrals..." minHeight="min-h-[96px]">
           <div className="min-h-[96px]" />
         </SoftLoadingArea>
-      ) : isError && referrals.length === 0 ? (
+      ) : isError && (!hasData || [401, 403].includes(error?.status)) ? (
         <EmptyNote>Unable to load referral history right now.</EmptyNote>
       ) : referrals.length === 0 ? (
         <EmptyNote>No referral history found for this patient.</EmptyNote>

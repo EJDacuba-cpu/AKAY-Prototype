@@ -22,6 +22,7 @@ import {
   formatLongDate,
 } from "../../../utils/formatters";
 import { getCurrentUser } from "../../../utils/auth";
+import { laboratorySummary } from "../../../utils/laboratoryTests";
 import { TB_OUTCOME_LABELS } from "../../../utils/careTrackingConfig";
 import {
   isImmunizationClassification,
@@ -147,16 +148,22 @@ function currentUser() {
 
 function facilityLabel(record, patient) {
   const user = currentUser();
-  return formatFacilityName(
-    record?.barangayHealthCenter ||
-      record?.barangay_health_center ||
-      patient?.barangayHealthCenter ||
-      patient?.barangay_health_center ||
-      user?.barangayHealthCenter ||
-      user?.barangay_health_center ||
-      user?.facility,
-    "",
-  );
+  const savedName = [record?.ruralHealthUnit, record?.rural_health_unit,
+    record?.barangayHealthCenter, record?.barangay_health_center, record?.facility]
+    .map((facility) => formatFacilityName(facility, "")).find(Boolean);
+  if (savedName) return savedName;
+  const rhuId = record?.ruralHealthUnitId || record?.rural_health_unit_id;
+  const bhcId = record?.barangayHealthCenterId || record?.barangay_health_center_id;
+  // Only use another entity's facility name when its ID matches the record's
+  // saved facility. A patient's transfer must not relabel an earlier visit.
+  const sameFacility = (entity) => Boolean(entity && (
+    (rhuId && String(rhuId) === String(entity.ruralHealthUnitId || entity.rural_health_unit_id)) ||
+    (bhcId && String(bhcId) === String(entity.barangayHealthCenterId || entity.barangay_health_center_id))
+  ));
+  const matched = [user, patient].filter(sameFacility).map((entity) =>
+    formatFacilityName(entity.ruralHealthUnit || entity.rural_health_unit ||
+      entity.barangayHealthCenter || entity.barangay_health_center || entity.facility, "")).find(Boolean);
+  return matched || "Facility not recorded";
 }
 
 function InlineGrid({ items = [], columns = 3 }) {
@@ -231,8 +238,15 @@ export default function BhcHealthRecordPrintDocument({
   displayTime,
   practitioner,
   parentRecordId = "",
+  documentRole = "bhc",
+  printState = "ready",
+  laboratoryEntries = [],
 }) {
   if (!record) return null;
+
+  const sourceRole = record.ruralHealthUnitId || record.rural_health_unit_id
+    ? "rhu" : record.barangayHealthCenterId || record.barangay_health_center_id ? "bhc" : documentRole;
+  const hasAge = patient?.age !== undefined && patient?.age !== null && String(patient.age).trim() !== "";
 
   const purpose =
     record?.monitoringData?.visitPurpose ||
@@ -297,18 +311,18 @@ export default function BhcHealthRecordPrintDocument({
   });
 
   return (
-    <article className="bhc-record-print">
+    <article id="health-record-print" data-print-key={recordId} data-print-state={printState} className="bhc-record-print">
       <style>{documentStyles}</style>
 
       <header className="bhc-print-letterhead">
         <div className="bhc-print-brand">
           <p className="bhc-print-mark">AKAY</p>
           <p>Medical EHR and Referral System</p>
-          <p>Barangay Health Center</p>
+          <p>{sourceRole === "rhu" ? "Rural Health Unit" : "Barangay Health Center"}</p>
           {facility ? <p>{facility}</p> : null}
         </div>
         <div className="bhc-print-docmeta">
-          <p className="bhc-print-doctype">BHC Health Record</p>
+          <p className="bhc-print-doctype">{sourceRole === "rhu" ? "RHU" : "BHC"} Health Record</p>
           <p>{title || "Health Record"}</p>
           <p>Record #{recordId}</p>
 
@@ -320,11 +334,11 @@ export default function BhcHealthRecordPrintDocument({
           items={[
             { label: "Patient", value: patientName },
             ...(patientCode ? [{ label: "Patient ID", value: patientCode }] : []),
-            ...(patient?.age || patient?.sex
+            ...(hasAge || patient?.sex
               ? [
                   {
                     label: "Age / Sex",
-                    value: [patient?.age ? `${patient.age} yrs` : "", patient?.sex]
+                    value: [hasAge ? `${patient.age} yrs` : "", patient?.sex]
                       .filter(Boolean)
                       .join(" / "),
                   },
@@ -405,6 +419,30 @@ export default function BhcHealthRecordPrintDocument({
       {familyPlanning && <FamilyPlanningPrintSection details={fpDetails} />}
       {tbRecord && <TbPrintSection record={record} />}
 
+      {laboratoryEntries.length > 0 && <Section title="Laboratory & diagnostic tests">
+        {laboratoryEntries.map((entry) => <div key={entry.recordId || entry.id} className="bhc-print-narrative">
+          <p className="bhc-print-k">{recorded(entry.testName)} · {recorded(entry.resultStatus)}</p>
+          <InlineGrid columns={2} items={[
+            { label: "Collection date", value: entry.collectionDate },
+            { label: "Examination date", value: entry.examinationDate },
+          ]} />
+          <Narrative label="Result" value={entry.result} />
+          {entry.addenda?.length > 0 && <>
+            <Narrative label="Original laboratory entry" value={entry.original ? laboratorySummary(entry.original) : ""} />
+            {entry.addenda.map((addendum) => <div key={addendum.id} className="bhc-print-narrative">
+              <InlineGrid columns={2} items={[
+                { label: "Addendum recorded", value: addendum.createdAt },
+                { label: "Recorded by", value: addendum.createdBy ? `Staff #${addendum.createdBy}` : "" },
+              ]} />
+              <Narrative label="Reason" value={addendum.reason} />
+              <Narrative label="Addendum laboratory entry" value={addendum.data ? laboratorySummary(addendum.data) : ""} />
+            </div>)}
+          </>}
+          {entry.attachments?.length > 0 && <Narrative label="Supporting attachments"
+            value={entry.attachments.map((file) => file.name || "Name not recorded").join("\n")} />}
+        </div>)}
+      </Section>}
+
       <Section title="Health concerns & care outcomes">
         <HealthConcernsAndCareOutcomes
           record={record}
@@ -476,7 +514,7 @@ export default function BhcHealthRecordPrintDocument({
                 ]
                   .filter(Boolean)
                   .join(" · "),
-                `${formatDisplayValue(medicine.quantity, "0")} ${formatDisplayValue(medicine.unit, "")}`.trim(),
+                `${formatDisplayValue(medicine.quantity, "Not recorded")} ${formatDisplayValue(medicine.unit, "")}`.trim(),
                 formatDisplayValue(medicine.remarks, "—"),
                 formatLongDate(
                   medicine.dateDispensed ||
@@ -1079,8 +1117,8 @@ const documentStyles = `
   .bhc-record-print {
     color: var(--color-text);
     font-family: var(--font-sans);
-    font-size: 11px;
-    line-height: 1.45;
+    font-size: 10pt;
+    line-height: 1.35;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -1115,8 +1153,8 @@ const documentStyles = `
     text-align: right;
   }
   .bhc-print-section {
-    margin: 0 0 10px;
-    padding: 0 0 8px;
+    margin: 0 0 8px;
+    padding: 0 0 6px;
     border-bottom: 1px solid var(--color-border);
   }
   .bhc-print-section h2 {
@@ -1147,7 +1185,7 @@ const documentStyles = `
   }
   .bhc-print-k {
     color: var(--color-text-muted);
-    font-size: 9px;
+    font-size: 9pt;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1188,18 +1226,20 @@ const documentStyles = `
   }
   .bhc-print-table th {
     color: var(--color-text-muted);
-    font-size: 9px;
+    font-size: 9pt;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
   .bhc-print-footer {
-    margin-top: 10px;
+    margin-top: 6px;
+    break-before: avoid;
     color: var(--color-text-muted);
     font-size: 9px;
   }
   @media print {
-    .bhc-print-keep { break-inside: avoid; }
+    .bhc-print-keep { break-inside: auto; }
+    .bhc-print-table thead { display: table-header-group; }
     .bhc-print-section h2 { break-after: avoid; }
     .bhc-print-table tr { break-inside: avoid; }
     .bhc-print-letterhead { break-after: avoid; }

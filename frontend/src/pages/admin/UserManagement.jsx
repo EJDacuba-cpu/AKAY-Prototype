@@ -16,12 +16,12 @@ import "./user-management.css";
 import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import SearchFilterCluster from "../../components/common/filters/SearchFilterCluster";
 import { Button } from "../../components/ui/button";
-import { tableBodyHeight } from "../../utils/tablePaging";
 import AccountDetailsModal from "../../components/features/accounts/AccountDetailsModal";
 import EditAccountModal from "../../components/features/accounts/EditAccountModal";
 import AccountStatusBadge from "../../components/features/accounts/AccountStatusBadge";
 import {
   ConfirmationModal,
+  FixedTable,
   PageStateWrapper,
   SearchField,
   TablePagination,
@@ -192,7 +192,7 @@ export default function UserManagement() {
 
   return (
     <DashboardLayout role="admin" title="Account Directory">
-      <PageStateWrapper skeleton="table"
+      <PageStateWrapper skeleton="accounts"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
@@ -326,8 +326,8 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
 
   return (
     <div className="account-directory-sheet medicine-inventory-sheet flex min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
-      <div className="hidden overflow-auto md:block" style={{ height: tableBodyHeight() }}>
-        <table className="w-full min-w-[900px] table-fixed text-left">
+      <div className="hidden md:block">
+        <FixedTable minWidth="min-w-[900px]">
           <caption className="sr-only">User accounts</caption>
           <colgroup>
             <col className="w-[30%]" />
@@ -377,7 +377,7 @@ function AccountsTable({ users, resetKey, rolesData, currentUserId, narrowed, on
               ))
             )}
           </tbody>
-        </table>
+        </FixedTable>
       </div>
 
       <div className="divide-y divide-neutral-100 md:hidden">

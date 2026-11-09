@@ -20,6 +20,7 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import { ConfirmationModal, SoftLoadingArea } from "../../components/common";
+import { DatePickerField } from "../../components/common/forms/DatePickerField";
 
 import {
   getReferralByTrackingId,
@@ -487,7 +488,7 @@ export default function FeedbackReturnSlip() {
   if (loading) {
     return (
       <DashboardLayout role="rhu" title="Return Slip">
-        <SoftLoadingArea skeleton="form"
+        <SoftLoadingArea skeleton="feedback-form" skeletonOptions={{ selected: Boolean(routeTrackingId) }}
           isLoading
           message="Loading referral feedback..."
           minHeight="min-h-[420px]"
@@ -713,13 +714,14 @@ export default function FeedbackReturnSlip() {
                   description="Record when and by whom the patient was received at the RHU."
                 />
                 <div className="grid gap-4 lg:grid-cols-3">
-                  <FieldInput
+                  <DatePickerField
                     label="Date Received"
                     name="dateReceived"
-                    type="date"
                     value={form.dateReceived}
-                    onChange={handleChange}
                     required
+                    onChange={(value) =>
+                      handleChange({ target: { name: "dateReceived", value } })
+                    }
                   />
                   <FieldInput
                     label="Time Received"
@@ -818,12 +820,14 @@ export default function FeedbackReturnSlip() {
                     </FieldSelect>
 
                     {shouldShowFollowUpDate(form.assessmentOutcome) && (
-                      <FieldInput
+                      <DatePickerField
                         label="Follow-up Date"
                         name="followUpDate"
-                        type="date"
                         value={form.followUpDate}
-                        onChange={handleChange}
+                        allowClear
+                        onChange={(value) =>
+                          handleChange({ target: { name: "followUpDate", value } })
+                        }
                       />
                     )}
                   </div>

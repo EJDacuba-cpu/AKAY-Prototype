@@ -5,6 +5,7 @@ import {
   ModalButton,
   ModalShell,
 } from "../../common";
+import { DatePickerField } from "../../common/forms/DatePickerField";
 import {
   computeMedicineStatus,
   MEDICINE_CATEGORIES,
@@ -209,15 +210,33 @@ export default function MedicineFormModal({
                   <option value="medicine">Medicine</option><option value="health_supply">Health supply</option>
                 </select>
               </Field>
-              <Field label="Opening Stock Expiry" required error={fieldErrors.expiryDate}>
-                <Input aria-label="Opening Stock Expiry" type="date" value={form.expiryDate} disabled={submitting || form.expiryNotApplicable}
-                  aria-invalid={Boolean(fieldErrors.expiryDate)} onChange={e => updateField("expiryDate", e.target.value)} />
-                {form.itemType === "health_supply" && <label className="mt-2 flex items-start gap-2 text-xs text-neutral-600">
-                  <input type="checkbox" checked={form.expiryNotApplicable} disabled={submitting}
-                    onChange={e => setForm(current => ({ ...current, expiryNotApplicable: e.target.checked, expiryDate: "" }))} />
-                  Not Applicable ? this supply has no manufacturer-defined expiry.
-                </label>}
-              </Field>
+              <DatePickerField
+                label="Opening Stock Expiry"
+                name="expiryDate"
+                value={form.expiryDate}
+                required={!form.expiryNotApplicable}
+                disabled={submitting || form.expiryNotApplicable}
+                error={fieldErrors.expiryDate}
+                allowClear
+                onChange={(value) => updateField("expiryDate", value)}
+              />
+              {form.itemType === "health_supply" && (
+                <label className="flex items-start gap-2 text-xs text-neutral-600">
+                  <input
+                    type="checkbox"
+                    checked={form.expiryNotApplicable}
+                    disabled={submitting}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        expiryNotApplicable: e.target.checked,
+                        expiryDate: "",
+                      }))
+                    }
+                  />
+                  Not Applicable — this supply has no manufacturer-defined expiry.
+                </label>
+              )}
             </>}
             {mode === "edit" && <p className="text-xs text-neutral-600">Expiry dates belong to received stock groups. View them in Medicine Details.</p>}
 

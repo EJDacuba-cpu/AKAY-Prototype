@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\HealthRecordDraftController;
 use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\IncomingReferralController;
+use App\Http\Controllers\Api\LaboratoryAttachmentController;
+use App\Http\Controllers\Api\LaboratoryEvidenceController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MonitoringHandoffController;
 use App\Http\Controllers\Api\NotificationController;
@@ -57,6 +59,19 @@ Route::get('/auth/invites/verify', [AccountInviteController::class, 'verify'])->
 Route::post('/auth/invites/accept', [AccountInviteController::class, 'accept'])->middleware('throttle:10,1');
 
 Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'active', 'account.activated', 'password.current'])->group(function () {
+    Route::middleware('facility.assigned')->prefix('form-drafts')->group(function () {
+        Route::get('status', [\App\Http\Controllers\Api\FormDraftController::class, 'status']);
+        Route::post('device-key/retire', [\App\Http\Controllers\Api\FormDraftController::class, 'retireKey'])->middleware('throttle:form-drafts');
+        Route::get('lookup', [\App\Http\Controllers\Api\FormDraftController::class, 'lookup']);
+        Route::post('device-key', [\App\Http\Controllers\Api\FormDraftController::class, 'deviceKey'])->middleware('throttle:form-drafts');
+        Route::post('clinical-key/{key}', [\App\Http\Controllers\Api\FormDraftController::class, 'clinicalKey'])->whereUuid('key')->middleware('throttle:form-drafts');
+        Route::post('clinical-migrate', [\App\Http\Controllers\Api\FormDraftController::class, 'migrateClinical'])->middleware('throttle:form-drafts');
+        Route::post('clinical-discard', [\App\Http\Controllers\Api\FormDraftController::class, 'discardClinical'])->middleware('throttle:form-drafts');
+        Route::post('/', [\App\Http\Controllers\Api\FormDraftController::class, 'store'])->middleware('throttle:form-drafts');
+        Route::get('{draft}', [\App\Http\Controllers\Api\FormDraftController::class, 'show']);
+        Route::put('{draft}', [\App\Http\Controllers\Api\FormDraftController::class, 'update'])->middleware('throttle:form-drafts');
+        Route::delete('{draft}', [\App\Http\Controllers\Api\FormDraftController::class, 'destroy'])->middleware('throttle:form-drafts');
+    });
     Route::get('/auth/profile', [AuthController::class, 'profile']);
     Route::post('/auth/logout', [AuthController::class, 'logout'])
         ->middleware('auth.session-request');
@@ -93,8 +108,18 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             });
         }
         Route::get('patients/household', [PatientController::class, 'household']);
-        Route::apiResource('patients', PatientController::class);
-        Route::apiResource('health-records', HealthRecordController::class);
+        Route::apiResource('patients', PatientController::class)->middlewareFor('store', \App\Http\Middleware\CommitFormDraft::class);
+        Route::apiResource('health-records', HealthRecordController::class)->middleware(\App\Http\Middleware\ClinicalRecoveryBoundary::class);
+        Route::get('health-records/{healthRecord}/laboratory-tests', [LaboratoryEvidenceController::class, 'index']);
+        Route::post('health-records/{healthRecord}/laboratory-tests/{laboratoryTest}/addenda', [LaboratoryEvidenceController::class, 'addendum']);
+        Route::get('health-records/{healthRecord}/laboratory-tests/handoffs', [LaboratoryEvidenceController::class, 'handoffs']);
+        Route::get('laboratory-evidence/patients/{patient}', [LaboratoryEvidenceController::class, 'patient']);
+        Route::get('laboratory-evidence/monitoring/{patient}', [LaboratoryEvidenceController::class, 'monitoring']);
+        Route::post('laboratory-evidence/handoffs/{handoff}/share', [LaboratoryEvidenceController::class, 'share']);
+        Route::get('laboratory-attachments', [LaboratoryAttachmentController::class, 'index']);
+        Route::post('laboratory-attachments', [LaboratoryAttachmentController::class, 'store'])->middleware('throttle:30,1');
+        Route::get('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'show']);
+        Route::delete('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'destroy']);
         Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
         Route::post('patients/{patient}/nutrition-care/close', [NutritionCareController::class, 'close']);
         Route::get('patients/{patient}/background-history', PatientBackgroundHistoryController::class);
@@ -171,6 +196,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         });
 
         Route::get('/health-record-drafts', [HealthRecordDraftController::class, 'index']);
+        Route::get('/health-record-drafts/lookup', [HealthRecordDraftController::class, 'lookup']);
         Route::get('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'show']);
         Route::post('/health-record-drafts/{draft}/transition', [HealthRecordDraftController::class, 'transition']);
         Route::delete('/health-record-drafts/{draft}', [HealthRecordDraftController::class, 'destroy']);
@@ -213,8 +239,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         // Registered before the resource so "email-available" is not read as a user id.
         Route::get('/users/email-available', [UserController::class, 'emailAvailable']);
         Route::apiResource('users', UserController::class);
-        Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class);
-        Route::apiResource('rural-health-units', RuralHealthUnitController::class);
+        Route::apiResource('barangay-health-centers', BarangayHealthCenterController::class)->middleware(\App\Http\Middleware\CommitFormDraft::class);
+        Route::apiResource('rural-health-units', RuralHealthUnitController::class)->middleware(\App\Http\Middleware\CommitFormDraft::class);
         Route::get('/password-reset-requests', [PasswordResetRequestController::class, 'index']);
         Route::get('/password-reset-requests/{passwordResetRequest}', [PasswordResetRequestController::class, 'show']);
         Route::post('/password-reset-requests/{passwordResetRequest}/approve', [PasswordResetRequestController::class, 'approve']);

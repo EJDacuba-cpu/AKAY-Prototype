@@ -23,6 +23,14 @@ const server = await createServer({
 after(() => server.close());
 const { default: ReferralDetails } = await server.ssrLoadModule("/src/pages/bhc/ReferralDetails.jsx");
 const { queryKeys } = await server.ssrLoadModule("/src/utils/queryKeys.js");
+const { buildReferralSlipData } = await server.ssrLoadModule("/src/components/features/referrals/ReferralPrintSlip.jsx");
+
+test("print slip preserves the saved referral patient name and formats facility objects", () => {
+  const slip = buildReferralSlipData({ patientName: "Saved synthetic name", referringFacility: { name: "Saved synthetic BHC" }, receivingFacility: { name: "Saved synthetic RHU" } }, { fullName: "Current synthetic name" });
+  assert.equal(slip.patientName, "Saved synthetic name");
+  assert.equal(slip.sendingFacility, "Saved synthetic BHC");
+  assert.equal(slip.receivingRhu, "Saved synthetic RHU");
+});
 
 const referral = {
   id: "51", trackingId: "REF-TEST-51", patientId: "7", patientName: "Test Patient",
@@ -96,10 +104,10 @@ test("legacy return slip preserves its saved instructions and personnel", () => 
   for (const text of ["Legacy finding", "Legacy action", "Legacy outcome", "Legacy recommendation", "Legacy remarks", "Legacy clinician", "Legacy submitter", "Nov 5, 2026"]) assert.ok(html.includes(text), text);
 });
 
-test("verification workspace keeps print and regenerate actions and the existing 80mm print document", () => {
+test("verification workspace keeps print and regenerate actions and a document-scoped verification slip", () => {
   const html = render();
-  for (const text of ["Print Referral Slip", "Regenerate QR", "Referral Verification Slip", "referral-print-area", "width: 80mm", "Do not encode or share clinical details through QR."]) assert.ok(html.includes(text), text);
-  const printDocument = html.slice(html.indexOf('<section class="referral-print-area'));
+  for (const text of ["Print Referral Slip", "Regenerate QR", "Referral Verification Slip", "referral-print-area", "data-print-qr", "Do not encode or share clinical details through QR."]) assert.ok(html.includes(text), text);
+  const printDocument = html.slice(html.indexOf('<section data-referral-id='));
   assert.ok(printDocument.includes(referral.trackingId));
   assert.doesNotMatch(printDocument, /Saved complaint|Saved initial action|Suspected hypertension/);
 });

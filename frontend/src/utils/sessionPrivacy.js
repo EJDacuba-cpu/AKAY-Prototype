@@ -38,7 +38,7 @@ const LEGACY_SENSITIVE_KEY_PATTERNS = [
 const SENSITIVE_CACHE_NAME_PATTERN =
   /akay.*(?:api|clinical|patient|health|referral|notification|query)/i;
 const SENSITIVE_API_PATH_PATTERN =
-  /\/api\/(?:patients|health-records|referrals|feedback|follow-up-tasks|medicines|reports|notifications)(?:\/|\?|$)/i;
+  /\/api\/(?:patients|health-records|referrals|feedback|follow-up-tasks|medicines|reports|notifications|laboratory-evidence|laboratory-attachments|monitoring-handoff-requests)(?:\/|\?|$)/i;
 
 function removeKnownKeys(storage) {
   if (!storage) return [];

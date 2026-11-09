@@ -7,6 +7,7 @@
  * (follow-up) — never onto every diagnosis.
  */
 import { entryPurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
+import { tbEvaluationEntryFields } from "./tbAssessment.js";
 
 function normalizeNameKey(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -98,6 +99,7 @@ export function restoreRhuDiagnoses(payload = {}) {
   const restored = list.map((entry) => ({
     ...entry,
     ...rhuDiagnosisFields(entry),
+    ...tbEvaluationEntryFields(entry),
   }));
   if (!visitManage(payload)) return restored;
   if (restored.some((entry) => diagnosisNextAction(entry) === "manage_to_bhc")) return restored;
@@ -178,6 +180,9 @@ export function rhuCarePlanErrors(diagnoses = [], {
       if (!text(entry.monitoringRecommendation)) {
         errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
       }
+      if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
+        errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+      }
     }
   }
   return errors;
@@ -194,6 +199,11 @@ export function diagnosesForRhuSave(diagnoses = []) {
       manageToBhc: fields.nextAction === "manage_to_bhc",
       receivingBhcId: fields.receivingBhcId,
       monitoringRecommendation: fields.monitoringRecommendation,
+      ...tbEvaluationEntryFields(entry),
+      ...(fields.nextAction === "manage_to_bhc" ? {
+        laboratoryEvidence: entry.laboratoryEvidence || [],
+        laboratoryEvidenceConfirmed: entry.laboratoryEvidenceConfirmed === true,
+      } : {}),
     };
   });
 }

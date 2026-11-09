@@ -121,6 +121,7 @@ class CareOverviewController extends Controller
                     'condition_key' => $m->condition_key,
                     'started_at' => $m->started_at?->toDateString(),
                     'condition_status' => $m->patientCondition?->status,
+                    ...($m->patient_condition_id ? ['condition_id' => $m->patient_condition_id] : []),
                     'legacy' => $m->isLegacy(),
                 ])->values(),
             ])->values(),
@@ -135,6 +136,7 @@ class CareOverviewController extends Controller
                     'last_visit_date' => $last?->healthRecord?->date_recorded?->toDateString(),
                     'last_health_record_id' => $last?->health_record_id,
                     'condition_status' => $m->patientCondition?->status,
+                    ...($m->patient_condition_id ? ['condition_id' => $m->patient_condition_id] : []),
                     'legacy' => $m->isLegacy(),
                 ];
             })->values(),

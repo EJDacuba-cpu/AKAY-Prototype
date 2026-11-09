@@ -91,9 +91,10 @@ class RhuVisitController extends Controller
         $data = $request->validate([
             'follow_up_task_ids' => ['sometimes', 'array', 'max:20'],
             'follow_up_task_ids.*' => ['integer', 'distinct', 'min:1'],
+            'entry_consultation_uuid' => ['sometimes', 'nullable', 'uuid'],
         ]);
         $entry = $this->visits
-            ->start($request->user(), $visit, $data['follow_up_task_ids'] ?? [])
+            ->start($request->user(), $visit, $data['follow_up_task_ids'] ?? [], $data['entry_consultation_uuid'] ?? null)
             ->load(['patient', 'referral.barangayHealthCenter']);
 
         return response()->json(['data' => $this->present($entry)]);

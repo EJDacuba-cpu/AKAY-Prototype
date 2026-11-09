@@ -18,6 +18,7 @@ import { normalizeReportAs } from "./diagnosisReporting.js";
 import { isCarePlanValue } from "./carePlan.js";
 import { conditionEntryFields, entryDestinations } from "./reportingEntries.js";
 import { isRhuNextAction, rhuDiagnosisFields } from "./rhuCarePlan.js";
+import { tbManagementEntryFields } from "./tbAssessment.js";
 
 /** Case/whitespace-insensitive key for comparing diagnosis or condition names. */
 export function normalizeNameKey(name) {
@@ -99,11 +100,16 @@ export function normalizeDiagnoses(list) {
       // A v2 reporting entry's source of truth; kept as a canonical list.
       ...(Array.isArray(item.reportIn) ? { reportIn: entryDestinations({ reportIn: item.reportIn }) } : {}),
       ...conditionEntryFields(item),
+      ...tbManagementEntryFields(item),
       // A stored record may hold a historical value; carePlanFor decides what is a choice.
       ...(isCarePlanValue(item.carePlan) ? { carePlan: item.carePlan } : {}),
       // The BHC follow-up flag belongs to a referral only.
       ...(item.carePlan === "refer" && item.bhcFollowUp === true ? { bhcFollowUp: true } : {}),
       ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
+      ...(Array.isArray(item.laboratoryEvidence) ? {
+        laboratoryEvidence: item.laboratoryEvidence.map(selection => ({ reference: selection.reference, version: selection.version, attachmentIds: selection.attachmentIds || [] })),
+        laboratoryEvidenceConfirmed: item.laboratoryEvidenceConfirmed === true,
+      } : {}),
       ...(Object.hasOwn(item, "activate") || Object.hasOwn(item, "nextAction") || item.manageToBhc === true
         ? rhuDiagnosisFields(item)
         : {}),

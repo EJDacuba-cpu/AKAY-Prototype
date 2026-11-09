@@ -9,6 +9,7 @@ import {
   DataTableEmptyState,
   FixedTable,
   SoftLoadingArea,
+  RefreshingIndicator,
   TablePagination,
 } from "../../components/common";
 import { Button } from "../../components/ui/button";
@@ -90,8 +91,8 @@ export default function FollowUps({ role = "bhc" }) {
   const [savingAction, setSavingAction] = useState(false);
 
   const {
-    data: tasksData = [],
-    isLoading,
+    data: tasksData,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -209,7 +210,7 @@ export default function FollowUps({ role = "bhc" }) {
     [filteredCalendarTasks],
   );
   const loading = isLoading && tasks.length === 0;
-  const hasLoadError = Boolean(loadError) && !loading;
+  const hasLoadError = Boolean(loadError) && !loading && !Array.isArray(tasksData);
   const requestedTaskId = searchParams.get("task") || "";
   const requestedOpen = searchParams.get("open") || "";
 
@@ -466,7 +467,11 @@ export default function FollowUps({ role = "bhc" }) {
         </div>
       )}
 
+      {isFetching && !loading && <RefreshingIndicator label="Updating follow-ups..." />}
+      {loadError && Array.isArray(tasksData) && <p role="status" className="mb-3 text-sm text-neutral-600">Unable to refresh follow-ups. Showing the last list that loaded.</p>}
+
       <SoftLoadingArea skeleton="follow-ups"
+        skeletonOptions={{ role, view: viewMode }}
         isLoading={loading}
         message="Loading follow-ups..."
         scope="area"

@@ -9,6 +9,7 @@ import TbDoseCalendar, {
   normalizeMonth,
   recomputeCalendar,
 } from "./TbDoseCalendar";
+import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
 
 // ---------------------------------------------------------------------------
 // Option sets (mirror the DOH Form 4b checkboxes)
@@ -327,6 +328,8 @@ function SectionCard({ title, subtitle, children }) {
  * BHC and RHU health-record forms so the two stay in sync.
  */
 export default function TbTreatmentCardForm({
+  laboratoryContext = "legacy",
+  laboratoryTests = [],
   value,
   onChange,
   readOnly = false,
@@ -488,7 +491,11 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* Laboratory Tests */}
-      {showEncode && (
+      {showEncode && laboratoryContext === "rhu" && <SectionCard title="Laboratory References" subtitle="Record new tests in Physical Examination → Laboratory & Diagnostic Tests.">
+        <LaboratoryEvidenceList entries={laboratoryTests} />
+        {Object.values(data.laboratory).some(test => test.result) && <div className="mt-3 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-xs font-semibold text-neutral-700">Previously recorded TB laboratory results</h4><LaboratoryEvidenceList entries={Object.entries(data.laboratory).filter(([, test]) => test.result).map(([key, test]) => ({ id: key, testName: LAB_TESTS.find(item => item.key === key)?.label || test.label || "Other", resultStatus: "Result Available", collectionDate: test.collectionDate, examinationDate: test.examDate, result: test.result }))} /></div>}
+      </SectionCard>}
+      {showEncode && laboratoryContext !== "rhu" && (
       <SectionCard
         title="Laboratory Tests"
         subtitle="Collection / examination dates and results."

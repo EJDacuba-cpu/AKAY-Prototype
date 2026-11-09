@@ -38,6 +38,14 @@ export default function RhuReferralSlip() {
     );
   }
 
+  if (loading) {
+    return (
+      <Shell>
+        <SoftLoadingArea skeleton="referral-slip" skeletonOptions={{ role: "rhu" }} isLoading message="Loading BHC referral slip..." minHeight="min-h-[420px]" />
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <div className="mx-auto max-w-6xl space-y-4">
@@ -49,11 +57,7 @@ export default function RhuReferralSlip() {
           Back to Patient Profile → Referrals
         </Link>
 
-        {loading ? (
-          <SoftLoadingArea isLoading message="Loading BHC referral slip..." minHeight="min-h-[420px]">
-            <div className="min-h-[420px]" />
-          </SoftLoadingArea>
-        ) : unauthorized ? (
+        {unauthorized ? (
           <p className="rounded-xl border border-neutral-200 bg-white p-8 text-sm text-neutral-600 shadow-card">
             Clinical referral details are restricted to authorized RHU users.
           </p>

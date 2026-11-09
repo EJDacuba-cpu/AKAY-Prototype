@@ -115,7 +115,7 @@ for (const facility of ["Bhc", "Rhu"]) {
 
 test('edit cannot rewrite received expiry dates or item type', () => {
   const html = render();
-  assert.doesNotMatch(html, /type="date"|aria-label="Item Type"/);
+  assert.doesNotMatch(html, /Opening Stock Expiry|aria-label="Item Type"/);
   assert.match(html, /Expiry dates belong to received stock groups/);
 });
 

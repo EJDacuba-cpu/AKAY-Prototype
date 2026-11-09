@@ -8,10 +8,13 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
-use App\Services\ActionPermissions;
+use App\Services\ClinicalDraftSlotPreflight;
 use App\Services\FollowUpTaskSyncService;
+use App\Services\HealthRecordDraftPruner;
 use App\Services\HealthRecordDraftService;
 use App\Services\ReferralCreationService;
+use App\Services\StaffRoles;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -19,7 +22,6 @@ use Illuminate\Support\Str;
 use LogicException;
 use Mockery\MockInterface;
 use RuntimeException;
-use App\Services\StaffRoles;
 use Tests\TestCase;
 
 class HealthRecordDraftFinalizationTest extends TestCase
@@ -125,6 +127,259 @@ class HealthRecordDraftFinalizationTest extends TestCase
         $this->assertDatabaseCount('health_record_medicines', 0);
         $this->assertDatabaseCount('medicine_inventory_transactions', 0);
         $this->assertDatabaseCount('audit_logs', 1);
+    }
+
+    public function test_clinical_recovery_keys_are_retired_by_successful_finalization(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        $this->finalize($draftId, (string) Str::uuid(), [...$this->officialPayload(), 'consultation_uuid' => $uuid])->assertCreated();
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'consumed']);
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'consumed', 'encrypted_key' => null]);
+    }
+
+    public function test_clinical_recovery_discard_blocks_old_identity_but_allows_fresh_work(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        $this->deleteJson('/api/health-record-drafts/'.$draftId)->assertNoContent();
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'discarded']);
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'discarded', 'encrypted_key' => null]);
+        $input = [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $uuid];
+        $this->postJson('/api/health-record-drafts', $input)->assertConflict();
+        $this->postJson('/api/health-record-drafts', [...$input, 'consultation_uuid' => (string) Str::uuid()])->assertCreated();
+    }
+
+    public function test_clinical_recovery_expiry_retires_keys_before_background_pruning(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        HealthRecordDraft::where('public_id', $draftId)->update(['expires_at' => now()->subSecond()]);
+        $this->getJson('/api/health-record-drafts/'.$draftId)->assertNotFound();
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'expired']);
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'expired', 'encrypted_key' => null]);
+    }
+
+    private function clinicalRecoveryDraft(): array
+    {
+        $uuid = (string) Str::uuid();
+        $id = $this->actingAs($this->owner, 'sanctum')->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $uuid])->assertCreated()->json('data.id');
+        $key = $this->postJson('/api/form-drafts/device-key', ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'patient:'.$this->patientA->id, 'transaction_uuid' => $uuid])->assertOk()->json('data');
+
+        return [$id, $uuid, $key];
+    }
+
+    public function test_scheduled_expiry_retires_clinical_keys_and_survives_row_pruning(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        HealthRecordDraft::where('public_id', $draftId)->update(['expires_at' => now()->subSecond()]);
+        $this->assertSame(1, app(HealthRecordDraftPruner::class)->prune()['expired']);
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'expired', 'encrypted_key' => null]);
+        HealthRecordDraft::where('public_id', $draftId)->update(['updated_at' => now()->subDays(8)]);
+        $this->assertSame(1, app(HealthRecordDraftPruner::class)->prune()['pruned']);
+        $this->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $uuid])->assertConflict();
+    }
+
+    public function test_device_only_finalization_retires_identity_and_preserves_successful_retry(): void
+    {
+        $uuid = (string) Str::uuid();
+        $input = ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'patient:'.$this->patientA->id, 'transaction_uuid' => $uuid];
+        $key = $this->actingAs($this->owner, 'sanctum')->postJson('/api/form-drafts/device-key', $input)->assertOk()->json('data');
+        $idempotency = (string) Str::uuid();
+        $payload = [...$this->officialPayload(), 'consultation_uuid' => $uuid];
+        $this->withHeader('Idempotency-Key', $idempotency)->postJson('/api/health-records', $payload)->assertCreated();
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'consumed', 'encrypted_key' => null]);
+        $this->withHeader('Idempotency-Key', $idempotency)->postJson('/api/health-records', $payload)->assertOk();
+        $this->assertDatabaseCount('health_records', 1);
+        $this->postJson('/api/form-drafts/device-key', $input)->assertConflict();
+    }
+
+    public function test_finalization_cannot_switch_to_a_different_consultation_identity(): void
+    {
+        [$draftId, $uuid] = $this->clinicalRecoveryDraft();
+        $this->finalize($draftId, (string) Str::uuid(), [...$this->officialPayload(), 'consultation_uuid' => (string) Str::uuid()])->assertConflict();
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'active']);
+    }
+
+    public function test_failed_finalization_keeps_device_recovery_and_draft_active(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_recovery_consumption
+            BEFORE UPDATE OF status ON health_record_drafts
+            WHEN NEW.status = 'consumed'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced draft consumption failure');
+            END
+        SQL);
+        $this->finalize($draftId, (string) Str::uuid(), [...$this->officialPayload(), 'consultation_uuid' => $uuid])->assertStatus(500);
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $draftId, 'status' => 'active']);
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'active']);
+        $this->assertNotNull(DB::table('form_draft_recovery_keys')->where('public_id', $key['key_id'])->value('encrypted_key'));
+    }
+
+    public function test_clinical_key_can_be_reopened_only_by_its_current_authorized_owner(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        $path = '/api/form-drafts/clinical-key/'.$key['key_id'];
+        $this->postJson($path)->assertOk()->assertJsonPath('data.key_material', $key['key_material']);
+        $this->actingAs($this->sameBhcUser, 'sanctum')->postJson($path)->assertNotFound();
+        $this->actingAs($this->otherBhcUser, 'sanctum')->postJson($path)->assertNotFound();
+        $this->actingAs($this->owner, 'sanctum')->deleteJson('/api/health-record-drafts/'.$draftId)->assertNoContent();
+        $this->postJson($path)->assertConflict()->assertJsonPath('code', 'CLINICAL_RECOVERY_ENDED');
+    }
+
+    public function test_legacy_checkpoint_migration_reauthorizes_patient_and_filters_restricted_history(): void
+    {
+        $this->owner->update(['permissions' => StaffRoles::defaults('encoder')]);
+        $input = [
+            'form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'patient:'.$this->patientA->id,
+            'transaction_uuid' => (string) Str::uuid(),
+            'payload' => [...$this->draftPayload(), 'backgroundUpdate' => ['sections' => [], 'baseRevisions' => []]],
+        ];
+        $response = $this->actingAs($this->owner->fresh(), 'sanctum')->postJson('/api/form-drafts/clinical-migrate', $input)->assertOk();
+        $this->assertArrayNotHasKey('backgroundUpdate', $response->json('data.payload'));
+        $this->assertSame($input['payload']['chiefComplaint'], $response->json('data.payload.chiefComplaint'));
+        $this->assertDatabaseCount('health_record_drafts', 0);
+        $this->actingAs($this->otherBhcUser, 'sanctum')->postJson('/api/form-drafts/clinical-migrate', $input)->assertForbidden();
+    }
+
+    public function test_device_only_clinical_discard_is_owner_bound_and_idempotent(): void
+    {
+        $input = ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'patient:'.$this->patientA->id, 'transaction_uuid' => (string) Str::uuid()];
+        $key = $this->actingAs($this->owner, 'sanctum')->postJson('/api/form-drafts/device-key', $input)->assertOk()->json('data');
+        $body = [...$input, 'key_id' => $key['key_id']];
+        $this->actingAs($this->sameBhcUser, 'sanctum')->postJson('/api/form-drafts/clinical-discard', $body)->assertNotFound();
+        $this->actingAs($this->owner, 'sanctum')->postJson('/api/form-drafts/clinical-discard', $body)->assertNoContent();
+        $this->postJson('/api/form-drafts/clinical-discard', $body)->assertNoContent();
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'status' => 'discarded', 'encrypted_key' => null]);
+        $this->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $input['transaction_uuid']])->assertConflict();
+    }
+
+    public function test_device_discard_cannot_bypass_a_shared_server_draft_editor(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        $this->postJson('/api/form-drafts/clinical-discard', ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'patient:'.$this->patientA->id, 'transaction_uuid' => $uuid, 'key_id' => $key['key_id']])->assertConflict();
+        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $draftId, 'status' => 'active']);
+    }
+
+    public function test_versioned_discard_cannot_remove_a_newer_clinical_revision(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        $this->deleteJson('/api/health-record-drafts/'.$draftId, ['version' => 2])->assertConflict();
+        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $draftId, 'status' => 'active', 'version' => 1]);
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'active']);
+        $this->deleteJson('/api/health-record-drafts/'.$draftId, ['version' => 1])->assertNoContent();
+    }
+
+    public function test_different_users_and_new_uuids_cannot_split_one_patients_active_consultation(): void
+    {
+        [$draftId] = $this->clinicalRecoveryDraft();
+        $this->actingAs($this->sameBhcUser, 'sanctum')->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => (string) Str::uuid()])
+            ->assertConflict()->assertJsonPath('code', 'DRAFT_CONSULTATION_EXISTS')->assertJsonPath('draft_id', $draftId);
+        $this->assertDatabaseCount('health_record_drafts', 1);
+    }
+
+    public function test_database_rejects_a_second_active_clinical_slot_even_with_a_different_uuid(): void
+    {
+        [$draftId] = $this->clinicalRecoveryDraft();
+        $duplicate = HealthRecordDraft::where('public_id', $draftId)->firstOrFail()->replicate();
+        $duplicate->public_id = (string) Str::uuid();
+        $duplicate->consultation_uuid = (string) Str::uuid();
+        $this->expectException(QueryException::class);
+        $duplicate->save();
+    }
+
+    public function test_legacy_duplicate_preflight_reports_identifiers_without_deleting_or_exposing_payloads(): void
+    {
+        [$draftId] = $this->clinicalRecoveryDraft();
+        DB::statement('DROP INDEX IF EXISTS clinical_draft_active_bhc_patient');
+        $duplicate = HealthRecordDraft::where('public_id', $draftId)->firstOrFail()->replicate();
+        $duplicate->public_id = (string) Str::uuid();
+        $duplicate->consultation_uuid = (string) Str::uuid();
+        $duplicate->save();
+        $report = app(ClinicalDraftSlotPreflight::class)->conflicts();
+        $this->assertCount(1, $report);
+        $this->assertEqualsCanonicalizing([$draftId, $duplicate->public_id], $report[0]['draft_ids']);
+        $this->assertArrayNotHasKey('encrypted_payload', $report[0]);
+        $this->assertDatabaseCount('health_record_drafts', 2);
+        $migration = require database_path('migrations/2026_11_08_000002_guard_active_clinical_draft_slots.php');
+        try {
+            $migration->up();
+            $this->fail('Conflicting legacy drafts must block the unique-slot migration.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('health-record-drafts:preflight-slots', $exception->getMessage());
+            $this->assertDatabaseCount('health_record_drafts', 2);
+        }
+    }
+
+    public function test_clinical_create_rechecks_history_permission_after_acquiring_the_user_lock(): void
+    {
+        $this->owner->update(['permissions' => [...StaffRoles::defaults('encoder'), 'clinical.history']]);
+        $this->actingAs($this->owner->fresh(), 'sanctum');
+        $revoked = false;
+        DB::listen(function ($query) use (&$revoked) {
+            if ($revoked || ! str_contains(strtolower($query->sql), 'insert') || ! str_contains($query->sql, 'clinical_recovery_identities')) {
+                return;
+            }
+            $revoked = true;
+            DB::table('users')->where('id', $this->owner->id)->update(['permissions' => json_encode(StaffRoles::defaults('encoder'), JSON_THROW_ON_ERROR)]);
+        });
+        $this->postJson('/api/health-record-drafts', [...$this->draftRequest([
+            ...$this->draftPayload(),
+            'backgroundUpdate' => ['sections' => ['medical' => ['currentDiseases' => [['note' => 'Partial history']]]], 'baseRevisions' => ['medical' => 0]],
+        ]), 'consultation_uuid' => (string) Str::uuid()])->assertForbidden();
+        $this->assertTrue($revoked);
+        $this->assertDatabaseCount('health_record_drafts', 0);
+    }
+
+    public function test_exact_patient_draft_lookup_returns_only_authorized_metadata_and_an_empty_slot(): void
+    {
+        [$draftId] = $this->clinicalRecoveryDraft();
+        $this->getJson('/api/health-record-drafts/lookup?patient_id='.$this->patientA->id)->assertOk()
+            ->assertJsonPath('data.id', $draftId)->assertJsonMissingPath('data.payload')->assertJsonMissingPath('data.encrypted_payload');
+        $this->getJson('/api/health-record-drafts/lookup?patient_id='.$this->patientSameBhc->id)->assertOk()->assertJsonPath('data', null);
+        $this->actingAs($this->otherBhcUser, 'sanctum')->getJson('/api/health-record-drafts/lookup?patient_id='.$this->patientA->id)->assertUnprocessable();
+    }
+
+    public function test_legacy_consultation_identity_cannot_be_poisoned_by_another_facility(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        DB::table('clinical_recovery_identities')->where('consultation_uuid', $uuid)->delete();
+        $this->actingAs($this->otherBhcUser, 'sanctum')->postJson('/api/health-record-drafts', [...$this->draftRequest(['chiefComplaint' => 'Other facility input']), 'patient_id' => $this->patientB->id, 'consultation_uuid' => $uuid])->assertConflict();
+        $this->assertDatabaseCount('health_record_drafts', 1);
+        $this->actingAs($this->owner, 'sanctum')->postJson('/api/form-drafts/clinical-key/'.$key['key_id'])->assertOk();
+        $this->assertDatabaseHas('health_record_drafts', ['public_id' => $draftId, 'status' => 'active']);
+    }
+
+    public function test_legacy_official_record_without_a_tombstone_blocks_identity_recreation(): void
+    {
+        $uuid = (string) Str::uuid();
+        $this->actingAs($this->owner, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [...$this->officialPayload(), 'consultation_uuid' => $uuid])->assertCreated();
+        DB::table('clinical_recovery_identities')->where('consultation_uuid', $uuid)->delete();
+        $this->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $uuid])->assertConflict();
+        $this->assertDatabaseCount('health_record_drafts', 0);
+        $this->assertDatabaseCount('health_records', 1);
+    }
+
+    public function test_pruning_legacy_terminal_draft_preserves_its_identity_tombstone(): void
+    {
+        [$draftId, $uuid, $key] = $this->clinicalRecoveryDraft();
+        HealthRecordDraft::where('public_id', $draftId)->update(['status' => 'discarded', 'encrypted_payload' => null, 'updated_at' => now()->subDays(8)]);
+        DB::table('clinical_recovery_identities')->where('consultation_uuid', $uuid)->delete();
+        $this->assertSame(1, app(HealthRecordDraftPruner::class)->prune()['pruned']);
+        $this->assertDatabaseHas('clinical_recovery_identities', ['consultation_uuid' => $uuid, 'status' => 'discarded']);
+        $this->assertDatabaseHas('form_draft_recovery_keys', ['public_id' => $key['key_id'], 'encrypted_key' => null]);
+        $this->postJson('/api/health-record-drafts', [...$this->draftRequest($this->draftPayload()), 'consultation_uuid' => $uuid])->assertConflict();
+    }
+
+    public function test_clinical_draft_limit_is_per_owner_and_not_a_global_cap(): void
+    {
+        config(['health_record_drafts.max_active_per_user' => 1]);
+        $this->createDraft();
+        $input = [...$this->draftRequest($this->draftPayload()), 'patient_id' => $this->patientSameBhc->id];
+        $this->actingAs($this->sameBhcUser, 'sanctum')->postJson('/api/health-record-drafts', $input)->assertCreated();
+        $third = $this->patient('Limit', 'Third patient', $this->bhcA->id);
+        $this->postJson('/api/health-record-drafts', [...$input, 'patient_id' => $third->id])->assertUnprocessable();
     }
 
     public function test_finalization_lock_service_requires_an_open_transaction(): void
@@ -284,14 +539,14 @@ class HealthRecordDraftFinalizationTest extends TestCase
             'patient_id' => $this->patientSameBhc->id,
         ])->assertUnprocessable()->assertJsonValidationErrors('draft');
 
-        $classificationMismatch = $this->createDraft();
+        $classificationMismatch = $patientMismatch;
         $this->finalize($classificationMismatch, (string) Str::uuid(), [
             'patient_id' => $this->patientA->id,
             'category' => 'Maternal',
             'chief_complaint' => 'Atomic finalization visit.',
         ])->assertUnprocessable()->assertJsonValidationErrors('draft');
 
-        $otherOwnerDraft = $this->createDraft();
+        $otherOwnerDraft = $patientMismatch;
         $this->actingAs($this->sameBhcUser, 'sanctum')
             ->withHeaders($this->officialHeaders((string) Str::uuid(), $otherOwnerDraft))
             ->postJson('/api/health-records', [
@@ -303,7 +558,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             // A shared BHC encounter: the colleague finds it but does not hold its edit lease.
             ->assertConflict();
 
-        $otherFacilityDraft = $this->createDraft();
+        $otherFacilityDraft = $patientMismatch;
         $this->actingAs($this->otherBhcUser, 'sanctum')
             ->withHeaders($this->officialHeaders((string) Str::uuid(), $otherFacilityDraft))
             ->postJson('/api/health-records', [
@@ -313,7 +568,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
             ])
             ->assertNotFound();
 
-        $expiredDraft = $this->createDraft();
+        $expiredDraft = $patientMismatch;
         HealthRecordDraft::where('public_id', $expiredDraft)->update([
             'expires_at' => now()->subMinute(),
         ]);
@@ -366,7 +621,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
     {
         $this->assertSame(20, config('health_record_drafts.max_active_per_user'));
         for ($index = 1; $index <= 20; $index++) {
-            $this->createDraft(['diagnosis' => "Allowed draft {$index}"]);
+            $this->createDraft(['diagnosis' => "Allowed draft {$index}"], patient: $this->patient('Limit', 'Patient '.$index, $this->bhcA->id));
         }
 
         $this->actingAs($this->owner, 'sanctum')
@@ -452,7 +707,7 @@ class HealthRecordDraftFinalizationTest extends TestCase
         $this->assertSame(30, config('health_record_drafts.write_rate_limit_per_minute'));
         config(['health_record_drafts.max_active_per_user' => 100]);
         for ($index = 1; $index <= 30; $index++) {
-            $this->createDraft(['diagnosis' => "Rate draft {$index}"]);
+            $this->createDraft(['diagnosis' => "Rate draft {$index}"], patient: $this->patient('Rate', 'Patient '.$index, $this->bhcA->id));
         }
 
         $this->actingAs($this->owner, 'sanctum')
@@ -467,9 +722,9 @@ class HealthRecordDraftFinalizationTest extends TestCase
     {
         $service = app(HealthRecordDraftService::class);
         for ($index = 1; $index <= 20; $index++) {
-            $service->create($this->owner, $this->draftRequest([
+            $service->create($this->owner, [...$this->draftRequest([
                 'diagnosis' => "Paged draft {$index}",
-            ]));
+            ]), 'patient_id' => $this->patient('Paging', 'Patient '.$index, $this->bhcA->id)->id]);
         }
 
         $this->actingAs($this->owner, 'sanctum')
@@ -489,13 +744,14 @@ class HealthRecordDraftFinalizationTest extends TestCase
 
     private function createDraft(
         ?array $payload = null,
-        string $classification = 'General Consultation'
+        string $classification = 'General Consultation',
+        ?Patient $patient = null,
     ): string {
         return $this->actingAs($this->owner, 'sanctum')
-            ->postJson('/api/health-record-drafts', $this->draftRequest(
+            ->postJson('/api/health-record-drafts', [...$this->draftRequest(
                 $payload ?? $this->draftPayload(),
                 $classification
-            ))
+            ), 'patient_id' => $patient?->id ?? $this->patientA->id])
             ->assertCreated()
             ->json('data.id');
     }

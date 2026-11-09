@@ -20,6 +20,24 @@ use Tests\TestCase;
  */
 class HealthRecordDraftPayloadServiceTest extends TestCase
 {
+    public function test_rhu_diagnosis_care_plan_survives_draft_flush_before_finalization(): void
+    {
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'diagnoses' => [[
+                'id' => 'd1', 'name' => 'Hypertension', 'activate' => true,
+                'nextAction' => 'rhu_follow_up', 'receivingBhcId' => '',
+                'monitoringRecommendation' => '',
+                'tbManagement' => ['diagnosisType' => '', 'drugResistance' => '', 'openTreatmentCard' => false],
+            ]],
+        ];
+        $service = new HealthRecordDraftPayloadService();
+        $this->assertSame($payload, $service->sanitize($payload));
+        $payload['diagnoses'][0]['unexpectedClinicalField'] = 'must still reject';
+        $this->expectException(ValidationException::class);
+        $service->sanitize($payload);
+    }
+
     public function test_shared_referral_draft_keeps_its_mode_and_common_fields_on_repeated_sanitize(): void
     {
         $service = new HealthRecordDraftPayloadService();
@@ -509,5 +527,39 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    public function test_rhu_additional_concern_draft_fields_survive_sanitize_with_chief_complaint(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'chiefComplaint' => 'Today RHU complaint',
+            'summaryOfPresentIllness' => 'Started this morning',
+            'showAdditionalConcern' => true,
+            'additionalChiefComplaint' => 'Second concern',
+            'additionalHistoryOfPresentIllness' => 'Since dawn',
+            'rhuVisitId' => 19,
+            'selectedPrograms' => [],
+            'includeTb' => false,
+            'rhuFollowUp' => false,
+            'manageToBhc' => false,
+            'diagnoses' => [],
+            'followUpSchedules' => [],
+            'bodyFindings' => [],
+            'bodyFindingReassessments' => [],
+            'carePlan' => ['continuedFollowUpTaskIds' => []],
+            'familyPlanningData' => ['clientType' => '', 'methodUsed' => '', 'actionTaken' => ''],
+            'immunizationData' => ['vaccineEntries' => []],
+            'tbData' => null,
+        ];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('Today RHU complaint', $sanitized['chiefComplaint']);
+        $this->assertTrue($sanitized['showAdditionalConcern']);
+        $this->assertSame('Second concern', $sanitized['additionalChiefComplaint']);
+        $this->assertSame('Since dawn', $sanitized['additionalHistoryOfPresentIllness']);
+        $this->assertSame($sanitized, $service->sanitize($sanitized));
     }
 }

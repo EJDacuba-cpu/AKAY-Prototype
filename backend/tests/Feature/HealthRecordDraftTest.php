@@ -12,7 +12,9 @@ use App\Models\User;
 use App\Services\AkayCacheService;
 use App\Services\HealthRecordDraftPruner;
 use App\Services\HealthRecordDraftService;
+use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -238,11 +240,12 @@ class HealthRecordDraftTest extends TestCase
     {
         config(['health_record_drafts.max_active_per_user' => 1]);
         $this->createDraft();
+        $anotherPatient = $this->patient('Limit', 'Another patient', $this->bhcA->id);
 
         $this->actingAs($this->bhwA, 'sanctum')
-            ->postJson('/api/health-record-drafts', $this->draftRequest([
+            ->postJson('/api/health-record-drafts', [...$this->draftRequest([
                 'diagnosis' => 'Second draft must fail.',
-            ]))
+            ]), 'patient_id' => $anotherPatient->id])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('draft');
         $this->assertDatabaseCount('health_record_drafts', 1);
@@ -446,7 +449,7 @@ class HealthRecordDraftTest extends TestCase
     /** The draft owner with clinical.history, so staged background edits are saved and shown. */
     private function grantHistoryAccess(): void
     {
-        $this->bhwA->update(['permissions' => \App\Services\StaffRoles::defaults('midwife')]);
+        $this->bhwA->update(['permissions' => StaffRoles::defaults('midwife')]);
         $this->bhwA->refresh();
     }
 
@@ -493,7 +496,7 @@ class HealthRecordDraftTest extends TestCase
     {
         $publicId = $this->createDraft();
         HealthRecordDraft::where('public_id', $publicId)->update([
-            'encrypted_payload' => \Illuminate\Support\Facades\Crypt::encryptString(json_encode($payload)),
+            'encrypted_payload' => Crypt::encryptString(json_encode($payload)),
         ]);
 
         return $publicId;
@@ -670,6 +673,7 @@ class HealthRecordDraftTest extends TestCase
             'created_by' => $creatorId,
         ]);
         $medicine->expiryGroups()->create(['expiration_date' => $medicine->expirationCalendarDate() ?? now()->addYear()->toDateString(), 'available_quantity' => $medicine->quantity, 'quarantined_quantity' => 0]);
+
         return $medicine;
     }
 

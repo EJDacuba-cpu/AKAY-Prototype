@@ -115,6 +115,7 @@ class ReferralWorkflowService
         $feedback = DB::transaction(function () use ($request, $referralId, $feedbackData, $confirmations, $legacyDiscontinuations): Feedback {
             $referral = $this->lockReferralForTransition($referralId);
             $this->facilityAccess->authorizeRhuReferralAction($request->user(), $referral);
+            app(TbClinicalAuthority::class)->ensureDiagnosisText($request->user(), $feedbackData['rhu_diagnosis'] ?? null);
             $current = $this->canonicalStatusOrConflict(
                 $referral->status,
                 Referral::STATUS_COMPLETED

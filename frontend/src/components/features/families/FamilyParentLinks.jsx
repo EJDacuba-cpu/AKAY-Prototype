@@ -1,5 +1,5 @@
+import { PatientRegistrationEntryLink as Link } from "../patients/PatientRegistrationEntry";
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Button } from '../../ui/button';

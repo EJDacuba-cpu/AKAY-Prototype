@@ -1,129 +1,38 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { PageSkeletonLoader } from "./SkeletonLoaders";
-import {
-  dispatchContentLoadingEnd,
-  dispatchContentLoadingStart,
-} from "../../../utils/loadingEvents";
-
-const overlayToneClasses = {
-  none: "bg-white/82",
-  sm: "bg-white/88",
-  md: "bg-white/94",
-};
+import { dispatchContentLoadingEnd, dispatchContentLoadingStart } from "../../../utils/loadingEvents";
 
 export function DottedSpinner({ label = "Loading", size = "md" }) {
-  const sizeClass = size === "sm" ? "h-3 w-3" : "h-4 w-4";
-
-  return (
-    <span className="inline-flex items-center gap-2 text-[12px] font-medium text-slate-500">
-      <span
-        className={`${sizeClass} animate-spin rounded-full border-2 border-slate-200 border-t-[#B91C1C]`}
-        aria-hidden="true"
-      />
-      {label}
-    </span>
-  );
+  return <span role="status" className="inline-flex items-center gap-2 text-xs text-neutral-600"><span aria-hidden="true" className={`${size === "sm" ? "size-3" : "size-4"} rounded-full border-2 border-neutral-200 border-t-ink-700 motion-safe:animate-spin`} />{label}</span>;
 }
 
 export default function SoftLoadingOverlay({
-  isVisible,
-  isLoading,
-  visible,
-  message = "Loading...",
-  blocking = true,
-  blur = "sm",
-  scope = "area",
-  className = "",
-  skeleton,
-  bodyOnly = false,
-  children,
+  isVisible, isLoading, visible, message = "Loading...", blocking = true,
+  scope = "area", className = "", skeleton, bodyOnly = false,
+  skeletonOptions, inFlow = false, children,
 }) {
-  const shouldShow = isVisible ?? isLoading ?? visible;
-  const [isMounted, setIsMounted] = useState(Boolean(shouldShow));
-  const [isActive, setIsActive] = useState(false);
-  const isViewportScope = scope === "viewport";
-
-  useEffect(() => {
-    if (shouldShow) {
-      setIsMounted(true);
-      if (isViewportScope && blocking) {
-        window.dispatchEvent(new CustomEvent("akay:blocking-loading-start"));
-      }
-
-      const animationFrame = window.requestAnimationFrame(() => {
-        setIsActive(true);
-      });
-
-      return () => window.cancelAnimationFrame(animationFrame);
-    }
-
-    setIsActive(false);
-    const timer = window.setTimeout(() => setIsMounted(false), 180);
-    return () => window.clearTimeout(timer);
-  }, [blocking, isViewportScope, shouldShow]);
-
+  const shouldShow = Boolean(isVisible ?? isLoading ?? visible);
+  const viewport = scope === "viewport";
   useEffect(() => {
     if (!shouldShow) return undefined;
-
+    if (viewport && blocking) window.dispatchEvent(new CustomEvent("akay:blocking-loading-start"));
     dispatchContentLoadingStart();
     return () => dispatchContentLoadingEnd();
-  }, [shouldShow]);
-
-  if (!isMounted) return null;
-
-  return (
-    <div
-      className={`${
-        isViewportScope
-          ? "fixed inset-0 z-[999] min-h-dvh rounded-none"
-          : "absolute inset-0 z-20 min-h-full"
-      } overflow-hidden transition-opacity duration-200 ease-out ${
-        // An area overlay has no colour of its own: the skeleton sits on whatever is behind it (the grey page or a
-        // white card), never as a panel. Callers render nothing under it while loading.
-        isViewportScope ? overlayToneClasses[blur] || overlayToneClasses.sm : "bg-transparent"
-      } ${
-        isActive ? "opacity-100" : "opacity-0"
-      } ${blocking && isActive ? "pointer-events-auto" : "pointer-events-none"} ${className}`}
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <div
-        className={`min-w-0 transition-transform duration-200 ease-out ${
-          isViewportScope ? "h-full min-h-dvh p-5" : "sticky top-4 p-4"
-        } ${isActive ? "translate-y-0" : "translate-y-1"}`}
-      >
-        {children || (
-          <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} />
-        )}
-      </div>
-    </div>
-  );
+  }, [shouldShow, viewport, blocking]);
+  if (!shouldShow) return null;
+  return <div className={`${viewport ? "fixed inset-0 z-[999] min-h-dvh overflow-auto bg-white p-5" : inFlow ? "relative min-w-0" : "absolute inset-0 z-20 overflow-auto bg-white p-4"} ${blocking ? "pointer-events-auto" : "pointer-events-none"} ${className}`}>
+    {children || <PageSkeletonLoader message={message} skeleton={skeleton} bodyOnly={bodyOnly} options={skeletonOptions} />}
+  </div>;
 }
 
 export function SoftLoadingArea({
-  isLoading,
-  message = "Loading...",
-  blocking = true,
-  blur = "sm",
-  scope = "area",
-  minHeight = "min-h-[calc(100dvh-11rem)]",
-  className = "",
-  skeleton,
-  bodyOnly = false,
-  children,
+  isLoading, message = "Loading...", blocking = true, scope = "area",
+  minHeight = "min-h-[calc(100dvh-11rem)]", className = "", skeleton,
+  bodyOnly = false, skeletonOptions, children,
 }) {
-  return (
-    <div className={`relative min-w-0 ${minHeight} ${className}`}>
-      {children}
-      <SoftLoadingOverlay
-        isVisible={isLoading}
-        message={message}
-        blocking={blocking}
-        blur={blur}
-        scope={scope}
-        skeleton={skeleton}
-        bodyOnly={bodyOnly}
-      />
-    </div>
-  );
+  const pending = Boolean(isLoading);
+  return <div className={`relative min-w-0 ${pending ? minHeight : ""} ${className}`} aria-busy={pending || undefined}>
+    {pending ? <div hidden inert>{children}</div> : children}
+    <SoftLoadingOverlay isVisible={pending} message={message} blocking={blocking} scope={scope} skeleton={skeleton} bodyOnly={bodyOnly} skeletonOptions={skeletonOptions} inFlow />
+  </div>;
 }

@@ -21,6 +21,7 @@ import {
   formatEpiDate,
 } from "../../../utils/epiTracking";
 import { formatDate, formatDisplayValue } from "../../../utils/formatters";
+import FixedTable from "../../common/tables/FixedTable";
 
 const EMPTY_MARK = "Not recorded";
 const SOURCE_EMPTY_MARK = "\u2014";
@@ -189,8 +190,8 @@ function EpiHistory({ records, basePath }) {
       </div>
 
       <ResponsiveTable minWidth="min-w-[760px]">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
+        <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+          <tr>
             <TableHead>Vaccine / Service</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Date Given</TableHead>
@@ -199,7 +200,7 @@ function EpiHistory({ records, basePath }) {
         </thead>
         <tbody className="divide-y divide-slate-100 text-sm">
           {rows.map((row) => (
-            <tr key={row.vaccineName} className="transition-colors hover:bg-slate-50/80">
+            <tr key={row.vaccineName} className="h-14 transition-colors hover:bg-neutral-50">
               <TableCell strong>{row.vaccineName}</TableCell>
               <TableCell>
                 <span
@@ -263,8 +264,8 @@ function MaternalHistory({ records, basePath }) {
       >
         {records.length > 0 ? (
           <ResponsiveTable minWidth="min-w-[1120px]">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              <tr>
                 <TableHead>Visit Date</TableHead>
                 <TableHead>AOG</TableHead>
                 <TableHead>BP</TableHead>
@@ -279,7 +280,7 @@ function MaternalHistory({ records, basePath }) {
               {records.map((record) => {
                 const maternalData = getMaternalData(record);
                 return (
-                  <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
+                  <tr key={getRecordId(record)} className="h-14 transition-colors hover:bg-neutral-50">
                     <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
                     <TableCell>{getRecordValue(maternalData, ["aog", "ageOfGestation", "age_of_gestation"], record.aog || "") || EMPTY_MARK}</TableCell>
                     <TableCell>{formatBp(record)}</TableCell>
@@ -315,8 +316,8 @@ function TtTdHistory({ records, basePath }) {
   return (
     <div>
       <ResponsiveTable minWidth="min-w-[620px]">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
+        <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+          <tr>
             <TableHead>Dose</TableHead>
             <TableHead>Date Given</TableHead>
             <TableHead>Source Visit</TableHead>
@@ -324,7 +325,7 @@ function TtTdHistory({ records, basePath }) {
         </thead>
         <tbody className="divide-y divide-slate-100 text-sm">
           {rows.map((row) => (
-            <tr key={row.dose} className="transition-colors hover:bg-slate-50/80">
+            <tr key={row.dose} className="h-14 transition-colors hover:bg-neutral-50">
               <TableCell strong>{row.label}</TableCell>
               <TableCell>{row.dateGiven ? formatDate(row.dateGiven, EMPTY_MARK) : EMPTY_MARK}</TableCell>
               <TableCell>
@@ -350,8 +351,8 @@ function TtTdHistory({ records, basePath }) {
 function FamilyPlanningHistory({ records, basePath }) {
   return (
     <ResponsiveTable minWidth="min-w-[1120px]">
-      <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
+      <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+        <tr>
           <TableHead>Visit Date</TableHead>
           <TableHead>Client Type</TableHead>
           <TableHead>Method Used / Accepted</TableHead>
@@ -365,7 +366,7 @@ function FamilyPlanningHistory({ records, basePath }) {
         {records.map((record) => {
           const data = record.familyPlanningData || record.family_planning_data || {};
           return (
-            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
+            <tr key={getRecordId(record)} className="h-14 transition-colors hover:bg-neutral-50">
               <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
               <TableCell>{getRecordValue(data, ["clientType", "client_type"], EMPTY_MARK)}</TableCell>
               <TableCell>{getRecordValue(data, ["methodUsed", "method_used"], EMPTY_MARK)}</TableCell>
@@ -384,8 +385,8 @@ function FamilyPlanningHistory({ records, basePath }) {
 function TbHistory({ records, basePath }) {
   return (
     <ResponsiveTable minWidth="min-w-[1020px]">
-      <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 in-[.bhc-patient-profile]:text-sm in-[.bhc-patient-profile]:font-normal in-[.bhc-patient-profile]:r">
+      <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+        <tr>
           <TableHead>Visit Date</TableHead>
           <TableHead>TB Case No.</TableHead>
           <TableHead>Registration</TableHead>
@@ -400,7 +401,7 @@ function TbHistory({ records, basePath }) {
         {records.map((record) => {
           const tb = getTbData(record);
           return (
-            <tr key={getRecordId(record)} className="transition-colors hover:bg-slate-50/80">
+            <tr key={getRecordId(record)} className="h-14 transition-colors hover:bg-neutral-50">
               <TableCell>{formatDate(getRecordDateValue(record), EMPTY_MARK)}</TableCell>
               <TableCell strong>{tb.tbCaseNumber || EMPTY_MARK}</TableCell>
               <TableCell>{tb.registrationGroup || EMPTY_MARK}</TableCell>
@@ -423,23 +424,21 @@ function TbHistory({ records, basePath }) {
 
 function ResponsiveTable({ minWidth, children }) {
   return (
-    <div className="overflow-x-auto">
-      <table className={`w-full ${minWidth} border-collapse text-left`}>
-        {children}
-      </table>
-    </div>
+    <FixedTable minWidth={minWidth} lockHeight={false}>
+      {children}
+    </FixedTable>
   );
 }
 
 function TableHead({ children }) {
-  return <th className="whitespace-nowrap px-6 py-3">{children}</th>;
+  return <th className="px-4">{children}</th>;
 }
 
 function TableCell({ children, strong = false }) {
   return (
     <td
-      className={`whitespace-nowrap px-6 py-4 ${
-        strong ? "font-bold text-[#0F172A] in-[.bhc-patient-profile]:font-semibold in-[.bhc-patient-profile]:text-slate-900" : "font-medium text-slate-600"
+      className={`px-4 ${
+        strong ? "font-semibold text-ink-800" : "font-medium text-neutral-600"
       }`}
     >
       {children}

@@ -4,7 +4,7 @@ import { SKELETON_VARIANTS, resolveSkeletonVariant } from "./skeletonVariant.js"
 
 test("every allowed skeleton maps to itself", () => {
   for (const name of SKELETON_VARIANTS) assert.equal(resolveSkeletonVariant(name), name);
-  assert.equal(SKELETON_VARIANTS.length, 11);
+  assert.equal(new Set(SKELETON_VARIANTS).size, SKELETON_VARIANTS.length);
 });
 
 test("an unknown or missing skeleton falls back to module, never blank", () => {

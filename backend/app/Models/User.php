@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ActionPermissions;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -53,10 +54,13 @@ class User extends Authenticatable
     }
 
     public const ROLE_ADMIN = 'admin';
+
     public const ROLE_BHC = 'bhc';
+
     public const ROLE_RHU = 'rhu';
 
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_INACTIVE = 'inactive';
 
     /**
@@ -112,9 +116,9 @@ class User extends Authenticatable
 
     public function notifications(): HasMany
     {
-        $query = $this->hasMany(UserNotification::class);
+        $query = $this->hasMany(UserNotification::class)->visibleTo($this);
         $accountTypes = ['account_created', 'account_deactivated', 'password_reset_approved', 'password_reset_rejected'];
-        if (! $this->isAdmin() && ! \App\Services\ActionPermissions::allows($this, 'clinical.history')) {
+        if (! $this->isAdmin() && ! ActionPermissions::allows($this, 'clinical.history')) {
             $query->whereIn('type', $accountTypes);
         } elseif (! $this->isAdmin() && $this->workingFacility !== null) {
             $column = $this->workingFacility['type'] === 'bhc' ? 'barangay_health_center_id' : 'rural_health_unit_id';
@@ -131,6 +135,7 @@ class User extends Authenticatable
                 }
             });
         }
+
         return $query;
     }
 

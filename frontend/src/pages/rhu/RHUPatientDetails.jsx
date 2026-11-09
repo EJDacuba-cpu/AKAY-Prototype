@@ -89,23 +89,23 @@ function LiveRHUPatientDetails() {
 
   const {
     data: patientData,
-    isLoading: patientLoading,
+    isPending: patientLoading,
     isFetching: patientFetching,
     error: patientError,
     refetch: refetchPatient,
   } = useQuery({ ...profileQueries.patient, enabled: Boolean(patientId) });
 
   const {
-    data: recordsData = [],
-    isLoading: recordsLoading,
+    data: recordsData,
+    isPending: recordsLoading,
     isFetching: recordsFetching,
     error: recordsError,
     refetch: refetchRecords,
   } = useQuery(profileQueries.records);
 
   const {
-    data: referralsData = [],
-    isLoading: referralsLoading,
+    data: referralsData,
+    isPending: referralsLoading,
     isFetching: referralsFetching,
     error: referralsError,
     refetch: refetchReferrals,
@@ -124,10 +124,10 @@ function LiveRHUPatientDetails() {
   const patient = overrideMatchesPatient ? patientOverride : patientData || null;
   const canRegisterOwned = canModifyRhuPatient(user, patient);
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
-  const loadError =
-    patientError ||
-    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError || followUpsError)) ||
-    null;
+  const historyErrors = [recordsError, referralsError, followUpsError];
+  const historyError = historyErrors.find(error => [401, 403].includes(error?.status)) || historyErrors.find(Boolean);
+  const profileErrors = [patientError, canViewHistory && searchParams.get("tab") !== "records" && historyError];
+  const loadError = profileErrors.find(error => [401, 403].includes(error?.status)) || profileErrors.find(Boolean) || null;
   const retrying = patientFetching || recordsFetching || referralsFetching || followUpsFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
@@ -323,17 +323,17 @@ function LiveRHUPatientDetails() {
     }
   }
 
-  if (patientLoading && !patient) {
+  if (Boolean(patientId) && patientLoading && !patient) {
     return (
       <ProfileShell>
-        <SoftLoadingArea skeleton="patient-details" isLoading message="Loading patient details..." minHeight="min-h-[520px]">
+        <SoftLoadingArea skeleton="patient-details" skeletonOptions={{ role: "rhu" }} isLoading message="Loading patient details..." minHeight="min-h-[520px]">
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </ProfileShell>
     );
   }
 
-  if (loadError) {
+  if (loadError && (!patient || [401, 403].includes(loadError?.status))) {
     return (
       <ProfileShell>
         <ConnectionErrorState

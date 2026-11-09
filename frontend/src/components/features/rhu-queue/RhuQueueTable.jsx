@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import {
   ActionMenu,
+  ButtonSpinner,
   ConnectionErrorState,
   FixedTable,
   PlainStatusStamp,
@@ -14,7 +15,7 @@ import {
 import usePagedRows from "../../../hooks/usePagedRows";
 import { filterQueueRows, queueRowActions } from "../../../utils/rhuQueueView";
 import { errorStateVariant } from "../../../utils/errorStateVariant";
-import { resetKeyOf } from "../../../utils/tablePaging";
+import { TABLE_PAGE_SIZE, resetKeyOf } from "../../../utils/tablePaging";
 
 const SOURCE_OPTIONS = [
   { value: "all", label: "All" },
@@ -24,7 +25,7 @@ const SOURCE_OPTIONS = [
 
 /**
  * Today's Queue for the RHU: who is waiting, where they came from and since when.
- * `rows` are display rows from `queueRows()`. Start / Resume navigate to the RHU ITR workspace.
+ * `rows` are display rows from `queueRows()`. Start / Open share the recovery entry boundary.
  * Page chrome (title, Check in, Search+Filter) lives on the workspace; this owns the sheet.
  */
 export default function RhuQueueTable({
@@ -41,8 +42,9 @@ export default function RhuQueueTable({
   canFinalize = false,
   canClose = false,
   onClearFilters,
-  onStart,
-  onResume,
+  onOpen,
+  entryBusy = false,
+  checkingVisitId = null,
   onCloseVisit,
 }) {
   const [source, setSource] = useState("all");
@@ -54,8 +56,6 @@ export default function RhuQueueTable({
   );
   const narrowed =
     search.trim() !== "" || source !== "all" || status !== "all";
-  // Fit the sheet to the visible page so a short queue does not push pagination far down.
-  const tablePageSize = pageRows.length > 0 ? pageRows.length : 4;
 
   const loadFailed = error && rows.length === 0;
   const refreshFailed = error && rows.length > 0;
@@ -92,7 +92,7 @@ export default function RhuQueueTable({
         </p>
       )}
 
-      <SoftLoadingArea skeleton="table" bodyOnly isLoading={loading} message="Loading today's queue..." scope="area">
+      <SoftLoadingArea skeleton="queue" bodyOnly isLoading={loading} message="Loading today's queue..." scope="area">
         {!loading && (
           <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-3.5 py-3 sm:px-4">
@@ -111,7 +111,7 @@ export default function RhuQueueTable({
               </div>
             </div>
 
-            <FixedTable minWidth="min-w-[860px]" pageSize={tablePageSize}>
+            <FixedTable minWidth="min-w-[860px]" pageSize={TABLE_PAGE_SIZE}>
               <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
                 <tr>
                   <th scope="col" className="w-12 px-4">
@@ -155,8 +155,9 @@ export default function RhuQueueTable({
                       canEncode={canEncode}
                       canFinalize={canFinalize}
                       canClose={canClose}
-                      onStart={onStart}
-                      onResume={onResume}
+                      onOpen={onOpen}
+                      entryBusy={entryBusy}
+                      checking={String(checkingVisitId) === String(row.id)}
                       onCloseVisit={onCloseVisit}
                     />
                   ))
@@ -179,11 +180,10 @@ export default function RhuQueueTable({
   );
 }
 
-function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume, onCloseVisit }) {
+function QueueRowView({ row, canEncode, canFinalize, canClose, onOpen, entryBusy, checking, onCloseVisit }) {
   const entryTone = row.source === "referral" ? "info" : "neutral";
   const actions = queueRowActions(row, { canEncode, canFinalize, canClose }).map((item) => {
-    if (item.action === "start") return { ...item, onClick: () => onStart?.(row) };
-    if (item.action === "resume") return { ...item, onClick: () => onResume?.(row) };
+    if (item.action === "open") return { ...item, disabled: entryBusy, onClick: () => { if (!entryBusy) onOpen?.(row); } };
     if (item.action === "close") return { ...item, onClick: () => onCloseVisit?.(row) };
     return item;
   });
@@ -191,7 +191,7 @@ function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume
   return (
     <tr className="h-14 transition-colors hover:bg-neutral-50">
       <td className="px-4 tabular-nums text-[13px] text-neutral-500">{row.number}</td>
-      <td className="px-4 py-2">
+      <td className="px-4">
         <div className="min-w-0 leading-tight">
           <Link
             to={`/rhu/patients/${row.patientId}`}
@@ -202,17 +202,17 @@ function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume
           {row.ageSex && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{row.ageSex}</p>}
         </div>
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4">
         <div className="min-w-0 leading-tight">
           <PlainStatusStamp label={row.sourceLabel} tone={entryTone} appearance="plain" />
           {row.fromLabel && (
-            <p className="mt-1 truncate text-[12px] text-neutral-500" title={row.fromLabel}>
+            <p className="mt-0.5 truncate text-[12px] text-neutral-500" title={row.fromLabel}>
               {row.fromLabel}
             </p>
           )}
         </div>
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4">
         <div className="leading-tight">
           <p className="text-[13px] tabular-nums text-ink-800">{row.arrivedTime}</p>
           <p
@@ -224,16 +224,16 @@ function QueueRowView({ row, canEncode, canFinalize, canClose, onStart, onResume
           </p>
         </div>
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4">
         <PlainStatusStamp label={row.status.label} tone={row.status.tone} appearance="plain" />
       </td>
       <td className="px-4 text-right">
-        <ActionMenu
+        {checking ? <button type="button" disabled aria-busy="true" className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600"><ButtonSpinner />Checking...</button> : <ActionMenu
           showHeader={false}
           title={row.name}
           triggerLabel={`Actions for ${row.name}`}
           actions={actions}
-        />
+        />}
       </td>
     </tr>
   );

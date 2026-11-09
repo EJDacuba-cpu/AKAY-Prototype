@@ -69,7 +69,7 @@ export default function FollowUpDetails({ role = "bhc" }) {
   const {
     data,
     error,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     refetch,
   } = useQuery({
@@ -106,7 +106,7 @@ export default function FollowUpDetails({ role = "bhc" }) {
     retry: false,
   });
   const recordedVisit = completedRecordId ? relatedRecord : null;
-  const loading = isLoading && !task;
+  const loading = Boolean(taskId) && isLoading && !task;
   const updating = isFetching && !loading && Boolean(task);
   const notFound = !loading && (error?.status === 404 || (!error && !task));
   const hasConnectionError =
@@ -170,7 +170,7 @@ export default function FollowUpDetails({ role = "bhc" }) {
   if (loading) {
     return (
       <DashboardLayout role={role} title="Follow-up Details">
-        <SoftLoadingArea skeleton="details"
+        <SoftLoadingArea skeleton="record-details" skeletonOptions={{ role, view: "follow-up" }}
           isLoading
           message="Loading follow-up details..."
           minHeight="min-h-[520px]"

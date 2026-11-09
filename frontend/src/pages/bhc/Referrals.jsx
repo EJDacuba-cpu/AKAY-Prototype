@@ -163,8 +163,8 @@ export default function Referrals() {
   }, [searchParams, setSearchParams]);
 
   const {
-    data: referralsData = [],
-    isLoading,
+    data: referralsData,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -175,9 +175,11 @@ export default function Referrals() {
   });
 
   const {
-    data: referralHoldsData = [],
-    isLoading: holdsLoading,
+    data: referralHoldsData,
+    isPending: holdsLoading,
     isFetching: holdsFetching,
+    error: holdsError,
+    refetch: refetchHolds,
   } = useQuery({
     queryKey: queryKeys.referralHolds(),
     queryFn: getReferralHolds,
@@ -194,7 +196,11 @@ export default function Referrals() {
   );
   const loading =
     (isWaiting ? holdsLoading && referralHolds.length === 0 : isLoading && referrals.length === 0);
-  const hasLoadError = Boolean(loadError) && !loading && !isWaiting;
+  const activeError = isWaiting ? holdsError : loadError;
+  const hasLoadedList = Array.isArray(isWaiting ? referralHoldsData : referralsData);
+  const activeFetching = isWaiting ? holdsFetching : isFetching;
+  const activeRetry = isWaiting ? refetchHolds : refetch;
+  const hasLoadError = Boolean(activeError) && !loading && (!hasLoadedList || [401, 403].includes(activeError.status));
 
   const sentFacilityOptions = useMemo(
     () =>
@@ -398,9 +404,9 @@ export default function Referrals() {
       <DashboardLayout role="bhc" title="Referrals">
         <ConnectionErrorState
           fullPage
-          onRetry={() => refetch()}
-          retrying={isFetching}
-          variant={errorStateVariant(loadError)}
+          onRetry={() => activeRetry()}
+          retrying={activeFetching}
+          variant={errorStateVariant(activeError)}
         />
       </DashboardLayout>
     );
@@ -408,8 +414,10 @@ export default function Referrals() {
 
   return (
     <DashboardLayout role="bhc" title={pageTitle}>
+      {activeError && hasLoadedList && <p role="status" className="mb-3 text-sm text-neutral-600">Unable to refresh referrals. Showing the last list that loaded.</p>}
       <SoftLoadingArea
-        skeleton="table"
+        skeleton="referrals"
+        skeletonOptions={{ role: "bhc", view: isWaiting ? "waiting" : "sent", columns: isWaiting ? 6 : 4, minWidth: isWaiting ? 1000 : 640, mobileCards: false }}
         isLoading={loading}
         message={isWaiting ? "Loading waiting referrals..." : "Loading referrals..."}
         scope="area"
@@ -467,14 +475,14 @@ export default function Referrals() {
               <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
                 {`${resultCount} of ${totalCount} waiting`}
               </p>
-              {holdsFetching && referralHolds.length > 0 ? (
+              {holdsFetching && hasLoadedList ? (
                 <span className="text-xs text-neutral-500">Updating…</span>
               ) : null}
             </div>
             <ModuleTableCard
               minWidth="min-w-[1000px]"
               fixedRows
-              refreshing={holdsFetching && referralHolds.length > 0}
+              refreshing={holdsFetching && hasLoadedList}
               footer={
                 <TablePagination
                   currentPage={waitingPage}
@@ -584,14 +592,14 @@ export default function Referrals() {
             <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">
               {`${resultCount} of ${totalCount} referrals`}
             </p>
-            {isFetching && referrals.length > 0 ? (
+            {isFetching && hasLoadedList ? (
               <span className="text-xs text-neutral-500">Updating…</span>
             ) : null}
           </div>
           <ModuleTableCard
             minWidth="min-w-[640px]"
             fixedRows
-            refreshing={isFetching && referrals.length > 0}
+            refreshing={isFetching && hasLoadedList}
             footer={
               <TablePagination
                 currentPage={sentPage}

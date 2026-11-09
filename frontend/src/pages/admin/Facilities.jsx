@@ -50,7 +50,8 @@ export default function Facilities() {
   const [editing, setEditing] = useState(null);
   const {
     data: facilities = { bhcs: [], rhus: [] },
-    isLoading,
+    isPending: isLoading,
+    dataUpdatedAt,
     isFetching,
     error: loadError,
     refetch,
@@ -133,7 +134,7 @@ export default function Facilities() {
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
-        hasData={bhcs.length > 0 || rhus.length > 0}
+        hasData={dataUpdatedAt > 0}
         error={loadError}
         onRetry={() => refetch()}
         loadingMessage="Loading facilities..."

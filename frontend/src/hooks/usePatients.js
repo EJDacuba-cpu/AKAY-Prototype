@@ -55,8 +55,8 @@ export default function usePatients(role = "bhc") {
    * Fetch Patients
    * ───────────────────────────────────────────── */
   const {
-    data: patientsData = [],
-    isLoading,
+    data: patientsData,
+    isPending: isLoading,
     isFetching,
     error: queryError,
     refetch,
@@ -136,6 +136,7 @@ export default function usePatients(role = "bhc") {
    * ───────────────────────────────────────────── */
   return {
     patients,
+    hasData: Array.isArray(patientsData),
     filteredPatients,
 
     loading,

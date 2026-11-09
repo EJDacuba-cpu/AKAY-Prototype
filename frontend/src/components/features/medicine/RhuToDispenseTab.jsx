@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { ModalButton, ModalFooter, ModalShell, PageStateWrapper, SearchField } from "../../common";
+import { FixedTable, ModalButton, ModalFooter, ModalShell, PageStateWrapper, RefreshingIndicator, SearchField, TablePagination } from "../../common";
 import { Button } from "../../ui/button";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import RhuPrescriptionReviewModal from "./RhuPrescriptionReviewModal";
+import usePagedRows from "../../../hooks/usePagedRows";
 import { getCurrentUser } from "../../../utils/auth";
 import { queryKeys } from "../../../utils/queryKeys";
 import { formatFacilityName } from "../../../utils/formatters";
@@ -42,6 +43,7 @@ export default function RhuToDispenseTab() {
       (row) => !q || String(row.patientName || "").toLowerCase().includes(q),
     );
   }, [queue.data, search]);
+  const { page, setPage, totalPages, pageRows } = usePagedRows(rows, search);
   const facility = formatFacilityName(user, "Rural Health Unit");
 
   async function confirmGiven() {
@@ -71,16 +73,28 @@ export default function RhuToDispenseTab() {
 
   return (
     <PageStateWrapper
-      skeleton="medicine"
-      isLoading={queue.isLoading}
+      skeleton="dispensing"
+      skeletonOptions={{ footer: false, minWidth: 0 }}
+      isLoading={queue.isPending}
       isError={queue.isError}
       isFetching={queue.isFetching}
-      hasData
+      hasData={Array.isArray(queue.data)}
       error={queue.error}
       onRetry={() => queue.refetch()}
       loadingMessage="Loading prescriptions to dispense…"
     >
-      <div className="space-y-4">
+      <div className="space-y-4" aria-busy={queue.isFetching}>
+        <div>
+          <h1 className="text-[17px] font-bold tracking-tight text-ink-800">To Dispense</h1>
+          <p className="mt-1 text-[13px] text-neutral-600">Review prescriptions and confirm medicines given.</p>
+        </div>
+        {queue.isFetching && <RefreshingIndicator label="Updating prescriptions..." />}
+        {queue.isError && Array.isArray(queue.data) && (
+          <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-neutral-600">
+            Couldn't refresh prescriptions. Showing the last list that loaded.
+            <Button variant="link" size="compact" disabled={queue.isFetching} onClick={() => queue.refetch()}>Retry</Button>
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-neutral-600">{rows.length} of {(queue.data || []).length} visits</p>
           <div className="w-full sm:max-w-xs">
@@ -88,29 +102,31 @@ export default function RhuToDispenseTab() {
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-600">
+          <FixedTable minWidth="min-w-[720px]">
+            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
               <tr>
-                <th className="px-4 py-3 font-semibold">Patient</th>
-                <th className="px-4 py-3 font-semibold">Visit date</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold"> </th>
+                <th className="px-4">Patient</th>
+                <th className="px-3">Visit date</th>
+                <th className="px-3">Status</th>
+                <th className="px-3 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-neutral-100">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-neutral-600">
+                  <td colSpan={4} style={{ height: "var(--akay-empty-h)" }} className="px-4 text-center text-sm text-neutral-600">
                     No prescriptions to dispense.
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-t border-neutral-100">
-                    <td className="px-4 py-3 font-medium text-ink-800">{row.patientName}</td>
-                    <td className="px-4 py-3 text-neutral-600">{row.visitDate || "—"}</td>
-                    <td className="px-4 py-3 capitalize text-neutral-700">{row.status === "given" ? "Given" : "Pending"}</td>
-                    <td className="px-4 py-3 text-right">
+                pageRows.map((row) => (
+                  <tr key={row.id} className="h-14 transition-colors hover:bg-neutral-50">
+                    <td className="px-4 font-medium text-ink-800">{row.patientName}</td>
+                    <td className="px-3 text-neutral-600">{row.visitDate || "—"}</td>
+                    <td className="px-3 capitalize text-neutral-700">{row.status === "given" ? "Given" : "Pending"}</td>
+                    <td className="px-3 text-right">
                       <Button size="compact" variant="secondary" onClick={() => setReview(row)}>
                         Review prescription
                       </Button>
@@ -119,7 +135,8 @@ export default function RhuToDispenseTab() {
                 ))
               )}
             </tbody>
-          </table>
+          </FixedTable>
+          <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
         </div>
       </div>
       <RhuPrescriptionReviewModal

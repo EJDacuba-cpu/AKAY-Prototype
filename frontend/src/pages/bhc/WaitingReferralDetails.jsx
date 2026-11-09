@@ -51,7 +51,7 @@ export default function WaitingReferralDetails() {
 
   const {
     data: hold,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -132,7 +132,7 @@ export default function WaitingReferralDetails() {
     discardMutation.mutate();
   }
 
-  const loading = isLoading && !hold;
+  const loading = Boolean(holdId) && isLoading && !hold;
   if (loadError && !hold) {
     return (
       <DashboardLayout role="bhc" title="Waiting Referral">
@@ -148,7 +148,7 @@ export default function WaitingReferralDetails() {
 
   return (
     <DashboardLayout role="bhc" title="Waiting to Submit">
-      <SoftLoadingArea skeleton="details" isLoading={loading} message="Loading waiting referral...">
+      <SoftLoadingArea skeleton="referral-details" skeletonOptions={{ role: "bhc", view: "waiting" }} isLoading={loading} message="Loading waiting referral...">
         {!hold ? null : (
           <div className="min-w-0 space-y-3">
             <Button asChild variant="link" size="compact" className="px-0">

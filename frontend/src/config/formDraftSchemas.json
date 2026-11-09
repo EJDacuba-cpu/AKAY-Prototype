@@ -1,0 +1,154 @@
+{
+    "retention_days": 7,
+    "max_payload_bytes": 131072,
+    "max_string_length": 20000,
+    "max_array_items": 100,
+    "write_limit": 30,
+    "forms": {
+        "patient": {
+            "roles": [
+                "bhc",
+                "rhu"
+            ],
+            "permission": "patients.register",
+            "contexts": {
+                "create": [
+                    "new",
+                    "household"
+                ]
+            },
+            "schema": {
+                "first_name": true,
+                "middle_name": true,
+                "last_name": true,
+                "sex": true,
+                "birthdate": true,
+                "contact_number": true,
+                "street_address": true,
+                "barangay": true,
+                "municipality": true,
+                "purok_area": true,
+                "civil_status": true,
+                "occupation": true,
+                "education_level": true,
+                "education_completed": true,
+                "philhealth_status": true,
+                "spouse_name": true,
+                "spouse_occupation": true,
+                "registration_type": true,
+                "mother_patient_id": true,
+                "father_patient_id": true,
+                "mother_name": true,
+                "mother_birth_date": true,
+                "father_name": true,
+                "father_birth_date": true,
+                "guardian_name": true,
+                "guardian_relationship": true,
+                "guardian_contact_number": true,
+                "family_serial_number": true,
+                "birth_place": true,
+                "birth_time": true,
+                "birth_weight": true,
+                "birth_height": true,
+                "nhts_status": true,
+                "philhealth_number": true,
+                "philhealth_category": true,
+                "patient_category": true,
+                "status": true,
+                "barangay_health_center_id": true,
+                "rural_health_unit_id": true,
+                "household": {
+                    "kind": true,
+                    "household_id": true,
+                    "relationship": true,
+                    "version": true,
+                    "serial_mode": true,
+                    "serial_number": true,
+                    "address": {
+                        "streetAddress": true,
+                        "purokArea": true,
+                        "barangay": true,
+                        "municipality": true
+                    },
+                    "relationship_link": {
+                        "type": true
+                    }
+                },
+                "head_replacement": {
+                    "household_id": true,
+                    "head_patient_id": true,
+                    "version": true,
+                    "relationships": {
+                        "*": true
+                    }
+                },
+                "registration": {
+                    "form": {
+                        "firstName": true,
+                        "middleName": true,
+                        "lastName": true,
+                        "birthDate": true,
+                        "age": true,
+                        "sex": true,
+                        "civilStatus": true,
+                        "occupation": true,
+                        "educationLevel": true,
+                        "educationCompleted": true,
+                        "spouseName": true,
+                        "spouseOccupation": true,
+                        "contactNumber": true,
+                        "philHealthStatus": true,
+                        "philHealthNumber": true,
+                        "purokArea": true,
+                        "streetAddress": true,
+                        "barangay": true,
+                        "municipality": true,
+                        "motherName": true,
+                        "motherBirthDate": true,
+                        "fatherName": true,
+                        "fatherBirthDate": true,
+                        "guardianName": true,
+                        "guardianRelationship": true,
+                        "guardianContactNumber": true,
+                        "familySerialNumber": true,
+                        "nhtsStatus": true,
+                        "patientClassification": true,
+                        "motherPatientId": true,
+                        "fatherPatientId": true
+                    },
+                    "connection": {
+                        "kind": true,
+                        "householdId": true,
+                        "relationship": true,
+                        "headPatientId": true,
+                        "household": {
+                            "serialMode": true,
+                            "serialNumber": true,
+                            "address": {
+                                "streetAddress": true,
+                                "purokArea": true,
+                                "barangay": true,
+                                "municipality": true
+                            }
+                        },
+                        "relationshipLink": {
+                            "type": true
+                        }
+                    },
+                    "headReplacement": {
+                        "householdId": true,
+                        "headPatientId": true,
+                        "version": true,
+                        "relationships": {
+                            "*": true
+                        }
+                    },
+                    "householdVersion": true,
+                    "walkIn": {
+                        "key": true
+                    }
+                }
+            }
+        }
+    }
+}

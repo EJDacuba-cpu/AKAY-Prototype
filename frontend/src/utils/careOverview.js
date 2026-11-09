@@ -75,6 +75,7 @@ export function mapCareOverview(data) {
       sourceCategory: task.source_category || "",
       conditions: (task.conditions || []).map((c) => ({
         monitoringId: c.monitoring_id,
+        ...(c.condition_id ? { conditionId: c.condition_id } : {}),
         conditionName: c.condition_name,
         conditionKey: c.condition_key || null,
         startedAt: c.started_at || "",
@@ -83,6 +84,7 @@ export function mapCareOverview(data) {
       })),
     })),
     monitoringWithoutFollowUp: (source.monitoring_without_follow_up || []).map((m) => ({
+      ...(m.condition_id ? { conditionId: m.condition_id } : {}),
       id: m.id,
       conditionName: m.condition_name,
       conditionKey: m.condition_key,

@@ -1,3 +1,4 @@
+import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import {
   AlertTriangle,
   CalendarClock,
@@ -8,7 +9,6 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
@@ -118,7 +118,7 @@ export default function BHCDashboard() {
   const { availability: doctorAvailability, isLoading: availabilityLoading } = useDoctorAvailability();
   const {
     data,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     error: loadError,
     refetch,
@@ -140,7 +140,7 @@ export default function BHCDashboard() {
   return (
     <DashboardLayout role="bhc" title="Dashboard">
       <PageStateWrapper
-        skeleton="dashboard"
+        skeleton="bhc-dashboard"
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}

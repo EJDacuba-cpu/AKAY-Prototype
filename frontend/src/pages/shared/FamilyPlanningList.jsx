@@ -6,7 +6,7 @@ import { Eye, FileText } from "lucide-react";
 import {
   DataTableEmptyState,
   ModuleTableCard,
-  SoftLoadingArea,
+  PageStateWrapper,
   TablePagination,
 } from "../../components/common";
 import { getFamilyPlanningHealthRecords } from "../../services/healthRecordService";
@@ -235,9 +235,12 @@ export function FamilyPlanningReportSection({
   reportFilters = {},
 }) {
   const {
-    data: recordsData = [],
-    isLoading,
+    data: recordsData,
+    isPending: isLoading,
     isFetching,
+    isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: queryKeys.familyPlanningRecords(role),
     queryFn: async () => {
@@ -251,7 +254,7 @@ export function FamilyPlanningReportSection({
     [recordsData],
   );
   const loading = isLoading && records.length === 0;
-  const refreshing = isFetching && records.length > 0;
+  const refreshing = isFetching && Array.isArray(recordsData);
 
   const filteredRecords = useMemo(() => {
     const searchLower = String(reportFilters.search || "").trim().toLowerCase();
@@ -318,22 +321,26 @@ export function FamilyPlanningReportSection({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-[17px] font-bold tracking-tight text-ink-800">
-          Family Planning Reports
-        </h2>
-        <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
-          Target Client List and summaries generated from saved Family Planning
-          health records.
-        </p>
-      </div>
-
-      <SoftLoadingArea skeleton="reports"
+      <PageStateWrapper skeleton="tcl" skeletonOptions={{ columns: 16 }}
         isLoading={loading}
-        message="Loading family planning report..."
-        scope="area"
-        className="space-y-4"
+        isError={isError}
+        isFetching={isFetching}
+        hasData={Array.isArray(recordsData)}
+        error={error}
+        onRetry={() => refetch()}
+        loadingMessage="Loading family planning report..."
       >
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-[17px] font-bold tracking-tight text-ink-800">
+              Family Planning Reports
+            </h2>
+            <p className="mt-1 max-w-3xl text-[13px] text-neutral-600">
+              Target Client List and summaries generated from saved Family Planning
+              health records.
+            </p>
+          </div>
+
         {!loading && (
           <>
             <ModuleTableCard
@@ -352,27 +359,27 @@ export function FamilyPlanningReportSection({
                 />
               }
             >
-              <thead className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-3">No.</th>
-                  <th className="whitespace-nowrap px-4 py-3">Date Registered</th>
-                  <th className="whitespace-nowrap px-4 py-3">Family Serial No.</th>
-                  <th className="whitespace-nowrap px-4 py-3">Patient Name</th>
-                  <th className="whitespace-nowrap px-4 py-3">Complete Address</th>
-                  <th className="whitespace-nowrap px-4 py-3">Age</th>
-                  <th className="whitespace-nowrap px-4 py-3">Sex</th>
-                  <th className="whitespace-nowrap px-4 py-3">Purok / Area</th>
-                  <th className="whitespace-nowrap px-4 py-3">NHTS Status</th>
-                  <th className="whitespace-nowrap px-4 py-3">Client Type</th>
-                  <th className="whitespace-nowrap px-4 py-3">Method Used / Accepted</th>
-                  <th className="whitespace-nowrap px-4 py-3">Previous Method</th>
-                  <th className="whitespace-nowrap px-4 py-3">Source</th>
-                  <th className="whitespace-nowrap px-4 py-3">Next Appointment Date</th>
-                  <th className="whitespace-nowrap px-4 py-3">Remarks / Action</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">View Health Record</th>
+                  <th className="px-4">No.</th>
+                  <th className="px-3">Date Registered</th>
+                  <th className="px-3">Family Serial No.</th>
+                  <th className="px-3">Patient Name</th>
+                  <th className="px-3">Complete Address</th>
+                  <th className="px-3">Age</th>
+                  <th className="px-3">Sex</th>
+                  <th className="px-3">Purok / Area</th>
+                  <th className="px-3">NHTS Status</th>
+                  <th className="px-3">Client Type</th>
+                  <th className="px-3">Method Used / Accepted</th>
+                  <th className="px-3">Previous Method</th>
+                  <th className="px-3">Source</th>
+                  <th className="px-3">Next Appointment Date</th>
+                  <th className="px-3">Remarks / Action</th>
+                  <th className="px-3 text-right">View Health Record</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F3F4F6]">
+              <tbody className="divide-y divide-neutral-100">
                 {paginatedRecords.length === 0 ? (
                   <DataTableEmptyState
                     colSpan={16}
@@ -382,60 +389,60 @@ export function FamilyPlanningReportSection({
                   />
                 ) : (
                   paginatedRecords.map((record, index) => (
-                    <tr key={record.id} className="hover:bg-[#FAFBFD]">
-                      <td className="px-4 py-3.5 text-[13px] text-[#64748B]">
+                    <tr key={record.id} className="h-14 transition-colors hover:bg-neutral-50">
+                      <td className="px-4 text-[13px] text-neutral-600">
                         {startIndex + index + 1}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {formatDate(record.dateRegistered, "Not recorded")}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.familySerialNumber || "Not recorded"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#111827]">
+                      <td className="px-3 text-[13px] font-semibold text-ink-800">
                         {record.patientName}
                       </td>
-                      <td className="px-4 py-3.5 text-[13px] text-[#64748B]">
-                        <span className="line-clamp-2 max-w-[240px]">
+                      <td className="max-w-[240px] px-3 text-[13px] text-neutral-600">
+                        <span className="truncate" title={record.completeAddress || "Not recorded"}>
                           {record.completeAddress || "Not recorded"}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.age || "Not recorded"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.sex || "Not recorded"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.purokArea || "\u2014"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.nhtsStatus || "Not recorded"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.clientType}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] font-semibold text-[#334155]">
+                      <td className="px-3 text-[13px] font-semibold text-ink-800">
                         {record.methodUsed}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.previousMethod}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {record.source}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-[13px] text-[#64748B]">
+                      <td className="px-3 text-[13px] text-neutral-600">
                         {formatDate(record.nextAppointmentDate, "Not recorded")}
                       </td>
-                      <td className="px-4 py-3.5 text-[13px] text-[#64748B]">
-                        <span className="line-clamp-2 max-w-[220px]">
+                      <td className="max-w-[220px] px-3 text-[13px] text-neutral-600">
+                        <span className="truncate" title={record.remarks || undefined}>
                           {record.remarks}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3.5 text-right">
+                      <td className="px-3 text-right">
                         <Link
                           to={`${basePath}/health-records/${record.id}`}
-                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#FECACA] bg-white px-3 text-[11px] font-semibold text-[#B91C1C] transition-colors hover:bg-[#FEF2F2]"
+                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 text-[11px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
                         >
                           <Eye size={13} />
                           View Health Record
@@ -495,7 +502,8 @@ export function FamilyPlanningReportSection({
             </div>
           </>
         )}
-      </SoftLoadingArea>
+        </div>
+      </PageStateWrapper>
     </section>
   );
 }

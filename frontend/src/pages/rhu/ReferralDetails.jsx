@@ -61,7 +61,7 @@ export default function RHUReferralDetails() {
 
   const {
     data: referral,
-    isLoading,
+    isPending: isLoading,
     isFetching,
     error,
     refetch,
@@ -72,11 +72,11 @@ export default function RHUReferralDetails() {
     retry: false,
   });
 
-  const loading = isLoading && !referral;
+  const loading = Boolean(trackingId) && isLoading && !referral;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
-  const unauthorized = error?.status === 403;
+  const unauthorized = [401, 403].includes(error?.status);
   const notFound = error?.status === 404 || (!loading && !error && !referral);
-  const loadError = error && !unauthorized && !notFound;
+  const loadError = error && !unauthorized && !notFound && !referral;
   const identity = arrivalIdentity(referral || {});
   const meta = arrivalReferralMeta(referral || {});
   const status = officialReferralStatus(referral?.status);
@@ -170,7 +170,8 @@ export default function RHUReferralDetails() {
     return (
       <DashboardLayout role="rhu" title="Patient Arrival">
         <SoftLoadingArea
-          skeleton="details"
+          skeleton="referral-details"
+          skeletonOptions={{ role: "rhu", view: "arrival" }}
           isLoading
           message="Loading patient arrival..."
           minHeight="min-h-[420px]"

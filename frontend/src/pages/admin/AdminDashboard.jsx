@@ -42,7 +42,7 @@ export default function AdminDashboard() {
   return (
     <DashboardLayout role="admin" title="Dashboard">
       <PageStateWrapper
-        skeleton="dashboard"
+        skeleton="admin-dashboard"
         // isPending (not isLoading) so a first load that is paused offline still shows the skeleton.
         isLoading={isPending}
         isError={Boolean(loadError)}

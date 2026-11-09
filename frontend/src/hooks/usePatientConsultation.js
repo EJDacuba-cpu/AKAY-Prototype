@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
@@ -6,13 +6,20 @@ import toast from "react-hot-toast";
 import {
   discardHealthRecordDraft,
   listHealthRecordDrafts,
+  getHealthRecordDraft,
+  lookupHealthRecordDraft,
+  transitionDraft,
 } from "../services/healthRecordDraftService";
+import { createClinicalDraftRecovery } from "../services/clinicalDraftRecoveryService";
+import { formDraftOwnerContext } from "../utils/formDraftRequest";
+import { consultationRecoveryEntry, consultationRecoveryPath, consultationEntryKey, prepareConsultationRecovery } from "../utils/consultationRecoveryEntry";
+import * as legacyLocalDraftVault from "../services/localDraftVault";
 import { getCareOverview } from "../services/careOverviewService";
 import { getConsultationPatientQuery } from "../services/consultationPatientQuery";
 import { prepareContinuedStart } from "../services/startConsultationService";
 import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
-import { DRAFTS_ENABLED } from "../utils/featureFlags";
+import { DRAFTS_ENABLED, FORM_DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
 import { consultationNeedsStartModal, reachedPath, startRoute } from "../utils/startConsultation";
 
@@ -38,21 +45,27 @@ export default function usePatientConsultation(patientId) {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const ownerId = String(currentUser?.id || "");
+  const ownerContext = String(formDraftOwnerContext(currentUser || {}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const recoveryVault = useMemo(() => FORM_DRAFTS_ENABLED ? createClinicalDraftRecovery(currentUser || {}) : legacyLocalDraftVault, [ownerContext]);
+  const vaultOwner = FORM_DRAFTS_ENABLED ? ownerContext : ownerId;
   // The care-overview endpoint's own permission rule (CareOverviewController).
   const permissions = currentUser?.permissions || [];
   const canReadCareOverview =
     permissions.includes("consultations.encode") || permissions.includes("clinical.history");
-  const queryKey = ["unfinished-consultations", ownerId];
+  const queryKey = ["unfinished-consultations", ownerContext, String(patientId || "")];
   const [opening, setOpening] = useState(false);
   const openingRef = useRef(false);
 
   /** Loads the patient the workspace needs (plus `prepare`), then navigates. */
-  async function openWorkspace(path, prepare) {
+  async function openWorkspace(path, prepare, handoff) {
     if (openingRef.current) return;
     openingRef.current = true;
     setOpening(true);
     try {
       await Promise.all([queryClient.fetchQuery(getConsultationPatientQuery(patientId)), prepare?.()]);
+      if (ownerContext !== formDraftOwnerContext(getCurrentUser() || {})) throw new Error("The account or working facility changed. Reopen the patient profile.");
+      if (handoff) queryClient.setQueryData(consultationEntryKey(ownerContext, patientId), { ...handoff, owner: ownerContext, patientId: String(patientId), createdAt: Date.now() });
       // Stays "opening" until the profile unmounts, so the button never flashes back.
       await navigate(path);
       // A leave guard (an unsaved Patient Background edit) can stop the
@@ -68,7 +81,9 @@ export default function usePatientConsultation(patientId) {
 
   const { data: unfinished = [], isPending, isError } = useQuery({
     queryKey,
-    queryFn: listHealthRecordDrafts,
+    queryFn: async () => FORM_DRAFTS_ENABLED
+      ? [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean)
+      : listHealthRecordDrafts(),
     enabled: DRAFTS_ENABLED && Boolean(ownerId && patientId) && permissions.includes("consultations.encode"),
     staleTime: 0,
   });
@@ -88,7 +103,12 @@ export default function usePatientConsultation(patientId) {
   const careOverviewPending = Boolean(patientId && canReadCareOverview) && careOverviewQuery.isPending;
 
   const discard = useMutation({
-    mutationFn: discardHealthRecordDraft,
+    mutationFn: async (id) => {
+      const options = FORM_DRAFTS_ENABLED ? { draftOwnerContext: ownerContext } : {};
+      const current = await getHealthRecordDraft(id, options);
+      if (!current.canEdit) throw new Error("Another staff member is editing this consultation.");
+      return discardHealthRecordDraft(id, current.version, options);
+    },
     onSuccess: async (_, draftId) => {
       await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData(queryKey, (current = []) =>
@@ -109,6 +129,32 @@ export default function usePatientConsultation(patientId) {
     ? `/bhc/health-records/add?${resumeParams}`
     : buildPatientConsultationPath(patientId);
 
+  async function checkRecovery() {
+    const [server, device] = await Promise.all([
+      queryClient.fetchQuery({ queryKey, queryFn: async () => [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean), staleTime: 0, retry: false }),
+      recoveryVault.listLocalDrafts(vaultOwner),
+    ]);
+    if (ownerContext !== formDraftOwnerContext(getCurrentUser() || {})) throw new Error("The account or working facility changed. Reopen the patient profile.");
+    return consultationRecoveryEntry({ patientId, server, device });
+  }
+
+  async function discardRecovery(entry) {
+    const fresh = await checkRecovery();
+    if (!fresh) return;
+    const beforeUuid = entry.server?.consultationUuid || entry.local?.record?.draft?.consultationUuid;
+    const currentUuid = fresh.server?.consultationUuid || fresh.local?.record?.draft?.consultationUuid;
+    if (beforeUuid !== currentUuid || (fresh.server && fresh.server.version !== entry.server?.version)) throw new Error("The unfinished consultation changed. Retry the recovery check before discarding.");
+    if (fresh.server) {
+      const options = { draftOwnerContext: ownerContext };
+      const current = await transitionDraft(fresh.server.id, "claim", fresh.server.version, undefined, options);
+      if (!current.canEdit) throw new Error("Another staff member is editing this consultation.");
+      await discardHealthRecordDraft(current.id, current.version, options);
+      if (fresh.local) await recoveryVault.deleteLocalDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
+    } else if (FORM_DRAFTS_ENABLED) await recoveryVault.discardDeviceDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
+    else await recoveryVault.deleteLocalDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
+    await queryClient.invalidateQueries({ queryKey });
+  }
+
   return {
     draft,
     // Without a draft the overview decides where Start goes, so wait for it.
@@ -116,7 +162,22 @@ export default function usePatientConsultation(patientId) {
     isError: DRAFTS_ENABLED && isError,
     opening,
     careOverview,
-    needsStartModal: consultationNeedsStartModal(draft),
+    needsStartModal: DRAFTS_ENABLED || consultationNeedsStartModal(draft),
+    recoveryEnabled: DRAFTS_ENABLED,
+    checkRecovery,
+    discardRecovery,
+    resumeRecovery: async (entry, source = "") => {
+      const options = { draftOwnerContext: ownerContext };
+      const result = await prepareConsultationRecovery({
+        patientId, entry, source, vault: recoveryVault, ownerKey: vaultOwner,
+        lookup: () => lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext }),
+        load: (id) => getHealthRecordDraft(id, { ...options, claim: false }),
+        claim: (id, version) => transitionDraft(id, "claim", version, undefined, options),
+      });
+      if (result.decision) return result;
+      await openWorkspace(consultationRecoveryPath(patientId, entry), undefined, result);
+      return result;
+    },
     /**
      * Opens the consultation for what the Start Consultation modal chose.
      * With monitoring, scheduled follow-ups or RHU recommendations ticked it
@@ -125,13 +186,19 @@ export default function usePatientConsultation(patientId) {
      * workspace never opens half loaded; with none ticked it opens at once.
      * Opening never completes a follow-up; only a successful save does.
      */
-    start: ({ monitoringIds = [], startConditionIds = [], followUpIds = [] } = {}) =>
-      openWorkspace(
+    start: async ({ monitoringIds = [], startConditionIds = [], followUpIds = [] } = {}) => {
+      if (DRAFTS_ENABLED) {
+        const entry = await checkRecovery();
+        if (entry) throw Object.assign(new Error("An unfinished consultation was found."), { recoveryEntry: entry });
+      }
+      return openWorkspace(
         startRoute({ patientId, monitoringIds, startConditionIds, followUpIds }),
         monitoringIds.length || startConditionIds.length || followUpIds.length
           ? () => prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds, followUpIds)
           : undefined,
-      ),
+        DRAFTS_ENABLED ? { draft: null, unsynced: false } : undefined,
+      );
+    },
     /** Start / Resume without the modal: loads the patient, then opens `startPath`. */
     open: async () => {
       try {
@@ -144,6 +211,6 @@ export default function usePatientConsultation(patientId) {
     discarding: discard.isPending,
     discard: () => draft && discard.mutateAsync(draft.id),
     startPath,
-    primaryLabel: draft ? "Resume Consultation" : "Start Consultation",
+    primaryLabel: draft ? "Open Consultation" : "Start Consultation",
   };
 }

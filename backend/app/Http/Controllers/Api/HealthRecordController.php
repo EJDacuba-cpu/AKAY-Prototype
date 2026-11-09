@@ -114,7 +114,18 @@ class HealthRecordController extends Controller
         $rhuItr = $request->isRhuItrV1();
         $visit = null;
         if ($rhuItr) {
-            $visit = app(RhuVisitQueueService::class)->authorizeInConsultation(
+            $visits = app(RhuVisitQueueService::class);
+            $candidate = $visits->find($request->user(), (int) $data['rhu_visit_id']);
+            $completedReplay = $candidate->close_reason === \App\Models\RhuVisitQueueEntry::CLOSE_REASON_COMPLETED
+                && (int) $candidate->patient_id === (int) $patient->id
+                && strcasecmp((string) $candidate->consultation_uuid, (string) ($data['consultation_uuid'] ?? '')) === 0
+                && HealthRecord::query()->where('idempotency_key', $data['idempotency_key'])
+                    ->where('created_by', $request->user()->id)->where('patient_id', $patient->id)
+                    ->where('rural_health_unit_id', $request->user()->rural_health_unit_id)
+                    ->where('consultation_uuid', $candidate->consultation_uuid)->exists();
+            // Successful retries still pass the payload hash and current access
+            // checks below. A completed visit never authorizes a new record.
+            $visit = $completedReplay ? $candidate : $visits->authorizeInConsultation(
                 $request->user(),
                 (int) $data['rhu_visit_id'],
                 (int) $patient->id,
@@ -123,6 +134,7 @@ class HealthRecordController extends Controller
         } else {
             $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         }
+        app(\App\Services\TbClinicalAuthority::class)->authorizeRecord($request->user(), $patient, $data);
         // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
         // A request without the discriminator runs every legacy step below unchanged.
         $v2 = $request->isBhcGeneralV2();
@@ -383,6 +395,9 @@ class HealthRecordController extends Controller
                         PatientBackground::visitIncludesMaternal($data)
                     ),
                 ]);
+                if ($rhuItr) {
+                    app(\App\Services\LaboratoryEvidenceService::class)->finalize($request, $record, $data['laboratory_tests'] ?? []);
+                }
                 // Discontinue first: a legacy row being discontinued must not be
                 // auto-linked by a confirmation of the same condition.
                 if ($legacyDiscontinuations !== []) {
@@ -491,6 +506,15 @@ class HealthRecordController extends Controller
                 }
 
                 $auditLogger->log($request, 'created', 'health_records', "Created health record {$record->id}.");
+                if (filled($record->consultation_uuid)) {
+                    $keys = app(\App\Services\FormDraftRecoveryKeyService::class);
+                    $keys->bindClinicalIdentity(
+                        $record->consultation_uuid,
+                        $request->user()->isRhu() ? 'rhu:'.$request->user()->rural_health_unit_id : 'bhc:'.$request->user()->barangay_health_center_id,
+                        $visit ? 'visit:'.$visit->id : 'patient:'.$patient->id,
+                    );
+                    $keys->retireClinicalIdentity($record->consultation_uuid, 'consumed');
+                }
                 if ($lockedDraft !== null) {
                     $drafts->consumeLocked(
                         $request->user(),
@@ -644,6 +668,7 @@ class HealthRecordController extends Controller
             'record' => $healthRecord,
             'patient' => $healthRecord->patient,
             'tb' => $healthRecord->tb_data,
+            'universalLaboratoryTests' => app(\App\Services\LaboratoryEvidenceService::class)->present($healthRecord),
         ])->setPaper('legal', 'landscape');
 
         $caseNumber = $healthRecord->tb_data['diagnosis']['tbCaseNumber'] ?? $healthRecord->id;

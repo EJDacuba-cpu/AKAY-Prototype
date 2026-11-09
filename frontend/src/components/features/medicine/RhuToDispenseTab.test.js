@@ -22,8 +22,8 @@ test("RHU inventory page has no dispense desk and To Dispense is its own route",
   assert.equal(existsSync(dispensePagePath), true);
   const dispensePage = readFileSync(dispensePagePath, "utf8");
   assert.match(dispensePage, /DashboardLayout role="rhu" title="Medicine and Supply"/);
-  assert.match(dispensePage, /To Dispense/);
-  assert.match(dispensePage, /Review prescriptions and confirm medicines given\./);
+  assert.match(tab, /To Dispense/);
+  assert.match(tab, /Review prescriptions and confirm medicines given\./);
   assert.match(dispensePage, /<RhuToDispenseTab\s*\/>/);
   assert.match(app, /path=["']\/rhu\/to-dispense["']/);
   assert.match(app, /module=["']dispensing["']/);

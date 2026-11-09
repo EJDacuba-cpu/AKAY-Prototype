@@ -167,6 +167,11 @@ class HealthRecord extends Model
         return $this->belongsTo(Patient::class);
     }
 
+    public function laboratoryTests(): HasMany
+    {
+        return $this->hasMany(LaboratoryTest::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

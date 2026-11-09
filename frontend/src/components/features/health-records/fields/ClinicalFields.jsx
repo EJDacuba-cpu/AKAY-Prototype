@@ -97,6 +97,26 @@ export function ClinicalSection({ title, subtitle, children }) {
   );
 }
 
+/** A standalone sheet matching the Interview and Physical Examination cards. */
+export function ClinicalSectionCard({ title, subtitle, children }) {
+  return (
+    <section
+      aria-label={title}
+      className="ehr-consult__sheet ehr-consult__sheet--headed min-w-0 rounded-(--radius-modal) border border-(--color-border) bg-(--color-surface) text-(--color-text) shadow-(--shadow-card)"
+    >
+      <div className="border-b border-(--color-border) px-5 py-4">
+        <h2 className="text-sm font-bold leading-snug">{title}</h2>
+        {subtitle && (
+          <p className="mt-0.5 text-xs leading-relaxed text-(--color-text-muted)">
+            {subtitle}
+          </p>
+        )}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
 /**
  * The small red uppercase label that names a group of controls inside a
  * section - "Newborn Services", "Vaccines Given This Visit", "Months".

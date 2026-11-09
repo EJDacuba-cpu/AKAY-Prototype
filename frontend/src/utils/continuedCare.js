@@ -37,6 +37,7 @@ export function uniqueById(list = []) {
 function fromUnscheduled(monitoring) {
   return {
     id: Number(monitoring.id),
+    ...(monitoring.conditionId ? { conditionId: monitoring.conditionId } : {}),
     conditionName: monitoring.conditionName || "",
     conditionKey: monitoring.conditionKey || null,
     startedAt: monitoring.startedAt || "",
@@ -49,6 +50,7 @@ function fromUnscheduled(monitoring) {
 function fromFollowUpCondition(task, condition) {
   return {
     id: Number(condition.monitoringId),
+    ...(condition.conditionId ? { conditionId: condition.conditionId } : {}),
     conditionName: condition.conditionName || "",
     conditionKey: condition.conditionKey || null,
     startedAt: condition.startedAt || "",

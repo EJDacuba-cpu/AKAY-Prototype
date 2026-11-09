@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
 import { Pencil, Plus, X } from "lucide-react";
 
 import { DatePickerField } from "../../common/forms/DatePickerField";
@@ -30,6 +31,8 @@ const MATERNAL_EYEBROW_CLASS =
  * when `includeObstetricHistory` is set (BHC and RHU ITR).
  */
 export default function PrenatalAssessmentForm({
+  laboratoryContext = "bhc",
+  laboratoryTests = [],
   maternalData,
   expectedDeliveryDate,
   aog,
@@ -224,7 +227,7 @@ export default function PrenatalAssessmentForm({
         title="Laboratory Results"
         subtitle="Previous results stay on their own records. Add only tests taken this visit."
         action={
-          !locked ? (
+          !locked && laboratoryContext !== "rhu" ? (
             <button
               type="button"
               onClick={() => {
@@ -241,6 +244,7 @@ export default function PrenatalAssessmentForm({
           ) : null
         }
       >
+        {laboratoryContext === "rhu" && <div className="mb-3 space-y-2"><p className="text-xs text-neutral-500">Record new tests in Physical Examination → Laboratory &amp; Diagnostic Tests. Previous prenatal results remain below.</p><LaboratoryEvidenceList entries={laboratoryTests} /></div>}
         {history.labs.length > 0 && (
           <HistoryTable
             caption="Previous Laboratory Results"
@@ -254,14 +258,14 @@ export default function PrenatalAssessmentForm({
         {thisVisitLabs.length > 0 && (
           <HistoryTable
             caption="New Results This Visit"
-            columns={locked ? ["Test", "Result", "Date Performed"] : ["Test", "Result", "Date Performed", ""]}
+            columns={locked || laboratoryContext === "rhu" ? ["Test", "Result", "Date Performed"] : ["Test", "Result", "Date Performed", ""]}
             rows={thisVisitLabs.map((entry, index) => ({
               key: `this-visit-${entry.test}-${index}`,
               cells: [
                 labTestLabel(entry.test),
                 entry.result,
                 formatHistoryDate(entry.datePerformed),
-                ...(locked
+                ...(locked || laboratoryContext === "rhu"
                   ? []
                   : [
                       <span key={`actions-${index}`} className="flex justify-end gap-1">
@@ -307,7 +311,7 @@ export default function PrenatalAssessmentForm({
             }))}
           />
         )}
-        {showLabForm && !locked && (
+        {showLabForm && !locked && laboratoryContext !== "rhu" && (
           <div className="rounded-none border border-[#E8ECF0] p-3">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               {editingLabIndex !== null ? "Edit lab result" : "Add lab result"}

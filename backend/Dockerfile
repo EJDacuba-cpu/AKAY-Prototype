@@ -17,6 +17,9 @@ COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /var/www/html
 
+# Keep PHP request limits consistent with validated laboratory uploads.
+COPY docker/laboratory-uploads.ini /usr/local/etc/php/conf.d/akay-laboratory-uploads.ini
+
 # Copy the Laravel application.
 COPY . .
 

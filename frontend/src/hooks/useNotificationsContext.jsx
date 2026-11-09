@@ -17,6 +17,8 @@ import {
   getNotificationLoadError,
   getNotificationsForUser,
   getTrashedNotifications,
+  hasLoadedNotifications as hasLoadedStoredNotifications,
+  hasLoadedTrash as hasLoadedStoredTrash,
   hasMoreNotifications as hasMoreStoredNotifications,
   loadMoreNotifications as loadMoreStoredNotifications,
   markAllNotificationsAsRead,
@@ -74,7 +76,10 @@ export function NotificationProvider({ children }) {
     getNotificationCounts(),
   );
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [hasLoadedNotifications, setHasLoadedNotifications] = useState(() => hasLoadedStoredNotifications(getNotificationUserContext()));
   const [trashLoading, setTrashLoading] = useState(false);
+  const [hasLoadedTrash, setHasLoadedTrash] = useState(() => hasLoadedStoredTrash(getNotificationUserContext()));
+  const [trashError, setTrashError] = useState(null);
   const [notificationsError, setNotificationsError] = useState(() =>
     getNotificationLoadError(),
   );
@@ -139,18 +144,20 @@ export function NotificationProvider({ children }) {
     setTrashedNotifications(getTrashedNotifications());
     setNotificationCounts(getNotificationCounts());
     setNotificationsError(getNotificationLoadError());
+    setHasLoadedNotifications(hasLoadedStoredNotifications(nextContext));
+    setHasLoadedTrash(hasLoadedStoredTrash(nextContext));
   }, [applyNotificationsWithAlertCheck]);
 
   const refreshNotifications = useCallback(
     ({ force = false, maxAgeMs = 60_000, soundEligible = false, search = "" } = {}) => {
-      if (pendingFetchRef.current) return pendingFetchRef.current;
+      if (pendingFetchRef.current && !force) return pendingFetchRef.current;
 
       const nextContext = getNotificationUserContext();
       setUserContext(nextContext);
       setNotificationsLoading(true);
       setNotificationsError(null);
 
-      pendingFetchRef.current = fetchNotifications({
+      const pending = fetchNotifications({
         force,
         maxAgeMs,
         soundEligible,
@@ -158,20 +165,23 @@ export function NotificationProvider({ children }) {
         search,
       })
         .then((nextNotifications) => {
-          if (isMountedRef.current) {
+          if (isMountedRef.current && JSON.stringify(getNotificationUserContext()) === JSON.stringify(nextContext)) {
             applyNotificationsWithAlertCheck(nextNotifications, {
               allowSound: soundEligible === true,
             });
             setNotificationsError(getNotificationLoadError());
+            setHasLoadedNotifications(hasLoadedStoredNotifications(nextContext));
           }
           return nextNotifications;
         })
         .finally(() => {
-          pendingFetchRef.current = null;
-          if (isMountedRef.current) setNotificationsLoading(false);
+          if (pendingFetchRef.current === pending) {
+            pendingFetchRef.current = null;
+            if (isMountedRef.current) setNotificationsLoading(false);
+          }
         });
-
-      return pendingFetchRef.current;
+      pendingFetchRef.current = pending;
+      return pending;
     },
     [applyNotificationsWithAlertCheck],
   );
@@ -196,11 +206,19 @@ export function NotificationProvider({ children }) {
   /** Decision D-5 - the Trash tab's real, server-backed fetch. */
   const refreshTrash = useCallback(
     async ({ search = "" } = {}) => {
+      const requestedContext = getNotificationUserContext();
       setTrashLoading(true);
+      setTrashError(null);
       try {
         const next = await refreshTrashedNotifications({ search });
-        if (isMountedRef.current) setTrashedNotifications(next);
+        if (isMountedRef.current) {
+          setTrashedNotifications(next);
+          setHasLoadedTrash(hasLoadedStoredTrash(getNotificationUserContext()));
+        }
         return next;
+      } catch (error) {
+        if (isMountedRef.current && JSON.stringify(getNotificationUserContext()) === JSON.stringify(requestedContext)) setTrashError(error);
+        throw error;
       } finally {
         if (isMountedRef.current) setTrashLoading(false);
       }
@@ -224,6 +242,9 @@ export function NotificationProvider({ children }) {
       setTrashedNotifications([]);
       setNotificationCounts(null);
       setNotificationsLoading(false);
+      setHasLoadedNotifications(false);
+      setHasLoadedTrash(false);
+      setTrashError(null);
       setNotificationsError(null);
       setSelectedNotif(null);
       setUserContext(getNotificationUserContext());
@@ -252,8 +273,8 @@ export function NotificationProvider({ children }) {
   }, [syncNotificationsFromCache]);
 
   const unreadCount = useMemo(
-    () => notifications.filter((notification) => !notification.isRead).length,
-    [notifications],
+    () => notificationCounts?.unread ?? notifications.filter((notification) => !notification.isRead).length,
+    [notifications, notificationCounts],
   );
 
   const getLatestNotifications = useCallback(
@@ -459,8 +480,11 @@ export function NotificationProvider({ children }) {
       notifications,
       trashedNotifications,
       trashLoading,
+      hasLoadedTrash,
+      trashError,
       notificationCounts,
       notificationsLoading,
+      hasLoadedNotifications,
       notificationsError,
       notificationSoundEnabled,
       unreadCount,
@@ -500,6 +524,7 @@ export function NotificationProvider({ children }) {
       notifications,
       notificationsError,
       notificationsLoading,
+      hasLoadedNotifications,
       refreshCounts,
       refreshNotifications,
       refreshTrash,
@@ -507,6 +532,8 @@ export function NotificationProvider({ children }) {
       selectedNotif,
       setNotificationSoundEnabled,
       trashLoading,
+      hasLoadedTrash,
+      trashError,
       trashedNotifications,
       unreadCount,
     ],

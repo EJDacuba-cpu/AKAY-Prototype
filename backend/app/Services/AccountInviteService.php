@@ -29,17 +29,39 @@ class AccountInviteService
     /** Creates the invite for a new account (or rotates the existing one), then emails it. */
     public function issue(User $user, ?User $by): AccountInvite
     {
-        $invite = AccountInvite::firstOrNew(['user_id' => $user->id]);
-        $invite->created_by = $by?->id ?? $invite->created_by;
-        $invite->email = $user->email;
+        return DB::transaction(function () use ($user, $by): AccountInvite {
+            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $invite = AccountInvite::where('user_id', $user->id)->lockForUpdate()->first()
+                ?? new AccountInvite(['user_id' => $user->id]);
+            if ($invite->email !== $user->email || $invite->status === AccountInvite::STATUS_COMPLETED) {
+                $invite->delivery = null;
+            }
+            $invite->created_by = $by?->id ?? $invite->created_by;
+            $invite->email = $user->email;
+            $invite->setRelation('user', $user);
 
-        return $this->send($invite, $this->rotate($invite));
+            return $this->send($invite, $this->rotate($invite));
+        });
     }
 
     /** New token and a fresh 48-hour window; the previous link stops working. */
     public function resend(AccountInvite $invite): AccountInvite
     {
-        return $this->send($invite, $this->rotate($invite));
+        return DB::transaction(function () use ($invite): AccountInvite {
+            $user = User::whereKey($invite->user_id)->lockForUpdate()->first();
+            $locked = AccountInvite::whereKey($invite->id)->lockForUpdate()->firstOrFail();
+            abort_if(! $user?->isActive() || $locked->status === AccountInvite::STATUS_COMPLETED, 422, 'This invite is closed.');
+            if (! app(AccountActivationService::class)->sameMailbox($locked->email, $user->email)) {
+                $locked->delivery = null;
+            }
+            $locked->setRelation('user', $user);
+            $sent = $this->send($locked, $this->rotate($locked));
+            // Existing callers keep the same instance for subsequent recovery actions.
+            $invite->setRawAttributes($sent->getAttributes(), true);
+            $invite->setRelation('user', $user);
+
+            return $invite;
+        });
     }
 
     /** Rotates the token for the MHO to share another way; nothing is emailed. */
@@ -112,6 +134,7 @@ class AccountInviteService
     /** Never throws: a mail failure is recorded on the invite so the account can still be created. */
     private function send(AccountInvite $invite, string $token): AccountInvite
     {
+        $wasFailed = $invite->delivery === AccountInvite::DELIVERY_FAILED;
         try {
             Mail::to($invite->email)->send(new AccountInviteMail($invite, $this->inviteUrl($token)));
             $invite->forceFill(['delivery' => AccountInvite::DELIVERY_SENT])->save();
@@ -119,10 +142,13 @@ class AccountInviteService
             Log::warning('Account invite email failed.', [
                 'account_invite_id' => $invite->id,
                 'recipient' => MaskedEmail::mask($invite->email),
+                'category' => 'invite_email_delivery_failed',
                 'error' => get_class($e),
             ]);
             $invite->forceFill(['delivery' => AccountInvite::DELIVERY_FAILED])->save();
         }
+
+        app(AdminAccessNotificationService::class)->inviteDeliveryChanged($invite, $wasFailed);
 
         return $invite;
     }

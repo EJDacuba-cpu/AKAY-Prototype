@@ -710,7 +710,8 @@ textarea,
   height: var(--akay-row-h);
 }
 
-.akay-fixed-table tbody td:not([colspan]) {
+.akay-fixed-table tbody td:not([colspan]),
+.akay-fixed-table tbody th {
   padding-block: 0;
   vertical-align: middle;
   max-width: 22rem;
@@ -720,15 +721,19 @@ textarea,
 }
 
 .akay-fixed-table tbody td:not([colspan]) > p,
-.akay-fixed-table tbody td:not([colspan]) > div {
+.akay-fixed-table tbody td:not([colspan]) > div,
+.akay-fixed-table tbody th > p,
+.akay-fixed-table tbody th > div {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* BHC inventory keeps ten compact rows of space, including on its last page. */
+/* BHC inventory keeps ten compact rows of space, including on its last page.
+   No vertical overflow — nested table scroll would steal the page wheel. */
 .medicine-inventory-sheet .medicine-inventory-body {
   height: var(--medicine-inventory-height);
-  overflow-y: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .medicine-inventory-sheet .medicine-inventory-empty {

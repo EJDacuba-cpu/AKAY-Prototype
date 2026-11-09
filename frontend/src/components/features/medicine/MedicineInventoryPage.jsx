@@ -13,7 +13,7 @@ import usePagedRows from '../../../hooks/usePagedRows';
 import useFacilityCalendarDate from '../../../hooks/useFacilityCalendarDate';
 import { getCurrentUser } from '../../../utils/auth';
 import { queryKeys } from '../../../utils/queryKeys';
-import { resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
+import { fixedTableVars, resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
 import { getMedicineExpiryStatus, getMedicineStockStatus } from '../../../utils/medicineInventoryStatus';
 import { retainCalendarData } from '../../../utils/medicineLedger';
 import { addBhcMedicine, addRhuMedicine, loadMedicineAvailability } from '../../../services/medicineService';
@@ -46,7 +46,7 @@ function MedicineInventoryWorkspace({ role }) {
   }
   return (
     <DashboardLayout role={role} title="Medicine and Supply">
-      <PageStateWrapper skeleton="medicine" isLoading={query.isLoading} isError={query.isError} isFetching={query.isFetching} hasData={items.length > 0} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine inventory…">
+      <PageStateWrapper skeleton="medicine" skeletonOptions={{ columns: [34, 21, 21, 18, 6], minWidth: 0 }} isLoading={query.isPending} isError={query.isError} isFetching={query.isFetching} hasData={Array.isArray(query.data)} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine inventory…">
         <div className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -88,7 +88,7 @@ function MedicineInventoryWorkspace({ role }) {
               </Button>
             </div>
           </div>
-          {query.isError && items.length > 0 && <p role="status" className="text-sm text-warning-700">Unable to refresh inventory. The last loaded values are shown.</p>}
+          {query.isError && Array.isArray(query.data) && <p role="status" className="text-sm text-warning-700">Unable to refresh inventory. The last loaded values are shown.</p>}
           {(() => {
             const narrowed = Boolean(filters.search.trim()) || activeCount > 0;
             if (narrowed && filtered.length === 0) {
@@ -105,10 +105,10 @@ function MedicineInventoryWorkspace({ role }) {
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p aria-live="polite" className="text-xs tabular-nums text-neutral-600">{filtered.length} of {items.length} items</p>
-                  {query.isFetching && items.length > 0 && <RefreshingIndicator label="Updating inventory…" />}
+                  {query.isFetching && Array.isArray(query.data) && <RefreshingIndicator label="Updating inventory…" />}
                 </div>
-                <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px` }}>
-                  <div className="medicine-inventory-body">
+                <div className="medicine-inventory-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white" style={{ "--medicine-inventory-height": `${tableBodyHeight()}px`, ...fixedTableVars() }}>
+                  <div className="medicine-inventory-body akay-fixed-table">
                     <MedicineInventoryTable items={pageRows} role={role} canManage={canManage} onAction={(item, mode) => { if (canManage) setDialog({ mode, medicineId: item.id }); }} />
                   </div>
                   <div className="medicine-inventory-pagination">

@@ -5,6 +5,7 @@ import { Button } from "../../../ui/button";
 import { Input } from "../../../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../ui/dropdown-menu";
 import { SoftLoadingArea, RefreshingIndicator } from "../../../common";
+import { DatePickerField } from "../../../common/forms/DatePickerField";
 import HealthRecordsTable from "../../records/HealthRecordsTable";
 import { DEFAULT_RECORD_FILTERS, DEFAULT_RECORD_VIEW, filterPatientRecords, patientRecordRows } from "../../../../utils/patientRecordHistory";
 import { queryKeys } from "../../../../utils/queryKeys";
@@ -31,7 +32,7 @@ function RecordFilter({ label, options, value, onChange }) {
   );
 }
 
-export default function PatientRecordsTab({ patientId, records = [], referrals, followUps, isLoading, isFetching, isError, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
+export default function PatientRecordsTab({ patientId, records = [], referrals, followUps, isLoading, isFetching, isError, hasData = records.length > 0, error, onRetry, detailsState, role = "bhc", basePath = "/bhc" }) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.patientRecordView(role, patientId);
   // Session memory only: search can contain a complaint, so never put it in the URL or browser storage.
@@ -47,31 +48,46 @@ export default function PatientRecordsTab({ patientId, records = [], referrals, 
     queryClient.setQueryData(queryKey, current => ({ filters: { ...current.filters, ...patch }, page: 1 }));
   }
 
+  if (isLoading && !hasData && ![401, 403].includes(error?.status)) {
+    return (
+      <section aria-label="Health Records" className="space-y-3 p-4">
+        <SoftLoadingArea skeleton="health-records" bodyOnly skeletonOptions={{ toolbar: true, minWidth: 760 }} isLoading message="Loading health records..." minHeight="min-h-[320px]" />
+      </section>
+    );
+  }
+
   return (
     <section aria-label="Health Records" className="space-y-3 p-4">
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,2fr)_repeat(4,minmax(130px,1fr))_auto]">
         <label className="space-y-1 text-xs text-neutral-600">Search
           <Input type="search" aria-label="Search health records" value={filters.search} onChange={event => changeFilters({ search: event.target.value })} placeholder="Record ID or chief complaint" className="h-9 text-xs sm:text-xs" />
         </label>
-        <label className="space-y-1 text-xs text-neutral-600">Date from
-          <Input type="date" value={filters.dateFrom} onChange={event => changeFilters({ dateFrom: event.target.value })} className="h-9 text-xs sm:text-xs" />
-        </label>
-        <label className="space-y-1 text-xs text-neutral-600">Date to
-          <Input type="date" value={filters.dateTo} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? "record-date-error" : undefined} onChange={event => changeFilters({ dateTo: event.target.value })} className="h-9 text-xs sm:text-xs" />
-        </label>
+        <DatePickerField
+          label="Date from"
+          name="dateFrom"
+          value={filters.dateFrom}
+          allowClear
+          onChange={(dateFrom) => changeFilters({ dateFrom })}
+        />
+        <DatePickerField
+          label="Date to"
+          name="dateTo"
+          value={filters.dateTo}
+          allowClear
+          error={dateError}
+          onChange={(dateTo) => changeFilters({ dateTo })}
+        />
         <RecordFilter label="Next Action" options={NEXT_ACTIONS} value={filters.outcome} onChange={outcome => changeFilters({ outcome })} />
         <RecordFilter label="Visit Type" options={VISITS} value={filters.visitType} onChange={visitType => changeFilters({ visitType })} />
         <Button variant="ghost" size="sm" onClick={() => queryClient.setQueryData(queryKey, { filters: { ...DEFAULT_RECORD_FILTERS }, page: 1 })} className="h-9 border border-neutral-300 text-xs text-neutral-900">Clear</Button>
       </div>
-      {dateError && <p id="record-date-error" role="alert" className="text-xs text-neutral-900">{dateError}</p>}
-      {isError ? (
+      {isError && (!hasData || [401, 403].includes(error?.status)) ? (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white p-4 text-sm text-neutral-900">
           Unable to load health records.<Button variant="ghost" size="sm" onClick={onRetry}>Retry</Button>
         </div>
-      ) : isLoading ? (
-        <SoftLoadingArea skeleton="health-records" isLoading message="Loading health records..." minHeight="min-h-[320px]"><div className="min-h-[320px]" /></SoftLoadingArea>
       ) : (
         <>
+          {isError && hasData && <p role="status" className="text-sm text-neutral-600">Unable to refresh health records. Showing the last history that loaded.</p>}
           {isFetching && <RefreshingIndicator label="Updating health records..." />}
           <HealthRecordsTable records={sliceRows(filtered, page)} currentPage={page} totalPages={totalPages} onPageChange={next => queryClient.setQueryData(queryKey, current => ({ ...current, page: next }))} detailsState={detailsState} emptyTitle={records.length ? "No matching records" : "No health records yet"} basePath={basePath} />
         </>

@@ -18,7 +18,6 @@ import useRhuVisits from "../../hooks/useRhuVisits";
 import { closeRhuVisit } from "../../services/rhuVisitService";
 import { queryKeys } from "../../utils/queryKeys";
 import { queueRows } from "../../utils/rhuQueueView";
-import { startOrResumeRhuConsultation } from "../../utils/rhuVisitConsultation";
 import {
   normalizeRhuPatientView,
   RHU_PATIENT_VIEW_QUEUE,
@@ -49,6 +48,7 @@ export default function RhuPatientsWorkspace() {
   const [queueSearch, setQueueSearch] = useState("");
   const [visitProgress, setVisitProgress] = useState(VISIT_PROGRESS_ALL);
   const [startingRow, setStartingRow] = useState(null);
+  const [entryChecking, setEntryChecking] = useState(false);
   const [closingRow, setClosingRow] = useState(null);
   const [closeState, setCloseState] = useState({ saving: false, error: "" });
   const client = useQueryClient();
@@ -88,17 +88,10 @@ export default function RhuPatientsWorkspace() {
     await client.invalidateQueries({ queryKey: queryKeys.rhuVisits() });
   }
 
-  async function resumeVisit(row) {
-    try {
-      const { path } = await startOrResumeRhuConsultation({
-        mode: "resume",
-        visitId: row.id,
-        patientId: row.patientId,
-      });
-      navigate(path);
-    } catch (error) {
-      toast.error(error?.message || "Unable to resume this consultation.");
-    }
+  function openConsultation(row) {
+    if (startingRow) return;
+    setEntryChecking(true);
+    setStartingRow((current) => current || row);
   }
 
   async function confirmClose({ reason, note }) {
@@ -175,8 +168,9 @@ export default function RhuPatientsWorkspace() {
               canFinalize={canFinalize}
               canClose={canCheckIn}
               onClearFilters={clearQueueFilters}
-              onStart={setStartingRow}
-              onResume={resumeVisit}
+              onOpen={openConsultation}
+              entryBusy={Boolean(startingRow)}
+              checkingVisitId={entryChecking ? startingRow?.id : null}
               onCloseVisit={setClosingRow}
             />
           </>
@@ -196,6 +190,7 @@ export default function RhuPatientsWorkspace() {
           patientId={startingRow.patientId}
           visitId={startingRow.id}
           patientName={startingRow.name}
+          onCheckingChange={setEntryChecking}
           onClose={() => setStartingRow(null)}
           onStarted={(path) => {
             setStartingRow(null);

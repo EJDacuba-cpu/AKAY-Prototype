@@ -98,23 +98,23 @@ function LivePatientDetails() {
 
   const {
     data: patientData,
-    isLoading: patientLoading,
+    isPending: patientLoading,
     isFetching: patientFetching,
     error: patientError,
     refetch: refetchPatient,
   } = useQuery({ ...profileQueries.patient, enabled: Boolean(patientId) });
 
   const {
-    data: recordsData = [],
-    isLoading: recordsLoading,
+    data: recordsData,
+    isPending: recordsLoading,
     isFetching: recordsFetching,
     error: recordsError,
     refetch: refetchRecords,
   } = useQuery(profileQueries.records);
 
   const {
-    data: referralsData = [],
-    isLoading: referralsLoading,
+    data: referralsData,
+    isPending: referralsLoading,
     isFetching: referralsFetching,
     error: referralsError,
     refetch: refetchReferrals,
@@ -133,10 +133,10 @@ function LivePatientDetails() {
     String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
   const patient = overrideMatchesPatient ? patientOverride : patientData || null;
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
-  const loadError =
-    patientError ||
-    (canViewHistory && searchParams.get("tab") !== "records" && (recordsError || referralsError || followUpsError)) ||
-    null;
+  const historyErrors = [recordsError, referralsError, followUpsError];
+  const historyError = historyErrors.find(error => [401, 403].includes(error?.status)) || historyErrors.find(Boolean);
+  const profileErrors = [patientError, canViewHistory && searchParams.get("tab") !== "records" && historyError];
+  const loadError = profileErrors.find(error => [401, 403].includes(error?.status)) || profileErrors.find(Boolean) || null;
   const retrying =
     patientFetching ||
     recordsFetching ||
@@ -340,17 +340,17 @@ function LivePatientDetails() {
     }
   }
 
-  if (patientLoading && !patient) {
+  if (Boolean(patientId) && patientLoading && !patient) {
     return (
       <ProfileShell>
-        <SoftLoadingArea skeleton="patient-details" isLoading message="Loading patient details..." minHeight="min-h-[520px]">
+        <SoftLoadingArea skeleton="patient-details" skeletonOptions={{ role: "bhc" }} isLoading message="Loading patient details..." minHeight="min-h-[520px]">
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
       </ProfileShell>
     );
   }
 
-  if (loadError) {
+  if (loadError && (!patient || [401, 403].includes(loadError?.status))) {
     return (
       <ProfileShell>
         <ConnectionErrorState
@@ -524,6 +524,8 @@ function LivePatientDetails() {
 
                 {activeTab === "records" && canViewHistory && (
                   <PatientRecordsTab
+                    hasData={Array.isArray(recordsData)}
+                    error={historyError}
                     patientId={patientId}
                     records={records}
                     referrals={referrals}
@@ -538,6 +540,8 @@ function LivePatientDetails() {
 
                 {activeTab === "referrals" && canViewHistory && (
                   <ReferralsSection
+                    hasData={Array.isArray(referralsData)}
+                    error={referralsError}
                     referrals={referrals}
                     isLoading={referralsLoading}
                     isFetching={referralsFetching}

@@ -1,11 +1,14 @@
+import usePrintDocument from "../../hooks/usePrintDocument";
+import { prepareReferralPrint } from "../../utils/referralPrinting";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, FileText, Printer, RefreshCw } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { RefreshingIndicator, SoftLoadingArea } from "../../components/common";
+import { ConnectionErrorState, RefreshingIndicator, SoftLoadingArea } from "../../components/common";
 import { Button } from "../../components/ui/button";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../../components/ui/accordion";
 import { getReferralByTrackingId, regenerateReferralQrPayload } from "../../services/referrals";
 import { getPatientById } from "../../services/patientService";
@@ -25,7 +28,7 @@ export default function ReferralDetails() {
   const [qrRefreshKey, setQrRefreshKey] = useState(0);
   const [qrRegenerating, setQrRegenerating] = useState(false);
   const [qrMessage, setQrMessage] = useState("");
-  const { data: details, isLoading, isFetching } = useQuery({
+  const { data: details, isPending: isLoading, isFetching, error, refetch } = useQuery({
     queryKey: queryKeys.referralDetails("bhc", trackingId),
     queryFn: async () => {
       const found = await getReferralByTrackingId(trackingId);
@@ -37,13 +40,21 @@ export default function ReferralDetails() {
 
   const referral = details?.referral || null;
   const patient = details?.patient || null;
-  const loading = isLoading && !details;
+  const loading = Boolean(trackingId) && isLoading && !details;
   const detailsUpdating = isFetching && !loading && Boolean(referral);
   const origin = location.state?.patientProfile;
   const patientReturn = getPatientRecordReturn(location, referral?.patientId);
   const fromPatient = Boolean(origin?.path?.startsWith("/bhc/patients/") && patientReturn.path === origin.path);
   const back = fromPatient ? patientReturn : { path: "/bhc/referrals", state: null };
   const backLabel = fromPatient ? "Back to Patient" : "Back to Referrals";
+
+  const handlePrint = usePrintDocument(".referral-print-area", {
+    title: "AKAY Referral Verification Slip",
+    prepare: prepareReferralPrint,
+    loading: isFetching || qrRegenerating,
+    error,
+    onRetry: () => refetch(),
+  });
 
   async function handleRegenerateQr() {
     if (!referral?.id || qrRegenerating) return;
@@ -72,9 +83,17 @@ export default function ReferralDetails() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Referral Details">
-        <SoftLoadingArea skeleton="details" isLoading message="Loading referral details..." minHeight="min-h-[520px]">
+        <SoftLoadingArea skeleton="referral-details" skeletonOptions={{ role: "bhc" }} isLoading message="Loading referral details..." minHeight="min-h-[520px]">
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (error && error.status !== 404 && (!referral || [401, 403].includes(error.status))) {
+    return (
+      <DashboardLayout role="bhc" title="Referral Details">
+        <ConnectionErrorState fullPage onRetry={() => refetch()} retrying={isFetching} variant={errorStateVariant(error)} />
       </DashboardLayout>
     );
   }
@@ -110,7 +129,7 @@ export default function ReferralDetails() {
               <h2 id="verification-title" className="text-sm font-semibold text-ink-900">Referral Verification Slip</h2>
               <p className="mt-1 max-w-prose text-sm text-neutral-600">Present the secure QR code to the receiving RHU for verification.</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="brand" size="sm" onClick={() => window.print()} disabled={qrRegenerating}>
+                <Button variant="brand" size="sm" onClick={handlePrint} disabled={qrRegenerating}>
                   <Printer size={15} />Print Referral Slip
                 </Button>
                 <Button variant="secondary" size="sm" onClick={handleRegenerateQr} disabled={qrRegenerating}>

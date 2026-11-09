@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\HealthRecord;
+use App\Models\Referral;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -37,6 +38,11 @@ class HealthRecordDraftPayloadService
         'timeOfVisit' => self::SCALAR,
         'chiefComplaint' => self::SCALAR,
         'physicalExam' => self::SCALAR,
+        'laboratoryTests' => ['*' => [
+            'id' => self::SCALAR, 'testName' => self::SCALAR,
+            'collectionDate' => self::SCALAR, 'examinationDate' => self::SCALAR,
+            'resultStatus' => self::SCALAR, 'result' => self::SCALAR,
+        ]],
         // Findings pinned on the assessment step's 2D body preview.
         'bodyFindings' => ['*' => [
             'id' => self::SCALAR,
@@ -66,6 +72,16 @@ class HealthRecordDraftPayloadService
             'clinicalOutcome' => self::SCALAR,
             'activate' => self::SCALAR,
             'manageToBhc' => self::SCALAR,
+            'nextAction' => self::SCALAR,
+            'receivingBhcId' => self::SCALAR,
+            'monitoringRecommendation' => self::SCALAR,
+            'laboratoryEvidence' => ['*' => ['reference' => self::SCALAR, 'version' => self::SCALAR, 'attachmentIds' => ['*' => self::SCALAR]]],
+            'laboratoryEvidenceConfirmed' => self::SCALAR,
+            'tbManagement' => [
+                'diagnosisType' => self::SCALAR,
+                'drugResistance' => self::SCALAR,
+                'openTreatmentCard' => self::SCALAR,
+            ],
             'referral' => [
                 'urgencyLevel' => self::SCALAR,
                 'receivingRhuId' => self::SCALAR,
@@ -462,6 +478,11 @@ class HealthRecordDraftPayloadService
         'rhuFollowUp' => self::SCALAR,
         'manageToBhc' => self::SCALAR,
         'rhuVisitId' => self::SCALAR,
+        // RHU referred-visit optional second concern (workspace local draft keys;
+        // finalize still maps them through monitoring_data.additionalConcern).
+        'showAdditionalConcern' => self::SCALAR,
+        'additionalChiefComplaint' => self::SCALAR,
+        'additionalHistoryOfPresentIllness' => self::SCALAR,
     ];
 
     /**
@@ -537,6 +558,7 @@ class HealthRecordDraftPayloadService
         unset($payload['surveillanceTags']);
 
         $sanitized = $this->sanitizeNode($payload, $this->schema(), 'payload');
+        $sanitized = TbAssessment::normalizeDraft($sanitized);
 
         $validator = Validator::make(['payload' => $sanitized], $this->rules());
         $validator->after(function ($validator) use ($sanitized): void {
@@ -644,6 +666,21 @@ class HealthRecordDraftPayloadService
             'payload.formStep' => ['nullable', 'string', 'max:100'],
             'payload.nextScreen' => ['nullable', 'in:next,outcome,monitoring'],
             'payload.physicalExam' => ['nullable', 'string'],
+            // Incomplete entries are valid drafts. Finalization applies the
+            // required name/result rules; sanitization remains strict here.
+            'payload.laboratoryTests' => ['nullable', 'array', 'max:50'],
+            'payload.laboratoryTests.*.id' => ['required', 'uuid', 'distinct:ignore_case'],
+            'payload.laboratoryTests.*.testName' => ['nullable', 'string', 'max:255'],
+            'payload.laboratoryTests.*.collectionDate' => ['nullable', 'date_format:Y-m-d'],
+            'payload.laboratoryTests.*.examinationDate' => ['nullable', 'date_format:Y-m-d'],
+            'payload.laboratoryTests.*.resultStatus' => ['required', Rule::in(LaboratoryEvidenceService::STATUSES)],
+            'payload.laboratoryTests.*.result' => ['nullable', 'string', 'max:10000'],
+            'payload.diagnoses.*.laboratoryEvidence' => ['nullable', 'array', 'max:50'],
+            'payload.diagnoses.*.laboratoryEvidence.*.reference' => ['required', 'string', 'max:80'],
+            'payload.diagnoses.*.laboratoryEvidence.*.version' => ['required', 'integer', 'min:0'],
+            'payload.diagnoses.*.laboratoryEvidence.*.attachmentIds' => ['nullable', 'array', 'max:10'],
+            'payload.diagnoses.*.laboratoryEvidence.*.attachmentIds.*' => ['uuid'],
+            'payload.diagnoses.*.laboratoryEvidenceConfirmed' => ['nullable', 'boolean'],
             ...BodyFindingReassessments::rules('payload.bodyFindingReassessments'),
             'payload.bodyFindings' => ['nullable', 'array', 'max:50'],
             'payload.bodyFindings.*.id' => ['nullable', 'string', 'max:64'],
@@ -661,7 +698,13 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.clinicalOutcome' => ['nullable', Rule::in(['managed_at_bhc', 'refer_to_rhu'])],
             'payload.diagnoses.*.activate' => ['nullable', 'boolean'],
             'payload.diagnoses.*.manageToBhc' => ['nullable', 'boolean'],
-            'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(\App\Models\Referral::ATTENTION_LEVELS)],
+            'payload.diagnoses.*.nextAction' => ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc'])],
+            'payload.diagnoses.*.receivingBhcId' => ['nullable', 'integer', 'min:1'],
+            'payload.diagnoses.*.monitoringRecommendation' => ['nullable', 'string', 'max:5000'],
+            'payload.diagnoses.*.tbManagement.diagnosisType' => ['nullable', 'string', 'max:50'],
+            'payload.diagnoses.*.tbManagement.drugResistance' => ['nullable', 'string', 'max:100'],
+            'payload.diagnoses.*.tbManagement.openTreatmentCard' => ['nullable', 'boolean'],
+            'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(Referral::ATTENTION_LEVELS)],
             'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
             'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],
             'payload.carePlan.bhcFollowUp' => ['nullable', 'boolean'],
@@ -714,6 +757,9 @@ class HealthRecordDraftPayloadService
             'payload.rhuFollowUp' => ['nullable', 'boolean'],
             'payload.manageToBhc' => ['nullable', 'boolean'],
             'payload.rhuVisitId' => ['nullable', 'integer'],
+            'payload.showAdditionalConcern' => ['nullable', 'boolean'],
+            'payload.additionalChiefComplaint' => ['nullable', 'string', 'max:2000'],
+            'payload.additionalHistoryOfPresentIllness' => ['nullable', 'string', 'max:5000'],
             'payload.maternalData.previousPregnancyHistory' => ['nullable', 'array', 'max:30'],
             'payload.maternalData.laboratoryEntries' => ['nullable', 'array', 'max:30'],
             'payload.maternalData.laboratoryEntries.*.test' => [

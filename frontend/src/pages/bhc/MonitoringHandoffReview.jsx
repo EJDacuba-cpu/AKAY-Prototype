@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { RefreshingIndicator, SoftLoadingArea } from "../../components/common";
+import { ConnectionErrorState, RefreshingIndicator, SoftLoadingArea } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import {
   acceptMonitoringHandoffRequest,
@@ -17,6 +17,8 @@ import {
 import { formatDisplayValue, formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import useAccess from "../../hooks/useAccess";
+import { errorStateVariant } from "../../utils/errorStateVariant";
+import { LaboratoryEvidenceList } from "../../components/features/health-records/LaboratoryEvidence";
 
 const STATUS_LABELS = {
   pending_review: "Pending Review",
@@ -45,7 +47,7 @@ export default function MonitoringHandoffReview() {
     enabled: Boolean(requestId),
   });
   const request = detailsQuery.data || null;
-  const loading = detailsQuery.isLoading && !request;
+  const loading = Boolean(requestId) && detailsQuery.isPending && !request;
   const otherBhcs = request?.catchment_bhcs || [];
 
   async function refresh() {
@@ -87,9 +89,17 @@ export default function MonitoringHandoffReview() {
   if (loading) {
     return (
       <DashboardLayout role="bhc" title="Monitoring Request">
-        <SoftLoadingArea skeleton="details" isLoading message="Loading monitoring request..." minHeight="min-h-[520px]">
+        <SoftLoadingArea skeleton="monitoring-handoff" isLoading message="Loading monitoring request..." minHeight="min-h-[520px]">
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (detailsQuery.error && detailsQuery.error.status !== 404 && (!request || [401, 403].includes(detailsQuery.error.status))) {
+    return (
+      <DashboardLayout role="bhc" title="Monitoring Request">
+        <ConnectionErrorState fullPage onRetry={() => detailsQuery.refetch()} retrying={detailsQuery.isFetching} variant={errorStateVariant(detailsQuery.error)} />
       </DashboardLayout>
     );
   }
@@ -174,6 +184,10 @@ export default function MonitoringHandoffReview() {
               </ul>
             </section>
           )}
+          <section className="min-w-0 space-y-3 border-b border-neutral-200 p-4 sm:p-5">
+            <h2 className="text-sm font-semibold text-ink-900">RHU Laboratory Evidence</h2>
+            <LaboratoryEvidenceList entries={request.laboratory_evidence || []} emptyMessage={request.status === "linkage_needed" ? "Verify and link this patient to review authorized laboratory evidence." : "No laboratory evidence shared with this request."} />
+          </section>
           {linkedName && (
             <section className="border-b border-neutral-200 p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-ink-900">Linked BHC patient</h2>

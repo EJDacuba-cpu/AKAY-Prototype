@@ -52,6 +52,7 @@ class AccountActivationService
     public function startOverForMailboxChange(User $user): void
     {
         $user->forceFill(['email_verified_at' => null])->save();
+        app(AdminAccessNotificationService::class)->resolveForUser($user);
         $this->sessions->revokeAllTokens($user, 'account-email-changed');
     }
 }

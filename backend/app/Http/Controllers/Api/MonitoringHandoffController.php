@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BarangayHealthCenter;
+use App\Models\MonitoringHandoffRequest;
+use App\Services\ActionPermissions;
+use App\Services\HandoffLaboratoryEvidence;
 use App\Services\MonitoringHandoffService;
 use App\Services\PatientIdentity;
 use Illuminate\Http\Request;
 
 class MonitoringHandoffController extends Controller
 {
-    public function __construct(private readonly MonitoringHandoffService $handoffs)
-    {
-    }
+    public function __construct(private readonly MonitoringHandoffService $handoffs) {}
 
     public function catchmentBhcs(Request $request)
     {
@@ -83,7 +85,7 @@ class MonitoringHandoffController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function present(\App\Models\MonitoringHandoffRequest $handoff, bool $detail): array
+    private function present(MonitoringHandoffRequest $handoff, bool $detail): array
     {
         $source = $handoff->patient;
         $linked = $handoff->linkedPatient;
@@ -109,18 +111,29 @@ class MonitoringHandoffController extends Controller
             ],
             'source_patient' => $source ? PatientIdentity::response($source, false) : null,
             'linked_patient' => $linked ? PatientIdentity::response($linked, false) : null,
-            'registration_status' => $handoff->status === \App\Models\MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED
+            'registration_status' => $handoff->status === MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED
                 ? 'linkage_needed'
                 : ($linked || ((int) $source?->barangay_health_center_id === (int) $handoff->receiving_barangay_health_center_id)
                     ? 'registered_at_receiving_bhc'
                     : 'rhu_only'),
         ];
         if ($detail) {
+            $evidence = app(HandoffLaboratoryEvidence::class);
+            // Linkage and inactive handoff states never disclose evidence.
+            $payload['laboratory_evidence'] = [];
+            if (ActionPermissions::allows(request()->user(), 'clinical.history')
+                && in_array($handoff->status, ['pending_review', 'accepted_awaiting_first_visit', 'monitoring_active'], true)
+                && $handoff->linkedPatient
+                && $handoff->linkedPatient->status !== 'inactive'
+                && (int) $handoff->linkedPatient->barangay_health_center_id === (int) request()->user()->barangay_health_center_id) {
+                $evidence->authorizeReceiver(request()->user(), $handoff);
+                $payload['laboratory_evidence'] = $evidence->present($handoff);
+            }
             $payload['health_record_id'] = $handoff->health_record_id;
             $payload['redirected_to_bhc'] = $handoff->redirectedToBhc
                 ? ['id' => $handoff->redirectedToBhc->id, 'name' => $handoff->redirectedToBhc->name]
                 : null;
-            $payload['catchment_bhcs'] = \App\Models\BarangayHealthCenter::query()
+            $payload['catchment_bhcs'] = BarangayHealthCenter::query()
                 ->where('rural_health_unit_id', $handoff->sending_rural_health_unit_id)
                 ->where('status', 'active')
                 ->whereKeyNot($handoff->receiving_barangay_health_center_id)

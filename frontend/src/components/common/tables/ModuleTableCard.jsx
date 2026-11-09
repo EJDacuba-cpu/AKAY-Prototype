@@ -17,7 +17,7 @@ export default function ModuleTableCard({
   refreshingLabel = "Updating...",
   showCount = false,
   actions = null,
-  fixedRows = false,
+  fixedRows = true,
   pageSize = TABLE_PAGE_SIZE,
 }) {
   const shouldShowCount = showCount && count !== undefined && count !== null;
