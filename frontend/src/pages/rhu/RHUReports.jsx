@@ -13,6 +13,7 @@ import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
 import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
 import ChildCareTclSection from "../../components/features/reports/ChildCareTclSection";
 import FamilyPlanningTclSection from "../../components/features/reports/FamilyPlanningTclSection";
+import MaternalCareTclSection from "../../components/features/reports/MaternalCareTclSection";
 import RhuOverviewBento from "../../components/features/reports/RhuOverviewBento";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
@@ -225,7 +226,7 @@ export default function RHUReports() {
                           <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                             <th className="px-3 py-2.5">Indicator</th>
                             <th className="px-3 py-2.5 text-right">Count</th>
-                            {category === "epi" ? null : (
+                            {category === "epi" || category === "maternal" ? null : (
                               <th className="px-3 py-2.5">Notes</th>
                             )}
                           </tr>
@@ -235,7 +236,7 @@ export default function RHUReports() {
                             <tr key={`${row.label}-${row.note || ""}-${index}`} className="border-b border-neutral-100">
                               <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
-                              {category === "epi" ? null : (
+                              {category === "epi" || category === "maternal" ? null : (
                                 <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
                               )}
                             </tr>
@@ -246,6 +247,15 @@ export default function RHUReports() {
                   )}
                 </CardContent>
               </Card>
+
+              {category === "maternal" ? (
+                <MaternalCareTclSection
+                  role="rhu"
+                  records={Array.isArray(records) ? records : []}
+                  patients={Array.isArray(patients) ? patients : []}
+                  period={period}
+                />
+              ) : null}
 
               {category === "family_planning" ? (
                 <FamilyPlanningTclSection
@@ -277,7 +287,7 @@ export default function RHUReports() {
             summary={report.summary}
             notes={report.notes}
             ageGroup={isNutrition ? ageGroup : ""}
-            hideNotes={category === "epi"}
+            hideNotes={category === "epi" || category === "maternal"}
           />
         </div>
       </PageStateWrapper>
