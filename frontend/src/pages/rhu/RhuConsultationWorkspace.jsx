@@ -24,7 +24,6 @@ import ConsultationProgramPanel from "../../components/features/health-records/w
 import PrenatalAssessmentForm from "../../components/features/health-records/PrenatalAssessmentForm";
 import {
   ConsultationActionBar,
-  ConsultationStepHeading,
   ConsultationWorkspaceBody,
 } from "../../components/features/health-records/wizard/ConsultationWorkflow";
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
@@ -1469,47 +1468,55 @@ export default function RhuConsultationWorkspace() {
     : currentStepKey === NEXT_STEP ? "care-plan"
     : currentStepKey === REVIEW_STEP ? "review" : "interview";
 
+  const consultationHeading = (
+    <header className={`ehr-consult__header ehr-consult__header--${stepLayout}`}>
+      <div className="ehr-consult__heading-row">
+        <div className="ehr-consult__heading-copy">
+          <h2 className="ehr-consult__heading-title">{stepHeading.title}</h2>
+          {stepHeading.subtitle && <p className="ehr-consult__heading-subtitle">{stepHeading.subtitle}</p>}
+        </div>
+        {RHU_DRAFTS_ENABLED && (
+          <FormDraftStatus
+            className="ehr-consult__draft-status"
+            status={
+              !recoveryReady
+                ? (recoveryError ? "error" : "checking")
+                : autosave.localStatus === "unavailable" || autosave.localStatus === "failed"
+                  ? "unavailable"
+                  : autosave.status === "saving"
+                    ? "saving"
+                    : autosave.status === "conflict" || autosave.status === "error" || autosave.status === "offline"
+                      ? autosave.status
+                      : autosave.hasPendingChanges
+                        ? "pending"
+                        : autosave.status === "saved"
+                          ? "saved"
+                          : "idle"
+            }
+            lastSavedAt={autosave.lastSavedAt}
+            error={autosave.error?.message || autosave.conflict?.message || recoveryError || ""}
+            onRetry={
+              !recoveryReady && recoveryError
+                ? recovery.retry
+                : autosave.status === "error" || autosave.status === "offline"
+                  ? () => { void autosave.saveNow(); }
+                  : undefined
+            }
+          />
+        )}
+      </div>
+    </header>
+  );
+
   return (
     <DashboardLayout role="rhu" title="RHU Consultation">
-      <div className="ehr-consult ehr-consult--rhu ehr-consult--pinned">
-      <div className="ehr-consult__stage">
+      <div className={`ehr-consult ehr-consult--rhu ehr-consult--pinned${showSidePanel ? " ehr-consult--split" : ""}`}>
+      <div className="ehr-consult__stage" data-consult-scroll={!showSidePanel || undefined}>
       <ConsultationWorkspaceBody>
-        <header className={`ehr-consult__header ehr-consult__header--${stepLayout}`}>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} />
-            {RHU_DRAFTS_ENABLED && (
-              <FormDraftStatus
-                className="ehr-consult__draft-status"
-                status={
-                  !recoveryReady
-                    ? (recoveryError ? "error" : "checking")
-                    : autosave.localStatus === "unavailable" || autosave.localStatus === "failed"
-                      ? "unavailable"
-                      : autosave.status === "saving"
-                        ? "saving"
-                        : autosave.status === "conflict" || autosave.status === "error" || autosave.status === "offline"
-                          ? autosave.status
-                          : autosave.hasPendingChanges
-                            ? "pending"
-                            : autosave.status === "saved"
-                              ? "saved"
-                              : "idle"
-                }
-                lastSavedAt={autosave.lastSavedAt}
-                error={autosave.error?.message || autosave.conflict?.message || recoveryError || ""}
-                onRetry={
-                  !recoveryReady && recoveryError
-                    ? recovery.retry
-                    : autosave.status === "error" || autosave.status === "offline"
-                      ? () => { void autosave.saveNow(); }
-                      : undefined
-                }
-              />
-            )}
-          </div>
-        </header>
+        {!showSidePanel && consultationHeading}
         <div className={`ehr-consult__grid ehr-consult__grid--${stepLayout}${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:items-start lg:gap-4" : ""}`}>
-        <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
+        <div className="@container min-w-0 ehr-consult__form" data-consult-scroll={showSidePanel || undefined}>
+        {showSidePanel && consultationHeading}
         {wizardPhase === WIZARD_REVIEW ? (
           <ConsultationReviewStep
             visitDate={new Date().toLocaleDateString()}
