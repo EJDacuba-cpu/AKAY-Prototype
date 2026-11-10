@@ -44,7 +44,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
     } catch(error) {if(seq === request.current) setSearchState({loading:false,error:error.message || 'Unable to search households.'});}
   }
   async function save(data,connection,id,replacement,options={}) {
-    const base={...data,household:householdPayload(connection,registry,{includeRelationshipLink:false}),
+    const base={...data,household:householdPayload(connection,registry),
       ...(replacement ? {head_replacement:{household_id:replacement.householdId,head_patient_id:replacement.headPatientId,relationships:replacement.relationships,version:registry.households.find(item=>item.id === replacement.householdId)?.version}} : {})};
     const payload=role === 'rhu' && !id ? withDuplicateConfirm(base, options.confirmDuplicate) : base;
     // A recovered household revision must not silently advance after refetch.
@@ -67,7 +67,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending && recoveryHouseholdId === undefined);
   const error=(!patient.data && patient.error) || (!selected.data && selected.error && recoveryHouseholdId === undefined);
   if(waiting || error) return <DashboardLayout role={role} title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
-  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} onNewWalkIn={()=>{const next=newWalkIn();setWalkIn(next);return next;}} live
+  return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} live
     onRecoveryHouseholdChange={setRecoveryHouseholdId} onRecoveryWalkIn={setWalkIn}
     householdRecoveryLoading={Boolean(recoveryHouseholdId && selected.isPending)}
     householdRecoveryError={recoveryHouseholdId && selected.error ? selected.error.message : ''}

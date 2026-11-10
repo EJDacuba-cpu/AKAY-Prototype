@@ -141,13 +141,15 @@ components:
 
 AKAY still reads as a well-kept logbook at a health center: white sheets ruled with hairlines on a pale gray desk. Data stays dense and scannable. What changed is the control language. Buttons, tabs, and filter triggers are pills, so daily actions feel like current clinical SaaS (Healthie, Elation, Canvas, Linear) rather than a boxy 2016 EHR. Sheets, tables, and popover panels stay rectangular. Red is still the single mark of attention: the one primary action, the active place, and, in its alert form, danger.
 
-The three-color core is navy ink, brand red, and white. Ink carries text and chrome. White carries readable surfaces. Red is spent once per screen on the thing to do. Ordinary clinical state still uses green, amber, and cyan stamps.
+**Canonical reference surface:** Medicine and Supply inventory (`frontend/src/components/features/medicine/MedicineInventoryPage.jsx` and its table, filters, stamps, and empty states). When an Operate list, toolbar, status chip, or data sheet disagrees with that module, Medicine wins. Do not revive older square border-only lists, stacked `rounded-lg` row cards, or navy-primary "Calm Clinical Workspace" pilots that are not shipping in inventory.
+
+The three-color core is navy ink, brand red, and white. Ink carries text and chrome. White carries readable surfaces. Red is spent once per screen on the thing to do. Ordinary clinical state still uses green, amber, and cyan stamps via `PlainStatusStamp`.
 
 Screens are built for repeated daily work on a desktop or laptop in a facility, sometimes over a weak connection. Loading and error states are first-class. The interface should feel competent and calm on a long shift, never promotional, and never like a diagnosis engine.
 
 **Key Characteristics:**
 - Three-color core: navy ink, brand red, white. Status color is extra, not a fourth brand color.
-- Rectangular sheets and tables with `--radius-card` (12px) on cards and filter popovers; pill-shaped buttons, tabs, dropdowns, and status chips.
+- Rectangular sheets and tables with `--radius-card` / `rounded-xl` (12px) on inventory sheets and filter popovers; pill-shaped buttons, tabs, dropdowns, and status stamps.
 - One red. Primary actions and active place use it. Alert red is for danger only.
 - Fixed-size tables: the same row height whether the page has three rows or ten.
 - Cool-gray neutrals tinted toward blue, never warm.
@@ -211,7 +213,7 @@ A cool-gray ledger with a single red stamp. Neutrals do almost all the work; col
 
 A fixed application shell: a left sidebar rail (72px collapsed, 240px expanded), a 56 to 62px top bar carrying breadcrumbs, the working-facility selector, and notifications, and a scrolling content area on Ledger Paper. Content padding steps with the viewport: 12px, 16px at the small breakpoint, 20px at large. Below the desktop breakpoint the sidebar becomes a drawer.
 
-Screens are made of bordered sheets on the paper background. Module toolbars are compact: title and primary pills on the first row, tabs and search on the second, the data table immediately below. Lists are fixed-size tables: 44px header and 56px rows, 10 rows per page, so a card never changes height with the data. Spacing follows a 4px base, with gaps of 8, 16, and 24px between and inside sheets.
+Screens are made of bordered sheets on the paper background, matching Medicine and Supply: `space-y-4`, a title (`text-[17px] font-bold tracking-tight text-ink-800`) plus `text-[13px]` subtitle, a compact toolbar of SearchFilterCluster and pill actions, an optional `text-xs tabular-nums` count row, then one `overflow-hidden rounded-xl border border-neutral-200 bg-white` sheet. Lists are fixed-size tables: 44px (`h-11`) header on `bg-neutral-100` with 10px bold uppercase labels, 56px (`h-14`) rows, pagination in the sheet footer when paged. Spacing follows a 4px base, with gaps of 8, 16, and 24px between and inside sheets.
 
 Primary context is a desktop or laptop in a facility, including 1366×768. Tablet, phone, 1080p, and 4K must stay usable without a separate design: wrap toolbar rows, keep popovers at `min(100vw - 1.5rem, 370px)` when they are filter panels, and never let a dropdown cover the only path through the table.
 
@@ -256,15 +258,18 @@ Do not put a pill radius on a data table or a filter popover sheet. Do not put s
 - **Focus / Disabled:** Ink ring at 50% opacity; disabled drops to 50% opacity and ignores pointer events.
 
 ### Chips and Status Badges
-- **Style:** Pill with a 1px border, a 6px leading dot, and 10px bold uppercase label. Each status pairs a tint background, an ink text color, and a border from the same family.
-- **State:** Active, Completed, and In Stock use green; Pending, Received, and Referred use blue; Follow-up Required, Under Observation, Low Stock, and Expiring use amber; Needs Referral uses orange; Cancelled, Inactive, Unavailable, and Expired use red; Not recorded uses gray.
+- **Implementation:** Prefer `PlainStatusStamp` (`frontend/src/components/common/badges/PlainStatusStamp.jsx`), the same stamp Medicine inventory uses (`LedgerStamp` / `.medicine-inventory-status--plain`).
+- **Style:** Pill with a 1px border, a leading tone dot, and 10px bold uppercase label. Each status pairs a tint background, an ink text color, and a border from the same family (`info`, `warning`, `danger`, `success`, `neutral`).
+- **State:** Active, Completed, and In Stock use green; Pending, Received, and Referred use blue/info; Follow-up Required, Under Observation, Low Stock, and Expiring use amber; Needs Referral / linkage needed use warning; Cancelled, Inactive, Unavailable, Declined, and Expired use danger/red; Not recorded uses gray/neutral.
+- **Do not** render raw uppercase CSS text as a fake status. If it is a status, it is a stamp.
 
 ### Cards / Containers
-- **Corner Style:** `--radius-card` (12px) on the outer sheet, including filter popovers. Nested tables stay rectangular.
+- **Corner Style:** `--radius-card` / `rounded-xl` (12px) on the outer sheet, including filter popovers and inventory sheets (`medicine-inventory-sheet`). Nested tables stay rectangular (no per-row card radius).
 - **Background:** Ledger Sheet on Ledger Paper.
-- **Shadow Strategy:** Card hairline on top-level sheets, none on nested cards. See Elevation & Depth.
+- **Shadow Strategy:** Card hairline (`shadow-card`) on top-level sheets only, none on nested cards. See Elevation & Depth.
 - **Border:** 1px Rule Hairline; Rule Strong on hover for interactive cards.
 - **Internal Padding:** 16px, 20px for large panels. Toolbars use 8 to 12px gaps, not a second padded card.
+- **List rows live inside one sheet.** Do not stack separate `rounded-lg` bordered cards for each row; that is the retired list look.
 
 ### Inputs / Fields
 - **Style:** 1px Rule Hairline border, `--radius-input` (8px) on ordinary fields, 8px by 12px padding, 13 to 14px text, with a 10px bold uppercase label above. Filter popover dropdowns are pills (`rounded-full`), 32px tall, with a trailing chevron.
@@ -287,19 +292,22 @@ Do not put a pill radius on a data table or a filter popover sheet. Do not put s
 - **Behavior:** Edits land on a draft. Apply commits and closes. Reset restores the draft to defaults. Dismissing without Apply keeps the last committed filters. Search stays outside the popover and applies live. BHC and RHU keep independent committed filter state.
 
 ### Data Tables
-- **Style:** Fixed-size (44px header, 56px rows), header on Ledger Sheet Sunk, single-line cells with ellipsis truncation, and a tooltip on truncated text. Row hover fills Ledger Sheet Sunk.
+- **Reference:** `MedicineInventoryTable` and RHU To Dispense sheets.
+- **Style:** Fixed-size (44px / `h-11` header, 56px / `h-14` rows), header on Ledger Sheet Sunk (`bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600`), body `divide-y divide-neutral-100`, single-line cells with ellipsis truncation and a tooltip on truncated text. Row hover fills Ledger Sheet Sunk (`hover:bg-neutral-50`). Primary name is `text-sm font-semibold text-ink-800`; meta is `text-[11px] text-neutral-600`.
+- **Sheet chrome:** Wrap the table in `overflow-hidden rounded-xl border border-neutral-200 bg-white` (optional `shadow-card`). Put `TablePagination` in the sheet footer, not as a floating control outside the sheet.
 
 ### Modals
 - **Style:** Rectangular panel on Ledger Sheet with a floating shadow and a dimmed backdrop. A title, optional subtitle, and close control sit in the header; actions sit in the footer as pills, with the primary action first in focus order. Sizes run from `sm` (24rem) to `wide` (72rem). Focus is trapped and restored on close; Escape closes unless the action is mid-save.
 
 ### Loading, Error and Empty States
-Skeleton blocks stand in for data and keep the layout stable, with a thin top loading bar for route changes. Connection loss shows a persistent banner and a retry only where retry is real. Empty states fill the same frame as a populated list.
+Skeleton blocks stand in for data and keep the layout stable, with a thin top loading bar for route changes. Connection loss shows a persistent banner and a retry only where retry is real. Empty states fill the same frame as a populated list: in-sheet empty copy (`text-sm font-semibold text-ink-800` + `text-xs text-neutral-600`) or `FilteredEmptyPanel` (`rounded-xl` sheet, neutral icon well, secondary Clear pill) when search/filters match nothing. Do not use hardcoded slate hex empty wells (`#F1F5F9`, `#334155`, `text-gray-400`).
 
 ## Do's and Don'ts
 
 ### Do:
+- **Do** match Medicine and Supply when building Operate list modules: toolbar, count row, one `rounded-xl` sheet, fixed table, stamp statuses, sheet-footer pagination.
 - **Do** build surfaces from Ledger Sheet on Ledger Paper with 1px Rule Hairline borders, adding only the card hairline shadow on top-level sheets.
-- **Do** use pill buttons, pill tabs, pill dropdowns, and pill status chips. Use rectangular sheets and tables. Filter popovers use `--radius-card` (12px), not a pill and not a square.
+- **Do** use pill buttons, pill tabs, pill dropdowns, and `PlainStatusStamp` chips. Use rectangular sheets and tables. Filter popovers use `--radius-card` (12px), not a pill and not a square.
 - **Do** use Brand 600 (`{colors.register-red}`) for the one primary pill on a screen, Ink for text and chrome, and white for surfaces.
 - **Do** reserve Alert Red for danger, urgency, errors, and destructive confirms.
 - **Do** use the green, amber, and cyan families for ordinary status.
@@ -311,6 +319,7 @@ Skeleton blocks stand in for data and keep the layout stable, with a thin top lo
 
 ### Don't:
 - **Don't** make buttons, tabs, filter triggers, or filter dropdowns square. That is the retired EHR-minimalism look.
+- **Don't** ship square-cornered border-only lists or a stack of `rounded-lg` row cards when Medicine uses one `rounded-xl` sheet.
 - **Don't** make data tables or filter popover sheets into pills. Card radius on the sheet is required; pill radius on the sheet is not.
 - **Don't** lift, translate, or add a shadow to a card on hover.
 - **Don't** introduce `slate-*` utilities, rainbow category palettes, or new hardcoded hex values; they are migration targets.
@@ -318,3 +327,4 @@ Skeleton blocks stand in for data and keep the layout stable, with a thin top lo
 - **Don't** blur real data to indicate a lock; render a placeholder.
 - **Don't** make type larger or looser for decoration; density is intentional.
 - **Don't** add features that read as clinical suggestions, such as auto-suggested diagnoses or recommended treatments.
+- **Don't** treat retired surface briefs (for example navy-primary "Calm Clinical Workspace" pilots) as the current system when they conflict with Medicine and Supply.

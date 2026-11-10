@@ -73,6 +73,20 @@ const { getRecordPractitioner } = await server.ssrLoadModule(
   "/src/components/features/health-records/recordDetailsHelpers.js",
 );
 
+test("saved higher-level referral plan reads back in the clinical record and print without issued-referral controls", () => {
+  const record = { id: 77, category: "General Consultation", monitoringData: { consultationWorkflow: "rhu_itr_v1" }, diagnoses: [{
+    id: "a", name: "Asthma", nextAction: "refer_higher_level",
+    higherLevelReferralPlan: { reason: "Specialist assessment", intendedFacility: "Provincial hospital", clinicalPlan: "Review available investigations" },
+  }] };
+  for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
+    const html = wrap(createElement(View, { record, serviceType: "General Consultation" }));
+    for (const value of ["Higher-Level Referral Plan", "Specialist assessment", "Provincial hospital", "Review available investigations"]) {
+      assert.ok(html.includes(value), value);
+    }
+    assert.doesNotMatch(html, /View in Referrals|Tracking reference|Referral issued/);
+  }
+});
+
 test("details reader uses stored follow-up dates and explicit related IDs without mutating records", () => {
   const record = {
     id: 11, parent_health_record_id: 10,

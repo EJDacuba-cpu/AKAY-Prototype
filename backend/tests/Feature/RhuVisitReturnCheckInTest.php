@@ -184,12 +184,17 @@ class RhuVisitReturnCheckInTest extends TestCase
         $this->assertStaysWalkIn($patient, 'walk-in-no-show', $referral);
     }
 
-    public function test_walk_in_check_in_does_not_attach_a_pending_referral(): void
+    public function test_walk_in_check_in_rejects_a_pending_referral(): void
     {
         $patient = $this->patient(['rural_health_unit_id' => $this->rhu->id]);
         $referral = $this->referral($patient, Referral::STATUS_PENDING);
 
-        $this->assertStaysWalkIn($patient, 'walk-in-pending', $referral);
+        $this->checkIn($patient, 'walk-in-pending')
+            ->assertConflict()
+            ->assertJsonPath('code', 'VISIT_PENDING_REFERRAL');
+
+        $this->assertSame(0, RhuVisitQueueEntry::query()->where('check_in_key', 'walk-in-pending')->count());
+        $this->assertSame(Referral::STATUS_PENDING, $referral->fresh()->status);
     }
 
     public function test_walk_in_check_in_does_not_attach_for_monitoring(): void

@@ -135,7 +135,7 @@ export default function TbCaseRegistrationPanel({ recordId, record = null }) {
           : !preview.can_register ? <p className="text-sm text-neutral-700">The RHU physician must authorize Form 4B registration.</p>
           : <div className="space-y-3">
             <p className="max-w-3xl text-sm text-neutral-600">
-              Register DS-TB treatment from this finalized consultation without changing the consultation record. The registration form opens in a separate physician-authorized dialog.
+              Register DS-TB treatment from this finalized consultation when treatment was not started in-visit. The registration form opens in a separate physician-authorized dialog.
             </p>
             <Button variant="brand" onClick={begin}>Register DS-TB Treatment</Button>
           </div>}

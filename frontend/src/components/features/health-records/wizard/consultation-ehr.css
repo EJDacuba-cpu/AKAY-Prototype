@@ -52,12 +52,33 @@
   margin-bottom: 0;
 }
 .ehr-consult--rhu .ehr-consult__header {
-  position: sticky;
-  top: 0;
-  z-index: 15;
-  background: color-mix(in srgb, var(--color-surface, #fff) 92%, transparent);
-  backdrop-filter: blur(6px);
-  padding-block: 6px 8px;
+  position: static;
+  margin-bottom: var(--consult-gap);
+  padding: 0 2px 4px;
+}
+.ehr-consult--rhu .ehr-consult__heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ehr-consult--rhu .ehr-consult__heading-copy {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+.ehr-consult--rhu .ehr-consult__heading-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.ehr-consult--rhu .ehr-consult__heading-subtitle {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .ehr-consult--rhu .ehr-consult__draft-status {
   max-width: min(100%, 22rem);
@@ -196,6 +217,80 @@
 }
 .ehr-consult__care-plan > .divide-y {
   display: contents;
+}
+.rhu-diagnosis-card {
+  container: rhu-diagnosis / inline-size;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0;
+}
+.rhu-diagnosis-card > * {
+  margin-block: 0;
+}
+.rhu-diagnosis-card [data-field] > p:first-child {
+  color: var(--color-text-secondary);
+}
+.rhu-diagnosis-card [data-field$=".nextAction"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.rhu-diagnosis-card [data-field] > div > label {
+  min-height: 32px;
+}
+.rhu-diagnosis-segments [data-field] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rhu-diagnosis-segments [data-field] > div > label {
+  position: relative;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+.rhu-diagnosis-segments input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.rhu-diagnosis-segments label:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.rhu-diagnosis-segments label:has(input:checked) > span {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.rhu-diagnosis-segments label:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.rhu-diagnosis-segments label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.rhu-diagnosis-evidence {
+  display: grid;
+  gap: 18px;
+  padding-block: 8px;
+}
+.rhu-diagnosis-evidence > div {
+  min-width: 0;
+}
+.rhu-diagnosis-evidence > div > fieldset {
+  border-top: 0;
+  padding-top: 0;
+}
+@container rhu-diagnosis (min-width: 800px) {
+  .rhu-diagnosis-evidence:has(.rhu-diagnosis-assessment > fieldset) {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+  }
 }
 .ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] label {
   color: var(--color-text-secondary);
@@ -486,6 +581,101 @@
   .ehr-consult--pinned .ehr-consult__actionbar {
     position: static;
     margin-top: 0;
+  }
+
+  /* RHU scrolls the heading and both columns together above the action bar. */
+  .ehr-consult--rhu > .ehr-consult__stage {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+  .ehr-consult--rhu .ehr-consult__body {
+    flex: none;
+    min-height: 100%;
+  }
+  .ehr-consult--rhu .ehr-consult__grid {
+    flex: none;
+    grid-template-rows: auto;
+    align-items: start;
+  }
+  .ehr-consult--rhu .ehr-consult__form {
+    align-self: start;
+    overflow: visible;
+  }
+  .ehr-consult--rhu .ehr-consult__grid > fieldset > aside,
+  .ehr-consult--rhu .ehr-consult__grid > [data-body-preview] {
+    position: static;
+    align-self: start;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* BHC and RHU panel steps share a full-height sidebar and scrolling form. */
+.ehr-consult.ehr-consult--split .ehr-consult__services-heading {
+  flex: none;
+  padding: 17.6px;
+}
+.ehr-consult.ehr-consult--split .ehr-consult__services-list {
+  display: grid;
+  grid-auto-rows: minmax(min-content, 1fr);
+  min-height: 0;
+}
+.ehr-consult.ehr-consult--split .ehr-consult__service {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 17.6px;
+}
+.ehr-consult.ehr-consult--split .ehr-consult__service > button {
+  width: 100%;
+}
+@media (min-width: 1024px) {
+  .ehr-consult.ehr-consult--split > .ehr-consult__stage {
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+  .ehr-consult.ehr-consult--split .ehr-consult__body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .ehr-consult.ehr-consult--split .ehr-consult__grid {
+    flex: 1 1 auto;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .ehr-consult.ehr-consult--split .ehr-consult__form {
+    align-self: stretch;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .ehr-consult.ehr-consult--split .ehr-consult__services,
+  .ehr-consult.ehr-consult--split .ehr-consult__grid > [data-body-preview] {
+    position: static;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+  }
+  .ehr-consult.ehr-consult--split [data-body-preview] > div:first-child,
+  .ehr-consult.ehr-consult--split [data-body-preview] > p:last-of-type {
+    flex: none;
+  }
+  .ehr-consult.ehr-consult--split [data-body-preview] > div:nth-child(2) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .ehr-consult.ehr-consult--split .ehr-consult__services-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
   }
 }
 

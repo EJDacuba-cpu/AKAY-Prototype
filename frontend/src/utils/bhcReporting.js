@@ -15,7 +15,16 @@ import {
   normalizeVaccineName,
 } from "./healthRecordPrograms.js";
 import { getPrenatalEnrollment, isActivePrenatalEnrollment } from "./prenatalEnrollment.js";
+import {
+  countMaternalEpisodeStartsInPeriod,
+  countPrenatalConsultationsInPeriod,
+} from "./maternalCareTcl.js";
 import { buildNutritionReportMetrics, NUTRITION_BMI_CATEGORIES } from "./nutritionReporting.js";
+import {
+  buildChildCareTclRows,
+  countCpabProtectedChildren,
+} from "./childCareTcl.js";
+import { isFpNewAcceptor } from "./familyPlanning.js";
 import { getSurveillanceReportEntries } from "./surveillance.js";
 
 export const REPORT_CATEGORIES = Object.freeze([
@@ -140,7 +149,7 @@ export function buildBhcReport({
   ageGroup = "all",
 } = {}) {
   const selected = normalizeReportCategory(category);
-  const epi = buildEpiMetrics(records, period);
+  const epi = buildEpiMetrics(records, period, patients);
   const maternal = buildMaternalMetrics(patients, records, period);
   const familyPlanning = buildFamilyPlanningMetrics(records, period);
   const nutrition = buildNutritionReportMetrics({ patients, records, period, ageGroup });
@@ -221,20 +230,28 @@ const views = {
     };
   },
   epi: (metrics, period) => {
-    const { doses, vaccines, trend } = metrics.epi;
+    const { doses, vaccines, trend, cpabProtected } = metrics.epi;
     return {
       cards: [
         card("doses", "Doses administered", doses, "Dated vaccine doses"),
         card("vaccines", "Vaccines recorded", vaccines.length, "Distinct vaccine names"),
         card("top", "Most given", vaccines[0]?.value || 0, vaccines[0]?.label || "No doses in period"),
+        card(
+          "cpab",
+          "Children Protected at Birth (CPAB)",
+          cpabProtected,
+          "Validated maternal TT/Td evidence",
+        ),
       ],
       charts: [
         areaChart("Doses over the period", "Administered doses by day.", period, trend, "label", "value", "Doses"),
         barChart("Vaccine breakdown", "Doses by vaccine, not unique children.", period, vaccines, "label", "value", "Doses"),
       ],
       summary: [
-        { label: "Doses administered", value: doses, note: "Excludes CPAB and newborn screening" },
-        ...vaccines.map((item) => ({ label: item.label, value: item.value, note: "Doses" })),
+        { label: "Doses administered", value: doses },
+        { label: "Vaccines recorded", value: vaccines.length },
+        { label: "Children Protected at Birth (CPAB)", value: cpabProtected },
+        ...vaccines.map((item) => ({ label: item.label, value: item.value })),
       ],
     };
   },
@@ -243,11 +260,11 @@ const views = {
     return {
       cards: [
         card("active", "Active enrollments", activeEnrollments, "Prenatal or postpartum at period end"),
-        card("new", "New enrollments", newEnrollments, "First maternal record in period"),
-        card("consults", "Prenatal consultations", consultations, "Maternal visits in period"),
+        card("new", "New enrollments", newEnrollments, "Episode start in period"),
+        card("consults", "Prenatal consultations", consultations, "Prenatal maternal visits in period"),
       ],
       charts: [
-        areaChart("Consultations over the period", "Maternal / prenatal visits by day.", period, trend, "label", "value", "Consultations"),
+        areaChart("Consultations over the period", "Prenatal maternal visits by day (postpartum-only excluded).", period, trend, "label", "value", "Consultations"),
         barChart("Enrollment activity", "Active at period end is not the same as new enrollments.", period, [
           { label: "Active at period end", value: activeEnrollments },
           { label: "New enrollments", value: newEnrollments },
@@ -255,9 +272,9 @@ const views = {
         ], "label", "value", "Count"),
       ],
       summary: [
-        { label: "Active enrollments", value: activeEnrollments, note: "Status at period end" },
-        { label: "New enrollments", value: newEnrollments, note: "First maternal record fell in period" },
-        { label: "Prenatal consultations", value: consultations, note: "Visits in period" },
+        { label: "Active enrollments", value: activeEnrollments },
+        { label: "New enrollments", value: newEnrollments },
+        { label: "Prenatal consultations", value: consultations },
       ],
     };
   },
@@ -407,7 +424,7 @@ function diagnosisView(title, description, metrics, period) {
   };
 }
 
-function buildEpiMetrics(records, period) {
+function buildEpiMetrics(records, period, patients = []) {
   const doses = [];
   for (const record of records.filter(isEpiRecord)) {
     for (const entry of getEpiVaccineEntries(record)) {
@@ -418,20 +435,25 @@ function buildEpiMetrics(records, period) {
       doses.push({ date, vaccine: displayVaccineName(vaccine, entry.vaccineName) });
     }
   }
+  const childCareRows = buildChildCareTclRows({ records, patients, period });
   return {
     doses: doses.length,
     vaccines: countBy(doses, (item) => item.vaccine),
     trend: trendSeries(doses.map((item) => item.date), period),
+    cpabProtected: countCpabProtectedChildren(childCareRows),
   };
 }
 
 function buildMaternalMetrics(patients, records, period) {
   const maternalRecords = records.filter(isMaternalRecord);
-  const consultations = maternalRecords.filter((record) => isDateInReportPeriod(getRecordDateValue(record), period));
+  // Shared helpers keep KPI counts aligned with Maternal TCL classification.
+  const consultations = countPrenatalConsultationsInPeriod(maternalRecords, period);
+  const prenatalInPeriod = maternalRecords.filter(
+    (record) => countPrenatalConsultationsInPeriod([record], period) === 1,
+  );
   const patientMap = mapByPatient(patients);
   const recordsByPatient = groupByPatient(maternalRecords);
   let activeEnrollments = 0;
-  let newEnrollments = 0;
   const periodEnd = parseDay(period.end);
 
   for (const [patientId, patientRecords] of recordsByPatient) {
@@ -444,15 +466,17 @@ function buildMaternalMetrics(patients, records, period) {
     if (isActivePrenatalEnrollment(getPrenatalEnrollment(patient, historical, periodEnd).status)) {
       activeEnrollments += 1;
     }
-    const firstDate = earliestDate(patientRecords.map((record) => getRecordDateValue(record)));
-    if (isDateInReportPeriod(firstDate, period)) newEnrollments += 1;
   }
+
+  // Episode starts in period. Without delivery boundaries this matches the
+  // previous "first maternal record" rule (conservative fallback).
+  const newEnrollments = countMaternalEpisodeStartsInPeriod(maternalRecords, period);
 
   return {
     activeEnrollments,
     newEnrollments,
-    consultations: consultations.length,
-    trend: trendSeries(consultations.map((record) => getRecordDateValue(record)), period),
+    consultations,
+    trend: trendSeries(prenatalInPeriod.map((record) => getRecordDateValue(record)), period),
   };
 }
 
@@ -678,10 +702,6 @@ function groupByPatient(records) {
   return groups;
 }
 
-function earliestDate(values) {
-  return values.map(normalizeDateValue).filter(Boolean).sort()[0] || "";
-}
-
 function getReferralDate(referral = {}) {
   return (
     referral.dateOfReferral ||
@@ -736,11 +756,7 @@ function rhuConfirmedNames(referral = {}) {
 }
 
 function isNewAcceptor(clientType) {
-  const value = String(clientType || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-  return value === "na" || value.startsWith("na ") || value.includes("new acceptor");
+  return isFpNewAcceptor(clientType);
 }
 
 function fpMethodLabel(method) {

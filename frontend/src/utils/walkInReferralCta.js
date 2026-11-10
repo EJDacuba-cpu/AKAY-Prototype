@@ -1,4 +1,4 @@
-// Walk-in Check-in: what to show when the selected patient has Pending BHC referrals.
+// Visit Check-in: what to show when the selected patient has Pending BHC referrals.
 // Pure view model. Does not change referral status or pick one referral out of many.
 
 const TITLE = 'Pending BHC Referral';
@@ -63,13 +63,13 @@ const OPEN_CONFIRM = Object.freeze({
   blocked: false,
   title: '',
   body: '',
-  statusLabel: 'Ready to check in',
+  statusLabel: 'Ready for Check-in',
   links: [],
 });
 
 /**
- * CTA for pending referrals on the walk-in desk.
- * `count > 0` blocks Confirm Check-in. Every referral with a tracking id gets its own detail link.
+ * CTA for pending referrals on the Visit Check-in desk.
+ * `count > 0` blocks Add to Today's Queue. Every referral with a tracking id gets its own detail link.
  * @param {{ count?: number, referrals?: Array<{ tracking_id?: string, sending_bhc?: string|null }> } | null | undefined} pending
  */
 export function walkInReferralCta(pending) {

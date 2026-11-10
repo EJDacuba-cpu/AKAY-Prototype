@@ -38,9 +38,9 @@ export default function ConsultationProgramPanel({
     <aside
       aria-label={heading}
       data-field="healthRecordType"
-      className="min-w-0 rounded-none border border-[#E5E7EB] bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
+      className="ehr-consult__services min-w-0 rounded-none border border-[#E5E7EB] bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
     >
-      <div className="flex items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
+      <div className="ehr-consult__services-heading flex items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-2.5">
         <div className="min-w-0">
           <h2 className="text-[14px] font-bold leading-snug text-[#111827]">
             {heading}
@@ -54,7 +54,7 @@ export default function ConsultationProgramPanel({
         </span>
       </div>
 
-      <div>
+      <div className="ehr-consult__services-list">
         {programs.map((program) => {
           const active = selected.includes(program.key);
           const statusLabel = program.statusLabel || (active ? "Included" : "Not included");
@@ -70,7 +70,7 @@ export default function ConsultationProgramPanel({
             <div
               key={program.key}
               aria-busy={program.busy ? "true" : undefined}
-              className={`border-b border-[#E5E7EB] px-3 py-2 transition-colors duration-300 motion-reduce:transition-none last:border-b-0 ${
+              className={`ehr-consult__service border-b border-[#E5E7EB] px-3 py-2 transition-colors duration-300 motion-reduce:transition-none last:border-b-0 ${
                 active ? "bg-red-50" : ""
               }`}
             >

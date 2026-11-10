@@ -13,6 +13,7 @@ import {
   rhuCarePlanErrors,
   RHU_NEXT_ACTIONS,
 } from "./rhuCarePlan.js";
+import { normalizeDiagnoses } from "./diagnoses.js";
 
 test("a new diagnosis starts with Active off and no next action", () => {
   const entry = emptyRhuDiagnosis("Hypertension", "dx-1");
@@ -28,7 +29,7 @@ test("next actions are exclusive and Manage does not imply Active", () => {
   const none = applyRhuNextAction(managed, "none");
   assert.equal(none.nextAction, "none");
   assert.equal(none.receivingBhcId, "");
-  assert.equal(Object.keys(RHU_NEXT_ACTIONS).length, 3);
+  assert.equal(Object.keys(RHU_NEXT_ACTIONS).length, 4);
 });
 
 test("Manage to BHC is invalid unless Active is explicit or already confirmed", () => {
@@ -140,4 +141,43 @@ test("diagnosesForRhuSave keeps activate and nextAction without fanning Manage",
   assert.equal(saved[1].manageToBhc, false);
   assert.equal(saved[1].activate, false);
   assert.equal(saved[1].nextAction, "none");
+});
+
+test("higher-level referral validates only its visible required plan details", () => {
+  const entry = applyRhuNextAction(emptyRhuDiagnosis("Asthma", "a"), "refer_higher_level");
+  const errors = rhuCarePlanErrors([entry]);
+  assert.ok(errors["diagnoses.a.higherLevelReferralPlan.reason"]);
+  assert.ok(errors["diagnoses.a.higherLevelReferralPlan.clinicalPlan"]);
+  assert.equal(errors["diagnoses.a.nextAction"], undefined);
+  assert.equal(errors["diagnoses.a.higherLevelReferralPlan.intendedFacility"], undefined);
+  assert.deepEqual(rhuCarePlanErrors([{ ...entry, higherLevelReferralPlan: {
+    reason: "Specialist assessment", intendedFacility: "", clinicalPlan: "Continue prescribed care pending review",
+  } }]), {});
+});
+
+test("higher-level referral survives save normalization and draft restore without TB initiation or Manage", () => {
+  const plan = { reason: "Specialist assessment", intendedFacility: "Provincial hospital", clinicalPlan: "Review available investigations" };
+  const entries = [{ id: "tb", name: "TB", nextAction: "refer_higher_level", higherLevelReferralPlan: plan,
+    tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" } },
+  { id: "other", name: "URI", nextAction: "none" }];
+  const saved = normalizeDiagnoses(diagnosesForRhuSave(entries));
+  const restored = restoreRhuDiagnoses({ diagnoses: saved });
+  assert.equal(saved[0].nextAction, "refer_higher_level");
+  assert.deepEqual(saved[0].higherLevelReferralPlan, plan);
+  assert.deepEqual(restored[0].higherLevelReferralPlan, plan);
+  assert.equal(saved[0].manageToBhc, false);
+  assert.equal(saved[0].tbManagement.openTreatmentCard, false);
+  assert.equal(saved[0].tbManagement.treatmentDecision, "");
+  assert.equal(saved[1].nextAction, "none");
+});
+
+test("leaving higher-level referral clears its plan and does not require hidden details", () => {
+  for (const action of ["none", "rhu_follow_up", "manage_to_bhc"]) {
+    const switched = applyRhuNextAction({ id: "a", name: "Asthma", nextAction: "refer_higher_level",
+      higherLevelReferralPlan: { reason: "Old reason", intendedFacility: "Old facility", clinicalPlan: "Old plan" } }, action);
+    assert.equal(switched.higherLevelReferralPlan, null);
+    assert.equal(Object.keys(rhuCarePlanErrors([switched])).some(key => key.includes("higherLevelReferralPlan")), false);
+    const returned = applyRhuNextAction(switched, "refer_higher_level");
+    assert.deepEqual(returned.higherLevelReferralPlan, { reason: "", intendedFacility: "", clinicalPlan: "" });
+  }
 });

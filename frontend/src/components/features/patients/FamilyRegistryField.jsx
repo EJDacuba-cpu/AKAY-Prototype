@@ -7,6 +7,7 @@ import {
   HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
   patientName, relationshipForConnection, searchHouseholds,
 } from "../../../services/familyRegistry";
+import { relationshipLinkFor } from "../../../utils/relationshipLabels";
 
 const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]";
 
@@ -163,7 +164,14 @@ export default function FamilyRegistryField({
           {!review && <RelationshipField live={live}
             value={relationshipForConnection(registry, connection, patient.id)} error={relationshipError}
             saved={savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId ? savedConnection.relationship : ""}
-            onChange={(relationship) => onChange({ ...connection, relationship, relationshipLink: undefined }, headReplacement)}
+            onChange={(relationship) => {
+              const link = connection?.kind === "existing" ? relationshipLinkFor(relationship, head, patient) : null;
+              onChange({
+                ...connection,
+                relationship,
+                ...(link ? { relationshipLink: link } : { relationshipLink: undefined }),
+              }, headReplacement);
+            }}
           />}
         </div>}
         {(searching || !connection) && !review && <div className={household ? "mt-3 space-y-3" : "space-y-3"}>
@@ -181,30 +189,33 @@ export default function FamilyRegistryField({
                 }}
               />
             </div>
-            <Button type="button" variant="ghost" size="sm" className="border border-gray-300 text-gray-900" onClick={runSearch}>Search</Button>
+            <Button type="button" variant="ghost" size="sm" disabled={searchLoading || !query.trim()} className="shrink-0 border border-gray-300 text-gray-900" onClick={runSearch}>{searchLoading ? 'Searching...' : 'Search'}</Button>
           </div>
           <p className="text-[10px] leading-relaxed text-[#64748B]">Search by family serial number, household head, or address.</p>
-          {searchLoading && <p role="status" className="text-xs text-gray-600">Searching households…</p>}
-          {searchError && <p role="alert" className="text-xs text-red-700">{searchError} Select Search to retry.</p>}
-          {hasQuery && !searchLoading && !searchError && results.length > 0 && <fieldset id={`${id}-results`} className="max-h-60 overflow-y-auto divide-y divide-gray-200 border-y border-gray-200">
+          <div className="h-56 overflow-y-auto border-y border-gray-200" aria-busy={searchLoading || undefined}>
+          {!hasQuery && <p role="status" className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-600">Search for an existing household to connect this patient.</p>}
+          {hasQuery && searchLoading && <p role="status" className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-600">Searching households…</p>}
+          {hasQuery && searchError && <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center"><p role="alert" className="text-sm text-red-700">{searchError}</p><Button type="button" variant="secondary" size="sm" onClick={runSearch}>Retry search</Button></div>}
+          {hasQuery && !searchLoading && !searchError && results.length > 0 && <fieldset id={`${id}-results`} className="divide-y divide-gray-200">
             <legend className="sr-only">Matching households</legend>
             {results.map((item) => <button key={item.id} type="button" disabled={!item.headPatientId}
               className="block w-full px-2 py-3 text-left outline-none hover:bg-gray-50 focus-visible:bg-gray-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-700/30 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => requestConnection({ kind: "existing", householdId: item.id, relationship: connection?.householdId === item.id ? connection.relationship : "" })}>
-              <span className="flex flex-wrap gap-x-3 text-sm font-medium text-gray-950"><span>{item.serialNumber}</span><span>{item.headPatientId ? patientName(registry.patients.find((person) => person.id === item.headPatientId)) : "No assigned head"}</span></span>
-              <span className="mt-1 block text-xs text-gray-600">{addressText(item.address)}</span>
+              <span className="flex items-center justify-between gap-3"><span className="min-w-0 break-words text-sm font-semibold text-gray-950">{item.serialNumber}</span><span className="shrink-0 text-xs font-semibold text-red-700">Select</span></span>
+              <span className="mt-1 block break-words text-sm text-gray-950">{item.headPatientId ? patientName(registry.patients.find((person) => person.id === item.headPatientId)) : "No assigned head"}</span>
+              <span className="mt-1 block break-words text-xs text-gray-600">{addressText(item.address)}</span>
             </button>)}
           </fieldset>}
-          {hasQuery && !searchLoading && !searchError && results.length === 0 ? <div id={`${id}-results`} className="flex flex-col items-center gap-3 border border-gray-300 px-4 py-8 text-center">
+          {hasQuery && !searchLoading && !searchError && results.length === 0 && <div id={`${id}-results`} className="flex min-h-full flex-col items-center justify-center gap-3 px-4 py-4 text-center">
             <CircleX size={24} aria-hidden="true" className="text-gray-500" />
             <div>
               <p role="status" className="text-sm font-semibold text-gray-950">No household found</p>
               <p className="mt-1 text-xs text-gray-600">No match for &ldquo;{submitted.trim()}&rdquo;. Check your search or add a new family serial number.</p>
             </div>
             {!directCreate && emptyActions}
-          </div> : connection && <div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setSearching(false); resetSearch(); }}>Cancel search</Button>
           </div>}
+          </div>
+          {connection && <Button type="button" variant="ghost" size="sm" onClick={() => { setSearching(false); resetSearch(); }}>Cancel search</Button>}
         </div>}
         </div>
       </div>

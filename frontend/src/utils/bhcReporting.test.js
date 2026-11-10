@@ -127,9 +127,11 @@ test("EPI counts dated doses, not children, and skips undated or non-dose rows",
   const result = report({ records }, "epi");
   assert.equal(cardValue(result, "doses"), 3);
   assert.equal(cardValue(result, "vaccines"), 3);
+  assert.equal(cardValue(result, "cpab"), 0);
   assert.equal(summaryValue(result, "BCG"), 1);
   assert.equal(summaryValue(result, "HEPA B"), 1);
   assert.equal(summaryValue(result, "OPV 1"), 1);
+  assert.equal(summaryValue(result, "Children Protected at Birth (CPAB)"), 0);
 });
 
 test("maternal active enrollments use period-end status, not today's later delivery", () => {
@@ -144,6 +146,28 @@ test("maternal active enrollments use period-end status, not today's later deliv
   assert.equal(cardValue(result, "consults"), 2);
   assert.equal(cardValue(result, "new"), 1);
   assert.equal(cardValue(result, "active"), 2);
+});
+
+test("maternal prenatal consultations exclude postpartum-only visits", () => {
+  const records = [
+    maternalRecord("p1", "2026-10-03", {}, ["Prenatal"]),
+    maternalRecord("p1", "2026-10-15", { deliveryDate: "2026-10-14" }, ["Postpartum"]),
+    maternalRecord("p2", "2026-10-08", {}, []),
+  ];
+  const result = report({ patients: [{ id: "p1" }, { id: "p2" }], records }, "maternal");
+  assert.equal(cardValue(result, "consults"), 2);
+  assert.equal(summaryValue(result, "Prenatal consultations"), 2);
+});
+
+test("maternal new enrollments count a second pregnancy episode start in period", () => {
+  const records = [
+    maternalRecord("p1", "2026-01-05", {}, ["Prenatal"]),
+    maternalRecord("p1", "2026-02-01", { deliveryDate: "2026-02-01" }, ["Postpartum"]),
+    maternalRecord("p1", "2026-10-10", {}, ["Prenatal"]),
+  ];
+  const result = report({ patients: [{ id: "p1" }], records }, "maternal");
+  assert.equal(cardValue(result, "new"), 1);
+  assert.equal(cardValue(result, "consults"), 1);
 });
 
 test("family planning separates new acceptors from service counts and groups methods", () => {
@@ -298,8 +322,14 @@ function epiRecord(patientId, vaccineEntries) {
   return { selectedPrograms: ["EPI"], patientId, immunizationData: { vaccineEntries } };
 }
 
-function maternalRecord(patientId, date) {
-  return { selectedPrograms: ["Maternal"], patientId, dateOfVisit: date, maternalData: {} };
+function maternalRecord(patientId, date, maternalData = {}, services = []) {
+  return {
+    selectedPrograms: ["Maternal"],
+    patientId,
+    dateOfVisit: date,
+    maternalData,
+    monitoringData: services.length ? { visitPurpose: { services } } : {},
+  };
 }
 
 function fpRecord(date, clientType, methodUsed) {

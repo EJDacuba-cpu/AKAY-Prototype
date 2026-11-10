@@ -17,8 +17,8 @@ class FormDraftCoordinator {
     this.latest = copy(this.initial);
     this.confirmed = serialized(this.initial);
     this.listeners = new Set();
-    this.schedule = options.schedule || setTimeout;
-    this.cancel = options.cancel || clearTimeout;
+    this.schedule = options.schedule || ((...args) => globalThis.setTimeout(...args));
+    this.cancel = options.cancel || ((...args) => globalThis.clearTimeout(...args));
     this.online = options.online || (() => navigator.onLine !== false);
     this.uuid = options.uuid || (() => crypto.randomUUID());
     this.epoch = 0;
@@ -311,7 +311,7 @@ class FormDraftCoordinator {
     } catch (error) { if (this.live(epoch)) this.patch({ busy: false, error: error.message, status: "error" }); return false; }
   }
 
-  // Opted into only by Walk-in Check-in -> Register New Patient. Other forms
+  // Opted into only by Visit Check-in -> Register New Patient. Other forms
   // keep the existing recovery decisions above.
   async resumeLatestRecovery(source) {
     if (this.closed || this.state.busy) return false;
@@ -433,7 +433,8 @@ class FormDraftCoordinator {
   }
 
   async prepareCommit() {
-    const draft = await this.flush(true);
+    this.clearTimers();
+    const draft = await this.flush(!this.draft);
     return { draftCommit: { id: draft.id, version: draft.version, transaction_uuid: this.transactionUuid }, draftOwnerContext: this.options.owner };
   }
 

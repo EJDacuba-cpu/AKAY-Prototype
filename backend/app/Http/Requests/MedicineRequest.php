@@ -52,8 +52,18 @@ class MedicineRequest extends FormRequest
             'availability_status' => ['prohibited'],
             'item_type' => $isCreate ? ['sometimes', 'in:medicine,health_supply'] : ['prohibited'],
             ...($isCreate ? \App\Services\MedicineExpiryStockService::expiryRules($this->input('item_type', 'medicine'), $this->boolean('expiry_not_applicable')) : ['expiration_date' => ['prohibited'], 'expiry_not_applicable' => ['prohibited']]),
+            'manufacturer_lot_number' => $isCreate ? ['nullable', 'string', 'max:120'] : ['prohibited'],
             'rural_health_unit_id' => ['prohibited'],
             'barangay_health_center_id' => ['prohibited'],
         ];
+    }
+
+    protected function passedValidation(): void
+    {
+        if ($this->isMethod('post') && $this->exists('manufacturer_lot_number')) {
+            $this->merge([
+                'manufacturer_lot_number' => \App\Models\MedicineExpiryGroup::normalizeLot($this->input('manufacturer_lot_number')),
+            ]);
+        }
     }
 }

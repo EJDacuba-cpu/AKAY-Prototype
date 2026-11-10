@@ -73,20 +73,12 @@ class RegistrationRelationshipLinkTest extends TestCase
         $this->assertSame([min($head['id'], $wife['id']), max($head['id'], $wife['id'])], [$row->patient_id, $row->relative_id]);
     }
 
-    public function test_brother_with_confirmed_sibling_link_persists(): void
-    {
-        $this->staff();
-        $head = $this->newHead();
-        $this->join($head, 'Brother', 'sibling', ['sex' => 'Male'])->assertCreated();
-        $this->assertSame('sibling', PatientRelationship::sole()->type);
-    }
-
     public function test_no_link_is_created_without_the_confirmed_flag(): void
     {
         $this->staff();
         $head = $this->newHead();
-        foreach (['Wife', 'Husband', 'Brother', 'Sister', 'Son', 'Daughter', 'Mother', 'Father', 'Grandson', 'Nephew', 'Niece'] as $label) {
-            $this->join($head, $label)->assertCreated()
+        foreach (['Wife', 'Husband', 'Son', 'Daughter', 'Mother', 'Father'] as $label) {
+            $this->join($head, $label, null, ['sex' => in_array($label, ['Husband', 'Father', 'Son'], true) ? 'Male' : 'Female'])->assertCreated()
                 ->assertJsonPath('data.household_id', $head['household_id'])
                 ->assertJsonPath('data.relationship_to_household_head', $label)
                 ->assertJsonPath('data.mother_patient_id', null)
@@ -102,7 +94,7 @@ class RegistrationRelationshipLinkTest extends TestCase
         $this->staff();
         $head = $this->newHead();
         $before = $this->snapshot($head);
-        foreach ([['Wife', 'sibling'], ['Brother', 'spouse'], ['Partner', 'spouse'], ['Son', 'sibling'], ['Mother', 'spouse']] as [$label, $type]) {
+        foreach ([['Wife', 'sibling'], ['Son', 'sibling'], ['Mother', 'spouse'], ['Father', 'mother']] as [$label, $type]) {
             $this->join($head, $label, $type)->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
         }
         $this->assertSame($before, $this->snapshot($head));
@@ -163,9 +155,9 @@ class RegistrationRelationshipLinkTest extends TestCase
         $two = $this->newHead();
         $member = $this->join($one, 'Wife', 'spouse')->assertCreated()->json('data');
         $version = Household::find($two['household_id'])->version;
-        $this->patchJson('/api/patients/'.$member['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Sister', 'version' => $version, 'relationship_link' => ['type' => 'sibling']]])->assertOk();
-        $this->assertDatabaseCount('patient_relationships', 2);
-        $this->assertSame(['sibling', 'spouse'], PatientRelationship::orderBy('type', 'desc')->pluck('type')->sort()->values()->all());
+        $this->patchJson('/api/patients/'.$member['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Daughter', 'version' => $version]])->assertOk();
+        $this->assertDatabaseCount('patient_relationships', 1);
+        $this->assertSame('spouse', PatientRelationship::sole()->type);
     }
 
     public function test_household_only_patch_does_not_change_demographics(): void
@@ -175,13 +167,13 @@ class RegistrationRelationshipLinkTest extends TestCase
         $two = $this->newHead();
         $member = $this->join($one, 'Son', null, ['first_name' => 'Keep', 'birthdate' => '2012-03-04', 'contact_number' => '09171234567'])->assertCreated()->json('data');
         $version = Household::find($two['household_id'])->version;
-        $this->patchJson('/api/patients/'.$member['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Nephew', 'version' => $version]])->assertOk();
+        $this->patchJson('/api/patients/'.$member['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Daughter', 'version' => $version]])->assertOk();
         $fresh = Patient::find($member['id']);
         $this->assertSame('Keep', $fresh->first_name);
         $this->assertSame('2012-03-04', $fresh->birthdate->toDateString());
         $this->assertSame('09171234567', $fresh->contact_number);
         $this->assertSame((int) $two['household_id'], $fresh->household_id);
-        $this->assertSame('Nephew', $fresh->relationship_to_household_head);
+        $this->assertSame('Daughter', $fresh->relationship_to_household_head);
     }
 
     public function test_son_can_explicitly_confirm_the_head_as_father_with_registration_permission(): void
@@ -248,7 +240,7 @@ class RegistrationRelationshipLinkTest extends TestCase
         $this->staff();
         $head = $this->newHead();
         $before = $this->snapshot($head);
-        foreach ([['Son', 'mother'], ['Mother', 'father'], ['Nephew', 'father'], ['Grandmother', 'mother']] as [$label, $type]) {
+        foreach ([['Son', 'mother'], ['Mother', 'father'], ['Daughter', 'sibling'], ['Father', 'spouse']] as [$label, $type]) {
             $this->join($head, $label, $type)->assertUnprocessable()->assertJsonValidationErrors('household.relationship_link');
         }
         $this->assertSame($before, $this->snapshot($head));

@@ -39,6 +39,16 @@ const MATERNAL = programStepKey("Maternal");
 const FP = programStepKey("Family Planning");
 const EPI = programStepKey("Immunization");
 
+test("RHU higher-level plan server errors map to the visible diagnosis fields", () => {
+  const errors = remapServerErrorKeys({
+    "diagnoses.0.higherLevelReferralPlan.reason": "Enter the referral reason.",
+    "diagnoses.0.higherLevelReferralPlan.clinicalPlan": "Enter the clinical plan.",
+  }, [{ id: "tb" }], { workflow: "rhu_itr_v1" });
+  assert.equal(errors["diagnoses.tb.higherLevelReferralPlan.reason"], "Enter the referral reason.");
+  assert.equal(errors["diagnoses.tb.higherLevelReferralPlan.clinicalPlan"], "Enter the clinical plan.");
+  assert.equal(getErrorOwnerStepKey(Object.keys(errors)[0], RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+});
+
 /** Every screen from Interview to Review, following Next the way the page does. */
 function walkForward(programs = [], primary = "") {
   const sequence = getFormSequence(getProgramFormSteps(programs, primary));
@@ -202,16 +212,17 @@ test("RHU ITR legacy TB intake sits after Diagnosis & Care Plan and before Revie
   assert.deepEqual(getStepOrder([], [], options).slice(-3), [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP]);
 });
 
-test("RHU ITR Form 4B registration step is inserted only for initiate_at_rhu", () => {
+test("RHU ITR Form 4B stays inline on Review; wizard does not insert a Form 4B page", () => {
   const withForm4b = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: true };
   const without = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: false };
-  assert.deepEqual(keysOf(buildConsultationSteps(withForm4b)).slice(-3), [NEXT_STEP, FORM_4B_STEP, REVIEW_STEP]);
+  assert.equal(keysOf(buildConsultationSteps(withForm4b)).includes(FORM_4B_STEP), false);
   assert.equal(keysOf(buildConsultationSteps(without)).includes(FORM_4B_STEP), false);
   assert.deepEqual(
-    keysOf(buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS, includeForm4b: true, includeTb: true })).slice(-4),
-    [NEXT_STEP, FORM_4B_STEP, TB_INTAKE_STEP, REVIEW_STEP],
+    keysOf(buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS, includeForm4b: true, includeTb: true })).slice(-3),
+    [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP],
   );
-  assert.equal(getErrorOwnerStepKey("tbCaseRegistration.card_data.regimen.description", withForm4b), FORM_4B_STEP);
+  assert.equal(getErrorOwnerStepKey("tbCaseRegistration.card_data.regimen.description", withForm4b), REVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("treatment_start_date", withForm4b), REVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("diagnoses.tb.tbManagement.treatmentDecision", withForm4b), NEXT_STEP);
 });
 

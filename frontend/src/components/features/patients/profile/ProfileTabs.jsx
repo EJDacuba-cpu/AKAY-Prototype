@@ -5,7 +5,7 @@ import LockedPlaceholder from "../../../common/access/LockedPlaceholder";
  * so it sits directly on the canvas above a thin rule, with a brand-red underline
  * on the active tab and a quiet count pill beside each label.
  */
-export default function ProfileTabs({ tabs, activeTab, onSelect, aside }) {
+export default function ProfileTabs({ tabs, activeTab, onSelect }) {
   return (
     <div className="patient-profile-tabs mb-3 mt-1 flex shrink-0 items-center gap-2 shadow-[inset_0_-1px_0_var(--color-neutral-200)]">
       <div
@@ -47,7 +47,6 @@ export default function ProfileTabs({ tabs, activeTab, onSelect, aside }) {
           })}
         </nav>
       </div>
-      {aside ? <div className="shrink-0 pb-1.5">{aside}</div> : null}
     </div>
   );
 }

@@ -7,6 +7,13 @@ import {
 } from "./fields/ClinicalFields";
 import { formatEpiDate, getEpiCode } from "../../../utils/epiTracking";
 import { visibleEpiVaccineOptions } from "../../../utils/epiApplicability";
+import { normalizeVaccineName } from "../../../utils/healthRecordPrograms";
+
+const TIMED_NEWBORN_VACCINES = new Set(["BCG", "HEPA B"]);
+
+function needsTimeGiven(vaccineName) {
+  return TIMED_NEWBORN_VACCINES.has(normalizeVaccineName(vaccineName));
+}
 
 /**
  * Services recorded on the EPI form that are screenings rather than vaccines.
@@ -97,6 +104,7 @@ export default function ImmunizationVisitFields({
   onHeightChange,
   onBreastfeedingChange,
   onToggleVaccine,
+  onVaccineFieldChange,
   onNotesChange,
 }) {
   const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
@@ -117,6 +125,7 @@ export default function ImmunizationVisitFields({
   const vaccineOnlyOptions = visibleOptions.filter(
     (option) => !isEssentialService(option),
   );
+  const timedEntries = entries.filter((entry) => needsTimeGiven(entry.vaccineName));
 
   function renderOption(storedName) {
     const lockedEntry = tracksHistory
@@ -233,6 +242,38 @@ export default function ImmunizationVisitFields({
         <div className="flex flex-wrap gap-x-5 gap-y-3">
           {vaccineOnlyOptions.map(renderOption)}
         </div>
+
+        {timedEntries.length > 0 && onVaccineFieldChange ? (
+          <div className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50/70 p-3">
+            <p className="text-[12px] text-neutral-600">
+              Optional Time Given is the actual BCG / Hepatitis B administration time.
+              It is never taken from consultation finalization or inventory confirmation.
+            </p>
+            {timedEntries.map((entry) => (
+              <div
+                key={entry.vaccineName}
+                className="grid gap-3 sm:grid-cols-2"
+              >
+                <FieldInput
+                  label={`${displayLabel(entry.vaccineName)} · Date Given`}
+                  type="date"
+                  value={entry.dateGiven || visitDate || ""}
+                  onChange={(event) =>
+                    onVaccineFieldChange(entry.vaccineName, "dateGiven", event.target.value)
+                  }
+                />
+                <FieldInput
+                  label={`${displayLabel(entry.vaccineName)} · Time Given`}
+                  type="time"
+                  value={entry.timeGiven || entry.time_given || ""}
+                  onChange={(event) =>
+                    onVaccineFieldChange(entry.vaccineName, "timeGiven", event.target.value)
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {otherVaccineSlot}
 

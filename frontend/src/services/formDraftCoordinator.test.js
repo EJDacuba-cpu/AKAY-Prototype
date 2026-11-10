@@ -46,6 +46,16 @@ function fixture(saved = null) {
   return { options, api, vault, rows, calls, restored, offline: () => { online = false; }, online: () => { online = true; }, remote: (value) => { server = value; }, consumed: () => { terminal = "consumed"; server = null; }, server: () => server };
 }
 
+test("commit reuses an unchanged saved draft without another write", async () => {
+  const f = fixture(); const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  engine.setValue({ first_name: "Clinic" }); await engine.flush();
+  const metadata = await engine.prepareCommit();
+  assert.deepEqual(f.calls, ["create"]);
+  assert.equal(metadata.draftCommit.version, 1);
+  engine.close();
+});
+
 test("opening defaults creates no draft; edits and retries update one identity", async () => {
   const f = fixture(); const engine = createFormDraftCoordinator(f.options);
   await engine.init();
@@ -477,4 +487,29 @@ test("walk-in uncheckpointed entries cannot be replaced by an acknowledged older
   assert.equal(await engine.resume("device"), true);
   assert.equal(engine.latest.registration.form.firstName, "Unsaved in open form");
   assert.deepEqual(f.calls, []);
+});
+
+test("registration commit uses browser timers without a coordinator receiver", async (t) => {
+  const f = fixture();
+  delete f.options.schedule;
+  delete f.options.cancel;
+  // Browser timers reject arbitrary receivers; Node timers do not.
+  const browserTimer = function () {
+    assert.ok(this === undefined || this === globalThis, "Illegal invocation: timer receiver");
+    return 1;
+  };
+  t.mock.method(globalThis, "setTimeout", browserTimer);
+  t.mock.method(globalThis, "clearTimeout", browserTimer);
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  try {
+    engine.setValue({ first_name: "Synthetic registrar test" });
+    const commit = await engine.prepareCommit();
+    assert.equal(commit.draftCommit.id, "draft");
+    assert.equal(commit.draftCommit.version, 1);
+    assert.deepEqual(f.calls, ["create"]);
+  } finally {
+    t.mock.restoreAll();
+    engine.close();
+  }
 });

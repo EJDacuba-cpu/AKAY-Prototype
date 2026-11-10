@@ -27,6 +27,8 @@ test('new registration offers accessible search and create tabs immediately', ()
   assert.match(html, />Create New Household<\/button>/);
   assert.match(html, />Search Existing Household<\/button>/);
   assert.doesNotMatch(html, /No household found/);
+  assert.match(html, /Search for an existing household to connect this patient/);
+  assert.match(html, /h-56 overflow-y-auto/);
 });
 
 test('incomplete and minor patients can select create while eligibility guidance stays inline', () => {

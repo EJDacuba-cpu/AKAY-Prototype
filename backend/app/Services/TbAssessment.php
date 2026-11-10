@@ -7,7 +7,7 @@ use Illuminate\Validation\Validator;
 
 final class TbAssessment
 {
-    public const DIAGNOSIS_TYPES = ['tb_disease', 'tb_infection'];
+    public const DIAGNOSIS_TYPES = ['presumptive_tb', 'tb_disease', 'tb_infection'];
 
     public const RESISTANCE_TYPES = [
         'drug_susceptible',
@@ -68,31 +68,19 @@ final class TbAssessment
                 continue;
             }
 
-            if (blank($decision)) {
-                $validator->errors()->add("$prefix.treatmentDecision", 'Select whether to initiate DS-TB treatment at this RHU, defer, or refer elsewhere.');
-                continue;
+            // Legacy initiate_at_rhu still requires the open-card intent.
+            if ($decision === 'initiate_at_rhu' && ! $open) {
+                $validator->errors()->add("$prefix.openTreatmentCard", 'Initiating DS-TB treatment requires Form 4B registration in this consultation.');
             }
 
-            if ($decision === 'initiate_at_rhu') {
-                if (! $open) {
-                    $validator->errors()->add("$prefix.openTreatmentCard", 'Initiating DS-TB treatment requires Form 4B registration in this consultation.');
-                }
-                continue;
-            }
-
-            if ($open) {
-                $validator->errors()->add("$prefix.openTreatmentCard", 'Form 4B is only registered when initiating DS-TB treatment at this RHU.');
-            }
-            if (blank($assessment['dispositionReason'] ?? null)) {
-                $validator->errors()->add("$prefix.dispositionReason", 'Document the reason treatment is not initiated at this RHU.');
-            }
-            if (blank($assessment['dispositionPlan'] ?? null)) {
-                $validator->errors()->add("$prefix.dispositionPlan", 'Document the follow-up or referral plan.');
+            // Deferred/referred dispositions cannot also open Form 4B in-consult.
+            if (in_array($decision, ['not_yet_initiated', 'refer_elsewhere'], true) && $open) {
+                $validator->errors()->add("$prefix.openTreatmentCard", 'Form 4B registration is not used when treatment is deferred or referred elsewhere.');
             }
         }
     }
 
-    /** Restore eligible initiate drafts; clear incompatible infection/DR leftovers. */
+    /** Preserve DS-TB openTreatmentCard intent; clear incompatible leftovers. */
     public static function normalizeDraft(array $payload): array
     {
         foreach ($payload['diagnoses'] ?? [] as $index => $entry) {
@@ -104,9 +92,9 @@ final class TbAssessment
             $resistance = $management['drugResistance'] ?? null;
             $decision = $management['treatmentDecision'] ?? '';
 
-            if ($type === 'tb_infection') {
+            if ($type === 'tb_infection' || $type === 'presumptive_tb') {
                 $payload['diagnoses'][$index]['tbManagement'] = [
-                    'diagnosisType' => 'tb_infection',
+                    'diagnosisType' => $type,
                     'drugResistance' => '',
                     'openTreatmentCard' => false,
                     'treatmentDecision' => '',
@@ -137,8 +125,13 @@ final class TbAssessment
                 continue;
             }
 
+            // Empty/unknown decision: keep explicit openTreatmentCard for DS-TB.
             $payload['diagnoses'][$index]['tbManagement']['treatmentDecision'] = '';
-            $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = false;
+            $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = ! empty($management['openTreatmentCard']);
+            if (! $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard']) {
+                $payload['diagnoses'][$index]['tbManagement']['dispositionReason'] = '';
+                $payload['diagnoses'][$index]['tbManagement']['dispositionPlan'] = '';
+            }
         }
 
         return $payload;

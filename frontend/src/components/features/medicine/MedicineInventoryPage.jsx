@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PackagePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -15,12 +16,13 @@ import { getCurrentUser } from '../../../utils/auth';
 import { queryKeys } from '../../../utils/queryKeys';
 import { fixedTableVars, resetKeyOf, tableBodyHeight } from '../../../utils/tablePaging';
 import { getMedicineExpiryStatus, getMedicineStockStatus } from '../../../utils/medicineInventoryStatus';
-import { retainCalendarData } from '../../../utils/medicineLedger';
+import { medicineDetailsPath, retainCalendarData } from '../../../utils/medicineLedger';
 import { addBhcMedicine, addRhuMedicine, loadMedicineAvailability } from '../../../services/medicineService';
 
 const defaults = { search: '', category: 'All Categories', status: 'All Status', expiry: 'All Expiry' };
 function MedicineInventoryWorkspace({ role }) {
   useFacilityCalendarDate();
+  const navigate = useNavigate();
   const user = getCurrentUser();
   const client = useQueryClient();
   const canManage = (user?.permissions || []).includes('inventory.manage');
@@ -125,7 +127,17 @@ function MedicineInventoryWorkspace({ role }) {
           })()}
         </div>
       </PageStateWrapper>
-      {canManage && dialog?.mode === "add" && <MedicineFormModal open mode="add" onClose={() => setDialog(null)} onSubmit={add} />}
+      {canManage && dialog?.mode === "add" && (
+        <MedicineFormModal
+          open
+          mode="add"
+          role={role}
+          onClose={() => setDialog(null)}
+          onSubmit={add}
+          onViewExisting={(medicineId) => navigate(medicineDetailsPath(role, medicineId))}
+          onRestockExisting={(medicineId) => setDialog({ mode: "restock", medicineId })}
+        />
+      )}
       {canManage && dialog?.medicineId && <MedicineActionDialog key={`${dialog.medicineId}-${dialog.mode}`} intent={dialog} user={user} role={role} onClose={() => setDialog(null)} />}
     </DashboardLayout>
   );

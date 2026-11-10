@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\ReferralService;
 use App\Services\StaffRoles;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -120,6 +121,103 @@ class RhuItrConsultationTest extends TestCase
                 'chief_complaint' => 'Cough and fever',
                 ...$overrides,
             ]);
+    }
+
+    public function test_higher_level_referral_is_only_a_documented_plan_in_a_mixed_tb_consultation(): void
+    {
+        Notification::fake();
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        // A care plan is not referral issuance and needs no referrals.submit permission.
+        $clinician->permissions = array_values(array_diff($clinician->permissions, ['referrals.submit']));
+        $clinician->save();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+        $plan = ['reason' => 'Specialist assessment', 'intendedFacility' => 'Provincial hospital', 'clinicalPlan' => 'Review available investigations'];
+        $diagnoses = [
+            ['id' => 'tb', 'name' => 'TB', 'nextAction' => 'refer_higher_level', 'higherLevelReferralPlan' => $plan,
+                'tbManagement' => ['diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible']],
+            ['id' => 'uri', 'name' => 'URI', 'nextAction' => 'none'],
+        ];
+
+        $id = $this->postRecord($clinician, $patient, $visit, $uuid, ['diagnoses' => $diagnoses])
+            ->assertCreated()->json('data.id');
+        $this->assertSame($plan, HealthRecord::findOrFail($id)->diagnoses[0]['higherLevelReferralPlan']);
+        $this->getJson('/api/health-records/'.$id)->assertOk()
+            ->assertJsonPath('data.diagnoses.0.nextAction', 'refer_higher_level')
+            ->assertJsonPath('data.diagnoses.0.higherLevelReferralPlan', $plan);
+        $this->assertDatabaseCount('referrals', 0);
+        $this->assertDatabaseCount('tb_dr_referrals', 0);
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
+        $this->assertDatabaseCount('follow_up_tasks', 0);
+        $this->assertDatabaseCount('patient_conditions', 0);
+        Notification::assertNothingSent();
+        $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $visit->fresh()->status);
+        $this->assertSame(RhuVisitQueueEntry::CLOSE_REASON_COMPLETED, $visit->fresh()->close_reason);
+    }
+
+    public function test_all_four_next_actions_finalize_ds_tb_without_treatment_registration(): void
+    {
+        $clinician = $this->clinician();
+        foreach (['none', 'rhu_follow_up', 'manage_to_bhc', 'refer_higher_level'] as $action) {
+            $patient = $this->patient();
+            $visit = $this->visit($patient);
+            $uuid = $this->startVisit($clinician, $visit);
+            $entry = ['id' => 'tb', 'name' => 'TB', 'nextAction' => $action,
+                'tbManagement' => ['diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible']];
+            $extra = [];
+            if ($action === 'manage_to_bhc') {
+                $entry = [...$entry, 'activate' => true, 'receivingBhcId' => $this->bhc->id, 'monitoringRecommendation' => 'Review symptoms at BHC'];
+            } elseif ($action === 'rhu_follow_up') {
+                $extra = ['monitoring_data' => ['followUpSchedules' => [[
+                    'purposeKey' => 'entry:tb', 'sourceEntryId' => 'tb', 'purpose' => 'Review symptoms',
+                    'date' => now()->addWeek()->toDateString(),
+                ]]]];
+            } elseif ($action === 'refer_higher_level') {
+                $entry['higherLevelReferralPlan'] = ['reason' => 'Specialist assessment', 'clinicalPlan' => 'Review available investigations'];
+            }
+            $id = $this->postRecord($clinician, $patient, $visit, $uuid, [...$extra, 'diagnoses' => [$entry]])
+                ->assertCreated()->json('data.id');
+            $record = HealthRecord::findOrFail($id);
+            $this->assertSame($action, $record->diagnoses[0]['nextAction']);
+            $this->assertNull($record->tb_data);
+            $this->assertDatabaseCount('tb_treatment_cases', 0);
+            $this->assertDatabaseCount('tb_dr_referrals', 0);
+            $this->assertDatabaseCount('referrals', 0);
+        }
+    }
+
+    public function test_higher_level_referral_requires_visible_reason_and_plan_but_facility_is_optional(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+        $entry = ['id' => 'a', 'name' => 'Asthma', 'nextAction' => 'refer_higher_level'];
+        foreach ([null, ['reason' => ' ', 'clinicalPlan' => ' '], ['reason' => 'Specialist assessment']] as $plan) {
+            $this->postRecord($clinician, $patient, $visit, $uuid, ['diagnoses' => [[...$entry, 'higherLevelReferralPlan' => $plan]]])
+                ->assertUnprocessable()->assertJsonValidationErrors($plan === null
+                    ? ['diagnoses.0.higherLevelReferralPlan']
+                    : (isset($plan['clinicalPlan'])
+                        ? ['diagnoses.0.higherLevelReferralPlan.reason', 'diagnoses.0.higherLevelReferralPlan.clinicalPlan']
+                        : ['diagnoses.0.higherLevelReferralPlan.clinicalPlan']));
+        }
+        $this->postRecord($clinician, $patient, $visit, $uuid, ['diagnoses' => [[...$entry,
+            'higherLevelReferralPlan' => ['reason' => 'Specialist assessment', 'clinicalPlan' => 'Continue prescribed care'],
+        ]]])->assertCreated();
+    }
+
+    public function test_hidden_higher_level_plan_is_cleared_and_does_not_block_other_actions(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($clinician, $visit);
+        $id = $this->postRecord($clinician, $patient, $visit, $uuid, ['diagnoses' => [[
+            'id' => 'a', 'name' => 'Asthma', 'nextAction' => 'none',
+            'higherLevelReferralPlan' => ['reason' => 'Stale reason', 'clinicalPlan' => ''],
+        ]]])->assertCreated()->json('data.id');
+        $this->assertEmpty(HealthRecord::findOrFail($id)->diagnoses[0]['higherLevelReferralPlan'] ?? null);
     }
 
     public function test_discarded_rhu_recovery_gets_a_fresh_identity_on_the_same_started_visit(): void

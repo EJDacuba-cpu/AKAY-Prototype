@@ -72,16 +72,14 @@ function tbIntakeKeys(options = {}) {
   return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
 }
 
-function form4bKeys(options = {}) {
-  return isRhuItr(options) && options.includeForm4b ? [FORM_4B_STEP] : [];
+function form4bKeys() {
+  // Form 4B is inline on Diagnosis; keep FORM_4B_STEP for draft restore only.
+  return [];
 }
 
 function rhuTbAfterDiagnosis(options = {}) {
   if (!isRhuItr(options)) return [];
   const steps = [];
-  if (options.includeForm4b) {
-    steps.push({ key: FORM_4B_STEP, phase: "next", label: "DS-TB Form 4B Registration" });
-  }
   if (options.includeTb) {
     steps.push({ key: TB_INTAKE_STEP, phase: "next", label: "TB Case Management" });
   }
@@ -423,8 +421,14 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key.startsWith("tbData.")) {
     return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
   }
-  if (key.startsWith("tbCaseRegistration") || key.startsWith("card_data.") || key === "reporting_year" || key === "confirmed") {
-    return workflow === "rhu_itr_v1" ? FORM_4B_STEP : NEXT_STEP;
+  if (
+    key.startsWith("tbCaseRegistration")
+    || key.startsWith("card_data.")
+    || key === "reporting_year"
+    || key === "confirmed"
+    || key === "treatment_start_date"
+  ) {
+    return REVIEW_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
@@ -498,7 +502,7 @@ const SERVER_ERROR_KEYS = {
 };
 
 /** Renames server validation keys to the form's field keys; other keys pass through. */
-export function remapServerErrorKeys(errors, entries = [], { continuedConcerns = [], schedules = [] } = {}) {
+export function remapServerErrorKeys(errors, entries = [], { continuedConcerns = [], schedules = [], workflow } = {}) {
   return Object.fromEntries(
     Object.entries(errors || {}).map(([key, message]) => {
       if (key.startsWith("laboratory_tests")) return [key.replace("laboratory_tests", "laboratoryTests"), message];
@@ -510,7 +514,8 @@ export function remapServerErrorKeys(errors, entries = [], { continuedConcerns =
       if (purposeKey) return [`followUpSchedule.${purposeKey}.${schedule[2]}`, message];
       const match = /^diagnoses\.(\d+)\.(.+)$/.exec(key);
       const entryId = match && entries[Number(match[1])]?.id;
-      return [entryId ? `reportingEntry.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];
+      const entryPrefix = workflow === "rhu_itr_v1" ? "diagnoses" : "reportingEntry";
+      return [entryId ? `${entryPrefix}.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];
     }),
   );
 }

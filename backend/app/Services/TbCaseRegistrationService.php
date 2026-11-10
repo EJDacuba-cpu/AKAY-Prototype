@@ -101,8 +101,11 @@ final class TbCaseRegistrationService
         }
         if ($requireDeferredDecision) {
             $decision = $assessment['treatmentDecision'] ?? null;
-            if (! in_array($decision, ['not_yet_initiated', 'refer_elsewhere'], true)) {
-                return ['Delayed Form 4B registration is available when treatment was deferred or referred elsewhere.', 422];
+            $allowed = $decision === null
+                || $decision === ''
+                || in_array($decision, ['not_yet_initiated', 'refer_elsewhere'], true);
+            if (! $allowed) {
+                return ['Delayed Form 4B registration is available when treatment was not initiated in the consultation.', 422];
             }
         }
         if (TbTreatmentCase::where('patient_id', $record->patient_id)->where('status', 'active')->exists()

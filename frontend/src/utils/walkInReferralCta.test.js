@@ -4,12 +4,12 @@ import { walkInReferralCta } from './walkInReferralCta.js';
 
 const VERIFY = 'Arrival must be verified via Incoming Referrals.';
 
-test('no pending referrals leaves Confirm Check-in available', () => {
+test('no pending referrals leaves Add to Today\'s Queue available', () => {
   for (const pending of [null, undefined, {}, { count: 0, referrals: [] }, { count: 0 }]) {
     const cta = walkInReferralCta(pending);
     assert.equal(cta.blocked, false);
     assert.deepEqual(cta.links, []);
-    assert.equal(cta.statusLabel, 'Ready to check in');
+    assert.equal(cta.statusLabel, 'Ready for Check-in');
   }
 });
 

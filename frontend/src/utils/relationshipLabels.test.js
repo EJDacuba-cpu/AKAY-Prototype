@@ -1,14 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RELATIONSHIP_LABELS, linkTypeForLabel, labelOptions, isAcceptedLabel } from './relationshipLabels.js';
+import { RELATIONSHIP_LABELS, linkTypeForLabel, labelOptions, isAcceptedLabel, relationshipLinkFor } from './relationshipLabels.js';
 import { validateConnection, validateHeadReplacement, RELATIONSHIPS } from '../services/familyRegistry.js';
 
-test('only Husband/Wife and Brother/Sister map to a link type', () => {
+test('only Husband/Wife map to a spouse link type helper', () => {
   for (const [label, type] of [['Husband', 'spouse'], ['Wife', 'spouse'], ['Brother', 'sibling'], ['Sister', 'sibling']]) assert.equal(linkTypeForLabel(label), type);
   for (const label of ['Partner', 'Son', 'Father', 'Mother', 'Grandmother', 'Spouse / Partner', 'Sibling', '', undefined]) assert.equal(linkTypeForLabel(label), null, String(label));
 });
 
-test('legacy labels are offered as a disabled saved entry and the new list has no combined labels', () => {
+test('relationshipLinkFor confirms the six connectable labels', () => {
+  assert.deepEqual(relationshipLinkFor('Wife'), { type: 'spouse' });
+  assert.deepEqual(relationshipLinkFor('Husband'), { type: 'spouse' });
+  assert.deepEqual(relationshipLinkFor('Mother', {}, { sex: 'Female' }), { type: 'mother' });
+  assert.deepEqual(relationshipLinkFor('Father', {}, { sex: 'Male' }), { type: 'father' });
+  assert.equal(relationshipLinkFor('Mother', {}, { sex: 'Male' }), null);
+  assert.equal(relationshipLinkFor('Father', {}, { sex: 'Female' }), null);
+  assert.equal(relationshipLinkFor('Mother', {}, {}), null);
+  assert.deepEqual(relationshipLinkFor('Daughter', { sex: 'Female' }), { type: 'mother' });
+  assert.deepEqual(relationshipLinkFor('Son', { sex: 'Male' }), { type: 'father' });
+  assert.equal(relationshipLinkFor('Daughter', { sex: 'Male' }).type, 'father');
+  assert.equal(relationshipLinkFor('Son', {}), null);
+  assert.equal(relationshipLinkFor('Grandmother'), null);
+  assert.equal(relationshipLinkFor('Brother'), null);
+});
+
+test('legacy labels are offered as a disabled saved entry and the live list is the six connectable labels', () => {
+  assert.deepEqual(RELATIONSHIP_LABELS, ['Husband', 'Wife', 'Father', 'Mother', 'Son', 'Daughter']);
   assert.ok(RELATIONSHIP_LABELS.every((label) => !label.includes(' / ')));
   const legacy = labelOptions('Son / Daughter');
   assert.equal(legacy.length, RELATIONSHIP_LABELS.length + 1);
@@ -16,14 +33,18 @@ test('legacy labels are offered as a disabled saved entry and the new list has n
   assert.equal(labelOptions('Son').length, RELATIONSHIP_LABELS.length);
   assert.equal(labelOptions('').length, RELATIONSHIP_LABELS.length);
   assert.equal(labelOptions('Household head').length, RELATIONSHIP_LABELS.length);
+  assert.equal(labelOptions('Grandmother').at(-1).legacy, true);
 });
 
 test('a legacy label is accepted only when unchanged', () => {
   assert.equal(isAcceptedLabel('Son / Daughter', 'Son / Daughter'), true);
+  assert.equal(isAcceptedLabel('Grandmother', 'Grandmother'), true);
+  assert.equal(isAcceptedLabel('Brother', 'Brother'), true);
   assert.equal(isAcceptedLabel('Parent', 'Son / Daughter'), false);
   assert.equal(isAcceptedLabel('Son / Daughter', ''), false);
   assert.equal(isAcceptedLabel('Child', 'Child'), false);
   assert.equal(isAcceptedLabel('Wife', ''), true);
+  assert.equal(isAcceptedLabel('Grandmother', ''), false);
 });
 
 const registry = {
@@ -40,6 +61,7 @@ test('live validation uses the specific list, keeps an unchanged legacy label, a
   assert.ok(validateConnection(registry, existing('Son / Daughter'), '3', undefined, isAcceptedLabel).relationship);
   assert.deepEqual(validateConnection(registry, existing('Son / Daughter'), '2', undefined, isAcceptedLabel), {});
   assert.ok(validateConnection(registry, existing('Parent'), '2', undefined, isAcceptedLabel).relationship);
+  assert.ok(validateConnection(registry, existing('Grandmother'), '3', undefined, isAcceptedLabel).relationship);
   assert.ok(validateConnection(registry, existing(''), '3', undefined, isAcceptedLabel).relationship);
 });
 

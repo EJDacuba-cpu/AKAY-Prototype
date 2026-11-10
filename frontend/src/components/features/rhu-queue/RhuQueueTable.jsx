@@ -66,7 +66,7 @@ export default function RhuQueueTable({
         <p className="text-[14px] font-semibold text-neutral-900">Viewing today's queue needs Health Records access</p>
         <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
           {canClose
-            ? "To check patients in, use Walk-in Check-in under Patient Intake in the sidebar."
+            ? "To check patients in, use Visit Check-in under Patient Intake in the sidebar."
             : "Ask your administrator if you should see it."}
         </p>
       </div>
@@ -248,7 +248,7 @@ function EmptyBody({ narrowed, onClear }) {
       <p className="mt-1 max-w-sm text-[13px] text-neutral-500">
         {narrowed
           ? "Try a different name, or clear search and filters."
-          : "Referred patients appear here once their arrival is confirmed. To add a walk-in, use Walk-in Check-in under Patient Intake in the sidebar."}
+          : "Referred patients appear here once their arrival is confirmed. To add a patient, use Visit Check-in under Patient Intake in the sidebar."}
       </p>
       {narrowed && (
         <button

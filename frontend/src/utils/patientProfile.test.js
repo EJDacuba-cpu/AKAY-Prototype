@@ -60,6 +60,23 @@ test("an infant with a reported mother name has no parent or civil-status errors
   assert.equal(errors.fatherName, undefined);
 });
 
+test("an infant with a linked mother patient does not require a typed mother name", () => {
+  const infant = { ...validAdult, birthDate: monthsAgoIso(3), civilStatus: "", motherName: "", motherPatientId: "41" };
+  const errors = validatePatientForm(infant, getTodayIsoDate());
+  assert.equal(errors.motherName, undefined);
+});
+
+test("joining as Mother/Father does not require a mother name even for an infant birth date", () => {
+  const infant = {
+    ...validAdult,
+    birthDate: monthsAgoIso(3),
+    civilStatus: "",
+    motherName: "",
+    relationshipToHouseholdHead: "Mother",
+  };
+  assert.equal(validatePatientForm(infant, getTodayIsoDate()).motherName, undefined);
+});
+
 test("a child older than 12 months still requires civil status, not a mother name", () => {
   const child = { ...validAdult, birthDate: monthsAgoIso(60), civilStatus: "", motherName: "" };
   const errors = validatePatientForm(child, getTodayIsoDate());

@@ -6,6 +6,7 @@ import {
   ModalShell,
 } from "../../common";
 import { DatePickerField } from "../../common/forms/DatePickerField";
+import { Button } from "../../ui/button";
 import {
   computeMedicineStatus,
   MEDICINE_CATEGORIES,
@@ -28,6 +29,7 @@ const DEFAULT_FORM = {
   expiryDate: "",
   itemType: "medicine",
   expiryNotApplicable: false,
+  manufacturerLotNumber: "",
   notes: "",
 };
 
@@ -36,12 +38,16 @@ export default function MedicineFormModal({
   mode = "add",
   item = null,
   title,
+  role = "bhc",
   onClose,
   onSubmit,
+  onViewExisting,
+  onRestockExisting,
 }) {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
+  const [duplicate, setDuplicate] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
   const formId = useId();
@@ -54,6 +60,7 @@ export default function MedicineFormModal({
     gateRef.current.end();
     setSubmitting(false);
     setError("");
+    setDuplicate(null);
     setFieldErrors({});
     setIdempotencyKey(createIdempotencyKey());
 
@@ -67,6 +74,7 @@ export default function MedicineFormModal({
         expiryDate: "",
         itemType: item.itemType || "medicine",
         expiryNotApplicable: false,
+        manufacturerLotNumber: "",
         notes: item.notes || "",
       });
     } else {
@@ -113,17 +121,24 @@ export default function MedicineFormModal({
       payload.itemType = form.itemType;
       payload.expiryDate = form.expiryDate;
       payload.expiryNotApplicable = form.expiryNotApplicable;
+      payload.manufacturerLotNumber = form.manufacturerLotNumber.trim();
       payload.quantity = parseInt(form.quantity, 10) || 0;
     }
 
     try {
       setSubmitting(true);
       setError("");
+      setDuplicate(null);
       await onSubmit?.(payload, {
         idempotencyKey: mode === "add" ? idempotencyKey : undefined,
       });
     } catch (submitError) {
-      setError(submitError?.message || "Unable to save this medicine.");
+      if (submitError?.code === "MEDICINE_DUPLICATE_CATALOG") {
+        setDuplicate(submitError.payload?.data || null);
+        setError(submitError.message || "This item already exists in your inventory.");
+      } else {
+        setError(submitError?.message || "Unable to save this medicine.");
+      }
       setSubmitting(false);
       gateRef.current.end();
     }
@@ -210,6 +225,16 @@ export default function MedicineFormModal({
                   <option value="medicine">Medicine</option><option value="health_supply">Health supply</option>
                 </select>
               </Field>
+              <Field label="Manufacturer Lot Number" className="md:col-span-2">
+                <Input
+                  value={form.manufacturerLotNumber}
+                  maxLength={120}
+                  disabled={submitting}
+                  placeholder="Optional"
+                  onChange={(event) => updateField("manufacturerLotNumber", event.target.value)}
+                />
+                <p className="mt-1 text-xs text-neutral-600">Opening stock creates a new stock batch. Batch ID is assigned after save.</p>
+              </Field>
               <DatePickerField
                 label="Opening Stock Expiry"
                 name="expiryDate"
@@ -238,7 +263,7 @@ export default function MedicineFormModal({
                 </label>
               )}
             </>}
-            {mode === "edit" && <p className="text-xs text-neutral-600">Expiry dates belong to received stock groups. View them in Medicine Details.</p>}
+            {mode === "edit" && <p className="text-xs text-neutral-600">Expiry dates belong to received stock batches. View them in Medicine Details.</p>}
 
             {mode === "add" && (
               <Field label="Opening Balance" required error={fieldErrors.quantity}>
@@ -332,9 +357,49 @@ export default function MedicineFormModal({
             </Field>
 
             {error && (
-              <p role="alert" className="md:col-span-2 text-xs font-medium text-alert-700">
-                {error}
-              </p>
+              <div role="alert" className="md:col-span-2 space-y-2 rounded-lg bg-alert-50 p-3 text-xs text-alert-700">
+                <p className="font-medium">{error}</p>
+                {duplicate && (
+                  <div className="space-y-2 text-ink-800">
+                    <p>
+                      Existing item <span className="font-semibold tabular-nums">#{duplicate.id}</span>
+                      {duplicate.is_active === false ? " · Archived / inactive" : " · Active"}
+                      {duplicate.unit ? ` · ${duplicate.unit}` : ""}
+                    </p>
+                    {duplicate.is_active === false ? (
+                      <p className="text-neutral-600">
+                        Restock is unavailable while this catalog item is inactive. Open details to review status; do not create a duplicate.
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="compact"
+                        onClick={() => {
+                          onClose?.();
+                          onViewExisting?.(duplicate.id, { role, active: duplicate.is_active !== false });
+                        }}
+                      >
+                        View Details
+                      </Button>
+                      {duplicate.is_active !== false && (
+                        <Button
+                          type="button"
+                          variant="brand"
+                          size="compact"
+                          onClick={() => {
+                            onClose?.();
+                            onRestockExisting?.(duplicate.id);
+                          }}
+                        >
+                          Restock Existing Item
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
       </form>

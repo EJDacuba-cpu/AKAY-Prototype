@@ -358,6 +358,8 @@ export default function TbTreatmentCardForm({
   includeLegacyDoseCalendar = true,
   recordId = null,
   mode = "full",
+  /** all | required | additional — splits registration UI for compact inline Form 4B */
+  sections = "all",
   referenceCaseNumber = "",
   errors = {},
 }) {
@@ -442,15 +444,20 @@ export default function TbTreatmentCardForm({
     onChange({ ...data, doseCalendar: nextCalendar });
   };
 
-  const registration = mode === "registration";
-  const showEncode = mode === "full" || mode === "encode" || registration;
-  const showFinalize = mode === "full" || mode === "finalize" || registration;
+  const registrationSections = mode === "compactRegistration" ? "required" : sections;
+  const requiredOnly = registrationSections === "required";
+  const additionalOnly = registrationSections === "additional";
+  const registration = mode === "registration" || mode === "compactRegistration" || additionalOnly || requiredOnly;
+  const showEncode = (mode === "full" || mode === "encode" || mode === "registration" || additionalOnly)
+    && !requiredOnly;
+  const showFinalize = (mode === "full" || mode === "finalize" || registration) && !additionalOnly;
   const showDots = mode === "full" || mode === "dots";
   const showChart = mode === "chart" || mode === "dots";
   const fieldsLocked = readOnly || mode === "chart";
   const sectionProps = registration ? { compact: true } : {};
   const registrationGrid = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
   const registrationGrid3 = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
+  const compactRegistration = requiredOnly;
 
   return (
     <div className="space-y-4">
@@ -523,9 +530,9 @@ export default function TbTreatmentCardForm({
       {showFinalize && (
       <SectionCard
         {...sectionProps}
-        title={registration ? "02 · Classification & Registration" : "TB Disease Classification"}
+        title={compactRegistration ? "Classification & registration" : registration ? "02 · Classification & Registration" : "TB Disease Classification"}
         badge={registration ? (
-          <span className="rounded-full bg-[#B70011]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#B70011]">
+          <span className="rounded-full bg-[var(--color-brand-tint,#FEF2F2)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand,#DC2626)]">
             Required
           </span>
         ) : null}
@@ -577,8 +584,8 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Treatment start + phases */}
-      {showFinalize && (
+      {/* Treatment start + phases — compact registration uses the parent start-date field */}
+      {showFinalize && !compactRegistration && (
       <SectionCard
         {...sectionProps}
         title={registration ? "03 · Treatment Start & Phases" : "Treatment Phases"}
@@ -614,8 +621,10 @@ export default function TbTreatmentCardForm({
       {showFinalize && (
       <SectionCard
         {...sectionProps}
-        title={registration ? "04 · Physician-authorized Regimen" : "Drug Regimen"}
-        subtitle={registration ? "Enter the physician-prescribed regimen and dosage for each start date." : "Encircle a regimen change on the paper card. Add a row per date-start."}
+        title={compactRegistration ? "Physician-authorized regimen" : registration ? "04 · Physician-authorized Regimen" : "Drug Regimen"}
+        subtitle={compactRegistration
+          ? "Reuse visit weight and prescription when clinically complete; revise if the TB regimen differs."
+          : registration ? "Enter the physician-prescribed regimen and dosage for each start date." : "Encircle a regimen change on the paper card. Add a row per date-start."}
       >
         {(registration || data.regimen.description || data.regimen.weightKg) && <div className="mb-4 grid gap-3 sm:grid-cols-2">
           <TextField label={registration ? "Physician-authorized Regimen" : "Prescribed Regimen"} required value={data.regimen.description || ""} onChange={value => setGroupField("regimen", "description", value)} placeholder={registration ? "Enter prescribed regimen" : undefined} />
@@ -782,7 +791,7 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* Secondary registration sections */}
-      {showEncode && laboratoryContext === "rhu" && (
+      {showEncode && laboratoryContext === "rhu" && !additionalOnly && (
         <SectionCard
           {...sectionProps}
           title={registration ? "06 · Laboratory References" : "Laboratory References"}
@@ -849,7 +858,7 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {showFinalize && (
+      {showFinalize && !compactRegistration && (
       <SectionCard {...sectionProps} title={registration ? "07 · Diagnosis Snapshot" : "Diagnosis"}>
         <div className={registrationGrid3}>
           <SelectField

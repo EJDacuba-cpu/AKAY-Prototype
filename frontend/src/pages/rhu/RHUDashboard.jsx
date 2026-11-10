@@ -90,8 +90,8 @@ const QUICK_ACTIONS = [
     module: "rhuIntake",
   },
   {
-    title: "Walk-in Check-in",
-    description: "Register a direct visit",
+    title: "Visit Check-in",
+    description: "Check a patient into today's queue",
     href: "/rhu/walk-in-check-in",
     icon: UserPlus,
     module: "patients",

@@ -18,7 +18,14 @@ const card = () => ({
   regimen: { description: "Physician-entered regimen", weightKg: "55", rows: [{ dateStart: "2026-11-10", drug4fdc: "4", strength: "Specified", unit: "tablets/day" }] },
   doseCalendar: { adherencePercent: 100 }, outcome: { status: "cured" }, laboratory: { xpert: { result: "Invented" } },
 });
-const payload = data => tbRegistrationPayload({ reportingYear: 2026, caseNumber: "", sourceRevision: "a".repeat(64), confirmed: true, cardData: data ?? card() });
+const payload = data => tbRegistrationPayload({
+  reportingYear: 2026,
+  caseNumber: "",
+  sourceRevision: "a".repeat(64),
+  confirmed: true,
+  treatmentStartDate: "2026-11-10",
+  cardData: data ?? card(),
+});
 
 test("registration payload omits diagnostic ownership, outcome and monitoring fields", () => {
   const result = payload();
@@ -110,10 +117,39 @@ test("consultation Form 4B draft keeps a stable registration key across normaliz
   const restored = normalizeTbCaseRegistration({
     ...first,
     confirmed: true,
+    treatment_start_date: "2026-05-02",
     card_data: { ...first.card_data, classification: { ...first.card_data.classification, bacteriologicalStatus: "clinically_diagnosed" } },
   }, { createKey: () => "other-key" });
   assert.equal(restored.registration_key, "stable-key");
   assert.equal(restored.confirmed, true);
+  assert.equal(restored.treatment_start_date, "2026-05-02");
   assert.equal(restored.card_data.classification.bacteriologicalStatus, "clinically_diagnosed");
   assert.equal(restored.card_data.caseFinding.dateOfScreening, "2026-05-01");
+});
+
+test("registration payload and errors require treatment start date", () => {
+  const draft = emptyTbCaseRegistration({ visit: { consultationDate: "2026-05-01" }, createKey: () => "key" });
+  const incomplete = tbRegistrationPayload({
+    reportingYear: draft.reporting_year,
+    caseNumber: "",
+    sourceRevision: "a".repeat(64),
+    confirmed: true,
+    cardData: {
+      ...draft.card_data,
+      classification: { bacteriologicalStatus: "clinically_diagnosed", anatomicalSite: "pulmonary", registrationGroup: "new" },
+      regimen: { description: "2HRZE/4HR", weightKg: 55, rows: [{ dateStart: "2026-05-01", drug4fdc: 3, strength: "150/75/400/275", unit: "tabs" }] },
+    },
+  });
+  assert.equal(tbRegistrationErrors(incomplete).treatment_start_date, "Enter the actual treatment start date.");
+  const complete = tbRegistrationPayload({
+    reportingYear: draft.reporting_year,
+    caseNumber: "",
+    sourceRevision: "a".repeat(64),
+    confirmed: true,
+    treatmentStartDate: "2026-05-03",
+    cardData: incomplete.card_data,
+  });
+  assert.equal(complete.treatment_start_date, "2026-05-03");
+  assert.equal(complete.card_data.phases.intensiveStart, "2026-05-03");
+  assert.equal(tbRegistrationErrors(complete).treatment_start_date, undefined);
 });

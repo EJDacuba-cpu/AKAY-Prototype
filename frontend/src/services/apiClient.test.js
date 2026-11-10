@@ -319,3 +319,50 @@ test("an already cancelled request sends nothing", async (t) => {
   assert.equal(h.calls.length, 0);
   preserved(h);
 });
+
+test("a browser CORS-style fetch rejection becomes the FSN connection message without retrying registration", async (t) => {
+  const cause = new TypeError("Failed to fetch");
+  const h = await harness(t, call => {
+    assert.equal(call.headers['X-Form-Draft-Id'], 'synthetic-draft');
+    assert.equal(call.headers['X-Form-Draft-Version'], '1');
+    assert.equal(call.headers['X-Form-Draft-Transaction'], '00000000-0000-4000-8000-000000000001');
+    throw cause;
+  });
+  const { formDraftOwnerContext } = await import('../utils/formDraftRequest.js');
+  await assert.rejects(h.api.apiRequest('/patients', {
+    method: 'POST', body: { household: { kind: 'new', serial_mode: 'auto' } },
+    draftOwnerContext: formDraftOwnerContext(user),
+    draftCommit: { id: 'synthetic-draft', version: 1, transaction_uuid: '00000000-0000-4000-8000-000000000001' },
+  }), error => {
+    assert.equal(error, cause);
+    assert.equal(error.code, 'NETWORK_ERROR');
+    assert.equal(error.isNetworkError, true);
+    assert.match(error.message, /We couldn't reach the server/);
+    return true;
+  });
+  assert.equal(h.calls.length, 1);
+});
+
+test("a Laravel registration failure with an HTTP response is not classified as unreachable", async (t) => {
+  const h = await harness(t, () => json(500, { message: 'Synthetic server failure' }));
+  await assert.rejects(h.api.apiRequest('/patients', { method: 'POST', body: {} }), error => {
+    assert.equal(error.status, 500);
+    assert.equal(error.message, 'Synthetic server failure');
+    assert.equal(error.isNetworkError, undefined);
+    return true;
+  });
+  assert.equal(h.calls.length, 1);
+});
+
+test("invalid local draft metadata fails before transport and is not a connection failure", async (t) => {
+  const h = await harness(t, () => assert.fail('No transport expected'));
+  const { formDraftOwnerContext } = await import('../utils/formDraftRequest.js');
+  await assert.rejects(h.api.apiRequest('/patients', {
+    method: 'POST', body: {}, draftOwnerContext: formDraftOwnerContext(user), draftCommit: { id: 'draft' },
+  }), error => {
+    assert.equal(error.message, 'Draft commit metadata is incomplete.');
+    assert.equal(error.isNetworkError, undefined);
+    return true;
+  });
+  assert.equal(h.calls.length, 0);
+});

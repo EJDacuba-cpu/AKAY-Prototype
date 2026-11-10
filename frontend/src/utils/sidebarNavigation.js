@@ -118,6 +118,8 @@ export function isSidebarPathActive(path, location, role) {
   const onMonitoringRequestDetail = location.pathname.startsWith(
     "/bhc/patients/monitoring-requests",
   );
+  const onTbEndorsementsPath =
+    location.pathname === "/bhc/patients/tb-endorsements";
 
   if (query) {
     const actual = new URLSearchParams(location.search);
@@ -144,6 +146,7 @@ export function isSidebarPathActive(path, location, role) {
         if (value === PATIENT_VIEW_MONITORING) {
           return (
             onMonitoringRequestDetail ||
+            onTbEndorsementsPath ||
             (location.pathname === pathname &&
               normalizePatientDirectoryView(actual) === PATIENT_VIEW_MONITORING)
           );

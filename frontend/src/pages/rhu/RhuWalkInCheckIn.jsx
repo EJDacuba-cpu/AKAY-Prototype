@@ -13,13 +13,13 @@ export default function RhuWalkInCheckIn() {
   const registerPath = registerForWalkInCheckInPath();
 
   return (
-    <DashboardLayout role="rhu" title="Walk-in Check-in">
+    <DashboardLayout role="rhu" title="Visit Check-in">
       <div className="flex h-full min-h-0 flex-col gap-4">
         <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Walk-in Check-in</h1>
+            <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Visit Check-in</h1>
             <p className="mt-1 text-[13px] text-neutral-600">
-              Check walk-in patients into today's queue.
+              Check patients into today's queue.
             </p>
           </div>
           <Button

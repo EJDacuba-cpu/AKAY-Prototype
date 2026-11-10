@@ -92,8 +92,32 @@ class MedicineExpiryStockService
             abort_if($quantity === 0, 422, 'Quantity must be positive.');
             $date = $options['expiration_date'] ?? null;
             $na = (bool) ($options['expiry_not_applicable'] ?? false);
-            $group = $medicine->expiryGroups()->where('expiration_date', $date)->where('expiry_not_applicable', $na)->first();
-            $group ??= $medicine->expiryGroups()->create(['expiration_date' => $date, 'expiry_not_applicable' => $na, 'available_quantity' => 0, 'quarantined_quantity' => 0]);
+            $lot = MedicineExpiryGroup::normalizeLot($options['manufacturer_lot_number'] ?? null);
+            $restockId = isset($options['restock_expiry_group_id']) ? (int) $options['restock_expiry_group_id'] : null;
+            if ($restockId) {
+                abort_if($action !== 'restock' || $lot === null, 422, 'Select a verified batch with a manufacturer lot to restock.');
+                $group = $medicine->expiryGroups->firstWhere('id', $restockId);
+                abort_if(! $group, 422, 'The stock batch does not belong to this medicine.');
+                abort_if(
+                    $group->is_legacy_batch
+                    || MedicineExpiryGroup::normalizeLot($group->manufacturer_lot_number) === null
+                    || MedicineExpiryGroup::normalizeLot($group->manufacturer_lot_number) !== $lot
+                    || ($group->expiration_date?->toDateString()) !== ($date ? (string) $date : null)
+                    || (bool) $group->expiry_not_applicable !== $na,
+                    422,
+                    'Existing batch restock requires matching lot, expiry, and a non-legacy batch.'
+                );
+            } else {
+                $group = $medicine->expiryGroups()->create([
+                    'expiration_date' => $date,
+                    'expiry_not_applicable' => $na,
+                    'manufacturer_lot_number' => $lot,
+                    'is_legacy_batch' => false,
+                    'available_quantity' => 0,
+                    'quarantined_quantity' => 0,
+                ]);
+                $medicine->setRelation('expiryGroups', $medicine->expiryGroups->push($group));
+            }
             $changes[] = $this->movement($group, $quantity, 0);
             $delta = $quantity;
         } else {
@@ -285,7 +309,7 @@ class MedicineExpiryStockService
 
     private function mapError(QueryException $e): never
     {
-        foreach (['INVENTORY_OPERATION_ALREADY_APPLIED', 'INVENTORY_SNAPSHOT_CONFLICT', 'INVENTORY_GROUP_MISMATCH', 'INVENTORY_GROUP_CONTEXT_REQUIRED', 'INVALID_INVENTORY_EXPIRY', 'INVENTORY_CONFLICT', 'INSUFFICIENT_STOCK', 'INVALID_INVENTORY_OPERATION', 'MEDICINE_NOT_DISPENSABLE', 'MEDICINE_FACILITY_MISMATCH'] as $code) {
+        foreach (['INVENTORY_OPERATION_ALREADY_APPLIED', 'INVENTORY_SNAPSHOT_CONFLICT', 'INVENTORY_GROUP_MISMATCH', 'INVENTORY_GROUP_CONTEXT_REQUIRED', 'INVENTORY_GROUP_IDENTITY_IMMUTABLE', 'INVALID_INVENTORY_EXPIRY', 'INVENTORY_CONFLICT', 'INSUFFICIENT_STOCK', 'INVALID_INVENTORY_OPERATION', 'MEDICINE_NOT_DISPENSABLE', 'MEDICINE_FACILITY_MISMATCH'] as $code) {
             if (str_contains($e->getMessage(), $code)) {
                 throw new HttpResponseException(response()->json(['code' => $code, 'message' => 'Inventory operation could not be applied. Refresh stock and check the selected groups.'], in_array($code, ['INVALID_INVENTORY_OPERATION', 'MEDICINE_NOT_DISPENSABLE', 'MEDICINE_FACILITY_MISMATCH', 'INVENTORY_GROUP_MISMATCH', 'INVENTORY_GROUP_CONTEXT_REQUIRED', 'INVALID_INVENTORY_EXPIRY']) ? 422 : 409));
             }

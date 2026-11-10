@@ -12,7 +12,6 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
-import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import ProfileQueueAction from "../../components/features/rhu-queue/ProfileQueueAction";
 import { formatPatientName } from "../../utils/formatters";
@@ -86,6 +85,8 @@ function LiveRHUPatientDetails() {
   const editingSectionRef = useRef(null);
 
   const profileQueries = getRhuPatientProfileQueries(patientId, { canViewHistory });
+  const careOverviewQuery = useQuery(profileQueries.careOverview);
+  const nutritionCare = careOverviewQuery.data?.nutritionCare;
 
   const {
     data: patientData,
@@ -124,11 +125,11 @@ function LiveRHUPatientDetails() {
   const patient = overrideMatchesPatient ? patientOverride : patientData || null;
   const canRegisterOwned = canModifyRhuPatient(user, patient);
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
-  const historyErrors = [recordsError, referralsError, followUpsError];
+  const historyErrors = [recordsError, referralsError, followUpsError, careOverviewQuery.error];
   const historyError = historyErrors.find(error => [401, 403].includes(error?.status)) || historyErrors.find(Boolean);
   const profileErrors = [patientError, canViewHistory && searchParams.get("tab") !== "records" && historyError];
   const loadError = profileErrors.find(error => [401, 403].includes(error?.status)) || profileErrors.find(Boolean) || null;
-  const retrying = patientFetching || recordsFetching || referralsFetching || followUpsFetching;
+  const retrying = patientFetching || recordsFetching || referralsFetching || followUpsFetching || careOverviewQuery.isFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   const records = useMemo(
@@ -166,8 +167,12 @@ function LiveRHUPatientDetails() {
     ];
   }, [conditionalProgramAreas, specializedRecordPrograms]);
   const careTracking = useMemo(
-    () => (patient ? getCareTracking(patient, records, new Date(), { conditions: conditions.conditions || [] }) : []),
-    [patient, records, conditions.conditions],
+    () => (patient ? getCareTracking(patient, records, new Date(), {
+      conditions: conditions.conditions || [],
+      nutritionCare: nutritionCare ?? { status: "Not Enrolled" },
+      followUpTasks: patientFollowUps,
+    }) : []),
+    [patient, records, conditions.conditions, nutritionCare, patientFollowUps],
   );
 
   const tabs = [
@@ -216,6 +221,7 @@ function LiveRHUPatientDetails() {
     refetchRecords();
     refetchReferrals();
     refetchFollowUps();
+    if (canViewHistory) careOverviewQuery.refetch();
   }
 
   useEffect(() => {
@@ -388,20 +394,7 @@ function LiveRHUPatientDetails() {
           />
 
           <div className="patient-profile-panels @container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
-            <ProfileTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onSelect={setActiveTab}
-              aside={
-                activeTab === "overview" && canViewHistory ? (
-                  <PatientHistoryReference
-                    patient={patient}
-                    background={patient.medicalBackground}
-                    conditions={conditions}
-                  />
-                ) : null
-              }
-            />
+            <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
 
             {activeTab === "overview" &&
               (canViewHistory ? (

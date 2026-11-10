@@ -172,7 +172,7 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.doesNotMatch(workspace, /PatientHistoryReference/);
   assert.doesNotMatch(workspace, /onEditBackground=/);
   assert.match(details, /canEdit=\{false\}/);
-  assert.match(details, /PatientHistoryReference/);
+  assert.doesNotMatch(details, /PatientHistoryReference/);
   assert.doesNotMatch(details, /onEditBackground=/);
   const backgroundTab = readFileSync(join(here, "../components/features/patients/PatientBackgroundTab.jsx"), "utf8");
   assert.doesNotMatch(backgroundTab, /View Health Records/);
@@ -205,6 +205,20 @@ test("BHC Patients module adds Monitoring Requests only for role bhc", () => {
   assert.match(module, /Monitoring Requests/);
   assert.match(module, /monitoring-requests/);
   assert.match(module, /listMonitoringHandoffRequests/);
+});
+
+test("BHC Monitoring Requests hosts TB Endorsements tab, not the All Patients toolbar", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const module = readFileSync(join(here, "../pages/bhc/PatientsModule.jsx"), "utf8");
+  const app = readFileSync(join(here, "../App.jsx"), "utf8");
+  assert.match(module, /General Monitoring/);
+  assert.match(module, /TB Endorsements/);
+  assert.match(module, /BhcTbEndorsements/);
+  assert.match(module, /MONITORING_TAB_TB/);
+  assert.doesNotMatch(module, /RouterLink to="\/bhc\/patients\/tb-endorsements"/);
+  assert.doesNotMatch(module, />TB endorsements</);
+  assert.match(app, /BhcTbEndorsementsRedirect/);
+  assert.match(app, /\/bhc\/patients\/tb-endorsements/);
 });
 
 test("RHU ITR Diagnosis & Care Plan is one screen and does not mount BHC concern reporting", () => {

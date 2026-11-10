@@ -11,6 +11,9 @@ import {
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
 import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import ChildCareTclSection from "../../components/features/reports/ChildCareTclSection";
+import FamilyPlanningTclSection from "../../components/features/reports/FamilyPlanningTclSection";
+import MaternalCareTclSection from "../../components/features/reports/MaternalCareTclSection";
 import RhuOverviewBento from "../../components/features/reports/RhuOverviewBento";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
@@ -223,15 +226,19 @@ export default function RHUReports() {
                           <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                             <th className="px-3 py-2.5">Indicator</th>
                             <th className="px-3 py-2.5 text-right">Count</th>
-                            <th className="px-3 py-2.5">Notes</th>
+                            {category === "epi" || category === "maternal" ? null : (
+                              <th className="px-3 py-2.5">Notes</th>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {report.summary.map((row, index) => (
-                            <tr key={`${row.label}-${row.note}-${index}`} className="border-b border-neutral-100">
+                            <tr key={`${row.label}-${row.note || ""}-${index}`} className="border-b border-neutral-100">
                               <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
-                              <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
+                              {category === "epi" || category === "maternal" ? null : (
+                                <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -240,6 +247,33 @@ export default function RHUReports() {
                   )}
                 </CardContent>
               </Card>
+
+              {category === "maternal" ? (
+                <MaternalCareTclSection
+                  role="rhu"
+                  records={Array.isArray(records) ? records : []}
+                  patients={Array.isArray(patients) ? patients : []}
+                  period={period}
+                />
+              ) : null}
+
+              {category === "family_planning" ? (
+                <FamilyPlanningTclSection
+                  role="rhu"
+                  records={Array.isArray(records) ? records : []}
+                  patients={Array.isArray(patients) ? patients : []}
+                  period={period}
+                />
+              ) : null}
+
+              {category === "epi" ? (
+                <ChildCareTclSection
+                  role="rhu"
+                  records={Array.isArray(records) ? records : []}
+                  patients={Array.isArray(patients) ? patients : []}
+                  period={period}
+                />
+              ) : null}
             </>
           )}
 
@@ -253,6 +287,7 @@ export default function RHUReports() {
             summary={report.summary}
             notes={report.notes}
             ageGroup={isNutrition ? ageGroup : ""}
+            hideNotes={category === "epi" || category === "maternal"}
           />
         </div>
       </PageStateWrapper>
@@ -260,7 +295,18 @@ export default function RHUReports() {
   );
 }
 
-export function PrintReport({ printState = "ready", printKey = "", facilityName, periodLabel, categoryLabel, cards, summary, notes = [], ageGroup = "" }) {
+export function PrintReport({
+  printState = "ready",
+  printKey = "",
+  facilityName,
+  periodLabel,
+  categoryLabel,
+  cards,
+  summary,
+  notes = [],
+  ageGroup = "",
+  hideNotes = false,
+}) {
   return (
     <section id="rhu-report-print" data-print-state={printState} data-print-key={printKey} className="print-only">
       <h1 className="text-base font-bold text-neutral-900">AKAY RHU Reports</h1>
@@ -284,7 +330,9 @@ export function PrintReport({ printState = "ready", printKey = "", facilityName,
           <tr>
             <th className="border-b border-neutral-300 py-1.5">Indicator</th>
             <th className="border-b border-neutral-300 py-1.5 text-right">Count</th>
-            <th className="border-b border-neutral-300 py-1.5">Notes</th>
+            {hideNotes ? null : (
+              <th className="border-b border-neutral-300 py-1.5">Notes</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -292,7 +340,9 @@ export function PrintReport({ printState = "ready", printKey = "", facilityName,
             <tr key={`${row.label}-${row.note || row.hint}-${index}`}>
               <td className="border-b border-neutral-200 py-1.5">{row.label}</td>
               <td className="border-b border-neutral-200 py-1.5 text-right tabular-nums">{row.value}</td>
-              <td className="border-b border-neutral-200 py-1.5">{row.note || row.hint}</td>
+              {hideNotes ? null : (
+                <td className="border-b border-neutral-200 py-1.5">{row.note || row.hint}</td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -110,6 +110,12 @@ export function normalizeDiagnoses(list) {
         laboratoryEvidence: item.laboratoryEvidence.map(selection => ({ reference: selection.reference, version: selection.version, attachmentIds: selection.attachmentIds || [] })),
         laboratoryEvidenceConfirmed: item.laboratoryEvidenceConfirmed === true,
       } : {}),
+      ...(Array.isArray(item.supportingLaboratoryTests) ? {
+        supportingLaboratoryTests: item.supportingLaboratoryTests
+          .map((selection) => ({ reference: String(selection?.reference || "").trim() }))
+          .filter((selection) => selection.reference)
+          .slice(0, 50),
+      } : {}),
       ...(Object.hasOwn(item, "activate") || Object.hasOwn(item, "nextAction") || item.manageToBhc === true
         ? rhuDiagnosisFields(item)
         : {}),

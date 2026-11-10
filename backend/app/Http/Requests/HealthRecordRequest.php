@@ -21,6 +21,15 @@ class HealthRecordRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
+        if ($this->isRhuItrV1() && is_array($this->input('diagnoses'))) {
+            $this->merge(['diagnoses' => array_map(function ($entry) {
+                if (is_array($entry) && ($entry['nextAction'] ?? null) !== 'refer_higher_level') {
+                    unset($entry['higherLevelReferralPlan']);
+                }
+
+                return $entry;
+            }, $this->input('diagnoses'))]);
+        }
         $monitoringData = $this->input('monitoring_data');
         if (is_array($monitoringData)) {
             if ($this->isBhcGeneralV2()) {
@@ -180,9 +189,13 @@ class HealthRecordRequest extends FormRequest
             $rules['diagnoses.*.referral'] = ['prohibited'];
             $rules['diagnoses.*.activate'] = ['nullable', 'boolean'];
             $rules['diagnoses.*.manageToBhc'] = ['nullable', 'boolean'];
-            $rules['diagnoses.*.nextAction'] = ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc'])];
+            $rules['diagnoses.*.nextAction'] = ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc', 'refer_higher_level'])];
             $rules['diagnoses.*.receivingBhcId'] = ['nullable', 'integer', 'exists:barangay_health_centers,id'];
             $rules['diagnoses.*.monitoringRecommendation'] = ['nullable', 'string', 'max:2000'];
+            $rules['diagnoses.*.higherLevelReferralPlan'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'array:reason,intendedFacility,clinicalPlan'];
+            $rules['diagnoses.*.higherLevelReferralPlan.reason'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'string', 'max:2000'];
+            $rules['diagnoses.*.higherLevelReferralPlan.intendedFacility'] = ['nullable', 'string', 'max:255'];
+            $rules['diagnoses.*.higherLevelReferralPlan.clinicalPlan'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'string', 'max:2000'];
             $rules['monitoring_data.followUpSchedules'] = ['nullable', 'array', 'max:20'];
             $rules['monitoring_data.followUpSchedules.*.purposeKey'] = ['required', 'string', 'max:64', 'distinct'];
             $rules['monitoring_data.followUpSchedules.*.purpose'] = ['required', 'string', 'max:150'];
@@ -208,6 +221,7 @@ class HealthRecordRequest extends FormRequest
             $rules['tb_case_registration.reporting_year'] = ['nullable', 'integer', 'between:1900,9999'];
             $rules['tb_case_registration.case_number'] = ['nullable', 'string', 'max:100'];
             $rules['tb_case_registration.confirmed'] = ['nullable', 'boolean'];
+            $rules['tb_case_registration.treatment_start_date'] = ['nullable', 'date_format:Y-m-d'];
             $rules['tb_case_registration.card_data'] = ['nullable', 'array'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
@@ -233,6 +247,9 @@ class HealthRecordRequest extends FormRequest
         $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds'] = ['nullable', 'array', 'max:10'];
         $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds.*'] = ['uuid'];
         $rules['diagnoses.*.laboratoryEvidenceConfirmed'] = ['nullable', 'boolean'];
+        $rules['diagnoses.*.supportingLaboratoryTests'] = ['nullable', 'array', 'max:50'];
+        $rules['diagnoses.*.supportingLaboratoryTests.*'] = ['array:reference'];
+        $rules['diagnoses.*.supportingLaboratoryTests.*.reference'] = ['required', 'string', 'max:80'];
 
         return $rules;
     }
@@ -352,6 +369,10 @@ class HealthRecordRequest extends FormRequest
             'immunization_data.vaccineEntries.*.allocations.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'immunization_data.vaccineEntries.*.override_reason' => ['nullable', 'string', 'max:1000'],
             'immunization_data.vaccineEntries.*.confirmedGiven' => ['nullable', 'boolean'],
+            'immunization_data.vaccineEntries.*.dateGiven' => ['nullable', 'date'],
+            'immunization_data.vaccineEntries.*.date_given' => ['nullable', 'date'],
+            'immunization_data.vaccineEntries.*.timeGiven' => ['nullable', 'date_format:H:i'],
+            'immunization_data.vaccineEntries.*.time_given' => ['nullable', 'date_format:H:i'],
             'monitoring_data' => ['nullable', 'array'],
             'monitoring_data.followUpStatus' => ['nullable', 'string', 'max:100'],
             'monitoring_data.follow_up_status' => ['nullable', 'string', 'max:100'],
@@ -627,6 +648,12 @@ class HealthRecordRequest extends FormRequest
         return [
             'diagnoses.required' => 'Add at least one condition before continuing.',
             'diagnoses.min' => 'Add at least one condition before continuing.',
+            'diagnoses.*.higherLevelReferralPlan.required_if' => 'Enter the higher-level referral plan.',
+            'diagnoses.*.higherLevelReferralPlan.reason.required_if' => 'Enter the referral reason.',
+            'diagnoses.*.higherLevelReferralPlan.clinicalPlan.required_if' => 'Enter the clinical plan.',
+            'diagnoses.*.higherLevelReferralPlan.reason.max' => 'Keep the referral reason within 2000 characters.',
+            'diagnoses.*.higherLevelReferralPlan.intendedFacility.max' => 'Keep the intended facility within 255 characters.',
+            'diagnoses.*.higherLevelReferralPlan.clinicalPlan.max' => 'Keep the clinical plan within 2000 characters.',
             'idempotency_key.required' => 'An Idempotency-Key header is required for official health-record creation.',
             'idempotency_key.uuid' => 'The Idempotency-Key header must be a valid UUID.',
             'dispensed_medicines.*.medicine_id.required' => 'Please select a medicine.',
@@ -685,6 +712,7 @@ class HealthRecordRequest extends FormRequest
             }
             VitalSigns::validate($validator, $this->all());
             TbAssessment::validate($validator, $this->diagnosesInput());
+            $this->validateSupportingLaboratoryTests($validator);
             $this->validateTbCaseRegistration($validator);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
@@ -1046,6 +1074,51 @@ class HealthRecordRequest extends FormRequest
         );
     }
 
+    private function validateSupportingLaboratoryTests($validator): void
+    {
+        if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
+            return;
+        }
+        $patientId = (int) $this->input('patient_id');
+        $rhuId = (int) ($this->user()?->rural_health_unit_id ?? 0);
+        $currentIds = collect($this->input('laboratory_tests', []))
+            ->filter(fn ($entry) => is_array($entry))
+            ->map(fn ($entry) => strtolower((string) ($entry['id'] ?? '')))
+            ->filter()
+            ->all();
+        $currentSet = array_fill_keys($currentIds, true);
+
+        foreach ($this->diagnosesInput() as $index => $entry) {
+            if (! is_array($entry) || ! is_array($entry['supportingLaboratoryTests'] ?? null)) {
+                continue;
+            }
+            foreach ($entry['supportingLaboratoryTests'] as $selectionIndex => $selection) {
+                if (! is_array($selection)) {
+                    continue;
+                }
+                $reference = trim((string) ($selection['reference'] ?? ''));
+                $path = "diagnoses.$index.supportingLaboratoryTests.$selectionIndex.reference";
+                if (str_starts_with($reference, 'current:')) {
+                    $clientId = strtolower(substr($reference, 8));
+                    if ($clientId === '' || ! isset($currentSet[$clientId])) {
+                        $validator->errors()->add($path, 'Select a laboratory test from this consultation or the patient laboratory history.');
+                    }
+                    continue;
+                }
+                if (! preg_match('/^record:(\d+)$/', $reference, $match)) {
+                    $validator->errors()->add($path, 'Select a valid laboratory record reference.');
+                    continue;
+                }
+                $test = \App\Models\LaboratoryTest::query()->with('healthRecord:id,rural_health_unit_id')->find((int) $match[1]);
+                if (! $test
+                    || (int) $test->patient_id !== $patientId
+                    || (int) ($test->healthRecord?->rural_health_unit_id ?? 0) !== $rhuId) {
+                    $validator->errors()->add($path, 'Select laboratory records belonging to this patient and RHU.');
+                }
+            }
+        }
+    }
+
     private function validateTbCaseRegistration($validator): void
     {
         if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
@@ -1053,13 +1126,18 @@ class HealthRecordRequest extends FormRequest
         }
         $initiating = collect($this->diagnosesInput())->contains(function ($entry) {
             $management = is_array($entry['tbManagement'] ?? null) ? $entry['tbManagement'] : [];
+            $isDsTb = ($management['diagnosisType'] ?? null) === 'tb_disease'
+                && ($management['drugResistance'] ?? null) === 'drug_susceptible';
 
-            return ($management['treatmentDecision'] ?? null) === 'initiate_at_rhu';
+            return $isDsTb && (
+                ! empty($management['openTreatmentCard'])
+                || ($management['treatmentDecision'] ?? null) === 'initiate_at_rhu'
+            );
         });
         $registration = $this->input('tb_case_registration');
         if (! $initiating) {
             if (filled($registration)) {
-                $validator->errors()->add('tb_case_registration', 'Form 4B registration is only submitted when initiating DS-TB treatment at this RHU.');
+                $validator->errors()->add('tb_case_registration', 'Form 4B registration is only submitted when registering DS-TB treatment in this consultation.');
             }
 
             return;
@@ -1078,6 +1156,9 @@ class HealthRecordRequest extends FormRequest
         $year = $registration['reporting_year'] ?? null;
         if (! is_numeric($year) || (int) $year < 1900 || (int) $year > 9999) {
             $validator->errors()->add('tb_case_registration.reporting_year', 'Enter a valid reporting year.');
+        }
+        if (blank($registration['treatment_start_date'] ?? null)) {
+            $validator->errors()->add('tb_case_registration.treatment_start_date', 'Enter the actual treatment start date.');
         }
         $card = is_array($registration['card_data'] ?? null) ? $registration['card_data'] : [];
         $classification = is_array($card['classification'] ?? null) ? $card['classification'] : [];

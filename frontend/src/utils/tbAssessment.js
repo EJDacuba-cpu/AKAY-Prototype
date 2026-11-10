@@ -1,15 +1,8 @@
-export const TB_TREATMENT_DECISIONS = Object.freeze({
-  initiate_at_rhu: "Initiate DS-TB Treatment at RHU",
-  not_yet_initiated: "Treatment Not Yet Initiated",
-  refer_elsewhere: "Refer to Another Treatment Facility",
-});
-
-export const TB_TREATMENT_DECISION_OPTIONS = Object.entries(TB_TREATMENT_DECISIONS).map(([value, label]) => ({
-  value,
-  label,
-}));
-
 // Pure assessment helpers: safe to use from diagnosis and draft mappers.
+function truthyFlag(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 export function tbManagementFields(entry = {}) {
   const stored = entry?.tbManagement || entry?.tb_management || {};
   const diagnosisType = String(stored.diagnosisType ?? stored.diagnosis_type ?? "").trim();
@@ -26,13 +19,18 @@ export function tbManagementFields(entry = {}) {
   const dispositionPlan = treatmentDecision === "not_yet_initiated" || treatmentDecision === "refer_elsewhere"
     ? String(stored.dispositionPlan ?? stored.disposition_plan ?? "").trim()
     : "";
+  // Explicit registration intent. Legacy initiate_at_rhu still counts as intent on restore.
+  const storedOpen = stored.openTreatmentCard ?? stored.open_treatment_card;
+  const openTreatmentCard = isDsTb && (
+    truthyFlag(storedOpen) || treatmentDecision === "initiate_at_rhu"
+  );
   return {
     diagnosisType,
     drugResistance,
     treatmentDecision,
     dispositionReason,
     dispositionPlan,
-    openTreatmentCard: treatmentDecision === "initiate_at_rhu",
+    openTreatmentCard,
   };
 }
 
@@ -59,19 +57,25 @@ export function tbManagementFor(entry, next = {}) {
   const typeChanged = next.diagnosisType !== undefined && next.diagnosisType !== previous.diagnosisType;
   const resistanceChanged = next.drugResistance !== undefined && next.drugResistance !== previous.drugResistance;
   const cleared = typeChanged || resistanceChanged;
+  const openTreatmentCard = cleared
+    ? false
+    : next.openTreatmentCard !== undefined
+      ? Boolean(next.openTreatmentCard)
+      : previous.openTreatmentCard;
+  const treatmentDecision = cleared
+    ? (next.treatmentDecision !== undefined && !typeChanged && !resistanceChanged ? next.treatmentDecision : "")
+    : next.treatmentDecision !== undefined
+      ? next.treatmentDecision
+      : previous.treatmentDecision;
   const merged = {
     ...previous,
     ...next,
     diagnosisType,
     drugResistance: diagnosisType === "tb_disease" ? drugResistance : "",
-    ...(cleared ? {
-      treatmentDecision: next.treatmentDecision !== undefined && !typeChanged && !resistanceChanged
-        ? next.treatmentDecision
-        : "",
-      dispositionReason: "",
-      dispositionPlan: "",
-      openTreatmentCard: false,
-    } : {}),
+    treatmentDecision,
+    dispositionReason: cleared ? "" : (next.dispositionReason !== undefined ? next.dispositionReason : previous.dispositionReason),
+    dispositionPlan: cleared ? "" : (next.dispositionPlan !== undefined ? next.dispositionPlan : previous.dispositionPlan),
+    openTreatmentCard,
   };
   return {
     ...entry,

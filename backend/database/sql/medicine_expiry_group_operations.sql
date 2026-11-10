@@ -24,6 +24,8 @@ DECLARE
     take_quantity integer;
     expiry date;
     no_expiry boolean;
+    lot_number text;
+    restock_group_id bigint;
     type_value text := p_action;
     source_value text := 'manual_adjustment';
     source_id_value bigint := p_medicine_id;
@@ -64,16 +66,35 @@ BEGIN
     IF p_action IN ('opening_balance','restock') THEN
         expiry := NULLIF(p_options->>'expiration_date','')::date;
         no_expiry := COALESCE((p_options->>'expiry_not_applicable')::boolean,false);
+        lot_number := NULLIF(btrim(COALESCE(p_options->>'manufacturer_lot_number','')),'');
+        restock_group_id := NULLIF(p_options->>'restock_expiry_group_id','')::bigint;
         IF (expiry IS NULL) = (NOT no_expiry) OR (no_expiry AND m.item_type <> 'health_supply') OR expiry < today THEN
             RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVALID_INVENTORY_EXPIRY';
         END IF;
         IF p_action = 'opening_balance' AND (m.quantity <> 0 OR jsonb_array_length(current_groups) > 0) THEN
             RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVENTORY_CONFLICT';
         END IF;
-        SELECT * INTO g FROM public.medicine_expiry_groups WHERE medicine_id = p_medicine_id AND expiration_date IS NOT DISTINCT FROM expiry AND expiry_not_applicable = no_expiry;
-        IF NOT FOUND THEN
-            INSERT INTO public.medicine_expiry_groups(medicine_id,expiration_date,expiry_not_applicable,available_quantity,quarantined_quantity,created_at,updated_at)
-            VALUES(p_medicine_id,expiry,no_expiry,0,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING * INTO g;
+        IF restock_group_id IS NOT NULL THEN
+            IF p_action <> 'restock' OR lot_number IS NULL THEN
+                RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVALID_INVENTORY_OPERATION';
+            END IF;
+            SELECT * INTO g FROM public.medicine_expiry_groups WHERE id = restock_group_id AND medicine_id = p_medicine_id;
+            IF NOT FOUND
+               OR g.is_legacy_batch
+               OR g.manufacturer_lot_number IS NULL
+               OR g.manufacturer_lot_number IS DISTINCT FROM lot_number
+               OR g.expiration_date IS DISTINCT FROM expiry
+               OR g.expiry_not_applicable IS DISTINCT FROM no_expiry THEN
+                RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVENTORY_GROUP_MISMATCH';
+            END IF;
+        ELSE
+            INSERT INTO public.medicine_expiry_groups(
+                medicine_id,expiration_date,expiry_not_applicable,manufacturer_lot_number,is_legacy_batch,
+                available_quantity,quarantined_quantity,created_at,updated_at
+            ) VALUES(
+                p_medicine_id,expiry,no_expiry,lot_number,false,
+                0,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP
+            ) RETURNING * INTO g;
         END IF;
         new_available := g.available_quantity::bigint + p_quantity;
         new_quarantined := g.quarantined_quantity;

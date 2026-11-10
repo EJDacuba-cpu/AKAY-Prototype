@@ -59,7 +59,7 @@ test('other errors are not duplicate prompts', () => {
   assert.equal(duplicatePrompt({ status: 409, code: 'POSSIBLE_DUPLICATE_PATIENT' }), null);
 });
 
-test('check-in flow returns to Walk-in Check-in with the new patient selected', () => {
+test('check-in flow returns to Visit Check-in with the new patient selected', () => {
   assert.equal(
     postSaveDestination({ checkIn: true, patientsPath: '/rhu/patients', patientId: '9' }),
     '/rhu/walk-in-check-in?patient_id=9',

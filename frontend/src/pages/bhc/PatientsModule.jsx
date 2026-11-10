@@ -1,19 +1,22 @@
 import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
+  FilteredEmptyPanel,
   ListFilterPopover,
   LoadMoreButton,
   RefreshingIndicator,
   SearchField,
   SearchFilterCluster,
+  SegmentedFilter,
   pickFilterValues,
 } from "../../components/common";
+import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import Drawer from "../../components/common/drawer/Drawer";
 import { Button } from "../../components/ui/button";
 import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
@@ -36,6 +39,14 @@ import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffS
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
+import BhcTbEndorsements from "./BhcTbEndorsements";
+
+const MONITORING_TAB_GENERAL = "general";
+const MONITORING_TAB_TB = "tb-endorsements";
+const MONITORING_TAB_OPTIONS = [
+  { value: MONITORING_TAB_GENERAL, label: "General Monitoring" },
+  { value: MONITORING_TAB_TB, label: "TB Endorsements" },
+];
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -69,13 +80,33 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const canRegister = access.can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
+  const canTbEndorsements = role === "bhc" && access.can("clinical.history");
+  const monitoringTab =
+    showHandoffs && canTbEndorsements && params.get("tab") === MONITORING_TAB_TB
+      ? MONITORING_TAB_TB
+      : MONITORING_TAB_GENERAL;
+  const showGeneralHandoffs = showHandoffs && monitoringTab === MONITORING_TAB_GENERAL;
+  const showTbEndorsements = showHandoffs && monitoringTab === MONITORING_TAB_TB;
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
-    enabled: showHandoffs,
+    enabled: showGeneralHandoffs,
   });
+
+  function setMonitoringTab(nextTab) {
+    const next = new URLSearchParams(params);
+    if (nextTab === MONITORING_TAB_TB) {
+      next.set("tab", MONITORING_TAB_TB);
+    } else {
+      next.delete("tab");
+      next.delete("case");
+      next.delete("page");
+      next.delete("endorsement");
+    }
+    setParams(next, { replace: true });
+  }
   const {
     patients,
     hasData: hasPatientData,
@@ -171,12 +202,24 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     hasMore: hasMorePatients,
     loadMore: loadMorePatients,
   } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
-  const hasData = showHandoffs ? Array.isArray(handoffsQuery.data) : hasPatientData;
-  const activeError = showHandoffs ? handoffsQuery.error : queryError;
-  const activeRefreshing = showHandoffs ? handoffsQuery.isFetching : isRefreshing;
-  const activeRetry = showHandoffs ? handoffsQuery.refetch : refetchPatients;
-  const showInitialLoading = showHandoffs ? handoffsQuery.isPending && !hasData : loading && !hasData;
-  const showRefreshOverlay = activeRefreshing && hasData;
+  const hasData = showGeneralHandoffs
+    ? Array.isArray(handoffsQuery.data)
+    : showTbEndorsements
+      ? true
+      : hasPatientData;
+  const activeError = showGeneralHandoffs
+    ? handoffsQuery.error
+    : showTbEndorsements
+      ? null
+      : queryError;
+  const activeRefreshing = showGeneralHandoffs ? handoffsQuery.isFetching : isRefreshing;
+  const activeRetry = showGeneralHandoffs ? handoffsQuery.refetch : refetchPatients;
+  const showInitialLoading = showGeneralHandoffs
+    ? handoffsQuery.isPending && !hasData
+    : showTbEndorsements
+      ? false
+      : loading && !hasData;
+  const showRefreshOverlay = activeRefreshing && hasData && !showHandoffs;
 
   useEffect(() => {
     // The card list scrolls on its own: a new search/filter starts at the top.
@@ -275,21 +318,34 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     {showHandoffs ? "Monitoring Requests" : "Patients"}
                   </h1>
                   <p className="mt-1 text-[13px] text-neutral-600">
-                    {showHandoffs
-                      ? "RHU Manage to BHC handoffs for your catchment."
-                      : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
+                    {showTbEndorsements
+                      ? "RHU-to-BHC TB treatment endorsements for your catchment."
+                      : showHandoffs
+                        ? "RHU Manage to BHC handoffs for your catchment."
+                        : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
                   </p>
                 </>
               )}
+              {showHandoffs && canTbEndorsements ? (
+                <div className="mt-3">
+                  <SegmentedFilter
+                    label="Monitoring request type"
+                    value={monitoringTab}
+                    onChange={setMonitoringTab}
+                    options={MONITORING_TAB_OPTIONS}
+                  />
+                </div>
+              ) : null}
               <p className="sr-only" role="status">
-                {showHandoffs
-                  ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
-                  : patientCountLabel}
+                {showTbEndorsements
+                  ? "TB endorsements"
+                  : showHandoffs
+                    ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
+                    : patientCountLabel}
               </p>
             </div>
             {!showHandoffs ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                {role === "bhc" && access.can("clinical.history") && <Button asChild variant="secondary" size="sm"><RouterLink to="/bhc/patients/tb-endorsements">TB endorsements</RouterLink></Button>}
                 <SearchFilterCluster
                   search={
                     <SearchField
@@ -359,7 +415,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         )}
         <div
           className={`clinical-directory__layout${
-            isDesktop && !showInitialLoading
+            isDesktop && !showInitialLoading && !showHandoffs
               ? ` clinical-directory__layout--preview${panelOpen ? " is-open" : ""}`
               : ""
           }`}
@@ -388,13 +444,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   addPatientPath={addPatientPath}
                 />
               )}
-              {showHandoffs && (
+              {showGeneralHandoffs && (
                 <MonitoringRequestList
                   requests={handoffsQuery.data || []}
                   loading={handoffsQuery.isLoading}
                   onOpen={(id) => navigate(`/bhc/patients/monitoring-requests/${id}`)}
                 />
               )}
+              {showTbEndorsements && <BhcTbEndorsements embedded />}
             </div>
 
             {/* Below desktop the toolbar button is hidden and this floating one takes
@@ -451,41 +508,77 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   );
 }
 
+const MONITORING_STATUS_LABELS = {
+  pending_review: "Pending Review",
+  linkage_needed: "Linkage Needed",
+  accepted_awaiting_first_visit: "Accepted — Awaiting First Visit",
+  monitoring_active: "Monitoring Active",
+  declined: "Declined",
+  redirected: "Redirected",
+};
+
+function monitoringStatusTone(status) {
+  if (status === "monitoring_active" || status === "accepted_awaiting_first_visit") return "success";
+  if (status === "pending_review") return "info";
+  if (status === "linkage_needed") return "warning";
+  if (status === "declined") return "danger";
+  return "neutral";
+}
+
 function MonitoringRequestList({ requests, loading, onOpen }) {
   if (loading && requests.length === 0) {
-    return <p className="px-6 py-10 text-sm text-neutral-500">Loading monitoring requests…</p>;
+    return <p className="px-4 py-10 text-sm text-neutral-600">Loading monitoring requests…</p>;
   }
   if (requests.length === 0) {
     return (
-      <PatientDirectoryState
-        icon={<Users size={22} className="text-gray-400" />}
-        title="No monitoring requests."
+      <FilteredEmptyPanel
+        icon={<Users size={20} className="text-neutral-400" aria-hidden="true" />}
+        title="No monitoring requests"
         description="RHU Manage to BHC requests for this Barangay Health Center will appear here."
       />
     );
   }
   return (
-    <ul className="divide-y divide-neutral-100 border border-neutral-200 bg-white">
-      {requests.map((request) => (
-        <li key={request.id}>
-          <button
-            type="button"
-            onClick={() => onOpen(request.id)}
-            className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50"
-          >
-            <span>
-              <span className="block text-sm font-semibold text-ink-900">{formatPatientName(request.source_patient) || "Patient"}</span>
-              <span className="mt-0.5 block text-xs text-neutral-600">
-                {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
-              </span>
-            </span>
-            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-              {String(request.status || "").replaceAll("_", " ")}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-2">
+      <p className="text-xs tabular-nums text-neutral-600">
+        {requests.length} request{requests.length === 1 ? "" : "s"}
+      </p>
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
+        <div className="hidden h-11 items-center bg-neutral-100 px-4 text-[10px] font-bold uppercase tracking-wide text-neutral-600 md:grid md:grid-cols-[minmax(0,1fr)_180px]">
+          <span>Patient / Condition</span>
+          <span>Status</span>
+        </div>
+        <ul className="divide-y divide-neutral-100">
+          {requests.map((request) => (
+            <li key={request.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(request.id)}
+                className="grid w-full grid-cols-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:h-14 md:grid-cols-[minmax(0,1fr)_180px] md:py-0"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-ink-800">
+                    {formatPatientName(request.source_patient) || "Patient"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-600">
+                    {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
+                  </span>
+                </span>
+                <span className="shrink-0">
+                  <PlainStatusStamp
+                    label={
+                      MONITORING_STATUS_LABELS[request.status] ||
+                      String(request.status || "Unknown").replaceAll("_", " ")
+                    }
+                    tone={monitoringStatusTone(request.status)}
+                  />
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -516,9 +609,9 @@ function PatientDirectory({
                   : role === "rhu"
                     ? (
                       <>
-                        Register walk-in patients from{" "}
+                        Register patients from{" "}
                         <Link to="/rhu/walk-in-check-in" className="font-medium text-ink-700 underline">
-                          Walk-in Check-in
+                          Visit Check-in
                         </Link>
                         .
                       </>

@@ -177,6 +177,37 @@ class TbCaseRegistrationTest extends TestCase
         $this->assertDatabaseCount('tb_treatment_cases', 0);
     }
 
+    public function test_no_decision_ds_tb_consultation_is_eligible_for_delayed_registration(): void
+    {
+        $source = $this->newSource(['diagnoses' => [$this->diagnosis([
+            'treatmentDecision' => '',
+            'dispositionReason' => '',
+            'dispositionPlan' => '',
+            'openTreatmentCard' => false,
+        ])]]);
+        $this->actingAs($this->doctor, 'sanctum')->getJson($this->url($source))
+            ->assertOk()
+            ->assertJsonPath('data.eligible', true)
+            ->assertJsonPath('data.can_register', true);
+        $caseId = $this->submit($this->payload($source), source: $source)->assertCreated()->json('data.id');
+        $this->assertDatabaseHas('tb_treatment_cases', ['id' => $caseId, 'source_health_record_id' => $source->id]);
+    }
+
+    public function test_legacy_initiate_decision_is_not_eligible_for_delayed_registration(): void
+    {
+        $source = $this->newSource(['diagnoses' => [$this->diagnosis([
+            'treatmentDecision' => 'initiate_at_rhu',
+            'dispositionReason' => '',
+            'dispositionPlan' => '',
+            'openTreatmentCard' => true,
+        ])]]);
+        $this->actingAs($this->doctor, 'sanctum')->getJson($this->url($source))
+            ->assertOk()
+            ->assertJsonPath('data.eligible', false);
+        $this->submit($this->payload($source), source: $source)->assertUnprocessable();
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
+    }
+
     public function test_forged_clinical_ownership_outcome_and_dots_fields_are_rejected(): void
     {
         $base = $this->payload();

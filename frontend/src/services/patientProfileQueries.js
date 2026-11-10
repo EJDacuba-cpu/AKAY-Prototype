@@ -1,4 +1,5 @@
 import { getPatientFollowUpTasks } from "./followUpTaskService";
+import { getCareOverview } from "./careOverviewService";
 import {
   getPatientById,
   getPatientDetailsListByRole,
@@ -19,6 +20,13 @@ export function getBhcPatientProfileQueries(patientId, { canViewHistory = false 
   const historyEnabled = Boolean(patientId) && canViewHistory;
 
   return {
+    careOverview: {
+      queryKey: queryKeys.careOverview(patientId),
+      queryFn: () => getCareOverview(patientId),
+      enabled: historyEnabled,
+      staleTime: 0,
+      retry: false,
+    },
     patient: {
       queryKey: queryKeys.patientDetails("bhc", patientId),
       queryFn: () => getPatientById(patientId),
@@ -57,6 +65,13 @@ export function getRhuPatientProfileQueries(patientId, { canViewHistory = false 
   const historyEnabled = Boolean(patientId) && canViewHistory;
 
   return {
+    careOverview: {
+      queryKey: queryKeys.careOverview(patientId),
+      queryFn: () => getCareOverview(patientId),
+      enabled: historyEnabled,
+      staleTime: 0,
+      retry: false,
+    },
     patient: {
       queryKey: queryKeys.patientDetails("rhu", patientId),
       queryFn: () => getPatientById(patientId),

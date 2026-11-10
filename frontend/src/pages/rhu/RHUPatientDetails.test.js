@@ -18,7 +18,7 @@ function tabBlock(text) {
 test("RHU patient details Overview uses the BHC anatomy workspace", () => {
   assert.match(source, /patient-overview\.css/);
   assert.match(source, /anatomyWorkspace/);
-  assert.match(source, /PatientHistoryReference/);
+  assert.doesNotMatch(source, /PatientHistoryReference/);
   assert.match(source, /vitals=\{<VitalsTiles/);
   assert.doesNotMatch(source, /left=\{<VitalsTiles/);
   assert.match(source, /ProfileQueueAction/);

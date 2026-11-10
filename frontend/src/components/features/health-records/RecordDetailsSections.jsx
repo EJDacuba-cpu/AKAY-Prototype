@@ -113,6 +113,13 @@ export function HealthConcernsAndCareOutcomes({
           { label: "Care outcome", value: item.outcome },
           { label: "Reporting", value: item.reporting },
         ]} />
+        {item.higherLevelReferralPlan && <div className={print ? "space-y-2" : "space-y-3"}>
+          <h3 className={styles.heading}>Higher-Level Referral Plan</h3>
+          <p className={styles.muted}>Documented plan only; no referral issued.</p>
+          <FullWidthFact label="Referral Reason" value={item.higherLevelReferralPlan.reason} print={print} />
+          <FullWidthFact label="Intended Facility" value={item.higherLevelReferralPlan.intendedFacility} print={print} />
+          <FullWidthFact label="Clinical Plan" value={item.higherLevelReferralPlan.clinicalPlan} print={print} />
+        </div>}
         {item.referral && <div className={print ? "space-y-2" : "space-y-3"}>
           <h3 className={styles.heading}>Referral</h3>
           <ReferralFacts referral={item.referral} print={print} />

@@ -73,6 +73,64 @@ class LaboratoryEvidenceService
         LaboratoryAttachment::query()->where('patient_id', $record->patient_id)
             ->where('consultation_uuid', $record->consultation_uuid)->whereNull('health_record_id')
             ->whereNull('removed_at')->update(['removed_at' => now()]);
+
+        $this->remapDiagnosisLaboratoryReferences($record);
+    }
+
+    /**
+     * Persist durable record:id links for diagnosis clinical associations.
+     * Does not create BHC sharing rows or mutate laboratory source data.
+     *
+     * @return void
+     */
+    public function remapDiagnosisLaboratoryReferences(HealthRecord $record): void
+    {
+        $diagnoses = is_array($record->diagnoses) ? $record->diagnoses : [];
+        if ($diagnoses === []) {
+            return;
+        }
+
+        $clientToId = LaboratoryTest::query()
+            ->where('health_record_id', $record->id)
+            ->pluck('id', 'client_id');
+        $changed = false;
+
+        foreach ($diagnoses as $index => $entry) {
+            if (! is_array($entry) || ! is_array($entry['supportingLaboratoryTests'] ?? null)) {
+                continue;
+            }
+            $seen = [];
+            $mapped = [];
+            foreach ($entry['supportingLaboratoryTests'] as $selection) {
+                if (! is_array($selection)) {
+                    continue;
+                }
+                $reference = trim((string) ($selection['reference'] ?? ''));
+                if (str_starts_with($reference, 'current:')) {
+                    $clientId = strtolower(substr($reference, 8));
+                    $testId = $clientToId[$clientId] ?? null;
+                    if ($testId === null) {
+                        continue;
+                    }
+                    $reference = 'record:'.$testId;
+                } elseif (! preg_match('/^record:\d+$/', $reference)) {
+                    continue;
+                }
+                if (isset($seen[$reference])) {
+                    continue;
+                }
+                $seen[$reference] = true;
+                $mapped[] = ['reference' => $reference];
+            }
+            if (($entry['supportingLaboratoryTests'] ?? null) !== $mapped) {
+                $changed = true;
+            }
+            $diagnoses[$index]['supportingLaboratoryTests'] = $mapped;
+        }
+
+        if ($changed) {
+            $record->forceFill(['diagnoses' => array_values($diagnoses)])->save();
+        }
     }
 
     public function present(HealthRecord $record): array

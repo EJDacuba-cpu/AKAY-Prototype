@@ -51,12 +51,21 @@ test("an explicit DS-TB registration opens Form 4B and requires a case number", 
     tbManagement: {
       diagnosisType: "tb_disease",
       drugResistance: "drug_susceptible",
-      treatmentDecision: "initiate_at_rhu",
       openTreatmentCard: true,
     },
   };
   assert.equal(shouldOpenDsTbTreatmentCard(entry), true);
   assert.equal(tbCaseNumberRequired([entry]), true);
+  const legacy = {
+    name: "Tuberculosis",
+    tbManagement: {
+      diagnosisType: "tb_disease",
+      drugResistance: "drug_susceptible",
+      treatmentDecision: "initiate_at_rhu",
+      openTreatmentCard: false,
+    },
+  };
+  assert.equal(shouldOpenDsTbTreatmentCard(legacy), true);
 });
 
 test("DR-TB, pending DST, and TB infection never open DS-TB Form 4B", () => {
@@ -75,6 +84,18 @@ test("DR-TB, pending DST, and TB infection never open DS-TB Form 4B", () => {
   assert.equal(canOpenDsTbTreatmentCard(infection), false);
   assert.equal(shouldOpenDsTbTreatmentCard(infection), false);
   assert.equal(tbCaseNumberRequired([infection]), false);
+});
+
+test("presumptive TB never opens DS-TB Form 4B or requires resistance", () => {
+  const entry = {
+    id: "tb",
+    name: "TB",
+    tbManagement: { diagnosisType: "presumptive_tb", drugResistance: "drug_susceptible", openTreatmentCard: true },
+  };
+  assert.equal(canOpenDsTbTreatmentCard(entry), false);
+  assert.equal(shouldOpenDsTbTreatmentCard(entry), false);
+  assert.equal(tbCaseNumberRequired([entry]), false);
+  assert.deepEqual(rhuTbAssessmentErrors([entry], { registry: REGISTRY, canConfirmTb: true }), {});
 });
 
 test("primary susceptibility choices derive from stored classification values", () => {
@@ -149,13 +170,13 @@ test("TB finalization reports physician authority and missing resistance before 
   assert.deepEqual(rhuTbAssessmentErrors([{ ...entry, name: "Asthma" }], { registry: REGISTRY, canConfirmTb: false }), {});
 });
 
-test("DS-TB finalization requires a treatment decision and deferred disposition", () => {
+test("DS-TB finalization does not require a treatment decision or legacy deferred disposition", () => {
   const ds = {
     id: "tb",
     name: "PTB",
     tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" },
   };
-  assert.ok(rhuTbAssessmentErrors([ds], { registry: REGISTRY, canConfirmTb: true })["diagnoses.tb.tbManagement.treatmentDecision"]);
+  assert.deepEqual(rhuTbAssessmentErrors([ds], { registry: REGISTRY, canConfirmTb: true }), {});
   const deferred = {
     ...ds,
     tbManagement: {
@@ -166,8 +187,7 @@ test("DS-TB finalization requires a treatment decision and deferred disposition"
     },
   };
   const errors = rhuTbAssessmentErrors([deferred], { registry: REGISTRY, canConfirmTb: true });
-  assert.ok(errors["diagnoses.tb.tbManagement.dispositionReason"]);
-  assert.ok(errors["diagnoses.tb.tbManagement.dispositionPlan"]);
+  assert.deepEqual(errors, {});
 });
 
 test("qualified TB diagnoses require physician review without matching unrelated substrings", () => {

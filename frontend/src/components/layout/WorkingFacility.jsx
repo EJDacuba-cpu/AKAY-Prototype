@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { getStoredAuthUser, selectWorkingFacility } from "../../services/apiClient";
+import { canShowWorkingFacilitySelector } from "../../utils/workingFacilityAccess";
 
 export default function WorkingFacility() {
   const user = getStoredAuthUser();
@@ -9,7 +10,7 @@ export default function WorkingFacility() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const choices = user?.authorized_facilities || [];
-  if (user?.role === "admin" || !choices.length) return null;
+  if (!canShowWorkingFacilitySelector(user)) return null;
   // Switching is deliberately unavailable anywhere an active form can be edited.
   const editing = /consultation|add|edit|create|register|new|profile/.test(location.pathname);
   const required = !user.working_facility_key && choices.length > 1;

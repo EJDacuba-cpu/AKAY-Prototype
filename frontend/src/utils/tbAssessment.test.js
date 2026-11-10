@@ -37,6 +37,20 @@ test("switching to infection clears resistance and registration in actual state"
   assert.equal(disease.tbManagement.drugResistance, "drug_susceptible");
 });
 
+test("presumptive TB clears drug susceptibility and never opens Form 4B", () => {
+  const disease = { ...entry, tbManagement: { ...assessment, treatmentDecision: "initiate_at_rhu", dispositionReason: "", dispositionPlan: "", openTreatmentCard: true } };
+  const presumptive = tbManagementFor(disease, { diagnosisType: "presumptive_tb" });
+  assert.deepEqual(presumptive.tbManagement, {
+    diagnosisType: "presumptive_tb",
+    drugResistance: "",
+    treatmentDecision: "",
+    dispositionReason: "",
+    dispositionPlan: "",
+    openTreatmentCard: false,
+  });
+  assert.equal(diagnosesForRhuSave([presumptive])[0].tbManagement.openTreatmentCard, false);
+});
+
 test("restoring a stale infection draft clears hidden clinical state", () => {
   const stale = { ...entry, tbManagement: { diagnosisType: "tb_infection", drugResistance: "rr_tb", openTreatmentCard: true, treatmentDecision: "initiate_at_rhu" } };
   const expected = {
@@ -65,11 +79,14 @@ test("legacy aliases normalize without introducing TB metadata on unrelated entr
   assert.equal(Object.hasOwn(normalizeDiagnoses([{ id: "other", name: "Asthma" }])[0], "tbManagement"), false);
 });
 
-test("consultation save preserves initiate decision and clears orphan open-card flags", () => {
-  const orphan = { ...entry, tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true } };
-  assert.equal(diagnosesForRhuSave([orphan])[0].tbManagement.openTreatmentCard, false);
-  assert.equal(restoreRhuDiagnoses({ diagnoses: [orphan] })[0].tbManagement.openTreatmentCard, false);
-  const initiate = {
+test("standalone openTreatmentCard is explicit registration intent without treatmentDecision", () => {
+  const intent = { ...entry, tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true } };
+  assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.openTreatmentCard, true);
+  assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.treatmentDecision, "");
+  assert.equal(restoreRhuDiagnoses({ diagnoses: [intent] })[0].tbManagement.openTreatmentCard, true);
+  const toggled = tbManagementFor(intent, { openTreatmentCard: false });
+  assert.equal(toggled.tbManagement.openTreatmentCard, false);
+  const legacy = {
     ...entry,
     tbManagement: {
       diagnosisType: "tb_disease",
@@ -77,11 +94,11 @@ test("consultation save preserves initiate decision and clears orphan open-card 
       treatmentDecision: "initiate_at_rhu",
       dispositionReason: "",
       dispositionPlan: "",
-      openTreatmentCard: true,
+      openTreatmentCard: false,
     },
   };
-  assert.equal(diagnosesForRhuSave([initiate])[0].tbManagement.openTreatmentCard, true);
-  assert.equal(diagnosesForRhuSave([initiate])[0].tbManagement.treatmentDecision, "initiate_at_rhu");
+  assert.equal(tbManagementFields(legacy).openTreatmentCard, true);
+  assert.equal(diagnosesForRhuSave([legacy])[0].tbManagement.openTreatmentCard, true);
 });
 
 test("TB assessment requires a physician at the current RHU with confirmation permission", () => {

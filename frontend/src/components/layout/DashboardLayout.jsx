@@ -17,10 +17,10 @@ import { FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
 import { prepareDraftLogout, draftLogoutDescription, hasActiveFormDraft } from "../../services/formDraftSession";
 import {
-  formatDisplayValue,
   formatFacilityName,
   formatUserName,
 } from "../../utils/formatters";
+import { sidebarAccountSubtitle } from "../../utils/sidebarAccountRole";
 import { useNotifications } from "../../hooks/useNotificationsContext";
 import {
   ConfirmationModal,
@@ -39,7 +39,6 @@ import {
   DesktopSidebar,
   MobileSidebarDrawer,
   menuByRole,
-  roleLabel,
 } from "./sidebar";
 
 let sidebarExpandedMemory = false;
@@ -98,11 +97,7 @@ export default function DashboardLayout({
   const displayUser = {
     ...user,
     name: formatUserName(user, "AKAY User"),
-    position: formatDisplayValue(
-      user.position || roleLabel[role] || user.role,
-      "Personnel",
-    ),
-    roleLabel: roleLabel[role] || formatDisplayValue(user.role, "Personnel"),
+    roleLabel: sidebarAccountSubtitle(user),
     facility: formatFacilityName(
       user.facility_name ||
         user.facilityName ||

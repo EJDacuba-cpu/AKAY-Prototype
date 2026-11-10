@@ -29,6 +29,10 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
     engine?.setRestoreHandler(onRestore);
     if (engine && engine === preparedEngine && restoredEntry.current !== engine) {
       restoredEntry.current = engine;
+      if (engine.registrationEntryFresh) {
+        onEntryConsumed?.();
+        return;
+      }
       if (preferLatestRecovery) {
         try { onRestore(JSON.parse(JSON.stringify(engine.latest))); onEntryConsumed?.(); }
         catch (error) { engine.patch({ ready: false, decision: true, busy: false, status: "error", error: `Unable to restore registration. Your draft is still saved. Retry. ${error.message || ""}` }); }

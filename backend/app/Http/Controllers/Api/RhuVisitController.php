@@ -58,11 +58,19 @@ class RhuVisitController extends Controller
         return response()->json(['data' => $this->presentCheckInPatients($results)]);
     }
 
-    /** Pending referrals for Walk-in Check-in. Does not change status or enqueue a visit. */
+    /** Pending referrals for Visit Check-in. Does not change status or enqueue a visit. */
     public function pendingReferrals(Request $request, int $patient)
     {
         return response()->json([
             'data' => $this->visits->pendingReferralsForCheckIn($request->user(), $patient),
+        ]);
+    }
+
+    /** Pending RHU follow-ups for Visit Check-in. Desk metadata only; no task writes. */
+    public function pendingFollowUps(Request $request, int $patient)
+    {
+        return response()->json([
+            'data' => $this->visits->pendingFollowUpsForCheckIn($request->user(), $patient),
         ]);
     }
 

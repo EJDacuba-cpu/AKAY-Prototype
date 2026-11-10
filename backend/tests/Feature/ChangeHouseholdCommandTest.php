@@ -53,7 +53,7 @@ class ChangeHouseholdCommandTest extends TestCase
         [$one, $two] = [$this->newHead('First road'), $this->newHead('Second road')];
         $member = $this->join($one, 'Daughter', ['first_name' => 'Ana', 'occupation' => 'Nurse']);
         Patient::whereKey($member['id'])->update(['medical_background' => ['allergies' => ['penicillin']]]);
-        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Niece'))->assertOk();
+        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Daughter'))->assertOk();
         $fresh = Patient::find($member['id']);
         $this->assertSame('Ana', $fresh->first_name);
         $this->assertSame('Nurse', $fresh->occupation);
@@ -62,7 +62,7 @@ class ChangeHouseholdCommandTest extends TestCase
         $this->assertSame((int) $two['household_id'], $fresh->household_id);
         $this->assertSame('Second road', $fresh->street_address);
         $this->assertSame(Household::find($two['household_id'])->serial_number, $fresh->family_serial_number);
-        $this->assertSame('Niece', $fresh->relationship_to_household_head);
+        $this->assertSame('Daughter', $fresh->relationship_to_household_head);
     }
 
     public function test_another_facility_or_stale_version_or_bad_label_changes_nothing(): void
@@ -74,8 +74,8 @@ class ChangeHouseholdCommandTest extends TestCase
         $this->actAs(['patients.register', 'families.view', 'families.manage'], $other);
         $foreignHead = $this->newHead('Foreign road');
         $this->actAs();
-        $this->patchJson('/api/patients/'.$member['id'], $this->command($foreignHead['household_id'], 'Niece'))->assertNotFound();
-        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Niece', ['version' => 99]))->assertConflict();
+        $this->patchJson('/api/patients/'.$member['id'], $this->command($foreignHead['household_id'], 'Daughter'))->assertNotFound();
+        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Daughter', ['version' => 99]))->assertConflict();
         $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Son / Daughter'))->assertUnprocessable()->assertJsonValidationErrors('household.relationship');
         $this->assertSame((int) $one['household_id'], Patient::find($member['id'])->household_id);
     }
@@ -85,7 +85,7 @@ class ChangeHouseholdCommandTest extends TestCase
         $this->actAs();
         [$one, $two] = [$this->newHead('First road'), $this->newHead('Second road')];
         $this->join($one, 'Wife');
-        $this->patchJson('/api/patients/'.$one['id'], $this->command($two['household_id'], 'Brother'))->assertUnprocessable()->assertJsonValidationErrors('head_replacement');
+        $this->patchJson('/api/patients/'.$one['id'], $this->command($two['household_id'], 'Son'))->assertUnprocessable()->assertJsonValidationErrors('head_replacement');
         $this->assertSame((int) $one['household_id'], Patient::find($one['id'])->household_id);
         $this->assertSame($one['id'], Household::find($one['household_id'])->head_patient_id);
     }
@@ -96,7 +96,7 @@ class ChangeHouseholdCommandTest extends TestCase
         [$one, $two] = [$this->newHead('First road'), $this->newHead('Second road')];
         $member = $this->join($one, 'Daughter');
         $this->actAs(['families.view', 'families.manage']);
-        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Niece'))->assertForbidden();
+        $this->patchJson('/api/patients/'.$member['id'], $this->command($two['household_id'], 'Daughter'))->assertForbidden();
         $this->assertSame((int) $one['household_id'], Patient::find($member['id'])->household_id);
     }
 
@@ -110,7 +110,7 @@ class ChangeHouseholdCommandTest extends TestCase
         PatientRelationship::create(['barangay_health_center_id' => $this->bhc->id, 'patient_id' => min($child['id'], $mother['id']), 'relative_id' => max($child['id'], $mother['id']), 'type' => 'sibling']);
         $version = $this->getJson('/api/bhc/households/'.$one['household_id'])->json('data.version');
 
-        $this->patchJson('/api/patients/'.$child['id'], $this->command($two['household_id'], 'Niece'))->assertOk();
+        $this->patchJson('/api/patients/'.$child['id'], $this->command($two['household_id'], 'Daughter'))->assertOk();
 
         $fresh = Patient::find($child['id']);
         $this->assertSame($mother['id'], $fresh->mother_patient_id);
@@ -120,7 +120,7 @@ class ChangeHouseholdCommandTest extends TestCase
         $this->assertSame('Wife Test', $fresh->mother_name);
         $this->assertSame('Bulakan', $fresh->birth_place);
         $this->assertSame('2021-03-04', $fresh->birthdate->toDateString());
-        $this->assertSame('Niece', $fresh->relationship_to_household_head);
+        $this->assertSame('Daughter', $fresh->relationship_to_household_head);
         $this->assertSame(1, PatientRelationship::count());
         $this->assertGreaterThan($version, $this->getJson('/api/bhc/households/'.$one['household_id'])->json('data.version'));
         $this->assertSame(1, AuditLog::where('action', 'membership_departed')->count());

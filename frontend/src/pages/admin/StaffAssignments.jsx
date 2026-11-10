@@ -2,14 +2,14 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import "./staff-assignments.css";
-import { ArrowLeft, Plus } from "lucide-react";
-import { PageStateWrapper, SearchField, SearchFilterCluster, TablePagination } from "../../components/common";
+import { ArrowLeft, Eye, MoreHorizontal, Plus } from "lucide-react";
+import { ConfirmationModal, ModalShell, ModalButton, PageStateWrapper, SearchField, SearchFilterCluster, TablePagination } from "../../components/common";
 import ListFilterPopover from "../../components/common/filters/ListFilterPopover";
 import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/select";
 import { Card } from "../../components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { DatePickerField } from "../../components/common/forms/DatePickerField";
 import PermissionReviewDialog from "../../components/features/access/PermissionReviewDialog";
 import { ASSIGNMENT_CONFIRMATION } from "../../components/features/access/PermissionReviewSummary";
@@ -23,6 +23,7 @@ import { fixedTableVars, tableBodyHeight } from "../../utils/tablePaging";
 const DEFAULT_FILTERS = { search: "", status: "all" };
 const FIELD_CLASS = "h-9 rounded-lg border-neutral-200 text-[13px] text-ink-800 shadow-none";
 const LABEL_CLASS = "mb-1.5 block text-[11px] font-semibold text-neutral-700";
+const STATUS_FILTERS = [{ value: "all", label: "All statuses" }, "Active", "Scheduled", "Expired", "Ended"];
 const DUTY_GROUPS = PERMISSION_GROUPS.map((group) => ({
   ...group,
   permissions: NURSE_ASSIGNMENT_DUTIES.filter((key) => PERMISSION_CATALOG[key]?.group === group.key),
@@ -33,10 +34,20 @@ function initialForm(userId = "") {
 }
 
 function assignmentState(row, today) {
-  if (row.revoked_at) return "Revoked";
+  if (row.revoked_at) return "Ended";
   if (row.starts_on?.slice(0, 10) > today) return "Scheduled";
   if (row.ends_on && row.ends_on.slice(0, 10) < today) return "Expired";
   return "Active";
+}
+
+function assignmentPeriodLabel(row) {
+  const start = row.starts_on?.slice(0, 10) || "Not recorded";
+  const end = row.ends_on?.slice(0, 10) || "Until ended";
+  return `${start} → ${end}`;
+}
+
+function dutyLabels(permissions = []) {
+  return permissions.map((key) => PERMISSION_CATALOG[key]?.label || key);
 }
 
 function fieldErrors(error) {
@@ -61,6 +72,8 @@ export default function StaffAssignments({ mode = "directory" }) {
   const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [detailsRow, setDetailsRow] = useState(null);
+  const [endingRow, setEndingRow] = useState(null);
   const [form, setForm] = useState(() => initialForm(params.get("userId") || ""));
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
@@ -156,14 +169,16 @@ export default function StaffAssignments({ mode = "directory" }) {
     } finally { setBusy(false); }
   }
 
-  async function revoke(row) {
-    if (busy) return;
+  async function endAssignment() {
+    if (busy || !endingRow) return;
     setBusy(true);
     try {
-      await apiRequest(`/staff-assignments/${row.id}/revoke`, { method: "POST" });
-      notify.success("Assignment revoked.");
-      try { await load(); } catch { notify.error("Assignment revoked, but the list could not refresh. Reload this page."); }
-    } catch (error) { notify.error(error.message || "The assignment could not be revoked. Try again."); }
+      await apiRequest(`/staff-assignments/${endingRow.id}/revoke`, { method: "POST" });
+      notify.success("Assignment ended.");
+      setEndingRow(null);
+      setDetailsRow(null);
+      try { await load(); } catch { notify.error("Assignment ended, but the list could not refresh. Reload this page."); }
+    } catch (error) { notify.error(error.message || "The assignment could not be ended. Try again."); }
     finally { setBusy(false); }
   }
 
@@ -205,7 +220,7 @@ export default function StaffAssignments({ mode = "directory" }) {
                     <div className="border-t border-neutral-200 pt-4">
                       <h3 className="mb-3 text-[13px] font-semibold">Assignment period</h3>
                       <div className="space-y-3">
-                        <div><label htmlFor={`${id}-assignment_type`} className={LABEL_CLASS}>Assignment type</label><Select {...inputProps("assignment_type")}><option value="temporary">Temporary · end date required</option><option value="ongoing">Ongoing · until revoked</option></Select><FieldError id={id} field="assignment_type" message={errors.assignment_type} /></div>
+                        <div><label htmlFor={`${id}-assignment_type`} className={LABEL_CLASS}>Assignment type</label><Select {...inputProps("assignment_type")}><option value="temporary">Temporary · end date required</option><option value="ongoing">Ongoing · until ended</option></Select><FieldError id={id} field="assignment_type" message={errors.assignment_type} /></div>
                         <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                           <div className="min-w-0">
                             <DatePickerField
@@ -233,16 +248,37 @@ export default function StaffAssignments({ mode = "directory" }) {
                             </div>
                           )}
                         </div>
-                        {form.assignment_type === "ongoing" && <p className="text-[12px] leading-5 text-neutral-600">Access continues from the start date until this assignment is revoked.</p>}
+                        {form.assignment_type === "ongoing" && <p className="text-[12px] leading-5 text-neutral-600">Access continues from the start date until this assignment is ended.</p>}
                       </div>
                     </div>
                   </div>
-                  <fieldset className="min-w-0" aria-describedby={errors.permissions ? `${id}-permissions-error` : undefined}>
+                  <fieldset className="min-w-0" aria-describedby={errors.permissions ? `${id}-permissions-error` : `${id}-permissions-hint`}>
                     <legend className="text-[13px] font-semibold">Permitted duties</legend>
-                    <p className="mt-1 text-[12px] leading-5 text-neutral-600">Choose only the duties this nurse needs at the destination BHC.</p>
-                    <Button type="button" variant="secondary" size="compact" className="my-3" onClick={() => changeField("permissions", suggestedNurseDuties())}>Use suggested clinical duties</Button>
+                    <p id={`${id}-permissions-hint`} className="mt-1 text-[12px] leading-5 text-neutral-600">Tick only the BHC actions this nurse needs. Stock management, RHU intake, and clinical authorization stay off this list.</p>
+                    <div className="my-3 space-y-1.5">
+                      <Button type="button" variant="secondary" size="compact" onClick={() => changeField("permissions", suggestedNurseDuties())}>Apply common BHC clinical set</Button>
+                      <p className="text-[11px] leading-4 text-neutral-600">Selects registration, encoding, health records view, and household view. Finalize, corrections, referrals, dispensing, and other elevated duties stay unchecked.</p>
+                    </div>
                     <div id={`${id}-permissions`} tabIndex={-1} className="staff-assignment-duty-grid grid gap-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 sm:grid-cols-2">
-                      {DUTY_GROUPS.map((group) => <div key={group.key}><h4 className="mb-2 text-[11px] font-semibold text-neutral-600">{group.label}</h4><div className="space-y-2">{group.permissions.map((key) => <label key={key} className="flex cursor-pointer items-start gap-2 text-[12px] leading-5 text-ink-800"><input type="checkbox" checked={form.permissions.includes(key)} onChange={(event) => changeField("permissions", setPermission(form.permissions, key, event.target.checked))} className="mt-1 size-3.5 shrink-0 accent-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50" /><span title={PERMISSION_CATALOG[key]?.note}>{PERMISSION_CATALOG[key]?.label || key}</span></label>)}</div></div>)}
+                      {DUTY_GROUPS.map((group) => (
+                        <div key={group.key}>
+                          <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-600">{group.label}</h4>
+                          <div className="space-y-2.5">
+                            {group.permissions.map((key) => {
+                              const duty = PERMISSION_CATALOG[key];
+                              return (
+                                <label key={key} className="flex cursor-pointer items-start gap-2 text-[12px] leading-5 text-ink-800">
+                                  <input type="checkbox" checked={form.permissions.includes(key)} onChange={(event) => changeField("permissions", setPermission(form.permissions, key, event.target.checked))} className="mt-1 size-3.5 shrink-0 accent-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50" />
+                                  <span className="min-w-0">
+                                    <span className="block font-medium text-ink-800">{duty?.label || key}</span>
+                                    {duty?.note && <span className="mt-0.5 block text-[11px] leading-4 text-neutral-600">{duty.note}</span>}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <FieldError id={id} field="permissions" message={errors.permissions} />
                   </fieldset>
@@ -258,14 +294,14 @@ export default function StaffAssignments({ mode = "directory" }) {
           {!creating && <>
           <div className="staff-assignment-list-toolbar flex flex-wrap items-center justify-between gap-3">
             <p className="text-[12px] tabular-nums text-neutral-600" aria-live="polite">{narrowed ? `${visibleRows.length} of ${rows.length}` : rows.length} {rows.length === 1 ? "assignment" : "assignments"}</p>
-            <SearchFilterCluster search={<SearchField value={filters.search} onChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search nurse or BHC" label="Search nurse, BHC, or assignment type" />} filter={<ListFilterPopover ariaLabel="Assignment filters" applied={filters} fields={[{ key: "status", label: "Status", resetValue: "all", options: [{ value: "all", label: "All statuses" }, "Active", "Scheduled", "Expired", "Revoked"], fullWidth: true }]} activeFilters={filters.status === "all" ? [] : [{ key: "status", label: `Status: ${filters.status}` }]} onApply={(next) => setFilters((current) => ({ ...current, ...next }))} onRemoveFilter={() => setFilters((current) => ({ ...current, status: "all" }))} onClearAll={() => setFilters((current) => ({ ...current, status: "all" }))} buildDefaults={() => ({ status: "all" })} />} />
+            <SearchFilterCluster search={<SearchField value={filters.search} onChange={(search) => setFilters((current) => ({ ...current, search }))} placeholder="Search nurse or BHC" label="Search nurse, BHC, or assignment type" />} filter={<ListFilterPopover ariaLabel="Assignment filters" applied={filters} fields={[{ key: "status", label: "Status", resetValue: "all", options: STATUS_FILTERS, fullWidth: true }]} activeFilters={filters.status === "all" ? [] : [{ key: "status", label: `Status: ${filters.status}` }]} onApply={(next) => setFilters((current) => ({ ...current, ...next }))} onRemoveFilter={() => setFilters((current) => ({ ...current, status: "all" }))} onClearAll={() => setFilters((current) => ({ ...current, status: "all" }))} buildDefaults={() => ({ status: "all" })} />} />
           </div>
 
           <div className="staff-assignment-sheet min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white">
             <div className="akay-fixed-table overflow-x-auto overflow-y-hidden" style={{ height: tableBodyHeight(), ...fixedTableVars() }}>
               {pageRows.length === 0 ? <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center"><h2 className="text-[14px] font-semibold text-ink-800">{narrowed ? "No matching assignments" : "No nurse assignments yet"}</h2><p className="max-w-md text-[13px] leading-5 text-neutral-600">{narrowed ? "Try a different search or clear the status filter." : "Assignments give RHU-based nurses additional access to a BHC for the duties you approve."}</p>{narrowed ? <Button variant="secondary" size="sm" onClick={() => setFilters(DEFAULT_FILTERS)}>Clear search and filters</Button> : !noEligibility ? <Button variant="secondary" size="sm" onClick={openForm}><Plus size={14} />Add Assignment</Button> : null}</div> : <>
-                <table className="hidden w-full min-w-[1000px] table-fixed border-separate border-spacing-0 text-left md:table"><caption className="sr-only">Nurse assignments to barangay health centers</caption><colgroup><col className="w-[23%]" /><col className="w-[23%]" /><col className="w-[24%]" /><col className="w-[12%]" /><col className="w-[10%]" /><col className="w-[8%]" /></colgroup><thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600"><tr>{["Nurse", "Destination BHC", "Assignment period", "Duties", "Status", "Actions"].map((label) => <th key={label} scope="col" className="px-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-neutral-100">{pageRows.map((row) => <tr key={row.id} className="h-14 hover:bg-neutral-50"><td className="px-3"><p className="truncate text-[13px] font-semibold text-ink-800" title={row.user?.name}>{row.user?.name || "Not recorded"}</p>{row.user?.rural_health_unit?.name && <p className="truncate text-[11px] text-neutral-600" title={row.user.rural_health_unit.name}>{row.user.rural_health_unit.name}</p>}</td><td className="px-3"><p className="truncate text-[13px] text-ink-800" title={row.barangay_health_center?.name}>{row.barangay_health_center?.name || "Not recorded"}</p></td><td className="px-3"><p className="text-[12px] tabular-nums text-ink-800">{row.starts_on?.slice(0, 10) || "Not recorded"} → {row.ends_on?.slice(0, 10) || "Until revoked"}</p><p className="mt-0.5 text-[11px] capitalize text-neutral-600">{row.assignment_type}</p></td><td className="px-3"><AssignmentDuties permissions={row.permissions} /></td><td className="px-3"><AssignmentStatus row={row} today={today} /></td><td className="px-2">{!row.revoked_at ? <Button variant="ghost" size="compact" className="rounded-full px-2 text-[12px] text-alert-700 hover:bg-alert-50 hover:text-alert-800" disabled={busy} onClick={() => revoke(row)} aria-label={`Revoke assignment for ${row.user?.name || "nurse"}`}>Revoke</Button> : <span className="text-[12px] text-neutral-600">—</span>}</td></tr>)}</tbody></table>
-                <div className="divide-y divide-neutral-100 md:hidden">{pageRows.map((row) => <article key={row.id} className="space-y-3 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-[13px] font-semibold text-ink-800">{row.user?.name || "Not recorded"}</h2><p className="mt-1 text-[12px] text-neutral-600">{row.barangay_health_center?.name || "Not recorded"}</p></div><AssignmentStatus row={row} today={today} /></div><p className="text-[12px] tabular-nums text-neutral-600">{row.starts_on?.slice(0, 10) || "Not recorded"} → {row.ends_on?.slice(0, 10) || "Until revoked"} · {row.assignment_type}</p><div className="flex items-center justify-between gap-3"><AssignmentDuties permissions={row.permissions} />{!row.revoked_at && <Button variant="secondary" size="compact" disabled={busy} onClick={() => revoke(row)}>Revoke assignment</Button>}</div></article>)}</div>
+                <table className="hidden w-full min-w-[1000px] table-fixed border-separate border-spacing-0 text-left md:table"><caption className="sr-only">Nurse assignments to barangay health centers</caption><colgroup><col className="w-[23%]" /><col className="w-[23%]" /><col className="w-[24%]" /><col className="w-[12%]" /><col className="w-[10%]" /><col className="w-[8%]" /></colgroup><thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600"><tr>{["Nurse", "Destination BHC", "Assignment period", "Duties", "Status", "Actions"].map((label) => <th key={label} scope="col" className="px-3">{label}</th>)}</tr></thead><tbody className="divide-y divide-neutral-100">{pageRows.map((row) => <tr key={row.id} className="h-14 hover:bg-neutral-50"><td className="px-3"><p className="truncate text-[13px] font-semibold text-ink-800" title={row.user?.name}>{row.user?.name || "Not recorded"}</p>{row.user?.rural_health_unit?.name && <p className="truncate text-[11px] text-neutral-600" title={row.user.rural_health_unit.name}>{row.user.rural_health_unit.name}</p>}</td><td className="px-3"><p className="truncate text-[13px] text-ink-800" title={row.barangay_health_center?.name}>{row.barangay_health_center?.name || "Not recorded"}</p></td><td className="px-3"><p className="text-[12px] tabular-nums text-ink-800">{assignmentPeriodLabel(row)}</p><p className="mt-0.5 text-[11px] capitalize text-neutral-600">{row.assignment_type}</p></td><td className="px-3"><p className="text-[12px] tabular-nums text-neutral-700">{(row.permissions || []).length} duties</p></td><td className="px-3"><AssignmentStatus row={row} today={today} /></td><td className="px-2"><AssignmentActions row={row} today={today} busy={busy} onView={() => setDetailsRow(row)} onEnd={() => setEndingRow(row)} /></td></tr>)}</tbody></table>
+                <div className="divide-y divide-neutral-100 md:hidden">{pageRows.map((row) => <article key={row.id} className="space-y-3 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="truncate text-[13px] font-semibold text-ink-800">{row.user?.name || "Not recorded"}</h2><p className="mt-1 text-[12px] text-neutral-600">{row.barangay_health_center?.name || "Not recorded"}</p></div><div className="flex shrink-0 items-center gap-2"><AssignmentStatus row={row} today={today} /><AssignmentActions row={row} today={today} busy={busy} onView={() => setDetailsRow(row)} onEnd={() => setEndingRow(row)} /></div></div><p className="text-[12px] tabular-nums text-neutral-600">{assignmentPeriodLabel(row)} · {row.assignment_type}</p><p className="text-[12px] text-neutral-600">{(row.permissions || []).length} duties</p></article>)}</div>
               </>}
             </div>
             <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
@@ -273,6 +309,25 @@ export default function StaffAssignments({ mode = "directory" }) {
           </>}
         </div>
         {reviewing && <PermissionReviewDialog title="Review assignment duties" review={review} confirmationLabel={ASSIGNMENT_CONFIRMATION} confirmText="Create Assignment" loading={busy} onCancel={() => !busy && setReviewing(false)} onConfirm={save} details={[["Nurse", nurse?.name || "—"], ["Destination BHC", bhc?.name || "—"], ["Assignment", form.assignment_type === "ongoing" ? `Ongoing from ${form.starts_on}` : `${form.starts_on} → ${form.ends_on}`]]} />}
+        {detailsRow && (
+          <AssignmentDetailsModal
+            row={detailsRow}
+            today={today}
+            busy={busy}
+            onClose={() => !busy && setDetailsRow(null)}
+            onEnd={() => setEndingRow(detailsRow)}
+          />
+        )}
+        <ConfirmationModal
+          open={Boolean(endingRow)}
+          title="End assignment?"
+          description={endingRow ? `End ${endingRow.user?.name || "this nurse"}'s access to ${endingRow.barangay_health_center?.name || "this BHC"}? They will no longer be able to work at that facility under this assignment.` : ""}
+          confirmText="End assignment"
+          loadingText="Ending..."
+          loading={busy}
+          onCancel={() => !busy && setEndingRow(null)}
+          onConfirm={endAssignment}
+        />
       </PageStateWrapper>
     </DashboardLayout>
   );
@@ -284,9 +339,92 @@ function FieldError({ id, field, message }) {
 
 function AssignmentStatus({ row, today }) {
   const label = assignmentState(row, today);
-  return <PlainStatusStamp label={label} tone={{ Active: "success", Scheduled: "info", Expired: "warning", Revoked: "neutral" }[label]} />;
+  return <PlainStatusStamp label={label} tone={{ Active: "success", Scheduled: "info", Expired: "warning", Ended: "neutral" }[label]} />;
 }
 
-function AssignmentDuties({ permissions = [] }) {
-  return <Popover><PopoverTrigger asChild><Button type="button" variant="ghost" size="compact" className="rounded-full px-2 text-[12px] text-neutral-700 underline decoration-neutral-300 underline-offset-4">{permissions.length} duties</Button></PopoverTrigger><PopoverContent align="start" className="w-[min(calc(100vw-1.5rem),320px)] rounded-xl p-4"><h3 className="text-[13px] font-semibold text-ink-800">Permitted duties</h3><ul className="mt-3 space-y-2 text-[12px] leading-5 text-neutral-700">{permissions.map((key) => <li key={key}>{PERMISSION_CATALOG[key]?.label || key}</li>)}</ul>{!permissions.length && <p className="mt-2 text-[12px] text-neutral-600">No duties recorded.</p>}</PopoverContent></Popover>;
+function canEndAssignment(row, today) {
+  const status = assignmentState(row, today);
+  return status === "Active" || status === "Scheduled";
+}
+
+function AssignmentActions({ row, today, busy, onView, onEnd }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" className="size-8 rounded-full" disabled={busy} aria-label={`Actions for ${row.user?.name || "assignment"}`}>
+          <MoreHorizontal size={16} aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="border-neutral-200 text-ink-800">
+        <DropdownMenuItem onSelect={onView} className="focus:bg-neutral-100 focus:text-ink-800">
+          <Eye size={15} aria-hidden="true" />View details
+        </DropdownMenuItem>
+        {canEndAssignment(row, today) && (
+          <DropdownMenuItem
+            onSelect={onEnd}
+            className="text-alert-700 focus:bg-alert-50 focus:text-alert-800"
+          >
+            End assignment
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AssignmentDetailsModal({ row, today, busy, onClose, onEnd }) {
+  const status = assignmentState(row, today);
+  const duties = dutyLabels(row.permissions);
+  const canEnd = canEndAssignment(row, today);
+
+  return (
+    <ModalShell
+      title="Assignment details"
+      subtitle="Record of this nurse's BHC assignment and permitted duties."
+      size="md"
+      onClose={onClose}
+      closeDisabled={busy}
+      dismissOnBackdrop={!busy}
+      dismissOnEscape={!busy}
+      footer={
+        <>
+          <ModalButton onClick={onClose} disabled={busy}>Close</ModalButton>
+          {canEnd && (
+            <ModalButton variant="destructive" onClick={onEnd} disabled={busy}>
+              End assignment
+            </ModalButton>
+          )}
+        </>
+      }
+    >
+      <dl className="grid gap-3 text-[13px]">
+        <DetailRow label="Nurse" value={row.user?.name || "Not recorded"} />
+        <DetailRow label="Home RHU" value={row.user?.rural_health_unit?.name || "Not recorded"} />
+        <DetailRow label="Destination BHC" value={row.barangay_health_center?.name || "Not recorded"} />
+        <DetailRow label="Assignment period" value={`${assignmentPeriodLabel(row)} · ${row.assignment_type || "Not recorded"}`} />
+        <DetailRow label="Status" value={status} />
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-neutral-600">Permitted duties</dt>
+          <dd className="mt-2">
+            {duties.length ? (
+              <ul className="space-y-1.5 text-[12px] leading-5 text-ink-800">
+                {duties.map((label) => <li key={label}>{label}</li>)}
+              </ul>
+            ) : (
+              <p className="text-[12px] text-neutral-600">No duties recorded.</p>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </ModalShell>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-neutral-600">{label}</dt>
+      <dd className="min-w-0 text-ink-800">{value}</dd>
+    </div>
+  );
 }

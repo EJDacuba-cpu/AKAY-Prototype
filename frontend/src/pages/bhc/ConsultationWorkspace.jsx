@@ -498,6 +498,7 @@ const EMPTY_VACCINE_ENTRY = {
   customVaccineName: "",
   dose: "",
   dateGiven: "",
+  timeGiven: "",
   weight: "",
   height: "",
   temperature: "",
@@ -1605,6 +1606,7 @@ export default function ConsultationWorkspace() {
             "medicineId", "inventoryQuantity", "confirmedGiven", "allocations", "override_reason", "overrideReason",
             "dose",
             "dateGiven",
+            "timeGiven",
             "weight",
             "height",
             "temperature",
@@ -2839,9 +2841,24 @@ export default function ConsultationWorkspace() {
               ...EMPTY_VACCINE_ENTRY,
               vaccineName,
               dateGiven: dateOfVisit,
+              timeGiven: "",
             },
           ]
         : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleVaccineFieldChange(vaccineName, field, value) {
+    clearValidationError("vaccineEntries");
+    setImmunizationData((prev) => {
+      const entries = getVaccineEntries(prev).map((entry) =>
+        entry.vaccineName === vaccineName ? { ...entry, [field]: value } : entry,
+      );
       return {
         ...prev,
         vaccineEntries: entries,
@@ -3117,9 +3134,6 @@ export default function ConsultationWorkspace() {
 
     queryClient.invalidateQueries({
       queryKey: queryKeys.healthRecords(userRole),
-    });
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.familyPlanningRecords(userRole),
     });
     if (userRole === "bhc") {
       queryClient.invalidateQueries({
@@ -4612,6 +4626,7 @@ export default function ConsultationWorkspace() {
   const showProgramPanel = sidePanelAllowed && activeFormStep === INTERVIEW_STEP;
   const showBodyPanel = sidePanelAllowed && activeFormStep === ASSESSMENT_STEP;
   const showSidePanel = showProgramPanel || showBodyPanel;
+  const splitLayout = inConsultationWorkspace && showSidePanel;
   // Same lock the whole form used to sit under: a review awaiting a finalizer
   // who cannot correct records is read-only.
   const programPanel = (
@@ -4633,8 +4648,13 @@ export default function ConsultationWorkspace() {
       subtitle={stepHeading.subtitle}
     />
   );
-  // The main consultation screens share a header above their clinical sheets.
-  // Other headings stay in the form; empty slots prevent duplicate titles.
+  const consultationHeading = inConsultationWorkspace && [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, REVIEW_STEP].includes(currentStepKey) ? (
+    <header className={`ehr-consult__header${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__header--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__header--care-plan" : currentStepKey === REVIEW_STEP ? " ehr-consult__header--review" : ""}`}>
+      {stepIndicator}
+    </header>
+  ) : null;
+  // Panel steps scroll their heading with the form; other main headings stay
+  // above the clinical sheets. Empty slots prevent duplicate titles.
   const stepHeadingSlot = <></>;
 
   // Read-only recap for Review & Save, built from the page's existing state.
@@ -4801,7 +4821,7 @@ export default function ConsultationWorkspace() {
 
   return (
     <DashboardLayout role={userRole} title={pageTitle}>
-      <div className={`ehr-consult${inConsultationWorkspace ? " ehr-consult--pinned" : ""}`}>
+      <div className={`ehr-consult${inConsultationWorkspace ? " ehr-consult--pinned" : ""}${splitLayout ? " ehr-consult--split" : ""}`}>
       <style>{keyframes}</style>
       <UnfinishedConsultationModal
         draft={draftDecision}
@@ -4818,19 +4838,16 @@ export default function ConsultationWorkspace() {
 
       <div className="ehr-consult__stage" inert={saving || Boolean(saveSuccess) || !recoveryCheckReady ? true : undefined}>
       <ConsultationWorkspaceBody>
-      {inConsultationWorkspace && [INTERVIEW_STEP, ASSESSMENT_STEP, NEXT_STEP, REVIEW_STEP].includes(currentStepKey) && (
-        <header className={`ehr-consult__header${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__header--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__header--care-plan" : currentStepKey === REVIEW_STEP ? " ehr-consult__header--review" : ""}`}>
-          {stepIndicator}
-        </header>
-      )}
+      {!splitLayout && consultationHeading}
       {/* Barangay Health Services (Interview step) or the Body Preview (Assessment
           step) lives in a fixed column to the right of the form.
           From 1024px this column stays put and only the form column
-          scrolls below the shared step header (see consultation-ehr.css); below that everything
+          scrolls together with its heading (see consultation-ehr.css); below that everything
           stacks and the page scrolls. Notices scroll with the form and sit
           outside the fieldset so a locked review does not disable them. */}
       <div className={`ehr-consult__grid${currentStepKey === ASSESSMENT_STEP ? " ehr-consult__grid--assessment" : currentStepKey === NEXT_STEP ? " ehr-consult__grid--care-plan" : ""}${showSidePanel ? " ehr-consult__grid--panel lg:grid lg:items-start lg:gap-4" : ""}`}>
       <div className="@container min-w-0 ehr-consult__form" data-consult-scroll>
+      {splitLayout && consultationHeading}
       {inConsultationWorkspace && ![NEXT_STEP, INTERVIEW_STEP, ASSESSMENT_STEP, REVIEW_STEP].includes(currentStepKey) && stepIndicator}
       {activeDraft?.reviewState === "review" && canFinalize && <details className="mb-4 rounded-none border border-gray-200 p-4"><summary className="cursor-pointer text-sm font-medium">Return for Correction</summary><p className="my-2 text-sm text-gray-600">Use only when the encoder must verify or complete information.</p><textarea aria-label="Correction note" className="w-full rounded-none border border-gray-300 p-3" value={correctionNote} onChange={event => setCorrectionNote(event.target.value)} /><Button type="button" disabled={!correctionNote.trim()} onClick={async () => { try { if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) return; const identity = getDraftIdentity() || activeDraft; await transitionDraft(identity.id, "return", identity.version, correctionNote.trim()); bypassLeaveGuardRef.current = true; navigate("/bhc/patients/" + selectedPatientId); } catch (error) { toast.error(error.message); } }}>Return for Correction</Button></details>}
       {activeDraft?.returnNote && <div role="status" className="mb-4 rounded-none bg-amber-50 p-4 text-sm">Return for Correction: {activeDraft.returnNote}</div>}
@@ -5077,6 +5094,7 @@ export default function ConsultationWorkspace() {
               onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
               onToggleVaccine={handleVaccineToggle}
+              onVaccineFieldChange={handleVaccineFieldChange}
               onNotesChange={setConsultationNotes}
               medicinesSlot={null}
             />

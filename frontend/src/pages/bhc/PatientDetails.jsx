@@ -12,7 +12,6 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
-import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import CarePath from "../../components/features/patients/profile/CarePath";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
@@ -68,7 +67,7 @@ function ProfileShell({ children }) {
  * Every other tab scrolls inside its own panel, so the header and tabs stay put.
  * Past Medical / Family / Personal & Social History have their own Patient
  * Background tab (read-only). Staff update them during a consultation; they
- * apply on finalize. Overview has a read-only Patient History reference.
+ * apply on finalize.
  */
 export default function PatientDetails() {
   return <LivePatientDetails />;
@@ -96,6 +95,9 @@ function LivePatientDetails() {
   const editingSectionRef = useRef(null);
 
   const profileQueries = getBhcPatientProfileQueries(patientId, { canViewHistory });
+  const careOverviewQuery = useQuery(profileQueries.careOverview);
+  // Wait for the server summary instead of reopening a closed enrollment from old records.
+  const nutritionCare = careOverviewQuery.data?.nutritionCare;
 
   const {
     data: patientData,
@@ -134,7 +136,7 @@ function LivePatientDetails() {
     String(patientOverride.id || patientOverride.patientId || "") === String(patientId);
   const patient = overrideMatchesPatient ? patientOverride : patientData || null;
   const conditions = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
-  const historyErrors = [recordsError, referralsError, followUpsError];
+  const historyErrors = [recordsError, referralsError, followUpsError, careOverviewQuery.error];
   const historyError = historyErrors.find(error => [401, 403].includes(error?.status)) || historyErrors.find(Boolean);
   const profileErrors = [patientError, canViewHistory && searchParams.get("tab") !== "records" && historyError];
   const loadError = profileErrors.find(error => [401, 403].includes(error?.status)) || profileErrors.find(Boolean) || null;
@@ -142,7 +144,8 @@ function LivePatientDetails() {
     patientFetching ||
     recordsFetching ||
     referralsFetching ||
-    followUpsFetching;
+    followUpsFetching ||
+    careOverviewQuery.isFetching;
   const patientUpdating = patientFetching && !patientLoading && Boolean(patient);
 
   const records = useMemo(
@@ -183,8 +186,12 @@ function LivePatientDetails() {
     ];
   }, [conditionalProgramAreas, records]);
   const careTracking = useMemo(
-    () => (patient ? getCareTracking(patient, records, new Date(), { conditions: conditions.conditions || [] }) : []),
-    [patient, records, conditions.conditions],
+    () => (patient ? getCareTracking(patient, records, new Date(), {
+      conditions: conditions.conditions || [],
+      nutritionCare: nutritionCare ?? { status: "Not Enrolled" },
+      followUpTasks: patientFollowUps,
+    }) : []),
+    [patient, records, conditions.conditions, nutritionCare, patientFollowUps],
   );
 
   // Patient Information (registration: demographics, contact & address,
@@ -228,6 +235,7 @@ function LivePatientDetails() {
     refetchRecords();
     refetchReferrals();
     refetchFollowUps();
+    if (canViewHistory) careOverviewQuery.refetch();
   }
 
   useEffect(() => {
@@ -380,18 +388,10 @@ function LivePatientDetails() {
     );
   }
 
-  const historyReference =
-    activeTab === "overview" && canViewHistory ? (
-      <PatientHistoryReference
-        patient={patient}
-        background={patient.medicalBackground}
-        conditions={conditions}
-      />
-    ) : null;
   // PatientBackgroundTab is keyed by patient below, so an open section edit is
   // never carried over to another patient's profile.
   const tabStrip = (
-    <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} aside={historyReference} />
+    <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
   );
   const detailsState = buildPatientRecordDetailsState(location);
   const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`, { state: detailsState });

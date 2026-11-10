@@ -189,6 +189,51 @@ class ParentGuardianWorkflowTest extends TestCase
             ->assertJsonPath('data.father_patient_id', null);
     }
 
+    public function test_infant_may_omit_mother_name_when_household_confirms_the_mother_link(): void
+    {
+        $head = $this->postJson('/api/patients', [
+            'first_name' => 'Maria', 'last_name' => 'Cruz', 'sex' => 'Female', 'birthdate' => '1990-01-01',
+            'household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => [
+                'streetAddress' => 'Main', 'purokArea' => '1', 'barangay' => 'Local', 'municipality' => 'Bulakan',
+            ]],
+        ])->assertCreated()->json('data');
+
+        $this->postJson('/api/patients', [
+            'first_name' => 'Baby', 'last_name' => 'Cruz', 'sex' => 'Female',
+            'birthdate' => now()->subMonths(2)->toDateString(), 'registration_type' => 'child',
+            'household' => [
+                'kind' => 'existing',
+                'household_id' => $head['household_id'],
+                'relationship' => 'Daughter',
+                'relationship_link' => ['type' => 'mother'],
+            ],
+        ])->assertCreated()
+            ->assertJsonPath('data.mother_patient_id', $head['id'])
+            ->assertJsonPath('data.mother_name', 'Maria Cruz');
+    }
+
+    public function test_infant_joining_as_mother_may_omit_reported_mother_name(): void
+    {
+        $head = $this->postJson('/api/patients', [
+            'first_name' => 'Head', 'last_name' => 'Cruz', 'sex' => 'Female', 'birthdate' => '1995-01-01',
+            'household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => [
+                'streetAddress' => 'Main', 'purokArea' => '1', 'barangay' => 'Local', 'municipality' => 'Bulakan',
+            ]],
+        ])->assertCreated()->json('data');
+
+        $this->postJson('/api/patients', [
+            'first_name' => 'Young', 'last_name' => 'Cruz', 'sex' => 'Female',
+            'birthdate' => now()->subMonths(6)->toDateString(),
+            'household' => [
+                'kind' => 'existing',
+                'household_id' => $head['household_id'],
+                'relationship' => 'Mother',
+            ],
+        ])->assertCreated()
+            ->assertJsonPath('data.relationship_to_household_head', 'Mother')
+            ->assertJsonPath('data.mother_name', null);
+    }
+
     public function test_clinical_staff_also_read_linked_identity_without_parent_clinical_data(): void
     {
         $this->staff->update(['permissions' => [...$this->staff->permissions, 'clinical.history']]);

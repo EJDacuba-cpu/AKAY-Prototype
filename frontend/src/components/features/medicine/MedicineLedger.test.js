@@ -54,7 +54,7 @@ test('quarantine and disposal reuse the same focused form with selected group, r
     const html = render(createElement(StockForm, { open: true, item, mode, initialGroupId: 1 }));
     assert.match(html, new RegExp(`Confirm ${label}`));
     assert.match(html, /Reason/);
-    assert.match(html, /Expiry Group/);
+    assert.match(html, /Stock Batch/);
     assert.match(html, /Stock stays recorded/);
   }
 });

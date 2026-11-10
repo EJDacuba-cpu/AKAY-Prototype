@@ -335,6 +335,30 @@ test("a confirmed TB condition appears without duplicating a records-only TB car
   assert.ok(tbCards[0].facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Active"));
 });
 
+test("presumptive TB evaluation shows Under Evaluation with only linked laboratory statuses", () => {
+  const records = [{
+    id: 11,
+    dateOfVisit: "2026-11-10",
+    diagnoses: [{
+      id: "tb",
+      name: "TB",
+      tbManagement: { diagnosisType: "presumptive_tb" },
+      supportingLaboratoryTests: [{ reference: "record:9" }],
+    }],
+    laboratoryTests: [
+      { recordId: 9, testName: "Xpert MTB/RIF", resultStatus: "Awaiting Result" },
+      { recordId: 10, testName: "CBC", resultStatus: "Result Available", result: "Normal" },
+    ],
+  }];
+  const tb = entry(getCareTracking(woman(), records, new Date("2026-11-10"), {
+    conditions: [{ id: 3, conditionName: "Tuberculosis", conditionIdentity: "tuberculosis", status: "under_evaluation" }],
+  }), "tb");
+  assert.equal(tb.status, "Under Evaluation");
+  assert.ok(tb.facts.some((fact) => fact.label === "Supporting labs" && String(fact.value).includes("Xpert MTB/RIF") && String(fact.value).includes("Awaiting Result")));
+  assert.ok(!tb.facts.some((fact) => String(fact.value || "").includes("CBC")));
+  assert.ok(!tb.facts.some((fact) => fact.label === "Case No."));
+});
+
 test("stopped monitoring and resolved conditions keep history without looking active", () => {
   const entries = getCareTracking(woman(), [
     { id: 1, dateOfVisit: "2026-08-01", systolicBp: "150", diastolicBp: "95" },

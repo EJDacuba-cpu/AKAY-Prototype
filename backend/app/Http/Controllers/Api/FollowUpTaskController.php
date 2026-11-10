@@ -21,22 +21,16 @@ class FollowUpTaskController extends Controller
     public function index(Request $request)
     {
         abort_unless($request->user()->isBhc() || $request->user()->isRhu() || $request->user()->isAdmin(), 403);
-        
-        try {
-            $data = $request->validate([
-                'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
-                'active' => ['nullable', 'boolean'],
-                'state' => ['nullable', Rule::in([
-                    ...FollowUpTask::ACTIVE_STATES,
-                    FollowUpTask::STATE_FULFILLED,
-                    FollowUpTask::STATE_CANCELLED,
-                ])],
-                'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $exception) {
-  
-            throw $exception;
-        }
+        $data = $request->validate([
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'active' => ['nullable', 'boolean'],
+            'state' => ['nullable', Rule::in([
+                ...FollowUpTask::ACTIVE_STATES,
+                FollowUpTask::STATE_FULFILLED,
+                FollowUpTask::STATE_CANCELLED,
+            ])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
 
         // Decision A1 - the No-Show transition and its notification used to
         // run here as a side effect of this GET request

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expiryGroups, eligibleGroups, previewFefo, allocationIntent, validateReceiptExpiry, validateManualAllocation } from './medicineExpiryGroups.js';
+import { expiryGroups, eligibleGroups, previewFefo, allocationIntent, validateReceiptExpiry, validateManualAllocation, batchIdLabel, matchingRestockBatches, groupLabel } from './medicineExpiryGroups.js';
 
 const medicine = { expiry_groups: [
   { id: 1, expiration_date: '2026-10-27', available_quantity: 50 },
@@ -117,4 +117,17 @@ test('matching FEFO allocations do not require a reason', () => {
 test('allocations that differ from FEFO still require a reason', () => {
   assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 1 }], '', now), 'Enter a reason for this stock choice.');
   assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 1 }], 'Selected later expiry', now), '');
+});
+
+test('batch labels and verified lot matches never invent silent merges', () => {
+  assert.equal(batchIdLabel({ id: 42 }), 'Batch 42');
+  assert.match(groupLabel({ id: 42, expiration_date: '2027-01-01', manufacturer_lot_number: 'LOT-A' }), /Batch 42/);
+  assert.match(groupLabel({ id: 7, is_legacy_batch: true, expiration_date: '2027-01-01' }), /Unknown \(legacy\)/);
+  const item = { expiry_groups: [
+    { id: 1, expiration_date: '2027-01-01', manufacturer_lot_number: 'LOT-A', is_legacy_batch: false, available_quantity: 5 },
+    { id: 2, expiration_date: '2027-01-01', manufacturer_lot_number: 'LOT-A', is_legacy_batch: false, available_quantity: 3 },
+    { id: 3, expiration_date: '2027-01-01', is_legacy_batch: true, available_quantity: 9 },
+  ]};
+  assert.deepEqual(matchingRestockBatches(item, { manufacturerLotNumber: 'LOT-A', expiryDate: '2027-01-01' }).map(g => g.id), [1, 2]);
+  assert.deepEqual(matchingRestockBatches(item, { manufacturerLotNumber: '', expiryDate: '2027-01-01' }), []);
 });
