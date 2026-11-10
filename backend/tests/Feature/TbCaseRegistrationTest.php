@@ -35,7 +35,7 @@ class TbCaseRegistrationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $rhu = RuralHealthUnit::create(['name' => 'Registration RHU', 'status' => 'active']);
+        $rhu = RuralHealthUnit::create(['name' => 'Registration RHU', 'address' => 'Bulakan, Bulacan', 'status' => 'active']);
         $bhc = BarangayHealthCenter::create(['name' => 'Registration BHC', 'status' => 'active', 'rural_health_unit_id' => $rhu->id]);
         $this->patient = Patient::create(['first_name' => 'Registration', 'last_name' => 'Patient', 'sex' => 'Male', 'barangay_health_center_id' => $bhc->id]);
         foreach (['doctor', 'nurse', 'bhcUser'] as $key) {
@@ -53,7 +53,13 @@ class TbCaseRegistrationTest extends TestCase
     private function diagnosis(array $assessment = []): array
     {
         return ['name' => 'Pulmonary TB', 'tbManagement' => [
-            'diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible', ...$assessment,
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'treatmentDecision' => 'not_yet_initiated',
+            'dispositionReason' => 'Awaiting confirmatory results',
+            'dispositionPlan' => 'RHU follow-up with labs',
+            'openTreatmentCard' => false,
+            ...$assessment,
         ]];
     }
 
@@ -78,6 +84,7 @@ class TbCaseRegistrationTest extends TestCase
 
         return [
             'reporting_year' => 2026, 'source_revision' => $revision, 'confirmed' => true,
+            'treatment_start_date' => '2026-11-12',
             'card_data' => [
                 'classification' => ['bacteriologicalStatus' => 'clinically_diagnosed', 'anatomicalSite' => 'pulmonary', 'registrationGroup' => 'new'],
                 'regimen' => ['description' => 'Physician-entered regimen', 'weightKg' => 55, 'rows' => [
@@ -104,6 +111,7 @@ class TbCaseRegistrationTest extends TestCase
             ->assertJsonPath('data.card_data.diagnosis.diagnosisType', 'tb_disease')
             ->assertJsonPath('data.card_data.classification.drugResistance', 'drug_susceptible')
             ->assertJsonPath('data.card_data.caseFinding.diagnosingFacility', 'Registration RHU')
+            ->assertJsonPath('data.card_data.caseFinding.provinceHuc', 'Bulacan')
             ->assertJsonPath('data.card_data.regimen.weightKg', 55)
             ->assertJsonPath('data.laboratory_tests.0.recordId', $test->id);
         $this->assertDatabaseCount('tb_treatment_cases', 0);

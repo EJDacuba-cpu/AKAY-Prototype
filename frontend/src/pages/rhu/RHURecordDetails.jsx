@@ -257,7 +257,9 @@ export default function RHURecordDetails() {
             onBack={returnToProfile}
             onPrint={handlePrint}
           />
-          {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name)) && <TbCaseRegistrationPanel key={recordId} recordId={recordId} />}
+          {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name)) && (
+            <TbCaseRegistrationPanel key={recordId} recordId={recordId} record={record} />
+          )}
           {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name) && isDrTb(entry) && tbManagementFields(entry).diagnosisType === "tb_disease") && <TbDrReferralPanel key={`dr-${recordId}`} recordId={recordId} />}
           <LaboratoryRecordPanel recordId={recordId} patientId={record.patientId || record.patient_id} />
         </div>

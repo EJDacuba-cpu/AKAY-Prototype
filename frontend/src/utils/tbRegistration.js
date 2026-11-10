@@ -11,8 +11,109 @@ const editable = {
 const doses = ["drug4fdc", "drug2fdc", "drugH", "drugR", "drugZ", "drugE"];
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 
+export const SCREENING_DATE_SOURCES = Object.freeze({
+  bhc_screening: "Documented BHC screening date",
+  referral_fallback: "Referral date used — confirm screening date",
+  rhu_visit: "RHU visit / consultation date",
+});
+
 export function withTbRegimenRows(regimen, rows) {
   return { ...regimen, rows };
+}
+
+function dateOnly(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.slice(0, 10);
+}
+
+/** Prefer documented screening date; otherwise label referral or visit fallbacks. */
+export function screeningPrefillFromVisit(visit = {}, { today = new Date() } = {}) {
+  const referral = visit?.referral || {};
+  const documented = dateOnly(
+    referral.screening_date
+    || referral.screeningDate
+    || referral.date_of_screening
+    || referral.dateOfScreening,
+  );
+  if (documented) {
+    return { dateOfScreening: documented, screeningDateSource: "bhc_screening", referralSourceLabel: referral.sending_bhc?.name || referral.sendingBhc?.name || referral.barangay_health_center?.name || "BHC referral" };
+  }
+  const referralDate = dateOnly(referral.referral_datetime || referral.referralDateTime || referral.date);
+  if (visit?.referral?.id || visit?.referral_id || referralDate) {
+    return {
+      dateOfScreening: referralDate || dateOnly(visit.consultationDate || visit.date || visit.checked_in_at || visit.checkedInAt || today.toISOString()),
+      screeningDateSource: referralDate ? "referral_fallback" : "rhu_visit",
+      referralSourceLabel: referral.sending_bhc?.name || referral.sendingBhc?.name || "BHC referral",
+    };
+  }
+  return {
+    dateOfScreening: dateOnly(visit.consultationDate || visit.date || visit.checked_in_at || visit.checkedInAt || today.toISOString()),
+    screeningDateSource: "rhu_visit",
+    referralSourceLabel: "RHU walk-in",
+  };
+}
+
+export function emptyTbCaseRegistration({ visit = {}, reportingYear = new Date().getFullYear(), createKey = createIdempotencyKey } = {}) {
+  const screening = screeningPrefillFromVisit(visit);
+  return {
+    registration_key: createKey(),
+    reporting_year: Number(reportingYear),
+    case_number: "",
+    confirmed: false,
+    screeningDateSource: screening.screeningDateSource,
+    referralSourceLabel: screening.referralSourceLabel,
+    card_data: {
+      caseFinding: {
+        ntpFacilityCode: "",
+        provinceHuc: "",
+        region: "",
+        referredBy: "",
+        screeningCategory: "",
+        dateOfScreening: screening.dateOfScreening,
+      },
+      diagnosis: { dateOfNotification: "" },
+      classification: {
+        bacteriologicalStatus: "",
+        anatomicalSite: "",
+        extrapulmonarySite: "",
+        registrationGroup: "",
+      },
+      comorbidities: {},
+      regimen: { description: "", weightKg: "", rows: [{ dateStart: "", drug4fdc: "", drug2fdc: "", drugH: "", drugR: "", drugZ: "", drugE: "", strength: "", unit: "" }] },
+      treatmentSupporter: {},
+      phases: {},
+    },
+  };
+}
+
+export function normalizeTbCaseRegistration(value, { visit = {}, createKey = createIdempotencyKey } = {}) {
+  const fallback = emptyTbCaseRegistration({ visit, createKey });
+  if (!value || typeof value !== "object") return fallback;
+  return {
+    ...fallback,
+    ...value,
+    registration_key: String(value.registration_key || fallback.registration_key),
+    reporting_year: Number(value.reporting_year || fallback.reporting_year),
+    case_number: value.case_number == null ? "" : String(value.case_number),
+    confirmed: Boolean(value.confirmed),
+    screeningDateSource: value.screeningDateSource || fallback.screeningDateSource,
+    referralSourceLabel: value.referralSourceLabel || fallback.referralSourceLabel,
+    card_data: {
+      ...fallback.card_data,
+      ...(value.card_data || {}),
+      caseFinding: { ...fallback.card_data.caseFinding, ...(value.card_data?.caseFinding || {}) },
+      diagnosis: { ...fallback.card_data.diagnosis, ...(value.card_data?.diagnosis || {}) },
+      classification: { ...fallback.card_data.classification, ...(value.card_data?.classification || {}) },
+      regimen: {
+        ...fallback.card_data.regimen,
+        ...(value.card_data?.regimen || {}),
+        rows: Array.isArray(value.card_data?.regimen?.rows) && value.card_data.regimen.rows.length
+          ? value.card_data.regimen.rows
+          : fallback.card_data.regimen.rows,
+      },
+    },
+  };
 }
 
 export function tbRegistrationPayload({ reportingYear, caseNumber, sourceRevision, confirmed, cardData }) {

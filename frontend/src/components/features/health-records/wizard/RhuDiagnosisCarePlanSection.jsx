@@ -16,15 +16,17 @@ import {
   matchingMonitorableCondition,
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
-import {
-  TB_DIAGNOSIS_TYPE_OPTIONS,
-  TB_DRUG_RESISTANCE_OPTIONS,
-} from "../TbTreatmentCardForm";
+import { TB_DIAGNOSIS_TYPE_OPTIONS } from "../TbTreatmentCardForm";
+import { TB_TREATMENT_DECISION_OPTIONS } from "../../../../utils/tbAssessment";
 import {
   canOpenDsTbTreatmentCard,
-  isDrTb,
+  DR_TB_PRIMARY,
+  DR_TB_SUBTYPE_OPTIONS,
+  drugResistanceForPrimary,
+  drugResistancePrimary,
+  isDrTbSubtype,
   isRecognizedTbDiagnosis,
-  isTbInfection,
+  TB_SUSCEPTIBILITY_PRIMARY_OPTIONS,
   tbManagementFields,
   tbManagementFor,
 } from "../../../../utils/rhuTbCaseManagement";
@@ -77,52 +79,143 @@ function DiagnosisFollowUp({ entry, schedule, errors, disabled, onFollowUpChange
   );
 }
 
+function TbSectionHeading({ number, title, badge = null }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B70011]">
+        <span className="mr-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#B70011]/10 px-1.5 text-[10px] font-bold text-[#B70011]">
+          {number}
+        </span>
+        {title}
+      </p>
+      {badge}
+    </div>
+  );
+}
+
 function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, canConfirmTb, errors, onChange }) {
   if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
   const management = tbManagementFields(entry);
-  const blocked = isTbInfection(entry) || isDrTb(entry);
+  const primaryResistance = drugResistancePrimary(management.drugResistance);
+  const showDrSubtypes = primaryResistance === DR_TB_PRIMARY;
   const canOpen = canOpenDsTbTreatmentCard(entry);
   const registered = String(existingTbCase?.tbCaseNumber || "").trim();
+  const deferred = management.treatmentDecision === "not_yet_initiated" || management.treatmentDecision === "refer_elsewhere";
   return (
-    <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-3 border-t border-[#E5EEFF] pt-3">
+    <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-4 border-t border-[#E5EEFF] pt-3">
       <div>
         <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
         <p className="mt-0.5 text-xs text-[#545F73]">
-          Evaluation does not register a treatment case. Form 4B registration is a separate physician action after this consultation is finalized.
+          Confirm diagnosis and drug susceptibility here. Form 4B is required in this consultation only when initiating DS-TB treatment at this RHU.
         </p>
       </div>
-      {!canConfirmTb && <p className="text-xs text-[#545F73]">Only the RHU physician may confirm the TB assessment. Staff may prepare the consultation for physician review.</p>}
+      {!canConfirmTb && (
+        <p className="text-xs text-[#545F73]">
+          Only the RHU physician may confirm the TB assessment. Staff may prepare the consultation for physician review.
+        </p>
+      )}
       <FieldError error={errors[`diagnoses.${entry.id}.tbManagement`]} />
       {registered ? (
         <p className="text-xs text-[#0B1C30]">
           Registered treatment case <span className="font-semibold">{registered}</span> is referenced for this patient. A new TB case number is not requested.
         </p>
       ) : null}
-      <RadioChoiceGroup
-        label="Diagnosis type"
-        name={`diagnoses.${entry.id}.tbManagement.diagnosisType`}
-        options={TB_DIAGNOSIS_TYPE_OPTIONS}
-        value={management.diagnosisType}
-        error={errors[`diagnoses.${entry.id}.tbManagement.diagnosisType`]}
-        onChange={(value) => onChange(tbManagementFor(entry, { diagnosisType: value, openTreatmentCard: false }))}
-      />
-      {management.diagnosisType === "tb_disease" && (
-        <RadioChoiceGroup
-          label="Drug Susceptibility Classification"
-          name={`diagnoses.${entry.id}.tbManagement.drugResistance`}
-          options={TB_DRUG_RESISTANCE_OPTIONS}
-          value={management.drugResistance}
-          error={errors[`diagnoses.${entry.id}.tbManagement.drugResistance`]}
-          onChange={(value) => onChange(tbManagementFor(entry, { drugResistance: value, openTreatmentCard: false }))}
-        />
-      )}
-      {blocked && (
-        <p className="text-xs text-[#545F73]">
-          DS-TB Form 4B is not used for DR-TB or TB infection / TPT. Document evaluation here without opening a treatment card.
-        </p>
-      )}
+
+      <div className="space-y-3 border-t border-[#EEF2F7] pt-3">
+        <TbSectionHeading number="01" title="Physician TB Assessment" />
+        <div className="space-y-3">
+          <RadioChoiceGroup
+            label="Diagnosis Type"
+            name={`diagnoses.${entry.id}.tbManagement.diagnosisType`}
+            options={TB_DIAGNOSIS_TYPE_OPTIONS}
+            value={management.diagnosisType}
+            error={errors[`diagnoses.${entry.id}.tbManagement.diagnosisType`]}
+            onChange={(value) => onChange(tbManagementFor(entry, { diagnosisType: value }))}
+          />
+          {management.diagnosisType === "tb_disease" && (
+            <div className="space-y-3">
+              <RadioChoiceGroup
+                label="Drug Susceptibility Classification"
+                name={`diagnoses.${entry.id}.tbManagement.drugResistancePrimary`}
+                options={TB_SUSCEPTIBILITY_PRIMARY_OPTIONS}
+                value={primaryResistance}
+                error={
+                  showDrSubtypes
+                    ? undefined
+                    : errors[`diagnoses.${entry.id}.tbManagement.drugResistance`]
+                }
+                onChange={(value) => onChange(tbManagementFor(entry, {
+                  drugResistance: drugResistanceForPrimary(value, management.drugResistance),
+                }))}
+              />
+              {showDrSubtypes && (
+                <div className="border-t border-[#EEF2F7] pt-3">
+                  <RadioChoiceGroup
+                    label="Drug-resistant TB Classification"
+                    name={`diagnoses.${entry.id}.tbManagement.drugResistance`}
+                    options={DR_TB_SUBTYPE_OPTIONS}
+                    value={isDrTbSubtype(management.drugResistance) ? management.drugResistance : ""}
+                    error={errors[`diagnoses.${entry.id}.tbManagement.drugResistance`]}
+                    onChange={(value) => onChange(tbManagementFor(entry, { drugResistance: value }))}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {canOpen && !registered && (
-        <p className="text-xs text-[#545F73]">This assessment is eligible for DS-TB Form 4B. Register the treatment case separately after finalization.</p>
+        <div className="space-y-3 border-t border-[#EEF2F7] pt-3">
+          <TbSectionHeading
+            number="02"
+            title="Treatment Decision"
+            badge={management.treatmentDecision === "initiate_at_rhu" ? (
+              <span className="rounded-full bg-[#B70011]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#B70011]">
+                Form 4B next
+              </span>
+            ) : null}
+          />
+          <RadioChoiceGroup
+            label="Treatment Decision"
+            name={`diagnoses.${entry.id}.tbManagement.treatmentDecision`}
+            options={TB_TREATMENT_DECISION_OPTIONS}
+            value={management.treatmentDecision}
+            error={errors[`diagnoses.${entry.id}.tbManagement.treatmentDecision`]}
+            onChange={(value) => onChange(tbManagementFor(entry, { treatmentDecision: value }))}
+          />
+          {management.treatmentDecision === "initiate_at_rhu" && (
+            <p className="text-xs text-[#545F73]">
+              Continue to the DS-TB Form 4B registration step before Review &amp; Finalize. Consultation and case registration save together.
+            </p>
+          )}
+          {deferred && (
+            <div className="space-y-3">
+              <FieldTextarea
+                label="Disposition reason"
+                required
+                maxLength={2000}
+                name={`diagnoses.${entry.id}.tbManagement.dispositionReason`}
+                value={management.dispositionReason}
+                error={errors[`diagnoses.${entry.id}.tbManagement.dispositionReason`]}
+                rows={2}
+                placeholder="Why is treatment not initiated at this RHU today?"
+                onChange={(event) => onChange(tbManagementFor(entry, { dispositionReason: event.target.value }))}
+              />
+              <FieldTextarea
+                label="Follow-up or referral plan"
+                required
+                maxLength={2000}
+                name={`diagnoses.${entry.id}.tbManagement.dispositionPlan`}
+                value={management.dispositionPlan}
+                error={errors[`diagnoses.${entry.id}.tbManagement.dispositionPlan`]}
+                rows={2}
+                placeholder="Document the clinical disposition and next steps."
+                onChange={(event) => onChange(tbManagementFor(entry, { dispositionPlan: event.target.value }))}
+              />
+            </div>
+          )}
+        </div>
       )}
     </fieldset>
   );

@@ -14,6 +14,7 @@ import {
   EXIT_STEP,
   PRESCRIPTION_STEP,
   TB_INTAKE_STEP,
+  FORM_4B_STEP,
   RHU_ITR_STEP_OPTIONS,
   buildConsultationSteps,
   deferUntilProgramDecision,
@@ -191,7 +192,7 @@ test("RHU ITR: a draft saved on Prescription or Care and Outcome reopens on Diag
   });
 });
 
-test("RHU ITR TB Form 4B sits after Diagnosis & Care Plan and before Review", () => {
+test("RHU ITR legacy TB intake sits after Diagnosis & Care Plan and before Review", () => {
   const options = { ...RHU_ITR_STEP_OPTIONS, includeTb: true };
   const steps = buildConsultationSteps(options);
   const keys = keysOf(steps);
@@ -199,6 +200,19 @@ test("RHU ITR TB Form 4B sits after Diagnosis & Care Plan and before Review", ()
   assert.equal(keys[keys.indexOf(TB_INTAKE_STEP) + 1], REVIEW_STEP);
   assert.equal(getFormSequence([], options).includes(TB_INTAKE_STEP), false);
   assert.deepEqual(getStepOrder([], [], options).slice(-3), [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP]);
+});
+
+test("RHU ITR Form 4B registration step is inserted only for initiate_at_rhu", () => {
+  const withForm4b = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: true };
+  const without = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: false };
+  assert.deepEqual(keysOf(buildConsultationSteps(withForm4b)).slice(-3), [NEXT_STEP, FORM_4B_STEP, REVIEW_STEP]);
+  assert.equal(keysOf(buildConsultationSteps(without)).includes(FORM_4B_STEP), false);
+  assert.deepEqual(
+    keysOf(buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS, includeForm4b: true, includeTb: true })).slice(-4),
+    [NEXT_STEP, FORM_4B_STEP, TB_INTAKE_STEP, REVIEW_STEP],
+  );
+  assert.equal(getErrorOwnerStepKey("tbCaseRegistration.card_data.regimen.description", withForm4b), FORM_4B_STEP);
+  assert.equal(getErrorOwnerStepKey("diagnoses.tb.tbManagement.treatmentDecision", withForm4b), NEXT_STEP);
 });
 
 test("the global steps read in the new order with the new names", () => {

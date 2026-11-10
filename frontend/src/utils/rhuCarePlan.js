@@ -42,7 +42,14 @@ export function emptyRhuDiagnosis(name, id) {
     nextAction: "",
     receivingBhcId: "",
     monitoringRecommendation: "",
-    tbManagement: { diagnosisType: "", drugResistance: "", openTreatmentCard: false },
+    tbManagement: {
+      diagnosisType: "",
+      drugResistance: "",
+      treatmentDecision: "",
+      dispositionReason: "",
+      dispositionPlan: "",
+      openTreatmentCard: false,
+    },
   };
 }
 

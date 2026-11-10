@@ -32,6 +32,7 @@ class TbCaseRegistrationRequest extends FormRequest
             'reporting_year' => ['required', 'integer', 'between:1900,9999'],
             'case_number' => ['nullable', 'string', 'max:100'],
             'confirmed' => ['required', 'accepted'],
+            'treatment_start_date' => ['nullable', 'date_format:Y-m-d'],
             'card_data' => ['required', 'array:caseFinding,diagnosis,classification,comorbidities,regimen,treatmentSupporter,phases'],
             'card_data.classification' => ['required', 'array:bacteriologicalStatus,anatomicalSite,extrapulmonarySite,registrationGroup'],
             'card_data.classification.bacteriologicalStatus' => ['required', Rule::in(['bacteriologically_confirmed', 'clinically_diagnosed'])],
@@ -75,6 +76,9 @@ class TbCaseRegistrationRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if (blank($this->input('treatment_start_date'))) {
+                $validator->errors()->add('treatment_start_date', 'Enter the actual treatment start date for delayed registration.');
+            }
             foreach ((array) $this->input('card_data.regimen.rows', []) as $index => $row) {
                 if (! is_array($row)) {
                     continue;

@@ -67,6 +67,8 @@ export default function RhuStartConsultationModal({
     onDiscarded: () => { setSelecting(true); void visitQuery.refetch(); },
   });
   const showSelection = selecting || recovery.ready;
+  // Match BHC: a failed overview refetch must not replace an already-usable
+  // modal (pending follow-ups stay selectable; start still validates on the API).
   const overviewQuery = useQuery({
     queryKey: queryKeys.careOverview(patientId),
     queryFn: () => getCareOverview(patientId),
@@ -74,7 +76,9 @@ export default function RhuStartConsultationModal({
     retry: false,
     refetchOnWindowFocus: false,
   });
-  const checking = !visitQuery.isError && !entryError && (visitQuery.isFetching || (!showSelection && recovery.checking) || (showSelection && overviewQuery.isPending));
+  const overview = overviewQuery.data || null;
+  const overviewUnavailable = overviewQuery.isError && !overview;
+  const checking = !visitQuery.isError && !entryError && !overviewUnavailable && (visitQuery.isFetching || (!showSelection && recovery.checking) || (showSelection && overviewQuery.isPending));
   useEffect(() => { onCheckingChange?.(checking); }, [checking, onCheckingChange]);
   useEffect(() => () => onCheckingChange?.(false), [onCheckingChange]);
 
@@ -118,16 +122,16 @@ export default function RhuStartConsultationModal({
     return recovery.decision ? createPortal(decision, document.body) : decision;
   }
 
-  if (overviewQuery.isPending) {
+  if (overviewQuery.isPending && !overview) {
     return null;
   }
 
-  if (overviewQuery.isError) return <EntryErrorDialog title="Start Consultation" message={overviewQuery.error?.message || "Unable to check Initial/Follow-up eligibility."} onClose={onClose} onRetry={() => overviewQuery.refetch()} />;
+  if (overviewUnavailable) return <EntryErrorDialog title="Start Consultation" message={overviewQuery.error?.message || "Unable to check Initial/Follow-up eligibility."} onClose={onClose} onRetry={() => overviewQuery.refetch()} />;
 
   return createPortal(
     <StartConsultationModal
       variant="rhu"
-      overview={overviewQuery.data || null}
+      overview={overview}
       onCancel={onClose}
       onStart={handleStart}
     />

@@ -45,7 +45,8 @@ export const TB_ANATOMICAL_SITE_OPTIONS = [
 ];
 
 export const TB_DRUG_RESISTANCE_OPTIONS = [
-  { value: "drug_susceptible", label: "Drug-susceptible" },
+  { value: "drug_susceptible", label: "Drug-susceptible TB" },
+  { value: "pending_dst", label: "Pending DST Result" },
   { value: "rr_tb", label: "Bacteriologically-confirmed RR-TB" },
   { value: "mdr_tb", label: "Bacteriologically-confirmed MDR-TB" },
   { value: "clinically_mdr_tb", label: "Clinically-diagnosed MDR-TB" },
@@ -311,12 +312,29 @@ function DateField({ label, value, onChange, required, disabled = false }) {
   );
 }
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, children, compact = false, badge = null }) {
+  if (compact) {
+    return (
+      <section className="border-t border-[#EEF2F7] pt-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h4 className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B70011]">{title}</h4>
+            {subtitle && <p className="mt-0.5 text-xs text-[#545F73]">{subtitle}</p>}
+          </div>
+          {badge}
+        </div>
+        {children}
+      </section>
+    );
+  }
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="mb-4">
-        <h4 className="text-sm font-bold text-[#0F172A]">{title}</h4>
-        {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-bold text-[#0F172A]">{title}</h4>
+          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+        </div>
+        {badge}
       </div>
       {children}
     </section>
@@ -430,6 +448,9 @@ export default function TbTreatmentCardForm({
   const showDots = mode === "full" || mode === "dots";
   const showChart = mode === "chart" || mode === "dots";
   const fieldsLocked = readOnly || mode === "chart";
+  const sectionProps = registration ? { compact: true } : {};
+  const registrationGrid = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
+  const registrationGrid3 = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
   return (
     <div className="space-y-4">
@@ -451,10 +472,11 @@ export default function TbTreatmentCardForm({
       {/* I. Case Finding / Notification */}
       {showEncode && (
       <SectionCard
-        title="I. Case Finding / Notification"
+        {...sectionProps}
+        title={registration ? "01 · Case Finding / Notification" : "I. Case Finding / Notification"}
         subtitle="Diagnosing facility and screening details."
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={registrationGrid}>
           <TextField
             label="Diagnosing Facility"
             value={data.caseFinding.diagnosingFacility}
@@ -497,130 +519,45 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Laboratory Tests */}
-      {showEncode && laboratoryContext === "rhu" && <SectionCard title="Laboratory References" subtitle={registration ? "Review the finalized consultation's diagnostic evidence before registration." : "Evidence recorded for this treatment card."}>
-        <LaboratoryEvidenceList entries={laboratoryTests} />
-        {Object.values(data.laboratory).some(test => test.result) && <div className="mt-3 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-xs font-semibold text-neutral-700">Previously recorded TB laboratory results</h4><LaboratoryEvidenceList entries={Object.entries(data.laboratory).filter(([, test]) => test.result).map(([key, test]) => ({ id: key, testName: LAB_TESTS.find(item => item.key === key)?.label || test.label || "Other", resultStatus: "Result Available", collectionDate: test.collectionDate, examinationDate: test.examDate, result: test.result }))} /></div>}
-      </SectionCard>}
-      {showEncode && laboratoryContext !== "rhu" && (
+      {/* TB Disease Classification — primary registration fields first */}
+      {showFinalize && (
       <SectionCard
-        title="Laboratory Tests"
-        subtitle="Collection / examination dates and results."
+        {...sectionProps}
+        title={registration ? "02 · Classification & Registration" : "TB Disease Classification"}
+        badge={registration ? (
+          <span className="rounded-full bg-[#B70011]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#B70011]">
+            Required
+          </span>
+        ) : null}
       >
-        <div className="space-y-3">
-          {LAB_TESTS.map((test) => (
-            <div
-              key={test.key}
-              className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50/60 p-3 sm:grid-cols-[1.3fr_1fr_1fr_1.3fr]"
-            >
-              <div className="flex items-center text-xs font-semibold text-[#334155]">
-                {test.label}
-              </div>
-              <DateField
-                label="Collection"
-                value={data.laboratory[test.key].collectionDate}
-                onChange={(v) => setLabField(test.key, "collectionDate", v)}
-              />
-              <DateField
-                label="Examination"
-                value={data.laboratory[test.key].examDate}
-                onChange={(v) => setLabField(test.key, "examDate", v)}
-              />
-              <TextField
-                label="Result"
-                value={data.laboratory[test.key].result}
-                onChange={(v) => setLabField(test.key, "result", v)}
-              />
-            </div>
-          ))}
-          <div className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50/60 p-3 sm:grid-cols-[1.3fr_1fr_1fr_1.3fr]">
-            <TextField
-              label="Other Test"
-              value={data.laboratory.other.label}
-              onChange={(v) => setLabField("other", "label", v)}
-            />
-            <DateField
-              label="Collection"
-              value={data.laboratory.other.collectionDate}
-              onChange={(v) => setLabField("other", "collectionDate", v)}
-            />
-            <DateField
-              label="Examination"
-              value={data.laboratory.other.examDate}
-              onChange={(v) => setLabField("other", "examDate", v)}
-            />
-            <TextField
-              label="Result"
-              value={data.laboratory.other.result}
-              onChange={(v) => setLabField("other", "result", v)}
-            />
-          </div>
-        </div>
-      </SectionCard>
-      )}
-
-      {/* Diagnosis */}
-      {showFinalize && (
-      <SectionCard title="Diagnosis">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectField
-            label="Diagnosis"
-            value={data.diagnosis.diagnosisType}
-            disabled={registration}
-            onChange={(v) => setGroupField("diagnosis", "diagnosisType", v)}
-            options={TB_DIAGNOSIS_TYPE_OPTIONS}
-          />
-          <DateField
-            label="Date of Diagnosis"
-            value={data.diagnosis.dateOfDiagnosis}
-            disabled={registration}
-            onChange={(v) => setGroupField("diagnosis", "dateOfDiagnosis", v)}
-          />
-          <DateField
-            label="Date of Notification"
-            value={data.diagnosis.dateOfNotification}
-            onChange={(v) => setGroupField("diagnosis", "dateOfNotification", v)}
-          />
-          {!registration && <TextField
-            label="TB Case Number"
-            error={errors["tbData.diagnosis.tbCaseNumber"] || errors["tb_data.diagnosis.tbCaseNumber"]}
-            value={data.diagnosis.tbCaseNumber}
-            onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
-            required={!referenceCaseNumber}
-            disabled={readOnly || Boolean(referenceCaseNumber)}
-          />}
-          <TextField
-            label="Attending Physician"
-            value={data.diagnosis.attendingPhysician}
-            disabled={registration}
-            onChange={(v) => setGroupField("diagnosis", "attendingPhysician", v)}
-          />
-          {!registration && <TextField
-            label="Referred To"
-            value={data.diagnosis.referredTo}
-            onChange={(v) => setGroupField("diagnosis", "referredTo", v)}
-          />}
-        </div>
-      </SectionCard>
-      )}
-
-      {/* TB Disease Classification */}
-      {showFinalize && (
-      <SectionCard title="TB Disease Classification">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={registrationGrid3}>
           <SelectField
             label="Bacteriological Status"
+            required={registration}
             value={data.classification.bacteriologicalStatus}
             onChange={(v) =>
               setGroupField("classification", "bacteriologicalStatus", v)
             }
             options={TB_BACTERIOLOGICAL_OPTIONS}
+            placeholder="Select classification"
           />
           <SelectField
             label="Anatomical Site"
+            required={registration}
             value={data.classification.anatomicalSite}
             onChange={(v) => setGroupField("classification", "anatomicalSite", v)}
             options={TB_ANATOMICAL_SITE_OPTIONS}
+            placeholder="Select site"
+          />
+          <SelectField
+            label="Registration Group"
+            required={registration}
+            value={data.classification.registrationGroup}
+            onChange={(v) =>
+              setGroupField("classification", "registrationGroup", v)
+            }
+            options={TB_REGISTRATION_GROUP_OPTIONS}
+            placeholder="Select registration group"
           />
           <TextField
             label="Extra-pulmonary Site"
@@ -636,85 +573,39 @@ export default function TbTreatmentCardForm({
             onChange={(v) => setGroupField("classification", "drugResistance", v)}
             options={TB_DRUG_RESISTANCE_OPTIONS}
           />
-          <SelectField
-            label="Registration Group"
-            value={data.classification.registrationGroup}
-            onChange={(v) =>
-              setGroupField("classification", "registrationGroup", v)
-            }
-            options={TB_REGISTRATION_GROUP_OPTIONS}
-          />
         </div>
       </SectionCard>
       )}
 
-      {/* Encode: HIV baseline. Finalize: ART/CPT and comorbidity treatment. */}
-      {showEncode && (
-      <SectionCard title="HIV/PLHIV Baseline">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectField
-            label="HIV Test Result"
-            value={data.comorbidities.hivStatus}
-            onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
-            options={TB_HIV_STATUS_OPTIONS}
-          />
-          <DatePickerField
-            label="Date of HIV Test"
-            value={data.comorbidities.hivTestDate}
-            onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
-          />
-        </div>
-      </SectionCard>
-      )}
+      {/* Treatment start + phases */}
       {showFinalize && (
-      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Treatment">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mode === "full" ? (
-            <>
-              <SelectField
-                label="HIV Test Result"
-                value={data.comorbidities.hivStatus}
-                onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
-                options={TB_HIV_STATUS_OPTIONS}
-              />
-              <DatePickerField
-                label="Date of HIV Test"
-                value={data.comorbidities.hivTestDate}
-                onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
-              />
-            </>
-          ) : null}
-          <SelectField
-            label="ART Status"
-            value={data.comorbidities.artStatus}
-            onChange={(v) => setGroupField("comorbidities", "artStatus", v)}
-            options={TB_ART_STATUS_OPTIONS}
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "03 · Treatment Start & Phases" : "Treatment Phases"}
+        subtitle={registration ? "Treatment start date maps to intensive phase start." : undefined}
+      >
+        <div className={registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"}>
+          <DateField
+            label={registration ? "Treatment Start Date" : "Intensive Phase Start"}
+            value={data.phases.intensiveStart}
+            onChange={(v) => setGroupField("phases", "intensiveStart", v)}
+            required
           />
-          <DatePickerField
-            label="ART Start Date"
-            value={data.comorbidities.artStartDate}
-            onChange={(v) => setGroupField("comorbidities", "artStartDate", v)}
+          <DateField
+            label="Intensive Phase End"
+            value={data.phases.intensiveEnd}
+            onChange={(v) => setGroupField("phases", "intensiveEnd", v)}
           />
-          <SelectField
-            label="CPT Status"
-            value={data.comorbidities.cptStatus}
-            onChange={(v) => setGroupField("comorbidities", "cptStatus", v)}
-            options={TB_CPT_STATUS_OPTIONS}
+          <DateField
+            label="Continuation Phase Start"
+            value={data.phases.continuationStart}
+            onChange={(v) => setGroupField("phases", "continuationStart", v)}
           />
-          <DatePickerField
-            label="CPT Start Date"
-            value={data.comorbidities.cptStartDate}
-            onChange={(v) => setGroupField("comorbidities", "cptStartDate", v)}
+          <DateField
+            label="Continuation Phase End"
+            value={data.phases.continuationEnd}
+            onChange={(v) => setGroupField("phases", "continuationEnd", v)}
           />
-          <div className="sm:col-span-2 lg:col-span-3">
-            <TextField
-              label="Other Comorbidities"
-              value={data.comorbidities.otherComorbidities}
-              onChange={(v) =>
-                setGroupField("comorbidities", "otherComorbidities", v)
-              }
-            />
-          </div>
         </div>
       </SectionCard>
       )}
@@ -722,11 +613,12 @@ export default function TbTreatmentCardForm({
       {/* Drug Regimen */}
       {showFinalize && (
       <SectionCard
-        title="Drug Regimen"
+        {...sectionProps}
+        title={registration ? "04 · Physician-authorized Regimen" : "Drug Regimen"}
         subtitle={registration ? "Enter the physician-prescribed regimen and dosage for each start date." : "Encircle a regimen change on the paper card. Add a row per date-start."}
       >
-        {(registration || data.regimen.description || data.regimen.weightKg) && <div className="mb-4 grid gap-4 sm:grid-cols-2">
-          <TextField label="Prescribed Regimen" required value={data.regimen.description || ""} onChange={value => setGroupField("regimen", "description", value)} />
+        {(registration || data.regimen.description || data.regimen.weightKg) && <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <TextField label={registration ? "Physician-authorized Regimen" : "Prescribed Regimen"} required value={data.regimen.description || ""} onChange={value => setGroupField("regimen", "description", value)} placeholder={registration ? "Enter prescribed regimen" : undefined} />
           <TextField label="Baseline Weight (kg)" required value={data.regimen.weightKg || ""} onChange={value => setGroupField("regimen", "weightKg", value)} />
         </div>}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -823,10 +715,13 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Encode: supporter / location / DAT. Finalize: phase dates. */}
+      {/* Treatment supporter */}
       {showEncode && (
-      <SectionCard title="Administration of Drugs">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "05 · Treatment Supporter" : "Administration of Drugs"}
+      >
+        <div className={registrationGrid3}>
           <SelectField
             label="Location of Treatment"
             value={data.treatmentSupporter.locationOfTreatment}
@@ -836,11 +731,12 @@ export default function TbTreatmentCardForm({
             options={TB_LOCATION_OF_TREATMENT_OPTIONS}
           />
           <TextField
-            label="Tx Supporter Name"
+            label={registration ? "Treatment Supporter" : "Tx Supporter Name"}
             value={data.treatmentSupporter.supporterName}
             onChange={(v) =>
               setGroupField("treatmentSupporter", "supporterName", v)
             }
+            placeholder={registration ? "Enter assigned supporter" : undefined}
           />
           <TextField
             label="Designation"
@@ -884,30 +780,185 @@ export default function TbTreatmentCardForm({
         </div>
       </SectionCard>
       )}
+
+      {/* Secondary registration sections */}
+      {showEncode && laboratoryContext === "rhu" && (
+        <SectionCard
+          {...sectionProps}
+          title={registration ? "06 · Laboratory References" : "Laboratory References"}
+          subtitle={registration ? "Review diagnostic evidence linked to this consultation." : "Evidence recorded for this treatment card."}
+        >
+          <LaboratoryEvidenceList entries={laboratoryTests} />
+          {Object.values(data.laboratory).some(test => test.result) && <div className="mt-3 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-xs font-semibold text-neutral-700">Previously recorded TB laboratory results</h4><LaboratoryEvidenceList entries={Object.entries(data.laboratory).filter(([, test]) => test.result).map(([key, test]) => ({ id: key, testName: LAB_TESTS.find(item => item.key === key)?.label || test.label || "Other", resultStatus: "Result Available", collectionDate: test.collectionDate, examinationDate: test.examDate, result: test.result }))} /></div>}
+        </SectionCard>
+      )}
+      {showEncode && laboratoryContext !== "rhu" && (
+      <SectionCard
+        title="Laboratory Tests"
+        subtitle="Collection / examination dates and results."
+      >
+        <div className="space-y-3">
+          {LAB_TESTS.map((test) => (
+            <div
+              key={test.key}
+              className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50/60 p-3 sm:grid-cols-[1.3fr_1fr_1fr_1.3fr]"
+            >
+              <div className="flex items-center text-xs font-semibold text-[#334155]">
+                {test.label}
+              </div>
+              <DateField
+                label="Collection"
+                value={data.laboratory[test.key].collectionDate}
+                onChange={(v) => setLabField(test.key, "collectionDate", v)}
+              />
+              <DateField
+                label="Examination"
+                value={data.laboratory[test.key].examDate}
+                onChange={(v) => setLabField(test.key, "examDate", v)}
+              />
+              <TextField
+                label="Result"
+                value={data.laboratory[test.key].result}
+                onChange={(v) => setLabField(test.key, "result", v)}
+              />
+            </div>
+          ))}
+          <div className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50/60 p-3 sm:grid-cols-[1.3fr_1fr_1fr_1.3fr]">
+            <TextField
+              label="Other Test"
+              value={data.laboratory.other.label}
+              onChange={(v) => setLabField("other", "label", v)}
+            />
+            <DateField
+              label="Collection"
+              value={data.laboratory.other.collectionDate}
+              onChange={(v) => setLabField("other", "collectionDate", v)}
+            />
+            <DateField
+              label="Examination"
+              value={data.laboratory.other.examDate}
+              onChange={(v) => setLabField("other", "examDate", v)}
+            />
+            <TextField
+              label="Result"
+              value={data.laboratory.other.result}
+              onChange={(v) => setLabField("other", "result", v)}
+            />
+          </div>
+        </div>
+      </SectionCard>
+      )}
+
       {showFinalize && (
-      <SectionCard title="Treatment Phases">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <DateField
-            label="Intensive Phase Start"
-            value={data.phases.intensiveStart}
-            onChange={(v) => setGroupField("phases", "intensiveStart", v)}
-            required
+      <SectionCard {...sectionProps} title={registration ? "07 · Diagnosis Snapshot" : "Diagnosis"}>
+        <div className={registrationGrid3}>
+          <SelectField
+            label="Diagnosis"
+            value={data.diagnosis.diagnosisType}
+            disabled={registration}
+            onChange={(v) => setGroupField("diagnosis", "diagnosisType", v)}
+            options={TB_DIAGNOSIS_TYPE_OPTIONS}
           />
           <DateField
-            label="Intensive Phase End"
-            value={data.phases.intensiveEnd}
-            onChange={(v) => setGroupField("phases", "intensiveEnd", v)}
+            label="Date of Diagnosis"
+            value={data.diagnosis.dateOfDiagnosis}
+            disabled={registration}
+            onChange={(v) => setGroupField("diagnosis", "dateOfDiagnosis", v)}
           />
           <DateField
-            label="Continuation Phase Start"
-            value={data.phases.continuationStart}
-            onChange={(v) => setGroupField("phases", "continuationStart", v)}
+            label="Date of Notification"
+            value={data.diagnosis.dateOfNotification}
+            onChange={(v) => setGroupField("diagnosis", "dateOfNotification", v)}
           />
-          <DateField
-            label="Continuation Phase End"
-            value={data.phases.continuationEnd}
-            onChange={(v) => setGroupField("phases", "continuationEnd", v)}
+          {!registration && <TextField
+            label="TB Case Number"
+            error={errors["tbData.diagnosis.tbCaseNumber"] || errors["tb_data.diagnosis.tbCaseNumber"]}
+            value={data.diagnosis.tbCaseNumber}
+            onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
+            required={!referenceCaseNumber}
+            disabled={readOnly || Boolean(referenceCaseNumber)}
+          />}
+          <TextField
+            label="Attending Physician"
+            value={data.diagnosis.attendingPhysician}
+            disabled={registration}
+            onChange={(v) => setGroupField("diagnosis", "attendingPhysician", v)}
           />
+          {!registration && <TextField
+            label="Referred To"
+            value={data.diagnosis.referredTo}
+            onChange={(v) => setGroupField("diagnosis", "referredTo", v)}
+          />}
+        </div>
+      </SectionCard>
+      )}
+
+      {showEncode && (
+      <SectionCard {...sectionProps} title={registration ? "08 · HIV / Comorbidities" : "HIV/PLHIV Baseline"}>
+        <div className={registrationGrid3}>
+          <SelectField
+            label="HIV Test Result"
+            value={data.comorbidities.hivStatus}
+            onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+            options={TB_HIV_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="Date of HIV Test"
+            value={data.comorbidities.hivTestDate}
+            onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+          />
+        </div>
+      </SectionCard>
+      )}
+      {showFinalize && (
+      <SectionCard {...sectionProps} title={registration ? "09 · ART, CPT & Other Comorbidities" : "HIV/PLHIV, ART & CPT, Comorbidity Treatment"}>
+        <div className={registrationGrid3}>
+          {mode === "full" ? (
+            <>
+              <SelectField
+                label="HIV Test Result"
+                value={data.comorbidities.hivStatus}
+                onChange={(v) => setGroupField("comorbidities", "hivStatus", v)}
+                options={TB_HIV_STATUS_OPTIONS}
+              />
+              <DatePickerField
+                label="Date of HIV Test"
+                value={data.comorbidities.hivTestDate}
+                onChange={(v) => setGroupField("comorbidities", "hivTestDate", v)}
+              />
+            </>
+          ) : null}
+          <SelectField
+            label="ART Status"
+            value={data.comorbidities.artStatus}
+            onChange={(v) => setGroupField("comorbidities", "artStatus", v)}
+            options={TB_ART_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="ART Start Date"
+            value={data.comorbidities.artStartDate}
+            onChange={(v) => setGroupField("comorbidities", "artStartDate", v)}
+          />
+          <SelectField
+            label="CPT Status"
+            value={data.comorbidities.cptStatus}
+            onChange={(v) => setGroupField("comorbidities", "cptStatus", v)}
+            options={TB_CPT_STATUS_OPTIONS}
+          />
+          <DatePickerField
+            label="CPT Start Date"
+            value={data.comorbidities.cptStartDate}
+            onChange={(v) => setGroupField("comorbidities", "cptStartDate", v)}
+          />
+          <div className="sm:col-span-2">
+            <TextField
+              label="Other Comorbidities"
+              value={data.comorbidities.otherComorbidities}
+              onChange={(v) =>
+                setGroupField("comorbidities", "otherComorbidities", v)
+              }
+            />
+          </div>
         </div>
       </SectionCard>
       )}

@@ -17,7 +17,10 @@ class TbCaseRegistrationController extends Controller
 
     public function store(TbCaseRegistrationRequest $request, HealthRecord $healthRecord, TbCaseRegistrationService $registration)
     {
-        $result = $registration->register($request, $healthRecord, $request->validated());
+        $result = $registration->register($request, $healthRecord, [
+            ...$request->validated(),
+            'require_deferred_decision' => true,
+        ]);
 
         return response()->json(['data' => $result['case']], $result['created'] ? 201 : 200);
     }

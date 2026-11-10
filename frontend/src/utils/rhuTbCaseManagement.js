@@ -9,6 +9,10 @@ export const TB_DIAGNOSIS_TYPES = Object.freeze({
 });
 
 export const DS_TB_RESISTANCE = "drug_susceptible";
+export const PENDING_DST_RESISTANCE = "pending_dst";
+
+/** Incomplete DR selection before a subtype is chosen (draft-safe; rejected on finalize). */
+export const DR_TB_PRIMARY = "drug_resistant";
 
 export const DR_TB_RESISTANCE = Object.freeze([
   "rr_tb",
@@ -18,14 +22,68 @@ export const DR_TB_RESISTANCE = Object.freeze([
   "other",
 ]);
 
+export const DR_TB_SUBTYPE_OPTIONS = Object.freeze([
+  { value: "rr_tb", label: "Bacteriologically-confirmed RR-TB" },
+  { value: "mdr_tb", label: "Bacteriologically-confirmed MDR-TB" },
+  { value: "clinically_mdr_tb", label: "Clinically-diagnosed MDR-TB" },
+  { value: "xdr_tb", label: "Bacteriologically-confirmed XDR-TB" },
+  { value: "other", label: "Other Drug-resistant TB" },
+]);
+
+export const TB_SUSCEPTIBILITY_PRIMARY_OPTIONS = Object.freeze([
+  { value: DS_TB_RESISTANCE, label: "Drug-susceptible TB" },
+  { value: DR_TB_PRIMARY, label: "Drug-resistant TB" },
+  { value: PENDING_DST_RESISTANCE, label: "Pending DST Result" },
+]);
+
 const DR_TB_SET = new Set(DR_TB_RESISTANCE);
+
+/** Derive the three primary UI choices from the stored classification value. */
+export function drugResistancePrimary(drugResistance) {
+  const value = String(drugResistance || "").trim();
+  if (value === DS_TB_RESISTANCE) return DS_TB_RESISTANCE;
+  if (value === PENDING_DST_RESISTANCE) return PENDING_DST_RESISTANCE;
+  if (value === DR_TB_PRIMARY || DR_TB_SET.has(value)) return DR_TB_PRIMARY;
+  return "";
+}
+
+export function isDrTbSubtype(drugResistance) {
+  return DR_TB_SET.has(String(drugResistance || "").trim());
+}
+
+export function drugResistanceForPrimary(primary, currentResistance = "") {
+  const next = String(primary || "").trim();
+  if (next === DS_TB_RESISTANCE) return DS_TB_RESISTANCE;
+  if (next === PENDING_DST_RESISTANCE) return PENDING_DST_RESISTANCE;
+  if (next === DR_TB_PRIMARY) {
+    return isDrTbSubtype(currentResistance) ? String(currentResistance).trim() : DR_TB_PRIMARY;
+  }
+  return "";
+}
 
 export function emptyTbManagement() {
   return {
     diagnosisType: "",
     drugResistance: "",
+    treatmentDecision: "",
+    dispositionReason: "",
+    dispositionPlan: "",
     openTreatmentCard: false,
   };
+}
+
+export const TB_TREATMENT_DECISION_VALUES = Object.freeze({
+  initiate_at_rhu: "initiate_at_rhu",
+  not_yet_initiated: "not_yet_initiated",
+  refer_elsewhere: "refer_elsewhere",
+});
+
+export function isInitiateDsTbTreatment(entry) {
+  return tbManagementFields(entry).treatmentDecision === TB_TREATMENT_DECISION_VALUES.initiate_at_rhu;
+}
+
+export function diagnosesInitiateDsTbTreatment(diagnoses = []) {
+  return (diagnoses || []).some((entry) => isInitiateDsTbTreatment(entry));
 }
 
 export function isRecognizedTbDiagnosis(name, registry = {}) {
@@ -44,18 +102,31 @@ export function rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }) {
       const management = tbManagementFields(entry);
       if (management.diagnosisType === "tb_disease" && !management.drugResistance) {
         errors[`${key}.drugResistance`] = "Select drug resistance for TB Disease.";
+      } else if (management.diagnosisType === "tb_disease" && management.drugResistance === DR_TB_PRIMARY) {
+        errors[`${key}.drugResistance`] = "Select the drug-resistant TB classification.";
+      }
+      if (canOpenDsTbTreatmentCard(entry) && !management.treatmentDecision) {
+        errors[`${key}.treatmentDecision`] = "Select whether to initiate DS-TB treatment, defer, or refer elsewhere.";
+      }
+      if (management.treatmentDecision === "not_yet_initiated" || management.treatmentDecision === "refer_elsewhere") {
+        if (!management.dispositionReason) {
+          errors[`${key}.dispositionReason`] = "Document the reason treatment is not initiated at this RHU.";
+        }
+        if (!management.dispositionPlan) {
+          errors[`${key}.dispositionPlan`] = "Document the follow-up or referral plan.";
+        }
       }
     }
   }
   return errors;
 }
 
-export function isTbInfection(entry) {
-  return tbManagementFields(entry).diagnosisType === "tb_infection";
+export function isDrTb(entry) {
+  return isDrTbSubtype(tbManagementFields(entry).drugResistance);
 }
 
-export function isDrTb(entry) {
-  return DR_TB_SET.has(tbManagementFields(entry).drugResistance);
+export function isPendingDst(entry) {
+  return tbManagementFields(entry).drugResistance === PENDING_DST_RESISTANCE;
 }
 
 export function canOpenDsTbTreatmentCard(entry) {

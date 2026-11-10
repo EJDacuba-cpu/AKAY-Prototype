@@ -28,7 +28,14 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'id' => 'd1', 'name' => 'Hypertension', 'activate' => true,
                 'nextAction' => 'rhu_follow_up', 'receivingBhcId' => '',
                 'monitoringRecommendation' => '',
-                'tbManagement' => ['diagnosisType' => '', 'drugResistance' => '', 'openTreatmentCard' => false],
+                'tbManagement' => [
+                    'diagnosisType' => '',
+                    'drugResistance' => '',
+                    'openTreatmentCard' => false,
+                    'treatmentDecision' => '',
+                    'dispositionReason' => '',
+                    'dispositionPlan' => '',
+                ],
             ]],
         ];
         $service = new HealthRecordDraftPayloadService();
@@ -54,7 +61,14 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                 'nextAction' => 'rhu_follow_up',
                 'receivingBhcId' => '',
                 'monitoringRecommendation' => '',
-                'tbManagement' => ['diagnosisType' => '', 'drugResistance' => '', 'openTreatmentCard' => false],
+                'tbManagement' => [
+                    'diagnosisType' => '',
+                    'drugResistance' => '',
+                    'openTreatmentCard' => false,
+                    'treatmentDecision' => '',
+                    'dispositionReason' => '',
+                    'dispositionPlan' => '',
+                ],
                 'continued' => true,
                 'continuedConditionId' => 11,
             ]],

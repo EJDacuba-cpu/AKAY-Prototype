@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\HealthRecord;
 use App\Models\LaboratoryTest;
 use App\Models\RuralHealthUnit;
+use App\Models\RhuVisitQueueEntry;
 use App\Models\TbTreatmentCase;
 use App\Models\User;
 use Illuminate\Database\QueryException;
@@ -28,17 +29,25 @@ final class TbCaseRegistrationService
         $this->authorizeRead($user, $record);
         $snapshot = $this->snapshot($record);
         $case = TbTreatmentCase::where('source_health_record_id', $record->id)->first();
-        [$reason] = $this->blocked($record, $case);
+        [$reason] = $this->blocked($record, $case, true);
         $diagnosis = $snapshot['diagnosis'] ?? [];
         $weight = $record->vital_signs['weightKg'] ?? $record->vital_signs['weight'] ?? '';
+        $screening = $this->screeningPrefill($record);
+        $facility = RuralHealthUnit::find($record->rural_health_unit_id);
 
         return [
             'eligible' => $reason === null, 'reason' => $reason, 'case' => $case,
             'can_register' => TbClinicalAuthority::canConfirm($user) && ActionPermissions::allows($user, 'consultations.finalize'),
             'source_revision' => $this->revision($record, $snapshot), 'reporting_year' => now('Asia/Manila')->year,
             'laboratory_tests' => $snapshot['laboratory_tests'],
+            'screening_date_source' => $screening['screeningDateSource'],
+            'referral_source_label' => $screening['referralSourceLabel'],
             'card_data' => [
-                'caseFinding' => ['diagnosingFacility' => RuralHealthUnit::find($record->rural_health_unit_id)?->name ?? ''],
+                'caseFinding' => [
+                    'diagnosingFacility' => $facility?->name ?? '',
+                    'provinceHuc' => $this->provinceFromFacilityAddress($facility?->address),
+                    'dateOfScreening' => $screening['dateOfScreening'],
+                ],
                 'diagnosis' => ['diagnosisType' => $diagnosis['tbManagement']['diagnosisType'] ?? '',
                     'dateOfDiagnosis' => ($record->date_recorded ?? $record->finalized_at)?->copy()->timezone('Asia/Manila')->toDateString(),
                     'attendingPhysician' => $snapshot['physician_name']],
@@ -49,7 +58,7 @@ final class TbCaseRegistrationService
     }
 
     /** The whole source is pinned, including the latest addendum of each source lab. */
-    private function snapshot(HealthRecord $record): array
+    public function snapshot(HealthRecord $record): array
     {
         $diagnoses = array_values(array_filter($record->diagnoses ?? [], fn ($entry) => $this->authority->isTbName($entry['name'] ?? null)));
         $labs = app(LaboratoryEvidenceService::class)->present($record);
@@ -65,14 +74,16 @@ final class TbCaseRegistrationService
         ];
     }
 
-    private function revision(HealthRecord $record, array $snapshot): string
+    public function revision(HealthRecord $record, ?array $snapshot = null): string
     {
+        $snapshot ??= $this->snapshot($record);
+
         return $this->fingerprint([$record->id, $record->patient_id, $record->rural_health_unit_id,
             $record->updated_at?->toISOString(), $record->diagnoses, $snapshot]);
     }
 
     /** @return array{?string, int} */
-    private function blocked(HealthRecord $record, ?TbTreatmentCase $case = null): array
+    public function blocked(HealthRecord $record, ?TbTreatmentCase $case = null, bool $requireDeferredDecision = false): array
     {
         if ($case) {
             return ['Form 4B is already registered for this consultation.', 409];
@@ -87,6 +98,12 @@ final class TbCaseRegistrationService
         $assessment = $entries[0]['tbManagement'] ?? [];
         if (($assessment['diagnosisType'] ?? null) !== 'tb_disease' || ($assessment['drugResistance'] ?? null) !== 'drug_susceptible') {
             return ['Form 4B requires TB Disease with drug-susceptible classification. TB Infection and DR-TB are not eligible.', 422];
+        }
+        if ($requireDeferredDecision) {
+            $decision = $assessment['treatmentDecision'] ?? null;
+            if (! in_array($decision, ['not_yet_initiated', 'refer_elsewhere'], true)) {
+                return ['Delayed Form 4B registration is available when treatment was deferred or referred elsewhere.', 422];
+            }
         }
         if (TbTreatmentCase::where('patient_id', $record->patient_id)->where('status', 'active')->exists()
             || TbCaseEndorsementService::hasActiveLinkedCase((int) $record->patient_id)) {
@@ -107,7 +124,16 @@ final class TbCaseRegistrationService
     /** @return array{case: TbTreatmentCase, created: bool} */
     public function register(Request $request, HealthRecord $source, array $data): array
     {
-        $user = $request->user();
+        return $this->registerForSource($request->user(), $source, $data, $request, false);
+    }
+
+    /**
+     * Shared registration used by delayed POST and atomic consultation finalize.
+     *
+     * @return array{case: TbTreatmentCase, created: bool}
+     */
+    public function registerForSource(User $user, HealthRecord $source, array $data, ?Request $request = null, bool $withinExistingTransaction = false): array
+    {
         TbClinicalAuthority::ensurePhysician($user);
         ActionPermissions::ensure($user, 'consultations.finalize');
         $this->authorizeRead($user, $source);
@@ -115,46 +141,104 @@ final class TbCaseRegistrationService
         $data['reporting_year'] = (int) $data['reporting_year'];
         $key = $data['registration_key'];
         $hash = $this->fingerprint(['source' => $source->id, 'payload' => Arr::except($data, ['registration_key'])]);
-        try {
-            return DB::transaction(function () use ($request, $source, $data, $key, $hash) {
-                TbCaseEndorsementService::lockIdentityPatients((int) $source->patient_id);
-                $record = HealthRecord::whereKey($source->id)->lockForUpdate()->firstOrFail();
-                abort_unless((int) $record->patient_id === (int) $source->patient_id, 409, 'The consultation source changed. Refresh before registration.');
-                $this->authorizeRead($request->user(), $record);
-                if ($existing = TbTreatmentCase::where('registration_key', $key)->first()) {
-                    return $this->retry($existing, $record, $hash);
-                }
-                $case = TbTreatmentCase::where('source_health_record_id', $record->id)->first();
-                [$reason, $status] = $this->blocked($record, $case);
-                abort_if($reason !== null, $status, $reason ?? '');
-                LaboratoryTest::where('health_record_id', $record->id)->orderBy('id')->lockForUpdate()->get();
-                $snapshot = $this->snapshot($record);
-                abort_unless(hash_equals($this->revision($record, $snapshot), $data['source_revision']), 409, 'Diagnostic evidence changed. Refresh and review the assessment before registering.');
-                $prefill = $this->preview($request->user(), $record)['card_data'];
-                $card = $data['card_data'];
-                foreach (['caseFinding', 'diagnosis', 'classification'] as $group) {
-                    $card[$group] = [...($card[$group] ?? []), ...$prefill[$group]];
-                }
-                $number = $this->numbers->allocate((int) $record->rural_health_unit_id, $data['reporting_year'], $data['case_number']);
-                $card['diagnosis']['tbCaseNumber'] = $number;
-                $case = TbTreatmentCase::create([
-                    'patient_id' => $record->patient_id, 'rural_health_unit_id' => $record->rural_health_unit_id,
-                    'source_health_record_id' => $record->id, 'reporting_year' => $data['reporting_year'], 'case_number' => $number,
-                    'status' => 'active', 'registered_by' => $request->user()->id, 'registered_at' => now(),
-                    'diagnosis_snapshot' => $snapshot, 'card_data' => $card, 'registration_key' => $key, 'registration_hash' => $hash,
-                ]);
+        $run = function () use ($user, $source, $data, $key, $hash, $request) {
+            TbCaseEndorsementService::lockIdentityPatients((int) $source->patient_id);
+            $record = HealthRecord::whereKey($source->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $record->patient_id === (int) $source->patient_id, 409, 'The consultation source changed. Refresh before registration.');
+            $this->authorizeRead($user, $record);
+            if ($existing = TbTreatmentCase::where('registration_key', $key)->first()) {
+                return $this->retry($existing, $record, $hash);
+            }
+            $case = TbTreatmentCase::where('source_health_record_id', $record->id)->first();
+            [$reason, $status] = $this->blocked($record, $case, (bool) ($data['require_deferred_decision'] ?? false));
+            abort_if($reason !== null, $status, $reason ?? '');
+            LaboratoryTest::where('health_record_id', $record->id)->orderBy('id')->lockForUpdate()->get();
+            $snapshot = $this->snapshot($record);
+            $revision = $this->revision($record, $snapshot);
+            if (! ($data['trust_source_revision'] ?? false)) {
+                abort_unless(hash_equals($revision, (string) ($data['source_revision'] ?? '')), 409, 'Diagnostic evidence changed. Refresh and review the assessment before registering.');
+            }
+            $prefill = $this->preview($user, $record)['card_data'];
+            $card = $data['card_data'];
+            foreach (['caseFinding', 'diagnosis', 'classification'] as $group) {
+                $card[$group] = [...($card[$group] ?? []), ...$prefill[$group]];
+            }
+            if (filled($data['treatment_start_date'] ?? null) && blank($card['phases']['intensiveStart'] ?? null)) {
+                $card['phases'] = [...($card['phases'] ?? []), 'intensiveStart' => $data['treatment_start_date']];
+            }
+            $number = $this->numbers->allocate((int) $record->rural_health_unit_id, $data['reporting_year'], $data['case_number']);
+            $card['diagnosis']['tbCaseNumber'] = $number;
+            $case = TbTreatmentCase::create([
+                'patient_id' => $record->patient_id, 'rural_health_unit_id' => $record->rural_health_unit_id,
+                'source_health_record_id' => $record->id, 'reporting_year' => $data['reporting_year'], 'case_number' => $number,
+                'status' => 'active', 'registered_by' => $user->id, 'registered_at' => now(),
+                'diagnosis_snapshot' => $snapshot, 'card_data' => $card, 'registration_key' => $key, 'registration_hash' => $hash,
+            ]);
+            if ($request) {
                 app(AuditLogger::class)->log($request, 'created', 'tb_treatment_cases', "Registered Form 4B case {$case->id} from consultation {$record->id}.");
+            }
 
-                return ['case' => $case->fresh(), 'created' => true];
-            }, 3);
+            return ['case' => $case->fresh(), 'created' => true];
+        };
+
+        try {
+            return $withinExistingTransaction ? $run() : DB::transaction($run, 3);
         } catch (QueryException $exception) {
-            // A globally unique submission key also protects simultaneous writers
-            // on different patients. Only return a case if its source/hash match.
             if ($existing = TbTreatmentCase::where('registration_key', $key)->first()) {
                 return $this->retry($existing, $source, $hash);
             }
             throw $exception;
         }
+    }
+
+    /**
+     * Derive Province / HUC from the RHU address already stored in facility
+     * configuration (for example "Bulakan, Bulacan" → "Bulacan"). No hardcode.
+     */
+    public function provinceFromFacilityAddress(?string $address): string
+    {
+        $parts = array_values(array_filter(array_map('trim', explode(',', (string) $address)), fn ($part) => $part !== ''));
+
+        return $parts === [] ? '' : (string) end($parts);
+    }
+
+    /** @return array{dateOfScreening: string, screeningDateSource: string, referralSourceLabel: string} */
+    public function screeningPrefill(HealthRecord $record): array
+    {
+        $visit = null;
+        if (filled($record->consultation_uuid)) {
+            $visit = RhuVisitQueueEntry::query()
+                ->where('consultation_uuid', $record->consultation_uuid)
+                ->with('referral.barangayHealthCenter')
+                ->first();
+        }
+        $referral = $visit?->referral;
+        $documented = $referral?->screening_date ?? $referral?->date_of_screening ?? null;
+        if (filled($documented)) {
+            return [
+                'dateOfScreening' => substr((string) $documented, 0, 10),
+                'screeningDateSource' => 'bhc_screening',
+                'referralSourceLabel' => $referral?->barangayHealthCenter?->name ?? 'BHC referral',
+            ];
+        }
+        if ($referral) {
+            $referralDate = optional($referral->referral_datetime)->timezone('Asia/Manila')?->toDateString();
+
+            return [
+                'dateOfScreening' => $referralDate
+                    ?: optional($record->date_recorded)->timezone('Asia/Manila')?->toDateString()
+                    ?: now('Asia/Manila')->toDateString(),
+                'screeningDateSource' => $referralDate ? 'referral_fallback' : 'rhu_visit',
+                'referralSourceLabel' => $referral->barangayHealthCenter?->name ?? 'BHC referral',
+            ];
+        }
+
+        return [
+            'dateOfScreening' => optional($record->date_recorded)->timezone('Asia/Manila')?->toDateString()
+                ?: now('Asia/Manila')->toDateString(),
+            'screeningDateSource' => 'rhu_visit',
+            'referralSourceLabel' => 'RHU walk-in',
+        ];
     }
 
     private function retry(TbTreatmentCase $case, HealthRecord $source, string $hash): array

@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { tbRegistrationPayload, tbRegistrationErrors, tbRegistrationAttempt, withTbRegimenRows, registerOrRecoverTbCase } from "./tbRegistration.js";
+import {
+  tbRegistrationPayload,
+  tbRegistrationErrors,
+  tbRegistrationAttempt,
+  withTbRegimenRows,
+  registerOrRecoverTbCase,
+  screeningPrefillFromVisit,
+  emptyTbCaseRegistration,
+  normalizeTbCaseRegistration,
+} from "./tbRegistration.js";
 
 const card = () => ({
   caseFinding: { diagnosingFacility: "Forged", ntpFacilityCode: "RHU-1" },
@@ -80,4 +89,31 @@ test("recovery preserves clinical conflicts and cannot resolve a different sourc
   await assert.rejects(registerOrRecoverTbCase(attempt, async () => { throw conflict; }, async () => ({ case: { id: 42, source_health_record_id: 12 } })), error => error === conflict);
   const failure = Object.assign(new Error("Connection lost"), { isNetworkError: true });
   await assert.rejects(registerOrRecoverTbCase(attempt, async () => { throw failure; }, async () => ({ case: { id: 43, source_health_record_id: 13 } })), error => error === failure);
+});
+
+test("screening prefill labels referral fallback versus walk-in visit date", () => {
+  const referral = screeningPrefillFromVisit({
+    referral_id: 9,
+    referral: { referral_datetime: "2026-03-15T08:00:00+08:00", sending_bhc: { name: "Sample BHC" } },
+  });
+  assert.equal(referral.dateOfScreening, "2026-03-15");
+  assert.equal(referral.screeningDateSource, "referral_fallback");
+  assert.equal(referral.referralSourceLabel, "Sample BHC");
+  const walkIn = screeningPrefillFromVisit({ source: "walk_in", consultationDate: "2026-04-01" });
+  assert.equal(walkIn.dateOfScreening, "2026-04-01");
+  assert.equal(walkIn.screeningDateSource, "rhu_visit");
+  assert.equal(walkIn.referralSourceLabel, "RHU walk-in");
+});
+
+test("consultation Form 4B draft keeps a stable registration key across normalize", () => {
+  const first = emptyTbCaseRegistration({ visit: { consultationDate: "2026-05-01" }, createKey: () => "stable-key" });
+  const restored = normalizeTbCaseRegistration({
+    ...first,
+    confirmed: true,
+    card_data: { ...first.card_data, classification: { ...first.card_data.classification, bacteriologicalStatus: "clinically_diagnosed" } },
+  }, { createKey: () => "other-key" });
+  assert.equal(restored.registration_key, "stable-key");
+  assert.equal(restored.confirmed, true);
+  assert.equal(restored.card_data.classification.bacteriologicalStatus, "clinically_diagnosed");
+  assert.equal(restored.card_data.caseFinding.dateOfScreening, "2026-05-01");
 });
