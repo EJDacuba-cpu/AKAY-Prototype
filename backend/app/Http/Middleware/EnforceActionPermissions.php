@@ -15,8 +15,8 @@ class EnforceActionPermissions
         $path = $request->path();
         $read = $request->isMethod('get');
         $permission = match (true) {
-            // Walk-in Check-in may read pending referrals without clinical fields.
-            str_ends_with($path, '/pending-referrals') => (
+            // Visit Check-in may read pending referrals/follow-ups without clinical fields.
+            str_ends_with($path, '/pending-referrals') || str_ends_with($path, '/pending-follow-ups') => (
                 ActionPermissions::allows($request->user(), 'patients.register')
                 || ActionPermissions::allows($request->user(), 'rhu.intake')
                 || ActionPermissions::allows($request->user(), 'rhu.manage')

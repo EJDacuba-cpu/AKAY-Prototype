@@ -311,7 +311,7 @@ class FormDraftCoordinator {
     } catch (error) { if (this.live(epoch)) this.patch({ busy: false, error: error.message, status: "error" }); return false; }
   }
 
-  // Opted into only by Walk-in Check-in -> Register New Patient. Other forms
+  // Opted into only by Visit Check-in -> Register New Patient. Other forms
   // keep the existing recovery decisions above.
   async resumeLatestRecovery(source) {
     if (this.closed || this.state.busy) return false;

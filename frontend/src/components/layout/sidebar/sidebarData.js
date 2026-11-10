@@ -126,7 +126,7 @@ export const menuByRole = {
           defaultPath: "/rhu/incoming-referrals",
           children: [
             { label: "Incoming Referrals", path: "/rhu/incoming-referrals" },
-            { label: "Walk-in Check-in", path: "/rhu/walk-in-check-in" },
+            { label: "Visit Check-in", path: "/rhu/walk-in-check-in" },
           ],
         },
       ],

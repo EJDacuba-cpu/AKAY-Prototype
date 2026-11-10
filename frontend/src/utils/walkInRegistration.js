@@ -1,7 +1,7 @@
 // Walk-in registration: a new RHU patient who joins today's queue when saved.
 // Pure helpers; the registration form decides when to call them.
 
-/** True when the registration page was opened from the walk-in check-in flow. */
+/** True when the registration page was opened from the Visit Check-in flow. */
 export function isCheckInFlow(search) {
   return new URLSearchParams(search || '').get('check_in') === '1';
 }
@@ -68,7 +68,7 @@ export function patientIdFromWalkInSearch(search) {
   return id && id.trim() ? id.trim() : null;
 }
 
-/** Where to go after a patient is saved: check-in flow returns to Walk-in Check-in; RHU default is Today's Queue. */
+/** Where to go after a patient is saved: check-in flow returns to Visit Check-in; RHU default is Today's Queue. */
 export function postSaveDestination({ checkIn, role, patientsPath, patientId }) {
   if (checkIn) return walkInCheckInPathForPatient(patientId);
   return role === 'rhu' ? patientsPath : `${patientsPath}/${patientId}`;

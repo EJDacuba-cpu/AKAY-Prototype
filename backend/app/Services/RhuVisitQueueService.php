@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\RhuVisitCheckInKeyConflictException;
 use App\Exceptions\RhuVisitDuplicateActiveException;
+use App\Exceptions\RhuVisitPendingReferralException;
 use App\Exceptions\RhuVisitStateException;
 use App\Models\AuditLog;
 use App\Models\FollowUpTask;
@@ -96,6 +97,12 @@ class RhuVisitQueueService
         $existing = $this->resolveExisting($rhuId, $key, $patient->id, $referralId, $source);
         if ($existing !== null) {
             return $existing;
+        }
+
+        // Ordinary walk-in check-in must not bypass Pending BHC referral arrival.
+        // Referral arrival uses allowReservedKey and supplies referral_id itself.
+        if ($referralId === null && ! $allowReservedKey) {
+            $this->assertNoPendingReferralForWalkIn($rhuId, (int) $patient->id);
         }
 
         // A new walk-in key may continue exactly one Received referral. The
@@ -541,6 +548,47 @@ class RhuVisitQueueService
     }
 
     /**
+     * Active RHU follow-up tasks for Visit Check-in. Desk metadata only; tasks
+     * are not fulfilled, cancelled, or assigned to a visit here.
+     *
+     * @return array{count: int, follow_ups: list<array{id: int, due_date: string|null, state: string, is_overdue: bool}>}
+     */
+    public function pendingFollowUpsForCheckIn(User $user, int $patientId): array
+    {
+        $rhuId = $this->authorizeRhuUser($user);
+        $patient = Patient::query()->whereKey($patientId)->firstOrFail();
+        abort_unless(
+            $this->facilityAccess->scopeRhuWalkInPatients(Patient::query(), $user)->whereKey($patient->id)->exists(),
+            403,
+            self::DENIED_MESSAGE
+        );
+
+        $followUps = FollowUpTask::query()
+            ->where('patient_id', $patient->id)
+            ->where('rural_health_unit_id', $rhuId)
+            ->whereIn('state', FollowUpTask::ACTIVE_STATES)
+            ->whereNull('fulfilled_at')
+            ->whereNull('rescheduled_to_id')
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (FollowUpTask $task): array {
+                $dueDate = $task->due_date?->toDateString();
+
+                return [
+                    'id' => (int) $task->id,
+                    'due_date' => $dueDate,
+                    'state' => (string) $task->state,
+                    'is_overdue' => $task->due_date !== null && $task->due_date->lt(today()),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return ['count' => count($followUps), 'follow_ups' => $followUps];
+    }
+
+    /**
      * Active patients this RHU can see with the same first name, last name
      * (trimmed, case-insensitive) and birthdate. Without a birthdate nothing is
      * matched: a name alone is not enough to call someone a duplicate.
@@ -657,6 +705,19 @@ class RhuVisitQueueService
             throw ValidationException::withMessages([
                 'referral_id' => ['This referral belongs to a different patient.'],
             ]);
+        }
+    }
+
+    private function assertNoPendingReferralForWalkIn(int $rhuId, int $patientId): void
+    {
+        $hasPending = Referral::query()
+            ->where('rural_health_unit_id', $rhuId)
+            ->where('patient_id', $patientId)
+            ->where('status', Referral::STATUS_PENDING)
+            ->exists();
+
+        if ($hasPending) {
+            throw new RhuVisitPendingReferralException();
         }
     }
 

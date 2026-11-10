@@ -109,21 +109,63 @@ class RhuWalkInCheckInApiTest extends TestCase
     public function test_referral_id_in_the_body_is_ignored(): void
     {
         $patient = $this->patient();
-        $referral = Referral::create([
+
+        $this->checkIn(['patient_id' => $patient->id, 'check_in_key' => 'key-1', 'referral_id' => 999])->assertCreated();
+
+        $entry = RhuVisitQueueEntry::sole();
+        $this->assertNull($entry->referral_id);
+        $this->assertSame(RhuVisitQueueEntry::SOURCE_WALK_IN, $entry->source);
+    }
+
+    public function test_pending_referral_blocks_walk_in_check_in(): void
+    {
+        $patient = $this->patient();
+        Referral::create([
             'tracking_id' => 'AKY-TEST-'.uniqid(),
             'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
             'patient_id' => $patient->id,
             'barangay_health_center_id' => $this->bhc->id,
             'rural_health_unit_id' => $this->rhu->id,
-            'reason_for_referral' => 'Ignored',
+            'reason_for_referral' => 'Pending gate',
             'status' => Referral::STATUS_PENDING,
         ]);
 
-        $this->checkIn(['patient_id' => $patient->id, 'check_in_key' => 'key-1', 'referral_id' => $referral->id])->assertCreated();
+        $this->checkIn(['patient_id' => $patient->id, 'check_in_key' => 'key-1'])
+            ->assertConflict()
+            ->assertJsonPath('code', 'VISIT_PENDING_REFERRAL');
 
-        $entry = RhuVisitQueueEntry::sole();
-        $this->assertNull($entry->referral_id);
-        $this->assertSame(RhuVisitQueueEntry::SOURCE_WALK_IN, $entry->source);
+        $this->assertSame(0, RhuVisitQueueEntry::count());
+    }
+
+    public function test_pending_follow_up_does_not_block_walk_in_check_in(): void
+    {
+        $patient = $this->patient();
+        $record = \App\Models\HealthRecord::create([
+            'patient_id' => $patient->id,
+            'created_by' => $this->nurse->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Follow-up desk',
+        ]);
+        \App\Models\FollowUpTask::create([
+            'health_record_id' => $record->id,
+            'patient_id' => $patient->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'due_date' => now()->toDateString(),
+            'purpose' => 'Wound check',
+            'state' => \App\Models\FollowUpTask::STATE_PENDING,
+        ]);
+
+        $this->checkIn(['patient_id' => $patient->id, 'check_in_key' => 'key-1'])
+            ->assertCreated()
+            ->assertJsonPath('data.source', 'walk_in');
+
+        $this->assertSame(1, RhuVisitQueueEntry::count());
+        $this->assertSame(
+            \App\Models\FollowUpTask::STATE_PENDING,
+            \App\Models\FollowUpTask::query()->sole()->state
+        );
+        $this->assertNull(\App\Models\FollowUpTask::query()->sole()->fulfilled_at);
     }
 
     public function test_other_facility_patient_is_forbidden(): void

@@ -26,7 +26,7 @@ export async function listRecentPatientsForCheckIn(limit = 8) {
 }
 
 /**
- * Pending BHC referrals for one walk-in-eligible patient at this RHU.
+ * Pending BHC referrals for one visit-check-in-eligible patient at this RHU.
  * Identity only. Does not change referral status or create a visit.
  */
 export async function listPendingReferralsForCheckIn(patientId) {
@@ -39,6 +39,23 @@ export async function listPendingReferralsForCheckIn(patientId) {
   return {
     count: Number.isFinite(count) ? count : referrals.length,
     referrals,
+  };
+}
+
+/**
+ * Active RHU follow-ups for Visit Check-in. Desk metadata only.
+ * Does not fulfill, cancel, or assign follow-up tasks.
+ */
+export async function listPendingFollowUpsForCheckIn(patientId) {
+  const response = await apiRequest(
+    `/rhu-visits/patients/${encodeURIComponent(patientId)}/pending-follow-ups`,
+  );
+  const data = response?.data && typeof response.data === "object" ? response.data : {};
+  const followUps = Array.isArray(data.follow_ups) ? data.follow_ups : [];
+  const count = Number(data.count);
+  return {
+    count: Number.isFinite(count) ? count : followUps.length,
+    follow_ups: followUps,
   };
 }
 

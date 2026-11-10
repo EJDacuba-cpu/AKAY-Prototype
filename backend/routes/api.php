@@ -221,6 +221,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
             Route::get('/rhu-visits/patient-search', [RhuVisitController::class, 'patientSearch']);
             Route::get('/rhu-visits/recent-patients', [RhuVisitController::class, 'recentPatients']);
             Route::get('/rhu-visits/patients/{patient}/pending-referrals', [RhuVisitController::class, 'pendingReferrals'])->whereNumber('patient');
+            Route::get('/rhu-visits/patients/{patient}/pending-follow-ups', [RhuVisitController::class, 'pendingFollowUps'])->whereNumber('patient');
             Route::post('/rhu-visits/{visit}/close', [RhuVisitController::class, 'close'])->whereNumber('visit');
             Route::post('/rhu-visits/{visit}/start', [RhuVisitController::class, 'start'])->whereNumber('visit');
             Route::post('/rhu-visits/{visit}/resume', [RhuVisitController::class, 'resume'])->whereNumber('visit');

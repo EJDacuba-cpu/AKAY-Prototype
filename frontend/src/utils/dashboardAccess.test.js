@@ -92,7 +92,7 @@ test("RHU Medicine parent and To Dispense follow inventory and dispense duties",
   assert.equal(navigationAllowed(dispenseOnly, "/rhu/medicine-management"), false);
 });
 
-test("RHU Patient Intake and walk-in check-in follow intake and register duties", () => {
+test("RHU Patient Intake and Visit Check-in follow intake and register duties", () => {
   const intakeStaff = { role: "rhu", permissions: ["patients.register", "rhu.intake"] };
   const historyOnly = { role: "rhu", permissions: ["clinical.history"] };
   const intakeOnly = { role: "rhu", permissions: ["rhu.intake"] };

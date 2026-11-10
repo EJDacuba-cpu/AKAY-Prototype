@@ -609,9 +609,9 @@ function PatientDirectory({
                   : role === "rhu"
                     ? (
                       <>
-                        Register walk-in patients from{" "}
+                        Register patients from{" "}
                         <Link to="/rhu/walk-in-check-in" className="font-medium text-ink-700 underline">
-                          Walk-in Check-in
+                          Visit Check-in
                         </Link>
                         .
                       </>

@@ -137,7 +137,7 @@ test("BHC Monitoring Requests stays active for TB endorsements tab and legacy pa
   assert.equal(isSidebarPathActive(directory, legacyTb, "bhc"), false);
 });
 
-test("RHU Patient Intake sidebar nests Incoming Referrals and Walk-in Check-in", () => {
+test("RHU Patient Intake sidebar nests Incoming Referrals and Visit Check-in", () => {
   const intake = menuByRole.rhu
     .flatMap((section) => section.items)
     .find((item) => item.path === "/rhu/patient-intake");
@@ -146,7 +146,7 @@ test("RHU Patient Intake sidebar nests Incoming Referrals and Walk-in Check-in",
   assert.equal(intake.defaultPath, "/rhu/incoming-referrals");
   assert.deepEqual(
     intake.children.map((c) => c.label),
-    ["Incoming Referrals", "Walk-in Check-in"],
+    ["Incoming Referrals", "Visit Check-in"],
   );
   assert.deepEqual(
     intake.children.map((c) => c.path),
