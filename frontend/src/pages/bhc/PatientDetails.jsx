@@ -12,7 +12,6 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
-import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import CarePath from "../../components/features/patients/profile/CarePath";
 import PatientOverviewBoard from "../../components/features/patients/profile/PatientOverviewBoard";
@@ -68,7 +67,7 @@ function ProfileShell({ children }) {
  * Every other tab scrolls inside its own panel, so the header and tabs stay put.
  * Past Medical / Family / Personal & Social History have their own Patient
  * Background tab (read-only). Staff update them during a consultation; they
- * apply on finalize. Overview has a read-only Patient History reference.
+ * apply on finalize.
  */
 export default function PatientDetails() {
   return <LivePatientDetails />;
@@ -380,18 +379,10 @@ function LivePatientDetails() {
     );
   }
 
-  const historyReference =
-    activeTab === "overview" && canViewHistory ? (
-      <PatientHistoryReference
-        patient={patient}
-        background={patient.medicalBackground}
-        conditions={conditions}
-      />
-    ) : null;
   // PatientBackgroundTab is keyed by patient below, so an open section edit is
   // never carried over to another patient's profile.
   const tabStrip = (
-    <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} aside={historyReference} />
+    <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
   );
   const detailsState = buildPatientRecordDetailsState(location);
   const viewRecord = (recordId) => navigate(`/bhc/health-records/${recordId}`, { state: detailsState });

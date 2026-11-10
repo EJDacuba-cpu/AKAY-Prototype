@@ -172,7 +172,7 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   assert.doesNotMatch(workspace, /PatientHistoryReference/);
   assert.doesNotMatch(workspace, /onEditBackground=/);
   assert.match(details, /canEdit=\{false\}/);
-  assert.match(details, /PatientHistoryReference/);
+  assert.doesNotMatch(details, /PatientHistoryReference/);
   assert.doesNotMatch(details, /onEditBackground=/);
   const backgroundTab = readFileSync(join(here, "../components/features/patients/PatientBackgroundTab.jsx"), "utf8");
   assert.doesNotMatch(backgroundTab, /View Health Records/);

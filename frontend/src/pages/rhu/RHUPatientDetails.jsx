@@ -12,7 +12,6 @@ import {
   SuccessModal,
 } from "../../components/common";
 import PatientBackgroundTab from "../../components/features/patients/PatientBackgroundTab";
-import PatientHistoryReference from "../../components/features/patients/PatientHistoryReference";
 import PatientProfileHeader from "../../components/features/patients/profile/PatientProfileHeader";
 import ProfileQueueAction from "../../components/features/rhu-queue/ProfileQueueAction";
 import { formatPatientName } from "../../utils/formatters";
@@ -388,20 +387,7 @@ function LiveRHUPatientDetails() {
           />
 
           <div className="patient-profile-panels @container flex min-h-0 min-w-0 flex-1 flex-col flow:flex-none">
-            <ProfileTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onSelect={setActiveTab}
-              aside={
-                activeTab === "overview" && canViewHistory ? (
-                  <PatientHistoryReference
-                    patient={patient}
-                    background={patient.medicalBackground}
-                    conditions={conditions}
-                  />
-                ) : null
-              }
-            />
+            <ProfileTabs tabs={tabs} activeTab={activeTab} onSelect={setActiveTab} />
 
             {activeTab === "overview" &&
               (canViewHistory ? (
