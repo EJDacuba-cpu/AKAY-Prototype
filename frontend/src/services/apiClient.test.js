@@ -159,6 +159,16 @@ test("successful refresh followed by replay 503 preserves the newly verified ses
   assert.equal(h.calls[2].headers.Authorization, `Bearer ${session.token}`);
 });
 
+test("SESSION_REPLACED clears the session like a forced invalidation", async (t) => {
+  const h = await harness(t, () => json(401, {
+    message: "You have been signed out because your account was logged in on another device.",
+    code: "SESSION_REPLACED",
+  }));
+  await assert.rejects(h.api.apiRequest("/protected", { retryAfterRefresh: false }), { code: "SESSION_REPLACED" });
+  invalidated(h);
+  assert.equal(h.clears[0]?.reason, "session-replaced");
+});
+
 for (const code of ["SESSION_INVALID", "SESSION_EXPIRED"]) {
   test(`definitively rejected refresh (${code}) clears credentials and sensitive state`, async (t) => {
     const h = await harness(t, (call) => call.path === "/auth/refresh" ? json(401, { code }) : expired());

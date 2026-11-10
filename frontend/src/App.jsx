@@ -385,7 +385,7 @@ export default function App() {
         navigate("/login", {
           replace: true,
           state: {
-            sessionEnded: ["session-expired", "session-invalid"].includes(event.detail?.reason),
+            sessionEnded: ["session-expired", "session-invalid", "session-replaced"].includes(event.detail?.reason),
             sessionReason: event.detail?.reason,
           },
         });

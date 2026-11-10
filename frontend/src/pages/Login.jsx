@@ -13,6 +13,7 @@ import {
   loginErrorMessage,
   shouldResetTurnstile,
 } from "../config/turnstile";
+import { sessionEndedNotice } from "../utils/sessionEndedNotice";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,11 +26,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionNotice, setSessionNotice] = useState(() =>
-    location.state?.sessionReason === "session-expired"
-      ? "Your session has expired. Please sign in again."
-      : location.state?.sessionEnded
-        ? "Your session is no longer valid. Please sign in again."
-        : location.state?.notice || "",
+    sessionEndedNotice(location.state || {}),
   );
   const [fieldErrors, setFieldErrors] = useState({});
   const [mode, setMode] = useState("signin");

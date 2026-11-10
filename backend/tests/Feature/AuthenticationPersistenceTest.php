@@ -290,6 +290,31 @@ class AuthenticationPersistenceTest extends TestCase
             ->assertJsonPath('code', 'SESSION_INVALID');
     }
 
+    public function test_a_second_login_rejects_the_previous_refresh_cookie_as_session_replaced(): void
+    {
+        $firstLogin = $this->login($this->user)->assertOk();
+        $oldRefresh = $this->refreshCookieFrom($firstLogin)->getValue();
+        $oldAccess = $firstLogin->json('token');
+
+        $secondLogin = $this->login($this->user)->assertOk();
+        $newRefresh = $this->refreshCookieFrom($secondLogin)->getValue();
+        $newAccess = $secondLogin->json('token');
+
+        $this->refresh($oldRefresh)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'SESSION_REPLACED')
+            ->assertJsonPath(
+                'message',
+                'You have been signed out because your account was logged in on another device.'
+            );
+
+        $this->assertNull(PersonalAccessToken::findToken($oldAccess));
+        $this->assertNull(PersonalAccessToken::findToken($oldRefresh));
+        $this->assertNotNull(PersonalAccessToken::findToken($newAccess));
+        $this->assertNotNull(PersonalAccessToken::findToken($newRefresh));
+        $this->refresh($newRefresh)->assertOk();
+    }
+
     private function login(User $user)
     {
         return $this->withHeaders($this->sessionHeaders())->postJson('/api/auth/login', $this->withTurnstile([

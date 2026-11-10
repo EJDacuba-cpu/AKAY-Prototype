@@ -121,11 +121,22 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            $token = $request->bearerToken()
-                ? PersonalAccessToken::findToken($request->bearerToken())
-                : null;
-            $expired = $token
-                && app(UserSessionRevocationService::class)->isExpired($token);
+            $sessions = app(UserSessionRevocationService::class);
+            $bearer = $request->bearerToken();
+
+            if ($bearer && $sessions->isReplacedSessionToken($bearer)) {
+                return response()->json([
+                    'message' => UserSessionRevocationService::SESSION_REPLACED_MESSAGE,
+                    'code' => 'SESSION_REPLACED',
+                ], 401, [
+                    'Cache-Control' => 'no-store, private',
+                    'Pragma' => 'no-cache',
+                    'Vary' => 'Authorization, Cookie',
+                ]);
+            }
+
+            $token = $bearer ? PersonalAccessToken::findToken($bearer) : null;
+            $expired = $token && $sessions->isExpired($token);
 
             if ($expired) {
                 $token->delete();

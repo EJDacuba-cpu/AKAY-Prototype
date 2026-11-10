@@ -273,10 +273,17 @@ export async function refreshAuthSession() {
   return refreshPromise;
 }
 
+function sessionClearReason(error) {
+  const code = String(error?.code || error?.payload?.code || "").toUpperCase();
+  if (code === "SESSION_EXPIRED") return "session-expired";
+  if (code === "SESSION_REPLACED") return "session-replaced";
+  return "session-invalid";
+}
+
 async function invalidateFrontendSession(error) {
   await clearSensitiveSessionState({
     queryClient,
-    reason: error?.code === "SESSION_EXPIRED" ? "session-expired" : "session-invalid",
+    reason: sessionClearReason(error),
   });
   clearAuthSession();
 }
