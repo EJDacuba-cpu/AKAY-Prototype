@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { Button } from "../../components/ui/button";
@@ -8,7 +8,16 @@ import { getTbEndorsements, getTbEndorsement, actOnTbEndorsement } from "../../s
 import { TB_ENDORSEMENT_LABELS, tbDecisionRecorded } from "../../utils/tbEndorsements";
 import { formatPatientName } from "../../utils/formatters";
 
-export default function BhcTbEndorsements() {
+/** Deep links keep working; access lives under Monitoring Requests. */
+export function BhcTbEndorsementsRedirect() {
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  next.set("view", "monitoring-requests");
+  next.set("tab", "tb-endorsements");
+  return <Navigate to={`/bhc/patients?${next.toString()}`} replace />;
+}
+
+export default function BhcTbEndorsements({ embedded = false } = {}) {
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const page = Math.max(1, Number(params.get("page")) || 1);
@@ -43,9 +52,24 @@ export default function BhcTbEndorsements() {
       try { await refresh(); } finally { running.current = false; setBusy(false); }
     }
   }
-  return <DashboardLayout role="bhc" title="TB Endorsements">
+  const body = (
     <main className="min-w-0 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-semibold text-ink-900">TB endorsements</h1><p className="mt-1 text-sm text-neutral-600">Review RHU treatment handoffs and access shared Form 4B cards.</p></div><div className="flex gap-2"><Button asChild variant="secondary"><Link to="/bhc/patients">Patients</Link></Button><Button variant="secondary" disabled={busy} onClick={refresh}>Refresh</Button></div></div>
+      <div className={`flex flex-wrap items-center gap-3 ${embedded ? "justify-end" : "justify-between"}`}>
+        {!embedded && (
+          <div>
+            <h1 className="text-lg font-semibold text-ink-900">TB endorsements</h1>
+            <p className="mt-1 text-sm text-neutral-600">Review RHU treatment handoffs and access shared Form 4B cards.</p>
+          </div>
+        )}
+        <div className="flex gap-2">
+          {!embedded && (
+            <Button asChild variant="secondary">
+              <Link to="/bhc/patients?view=monitoring-requests">Monitoring Requests</Link>
+            </Button>
+          )}
+          <Button variant="secondary" disabled={busy} onClick={refresh}>Refresh</Button>
+        </div>
+      </div>
       {error && <p role="alert" className="text-sm text-red-800">{error}</p>}
       {list.isError ? <div className="space-y-2"><p role="alert">Unable to load TB endorsements.</p><Button variant="secondary" onClick={() => list.refetch()}>Retry</Button></div>
         : list.isPending ? <p role="status">Loading TB endorsements…</p>
@@ -62,5 +86,7 @@ export default function BhcTbEndorsements() {
           </div>
         </div>}
     </main>
-  </DashboardLayout>;
+  );
+  if (embedded) return body;
+  return <DashboardLayout role="bhc" title="TB Endorsements">{body}</DashboardLayout>;
 }

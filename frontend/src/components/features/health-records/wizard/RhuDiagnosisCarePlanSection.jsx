@@ -17,7 +17,6 @@ import {
   matchingMonitorableCondition,
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
-import TbInlineForm4bPanel from "../TbInlineForm4bPanel";
 import {
   canOpenDsTbTreatmentCard,
   DR_TB_PRIMARY,
@@ -125,10 +124,6 @@ function TbCaseManagementSection({
   tbCaseRegistration = null,
   onTbCaseRegistrationChange,
   visit = null,
-  form4bLaboratoryTests = [],
-  facilityName = "",
-  patientName = "",
-  physicianName = "",
   visitWeightKg = "",
   prescriptionText = "",
 }) {
@@ -222,7 +217,7 @@ function TbCaseManagementSection({
         <div className="rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3">
           <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
           <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
-            Optional for this visit. Expands here — no separate wizard page.
+            Optional. Registration details open on Review &amp; Finalize.
           </p>
           <Button
             type="button"
@@ -238,29 +233,22 @@ function TbCaseManagementSection({
       )}
 
       {registrationOpen && (
-        <TbInlineForm4bPanel
-          registration={tbCaseRegistration || emptyTbCaseRegistration({
-            visit: visit || {},
-            weightKg: visitWeightKg,
-            prescriptionText,
-          })}
-          onChange={(next) => {
-            if (next == null) {
-              cancelRegistration();
-              return;
-            }
-            onTbCaseRegistrationChange?.(next);
-          }}
-          laboratoryTests={form4bLaboratoryTests}
-          errors={errors}
-          disabled={disabled || !canConfirmTb}
-          facilityName={facilityName}
-          patientName={patientName}
-          physicianName={physicianName}
-          diagnosisLabel="TB Disease · Drug-susceptible"
-          visitWeightKg={visitWeightKg}
-          prescriptionText={prescriptionText}
-        />
+        <div className="rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3">
+          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
+          <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
+            Selected. Complete Form 4B on Review &amp; Finalize before saving.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="compact"
+            disabled={disabled || !canConfirmTb}
+            className="mt-3 text-xs"
+            onClick={cancelRegistration}
+          >
+            Cancel registration
+          </Button>
+        </div>
       )}
 
     </fieldset>
@@ -292,7 +280,7 @@ function DiagnosisCard({
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
   registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
   tbCaseRegistration, onTbCaseRegistrationChange, visit,
-  form4bLaboratoryTests, facilityName, patientName, physicianName, visitWeightKg, prescriptionText,
+  visitWeightKg, prescriptionText,
 }) {
   const action = diagnosisNextAction(entry);
   const confirmed = diagnosisActivateConfirmed(entry, conditions);
@@ -349,10 +337,6 @@ function DiagnosisCard({
             tbCaseRegistration={tbCaseRegistration}
             onTbCaseRegistrationChange={onTbCaseRegistrationChange}
             visit={visit}
-            form4bLaboratoryTests={form4bLaboratoryTests}
-            facilityName={facilityName}
-            patientName={patientName}
-            physicianName={physicianName}
             visitWeightKg={visitWeightKg}
             prescriptionText={prescriptionText}
           />
@@ -518,10 +502,6 @@ export default function RhuDiagnosisCarePlanSection({
   tbCaseRegistration = null,
   onTbCaseRegistrationChange,
   visit = null,
-  form4bLaboratoryTests = [],
-  facilityName = "",
-  patientName = "",
-  physicianName = "",
   visitWeightKg = "",
   errors = {},
   disabled = false,
@@ -584,10 +564,6 @@ export default function RhuDiagnosisCarePlanSection({
               tbCaseRegistration={tbCaseRegistration}
               onTbCaseRegistrationChange={onTbCaseRegistrationChange}
               visit={visit}
-              form4bLaboratoryTests={form4bLaboratoryTests}
-              facilityName={facilityName}
-              patientName={patientName}
-              physicianName={physicianName}
               visitWeightKg={visitWeightKg}
               prescriptionText={prescriptionText}
               onChange={(next) => onChangeDiagnosis?.(next)}

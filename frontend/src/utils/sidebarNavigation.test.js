@@ -117,6 +117,26 @@ test("RHU Patients sidebar children stay query-aware on refresh and bare /rhu/pa
   assert.equal(isSidebarPathActive("/rhu/patients", allLocation, "rhu"), true);
 });
 
+test("BHC Monitoring Requests stays active for TB endorsements tab and legacy path", () => {
+  const monitoring = "/bhc/patients?view=monitoring-requests";
+  const directory = "/bhc/patients?view=patients";
+  const tbTab = {
+    pathname: "/bhc/patients",
+    search: "?view=monitoring-requests&tab=tb-endorsements",
+  };
+  const legacyTb = { pathname: "/bhc/patients/tb-endorsements", search: "" };
+  const detail = {
+    pathname: "/bhc/patients/monitoring-requests/7",
+    search: "",
+  };
+
+  assert.equal(isSidebarPathActive(monitoring, tbTab, "bhc"), true);
+  assert.equal(isSidebarPathActive(monitoring, legacyTb, "bhc"), true);
+  assert.equal(isSidebarPathActive(monitoring, detail, "bhc"), true);
+  assert.equal(isSidebarPathActive(directory, tbTab, "bhc"), false);
+  assert.equal(isSidebarPathActive(directory, legacyTb, "bhc"), false);
+});
+
 test("RHU Patient Intake sidebar nests Incoming Referrals and Walk-in Check-in", () => {
   const intake = menuByRole.rhu
     .flatMap((section) => section.items)

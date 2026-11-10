@@ -428,7 +428,7 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
     || key === "confirmed"
     || key === "treatment_start_date"
   ) {
-    return NEXT_STEP;
+    return REVIEW_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");

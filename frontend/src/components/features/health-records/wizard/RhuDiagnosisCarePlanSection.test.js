@@ -39,38 +39,16 @@ test("TB assessment remains while Treatment Decision and its disposition fields 
   }
 });
 
-test("DS-TB openTreatmentCard expands compact Form 4B inside the diagnosis card", () => {
+test("DS-TB openTreatmentCard only arms intent on Diagnosis; form lives on Review", () => {
   const entry = {
     ...tb,
     tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true },
   };
-  const html = render(entry, {
-    patientName: "Juan Dela Cruz",
-    physicianName: "Dr. Reyes",
-    visitWeightKg: "55",
-    prescriptionText: "2HRZE/4HR",
-    tbCaseRegistration: {
-      registration_key: "11111111-1111-4111-8111-111111111111",
-      reporting_year: 2026,
-      case_number: "",
-      treatment_start_date: "",
-      confirmed: false,
-      screeningDateSource: "rhu_visit",
-      referralSourceLabel: "RHU walk-in",
-      card_data: {
-        caseFinding: { dateOfScreening: "2026-11-10" },
-        classification: {},
-        regimen: { description: "2HRZE/4HR", weightKg: "55", rows: [] },
-      },
-    },
-  });
-  assert.match(html, /data-field="tbCaseRegistration"/);
-  assert.match(html, /Verified from this consultation/);
-  assert.match(html, /Juan Dela Cruz/);
-  assert.match(html, /Treatment start date/);
-  assert.match(html, /Additional Form 4B details/);
+  const html = render(entry);
+  assert.match(html, /Selected/);
+  assert.match(html, /Complete Form 4B on Review/);
   assert.match(html, /Cancel registration/);
-  assert.doesNotMatch(html, /Form 4B opens when you click Next/);
+  assert.doesNotMatch(html, /data-field="tbCaseRegistration"|Treatment start date|Verified consultation summary/);
 });
 
 test("presumptive TB hides drug susceptibility and every diagnosis can link supporting labs", () => {

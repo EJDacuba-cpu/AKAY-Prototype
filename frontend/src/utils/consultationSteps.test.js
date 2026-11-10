@@ -212,7 +212,7 @@ test("RHU ITR legacy TB intake sits after Diagnosis & Care Plan and before Revie
   assert.deepEqual(getStepOrder([], [], options).slice(-3), [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP]);
 });
 
-test("RHU ITR Form 4B stays on Diagnosis; wizard does not insert a Form 4B page", () => {
+test("RHU ITR Form 4B stays inline on Review; wizard does not insert a Form 4B page", () => {
   const withForm4b = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: true };
   const without = { ...RHU_ITR_STEP_OPTIONS, includeForm4b: false };
   assert.equal(keysOf(buildConsultationSteps(withForm4b)).includes(FORM_4B_STEP), false);
@@ -221,8 +221,8 @@ test("RHU ITR Form 4B stays on Diagnosis; wizard does not insert a Form 4B page"
     keysOf(buildConsultationSteps({ ...RHU_ITR_STEP_OPTIONS, includeForm4b: true, includeTb: true })).slice(-3),
     [NEXT_STEP, TB_INTAKE_STEP, REVIEW_STEP],
   );
-  assert.equal(getErrorOwnerStepKey("tbCaseRegistration.card_data.regimen.description", withForm4b), NEXT_STEP);
-  assert.equal(getErrorOwnerStepKey("treatment_start_date", withForm4b), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("tbCaseRegistration.card_data.regimen.description", withForm4b), REVIEW_STEP);
+  assert.equal(getErrorOwnerStepKey("treatment_start_date", withForm4b), REVIEW_STEP);
   assert.equal(getErrorOwnerStepKey("diagnoses.tb.tbManagement.treatmentDecision", withForm4b), NEXT_STEP);
 });
 

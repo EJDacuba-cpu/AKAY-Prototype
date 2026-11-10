@@ -207,6 +207,20 @@ test("BHC Patients module adds Monitoring Requests only for role bhc", () => {
   assert.match(module, /listMonitoringHandoffRequests/);
 });
 
+test("BHC Monitoring Requests hosts TB Endorsements tab, not the All Patients toolbar", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const module = readFileSync(join(here, "../pages/bhc/PatientsModule.jsx"), "utf8");
+  const app = readFileSync(join(here, "../App.jsx"), "utf8");
+  assert.match(module, /General Monitoring/);
+  assert.match(module, /TB Endorsements/);
+  assert.match(module, /BhcTbEndorsements/);
+  assert.match(module, /MONITORING_TAB_TB/);
+  assert.doesNotMatch(module, /RouterLink to="\/bhc\/patients\/tb-endorsements"/);
+  assert.doesNotMatch(module, />TB endorsements</);
+  assert.match(app, /BhcTbEndorsementsRedirect/);
+  assert.match(app, /\/bhc\/patients\/tb-endorsements/);
+});
+
 test("RHU ITR Diagnosis & Care Plan is one screen and does not mount BHC concern reporting", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const workspace = readFileSync(join(here, "../pages/rhu/RhuConsultationWorkspace.jsx"), "utf8");

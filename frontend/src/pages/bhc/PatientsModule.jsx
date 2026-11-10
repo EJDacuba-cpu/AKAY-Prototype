@@ -1,6 +1,6 @@
 import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
@@ -12,6 +12,7 @@ import {
   RefreshingIndicator,
   SearchField,
   SearchFilterCluster,
+  SegmentedFilter,
   pickFilterValues,
 } from "../../components/common";
 import Drawer from "../../components/common/drawer/Drawer";
@@ -36,6 +37,14 @@ import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffS
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
+import BhcTbEndorsements from "./BhcTbEndorsements";
+
+const MONITORING_TAB_GENERAL = "general";
+const MONITORING_TAB_TB = "tb-endorsements";
+const MONITORING_TAB_OPTIONS = [
+  { value: MONITORING_TAB_GENERAL, label: "General Monitoring" },
+  { value: MONITORING_TAB_TB, label: "TB Endorsements" },
+];
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -69,13 +78,33 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const canRegister = access.can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
+  const canTbEndorsements = role === "bhc" && access.can("clinical.history");
+  const monitoringTab =
+    showHandoffs && canTbEndorsements && params.get("tab") === MONITORING_TAB_TB
+      ? MONITORING_TAB_TB
+      : MONITORING_TAB_GENERAL;
+  const showGeneralHandoffs = showHandoffs && monitoringTab === MONITORING_TAB_GENERAL;
+  const showTbEndorsements = showHandoffs && monitoringTab === MONITORING_TAB_TB;
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
-    enabled: showHandoffs,
+    enabled: showGeneralHandoffs,
   });
+
+  function setMonitoringTab(nextTab) {
+    const next = new URLSearchParams(params);
+    if (nextTab === MONITORING_TAB_TB) {
+      next.set("tab", MONITORING_TAB_TB);
+    } else {
+      next.delete("tab");
+      next.delete("case");
+      next.delete("page");
+      next.delete("endorsement");
+    }
+    setParams(next, { replace: true });
+  }
   const {
     patients,
     hasData: hasPatientData,
@@ -171,12 +200,24 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     hasMore: hasMorePatients,
     loadMore: loadMorePatients,
   } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
-  const hasData = showHandoffs ? Array.isArray(handoffsQuery.data) : hasPatientData;
-  const activeError = showHandoffs ? handoffsQuery.error : queryError;
-  const activeRefreshing = showHandoffs ? handoffsQuery.isFetching : isRefreshing;
-  const activeRetry = showHandoffs ? handoffsQuery.refetch : refetchPatients;
-  const showInitialLoading = showHandoffs ? handoffsQuery.isPending && !hasData : loading && !hasData;
-  const showRefreshOverlay = activeRefreshing && hasData;
+  const hasData = showGeneralHandoffs
+    ? Array.isArray(handoffsQuery.data)
+    : showTbEndorsements
+      ? true
+      : hasPatientData;
+  const activeError = showGeneralHandoffs
+    ? handoffsQuery.error
+    : showTbEndorsements
+      ? null
+      : queryError;
+  const activeRefreshing = showGeneralHandoffs ? handoffsQuery.isFetching : isRefreshing;
+  const activeRetry = showGeneralHandoffs ? handoffsQuery.refetch : refetchPatients;
+  const showInitialLoading = showGeneralHandoffs
+    ? handoffsQuery.isPending && !hasData
+    : showTbEndorsements
+      ? false
+      : loading && !hasData;
+  const showRefreshOverlay = activeRefreshing && hasData && !showHandoffs;
 
   useEffect(() => {
     // The card list scrolls on its own: a new search/filter starts at the top.
@@ -275,21 +316,34 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     {showHandoffs ? "Monitoring Requests" : "Patients"}
                   </h1>
                   <p className="mt-1 text-[13px] text-neutral-600">
-                    {showHandoffs
-                      ? "RHU Manage to BHC handoffs for your catchment."
-                      : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
+                    {showTbEndorsements
+                      ? "RHU-to-BHC TB treatment endorsements for your catchment."
+                      : showHandoffs
+                        ? "RHU Manage to BHC handoffs for your catchment."
+                        : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
                   </p>
                 </>
               )}
+              {showHandoffs && canTbEndorsements ? (
+                <div className="mt-3">
+                  <SegmentedFilter
+                    label="Monitoring request type"
+                    value={monitoringTab}
+                    onChange={setMonitoringTab}
+                    options={MONITORING_TAB_OPTIONS}
+                  />
+                </div>
+              ) : null}
               <p className="sr-only" role="status">
-                {showHandoffs
-                  ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
-                  : patientCountLabel}
+                {showTbEndorsements
+                  ? "TB endorsements"
+                  : showHandoffs
+                    ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
+                    : patientCountLabel}
               </p>
             </div>
             {!showHandoffs ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                {role === "bhc" && access.can("clinical.history") && <Button asChild variant="secondary" size="sm"><RouterLink to="/bhc/patients/tb-endorsements">TB endorsements</RouterLink></Button>}
                 <SearchFilterCluster
                   search={
                     <SearchField
@@ -359,7 +413,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         )}
         <div
           className={`clinical-directory__layout${
-            isDesktop && !showInitialLoading
+            isDesktop && !showInitialLoading && !showHandoffs
               ? ` clinical-directory__layout--preview${panelOpen ? " is-open" : ""}`
               : ""
           }`}
@@ -388,13 +442,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   addPatientPath={addPatientPath}
                 />
               )}
-              {showHandoffs && (
+              {showGeneralHandoffs && (
                 <MonitoringRequestList
                   requests={handoffsQuery.data || []}
                   loading={handoffsQuery.isLoading}
                   onOpen={(id) => navigate(`/bhc/patients/monitoring-requests/${id}`)}
                 />
               )}
+              {showTbEndorsements && <BhcTbEndorsements embedded />}
             </div>
 
             {/* Below desktop the toolbar button is hidden and this floating one takes

@@ -3,7 +3,7 @@ import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
 import { SCREENING_DATE_SOURCES } from "../../../utils/tbRegistration";
 
 /**
- * Compact expandable Form 4B registration panel for RHU diagnosis cards.
+ * Compact Form 4B registration panel for Review & Finalize.
  * Opening/editing never creates a case — only authorized consultation finalize does.
  */
 export default function TbInlineForm4bPanel({
@@ -18,6 +18,7 @@ export default function TbInlineForm4bPanel({
   diagnosisLabel = "TB Disease · Drug-susceptible",
   visitWeightKg = "",
   prescriptionText = "",
+  showCancel = true,
 }) {
   if (!registration) return null;
 
@@ -36,33 +37,37 @@ export default function TbInlineForm4bPanel({
 
   return (
     <div
-      className="mt-3 space-y-3 rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3"
+      className="space-y-3 rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-white p-4"
       data-field="tbCaseRegistration"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
+          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">
+            DS-TB Treatment Registration · Form 4B
+          </p>
           <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
-            Completes with consultation finalize. Cancel clears registration intent only.
+            Saves with this consultation. Cancel removes registration intent only.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="compact"
-          disabled={disabled}
-          className="text-xs"
-          onClick={() => onChange?.(null)}
-        >
-          Cancel registration
-        </Button>
+        {showCancel && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="compact"
+            disabled={disabled}
+            className="text-xs"
+            onClick={() => onChange?.(null)}
+          >
+            Cancel registration
+          </Button>
+        )}
       </div>
 
-      <div className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-white px-3 py-2 text-xs text-[var(--color-text-secondary,#475467)]">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-brand,#DC2626)]">
-          Verified from this consultation
-        </p>
-        <dl className="grid gap-2 sm:grid-cols-2">
+      <details className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] px-3 py-2 text-xs text-[var(--color-text-secondary,#475467)]">
+        <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-brand,#DC2626)]">
+          Verified consultation summary
+        </summary>
+        <dl className="mt-2 grid gap-2 sm:grid-cols-2">
           <div>
             <dt className="font-semibold text-[var(--color-text,#101828)]">Patient</dt>
             <dd>{patientName || "Current patient"}</dd>
@@ -107,7 +112,7 @@ export default function TbInlineForm4bPanel({
             <dd className="whitespace-pre-wrap">{prescriptionHint}</dd>
           </div>
         </dl>
-      </div>
+      </details>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium text-[var(--color-text,#101828)]">
@@ -161,7 +166,7 @@ export default function TbInlineForm4bPanel({
         </label>
       </div>
 
-      <div className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-white px-3 py-1">
+      <div className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F8F9FB)] px-3 py-1">
         <TbTreatmentCardForm
           mode="compactRegistration"
           sections="required"
@@ -174,7 +179,7 @@ export default function TbInlineForm4bPanel({
         />
       </div>
 
-      <details className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-white px-3 py-2">
+      <details className="rounded-[8px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F8F9FB)] px-3 py-2">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-text,#101828)]">
           Additional Form 4B details
         </summary>
