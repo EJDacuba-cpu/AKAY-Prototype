@@ -21,6 +21,77 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
         $this->assertStringNotContainsString("CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Manila'", $sql);
     }
 
+    /** Stock-batch migrate re-applies constraints.sql onto DBs that already installed the allocation trigger. */
+    public function test_constraints_sql_drops_allocation_trigger_before_recreate(): void
+    {
+        $sql = file_get_contents(database_path('sql/medicine_expiry_group_constraints.sql'));
+        $dropAllocation = strpos($sql, 'DROP TRIGGER IF EXISTS medicine_inventory_allocations_append_only ON public.medicine_inventory_allocations');
+        $createAllocation = strpos($sql, 'CREATE TRIGGER medicine_inventory_allocations_append_only');
+        $dropGuard = strpos($sql, 'DROP TRIGGER IF EXISTS medicine_expiry_group_guard ON public.medicine_expiry_groups');
+        $createGuard = strpos($sql, 'CREATE TRIGGER medicine_expiry_group_guard');
+        $this->assertNotFalse($dropAllocation, 'Re-running constraints.sql must tolerate an existing allocation append-only trigger.');
+        $this->assertNotFalse($createAllocation);
+        $this->assertLessThan($createAllocation, $dropAllocation);
+        $this->assertNotFalse($dropGuard);
+        $this->assertNotFalse($createGuard);
+        $this->assertLessThan($createGuard, $dropGuard);
+    }
+
+    public function test_constraints_sql_upgrades_existing_expiry_group_schema_with_allocation_trigger(): void
+    {
+        if (! getenv('AKAY_TEST_PG_URL')) {
+            $this->markTestSkipped('AKAY_TEST_PG_URL is required for PostgreSQL expiry-group verification.');
+        }
+        $schema = 'akay_expiry_upgrade_'.bin2hex(random_bytes(8));
+        config(['database.connections.expiry_test' => ['driver' => 'pgsql', 'url' => getenv('AKAY_TEST_PG_URL'), 'charset' => 'utf8', 'prefix' => '', 'search_path' => $schema, 'sslmode' => 'prefer']]);
+        DB::purge('expiry_test');
+        $db = DB::connection('expiry_test');
+        $db->statement('CREATE SCHEMA "'.$schema.'"');
+        try {
+            $db->statement('SET search_path TO "'.$schema.'"');
+            // Pre-stock-batch shape: expiry groups without lot/legacy columns, trigger already installed.
+            $db->unprepared(<<<'SQL'
+                CREATE TABLE medicines (id bigserial PRIMARY KEY, quantity integer NOT NULL DEFAULT 0, item_type text NOT NULL DEFAULT 'medicine', expiration_date date, barangay_health_center_id bigint, rural_health_unit_id bigint, is_active boolean DEFAULT true, reconciliation_required boolean DEFAULT false, low_stock_threshold integer DEFAULT 10, availability_status text, updated_by bigint, updated_at timestamp);
+                CREATE TABLE medicine_inventory_transactions (id bigserial PRIMARY KEY, medicine_id bigint REFERENCES medicines, actor_user_id bigint, transaction_type text, quantity_delta integer, quantity_before bigint, quantity_after bigint, discrepancy integer DEFAULT 0, source_type text, source_id bigint, reason text, operation_key varchar(120), created_at timestamp, UNIQUE(operation_key,medicine_id));
+                CREATE TABLE medicine_expiry_groups (id bigserial PRIMARY KEY, medicine_id bigint REFERENCES medicines, expiration_date date, expiry_not_applicable boolean NOT NULL DEFAULT false, available_quantity integer NOT NULL DEFAULT 0, quarantined_quantity integer NOT NULL DEFAULT 0, created_at timestamp, updated_at timestamp);
+                CREATE TABLE medicine_inventory_allocations (id bigserial PRIMARY KEY, transaction_id bigint REFERENCES medicine_inventory_transactions, expiry_group_id bigint REFERENCES medicine_expiry_groups, available_before integer, available_delta integer, available_after integer, quarantined_before integer, quarantined_delta integer, quarantined_after integer, created_at timestamp);
+                SQL);
+            $rewrite = static fn (string $file) => str_replace(
+                ['public.', 'pg_catalog, public'],
+                [$schema.'.', 'pg_catalog, '.$schema],
+                file_get_contents(database_path('sql/'.$file))
+            );
+            // First install (existing production path) — allocation trigger is present before stock-batch.
+            $db->unprepared($rewrite('medicine_expiry_group_constraints.sql'));
+            $exists = $db->selectOne(
+                'SELECT 1 AS ok FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal AND n.nspname = ? AND t.tgname = ?',
+                [$schema, 'medicine_inventory_allocations_append_only']
+            );
+            $this->assertNotNull($exists);
+
+            // Stock-batch upgrade: add columns, then re-apply constraints onto the live trigger.
+            $db->statement('ALTER TABLE medicine_expiry_groups ADD COLUMN manufacturer_lot_number text');
+            $db->statement('ALTER TABLE medicine_expiry_groups ADD COLUMN is_legacy_batch boolean NOT NULL DEFAULT false');
+            $db->unprepared($rewrite('medicine_expiry_group_constraints.sql'));
+            $db->unprepared($rewrite('medicine_expiry_group_operations.sql'));
+
+            $stillExists = $db->selectOne(
+                'SELECT 1 AS ok FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT t.tgisinternal AND n.nspname = ? AND t.tgname = ?',
+                [$schema, 'medicine_inventory_allocations_append_only']
+            );
+            $this->assertNotNull($stillExists);
+            try {
+                $db->statement('UPDATE medicine_inventory_allocations SET available_delta = 0');
+                $this->fail('Append-only allocation trigger was not preserved after upgrade.');
+            } catch (QueryException $exception) {
+                $this->assertNotEmpty($exception->getCode());
+            }
+        } finally {
+            $db->statement('DROP SCHEMA "'.$schema.'" CASCADE');
+            DB::purge('expiry_test');
+        }
+    }
+
     public function test_group_operations_preserve_physical_balances_and_audit_history(): void
     {
         if (! getenv('AKAY_TEST_PG_URL')) {
@@ -38,7 +109,7 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
                 CREATE TABLE health_records (id bigint PRIMARY KEY, barangay_health_center_id bigint);
                 INSERT INTO health_records VALUES (1,1);
                 CREATE TABLE medicine_inventory_transactions (id bigserial PRIMARY KEY, medicine_id bigint REFERENCES medicines, actor_user_id bigint, transaction_type text, quantity_delta integer, quantity_before bigint, quantity_after bigint, discrepancy integer DEFAULT 0, source_type text, source_id bigint, reason text, operation_key varchar(120), created_at timestamp, UNIQUE(operation_key,medicine_id));
-                CREATE TABLE medicine_expiry_groups (id bigserial PRIMARY KEY, medicine_id bigint REFERENCES medicines, expiration_date date, expiry_not_applicable boolean NOT NULL DEFAULT false, available_quantity integer NOT NULL DEFAULT 0, quarantined_quantity integer NOT NULL DEFAULT 0, created_at timestamp, updated_at timestamp);
+                CREATE TABLE medicine_expiry_groups (id bigserial PRIMARY KEY, medicine_id bigint REFERENCES medicines, expiration_date date, expiry_not_applicable boolean NOT NULL DEFAULT false, manufacturer_lot_number text, is_legacy_batch boolean NOT NULL DEFAULT false, available_quantity integer NOT NULL DEFAULT 0, quarantined_quantity integer NOT NULL DEFAULT 0, created_at timestamp, updated_at timestamp);
                 CREATE TABLE medicine_inventory_allocations (id bigserial PRIMARY KEY, transaction_id bigint REFERENCES medicine_inventory_transactions, expiry_group_id bigint REFERENCES medicine_expiry_groups, available_before integer, available_delta integer, available_after integer, quarantined_before integer, quarantined_delta integer, quarantined_after integer, created_at timestamp);
                 SQL);
             // Actor authorization is separately covered by existing role/assignment tests.
@@ -54,8 +125,9 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
             $date = now('Asia/Manila')->addDays(2)->toDateString();
             $operation('restock', 10, ['expiration_date' => $date]);
             $operation('restock', 5, ['expiration_date' => $date]);
-            $this->assertSame(1, $db->table('medicine_expiry_groups')->count());
-            $group = (int) $db->table('medicine_expiry_groups')->value('id');
+            $this->assertSame(2, $db->table('medicine_expiry_groups')->count());
+            $group = (int) $db->table('medicine_expiry_groups')->orderBy('id')->value('id');
+            $second = (int) $db->table('medicine_expiry_groups')->orderByDesc('id')->value('id');
             $quarantine = $operation('quarantine', 4, ['expiry_group_id' => $group]);
             $this->assertSame(0, $quarantine['quantity_delta']);
             $operation('release', 1, ['expiry_group_id' => $group]);
@@ -80,8 +152,19 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
             }
             $this->assertSame(6, $db->table('medicine_inventory_transactions')->count());
 
-            $expected = [['id' => $group, 'available_quantity' => 0, 'quarantined_quantity' => 1]];
-            $verification = ['groups' => [['id' => $group, 'available_quantity' => 2, 'quarantined_quantity' => 1]], 'unassigned_quantity' => 6, 'expected_groups' => $expected, 'expected_unassigned_quantity' => 7];
+            $expected = [
+                ['id' => $group, 'available_quantity' => 0, 'quarantined_quantity' => 1],
+                ['id' => $second, 'available_quantity' => 0, 'quarantined_quantity' => 0],
+            ];
+            $verification = [
+                'groups' => [
+                    ['id' => $group, 'available_quantity' => 2, 'quarantined_quantity' => 1],
+                    ['id' => $second, 'available_quantity' => 0, 'quarantined_quantity' => 0],
+                ],
+                'unassigned_quantity' => 6,
+                'expected_groups' => $expected,
+                'expected_unassigned_quantity' => 7,
+            ];
             $operation('verify_stock', 0, $verification);
             $this->assertFalse((bool) $db->table('medicines')->where('id', 1)->value('reconciliation_required'));
             try {

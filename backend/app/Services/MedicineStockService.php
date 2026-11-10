@@ -126,7 +126,7 @@ class MedicineStockService
             null,
             null,
             "medicine:{$medicine->id}:opening",
-            options: $request->only(['expiration_date', 'expiry_not_applicable'])
+            options: $request->only(['expiration_date', 'expiry_not_applicable', 'manufacturer_lot_number', 'restock_expiry_group_id'])
         );
         $this->auditResult($request, 'medicine_created', $context, $result);
 
@@ -151,7 +151,7 @@ class MedicineStockService
             trim($reason),
             null,
             $operationKey ?: (string) Str::uuid(),
-            options: $request->only(['expiration_date', 'expiry_not_applicable'])
+            options: $request->only(['expiration_date', 'expiry_not_applicable', 'manufacturer_lot_number', 'restock_expiry_group_id'])
         );
         $this->auditResult($request, 'medicine_restocked', $context, $result);
 

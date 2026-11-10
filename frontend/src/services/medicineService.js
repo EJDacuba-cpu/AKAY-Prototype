@@ -81,6 +81,7 @@ function normalizeMedicine(item = {}) {
 }
 
 function toCreatePayload(item = {}) {
+  const lot = String(item.manufacturerLotNumber || item.manufacturer_lot_number || "").trim();
   return {
     name: item.name,
     category: item.category || null,
@@ -91,6 +92,7 @@ function toCreatePayload(item = {}) {
     item_type: item.itemType || item.item_type || "medicine",
     expiry_not_applicable: Boolean(item.expiryNotApplicable || item.expiry_not_applicable),
     expiration_date: item.expiryDate || item.expirationDate || item.expiration_date || null,
+    manufacturer_lot_number: lot || null,
   };
 }
 
@@ -215,12 +217,16 @@ export async function deleteBhcMedicine(id) {
 }
 
 export async function restockMedicine(id, data, options = {}) {
+  const lot = String(data.manufacturerLotNumber || data.manufacturer_lot_number || "").trim();
+  const restockId = Number(data.restock_expiry_group_id || data.restockExpiryGroupId || 0);
   return mutateMedicineInventory(
     id,
     "restock",
     {
       expiration_date: data.expiryDate || data.expiration_date || null,
       expiry_not_applicable: Boolean(data.expiryNotApplicable || data.expiry_not_applicable),
+      manufacturer_lot_number: lot || null,
+      ...(restockId > 0 ? { restock_expiry_group_id: restockId } : {}),
       quantity: parseQuantity(data.quantity),
       reason: String(data.reason || "").trim(),
     },

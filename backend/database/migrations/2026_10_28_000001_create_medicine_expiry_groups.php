@@ -15,10 +15,12 @@ return new class extends Migration
             $table->foreignId('medicine_id')->constrained()->restrictOnDelete();
             $table->date('expiration_date')->nullable();
             $table->boolean('expiry_not_applicable')->default(false);
+            $table->string('manufacturer_lot_number')->nullable();
+            $table->boolean('is_legacy_batch')->default(false);
             $table->integer('available_quantity')->default(0);
             $table->integer('quarantined_quantity')->default(0);
             $table->timestamps();
-            $table->unique(['medicine_id', 'expiration_date'], 'medicine_expiry_group_date_unique');
+            // Batch identity is the row id. Same medicine/expiry may have multiple batches.
         });
         Schema::create('medicine_inventory_allocations', function (Blueprint $table): void {
             $table->id();
@@ -32,7 +34,6 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             $table->unique(['transaction_id', 'expiry_group_id'], 'medicine_allocation_transaction_group_unique');
         });
-        DB::statement('CREATE UNIQUE INDEX medicine_expiry_group_na_unique ON medicine_expiry_groups(medicine_id) WHERE expiry_not_applicable = '.(DB::getDriverName() === 'pgsql' ? 'true' : '1'));
         if (DB::getDriverName() === 'pgsql') {
             DB::unprepared(file_get_contents(database_path('sql/medicine_expiry_group_constraints.sql')));
             DB::unprepared(file_get_contents(database_path('sql/medicine_expiry_group_operations.sql')));

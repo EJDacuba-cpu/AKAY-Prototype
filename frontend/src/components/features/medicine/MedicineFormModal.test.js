@@ -116,7 +116,7 @@ for (const facility of ["Bhc", "Rhu"]) {
 test('edit cannot rewrite received expiry dates or item type', () => {
   const html = render();
   assert.doesNotMatch(html, /Opening Stock Expiry|aria-label="Item Type"/);
-  assert.match(html, /Expiry dates belong to received stock groups/);
+  assert.match(html, /Expiry dates belong to received stock batches/);
 });
 
 test('manual empty allocation explicitly previews shortage and reason field', () => {
@@ -180,7 +180,7 @@ for (const [operation, action] of [["restock", "restockMedicine"], ["deduct", "d
     );
     assert.match(request.url, new RegExp(`/medicines/7/${operation}$`));
     assert.equal(request.method, "POST");
-    assert.deepEqual(request.body, { quantity: 2, reason: "Inventory stock action", ...(operation === "restock" ? { expiration_date: "2099-12-31", expiry_not_applicable: false } : { expiry_group_id: 3 }) });
+    assert.deepEqual(request.body, { quantity: 2, reason: "Inventory stock action", ...(operation === "restock" ? { expiration_date: "2099-12-31", expiry_not_applicable: false, manufacturer_lot_number: null } : { expiry_group_id: 3 }) });
     assert.equal(request.headers["Idempotency-Key"], "stock-action-key");
   });
 }

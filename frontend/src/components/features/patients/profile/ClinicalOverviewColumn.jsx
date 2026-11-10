@@ -8,6 +8,7 @@ import { formatDate, formatDisplayValue } from "../../../../utils/formatters";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import { getRecordId } from "../../../../utils/bodyFindingsSummary";
 import { getRecordDateValue, getRecordOutcome } from "../../../../utils/healthRecordPrograms";
+import { isActiveCareTrackingEntry, maternalCareCardStatus } from "../../../../utils/careTracking";
 
 const PREVIEW_COUNT = 3;
 
@@ -54,7 +55,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll, compact = fals
                       : "No record yet"}
                 </span>
               </span>
-              <ProfileChip tone={CARE_STATUS_TONE[entry.statusTone] || "quiet"}>{entry.status}</ProfileChip>
+              <ProfileChip tone={CARE_STATUS_TONE[entry.statusTone] || "quiet"}>{entry.key === "maternal" ? maternalCareCardStatus(entry.status) : entry.status}</ProfileChip>
             </li>
           ))}
         </ul>
@@ -227,6 +228,7 @@ export default function ClinicalOverviewColumn({
   onViewRecords,
   onViewRecord,
 }) {
+  const activeCareTracking = careTracking.filter(isActiveCareTrackingEntry);
   return (
     <div className="clinical-summary flex min-h-0 flex-1 flex-col gap-3">
       <ReferralsPreview compact previewCount={1}
@@ -239,7 +241,9 @@ export default function ClinicalOverviewColumn({
       {typeof onViewFollowUp === "function" && (
         <FollowUpsPreview compact previewCount={1} onViewAll={onViewFollowUp} followUps={activeFollowUps} onView={onViewFollowUp} />
       )}
-      <CareTrackingSection compact previewCount={1} entries={careTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
+      {activeCareTracking.length > 0 ? (
+        <CareTrackingSection compact previewCount={1} entries={activeCareTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
+      ) : null}
       <RecentVisitsPreview compact previewCount={1} records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>
   );

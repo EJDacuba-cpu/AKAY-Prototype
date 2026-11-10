@@ -31,6 +31,7 @@ import {
   summarizeNutritionHistory,
 } from "./nutritionCare.js";
 import { resolveNutritionCare } from "./nutritionEnrollment.js";
+import { normalizeFpClientTypeCode } from "./familyPlanning.js";
 
 /**
  * Care Tracking: derives one read-only status card per clinical program
@@ -74,6 +75,31 @@ export const DISEASE_TRACKING_KEYS = Object.freeze(["tb", "hypertension", "diabe
 
 export function isDiseaseTrackingKey(key) {
   return DISEASE_TRACKING_KEYS.includes(key);
+}
+
+/** Overview lists current care only; the full Care & Programs view keeps history. */
+export function isActiveCareTrackingEntry(entry) {
+  switch (entry.key) {
+    case "maternal":
+      return entry.status === "Prenatal" || entry.status === "Postpartum";
+    case "nutrition":
+      return entry.status === "Active";
+    case "epi":
+      return entry.status === "In progress";
+    case "familyPlanning":
+      return entry.records.length > 0 && Boolean(
+        normalizeFpClientTypeCode(entry.status) || ["Recorded", "New Acceptor", "Current User"].includes(entry.status),
+      );
+    case "tb":
+      if (entry.records.length > 0 && ["Registered", "Intensive Phase", "Continuation Phase"].includes(entry.status)) return true;
+      // A diagnosis alone is not an active BHC monitoring enrollment.
+      return entry.monitoringStatus === "Active" && ["Active", "Controlled"].includes(entry.status);
+    case "hypertension":
+    case "diabetes_mellitus":
+      return entry.monitoringStatus === "Active" && ["Active", "Controlled"].includes(entry.status);
+    default:
+      return false;
+  }
 }
 
 function conditionIdentityOf(condition) {
@@ -448,6 +474,7 @@ function buildTbEntry(records, today, condition = null) {
     key: "tb",
     label: "Tuberculosis",
     status,
+    monitoringStatus: monitoringStatusLabel(condition),
     statusTone,
     facts,
     lastVisit: latest ? getRecordDateValue(latest) : "",
@@ -508,6 +535,7 @@ function buildNcdEntry({ key, label, condition, records, measurementFact, follow
     key,
     label,
     status: clinicalStatusOf(condition, "Active"),
+    monitoringStatus: monitoringStatusLabel(condition),
     statusTone: past ? "neutral" : "info",
     facts,
     lastVisit: records[0] ? getRecordDateValue(sortRecordsByDateAsc(records).at(-1)) : "",

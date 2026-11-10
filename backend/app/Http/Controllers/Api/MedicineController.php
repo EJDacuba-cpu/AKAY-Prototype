@@ -17,6 +17,7 @@ use App\Services\FacilityAccessService;
 use App\Services\MedicineCreateIdempotencyService;
 use App\Services\MedicineStockService;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -86,7 +87,8 @@ class MedicineController extends Controller
         $data = $request->validated();
         $openingQuantity = (int) $data['quantity'];
         $idempotencyKey = $data['idempotency_key'] ?? null;
-        unset($data['quantity'], $data['idempotency_key']);
+        $manufacturerLot = $data['manufacturer_lot_number'] ?? null;
+        unset($data['quantity'], $data['idempotency_key'], $data['manufacturer_lot_number']);
 
         if ($request->user()->isRhu()) {
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
@@ -102,6 +104,7 @@ class MedicineController extends Controller
         $idempotencyHash = $idempotencyKey
             ? $this->createIdempotency->hash([
                 ...$data,
+                'manufacturer_lot_number' => $manufacturerLot,
                 'quantity' => $openingQuantity,
                 'low_stock_threshold' => $threshold,
             ])
@@ -124,6 +127,26 @@ class MedicineController extends Controller
                 $idempotencyKey,
                 $idempotencyHash
             ): Medicine {
+                $duplicate = $this->findDuplicateCatalogItem(
+                    $request->user(),
+                    (string) $data['name'],
+                    (string) ($data['item_type'] ?? 'medicine'),
+                    (string) ($data['unit'] ?? 'pcs')
+                );
+                if ($duplicate) {
+                    throw new HttpResponseException(response()->json([
+                        'code' => 'MEDICINE_DUPLICATE_CATALOG',
+                        'message' => 'This item already exists in your inventory.',
+                        'data' => [
+                            'id' => (int) $duplicate->id,
+                            'name' => $duplicate->name,
+                            'is_active' => (bool) $duplicate->is_active,
+                            'item_type' => $duplicate->item_type ?? 'medicine',
+                            'unit' => $duplicate->unit,
+                        ],
+                    ], 409));
+                }
+
                 $medicine = Medicine::create([
                     ...$data,
                     'quantity' => 0,
@@ -485,6 +508,38 @@ class MedicineController extends Controller
             && str_contains($message, 'idempotency_key');
     }
 
+    private function findDuplicateCatalogItem($user, string $name, string $itemType, string $unit): ?Medicine
+    {
+        $normalized = Medicine::normalizeCatalogName($name);
+        $bhcId = $user->isBhc() ? (int) $user->barangay_health_center_id : null;
+        $rhuId = $user->isRhu() ? (int) $user->rural_health_unit_id : null;
+        $lockKey = sprintf(
+            'medicine-catalog:%s:%d:%s:%s:%s',
+            $bhcId ? 'bhc' : 'rhu',
+            $bhcId ?: $rhuId,
+            $normalized,
+            $itemType,
+            $unit
+        );
+
+        if (DB::getDriverName() === 'pgsql') {
+            // Transaction-scoped advisory lock: prevents concurrent creates when no row exists yet.
+            // crc32() is unsigned on 64-bit PHP; pg_advisory_xact_lock keys are signed int4.
+            DB::select('SELECT pg_advisory_xact_lock(?, ?)', [
+                self::advisoryLockKey('akay-medicine-catalog'),
+                self::advisoryLockKey($lockKey),
+            ]);
+        }
+
+        return Medicine::query()
+            ->forFacility($bhcId, $rhuId)
+            ->where('item_type', $itemType)
+            ->where('unit', $unit)
+            ->orderBy('id')
+            ->get()
+            ->first(fn (Medicine $medicine) => $medicine->matchesCatalogIdentity($normalized, $itemType, $unit));
+    }
+
     private function medicineStatus(int $quantity, int $lowStockThreshold): string
     {
         if ($quantity <= 0) {
@@ -492,5 +547,13 @@ class MedicineController extends Controller
         }
 
         return $quantity <= $lowStockThreshold ? 'Low Stock' : 'Available';
+    }
+
+    /** Reinterpret PHP's unsigned crc32 as a signed int4 for PostgreSQL advisory locks. */
+    private static function advisoryLockKey(string $value): int
+    {
+        $crc = crc32($value);
+
+        return $crc > 0x7FFFFFFF ? $crc - 0x100000000 : $crc;
     }
 }

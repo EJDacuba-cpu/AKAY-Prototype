@@ -36,9 +36,20 @@ class RestockMedicineRequest extends FormRequest
     {
         return [
             ...\App\Services\MedicineExpiryStockService::expiryRules($this->route('medicine')?->item_type ?? 'medicine', $this->boolean('expiry_not_applicable')),
+            'manufacturer_lot_number' => ['nullable', 'string', 'max:120'],
+            'restock_expiry_group_id' => ['nullable', 'integer', 'min:1'],
             'quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'reason' => ['required', 'string', 'max:1000'],
             'idempotency_key' => ['nullable', 'uuid'],
         ];
+    }
+
+    protected function passedValidation(): void
+    {
+        $lot = \App\Models\MedicineExpiryGroup::normalizeLot($this->input('manufacturer_lot_number'));
+        $this->merge([
+            'manufacturer_lot_number' => $lot,
+            'restock_expiry_group_id' => $this->filled('restock_expiry_group_id') ? (int) $this->input('restock_expiry_group_id') : null,
+        ]);
     }
 }

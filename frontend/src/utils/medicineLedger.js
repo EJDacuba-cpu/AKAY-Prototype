@@ -53,10 +53,10 @@ export function validateStockAction(mode, item, form) {
     if (issue) errors.expiryDate = issue;
   } else {
     const group = actionGroups(item, mode).find(g => String(g.id) === String(form.expiry_group_id));
-    if (!group) errors.expiry_group_id = 'Select a group with stock available for this action.';
+    if (!group) errors.expiry_group_id = 'Select a stock batch with stock available for this action.';
     else {
       const maximum = Number(['release', 'quarantine_disposal'].includes(mode) ? group.quarantined_quantity : group.available_quantity);
-      if (quantity > maximum) errors.quantity = `This group has only ${maximum.toLocaleString()} ${item.unit || 'units'} in the selected pool.`;
+      if (quantity > maximum) errors.quantity = `This batch has only ${maximum.toLocaleString()} ${item.unit || 'units'} in the selected pool.`;
     }
   }
   return errors;

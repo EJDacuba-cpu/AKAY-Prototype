@@ -122,4 +122,27 @@ class Medicine extends Model
     {
         return $this->hasMany(MedicineInventoryTransaction::class);
     }
+
+    public static function normalizeCatalogName(?string $name): string
+    {
+        $collapsed = preg_replace('/\s+/u', ' ', trim((string) $name)) ?? '';
+
+        return mb_strtolower($collapsed, 'UTF-8');
+    }
+
+    public function matchesCatalogIdentity(string $normalizedName, string $itemType, string $unit): bool
+    {
+        return self::normalizeCatalogName($this->name) === $normalizedName
+            && ($this->item_type ?? 'medicine') === $itemType
+            && (string) ($this->unit ?? 'pcs') === $unit;
+    }
+
+    public function scopeForFacility($query, ?int $bhcId, ?int $rhuId)
+    {
+        if ($bhcId) {
+            return $query->where('barangay_health_center_id', $bhcId)->whereNull('rural_health_unit_id');
+        }
+
+        return $query->where('rural_health_unit_id', $rhuId)->whereNull('barangay_health_center_id');
+    }
 }

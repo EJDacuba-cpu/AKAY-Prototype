@@ -76,15 +76,79 @@ class MedicineExpiryGroupsTest extends TestCase
         $this->getJson("/api/medicines/$id")->assertJsonPath('data.expiry_groups.0.expiry_not_applicable', true)->assertJsonPath('data.stock_summary.available', 5);
     }
 
-    public function test_same_expiry_receipts_merge_but_keep_transactions_and_residual_stock(): void
+    public function test_same_expiry_receipts_create_separate_batches_and_keep_transactions(): void
     {
         $medicine = Medicine::create(['name' => 'Old', 'quantity' => 7, 'barangay_health_center_id' => $this->staff->barangay_health_center_id]);
         foreach ([4, 6] as $quantity) {
             $this->postJson("/api/medicines/$medicine->id/restock", ['quantity' => $quantity, 'expiration_date' => '2027-01-01', 'reason' => 'Received', 'idempotency_key' => (string) Str::uuid()])->assertOk();
         }
-        $this->getJson("/api/medicines/$medicine->id")->assertJsonCount(1, 'data.expiry_groups')->assertJsonPath('data.stock_summary.recorded', 17)->assertJsonPath('data.stock_summary.available', 10)->assertJsonPath('data.stock_summary.unassigned', 7);
+        $this->getJson("/api/medicines/$medicine->id")->assertJsonCount(2, 'data.expiry_groups')->assertJsonPath('data.stock_summary.recorded', 17)->assertJsonPath('data.stock_summary.available', 10)->assertJsonPath('data.stock_summary.unassigned', 7);
         $this->assertDatabaseCount('medicine_inventory_transactions', 2);
         $this->assertDatabaseCount('medicine_inventory_allocations', 2);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['medicine_id' => $medicine->id, 'is_legacy_batch' => false, 'available_quantity' => 4]);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['medicine_id' => $medicine->id, 'is_legacy_batch' => false, 'available_quantity' => 6]);
+    }
+
+    public function test_verified_lot_can_explicitly_restock_existing_batch_but_never_merges_silently(): void
+    {
+        $id = $this->createMedicine(5);
+        $batch = $this->getJson("/api/medicines/$id")->json('data.expiry_groups.0');
+        $this->postJson("/api/medicines/$id/restock", [
+            'quantity' => 3,
+            'expiration_date' => '2027-01-01',
+            'manufacturer_lot_number' => 'LOT-A',
+            'reason' => 'New receipt',
+            'idempotency_key' => (string) Str::uuid(),
+        ])->assertOk();
+        $groups = $this->getJson("/api/medicines/$id")->json('data.expiry_groups');
+        $this->assertCount(2, $groups);
+        $lotBatch = collect($groups)->firstWhere('manufacturer_lot_number', 'LOT-A');
+        $this->postJson("/api/medicines/$id/restock", [
+            'quantity' => 2,
+            'expiration_date' => '2027-01-01',
+            'manufacturer_lot_number' => 'LOT-A',
+            'restock_expiry_group_id' => $lotBatch['id'],
+            'reason' => 'Add to verified lot',
+            'idempotency_key' => (string) Str::uuid(),
+        ])->assertOk();
+        $this->getJson("/api/medicines/$id")->assertJsonCount(2, 'data.expiry_groups')
+            ->assertJsonPath('data.expiry_groups.1.available_quantity', 5);
+        $this->postJson("/api/medicines/$id/restock", [
+            'quantity' => 1,
+            'expiration_date' => '2027-01-01',
+            'manufacturer_lot_number' => 'LOT-A',
+            'restock_expiry_group_id' => $batch['id'],
+            'reason' => 'Reject legacy target',
+            'idempotency_key' => (string) Str::uuid(),
+        ])->assertUnprocessable();
+    }
+
+    public function test_equal_expiry_fefo_uses_batch_id_tie_break(): void
+    {
+        $id = $this->createMedicine(3);
+        $this->postJson("/api/medicines/$id/restock", ['quantity' => 4, 'expiration_date' => '2027-01-01', 'reason' => 'Second batch'])->assertOk();
+        $groups = collect($this->getJson("/api/medicines/$id")->json('data.expiry_groups'))->sortBy('id')->values();
+        $this->dispense($id, 5);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[0]['id'], 'available_quantity' => 0]);
+        $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[1]['id'], 'available_quantity' => 2]);
+    }
+
+    public function test_duplicate_catalog_create_is_blocked_including_archived_items(): void
+    {
+        $id = $this->postJson('/api/medicines', [
+            'name' => 'Tracked Catalog',
+            'quantity' => 2,
+            'expiration_date' => '2027-01-01',
+            'unit' => 'pcs',
+        ])->assertCreated()->json('data.id');
+        $this->postJson('/api/medicines', ['name' => 'Tracked Catalog', 'quantity' => 1, 'expiration_date' => '2027-01-01', 'unit' => 'pcs'])
+            ->assertConflict()
+            ->assertJsonPath('code', 'MEDICINE_DUPLICATE_CATALOG')
+            ->assertJsonPath('data.id', $id);
+        $this->deleteJson("/api/medicines/$id")->assertOk();
+        $this->postJson('/api/medicines', ['name' => '  TRACKED CATALOG  ', 'quantity' => 1, 'expiration_date' => '2027-01-01', 'unit' => 'pcs'])
+            ->assertConflict()
+            ->assertJsonPath('data.is_active', false);
     }
 
     public function test_partial_quarantine_release_disposal_and_expired_release_safeguards(): void
@@ -133,7 +197,11 @@ class MedicineExpiryGroupsTest extends TestCase
 
     private function createMedicine(int $quantity, string $expiry = '2027-01-01'): int
     {
-        return $this->postJson('/api/medicines', ['name' => 'Tracked', 'quantity' => $quantity, 'expiration_date' => $expiry])->assertCreated()->json('data.id');
+        return $this->postJson('/api/medicines', [
+            'name' => 'Tracked '.Str::uuid(),
+            'quantity' => $quantity,
+            'expiration_date' => $expiry,
+        ])->assertCreated()->json('data.id');
     }
 
     public function test_matching_fefo_allocations_do_not_require_a_reason(): void
