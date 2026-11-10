@@ -9,8 +9,8 @@ export default function SidebarUserFooter({ user, onLogout }) {
           <p className="truncate text-[13px] font-medium text-neutral-900">
             {user.name}
           </p>
-          <p className="truncate text-[11px] text-neutral-500">
-            {[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
+          <p className="truncate text-[11px] text-neutral-500" title={user.roleLabel}>
+            {user.roleLabel}
           </p>
         </div>
       </div>

@@ -186,7 +186,7 @@ export const menuByRole = {
 };
 
 export const roleLabel = {
-  admin: "Admin / MHO",
-  bhc: "BHC Worker",
+  admin: "Admin",
+  bhc: "BHC Staff",
   rhu: "RHU Staff",
 };

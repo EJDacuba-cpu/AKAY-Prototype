@@ -259,11 +259,8 @@ export default function DesktopSidebar({
               <p className="truncate text-[13px] font-semibold leading-5 text-ink-800" title={user.name}>
                 {user.name}
               </p>
-              <p
-                className="truncate text-[11px] leading-4 text-brand-800"
-                title={[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
-              >
-                {[user.roleLabel || user.position, user.facility].filter(Boolean).join(" · ")}
+              <p className="truncate text-[11px] leading-4 text-brand-800" title={user.roleLabel}>
+                {user.roleLabel}
               </p>
             </div>
           </div>
