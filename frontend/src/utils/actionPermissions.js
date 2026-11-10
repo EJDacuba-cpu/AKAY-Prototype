@@ -15,20 +15,20 @@ export const PERMISSION_GROUPS = [
 ];
 
 export const PERMISSION_CATALOG = {
-  "patients.register": { group: "patients", label: "Register patients", note: "Can register patients and update their identification details." },
-  "families.view": { group: "families", label: "View Households", note: "Can view household details and members at the assigned facility." },
-  "families.manage": { group: "families", label: "Manage Households", requires: ["families.view"], note: "Can create households and correct household details, family serial numbers and head relationships." },
-  "consultations.encode": { group: "consultations", label: "Encode consultations", note: "Can start current consultations and submit them for review." },
-  "consultations.finalize": { group: "consultations", label: "Review & finalize consultations", requires: ["clinical.history"], note: "Can finalize consultations into permanent clinical records." },
-  "clinical.history": { group: "history", label: "View health records & patient history", note: "Can open full patient histories, previous diagnoses and completed records." },
-  "clinical.background.update": { group: "history", label: "Update patient background", requires: ["clinical.history"], note: "Can edit Patient Background (medical, family, lifestyle and obstetric history) outside a consultation. BHC only; never granted by a role automatically." },
-  "records.correct": { group: "history", label: "Correct finalized records", requires: ["clinical.history"], note: "Can add documented corrections to finalized records." },
-  "followups.manage": { group: "followups", label: "Manage follow-ups", requires: ["clinical.history"], note: "Can schedule, reschedule and close patient follow-ups at the assigned BHC or RHU." },
-  "referrals.submit": { group: "referrals", label: "Submit referrals", requires: ["clinical.history"], note: "Can submit patient referrals to the RHU." },
-  "inventory.view": { group: "inventory", label: "View medicines & supplies", note: "Can see medicine and supply availability." },
-  "inventory.manage": { group: "inventory", label: "Manage stock", requires: ["inventory.view"], note: "Can add, restock and adjust medicines and supplies." },
-  "items.dispense": { group: "inventory", label: "Confirm dispensing", requires: ["inventory.view"], note: "Can confirm medicine releases to patients. Dispensing does not grant prescribing authority." },
-  "reports.view": { group: "reports", label: "View reports", note: "Can view and export facility reports." },
+  "patients.register": { group: "patients", label: "Register patients", note: "Register patients and update identification details at this facility." },
+  "families.view": { group: "families", label: "View households", note: "Open household details and member lists at the assigned BHC." },
+  "families.manage": { group: "families", label: "Manage households", requires: ["families.view"], note: "Create households and correct household details, family serial numbers, and head relationships." },
+  "consultations.encode": { group: "consultations", label: "Encode consultations", note: "Start consultation drafts and submit them for review at this BHC." },
+  "consultations.finalize": { group: "consultations", label: "Finalize consultations", requires: ["clinical.history"], note: "Finalize consultation drafts into permanent clinical records. Needs health records access." },
+  "clinical.history": { group: "history", label: "View health records & history", note: "Open patient histories, completed records, and related clinical screens." },
+  "clinical.background.update": { group: "history", label: "Update patient background", requires: ["clinical.history"], note: "Edit Patient Background (medical, family, lifestyle, obstetric) outside a consultation. BHC only; tick only when needed." },
+  "records.correct": { group: "history", label: "Correct finalized records", requires: ["clinical.history"], note: "Add documented corrections to finalized records. Does not unlock free editing of saved history." },
+  "followups.manage": { group: "followups", label: "Manage follow-ups", requires: ["clinical.history"], note: "Schedule, reschedule, and close follow-up tasks. Viewing the follow-ups list also needs health records access." },
+  "referrals.submit": { group: "referrals", label: "Submit referrals", requires: ["clinical.history"], note: "Submit patient referrals from this BHC to the RHU, including from a finalized consultation." },
+  "inventory.view": { group: "inventory", label: "View medicines & supplies", note: "See medicine and supply availability at this BHC. Does not grant stock management." },
+  "inventory.manage": { group: "inventory", label: "Manage stock", requires: ["inventory.view"], note: "Add, restock, and adjust medicines and supplies." },
+  "items.dispense": { group: "inventory", label: "Dispense medicines", requires: ["inventory.view"], note: "Confirm medicine releases to patients during consultation work. Needs inventory view; does not grant stock management or prescribing." },
+  "reports.view": { group: "reports", label: "View & export reports", note: "Open facility reports and export them. Does not grant clinical write access." },
   "rhu.manage": { group: "rhu", label: "Manage RHU referrals", note: "Can receive incoming referrals and send feedback. Does not grant doctor availability management." },
   "rhu.intake": { group: "rhu", label: "RHU intake", note: "Can open the QR Scanner and Incoming Referrals, identify an arrival and mark it Received. Sees only who arrived; clinical details need Health Records." },
   "rhu.providers.manage": { group: "rhu", label: "Manage doctor availability", note: "Can set official doctors Available or Unavailable for this RHU after confirming they are on duty. Does not grant referral management." },
@@ -39,12 +39,15 @@ export const LICENSED_PERMISSIONS = ["consultations.finalize", "records.correct"
 // Mirrors backend NurseAssignmentPolicy::DUTIES: what an RHU nurse may be given at an assigned BHC.
 export const NURSE_ASSIGNMENT_DUTIES = ["patients.register", "consultations.encode", "clinical.history", "clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view", "families.view", "families.manage"];
 
-// Duties an admin ticks one by one: never in role defaults or a "suggested" bundle.
-export const EXPLICIT_ONLY_PERMISSIONS = ["clinical.background.update"];
+// Duties an admin ticks one by one: never in role defaults or a suggested bundle.
+export const EXPLICIT_ONLY_PERMISSIONS = ["clinical.background.update", "consultations.finalize", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view", "families.manage"];
 
-/** The "Use suggested clinical duties" bundle for a nurse assignment. */
+/** Least-privilege starter set for a BHC nurse assignment. Elevated duties stay unticked. */
+export const SUGGESTED_NURSE_DUTIES = ["patients.register", "consultations.encode", "clinical.history", "families.view"];
+
+/** The "Apply common BHC clinical set" bundle for a nurse assignment. */
 export function suggestedNurseDuties() {
-  return NURSE_ASSIGNMENT_DUTIES.filter((key) => !EXPLICIT_ONLY_PERMISSIONS.includes(key));
+  return SUGGESTED_NURSE_DUTIES.filter((key) => NURSE_ASSIGNMENT_DUTIES.includes(key));
 }
 
 export function can(user, permission) {

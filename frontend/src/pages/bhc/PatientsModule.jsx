@@ -7,6 +7,7 @@ import { PanelRight, Plus, Users } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   ConnectionErrorState,
+  FilteredEmptyPanel,
   ListFilterPopover,
   LoadMoreButton,
   RefreshingIndicator,
@@ -15,6 +16,7 @@ import {
   SegmentedFilter,
   pickFilterValues,
 } from "../../components/common";
+import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import Drawer from "../../components/common/drawer/Drawer";
 import { Button } from "../../components/ui/button";
 import { SoftLoadingArea } from "../../components/common/loading/SoftLoadingOverlay";
@@ -506,41 +508,77 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   );
 }
 
+const MONITORING_STATUS_LABELS = {
+  pending_review: "Pending Review",
+  linkage_needed: "Linkage Needed",
+  accepted_awaiting_first_visit: "Accepted — Awaiting First Visit",
+  monitoring_active: "Monitoring Active",
+  declined: "Declined",
+  redirected: "Redirected",
+};
+
+function monitoringStatusTone(status) {
+  if (status === "monitoring_active" || status === "accepted_awaiting_first_visit") return "success";
+  if (status === "pending_review") return "info";
+  if (status === "linkage_needed") return "warning";
+  if (status === "declined") return "danger";
+  return "neutral";
+}
+
 function MonitoringRequestList({ requests, loading, onOpen }) {
   if (loading && requests.length === 0) {
-    return <p className="px-6 py-10 text-sm text-neutral-500">Loading monitoring requests…</p>;
+    return <p className="px-4 py-10 text-sm text-neutral-600">Loading monitoring requests…</p>;
   }
   if (requests.length === 0) {
     return (
-      <PatientDirectoryState
-        icon={<Users size={22} className="text-gray-400" />}
-        title="No monitoring requests."
+      <FilteredEmptyPanel
+        icon={<Users size={20} className="text-neutral-400" aria-hidden="true" />}
+        title="No monitoring requests"
         description="RHU Manage to BHC requests for this Barangay Health Center will appear here."
       />
     );
   }
   return (
-    <ul className="divide-y divide-neutral-100 border border-neutral-200 bg-white">
-      {requests.map((request) => (
-        <li key={request.id}>
-          <button
-            type="button"
-            onClick={() => onOpen(request.id)}
-            className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-neutral-50"
-          >
-            <span>
-              <span className="block text-sm font-semibold text-ink-900">{formatPatientName(request.source_patient) || "Patient"}</span>
-              <span className="mt-0.5 block text-xs text-neutral-600">
-                {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
-              </span>
-            </span>
-            <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-              {String(request.status || "").replaceAll("_", " ")}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-2">
+      <p className="text-xs tabular-nums text-neutral-600">
+        {requests.length} request{requests.length === 1 ? "" : "s"}
+      </p>
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
+        <div className="hidden h-11 items-center bg-neutral-100 px-4 text-[10px] font-bold uppercase tracking-wide text-neutral-600 md:grid md:grid-cols-[minmax(0,1fr)_180px]">
+          <span>Patient / Condition</span>
+          <span>Status</span>
+        </div>
+        <ul className="divide-y divide-neutral-100">
+          {requests.map((request) => (
+            <li key={request.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(request.id)}
+                className="grid w-full grid-cols-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:h-14 md:grid-cols-[minmax(0,1fr)_180px] md:py-0"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-ink-800">
+                    {formatPatientName(request.source_patient) || "Patient"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-600">
+                    {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
+                  </span>
+                </span>
+                <span className="shrink-0">
+                  <PlainStatusStamp
+                    label={
+                      MONITORING_STATUS_LABELS[request.status] ||
+                      String(request.status || "Unknown").replaceAll("_", " ")
+                    }
+                    tone={monitoringStatusTone(request.status)}
+                  />
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

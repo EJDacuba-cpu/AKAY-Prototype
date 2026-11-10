@@ -237,12 +237,33 @@ export default function StaffAssignments({ mode = "directory" }) {
                       </div>
                     </div>
                   </div>
-                  <fieldset className="min-w-0" aria-describedby={errors.permissions ? `${id}-permissions-error` : undefined}>
+                  <fieldset className="min-w-0" aria-describedby={errors.permissions ? `${id}-permissions-error` : `${id}-permissions-hint`}>
                     <legend className="text-[13px] font-semibold">Permitted duties</legend>
-                    <p className="mt-1 text-[12px] leading-5 text-neutral-600">Choose only the duties this nurse needs at the destination BHC.</p>
-                    <Button type="button" variant="secondary" size="compact" className="my-3" onClick={() => changeField("permissions", suggestedNurseDuties())}>Use suggested clinical duties</Button>
+                    <p id={`${id}-permissions-hint`} className="mt-1 text-[12px] leading-5 text-neutral-600">Tick only the BHC actions this nurse needs. Stock management, RHU intake, and clinical authorization stay off this list.</p>
+                    <div className="my-3 space-y-1.5">
+                      <Button type="button" variant="secondary" size="compact" onClick={() => changeField("permissions", suggestedNurseDuties())}>Apply common BHC clinical set</Button>
+                      <p className="text-[11px] leading-4 text-neutral-600">Selects registration, encoding, health records view, and household view. Finalize, corrections, referrals, dispensing, and other elevated duties stay unchecked.</p>
+                    </div>
                     <div id={`${id}-permissions`} tabIndex={-1} className="staff-assignment-duty-grid grid gap-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 sm:grid-cols-2">
-                      {DUTY_GROUPS.map((group) => <div key={group.key}><h4 className="mb-2 text-[11px] font-semibold text-neutral-600">{group.label}</h4><div className="space-y-2">{group.permissions.map((key) => <label key={key} className="flex cursor-pointer items-start gap-2 text-[12px] leading-5 text-ink-800"><input type="checkbox" checked={form.permissions.includes(key)} onChange={(event) => changeField("permissions", setPermission(form.permissions, key, event.target.checked))} className="mt-1 size-3.5 shrink-0 accent-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50" /><span title={PERMISSION_CATALOG[key]?.note}>{PERMISSION_CATALOG[key]?.label || key}</span></label>)}</div></div>)}
+                      {DUTY_GROUPS.map((group) => (
+                        <div key={group.key}>
+                          <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-600">{group.label}</h4>
+                          <div className="space-y-2.5">
+                            {group.permissions.map((key) => {
+                              const duty = PERMISSION_CATALOG[key];
+                              return (
+                                <label key={key} className="flex cursor-pointer items-start gap-2 text-[12px] leading-5 text-ink-800">
+                                  <input type="checkbox" checked={form.permissions.includes(key)} onChange={(event) => changeField("permissions", setPermission(form.permissions, key, event.target.checked))} className="mt-1 size-3.5 shrink-0 accent-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50" />
+                                  <span className="min-w-0">
+                                    <span className="block font-medium text-ink-800">{duty?.label || key}</span>
+                                    {duty?.note && <span className="mt-0.5 block text-[11px] leading-4 text-neutral-600">{duty.note}</span>}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <FieldError id={id} field="permissions" message={errors.permissions} />
                   </fieldset>

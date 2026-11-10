@@ -51,3 +51,13 @@ test("no role or suggestion grants Patient Background editing implicitly", () =>
   assert.ok(rolesData.available.bhc.includes("clinical.background.update"));
   assert.equal(rolesData.available.rhu.includes("clinical.background.update"), false);
 });
+
+test("suggested BHC nurse duties stay least-privilege", () => {
+  const suggested = suggestedNurseDuties();
+  assert.deepEqual(suggested, ["patients.register", "consultations.encode", "clinical.history", "families.view"]);
+  for (const elevated of ["consultations.finalize", "records.correct", "referrals.submit", "items.dispense", "inventory.view", "reports.view", "families.manage", "followups.manage", "clinical.background.update"]) {
+    assert.equal(suggested.includes(elevated), false, elevated);
+  }
+  assert.equal(PERMISSION_CATALOG["consultations.finalize"].label, "Finalize consultations");
+  assert.equal(PERMISSION_CATALOG["reports.view"].label, "View & export reports");
+});
