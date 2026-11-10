@@ -47,6 +47,33 @@ test("selected evidence, pinned versions and attachment references survive norma
   assert.equal(diagnosesForRhuSave([{ ...diagnosis, nextAction: "none" }])[0].laboratoryEvidence, undefined);
 });
 
+test("supporting laboratory tests stay independent of BHC sharing and survive save for any diagnosis", () => {
+  const sharedRef = { reference: "record:5", version: 8, attachmentIds: [crypto.randomUUID()] };
+  const support = [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }, { reference: "record:9" }];
+  const hypertension = {
+    id: "d1", name: "Hypertension", activate: true, nextAction: "none",
+    supportingLaboratoryTests: support,
+  };
+  const managed = {
+    id: "d2", name: "Diabetes", activate: true, nextAction: "manage_to_bhc",
+    receivingBhcId: "2", monitoringRecommendation: "Monitor sugar",
+    supportingLaboratoryTests: [{ reference: "record:9" }],
+    laboratoryEvidence: [sharedRef], laboratoryEvidenceConfirmed: true,
+  };
+  const freeText = {
+    id: "d3", name: "Cough for evaluation", activate: false, nextAction: "rhu_follow_up",
+    supportingLaboratoryTests: [{ reference: "record:9" }],
+  };
+  const saved = diagnosesForRhuSave([hypertension, managed, freeText]);
+  assert.deepEqual(saved[0].supportingLaboratoryTests, support);
+  assert.equal(saved[0].laboratoryEvidence, undefined);
+  assert.deepEqual(saved[1].supportingLaboratoryTests, [{ reference: "record:9" }]);
+  assert.deepEqual(saved[1].laboratoryEvidence, [sharedRef]);
+  assert.deepEqual(saved[2].supportingLaboratoryTests, [{ reference: "record:9" }]);
+  assert.deepEqual(normalizeDiagnoses([hypertension])[0].supportingLaboratoryTests, support);
+  assert.deepEqual(restoreRhuDiagnoses({ diagnoses: saved })[1].supportingLaboratoryTests, [{ reference: "record:9" }]);
+});
+
 test("laboratory server errors return to Physical Examination and map to editable fields", () => {
   assert.equal(getErrorOwnerStepKey("laboratoryTests.2.result", { workflow: "rhu_itr_v1" }), "assessment");
   assert.equal(getErrorOwnerStepKey("laboratory_tests.2.result", { workflow: "rhu_itr_v1" }), "assessment");

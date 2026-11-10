@@ -1234,7 +1234,7 @@ export default function RhuConsultationWorkspace() {
       // #region agent log
       fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A,B,C,D',location:'RhuConsultationWorkspace.jsx:saveRecord:catch',message:'finalize save failed',data:{message:error?.message||null,status:error?.status||null,errors:error?.errors||null,linkedFollowUpTaskIds,parentHealthRecordId},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      const fieldErrors = remapServerErrorKeys(error?.errors || {});
+      const fieldErrors = remapServerErrorKeys(error?.errors || {}, diagnoses, { workflow: "rhu_itr_v1", schedules: followUpSchedules });
       if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
         goToStepKey(NEXT_STEP);
       }
@@ -1363,11 +1363,17 @@ export default function RhuConsultationWorkspace() {
           label: entry.name,
           value: [
             entry.activate ? "Active condition" : "",
-            diagnosisNextAction(entry) === "none" ? "No further follow-up" : "",
+            diagnosisNextAction(entry) === "none" ? "No Further Follow-up Scheduled" : "",
             diagnosisNextAction(entry) === "rhu_follow_up" ? "Schedule RHU follow-up" : "",
             diagnosisNextAction(entry) === "manage_to_bhc" ? "Manage to BHC" : "",
+            diagnosisNextAction(entry) === "refer_higher_level" ? "Refer to Higher-Level Facility" : "",
           ].filter(Boolean).join(" · "),
         })),
+        ...diagnoses.filter((entry) => diagnosisNextAction(entry) === "refer_higher_level").flatMap((entry) => [
+          { label: `${entry.name} — Referral reason`, value: entry.higherLevelReferralPlan?.reason },
+          { label: `${entry.name} — Intended facility`, value: entry.higherLevelReferralPlan?.intendedFacility },
+          { label: `${entry.name} — Clinical plan`, value: entry.higherLevelReferralPlan?.clinicalPlan },
+        ]),
         { label: "Actions taken", value: treatmentNotes },
         { label: "Prescription", value: prescriptionText },
         ...followUpSchedules.filter((item) => item.date).map((item) => ({
@@ -1689,6 +1695,7 @@ export default function RhuConsultationWorkspace() {
                         const available = new Set(next.map(test => `current:${test.id}`));
                         setDiagnoses(current => current.map(entry => ({ ...entry, laboratoryEvidenceConfirmed: false,
                           laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
+                          supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                         })));
                       }}
                       context={{ patientId, visitId: visit?.id, consultationUuid }}

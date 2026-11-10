@@ -1,14 +1,3 @@
-export const TB_TREATMENT_DECISIONS = Object.freeze({
-  initiate_at_rhu: "Initiate DS-TB Treatment at RHU",
-  not_yet_initiated: "Treatment Not Yet Initiated",
-  refer_elsewhere: "Refer to Another Treatment Facility",
-});
-
-export const TB_TREATMENT_DECISION_OPTIONS = Object.entries(TB_TREATMENT_DECISIONS).map(([value, label]) => ({
-  value,
-  label,
-}));
-
 // Pure assessment helpers: safe to use from diagnosis and draft mappers.
 export function tbManagementFields(entry = {}) {
   const stored = entry?.tbManagement || entry?.tb_management || {};

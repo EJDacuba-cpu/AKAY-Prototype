@@ -498,7 +498,7 @@ const SERVER_ERROR_KEYS = {
 };
 
 /** Renames server validation keys to the form's field keys; other keys pass through. */
-export function remapServerErrorKeys(errors, entries = [], { continuedConcerns = [], schedules = [] } = {}) {
+export function remapServerErrorKeys(errors, entries = [], { continuedConcerns = [], schedules = [], workflow } = {}) {
   return Object.fromEntries(
     Object.entries(errors || {}).map(([key, message]) => {
       if (key.startsWith("laboratory_tests")) return [key.replace("laboratory_tests", "laboratoryTests"), message];
@@ -510,7 +510,8 @@ export function remapServerErrorKeys(errors, entries = [], { continuedConcerns =
       if (purposeKey) return [`followUpSchedule.${purposeKey}.${schedule[2]}`, message];
       const match = /^diagnoses\.(\d+)\.(.+)$/.exec(key);
       const entryId = match && entries[Number(match[1])]?.id;
-      return [entryId ? `reportingEntry.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];
+      const entryPrefix = workflow === "rhu_itr_v1" ? "diagnoses" : "reportingEntry";
+      return [entryId ? `${entryPrefix}.${entryId}.${match[2]}` : SERVER_ERROR_KEYS[key] || key, message];
     }),
   );
 }

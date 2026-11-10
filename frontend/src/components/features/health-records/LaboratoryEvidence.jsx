@@ -189,3 +189,55 @@ export function LaboratoryEvidencePicker({ options = [], selected = [], confirme
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
   </fieldset>;
 }
+
+/** Compact clinical links only — never shares with BHC and never edits source laboratory rows. */
+export function SupportingLaboratoryTestsPicker({
+  options = [], selected = [], onChange, disabled = false, loading = false, loadError = false, onRefresh,
+}) {
+  return (
+    <fieldset disabled={disabled} className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3">
+      <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Supporting Laboratory Tests</legend>
+      <p className="text-xs text-[#545F73]">
+        Optional. Select existing tests that support this diagnosis. Linking does not share results with a BHC.
+      </p>
+      {loading && <p role="status" className="text-xs text-[#545F73]">Loading laboratory history…</p>}
+      {loadError && <p role="alert" className="text-xs text-red-700">Unable to load laboratory history.</p>}
+      {onRefresh && (
+        <Button type="button" variant="secondary" size="compact" disabled={disabled || loading} onClick={onRefresh} className="rounded-none">
+          Refresh Tests
+        </Button>
+      )}
+      {!options.length && !loading && (
+        <p className="text-xs text-[#545F73]">No laboratory tests available. Add tests under General Examination first.</p>
+      )}
+      <div className="max-h-48 space-y-1 overflow-y-auto">
+        {options.map((entry) => {
+          const checked = selected.some((item) => item.reference === entry.reference);
+          const date = entry.examinationDate || entry.collectionDate || "";
+          return (
+            <label key={entry.reference} className="flex min-w-0 items-start gap-2 py-1 text-xs text-[#0B1C30]">
+              <input
+                type="checkbox"
+                className="mt-1 shrink-0 accent-[#B70011]"
+                checked={checked}
+                onChange={(event) => onChange(
+                  event.target.checked
+                    ? [...selected.filter((item) => item.reference !== entry.reference), { reference: entry.reference }]
+                    : selected.filter((item) => item.reference !== entry.reference),
+                )}
+              />
+              <span className="min-w-0 break-words">
+                <span className="font-medium">{entry.testName || "Unnamed test"}</span>
+                <span className="mt-0.5 block text-[#545F73]">
+                  {entry.resultStatus || "Requested"}
+                  {date ? ` · ${date}` : ""}
+                  {entry.reference.startsWith("current:") ? " · This visit" : " · Previous visit"}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}

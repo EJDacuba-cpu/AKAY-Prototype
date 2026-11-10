@@ -349,14 +349,56 @@ function buildFamilyPlanningEntry(patient, records, today) {
 // TB DOTS
 // ---------------------------------------------------------------------------
 
+function linkedSupportingLabFacts(records = []) {
+  const sorted = sortRecordsByDateAsc(records || []);
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const record = sorted[index];
+    const diagnoses = Array.isArray(record?.diagnoses) ? record.diagnoses : [];
+    const labs = [
+      ...(Array.isArray(record?.laboratoryTests) ? record.laboratoryTests : []),
+      ...(Array.isArray(record?.laboratory_tests) ? record.laboratory_tests : []),
+    ];
+    const byRecordId = new Map(labs.filter((lab) => lab?.recordId != null).map((lab) => [String(lab.recordId), lab]));
+    for (const diagnosis of diagnoses) {
+      const type = diagnosis?.tbManagement?.diagnosisType || diagnosis?.tb_management?.diagnosis_type;
+      const selected = Array.isArray(diagnosis?.supportingLaboratoryTests)
+        ? diagnosis.supportingLaboratoryTests
+        : Array.isArray(diagnosis?.supporting_laboratory_tests)
+          ? diagnosis.supporting_laboratory_tests
+          : [];
+      if (type !== "presumptive_tb" || selected.length === 0) continue;
+      const summaries = selected.map((item) => {
+        const reference = String(item?.reference || "");
+        const match = reference.match(/^record:(\d+)$/i);
+        const lab = match ? byRecordId.get(match[1]) : null;
+        if (!lab) return null;
+        return [lab.testName || lab.test_name || "Unnamed test", lab.resultStatus || lab.result_status || "Requested"]
+          .filter(Boolean)
+          .join(" · ");
+      }).filter(Boolean);
+      if (summaries.length) {
+        return [{ label: "Supporting labs", value: summaries.join("; "), type: "text" }];
+      }
+    }
+  }
+  return [];
+}
+
 function buildTbEntry(records, today, condition = null) {
   const tbRecords = recordsForProgram(records, "tb");
-  if (tbRecords.length === 0 && !condition) return null;
+  const evaluationRecords = (records || []).filter((record) => {
+    const diagnoses = Array.isArray(record?.diagnoses) ? record.diagnoses : [];
+    return diagnoses.some((diagnosis) => {
+      const type = diagnosis?.tbManagement?.diagnosisType || diagnosis?.tb_management?.diagnosis_type;
+      return type === "presumptive_tb";
+    });
+  });
+  if (tbRecords.length === 0 && evaluationRecords.length === 0 && !condition) return null;
 
-  const sorted = sortRecordsByDateAsc(tbRecords);
+  const sorted = sortRecordsByDateAsc(tbRecords.length ? tbRecords : evaluationRecords);
   const latest = sorted[sorted.length - 1];
   const rawData = latest ? (latest.tbData || latest.tb_data || {}) : {};
-  const tb = latest ? getTbData(latest) : {};
+  const tb = latest && tbRecords.length ? getTbData(latest) : {};
   const outcomeStatus = String(rawData.outcome?.status || "").trim();
 
   const facts = [];
@@ -370,6 +412,9 @@ function buildTbEntry(records, today, condition = null) {
   } else if (outcomeStatus) {
     status = TB_OUTCOME_LABELS[outcomeStatus] || outcomeStatus;
     statusTone = TB_POSITIVE_OUTCOMES.includes(outcomeStatus) ? "success" : "warning";
+  } else if (tbRecords.length === 0 && (condition?.status === "under_evaluation" || evaluationRecords.length)) {
+    status = "Under Evaluation";
+    statusTone = "info";
   } else {
     status = tb.phaseLabel || "Registered";
     const continuationEnd = toDate(rawData.phases?.continuationEnd);
@@ -386,6 +431,9 @@ function buildTbEntry(records, today, condition = null) {
   }
 
   if (condition) facts.push(monitoringFact(condition));
+  if (condition?.status === "under_evaluation" || (!tbRecords.length && evaluationRecords.length)) {
+    facts.push(...linkedSupportingLabFacts([...tbRecords, ...evaluationRecords, ...(records || [])]));
+  }
   if (tb.tbCaseNumber) facts.push({ label: "Case No.", value: tb.tbCaseNumber, type: "text" });
   if (tb.registrationGroup) facts.push({ label: "Registration Group", value: tb.registrationGroup, type: "text" });
   if (condition && (tb.phaseLabel || outcomeStatus)) {
@@ -406,7 +454,7 @@ function buildTbEntry(records, today, condition = null) {
     nextVisit: "",
     flags,
     action: null,
-    records: tbRecords,
+    records: tbRecords.length ? tbRecords : evaluationRecords,
   };
 }
 

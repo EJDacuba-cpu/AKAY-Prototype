@@ -4,9 +4,21 @@ import { tbManagementFields } from "./tbAssessment.js";
 export { tbManagementFields, tbManagementFor } from "./tbAssessment.js";
 
 export const TB_DIAGNOSIS_TYPES = Object.freeze({
+  presumptive_tb: "Presumptive TB",
   tb_disease: "TB Disease",
   tb_infection: "TB Infection / TPT",
 });
+
+/** RHU Diagnosis & Care Plan assessment choices (Form 4B keeps its own options). */
+export const TB_ASSESSMENT_OPTIONS = Object.freeze([
+  { value: "presumptive_tb", label: "Presumptive TB" },
+  { value: "tb_disease", label: "TB Disease" },
+  { value: "tb_infection", label: "TB Infection" },
+]);
+
+export function isPresumptiveTb(entry) {
+  return tbManagementFields(entry).diagnosisType === "presumptive_tb";
+}
 
 export const DS_TB_RESISTANCE = "drug_susceptible";
 export const PENDING_DST_RESISTANCE = "pending_dst";
@@ -104,17 +116,6 @@ export function rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }) {
         errors[`${key}.drugResistance`] = "Select drug resistance for TB Disease.";
       } else if (management.diagnosisType === "tb_disease" && management.drugResistance === DR_TB_PRIMARY) {
         errors[`${key}.drugResistance`] = "Select the drug-resistant TB classification.";
-      }
-      if (canOpenDsTbTreatmentCard(entry) && !management.treatmentDecision) {
-        errors[`${key}.treatmentDecision`] = "Select whether to initiate DS-TB treatment, defer, or refer elsewhere.";
-      }
-      if (management.treatmentDecision === "not_yet_initiated" || management.treatmentDecision === "refer_elsewhere") {
-        if (!management.dispositionReason) {
-          errors[`${key}.dispositionReason`] = "Document the reason treatment is not initiated at this RHU.";
-        }
-        if (!management.dispositionPlan) {
-          errors[`${key}.dispositionPlan`] = "Document the follow-up or referral plan.";
-        }
       }
     }
   }

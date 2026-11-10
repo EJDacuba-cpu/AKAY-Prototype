@@ -1330,10 +1330,15 @@ class HealthRecordController extends Controller
             $alreadyMonitorable = $existing !== null
                 && in_array($existing->status, \App\Models\PatientCondition::MONITORABLE_STATUSES, true);
             if ($activate) {
+                $management = is_array($entry['tbManagement'] ?? null) ? $entry['tbManagement'] : [];
+                $presumptive = ($management['diagnosisType'] ?? null) === 'presumptive_tb';
                 $confirmations[] = [
                     'name' => $name,
-                    'status' => \App\Models\PatientCondition::STATUS_ACTIVE,
-                    'recommend_bhc_monitoring' => $manage,
+                    'status' => $presumptive
+                        ? \App\Models\PatientCondition::STATUS_UNDER_EVALUATION
+                        : \App\Models\PatientCondition::STATUS_ACTIVE,
+                    // Presumptive TB stays under evaluation and is never auto-shared for BHC monitoring.
+                    'recommend_bhc_monitoring' => $manage && ! $presumptive,
                 ];
                 continue;
             }

@@ -7,7 +7,7 @@ use Illuminate\Validation\Validator;
 
 final class TbAssessment
 {
-    public const DIAGNOSIS_TYPES = ['tb_disease', 'tb_infection'];
+    public const DIAGNOSIS_TYPES = ['presumptive_tb', 'tb_disease', 'tb_infection'];
 
     public const RESISTANCE_TYPES = [
         'drug_susceptible',
@@ -68,11 +68,8 @@ final class TbAssessment
                 continue;
             }
 
-            if (blank($decision)) {
-                $validator->errors()->add("$prefix.treatmentDecision", 'Select whether to initiate DS-TB treatment at this RHU, defer, or refer elsewhere.');
-                continue;
-            }
-
+            // Preserve explicit initiation from existing drafts; a new DS-TB
+            // assessment does not require a treatment decision or disposition.
             if ($decision === 'initiate_at_rhu') {
                 if (! $open) {
                     $validator->errors()->add("$prefix.openTreatmentCard", 'Initiating DS-TB treatment requires Form 4B registration in this consultation.');
@@ -82,12 +79,6 @@ final class TbAssessment
 
             if ($open) {
                 $validator->errors()->add("$prefix.openTreatmentCard", 'Form 4B is only registered when initiating DS-TB treatment at this RHU.');
-            }
-            if (blank($assessment['dispositionReason'] ?? null)) {
-                $validator->errors()->add("$prefix.dispositionReason", 'Document the reason treatment is not initiated at this RHU.');
-            }
-            if (blank($assessment['dispositionPlan'] ?? null)) {
-                $validator->errors()->add("$prefix.dispositionPlan", 'Document the follow-up or referral plan.');
             }
         }
     }
@@ -104,9 +95,9 @@ final class TbAssessment
             $resistance = $management['drugResistance'] ?? null;
             $decision = $management['treatmentDecision'] ?? '';
 
-            if ($type === 'tb_infection') {
+            if ($type === 'tb_infection' || $type === 'presumptive_tb') {
                 $payload['diagnoses'][$index]['tbManagement'] = [
-                    'diagnosisType' => 'tb_infection',
+                    'diagnosisType' => $type,
                     'drugResistance' => '',
                     'openTreatmentCard' => false,
                     'treatmentDecision' => '',

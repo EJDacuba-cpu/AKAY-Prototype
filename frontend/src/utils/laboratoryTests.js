@@ -35,3 +35,26 @@ export function evidenceOptions(current = [], historical = []) {
     ...historical.map(entry => ({ ...entry, reference: `record:${entry.recordId}` })),
   ];
 }
+
+/** Clinical diagnosis↔lab links only — never BHC sharing confirmation payload. */
+export function normalizeSupportingLaboratoryTests(list = []) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list
+    .map((item) => String(item?.reference || "").trim())
+    .filter((reference) => {
+      if (!reference || seen.has(reference)) return false;
+      seen.add(reference);
+      return /^(current:[0-9a-f-]{36}|record:\d+)$/i.test(reference);
+    })
+    .slice(0, 50)
+    .map((reference) => ({ reference }));
+}
+
+export function supportingLaboratorySummary(options = [], selected = []) {
+  const byRef = new Map((options || []).map((entry) => [entry.reference, entry]));
+  return normalizeSupportingLaboratoryTests(selected)
+    .map((item) => byRef.get(item.reference))
+    .filter(Boolean)
+    .map((entry) => [entry.testName || "Unnamed test", entry.resultStatus].filter(Boolean).join(" · "));
+}

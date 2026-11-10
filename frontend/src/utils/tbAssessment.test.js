@@ -37,6 +37,20 @@ test("switching to infection clears resistance and registration in actual state"
   assert.equal(disease.tbManagement.drugResistance, "drug_susceptible");
 });
 
+test("presumptive TB clears drug susceptibility and never opens Form 4B", () => {
+  const disease = { ...entry, tbManagement: { ...assessment, treatmentDecision: "initiate_at_rhu", dispositionReason: "", dispositionPlan: "", openTreatmentCard: true } };
+  const presumptive = tbManagementFor(disease, { diagnosisType: "presumptive_tb" });
+  assert.deepEqual(presumptive.tbManagement, {
+    diagnosisType: "presumptive_tb",
+    drugResistance: "",
+    treatmentDecision: "",
+    dispositionReason: "",
+    dispositionPlan: "",
+    openTreatmentCard: false,
+  });
+  assert.equal(diagnosesForRhuSave([presumptive])[0].tbManagement.openTreatmentCard, false);
+});
+
 test("restoring a stale infection draft clears hidden clinical state", () => {
   const stale = { ...entry, tbManagement: { diagnosisType: "tb_infection", drugResistance: "rr_tb", openTreatmentCard: true, treatmentDecision: "initiate_at_rhu" } };
   const expected = {

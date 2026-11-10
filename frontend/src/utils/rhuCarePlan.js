@@ -7,6 +7,7 @@
  * (follow-up) — never onto every diagnosis.
  */
 import { entryPurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
+import { normalizeSupportingLaboratoryTests } from "./laboratoryTests.js";
 import { tbEvaluationEntryFields } from "./tbAssessment.js";
 
 function normalizeNameKey(name) {
@@ -14,9 +15,10 @@ function normalizeNameKey(name) {
 }
 
 export const RHU_NEXT_ACTIONS = Object.freeze({
-  none: "No Further Follow-up",
+  none: "No Further Follow-up Scheduled",
   rhu_follow_up: "Schedule RHU Follow-up",
   manage_to_bhc: "Manage to BHC",
+  refer_higher_level: "Refer to Higher-Level Facility",
 });
 
 export const RHU_NEXT_ACTION_OPTIONS = Object.entries(RHU_NEXT_ACTIONS).map(([value, label]) => ({
@@ -42,6 +44,7 @@ export function emptyRhuDiagnosis(name, id) {
     nextAction: "",
     receivingBhcId: "",
     monitoringRecommendation: "",
+    supportingLaboratoryTests: [],
     tbManagement: {
       diagnosisType: "",
       drugResistance: "",
@@ -86,6 +89,11 @@ export function rhuDiagnosisFields(item = {}) {
     nextAction,
     receivingBhcId: nextAction === "manage_to_bhc" ? String(receivingBhcId || "") : "",
     monitoringRecommendation: nextAction === "manage_to_bhc" ? String(monitoringRecommendation || "") : "",
+    higherLevelReferralPlan: nextAction === "refer_higher_level" ? {
+      reason: text(item.higherLevelReferralPlan?.reason),
+      intendedFacility: text(item.higherLevelReferralPlan?.intendedFacility),
+      clinicalPlan: text(item.higherLevelReferralPlan?.clinicalPlan),
+    } : null,
   };
 }
 
@@ -146,6 +154,11 @@ export function applyRhuNextAction(entry, nextAction) {
     manageToBhc: action === "manage_to_bhc",
     receivingBhcId: action === "manage_to_bhc" ? (entry.receivingBhcId || "") : "",
     monitoringRecommendation: action === "manage_to_bhc" ? (entry.monitoringRecommendation || "") : "",
+    higherLevelReferralPlan: action === "refer_higher_level" ? {
+      reason: entry.higherLevelReferralPlan?.reason || "",
+      intendedFacility: entry.higherLevelReferralPlan?.intendedFacility || "",
+      clinicalPlan: entry.higherLevelReferralPlan?.clinicalPlan || "",
+    } : null,
   };
 }
 
@@ -175,6 +188,11 @@ export function rhuCarePlanErrors(diagnoses = [], {
       if (!text(schedule?.date)) errors[`followUpSchedule.${purposeKey}.date`] = "Set the RHU follow-up date.";
       if (!text(schedule?.purpose)) errors[`followUpSchedule.${purposeKey}.purpose`] = "Describe the reason for return.";
     }
+    if (action === "refer_higher_level") {
+      const plan = entry.higherLevelReferralPlan;
+      if (!text(plan?.reason)) errors[`${key}.higherLevelReferralPlan.reason`] = "Enter the referral reason.";
+      if (!text(plan?.clinicalPlan)) errors[`${key}.higherLevelReferralPlan.clinicalPlan`] = "Enter the clinical plan.";
+    }
     if (action === "manage_to_bhc") {
       if (!diagnosisActivateConfirmed(entry, conditions)) {
         errors[`${key}.activate`] = "Mark this as an Active patient condition, or choose a different next action.";
@@ -198,6 +216,7 @@ export function rhuCarePlanErrors(diagnoses = [], {
 export function diagnosesForRhuSave(diagnoses = []) {
   return (diagnoses || []).filter((entry) => text(entry?.name)).map((entry) => {
     const fields = rhuDiagnosisFields(entry);
+    const supportingLaboratoryTests = normalizeSupportingLaboratoryTests(entry.supportingLaboratoryTests);
     return {
       id: entry.id,
       name: entry.name,
@@ -206,7 +225,9 @@ export function diagnosesForRhuSave(diagnoses = []) {
       manageToBhc: fields.nextAction === "manage_to_bhc",
       receivingBhcId: fields.receivingBhcId,
       monitoringRecommendation: fields.monitoringRecommendation,
+      ...(fields.higherLevelReferralPlan ? { higherLevelReferralPlan: fields.higherLevelReferralPlan } : {}),
       ...tbEvaluationEntryFields(entry),
+      ...(supportingLaboratoryTests.length ? { supportingLaboratoryTests } : {}),
       ...(fields.nextAction === "manage_to_bhc" ? {
         laboratoryEvidence: entry.laboratoryEvidence || [],
         laboratoryEvidenceConfirmed: entry.laboratoryEvidenceConfirmed === true,

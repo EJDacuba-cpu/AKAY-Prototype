@@ -171,6 +171,7 @@ export function recordDetailsPresentation(record = {}, linkedReferral = null) {
       key: entry.id || `concern-${index}`,
       name: text(entry.name),
       outcome: concernOutcome(entry),
+      higherLevelReferralPlan: entry.nextAction === "refer_higher_level" ? entry.higherLevelReferralPlan : null,
       reporting: mapsReportingToConcerns ? (formatEntryDestinations(entry) || "Not classified") : "",
       referralDetails: referral ? [referral.urgency, referral.reason].filter(Boolean).join(" · ") : "",
       referral,

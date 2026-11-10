@@ -180,6 +180,41 @@ class UniversalLaboratoryTest extends TestCase
         $this->getJson("/api/health-records/{$record->id}/laboratory-tests")->assertOk()->assertJsonCount(3, 'data');
     }
 
+    public function test_supporting_laboratory_tests_remap_without_sharing_or_deleting_source_rows(): void
+    {
+        $first = $this->laboratoryEntry(['testName' => 'Xpert MTB/RIF', 'resultStatus' => 'Awaiting Result']);
+        $second = $this->laboratoryEntry(['testName' => 'Serum Creatinine']);
+        $presumptive = [
+            'id' => 'tb', 'name' => 'TB', 'activate' => true, 'nextAction' => 'none',
+            'tbManagement' => ['diagnosisType' => 'presumptive_tb', 'drugResistance' => '', 'openTreatmentCard' => false],
+            'supportingLaboratoryTests' => [['reference' => 'current:'.$first['id']]],
+        ];
+        $hypertension = [
+            'id' => 'htn', 'name' => 'Hypertension', 'activate' => false, 'nextAction' => 'none',
+            'supportingLaboratoryTests' => [
+                ['reference' => 'current:'.$first['id']],
+                ['reference' => 'current:'.$second['id']],
+            ],
+        ];
+        $this->finalize([$first, $second], ['diagnoses' => [$presumptive, $hypertension]])->assertCreated();
+        $record = HealthRecord::sole();
+        $firstId = LaboratoryTest::query()->where('client_id', strtolower($first['id']))->value('id');
+        $secondId = LaboratoryTest::query()->where('client_id', strtolower($second['id']))->value('id');
+        $this->assertSame([['reference' => 'record:'.$firstId]], $record->diagnoses[0]['supportingLaboratoryTests']);
+        $this->assertSame([
+            ['reference' => 'record:'.$firstId],
+            ['reference' => 'record:'.$secondId],
+        ], $record->diagnoses[1]['supportingLaboratoryTests']);
+        $this->assertArrayNotHasKey('laboratoryEvidence', $record->diagnoses[0]);
+        $this->assertDatabaseCount('laboratory_tests', 2);
+        $this->assertDatabaseCount('monitoring_laboratory_evidence', 0);
+        $this->assertDatabaseHas('patient_conditions', [
+            'patient_id' => $this->patient->id,
+            'condition_identity' => 'tuberculosis',
+            'status' => 'under_evaluation',
+        ]);
+    }
+
     public function test_draft_edit_remove_resume_conflict_and_finalize_use_existing_pipeline(): void
     {
         $first = $this->laboratoryEntry();
