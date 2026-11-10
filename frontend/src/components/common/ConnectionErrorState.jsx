@@ -24,6 +24,11 @@ const VARIANT_DEFAULTS = {
       "The server took longer than expected to respond. This is usually a temporary server issue, not your internet. Please try again in a moment.",
     icon: RefreshCcw,
   },
+  rateLimited: {
+    title: "Too Many Requests",
+    message: API_ERROR_MESSAGES.rateLimited,
+    icon: RefreshCcw,
+  },
   error: {
     title: "Unable to Load Data",
     message:
@@ -37,6 +42,7 @@ export default function ConnectionErrorState({
   message,
   onRetry,
   retrying = false,
+  retryDisabled = false,
   variant = "offline",
   fullPage = false,
   size = "page",
@@ -45,6 +51,7 @@ export default function ConnectionErrorState({
   const Icon = defaults.icon;
   const resolvedTitle = title || defaults.title;
   const resolvedMessage = message || defaults.message;
+  const retryBlocked = retrying || retryDisabled;
   // No card: the message sits directly on the page, like the empty states.
   // `compact` is for a section or tab inside a page: shorter, smaller type, same Retry.
   const compact = size === "compact";
@@ -74,7 +81,7 @@ export default function ConnectionErrorState({
         {variant !== "forbidden" && onRetry && <button
           type="button"
           onClick={onRetry}
-          disabled={retrying}
+          disabled={retryBlocked}
           className={`${compact ? "mt-3" : "mt-5"} inline-flex items-center justify-center gap-2 rounded-xl bg-[#B91C1C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60`}
         >
           <RefreshCcw size={15} className={retrying ? "animate-spin" : ""} />

@@ -6,6 +6,7 @@ export const API_ERROR_MESSAGES = {
   offline: "You are offline. Please reconnect and try again.",
   timeout: "The server is taking too long to respond. Please try again in a moment.",
   unreachable: "We couldn't reach the server. Please check your connection and try again.",
+  rateLimited: "Too many requests were sent. Please wait briefly and try again.",
   generic: "Something went wrong. Please try again.",
 };
 

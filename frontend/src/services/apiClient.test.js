@@ -366,3 +366,16 @@ test("invalid local draft metadata fails before transport and is not a connectio
   });
   assert.equal(h.calls.length, 0);
 });
+
+test("HTTP 429 preserves Retry-After seconds on the thrown error", async (t) => {
+  const h = await harness(t, () => new Response(JSON.stringify({ message: "Too Many Attempts." }), {
+    status: 429,
+    headers: { "Content-Type": "application/json", "Retry-After": "12" },
+  }));
+  await assert.rejects(h.api.apiRequest("/rhu-providers"), (error) => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfter, 12);
+    assert.match(error.message, /Too Many Attempts/i);
+    return true;
+  });
+});

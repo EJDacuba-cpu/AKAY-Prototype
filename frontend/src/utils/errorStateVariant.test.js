@@ -18,3 +18,8 @@ test("timeouts, forbidden and other failures keep their variants", () => {
   assert.equal(errorStateVariant({ status: 500 }), "error");
   assert.equal(errorStateVariant(null), "error");
 });
+
+test("HTTP 429 is a rate-limited variant, not a generic load error", () => {
+  assert.equal(errorStateVariant({ status: 429 }), "rateLimited");
+  assert.equal(errorStateVariant({ status: 429, code: "RATE_LIMITED" }), "rateLimited");
+});

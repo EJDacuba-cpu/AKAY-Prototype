@@ -143,6 +143,7 @@ export default function Login() {
         <main aria-labelledby="login-title">
           <header className="text-center">
             <AkayWordmark className="text-5xl short:text-4xl tiny:text-3xl" />
+            <p className="mt-2 text-sm font-medium tracking-normal text-slate-500">Bulakan, Bulacan</p>
           </header>
 
           <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="mt-8 text-center text-xl short:mt-5 tiny:mt-3 font-semibold tracking-tight">

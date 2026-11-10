@@ -112,7 +112,14 @@ export default function RHUDashboard() {
   const canFollowups = access.canModule("followups");
   const canInventory = access.canModule("inventory");
   const canIntake = access.canModule("rhuIntake");
-  const { providers: doctors, isLoading: doctorsLoading } = useRhuProviders();
+  const {
+    providers: doctors,
+    isLoading: doctorsLoading,
+    isError: doctorsError,
+    error: doctorsQueryError,
+    refetch: refetchDoctors,
+    isFetching: doctorsFetching,
+  } = useRhuProviders();
   const canManageDoctors = access.can("rhu.providers.manage");
 
   const queries = useQueries({
@@ -341,7 +348,10 @@ export default function RHUDashboard() {
             <div className="lg:col-span-3">
               <DoctorAvailabilityCard
                 doctors={doctors}
-                loading={doctorsLoading}
+                loading={doctorsLoading && !doctorsError}
+                error={doctorsError ? doctorsQueryError : null}
+                onRetry={() => refetchDoctors()}
+                retrying={doctorsFetching}
                 canManage={canManageDoctors}
               />
             </div>
@@ -558,7 +568,7 @@ function RecentActivityCard({ items }) {
   );
 }
 
-function DoctorAvailabilityCard({ doctors, loading, canManage }) {
+function DoctorAvailabilityCard({ doctors, loading, error, onRetry, retrying = false, canManage }) {
   return (
     <Card className="h-full rounded-card shadow-card">
       <CardHeader className="p-4 pb-3">
@@ -570,6 +580,24 @@ function DoctorAvailabilityCard({ doctors, loading, canManage }) {
           <p role="status" className="px-4 pb-4 text-sm text-neutral-500">
             Checking doctor availability…
           </p>
+        ) : error ? (
+          <div className="px-4 pb-4">
+            <p className="text-sm text-neutral-600">
+              {Number(error.status) === 429
+                ? "Too many requests. Please wait briefly and try again."
+                : "Unable to load doctor availability."}
+            </p>
+            {onRetry ? (
+              <button
+                type="button"
+                className="mt-2 text-xs font-semibold text-brand-700 hover:underline disabled:opacity-60"
+                onClick={onRetry}
+                disabled={retrying}
+              >
+                {retrying ? "Retrying..." : "Retry"}
+              </button>
+            ) : null}
+          </div>
         ) : doctors.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-neutral-500">No doctor records yet.</p>
         ) : (

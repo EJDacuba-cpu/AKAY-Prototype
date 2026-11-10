@@ -42,10 +42,23 @@ function errorMessage(caught, fallback) {
   );
 }
 
+function rateLimitWaitMs(error) {
+  const seconds = Number(error?.retryAfter);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+}
+
 export default function DoctorSchedule() {
   const access = useAccess();
   const canManage = access.can(MANAGE_PERMISSION);
-  const { providers, isPending: isLoading, isFetching, dataUpdatedAt, error, refetch } = useRhuProviders();
+  const {
+    providers,
+    isPending,
+    isFetching,
+    isError,
+    dataUpdatedAt,
+    error,
+    refetch,
+  } = useRhuProviders();
   const { update, createUnavailability, removeUnavailability } = useProviderMutations();
 
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
@@ -55,6 +68,7 @@ export default function DoctorSchedule() {
   const [dayDate, setDayDate] = useState("");
   const [dayError, setDayError] = useState("");
   const [successNotice, setSuccessNotice] = useState(null);
+  const [retryGateOpen, setRetryGateOpen] = useState(true);
 
   const doctors = useMemo(
     () => (Array.isArray(providers) ? providers : []),
@@ -83,8 +97,24 @@ export default function DoctorSchedule() {
     update.isPending || createUnavailability.isPending || removeUnavailability.isPending;
 
   useEffect(() => {
-    if (selectedDoctorId && !selectedDoctor && !isLoading) setSelectedDoctorId("");
-  }, [selectedDoctorId, selectedDoctor, isLoading]);
+    if (selectedDoctorId && !selectedDoctor && !isPending) setSelectedDoctorId("");
+  }, [selectedDoctorId, selectedDoctor, isPending]);
+
+  useEffect(() => {
+    const waitMs = rateLimitWaitMs(error);
+    if (Number(error?.status) !== 429 || waitMs <= 0) {
+      setRetryGateOpen(true);
+      return undefined;
+    }
+    setRetryGateOpen(false);
+    const timer = window.setTimeout(() => setRetryGateOpen(true), waitMs);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
+  function retryProviders() {
+    if (isFetching || !retryGateOpen) return;
+    void refetch();
+  }
 
   function openAdd(date) {
     setModalError("");
@@ -185,21 +215,27 @@ export default function DoctorSchedule() {
   }
 
   const ready = doctors.length > 0;
+  const hasRoster = dataUpdatedAt > 0;
+  const accessDenied = isError && [401, 403].includes(Number(error?.status));
+  // Terminal failures must leave the skeleton: never keep loading after 429/unreachable.
+  const showSkeleton = isPending && !hasRoster && !isError;
+  const showFullPageError = isError && (!hasRoster || accessDenied);
 
-  if (isLoading) return (
+  if (showSkeleton) return (
     <DashboardLayout role="rhu" title="Doctor Availability">
       <PageSkeletonLoader skeleton="doctor-calendar" message="Loading doctor availability..." />
     </DashboardLayout>
   );
 
-  if (error && (!dataUpdatedAt || [401, 403].includes(Number(error.status)))) {
+  if (showFullPageError) {
     return (
       <DashboardLayout role="rhu" title="Doctor Availability">
         <ConnectionErrorState
           fullPage
           variant={errorStateVariant(error)}
-          onRetry={() => refetch()}
+          onRetry={retryProviders}
           retrying={isFetching}
+          retryDisabled={!retryGateOpen}
         />
       </DashboardLayout>
     );
@@ -224,9 +260,20 @@ export default function DoctorSchedule() {
           ) : null}
         </div>
 
-        {error && dataUpdatedAt ? (
+        {error && hasRoster ? (
           <p role="status" className="text-sm text-neutral-600">
-            Unable to refresh doctor availability. Showing the last roster that loaded.
+            {Number(error.status) === 429
+              ? "Too many requests while refreshing. Showing the last roster that loaded."
+              : "Unable to refresh doctor availability. Showing the last roster that loaded."}
+            {" "}
+            <button
+              type="button"
+              className="font-semibold text-brand-700 hover:underline disabled:opacity-60"
+              onClick={retryProviders}
+              disabled={isFetching || !retryGateOpen}
+            >
+              Retry
+            </button>
           </p>
         ) : null}
         {!ready ? (
