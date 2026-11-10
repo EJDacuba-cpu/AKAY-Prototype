@@ -161,6 +161,11 @@ class Patient extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function tbTreatmentCases(): HasMany
+    {
+        return $this->hasMany(TbTreatmentCase::class);
+    }
+
     public function household(): BelongsTo
     {
         return $this->belongsTo(Household::class);

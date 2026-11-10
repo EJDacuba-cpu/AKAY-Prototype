@@ -27,6 +27,7 @@ class HealthRecord extends Model
         'monitoring_data',
         'family_planning_data',
         'tb_data',
+        'tb_assessment_authority',
         'needs_referral',
         'chief_complaint',
         'physical_exam',
@@ -110,6 +111,7 @@ class HealthRecord extends Model
         'monitoring_data' => 'array',
         'family_planning_data' => 'array',
         'tb_data' => 'array',
+        'tb_assessment_authority' => 'array',
         'body_findings' => 'array',
         'diagnoses' => 'array',
         'background_changes' => 'array',
@@ -165,6 +167,11 @@ class HealthRecord extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    public function tbTreatmentCase(): HasOne
+    {
+        return $this->hasOne(TbTreatmentCase::class, 'source_health_record_id');
     }
 
     public function laboratoryTests(): HasMany

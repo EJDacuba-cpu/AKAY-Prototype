@@ -64,6 +64,7 @@ export default function CareAndProgramsTab({
   patientId,
   records = [],
   conditions = [],
+  followUpTasks = [],
   isLoading = false,
   isError = false,
   onRetryRecords,
@@ -95,8 +96,8 @@ export default function CareAndProgramsTab({
   const trackingLoading = isLoading || careOverviewQuery.isLoading;
 
   const careTracking = useMemo(
-    () => getCareTracking(patient || {}, records, new Date(), { conditions, nutritionCare }).filter(includeCareEntry),
-    [patient, records, conditions, nutritionCare],
+    () => getCareTracking(patient || {}, records, new Date(), { conditions, nutritionCare, followUpTasks }).filter(includeCareEntry),
+    [patient, records, conditions, nutritionCare, followUpTasks],
   );
   const maternalSummary = useMemo(() =>
     buildMaternalTracking(careTracking.find((entry) => entry.key === "maternal")?.records || []),

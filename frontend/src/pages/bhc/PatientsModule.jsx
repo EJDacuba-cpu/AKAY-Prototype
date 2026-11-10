@@ -1,6 +1,6 @@
 import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PanelRight, Plus, Users } from "lucide-react";
 
@@ -65,7 +65,8 @@ function Shell({ embedded, children, ...layoutProps }) {
 }
 
 export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false } = {}) {
-  const canRegister = useAccess().can("patients.register") && showDirectoryRegisterAction(role);
+  const access = useAccess();
+  const canRegister = access.can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -288,6 +289,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
             </div>
             {!showHandoffs ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                {role === "bhc" && access.can("clinical.history") && <Button asChild variant="secondary" size="sm"><RouterLink to="/bhc/patients/tb-endorsements">TB endorsements</RouterLink></Button>}
                 <SearchFilterCluster
                   search={
                     <SearchField

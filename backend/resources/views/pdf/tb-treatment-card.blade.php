@@ -176,6 +176,13 @@
     </table>
 
     <div class="section-title">Drug Regimen</div>
+    @if (!empty($treatmentFacility))
+        <div><strong>Treatment facility:</strong> {{ $treatmentFacility }}</div>
+    @endif
+    @if (!empty($tb['regimen']['description']) || !empty($tb['regimen']['weightKg']))
+        <div><strong>Prescribed regimen:</strong> {{ $dash($tb['regimen']['description'] ?? null) }}
+            &nbsp; <strong>Baseline weight (kg):</strong> {{ $dash($tb['regimen']['weightKg'] ?? null) }}</div>
+    @endif
     <table class="grid">
         <tr>
             <th>Date Start</th><th>4FDC</th><th>2FDC</th><th>H</th><th>R</th><th>Z</th><th>E</th>
@@ -216,10 +223,30 @@
         <tr>
             <td class="k">Intensive Phase</td><td>{{ $dash($phases['intensiveStart'] ?? null) }} — {{ $dash($phases['intensiveEnd'] ?? null) }}</td>
             <td class="k">Continuation Phase</td><td>{{ $dash($phases['continuationStart'] ?? null) }} — {{ $dash($phases['continuationEnd'] ?? null) }}</td>
-            <td class="k">Adherence</td><td><span class="badge">{{ $adherence }}%</span></td>
+            <td class="k">Adherence</td><td>@if (isset($monitoringEntries)) Not calculated @else <span class="badge">{{ $adherence }}%</span> @endif</td>
         </tr>
     </table>
 
+    @if (isset($monitoringEntries))
+    <div class="section-title">Administration of Drugs — Dated DOTS and Weight Log</div>
+    <table class="grid">
+        <tr><th>Date</th><th>Dose observation</th><th>Weight (kg)</th><th>BHC</th><th>Recorded by</th><th>Recorded at</th><th>Notes</th></tr>
+        @forelse ($monitoringEntries as $entry)
+            <tr>
+                <td>{{ $entry->observed_on->toDateString() }}</td>
+                <td>{{ ['taken' => 'Supervised dose taken', 'missed' => 'Dose missed', 'incomplete' => 'Incomplete regimen', 'on_hold' => 'Held per RHU instruction', 'dispensed' => 'Drugs dispensed (not observed)'][$entry->dose_status] ?? 'Not observed' }}</td>
+                <td>{{ $dash($entry->weight_kg) }}</td>
+                <td>{{ $dash($entry->barangayHealthCenter?->name) }}</td>
+                <td>{{ $entry->recorder_name }} (v{{ $entry->version }})</td>
+                <td>{{ $entry->recorded_at->copy()->timezone('Asia/Manila')->format('Y-m-d H:i') }}</td>
+                <td style="text-align:left; word-wrap:break-word">{{ $dash($entry->notes) }}</td>
+            </tr>
+        @empty
+            <tr><td colspan="7" class="muted">No observations recorded.</td></tr>
+        @endforelse
+    </table>
+    <div class="muted">Unrecorded days remain unknown. Dispensing does not establish supervised intake. Voided observations are retained in the case history.</div>
+    @else
     <div class="section-title">Administration of Drugs — Dose Calendar</div>
     <table class="cal">
         <tr>
@@ -245,6 +272,25 @@
     <div class="muted" style="margin-top:3px">
         Legend: initials = supervised dose &middot; X = absent &middot; I = incomplete regimen &middot; HOLD = on hold &middot; [ ] = drugs dispensed &middot; // = shift to continuation phase
     </div>
+    @endif
+
+    @if (isset($followUpLabs))
+    <div class="section-title">RHU Follow-up Laboratory Record</div>
+    <table class="grid"><tr><th>Milestone</th><th>Test</th><th>Due</th><th>Status</th><th>Collection / examination</th><th>Recorded result</th><th>RHU recorder</th></tr>
+    @forelse ($followUpLabs as $lab)
+    <tr><td>{{ ['month_2' => 'Month 2', 'month_5' => 'Month 5', 'month_6' => 'Month 6', 'other' => 'Other'][$lab->milestone] }}</td><td>{{ $lab->test_name }}</td>
+    <td>{{ $lab->due_on->toDateString() }}</td><td>{{ str_replace('_', ' ', $lab->status) }}</td><td>{{ $lab->collection_on?->toDateString() }} / {{ $lab->examination_on?->toDateString() }}</td>
+    <td style="text-align:left; word-wrap:break-word">{{ $lab->result ?? '—' }}</td><td>{{ $lab->recorder_name }} (v{{ $lab->version }})</td></tr>
+    @empty<tr><td colspan="7">No RHU follow-up laboratories recorded.</td></tr>@endforelse</table>
+    @endif
+    @if (isset($caseLifecycle))
+    <div class="section-title">Physician Treatment Outcome</div>
+    @if ($caseLifecycle->status === 'closed')
+    <p><strong>{{ ['cured' => 'Cured', 'treatment_completed' => 'Treatment Completed', 'treatment_failed' => 'Failed', 'lost_to_follow_up' => 'Lost to Follow-up', 'died' => 'Died'][$caseLifecycle->outcome_status] ?? 'Closed; outcome not recorded' }}</strong>
+    · {{ $caseLifecycle->outcome_on?->toDateString() }} · {{ $caseLifecycle->closed_name }}</p>
+    <p style="white-space:pre-wrap; word-wrap:break-word">{{ $caseLifecycle->outcome_note }}</p>
+    @else<p>Active case; no final outcome recorded.</p>@endif
+    @endif
 
     <div class="section-title">E. Serious Adverse Events / AEs of Special Interest</div>
     <table class="grid">

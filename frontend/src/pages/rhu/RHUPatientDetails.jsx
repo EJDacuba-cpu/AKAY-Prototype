@@ -139,7 +139,7 @@ function LiveRHUPatientDetails() {
     () => [...(Array.isArray(referralsData) ? referralsData : [])].sort(sortByDateDesc),
     [referralsData],
   );
-  const { open: activeFollowUps } = useMemo(
+  const { ordered: patientFollowUps, open: activeFollowUps } = useMemo(
     () =>
       orderFollowUps(
         (Array.isArray(followUpTasksData) ? followUpTasksData : []).filter(
@@ -496,6 +496,7 @@ function LiveRHUPatientDetails() {
                     patientId={patientId}
                     records={records}
                     conditions={conditions.conditions || []}
+                    followUpTasks={patientFollowUps}
                     isLoading={recordsLoading}
                     isError={Boolean(recordsError)}
                     onRetryRecords={refetchRecords}

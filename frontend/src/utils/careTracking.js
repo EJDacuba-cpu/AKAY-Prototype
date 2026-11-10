@@ -410,7 +410,47 @@ function buildTbEntry(records, today, condition = null) {
   };
 }
 
-function buildNcdEntry({ key, label, condition, records, measurementFact }) {
+const NCD_FOLLOW_UP_TERMS = Object.freeze({
+  hypertension: ["hypertension", "htn", "high blood"],
+  diabetes_mellitus: ["diabetes", "dm", "fbs", "blood sugar", "glucose"],
+});
+
+function followUpState(task = {}) {
+  return String(task.state || task.effectiveState || "").trim().toLowerCase();
+}
+
+/** Active/pending (including overdue no-show); never fulfilled, cancelled, or superseded. */
+export function isOpenFollowUpTask(task = {}) {
+  if (task.rescheduledToId || task.rescheduled_to_id) return false;
+  const state = followUpState(task);
+  if (state === "fulfilled" || state === "cancelled") return false;
+  if (task.fulfilledAt || task.fulfilled_at || task.cancelledAt || task.cancelled_at) return false;
+  if (!state) return true;
+  return ["pending", "rescheduled", "no_show", "due_today", "upcoming"].includes(state);
+}
+
+function followUpMatchesNcd(task, { key, label }) {
+  const terms = NCD_FOLLOW_UP_TERMS[key] || [String(label || "").toLowerCase()].filter(Boolean);
+  if (!terms.length) return false;
+  // Match only task text — never the card label, or every open task would qualify.
+  const haystack = [task.purpose, task.purposeKey, task.purpose_key, task.reason, task.notes]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+  return terms.some((term) => haystack.includes(term));
+}
+
+/** Earliest open/overdue condition-matched due date, else "". */
+export function nextVisitFromFollowUps({ key, label, condition, followUpTasks = [] } = {}) {
+  const dates = (followUpTasks || [])
+    .filter((task) => isOpenFollowUpTask(task))
+    .filter((task) => followUpMatchesNcd(task, { key, label, condition }))
+    .map((task) => String(task.dueDate || task.due_date || "").slice(0, 10))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .sort();
+  return dates[0] || "";
+}
+
+function buildNcdEntry({ key, label, condition, records, measurementFact, followUpTasks }) {
   if (!condition) return null;
   const facts = [monitoringFact(condition)];
   const latest = measurementFact(records);
@@ -423,7 +463,7 @@ function buildNcdEntry({ key, label, condition, records, measurementFact }) {
     statusTone: past ? "neutral" : "info",
     facts,
     lastVisit: records[0] ? getRecordDateValue(sortRecordsByDateAsc(records).at(-1)) : "",
-    nextVisit: "",
+    nextVisit: nextVisitFromFollowUps({ key, label, condition, followUpTasks }),
     flags: [],
     action: null,
     records,
@@ -565,6 +605,7 @@ export function buildNutritionEntry(patient, records, today, { nutritionCare } =
  */
 export function getCareTracking(patient = {}, records = [], today = new Date(), options = {}) {
   const conditions = options.conditions || [];
+  const followUpTasks = options.followUpTasks || [];
   const list = Array.isArray(records) ? records : [];
   return [
     buildMaternalEntry(patient, list, today),
@@ -576,6 +617,7 @@ export function getCareTracking(patient = {}, records = [], today = new Date(), 
       condition: conditionByIdentity(conditions, "hypertension"),
       records: list,
       measurementFact: latestBpFact,
+      followUpTasks,
     }),
     buildNcdEntry({
       key: "diabetes_mellitus",
@@ -583,6 +625,7 @@ export function getCareTracking(patient = {}, records = [], today = new Date(), 
       condition: conditionByIdentity(conditions, "diabetes_mellitus"),
       records: list,
       measurementFact: latestFbsFact,
+      followUpTasks,
     }),
     buildTbEntry(list, today, conditionByIdentity(conditions, "tuberculosis")),
     buildNutritionEntry(patient, list, today, { nutritionCare: options.nutritionCare }),

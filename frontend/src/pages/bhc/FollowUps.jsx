@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -36,6 +36,7 @@ import {
   getTaskServiceTypeLabel,
   normalizeFilterState,
 } from "../../components/features/followups/followUpStatusStyles.jsx";
+import { getFollowUpReasonDisplay } from "../../components/features/followups/followUpListDisplay.js";
 import { matchesFollowUpSearch } from "../../components/features/followups/followUpSearch.js";
 import {
   buildTaskActions,
@@ -625,11 +626,10 @@ function FollowUpList({
       <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
         <tr>
           <th className="px-4">Patient</th>
-          <th className="px-3">Follow-up</th>
+          <th className="px-3">Follow-up Reason</th>
+          <th className="px-3">Schedule</th>
           <th className="px-3">Status</th>
-          <th className="px-2 text-right">
-            <span className="sr-only">Actions</span>
-          </th>
+          <th className="px-2 text-right">Action</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-neutral-100">
@@ -640,8 +640,8 @@ function FollowUpList({
               "Unnamed Patient",
             );
             const timeLabel = formatTimeLabel(task.dueTime);
-            const service = getTaskServiceTypeLabel(task);
             const followUpId = formatFollowUpId(task);
+            const reason = getFollowUpReasonDisplay(task);
             const actions = buildTaskActions(task, {
               onRecordVisit: () => handlers.onRecordVisit(task),
               onReschedule: () => handlers.onReschedule(task),
@@ -661,19 +661,25 @@ function FollowUpList({
                       {patientName}
                     </p>
                     <p className="mt-0.5 truncate text-[11px] text-neutral-600">
-                      {service}
-                      {task.healthRecordId ? (
-                        <>
-                          {" · "}
-                          <Link
-                            to={`${basePath}/health-records/${task.healthRecordId}`}
-                            className="font-medium text-brand-700 underline-offset-4 hover:underline"
-                          >
-                            Record #{task.healthRecordId}
-                          </Link>
-                        </>
-                      ) : null}
+                      {followUpId}
                     </p>
+                  </div>
+                </td>
+                <td className="px-3">
+                  <div className="min-w-0">
+                    {reason.condition ? (
+                      <p className="truncate text-sm font-medium text-ink-800">
+                        {reason.condition}
+                      </p>
+                    ) : null}
+                    {reason.purpose ? (
+                      <p className={`truncate text-sm ${reason.condition ? "mt-0.5 text-[11px] text-neutral-600" : "font-medium text-ink-800"}`}>
+                        {reason.purpose}
+                      </p>
+                    ) : null}
+                    {!reason.condition && !reason.purpose ? (
+                      <p className="text-sm text-neutral-400">—</p>
+                    ) : null}
                   </div>
                 </td>
                 <td className="px-3">
@@ -681,10 +687,11 @@ function FollowUpList({
                     <p className="truncate text-sm font-medium text-ink-800">
                       {formatDate(task.dueDate)}
                     </p>
-                    <p className="mt-0.5 truncate text-[11px] text-neutral-600">
-                      {followUpId}
-                      {timeLabel ? ` · ${timeLabel}` : ""}
-                    </p>
+                    {timeLabel ? (
+                      <p className="mt-0.5 truncate text-[11px] text-neutral-600">
+                        {timeLabel}
+                      </p>
+                    ) : null}
                   </div>
                 </td>
                 <td className="px-3">
@@ -706,7 +713,7 @@ function FollowUpList({
           })
         ) : (
           <DataTableEmptyState
-            colSpan={4}
+            colSpan={5}
             title={narrowed ? "No follow-ups match" : "No follow-ups yet."}
             description={
               narrowed
@@ -733,7 +740,7 @@ function FollowUpList({
 
   return (
     <div className="followup-list-sheet">
-      <FixedTable minWidth="min-w-[640px]">
+      <FixedTable minWidth="min-w-[760px]">
         {tableBody}
       </FixedTable>
       {!empty ? (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { DatePickerField } from "../../common/forms/DatePickerField";
@@ -10,6 +10,7 @@ import TbDoseCalendar, {
   recomputeCalendar,
 } from "./TbDoseCalendar";
 import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
+import { withTbRegimenRows } from "../../../utils/tbRegistration";
 
 // ---------------------------------------------------------------------------
 // Option sets (mirror the DOH Form 4b checkboxes)
@@ -44,7 +45,8 @@ export const TB_ANATOMICAL_SITE_OPTIONS = [
 ];
 
 export const TB_DRUG_RESISTANCE_OPTIONS = [
-  { value: "drug_susceptible", label: "Drug-susceptible" },
+  { value: "drug_susceptible", label: "Drug-susceptible TB" },
+  { value: "pending_dst", label: "Pending DST Result" },
   { value: "rr_tb", label: "Bacteriologically-confirmed RR-TB" },
   { value: "mdr_tb", label: "Bacteriologically-confirmed MDR-TB" },
   { value: "clinically_mdr_tb", label: "Clinically-diagnosed MDR-TB" },
@@ -223,11 +225,9 @@ export function normalizeTbData(source) {
       EMPTY_TB_DATA.comorbidities,
       data.comorbidities,
     ),
-    regimen: {
-      rows: rawRows.length
+    regimen: withTbRegimenRows(data.regimen, rawRows.length
         ? rawRows.map((row) => mergeGroup(createEmptyRegimenRow(), row))
-        : [createEmptyRegimenRow()],
-    },
+        : [createEmptyRegimenRow()]),
     treatmentSupporter: mergeGroup(
       EMPTY_TB_DATA.treatmentSupporter,
       data.treatmentSupporter,
@@ -245,9 +245,9 @@ export function normalizeTbData(source) {
 // ---------------------------------------------------------------------------
 // Small presentational field helpers (match the app's form design tokens)
 // ---------------------------------------------------------------------------
-function FieldLabel({ label, required }) {
+function FieldLabel({ label, required, htmlFor }) {
   return (
-    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
       {label} {required && <span className="text-red-500">*</span>}
     </label>
   );
@@ -257,10 +257,12 @@ const inputClass =
   "h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none transition-all duration-200 hover:border-[#D1D5DB] focus:border-[#B91C1C] focus:ring-2 focus:ring-[#B91C1C]/10";
 
 function TextField({ label, value, onChange, required, placeholder, disabled = false, error }) {
+  const id = useId();
   return (
     <div className="min-w-0">
-      <FieldLabel label={label} required={required} />
+      <FieldLabel label={label} required={required} htmlFor={id} />
       <input
+        id={id}
         type="text"
         value={value ?? ""}
         placeholder={placeholder}
@@ -275,10 +277,12 @@ function TextField({ label, value, onChange, required, placeholder, disabled = f
 }
 
 function SelectField({ label, value, onChange, options, required, placeholder, disabled = false }) {
+  const id = useId();
   return (
     <div className="min-w-0">
-      <FieldLabel label={label} required={required} />
+      <FieldLabel label={label} required={required} htmlFor={id} />
       <select
+        id={id}
         value={value ?? ""}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -295,24 +299,42 @@ function SelectField({ label, value, onChange, options, required, placeholder, d
   );
 }
 
-function DateField({ label, value, onChange, required }) {
+function DateField({ label, value, onChange, required, disabled = false }) {
   return (
     <DatePickerField
       label={label}
       value={value ?? ""}
       onChange={onChange}
       required={required}
+      disabled={disabled}
       allowClear
     />
   );
 }
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, children, compact = false, badge = null }) {
+  if (compact) {
+    return (
+      <section className="border-t border-[#EEF2F7] pt-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h4 className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B70011]">{title}</h4>
+            {subtitle && <p className="mt-0.5 text-xs text-[#545F73]">{subtitle}</p>}
+          </div>
+          {badge}
+        </div>
+        {children}
+      </section>
+    );
+  }
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="mb-4">
-        <h4 className="text-sm font-bold text-[#0F172A]">{title}</h4>
-        {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-bold text-[#0F172A]">{title}</h4>
+          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+        </div>
+        {badge}
       </div>
       {children}
     </section>
@@ -333,6 +355,7 @@ export default function TbTreatmentCardForm({
   value,
   onChange,
   readOnly = false,
+  includeLegacyDoseCalendar = true,
   recordId = null,
   mode = "full",
   referenceCaseNumber = "",
@@ -374,14 +397,14 @@ export default function TbTreatmentCardForm({
     const rows = data.regimen.rows.map((row, i) =>
       i === index ? { ...row, [field]: fieldValue } : row,
     );
-    onChange({ ...data, regimen: { rows } });
+    onChange({ ...data, regimen: withTbRegimenRows(data.regimen, rows) });
   };
 
   const addRegimenRow = () => {
     if (data.regimen.rows.length >= 10) return;
     onChange({
       ...data,
-      regimen: { rows: [...data.regimen.rows, createEmptyRegimenRow()] },
+      regimen: withTbRegimenRows(data.regimen, [...data.regimen.rows, createEmptyRegimenRow()]),
     });
   };
 
@@ -389,7 +412,7 @@ export default function TbTreatmentCardForm({
     const rows = data.regimen.rows.filter((_, i) => i !== index);
     onChange({
       ...data,
-      regimen: { rows: rows.length ? rows : [createEmptyRegimenRow()] },
+      regimen: withTbRegimenRows(data.regimen, rows.length ? rows : [createEmptyRegimenRow()]),
     });
   };
 
@@ -419,11 +442,15 @@ export default function TbTreatmentCardForm({
     onChange({ ...data, doseCalendar: nextCalendar });
   };
 
-  const showEncode = mode === "full" || mode === "encode";
-  const showFinalize = mode === "full" || mode === "finalize";
+  const registration = mode === "registration";
+  const showEncode = mode === "full" || mode === "encode" || registration;
+  const showFinalize = mode === "full" || mode === "finalize" || registration;
   const showDots = mode === "full" || mode === "dots";
   const showChart = mode === "chart" || mode === "dots";
   const fieldsLocked = readOnly || mode === "chart";
+  const sectionProps = registration ? { compact: true } : {};
+  const registrationGrid = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
+  const registrationGrid3 = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
   return (
     <div className="space-y-4">
@@ -445,13 +472,15 @@ export default function TbTreatmentCardForm({
       {/* I. Case Finding / Notification */}
       {showEncode && (
       <SectionCard
-        title="I. Case Finding / Notification"
+        {...sectionProps}
+        title={registration ? "01 · Case Finding / Notification" : "I. Case Finding / Notification"}
         subtitle="Diagnosing facility and screening details."
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={registrationGrid}>
           <TextField
             label="Diagnosing Facility"
             value={data.caseFinding.diagnosingFacility}
+            disabled={registration}
             onChange={(v) => setGroupField("caseFinding", "diagnosingFacility", v)}
           />
           <TextField
@@ -490,11 +519,279 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Laboratory Tests */}
-      {showEncode && laboratoryContext === "rhu" && <SectionCard title="Laboratory References" subtitle="Record new tests in Physical Examination → Laboratory & Diagnostic Tests.">
-        <LaboratoryEvidenceList entries={laboratoryTests} />
-        {Object.values(data.laboratory).some(test => test.result) && <div className="mt-3 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-xs font-semibold text-neutral-700">Previously recorded TB laboratory results</h4><LaboratoryEvidenceList entries={Object.entries(data.laboratory).filter(([, test]) => test.result).map(([key, test]) => ({ id: key, testName: LAB_TESTS.find(item => item.key === key)?.label || test.label || "Other", resultStatus: "Result Available", collectionDate: test.collectionDate, examinationDate: test.examDate, result: test.result }))} /></div>}
-      </SectionCard>}
+      {/* TB Disease Classification — primary registration fields first */}
+      {showFinalize && (
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "02 · Classification & Registration" : "TB Disease Classification"}
+        badge={registration ? (
+          <span className="rounded-full bg-[#B70011]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#B70011]">
+            Required
+          </span>
+        ) : null}
+      >
+        <div className={registrationGrid3}>
+          <SelectField
+            label="Bacteriological Status"
+            required={registration}
+            value={data.classification.bacteriologicalStatus}
+            onChange={(v) =>
+              setGroupField("classification", "bacteriologicalStatus", v)
+            }
+            options={TB_BACTERIOLOGICAL_OPTIONS}
+            placeholder="Select classification"
+          />
+          <SelectField
+            label="Anatomical Site"
+            required={registration}
+            value={data.classification.anatomicalSite}
+            onChange={(v) => setGroupField("classification", "anatomicalSite", v)}
+            options={TB_ANATOMICAL_SITE_OPTIONS}
+            placeholder="Select site"
+          />
+          <SelectField
+            label="Registration Group"
+            required={registration}
+            value={data.classification.registrationGroup}
+            onChange={(v) =>
+              setGroupField("classification", "registrationGroup", v)
+            }
+            options={TB_REGISTRATION_GROUP_OPTIONS}
+            placeholder="Select registration group"
+          />
+          <TextField
+            label="Extra-pulmonary Site"
+            value={data.classification.extrapulmonarySite}
+            onChange={(v) =>
+              setGroupField("classification", "extrapulmonarySite", v)
+            }
+          />
+          <SelectField
+            label="Drug Resistance Status"
+            value={data.classification.drugResistance}
+            disabled={registration}
+            onChange={(v) => setGroupField("classification", "drugResistance", v)}
+            options={TB_DRUG_RESISTANCE_OPTIONS}
+          />
+        </div>
+      </SectionCard>
+      )}
+
+      {/* Treatment start + phases */}
+      {showFinalize && (
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "03 · Treatment Start & Phases" : "Treatment Phases"}
+        subtitle={registration ? "Treatment start date maps to intensive phase start." : undefined}
+      >
+        <div className={registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"}>
+          <DateField
+            label={registration ? "Treatment Start Date" : "Intensive Phase Start"}
+            value={data.phases.intensiveStart}
+            onChange={(v) => setGroupField("phases", "intensiveStart", v)}
+            required
+          />
+          <DateField
+            label="Intensive Phase End"
+            value={data.phases.intensiveEnd}
+            onChange={(v) => setGroupField("phases", "intensiveEnd", v)}
+          />
+          <DateField
+            label="Continuation Phase Start"
+            value={data.phases.continuationStart}
+            onChange={(v) => setGroupField("phases", "continuationStart", v)}
+          />
+          <DateField
+            label="Continuation Phase End"
+            value={data.phases.continuationEnd}
+            onChange={(v) => setGroupField("phases", "continuationEnd", v)}
+          />
+        </div>
+      </SectionCard>
+      )}
+
+      {/* Drug Regimen */}
+      {showFinalize && (
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "04 · Physician-authorized Regimen" : "Drug Regimen"}
+        subtitle={registration ? "Enter the physician-prescribed regimen and dosage for each start date." : "Encircle a regimen change on the paper card. Add a row per date-start."}
+      >
+        {(registration || data.regimen.description || data.regimen.weightKg) && <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <TextField label={registration ? "Physician-authorized Regimen" : "Prescribed Regimen"} required value={data.regimen.description || ""} onChange={value => setGroupField("regimen", "description", value)} placeholder={registration ? "Enter prescribed regimen" : undefined} />
+          <TextField label="Baseline Weight (kg)" required value={data.regimen.weightKg || ""} onChange={value => setGroupField("regimen", "weightKg", value)} />
+        </div>}
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[880px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                <th className="px-2 py-2">Date Start</th>
+                <th className="px-2 py-2">4FDC</th>
+                <th className="px-2 py-2">2FDC</th>
+                <th className="px-2 py-2">H</th>
+                <th className="px-2 py-2">R</th>
+                <th className="px-2 py-2">Z</th>
+                <th className="px-2 py-2">E</th>
+                <th className="px-2 py-2">Strength</th>
+                <th className="px-2 py-2">Unit</th>
+                {!readOnly && <th className="px-1 py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {data.regimen.rows.map((row, index) => (
+                <tr key={index} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-2 py-1.5">
+                    <DatePickerField
+                      label={`Regimen row ${index + 1} start date`}
+                      hideLabel
+                      value={row.dateStart}
+                      onChange={(v) => setRegimenRow(index, "dateStart", v)}
+                      allowClear
+                      placeholder="Date"
+                    />
+                  </td>
+                  {["drug4fdc", "drug2fdc", "drugH", "drugR", "drugZ", "drugE"].map(
+                    (drug) => (
+                      <td key={drug} className="px-1 py-1.5">
+                        <input
+                          type="text"
+                          aria-label={`Regimen row ${index + 1} ${drug}`}
+                          value={row[drug] ?? ""}
+                          maxLength={20}
+                          onChange={(e) =>
+                            setRegimenRow(index, drug, e.target.value)
+                          }
+                          className="h-9 w-16 rounded border border-[#E5E7EB] bg-white px-1 text-center text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                        />
+                      </td>
+                    ),
+                  )}
+                  <td className="px-1 py-1.5">
+                    <input
+                      type="text"
+                      aria-label={`Regimen row ${index + 1} strength`}
+                      value={row.strength ?? ""}
+                      onChange={(e) => setRegimenRow(index, "strength", e.target.value)}
+                      className="h-9 w-28 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                    />
+                  </td>
+                  <td className="px-1 py-1.5">
+                    <input
+                      type="text"
+                      aria-label={`Regimen row ${index + 1} unit`}
+                      value={row.unit ?? ""}
+                      onChange={(e) => setRegimenRow(index, "unit", e.target.value)}
+                      className="h-9 w-20 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                    />
+                  </td>
+                  {!readOnly && (
+                    <td className="px-1 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => removeRegimenRow(index)}
+                        className="flex h-8 w-8 items-center justify-center rounded text-slate-400 transition hover:bg-red-50 hover:text-[#B91C1C]"
+                        aria-label="Remove regimen row"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={addRegimenRow}
+            disabled={data.regimen.rows.length >= 10}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-[#B91C1C] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus size={14} />
+            Add Regimen Row
+          </button>
+        )}
+      </SectionCard>
+      )}
+
+      {/* Treatment supporter */}
+      {showEncode && (
+      <SectionCard
+        {...sectionProps}
+        title={registration ? "05 · Treatment Supporter" : "Administration of Drugs"}
+      >
+        <div className={registrationGrid3}>
+          <SelectField
+            label="Location of Treatment"
+            value={data.treatmentSupporter.locationOfTreatment}
+            onChange={(v) =>
+              setGroupField("treatmentSupporter", "locationOfTreatment", v)
+            }
+            options={TB_LOCATION_OF_TREATMENT_OPTIONS}
+          />
+          <TextField
+            label={registration ? "Treatment Supporter" : "Tx Supporter Name"}
+            value={data.treatmentSupporter.supporterName}
+            onChange={(v) =>
+              setGroupField("treatmentSupporter", "supporterName", v)
+            }
+            placeholder={registration ? "Enter assigned supporter" : undefined}
+          />
+          <TextField
+            label="Designation"
+            value={data.treatmentSupporter.supporterDesignation}
+            onChange={(v) =>
+              setGroupField("treatmentSupporter", "supporterDesignation", v)
+            }
+          />
+          <TextField
+            label="Supporter Type"
+            value={data.treatmentSupporter.supporterType}
+            onChange={(v) =>
+              setGroupField("treatmentSupporter", "supporterType", v)
+            }
+            placeholder="Facility HCW / Community HCW / Family…"
+          />
+          <TextField
+            label="Contact Information"
+            value={data.treatmentSupporter.contactInfo}
+            onChange={(v) => setGroupField("treatmentSupporter", "contactInfo", v)}
+          />
+          <TextField
+            label="Schedule of Treatment"
+            value={data.treatmentSupporter.scheduleOfTreatment}
+            onChange={(v) =>
+              setGroupField("treatmentSupporter", "scheduleOfTreatment", v)
+            }
+            placeholder="e.g. Once daily before breakfast"
+          />
+          <label className="flex items-center gap-2 pt-6 text-sm font-medium text-[#334155]">
+            <input
+              type="checkbox"
+              checked={Boolean(data.treatmentSupporter.datSupported)}
+              onChange={(e) =>
+                setGroupField("treatmentSupporter", "datSupported", e.target.checked)
+              }
+              className="h-4 w-4 rounded border-slate-300 text-[#B91C1C] focus:ring-[#B91C1C]/30"
+            />
+            DAT-supported
+          </label>
+        </div>
+      </SectionCard>
+      )}
+
+      {/* Secondary registration sections */}
+      {showEncode && laboratoryContext === "rhu" && (
+        <SectionCard
+          {...sectionProps}
+          title={registration ? "06 · Laboratory References" : "Laboratory References"}
+          subtitle={registration ? "Review diagnostic evidence linked to this consultation." : "Evidence recorded for this treatment card."}
+        >
+          <LaboratoryEvidenceList entries={laboratoryTests} />
+          {Object.values(data.laboratory).some(test => test.result) && <div className="mt-3 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-xs font-semibold text-neutral-700">Previously recorded TB laboratory results</h4><LaboratoryEvidenceList entries={Object.entries(data.laboratory).filter(([, test]) => test.result).map(([key, test]) => ({ id: key, testName: LAB_TESTS.find(item => item.key === key)?.label || test.label || "Other", resultStatus: "Result Available", collectionDate: test.collectionDate, examinationDate: test.examDate, result: test.result }))} /></div>}
+        </SectionCard>
+      )}
       {showEncode && laboratoryContext !== "rhu" && (
       <SectionCard
         title="Laboratory Tests"
@@ -552,19 +849,20 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Diagnosis */}
       {showFinalize && (
-      <SectionCard title="Diagnosis">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionCard {...sectionProps} title={registration ? "07 · Diagnosis Snapshot" : "Diagnosis"}>
+        <div className={registrationGrid3}>
           <SelectField
             label="Diagnosis"
             value={data.diagnosis.diagnosisType}
+            disabled={registration}
             onChange={(v) => setGroupField("diagnosis", "diagnosisType", v)}
             options={TB_DIAGNOSIS_TYPE_OPTIONS}
           />
           <DateField
             label="Date of Diagnosis"
             value={data.diagnosis.dateOfDiagnosis}
+            disabled={registration}
             onChange={(v) => setGroupField("diagnosis", "dateOfDiagnosis", v)}
           />
           <DateField
@@ -572,75 +870,32 @@ export default function TbTreatmentCardForm({
             value={data.diagnosis.dateOfNotification}
             onChange={(v) => setGroupField("diagnosis", "dateOfNotification", v)}
           />
-          <TextField
+          {!registration && <TextField
             label="TB Case Number"
             error={errors["tbData.diagnosis.tbCaseNumber"] || errors["tb_data.diagnosis.tbCaseNumber"]}
             value={data.diagnosis.tbCaseNumber}
             onChange={(v) => setGroupField("diagnosis", "tbCaseNumber", v)}
             required={!referenceCaseNumber}
             disabled={readOnly || Boolean(referenceCaseNumber)}
-          />
+          />}
           <TextField
             label="Attending Physician"
             value={data.diagnosis.attendingPhysician}
+            disabled={registration}
             onChange={(v) => setGroupField("diagnosis", "attendingPhysician", v)}
           />
-          <TextField
+          {!registration && <TextField
             label="Referred To"
             value={data.diagnosis.referredTo}
             onChange={(v) => setGroupField("diagnosis", "referredTo", v)}
-          />
+          />}
         </div>
       </SectionCard>
       )}
 
-      {/* TB Disease Classification */}
-      {showFinalize && (
-      <SectionCard title="TB Disease Classification">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectField
-            label="Bacteriological Status"
-            value={data.classification.bacteriologicalStatus}
-            onChange={(v) =>
-              setGroupField("classification", "bacteriologicalStatus", v)
-            }
-            options={TB_BACTERIOLOGICAL_OPTIONS}
-          />
-          <SelectField
-            label="Anatomical Site"
-            value={data.classification.anatomicalSite}
-            onChange={(v) => setGroupField("classification", "anatomicalSite", v)}
-            options={TB_ANATOMICAL_SITE_OPTIONS}
-          />
-          <TextField
-            label="Extra-pulmonary Site"
-            value={data.classification.extrapulmonarySite}
-            onChange={(v) =>
-              setGroupField("classification", "extrapulmonarySite", v)
-            }
-          />
-          <SelectField
-            label="Drug Resistance Status"
-            value={data.classification.drugResistance}
-            onChange={(v) => setGroupField("classification", "drugResistance", v)}
-            options={TB_DRUG_RESISTANCE_OPTIONS}
-          />
-          <SelectField
-            label="Registration Group"
-            value={data.classification.registrationGroup}
-            onChange={(v) =>
-              setGroupField("classification", "registrationGroup", v)
-            }
-            options={TB_REGISTRATION_GROUP_OPTIONS}
-          />
-        </div>
-      </SectionCard>
-      )}
-
-      {/* Encode: HIV baseline. Finalize: ART/CPT and comorbidity treatment. */}
       {showEncode && (
-      <SectionCard title="HIV/PLHIV Baseline">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionCard {...sectionProps} title={registration ? "08 · HIV / Comorbidities" : "HIV/PLHIV Baseline"}>
+        <div className={registrationGrid3}>
           <SelectField
             label="HIV Test Result"
             value={data.comorbidities.hivStatus}
@@ -656,8 +911,8 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
       {showFinalize && (
-      <SectionCard title="HIV/PLHIV, ART & CPT, Comorbidity Treatment">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionCard {...sectionProps} title={registration ? "09 · ART, CPT & Other Comorbidities" : "HIV/PLHIV, ART & CPT, Comorbidity Treatment"}>
+        <div className={registrationGrid3}>
           {mode === "full" ? (
             <>
               <SelectField
@@ -695,7 +950,7 @@ export default function TbTreatmentCardForm({
             value={data.comorbidities.cptStartDate}
             onChange={(v) => setGroupField("comorbidities", "cptStartDate", v)}
           />
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2">
             <TextField
               label="Other Comorbidities"
               value={data.comorbidities.otherComorbidities}
@@ -708,192 +963,8 @@ export default function TbTreatmentCardForm({
       </SectionCard>
       )}
 
-      {/* Drug Regimen */}
-      {showFinalize && (
-      <SectionCard
-        title="Drug Regimen"
-        subtitle="Encircle a regimen change on the paper card. Add a row per date-start."
-      >
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[880px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                <th className="px-2 py-2">Date Start</th>
-                <th className="px-2 py-2">4FDC</th>
-                <th className="px-2 py-2">2FDC</th>
-                <th className="px-2 py-2">H</th>
-                <th className="px-2 py-2">R</th>
-                <th className="px-2 py-2">Z</th>
-                <th className="px-2 py-2">E</th>
-                <th className="px-2 py-2">Strength</th>
-                <th className="px-2 py-2">Unit</th>
-                {!readOnly && <th className="px-1 py-2" />}
-              </tr>
-            </thead>
-            <tbody>
-              {data.regimen.rows.map((row, index) => (
-                <tr key={index} className="border-b border-slate-100 last:border-b-0">
-                  <td className="px-2 py-1.5">
-                    <DatePickerField
-                      value={row.dateStart}
-                      onChange={(v) => setRegimenRow(index, "dateStart", v)}
-                      allowClear
-                      placeholder="Date"
-                    />
-                  </td>
-                  {["drug4fdc", "drug2fdc", "drugH", "drugR", "drugZ", "drugE"].map(
-                    (drug) => (
-                      <td key={drug} className="px-1 py-1.5">
-                        <input
-                          type="text"
-                          value={row[drug] ?? ""}
-                          maxLength={20}
-                          onChange={(e) =>
-                            setRegimenRow(index, drug, e.target.value)
-                          }
-                          className="h-9 w-16 rounded border border-[#E5E7EB] bg-white px-1 text-center text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-                        />
-                      </td>
-                    ),
-                  )}
-                  <td className="px-1 py-1.5">
-                    <input
-                      type="text"
-                      value={row.strength ?? ""}
-                      onChange={(e) => setRegimenRow(index, "strength", e.target.value)}
-                      className="h-9 w-28 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-                    />
-                  </td>
-                  <td className="px-1 py-1.5">
-                    <input
-                      type="text"
-                      value={row.unit ?? ""}
-                      onChange={(e) => setRegimenRow(index, "unit", e.target.value)}
-                      className="h-9 w-20 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
-                    />
-                  </td>
-                  {!readOnly && (
-                    <td className="px-1 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => removeRegimenRow(index)}
-                        className="flex h-8 w-8 items-center justify-center rounded text-slate-400 transition hover:bg-red-50 hover:text-[#B91C1C]"
-                        aria-label="Remove regimen row"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={addRegimenRow}
-            disabled={data.regimen.rows.length >= 10}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-[#B91C1C] hover:text-[#B91C1C] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Plus size={14} />
-            Add Regimen Row
-          </button>
-        )}
-      </SectionCard>
-      )}
-
-      {/* Encode: supporter / location / DAT. Finalize: phase dates. */}
-      {showEncode && (
-      <SectionCard title="Administration of Drugs">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectField
-            label="Location of Treatment"
-            value={data.treatmentSupporter.locationOfTreatment}
-            onChange={(v) =>
-              setGroupField("treatmentSupporter", "locationOfTreatment", v)
-            }
-            options={TB_LOCATION_OF_TREATMENT_OPTIONS}
-          />
-          <TextField
-            label="Tx Supporter Name"
-            value={data.treatmentSupporter.supporterName}
-            onChange={(v) =>
-              setGroupField("treatmentSupporter", "supporterName", v)
-            }
-          />
-          <TextField
-            label="Designation"
-            value={data.treatmentSupporter.supporterDesignation}
-            onChange={(v) =>
-              setGroupField("treatmentSupporter", "supporterDesignation", v)
-            }
-          />
-          <TextField
-            label="Supporter Type"
-            value={data.treatmentSupporter.supporterType}
-            onChange={(v) =>
-              setGroupField("treatmentSupporter", "supporterType", v)
-            }
-            placeholder="Facility HCW / Community HCW / Family…"
-          />
-          <TextField
-            label="Contact Information"
-            value={data.treatmentSupporter.contactInfo}
-            onChange={(v) => setGroupField("treatmentSupporter", "contactInfo", v)}
-          />
-          <TextField
-            label="Schedule of Treatment"
-            value={data.treatmentSupporter.scheduleOfTreatment}
-            onChange={(v) =>
-              setGroupField("treatmentSupporter", "scheduleOfTreatment", v)
-            }
-            placeholder="e.g. Once daily before breakfast"
-          />
-          <label className="flex items-center gap-2 pt-6 text-sm font-medium text-[#334155]">
-            <input
-              type="checkbox"
-              checked={Boolean(data.treatmentSupporter.datSupported)}
-              onChange={(e) =>
-                setGroupField("treatmentSupporter", "datSupported", e.target.checked)
-              }
-              className="h-4 w-4 rounded border-slate-300 text-[#B91C1C] focus:ring-[#B91C1C]/30"
-            />
-            DAT-supported
-          </label>
-        </div>
-      </SectionCard>
-      )}
-      {showFinalize && (
-      <SectionCard title="Treatment Phases">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <DateField
-            label="Intensive Phase Start"
-            value={data.phases.intensiveStart}
-            onChange={(v) => setGroupField("phases", "intensiveStart", v)}
-            required
-          />
-          <DateField
-            label="Intensive Phase End"
-            value={data.phases.intensiveEnd}
-            onChange={(v) => setGroupField("phases", "intensiveEnd", v)}
-          />
-          <DateField
-            label="Continuation Phase Start"
-            value={data.phases.continuationStart}
-            onChange={(v) => setGroupField("phases", "continuationStart", v)}
-          />
-          <DateField
-            label="Continuation Phase End"
-            value={data.phases.continuationEnd}
-            onChange={(v) => setGroupField("phases", "continuationEnd", v)}
-          />
-        </div>
-      </SectionCard>
-      )}
-
       {/* Treatment Outcome */}
-      {showFinalize && (
+      {showFinalize && !registration && (
       <SectionCard
         title="Treatment Outcome"
         subtitle="Optional - set once treatment closes. Until recorded, the patient's Care & Programs tab shows the latest treatment phase instead."
@@ -916,7 +987,7 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* Dose Calendar */}
-      {(showDots || showChart) && (
+      {includeLegacyDoseCalendar && (showDots || showChart) && (
       <SectionCard
         title="Administration of Drugs — Dose Calendar"
         subtitle="Mark each supervised dose with the Tx supporter's initials. Totals and adherence auto-compute."

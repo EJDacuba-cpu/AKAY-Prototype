@@ -284,9 +284,30 @@ test("confirmed Hypertension and Diabetes cards come from RHU conditions, not en
   assert.equal(htn.status, "Active");
   assert.ok(htn.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Not Started"));
   assert.ok(htn.facts.some((fact) => fact.label === "Latest BP" && String(fact.value).includes("138")));
+  assert.equal(htn.nextVisit, "");
   assert.equal(dm.status, "Controlled");
   assert.ok(dm.facts.some((fact) => fact.label === "BHC monitoring" && fact.value === "Active"));
   assert.ok(dm.facts.some((fact) => fact.label === "Latest FBS" && String(fact.value).includes("118")));
+});
+
+test("NCD next visit uses the earliest matching open follow-up and skips fulfilled or cancelled tasks", () => {
+  const conditions = [
+    { id: 1, conditionName: "Hypertension", conditionIdentity: "hypertension", status: "active" },
+    { id: 2, conditionName: "Diabetes Mellitus", conditionIdentity: "diabetes_mellitus", status: "active" },
+  ];
+  const followUpTasks = [
+    { id: 1, purpose: "Continue hypertension follow-up", dueDate: "2026-10-01", state: "fulfilled" },
+    { id: 2, purpose: "Hypertension review", dueDate: "2026-09-01", state: "pending" },
+    { id: 3, purpose: "Hypertension return", dueDate: "2026-08-15", state: "no_show" },
+    { id: 4, purpose: "Diabetes FBS check", dueDate: "2026-09-20", state: "pending" },
+    { id: 5, purpose: "Diabetes labs", dueDate: "2026-09-10", state: "cancelled" },
+    { id: 6, purpose: "General checkup", dueDate: "2026-07-01", state: "pending" },
+  ];
+  const entries = getCareTracking(woman(), [
+    { id: 10, dateOfVisit: "2026-08-01", systolicBp: "140", diastolicBp: "90" },
+  ], new Date("2026-09-20"), { conditions, followUpTasks });
+  assert.equal(entry(entries, "hypertension").nextVisit, "2026-08-15");
+  assert.equal(entry(entries, "diabetes_mellitus").nextVisit, "2026-09-20");
 });
 
 test("RHU confirmation alone does not mark Hypertension as under BHC monitoring", () => {

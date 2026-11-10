@@ -1,3 +1,14 @@
+export const TB_TREATMENT_DECISIONS = Object.freeze({
+  initiate_at_rhu: "Initiate DS-TB Treatment at RHU",
+  not_yet_initiated: "Treatment Not Yet Initiated",
+  refer_elsewhere: "Refer to Another Treatment Facility",
+});
+
+export const TB_TREATMENT_DECISION_OPTIONS = Object.entries(TB_TREATMENT_DECISIONS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
 // Pure assessment helpers: safe to use from diagnosis and draft mappers.
 export function tbManagementFields(entry = {}) {
   const stored = entry?.tbManagement || entry?.tb_management || {};
@@ -5,11 +16,23 @@ export function tbManagementFields(entry = {}) {
   const drugResistance = diagnosisType === "tb_disease"
     ? String(stored.drugResistance ?? stored.drug_resistance ?? "").trim()
     : "";
+  const isDsTb = diagnosisType === "tb_disease" && drugResistance === "drug_susceptible";
+  const treatmentDecision = isDsTb
+    ? String(stored.treatmentDecision ?? stored.treatment_decision ?? "").trim()
+    : "";
+  const dispositionReason = treatmentDecision === "not_yet_initiated" || treatmentDecision === "refer_elsewhere"
+    ? String(stored.dispositionReason ?? stored.disposition_reason ?? "").trim()
+    : "";
+  const dispositionPlan = treatmentDecision === "not_yet_initiated" || treatmentDecision === "refer_elsewhere"
+    ? String(stored.dispositionPlan ?? stored.disposition_plan ?? "").trim()
+    : "";
   return {
     diagnosisType,
     drugResistance,
-    openTreatmentCard: diagnosisType === "tb_disease" && drugResistance === "drug_susceptible"
-      && (stored.openTreatmentCard === true || stored.open_treatment_card === true),
+    treatmentDecision,
+    dispositionReason,
+    dispositionPlan,
+    openTreatmentCard: treatmentDecision === "initiate_at_rhu",
   };
 }
 
@@ -19,11 +42,9 @@ export function tbManagementEntryFields(entry = {}) {
     : {};
 }
 
-// Consultation drafts/assessments never authorize registration.
+/** Persist evaluation/decision fields; registration itself still happens server-side. */
 export function tbEvaluationEntryFields(entry = {}) {
-  const fields = tbManagementEntryFields(entry);
-  if (fields.tbManagement) fields.tbManagement.openTreatmentCard = false;
-  return fields;
+  return tbManagementEntryFields(entry);
 }
 
 export function canConfirmTbDiagnosis(user = {}) {
@@ -33,14 +54,27 @@ export function canConfirmTbDiagnosis(user = {}) {
 
 export function tbManagementFor(entry, next = {}) {
   const previous = tbManagementFields(entry);
-  const changed = (next.diagnosisType !== undefined && next.diagnosisType !== previous.diagnosisType)
-    || (next.drugResistance !== undefined && next.drugResistance !== previous.drugResistance);
+  const diagnosisType = next.diagnosisType !== undefined ? next.diagnosisType : previous.diagnosisType;
+  const drugResistance = next.drugResistance !== undefined ? next.drugResistance : previous.drugResistance;
+  const typeChanged = next.diagnosisType !== undefined && next.diagnosisType !== previous.diagnosisType;
+  const resistanceChanged = next.drugResistance !== undefined && next.drugResistance !== previous.drugResistance;
+  const cleared = typeChanged || resistanceChanged;
+  const merged = {
+    ...previous,
+    ...next,
+    diagnosisType,
+    drugResistance: diagnosisType === "tb_disease" ? drugResistance : "",
+    ...(cleared ? {
+      treatmentDecision: next.treatmentDecision !== undefined && !typeChanged && !resistanceChanged
+        ? next.treatmentDecision
+        : "",
+      dispositionReason: "",
+      dispositionPlan: "",
+      openTreatmentCard: false,
+    } : {}),
+  };
   return {
     ...entry,
-    tbManagement: tbManagementFields({ tbManagement: {
-      ...previous,
-      ...next,
-      ...(changed ? { openTreatmentCard: false } : {}),
-    } }),
+    tbManagement: tbManagementFields({ tbManagement: merged }),
   };
 }

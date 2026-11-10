@@ -230,6 +230,17 @@ test("BHC Start Consultation uses the modal even when there are no start choices
   assert.match(modal, /facility: rhu \? "rhu" : "any"/);
 });
 
+test("RHU Start Consultation keeps cached overview when a refetch fails", () => {
+  const modal = readFileSync(
+    new URL("../components/features/rhu-queue/RhuStartConsultationModal.jsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(modal, /overviewUnavailable = overviewQuery\.isError && !overview/);
+  assert.match(modal, /if \(overviewUnavailable\) return <EntryErrorDialog/);
+  assert.doesNotMatch(modal, /if \(overviewQuery\.isError\) return <EntryErrorDialog/);
+  assert.match(modal, /overviewQuery\.isPending && !overview/);
+});
+
 test("Start Consultation shows the API error instead of a generic patient-load message", () => {
   assert.equal(
     startConsultationFailureMessage({ message: "Only a waiting visit can start a consultation." }, true),

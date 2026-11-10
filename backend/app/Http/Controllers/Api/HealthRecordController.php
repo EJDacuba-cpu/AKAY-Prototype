@@ -194,8 +194,10 @@ class HealthRecordController extends Controller
         }
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
+        $tbCaseRegistration = is_array($data['tb_case_registration'] ?? null) ? $data['tb_case_registration'] : null;
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
+        unset($data['tb_case_registration']);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
         $carePlan = $data['care_plan'] ?? [];
         unset($data['care_plan']);
@@ -298,6 +300,8 @@ class HealthRecordController extends Controller
             $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
         }
         $data['date_recorded'] ??= now();
+        $data['tb_assessment_authority'] = app(\App\Services\TbClinicalAuthority::class)
+            ->finalizationAttestation($request->user(), $data['diagnoses'] ?? []);
 
         try {
             $record = DB::transaction(function () use (
@@ -323,7 +327,8 @@ class HealthRecordController extends Controller
                 $patientConditions,
                 $v2,
                 $rhuItr,
-                $visit
+                $visit,
+                $tbCaseRegistration
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -533,6 +538,26 @@ class HealthRecordController extends Controller
                         $visit,
                         (string) $record->consultation_uuid
                     );
+                }
+
+                if (is_array($tbCaseRegistration)) {
+                    $registrationPayload = [
+                        'registration_key' => $tbCaseRegistration['registration_key'],
+                        'reporting_year' => (int) $tbCaseRegistration['reporting_year'],
+                        'case_number' => $tbCaseRegistration['case_number'] ?? null,
+                        'confirmed' => true,
+                        'card_data' => $tbCaseRegistration['card_data'] ?? [],
+                        'trust_source_revision' => true,
+                        'source_revision' => app(\App\Services\TbCaseRegistrationService::class)->revision($record),
+                    ];
+                    $registered = app(\App\Services\TbCaseRegistrationService::class)->registerForSource(
+                        $request->user(),
+                        $record,
+                        $registrationPayload,
+                        $request,
+                        true
+                    );
+                    $record->setAttribute('tb_treatment_case', $registered['case']);
                 }
 
                 return $record;
@@ -765,6 +790,25 @@ class HealthRecordController extends Controller
             : 'follow_up_visit';
 
         if ($data['visit_type'] === 'follow_up_visit') {
+            // RHU/BHC clients can know the selected pending task before the parent
+            // record id is resolved. Derive the parent from that task so finalization
+            // does not fail with a missing parent while still requiring the task to
+            // match during lockTaskForProcessing().
+            if (empty($data['parent_health_record_id'])) {
+                $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+                $taskId = $monitoringData['followUpTaskId']
+                    ?? $monitoringData['follow_up_task_id']
+                    ?? $monitoringData['followUpId']
+                    ?? $monitoringData['follow_up_id']
+                    ?? null;
+                if (filter_var($taskId, FILTER_VALIDATE_INT) && (int) $taskId > 0) {
+                    $linkedTask = FollowUpTask::query()->find((int) $taskId);
+                    if ($linkedTask?->health_record_id) {
+                        $data['parent_health_record_id'] = $linkedTask->health_record_id;
+                    }
+                }
+            }
+
             abort_if(empty($data['parent_health_record_id']), 422, 'Follow-up visits must be linked to an original health record.');
 
             $parentRecord = HealthRecord::findOrFail($data['parent_health_record_id']);

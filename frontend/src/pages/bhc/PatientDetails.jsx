@@ -23,6 +23,7 @@ import RegistrationSections from "../../components/features/patients/profile/Reg
 import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
+import PatientTbCasesPanel from "../../components/features/health-records/PatientTbCasesPanel";
 import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
@@ -508,11 +509,14 @@ function LivePatientDetails() {
                 )}
 
                 {activeTab === "programs" && canViewHistory && (
+                  <>
+                  <PatientTbCasesPanel key={patientId} patientId={patientId} />
                   <CareAndProgramsTab
                     patient={patient}
                     patientId={patientId}
                     records={records}
                     conditions={conditions.conditions || []}
+                    followUpTasks={patientFollowUps}
                     isLoading={recordsLoading}
                     isError={Boolean(recordsError)}
                     onRetryRecords={refetchRecords}
@@ -520,6 +524,7 @@ function LivePatientDetails() {
                     onViewProgramRecords={handleViewProgramRecords}
                     onViewRecord={viewRecord}
                   />
+                  </>
                 )}
 
                 {activeTab === "records" && canViewHistory && (

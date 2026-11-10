@@ -61,6 +61,9 @@ export function normalizeFollowUpTask(task = {}) {
     barangayHealthCenterId:
       task.barangay_health_center_id || task.barangayHealthCenterId || "",
     dueDate: task.due_date || task.dueDate || "",
+    purpose: task.purpose || task.reason || "",
+    purposeKey: task.purpose_key || task.purposeKey || "",
+    sourceEntryId: task.source_entry_id || task.sourceEntryId || "",
     state: task.state || "pending",
     notes: task.notes || "",
     noShowAt: task.no_show_at || task.noShowAt || "",
@@ -112,13 +115,32 @@ export function normalizeFollowUpTask(task = {}) {
 }
 
 export async function getFollowUpTasks(params = {}) {
+  // Laravel `boolean` accepts 1/0/true/false — URLSearchParams turns JS true into "true", which fails.
   const query = new URLSearchParams(
-    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+    Object.entries(params)
+      .filter(([, value]) => value !== undefined && value !== "")
+      .map(([key, value]) => [
+        key,
+        typeof value === "boolean" ? (value ? "1" : "0") : value,
+      ]),
   );
-  const response = await apiRequest(
-    `/follow-up-tasks${query.size ? `?${query}` : ""}`,
-  );
-  return unwrapList(response).map(normalizeFollowUpTask);
+  // #region agent log
+  fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A',location:'followUpTaskService.js:getFollowUpTasks',message:'follow-up-tasks query params before request',data:{params,paramTypes:Object.fromEntries(Object.entries(params).map(([k,v])=>[k,typeof v])),query:query.toString(),activeRaw:params.active,activeInQuery:query.get('active')},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  try {
+    const response = await apiRequest(
+      `/follow-up-tasks${query.size ? `?${query}` : ""}`,
+    );
+    // #region agent log
+    fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A',location:'followUpTaskService.js:getFollowUpTasks:ok',message:'follow-up-tasks request succeeded',data:{query:query.toString(),count:unwrapList(response).length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return unwrapList(response).map(normalizeFollowUpTask);
+  } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A',location:'followUpTaskService.js:getFollowUpTasks:error',message:'follow-up-tasks request failed',data:{query:query.toString(),status:error?.status,message:error?.message,errors:error?.errors||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    throw error;
+  }
 }
 
 /** Full patient history, including fulfilled/cancelled tasks, across all API pages. */

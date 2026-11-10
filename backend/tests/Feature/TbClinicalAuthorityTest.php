@@ -53,7 +53,13 @@ class TbClinicalAuthorityTest extends TestCase
     private function assessment(array $extra = []): array
     {
         return ['diagnoses' => [['id' => 'tb', 'name' => 'PTB', 'tbManagement' => [
-            'diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible', 'openTreatmentCard' => false, ...$extra,
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'treatmentDecision' => 'not_yet_initiated',
+            'dispositionReason' => 'Awaiting confirmatory results',
+            'dispositionPlan' => 'RHU follow-up with labs',
+            'openTreatmentCard' => false,
+            ...$extra,
         ]]]];
     }
 
@@ -65,9 +71,10 @@ class TbClinicalAuthorityTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
-    public function test_physician_can_finalize_evaluation_but_not_register_with_the_consultation(): void
+    public function test_physician_can_finalize_evaluation_but_not_embed_clinical_tb_data(): void
     {
         $this->postRecord($this->doctor, $this->assessment())->assertCreated();
+        // Deferred disposition cannot flip openTreatmentCard on; Form 4B belongs to initiate/atomic path.
         $this->postRecord($this->doctor, $this->assessment(['openTreatmentCard' => true]))
             ->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.openTreatmentCard');
         $this->postRecord($this->doctor, ['tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-2026-0001']]])

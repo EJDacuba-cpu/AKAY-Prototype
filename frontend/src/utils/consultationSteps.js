@@ -50,6 +50,7 @@ export const OUTCOME_STEP = "outcome";
 export const REVIEW_STEP = "review";
 export const MONITORING_STEP = "monitoring";
 export const TB_INTAKE_STEP = "tb-intake";
+export const FORM_4B_STEP = "form-4b";
 export const PRESCRIPTION_STEP = "prescription";
 
 const PROGRAM_PREFIX = "program:";
@@ -71,10 +72,20 @@ function tbIntakeKeys(options = {}) {
   return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
 }
 
+function form4bKeys(options = {}) {
+  return isRhuItr(options) && options.includeForm4b ? [FORM_4B_STEP] : [];
+}
+
 function rhuTbAfterDiagnosis(options = {}) {
-  return isRhuItr(options) && options.includeTb
-    ? [{ key: TB_INTAKE_STEP, phase: "next", label: "TB Case Management" }]
-    : [];
+  if (!isRhuItr(options)) return [];
+  const steps = [];
+  if (options.includeForm4b) {
+    steps.push({ key: FORM_4B_STEP, phase: "next", label: "DS-TB Form 4B Registration" });
+  }
+  if (options.includeTb) {
+    steps.push({ key: TB_INTAKE_STEP, phase: "next", label: "TB Case Management" });
+  }
+  return steps;
 }
 
 function historySteps(includeHistory) {
@@ -168,6 +179,7 @@ export function buildConsultationSteps({
   includeHistory = true,
   workflow = null,
   includeTb = false,
+  includeForm4b = false,
 } = {}) {
   const rhuItr = workflow === "rhu_itr_v1";
   return [
@@ -178,7 +190,7 @@ export function buildConsultationSteps({
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
     { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis & Care Plan" : "Assessment & Care Plan" },
-    ...rhuTbAfterDiagnosis({ workflow, includeTb }),
+    ...rhuTbAfterDiagnosis({ workflow, includeTb, includeForm4b }),
     ...(includeOutcomeStep({ includeHistory, workflow })
       ? [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]
       : []),
@@ -250,6 +262,7 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
     NEXT_STEP,
+    ...form4bKeys(options),
     ...tbIntakeKeys(options),
     ...(includeOutcomeStep(options) ? [OUTCOME_STEP] : []),
     ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
@@ -409,6 +422,9 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   }
   if (key.startsWith("tbData.")) {
     return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
+  }
+  if (key.startsWith("tbCaseRegistration") || key.startsWith("card_data.") || key === "reporting_year" || key === "confirmed") {
+    return workflow === "rhu_itr_v1" ? FORM_4B_STEP : NEXT_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
