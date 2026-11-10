@@ -1106,9 +1106,6 @@ export default function RhuConsultationWorkspace() {
       let resolvedParentHealthRecordId = parentHealthRecordId;
       let continuedTasks = [];
       if (linkedFollowUpTaskIds.length) {
-        // #region agent log
-        fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A',location:'RhuConsultationWorkspace.jsx:saveRecord:beforeActiveTasks',message:'finalize about to fetch active follow-up tasks',data:{linkedFollowUpTaskIds,linkedFollowUpTaskId,parentHealthRecordId,patientId:Number(patientId)||null,activateValues:(diagnoses||[]).map((d)=>({id:d.id,activate:d.activate,activateType:typeof d.activate}))},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         const activeTasks = await getFollowUpTasks({ patient_id: patientId, active: true });
         continuedTasks = linkedFollowUpTaskIds
           .map((id) => {
@@ -1231,9 +1228,6 @@ export default function RhuConsultationWorkspace() {
         queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(patientId) });
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A,B,C,D',location:'RhuConsultationWorkspace.jsx:saveRecord:catch',message:'finalize save failed',data:{message:error?.message||null,status:error?.status||null,errors:error?.errors||null,linkedFollowUpTaskIds,parentHealthRecordId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const fieldErrors = remapServerErrorKeys(error?.errors || {}, diagnoses, { workflow: "rhu_itr_v1", schedules: followUpSchedules });
       if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
         goToStepKey(NEXT_STEP);

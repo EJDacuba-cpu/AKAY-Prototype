@@ -21,60 +21,16 @@ class FollowUpTaskController extends Controller
     public function index(Request $request)
     {
         abort_unless($request->user()->isBhc() || $request->user()->isRhu() || $request->user()->isAdmin(), 403);
-        // #region agent log
-        $activeRaw = $request->input('active');
-        file_put_contents(
-            'c:\\Users\\Adrian\\Capstone-AKAY\\.cursor\\debug-3bdd39.log',
-            json_encode([
-                'sessionId' => '3bdd39',
-                'runId' => 'post-fix',
-                'hypothesisId' => 'A',
-                'location' => 'FollowUpTaskController.php:index',
-                'message' => 'follow-up-tasks index active param before validate',
-                'data' => [
-                    'active' => $activeRaw,
-                    'activeType' => gettype($activeRaw),
-                    'query' => $request->query(),
-                    'patient_id' => $request->input('patient_id'),
-                ],
-                'timestamp' => (int) round(microtime(true) * 1000),
-            ])."\n",
-            FILE_APPEND
-        );
-        // #endregion
-        try {
-            $data = $request->validate([
-                'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
-                'active' => ['nullable', 'boolean'],
-                'state' => ['nullable', Rule::in([
-                    ...FollowUpTask::ACTIVE_STATES,
-                    FollowUpTask::STATE_FULFILLED,
-                    FollowUpTask::STATE_CANCELLED,
-                ])],
-                'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $exception) {
-            // #region agent log
-            file_put_contents(
-                'c:\\Users\\Adrian\\Capstone-AKAY\\.cursor\\debug-3bdd39.log',
-                json_encode([
-                    'sessionId' => '3bdd39',
-                    'runId' => 'post-fix',
-                    'hypothesisId' => 'A',
-                    'location' => 'FollowUpTaskController.php:index:validation',
-                    'message' => 'follow-up-tasks index validation failed',
-                    'data' => [
-                        'active' => $activeRaw,
-                        'activeType' => gettype($activeRaw),
-                        'errors' => $exception->errors(),
-                    ],
-                    'timestamp' => (int) round(microtime(true) * 1000),
-                ])."\n",
-                FILE_APPEND
-            );
-            // #endregion
-            throw $exception;
-        }
+        $data = $request->validate([
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'active' => ['nullable', 'boolean'],
+            'state' => ['nullable', Rule::in([
+                ...FollowUpTask::ACTIVE_STATES,
+                FollowUpTask::STATE_FULFILLED,
+                FollowUpTask::STATE_CANCELLED,
+            ])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
 
         // Decision A1 - the No-Show transition and its notification used to
         // run here as a side effect of this GET request
