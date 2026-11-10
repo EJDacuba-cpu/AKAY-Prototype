@@ -88,10 +88,18 @@ test("RHU ITR submit sends prescription_text and omits catalog prescribe and con
   assert.ok(rhuBlock, "expected RHU ITR payload to include prescription_text");
 });
 
-test("RHU ITR loads the started visit by id and shows a retryable patient-load error", () => {
+test("RHU ITR loads the started visit by id with retryable load recovery", () => {
   assert.match(workspace, /getRhuVisit/);
+  assert.match(workspace, /loadVisit\(\{ retry: true \}\)/);
+  assert.match(workspace, /visitLoadGeneration/);
+  assert.match(workspace, /visitLoadInFlight/);
+  assert.match(workspace, /Unable to load consultation|rhuVisitLoadError/);
+  assert.match(workspace, /Consultation not available|visitUnavailableError/);
+  assert.match(workspace, /min-h-\[calc\(100dvh-9rem\)\]/);
+  assert.match(workspace, /Back to Today's Queue/);
   assert.match(workspace, /patientQuery\.isError/);
   assert.match(workspace, /Retry/);
+  assert.doesNotMatch(workspace, /Consultation not open/);
 });
 
 test("Nutrition service sets panel copy and nutritionIntent without a form step", () => {

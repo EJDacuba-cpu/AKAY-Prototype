@@ -38,6 +38,44 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $service->sanitize($payload);
     }
 
+    public function test_rhu_follow_up_continued_diagnosis_fields_survive_draft_sanitize(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'rhuVisitId' => 6,
+            'includeTb' => false,
+            'rhuFollowUp' => false,
+            'manageToBhc' => false,
+            'diagnoses' => [[
+                'id' => 'follow-up:1',
+                'name' => 'Hypertension',
+                'activate' => false,
+                'nextAction' => 'rhu_follow_up',
+                'receivingBhcId' => '',
+                'monitoringRecommendation' => '',
+                'tbManagement' => ['diagnosisType' => '', 'drugResistance' => '', 'openTreatmentCard' => false],
+                'continued' => true,
+                'continuedConditionId' => 11,
+            ]],
+            'carePlan' => ['continuedFollowUpTaskIds' => [1]],
+            'followUpSchedules' => [[
+                'purposeKey' => 'entry:follow-up:1',
+                'purpose' => 'Continue hypertension follow-up',
+                'date' => '2026-11-20',
+                'time' => '',
+                'predecessorTaskId' => 1,
+                'sourceEntryId' => 'follow-up:1',
+            ]],
+        ];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertTrue($sanitized['diagnoses'][0]['continued']);
+        $this->assertSame(11, $sanitized['diagnoses'][0]['continuedConditionId']);
+        $this->assertSame($sanitized, $service->sanitize($sanitized));
+    }
+
     public function test_shared_referral_draft_keeps_its_mode_and_common_fields_on_repeated_sanitize(): void
     {
         $service = new HealthRecordDraftPayloadService();

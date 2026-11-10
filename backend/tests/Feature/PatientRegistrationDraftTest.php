@@ -85,4 +85,43 @@ class PatientRegistrationDraftTest extends TestCase
         $this->assertSame(2, Patient::count());
         $this->assertDatabaseHas('form_drafts', ['public_id' => $draft['id'], 'status' => 'consumed']);
     }
+
+    public function test_rhu_registration_draft_accepts_auto_fsn_existing_household_and_walk_in_shapes(): void
+    {
+        $this->actingAs($this->actor('rhu'), 'sanctum');
+        $form = [
+            'firstName' => 'Ana', 'lastName' => 'Cruz', 'birthDate' => '1990-01-01', 'sex' => 'Female',
+            'barangay' => 'Bagumbayan', 'municipality' => 'Bulakan', 'streetAddress' => 'Main', 'purokArea' => 'Zone 1',
+        ];
+        $auto = $this->postJson('/api/form-drafts', [
+            'form_type' => 'patient', 'mode' => 'create', 'context_key' => 'new',
+            'transaction_uuid' => (string) Str::uuid(), 'schema_version' => 1,
+            'payload' => ['registration' => [
+                'form' => $form,
+                'connection' => [
+                    'kind' => 'new', 'headPatientId' => 'self',
+                    'household' => [
+                        'serialMode' => 'auto', 'serialNumber' => '',
+                        'address' => ['streetAddress' => 'Main', 'purokArea' => 'Zone 1', 'barangay' => 'Bagumbayan', 'municipality' => 'Bulakan'],
+                    ],
+                ],
+                'householdVersion' => null,
+                'walkIn' => ['key' => 'walk-in-key'],
+            ]],
+        ])->assertCreated()->json('data');
+
+        $this->putJson('/api/form-drafts/'.$auto['id'], [
+            'form_type' => 'patient',
+            'mode' => 'create',
+            'context_key' => 'new',
+            'transaction_uuid' => $auto['transaction_uuid'],
+            'schema_version' => 1,
+            'version' => $auto['version'],
+            'payload' => ['registration' => [
+                'form' => $form,
+                'connection' => ['kind' => 'existing', 'householdId' => '4', 'relationship' => 'Spouse'],
+                'householdVersion' => 2,
+            ]],
+        ])->assertOk();
+    }
 }

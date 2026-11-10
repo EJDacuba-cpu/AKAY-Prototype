@@ -595,6 +595,122 @@ class RhuItrConsultationTest extends TestCase
         $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $returnVisit->fresh()->status);
     }
 
+    public function test_hypertension_follow_up_lifecycle_fulfills_and_can_schedule_the_next_return(): void
+    {
+        $patient = $this->patient();
+        $clinician = $this->clinician();
+        $dxId = (string) Str::uuid();
+        $firstVisit = $this->visit($patient);
+        $firstUuid = $this->startVisit($clinician, $firstVisit);
+
+        $created = $this->postRecord($clinician, $patient, $firstVisit, $firstUuid, [
+            'diagnoses' => [[
+                'id' => $dxId,
+                'name' => 'Hypertension',
+                'activate' => true,
+                'nextAction' => 'rhu_follow_up',
+            ]],
+            'care_plan' => ['rhu_follow_up' => true],
+            'monitoring_data' => [
+                'followUpSchedules' => [[
+                    'purposeKey' => 'entry:'.$dxId,
+                    'purpose' => 'Recheck blood pressure',
+                    'date' => now()->addDays(7)->toDateString(),
+                    'time' => '09:00',
+                    'sourceEntryId' => $dxId,
+                ]],
+            ],
+        ])->assertCreated();
+
+        $parentId = (int) $created->json('data.id');
+        $pending = FollowUpTask::where('health_record_id', $parentId)->whereNull('rescheduled_to_id')->sole();
+        $this->assertSame(FollowUpTask::STATE_PENDING, $pending->state);
+        $this->assertSame(PatientCondition::STATUS_ACTIVE, PatientCondition::where('patient_id', $patient->id)->sole()->status);
+
+        $returnVisit = $this->visit($patient);
+        $returnUuid = $this->as($clinician)->postJson("/api/rhu-visits/{$returnVisit->id}/start", [
+            'follow_up_task_ids' => [$pending->id],
+        ])->assertOk()->json('data.consultation_uuid');
+
+        // Mirror the RHU workspace when parent_health_record_id is still unresolved
+        // but the selected pending task id is already known.
+        $nextDate = now()->addDays(14)->toDateString();
+        $returnPayload = [
+            'visit_type' => 'follow_up_visit',
+            'diagnoses' => [[
+                'id' => $dxId,
+                'name' => 'Hypertension',
+                'activate' => false,
+                'nextAction' => 'rhu_follow_up',
+            ]],
+            'monitoring_data' => [
+                'followUpTaskId' => $pending->id,
+                'followUpSchedules' => [[
+                    'purposeKey' => 'entry:'.$dxId,
+                    'purpose' => 'Continue hypertension follow-up',
+                    'date' => $nextDate,
+                    'time' => '10:00',
+                    'predecessorTaskId' => $pending->id,
+                    'sourceEntryId' => $dxId,
+                ]],
+            ],
+            'care_plan' => [
+                'rhu_follow_up' => true,
+                'continued_follow_up_task_ids' => [$pending->id],
+            ],
+        ];
+        $idempotencyKey = (string) Str::uuid();
+        $createdReturn = $this->as($clinician)
+            ->withHeaders(['Idempotency-Key' => $idempotencyKey])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $returnUuid,
+                'rhu_visit_id' => $returnVisit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Cough and fever',
+                ...$returnPayload,
+            ])
+            ->assertCreated();
+
+        $this->assertSame(FollowUpTask::STATE_FULFILLED, $pending->fresh()->state);
+        $this->assertSame(PatientCondition::STATUS_ACTIVE, PatientCondition::where('patient_id', $patient->id)->sole()->status);
+
+        $next = FollowUpTask::query()
+            ->where('patient_id', $patient->id)
+            ->whereNull('rescheduled_to_id')
+            ->where('state', FollowUpTask::STATE_PENDING)
+            ->sole();
+        $this->assertSame($nextDate, $next->due_date->toDateString());
+        $this->assertSame($pending->id, $next->predecessor_task_id);
+        $this->assertNotSame($parentId, $next->health_record_id);
+
+        // Lost-response replay must not create a second successor task.
+        $this->as($clinician)
+            ->withHeaders(['Idempotency-Key' => $idempotencyKey])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $returnUuid,
+                'rhu_visit_id' => $returnVisit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Cough and fever',
+                ...$returnPayload,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.id', $createdReturn->json('data.id'));
+        $this->assertSame(1, FollowUpTask::where('patient_id', $patient->id)->where('state', FollowUpTask::STATE_PENDING)->count());
+
+        $staleVisit = $this->visit($patient);
+        $staleUuid = $this->startVisit($clinician, $staleVisit);
+        $this->postRecord($clinician, $patient, $staleVisit, $staleUuid, [
+            'visit_type' => 'follow_up_visit',
+            'monitoring_data' => ['followUpTaskId' => $pending->id],
+            'care_plan' => ['continued_follow_up_task_ids' => [$pending->id]],
+        ])->assertStatus(409);
+        $this->assertSame(1, FollowUpTask::where('patient_id', $patient->id)->where('state', FollowUpTask::STATE_PENDING)->count());
+    }
+
     public function test_finalizing_an_rhu_return_fulfills_only_the_follow_ups_selected_at_start(): void
     {
         $patient = $this->patient();

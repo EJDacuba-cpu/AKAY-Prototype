@@ -96,4 +96,6 @@ SQLite in-memory feature tests. No TypeScript configuration is present.
   a temporary prepended autoloader, without reverting or editing the workspace.
   They are baseline failures, outside this increment; the full suite is not green.
 - PHP syntax checks passed and git diff --check is clean. Steps 1 and 2 are
-  complete; Steps 3 through 8 remain pending for subsequent increments.
+  complete. Steps 3 and 4 were subsequently completed in
+  `2026-11-10-tb-shared-case-identity.md` and
+  `2026-11-10-tb-form-4b-registration.md`; Steps 5 through 8 remain pending.

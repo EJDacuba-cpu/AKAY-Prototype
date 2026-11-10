@@ -1,3 +1,5 @@
+import { getFollowUpConditionLabel, getFollowUpReasonText } from "./followUpListDisplay.js";
+
 /** Build the searchable text for a follow-up task (list + calendar). */
 export function followUpSearchHaystack(task = {}) {
   const recordId = task.healthRecordId;
@@ -13,6 +15,9 @@ export function followUpSearchHaystack(task = {}) {
     recordId ? `record ${recordId}` : "",
     followUpId,
     task.id,
+    getFollowUpReasonText(task),
+    getFollowUpConditionLabel(task),
+    task.purposeKey || task.purpose_key,
     record.chiefComplaint,
     task.programLabel,
     task.serviceType,

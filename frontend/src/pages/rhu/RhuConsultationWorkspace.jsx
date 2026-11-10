@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { AlertTriangle, RefreshCcw, ServerCrash, WifiOff } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { HealthRecordFormSkeleton } from "../../components/common/loading/SkeletonLoaders";
@@ -12,6 +13,7 @@ import BhcReferralSlip from "../../components/features/patients/profile/BhcRefer
 import RhuBhcReferralReference from "../../components/features/health-records/wizard/RhuBhcReferralReference";
 import RhuPreviousVitalsReference from "../../components/features/health-records/wizard/RhuPreviousVitalsReference";
 import { Button } from "../../components/ui/button";
+import { rhuVisitLoadError, visitUnavailableError } from "../../utils/rhuVisitLoadError";
 import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
 import { referralSlipModel } from "../../utils/referralSlipView";
 import { SuccessModal } from "../../components/common";
@@ -95,7 +97,7 @@ import {
   resolveRestoredPosition,
   resolveStepHeading,
 } from "../../utils/consultationSteps";
-import { entryPurposeKey, followUpScheduleErrors, restoreFollowUpSchedules } from "../../utils/followUpSchedules";
+import { attachPredecessors, entryPurposeKey, followUpScheduleErrors, restoreFollowUpSchedules } from "../../utils/followUpSchedules";
 import {
   diagnosesForRhuSave,
   diagnosisNextAction,
@@ -150,7 +152,7 @@ import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import { getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { rhuEntryKey, rhuRecoveryMatches } from "../../utils/rhuDraftResume";
 import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
-import { getFollowUpTasks } from "../../services/followUpTaskService";
+import { getFollowUpTask, getFollowUpTasks } from "../../services/followUpTaskService";
 import { getRhuVisit, listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
 import { additionalConcernPayload, isReferredRhuVisit } from "../../utils/rhuVisitReferral";
@@ -201,10 +203,14 @@ export default function RhuConsultationWorkspace() {
   const patientId = String(params.get("patientId") || "");
   const [entryHandoff] = useState(() => queryClient.getQueryData(rhuEntryKey(recoveryOwner, visitId, patientId)));
   const followUpTaskId = Number(params.get("followUpTaskId") || 0) || null;
-  const followUpIdsFromQuery = String(params.get("followUpIds") || "")
-    .split(",")
-    .map((part) => Number(part.trim()))
-    .filter((id) => Number.isInteger(id) && id > 0);
+  const followUpIdsParam = String(params.get("followUpIds") || "");
+  const followUpIdsFromQuery = useMemo(
+    () => followUpIdsParam
+      .split(",")
+      .map((part) => Number(part.trim()))
+      .filter((id) => Number.isInteger(id) && id > 0),
+    [followUpIdsParam],
+  );
 
   const [visit, setVisit] = useState(null);
   const isReferred = isReferredRhuVisit(visit);
@@ -215,7 +221,10 @@ export default function RhuConsultationWorkspace() {
   const [showAdditionalConcern, setShowAdditionalConcern] = useState(false);
   const [additionalChiefComplaint, setAdditionalChiefComplaint] = useState("");
   const [additionalHistoryOfPresentIllness, setAdditionalHistoryOfPresentIllness] = useState("");
-  const [visitError, setVisitError] = useState("");
+  const [visitError, setVisitError] = useState(null);
+  const [visitRetrying, setVisitRetrying] = useState(false);
+  const visitLoadGeneration = useRef(0);
+  const visitLoadInFlight = useRef(false);
   const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
   const [formStep, setFormStep] = useState(canEncode ? INTERVIEW_STEP : NEXT_STEP);
   const [nextScreen, setNextScreen] = useState(NEXT_STEP);
@@ -340,46 +349,56 @@ export default function RhuConsultationWorkspace() {
     ? nutritionEnrollment.status
     : (nutritionPanelEnrolled ? NUTRITION_STATUS_ACTIVE : NUTRITION_STATUS_NOT_ENROLLED);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadVisit() {
-      try {
-        let match = null;
-        if (visitId) {
-          match = await getRhuVisit(visitId);
-        } else {
-          const visits = await listRhuVisits();
-          match = visits.find(
-            (entry) =>
-              String(entry.patient?.id || entry.patient_id) === String(patientId) &&
-              entry.status === "in_consultation",
-          );
-        }
-        if (cancelled) return;
-        if (!match || match.status !== "in_consultation" || String(match.patient?.id || match.patient_id) !== patientId) {
-          setVisitError("Start this consultation from Today's Queue.");
-          return;
-        }
-        if (entryHandoff && (entryHandoff.owner !== recoveryOwner || Date.now() - entryHandoff.createdAt > 60_000
-          || entryHandoff.consultationUuid !== (match.consultation_uuid || match.consultationUuid)
-          || (entryHandoff.draft && !rhuRecoveryMatches({ visit: match, patientId, draft: entryHandoff.draft })))) {
-          setVisitError("The consultation entry changed. Reopen it from Today's Queue.");
-          return;
-        }
-        setVisit(match);
-        setLinkedFollowUpTaskIds(
-          selectedRhuFollowUpIds({ queryIds: followUpIdsFromQuery, singularId: followUpTaskId, visit: match }),
+  const loadVisit = useCallback(async ({ retry = false } = {}) => {
+    if (visitLoadInFlight.current) return;
+    const generation = ++visitLoadGeneration.current;
+    visitLoadInFlight.current = true;
+    if (retry) setVisitRetrying(true);
+    try {
+      let match = null;
+      if (visitId) {
+        match = await getRhuVisit(visitId);
+      } else {
+        const visits = await listRhuVisits();
+        match = visits.find(
+          (entry) =>
+            String(entry.patient?.id || entry.patient_id) === String(patientId) &&
+            entry.status === "in_consultation",
         );
-        setVisitError("");
-      } catch (error) {
-        if (!cancelled) setVisitError(error?.message || "Unable to load this visit.");
+      }
+      if (generation !== visitLoadGeneration.current) return;
+      if (!match || match.status !== "in_consultation" || String(match.patient?.id || match.patient_id) !== patientId) {
+        throw visitUnavailableError("Start this consultation from Today's Queue.");
+      }
+      if (entryHandoff && (entryHandoff.owner !== recoveryOwner || Date.now() - entryHandoff.createdAt > 60_000
+        || entryHandoff.consultationUuid !== (match.consultation_uuid || match.consultationUuid)
+        || (entryHandoff.draft && !rhuRecoveryMatches({ visit: match, patientId, draft: entryHandoff.draft })))) {
+        throw visitUnavailableError("The consultation entry changed. Reopen it from Today's Queue.");
+      }
+      setVisit(match);
+      setLinkedFollowUpTaskIds(
+        selectedRhuFollowUpIds({ queryIds: followUpIdsFromQuery, singularId: followUpTaskId, visit: match }),
+      );
+      setVisitError(null);
+    } catch (error) {
+      if (generation !== visitLoadGeneration.current) return;
+      // Keep any already-loaded visit/form/draft state; only surface recovery UI.
+      setVisitError(rhuVisitLoadError(error));
+    } finally {
+      if (generation === visitLoadGeneration.current) {
+        visitLoadInFlight.current = false;
+        setVisitRetrying(false);
       }
     }
-    loadVisit();
+  }, [visitId, patientId, entryHandoff, recoveryOwner, followUpIdsFromQuery, followUpTaskId]);
+
+  useEffect(() => {
+    void loadVisit();
     return () => {
-      cancelled = true;
+      visitLoadGeneration.current += 1;
+      visitLoadInFlight.current = false;
     };
-  }, [visitId, patientId, entryHandoff, recoveryOwner]);
+  }, [loadVisit]);
 
   useEffect(() => {
     if (!canFinalize) return;
@@ -1013,11 +1032,6 @@ export default function RhuConsultationWorkspace() {
     }
     const isWalkIn = visit?.source === "walk_in";
     const savedDiagnoses = diagnosesForRhuSave(diagnoses);
-    const hasRhuFollowUp = isWalkIn && (
-      savedDiagnoses.some((entry) => entry.nextAction === "rhu_follow_up")
-      || followUpSchedules.some((item) => item.purposeKey === "visit" || String(item.purposeKey || "").startsWith("entry:") || String(item.purposeKey || "").startsWith("service:"))
-    );
-    const firstSchedule = followUpSchedules.find((item) => item.date) || followUpSchedules[0];
     setSaving(true);
     try {
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -1028,6 +1042,42 @@ export default function RhuConsultationWorkspace() {
         await autosave.persistLocalNow();
         throw new Error("The latest changes have not synced. Keep this consultation open and retry synchronization before completing it.");
       }
+      let resolvedParentHealthRecordId = parentHealthRecordId;
+      let continuedTasks = [];
+      if (linkedFollowUpTaskIds.length) {
+        // #region agent log
+        fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A',location:'RhuConsultationWorkspace.jsx:saveRecord:beforeActiveTasks',message:'finalize about to fetch active follow-up tasks',data:{linkedFollowUpTaskIds,linkedFollowUpTaskId,parentHealthRecordId,patientId:Number(patientId)||null,activateValues:(diagnoses||[]).map((d)=>({id:d.id,activate:d.activate,activateType:typeof d.activate}))},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        const activeTasks = await getFollowUpTasks({ patient_id: patientId, active: true });
+        continuedTasks = linkedFollowUpTaskIds
+          .map((id) => {
+            const task = activeTasks.find((row) => Number(row.id) === Number(id));
+            if (!task) return null;
+            return {
+              ...task,
+              purposeKey: task.purposeKey || task.purpose_key || "",
+            };
+          })
+          .filter(Boolean);
+        if (!resolvedParentHealthRecordId) {
+          const primary = continuedTasks[0] || (linkedFollowUpTaskId ? await getFollowUpTask(linkedFollowUpTaskId) : null);
+          resolvedParentHealthRecordId = Number(primary?.healthRecordId || primary?.originalHealthRecordId) || null;
+          if (resolvedParentHealthRecordId) setParentHealthRecordId(resolvedParentHealthRecordId);
+        }
+      }
+      if (linkedFollowUpTaskIds.length && !resolvedParentHealthRecordId) {
+        throw new Error("This follow-up visit is missing its parent consultation link. Reopen the pending follow-up from Today's Queue and try again.");
+      }
+      const scheduledReturns = attachPredecessors(
+        pruneServiceSchedules(followUpSchedules, selectedPrograms)
+          .filter((item) => String(item?.date || "").trim() && String(item?.purpose || "").trim()),
+        continuedTasks,
+      );
+      const hasRhuFollowUp = isWalkIn && (
+        savedDiagnoses.some((entry) => entry.nextAction === "rhu_follow_up")
+        || scheduledReturns.some((item) => item.purposeKey === "visit" || String(item.purposeKey || "").startsWith("entry:") || String(item.purposeKey || "").startsWith("service:"))
+      );
+      const firstSchedule = scheduledReturns.find((item) => item.date) || scheduledReturns[0];
       const recordInput = {
           patientId: Number(patientId),
           consultationWorkflow: "rhu_itr_v1",
@@ -1070,14 +1120,14 @@ export default function RhuConsultationWorkspace() {
           immunizationData: selectedPrograms.includes("EPI") ? { vaccineEntries: immunizationEntries } : null,
           selectedPrograms,
           primaryProgram,
-          followUpSchedules: pruneServiceSchedules(followUpSchedules, selectedPrograms),
+          followUpSchedules: scheduledReturns,
           followUpStatus: hasRhuFollowUp ? "Follow-up Required" : "",
           followUpDate: hasRhuFollowUp ? (firstSchedule?.date || "") : "",
           followUpTime: hasRhuFollowUp ? (firstSchedule?.time || "") : "",
           followUpReason: hasRhuFollowUp ? (firstSchedule?.purpose || "") : "",
           followUpTaskId: linkedFollowUpTaskId || undefined,
           visitType: linkedFollowUpTaskIds.length ? "follow_up_visit" : "initial_consultation",
-          parentHealthRecordId: linkedFollowUpTaskIds.length ? parentHealthRecordId : undefined,
+          parentHealthRecordId: linkedFollowUpTaskIds.length ? resolvedParentHealthRecordId : undefined,
           carePlan: {
             rhu_follow_up: Boolean(hasRhuFollowUp),
             manage_to_bhc: savedDiagnoses.some((entry) => entry.nextAction === "manage_to_bhc"),
@@ -1111,6 +1161,9 @@ export default function RhuConsultationWorkspace() {
         queryClient.invalidateQueries({ queryKey: queryKeys.careOverview(patientId) });
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7870/ingest/4496b291-2322-4832-a8af-ec3aee060b02',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bdd39'},body:JSON.stringify({sessionId:'3bdd39',runId:'post-fix',hypothesisId:'A,B,C,D',location:'RhuConsultationWorkspace.jsx:saveRecord:catch',message:'finalize save failed',data:{message:error?.message||null,status:error?.status||null,errors:error?.errors||null,linkedFollowUpTaskIds,parentHealthRecordId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const fieldErrors = remapServerErrorKeys(error?.errors || {});
       if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
         goToStepKey(NEXT_STEP);
@@ -1255,15 +1308,49 @@ export default function RhuConsultationWorkspace() {
   ].filter(Boolean));
 
   if (visitError) {
+    const VisitErrorIcon = visitError.variant === "offline"
+      ? WifiOff
+      : visitError.variant === "timeout"
+        ? RefreshCcw
+        : visitError.kind === "unavailable"
+          ? AlertTriangle
+          : ServerCrash;
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="mx-auto max-w-lg border border-[#E5E7EB] bg-white p-6 text-sm text-[#374151]">
-          <h1 className="text-lg font-bold text-[#111827]">Consultation not open</h1>
-          <p className="mt-2">{visitError}</p>
-          <button type="button" className="mt-4 text-sm font-semibold text-[#DC2626]" onClick={() => navigate("/rhu/patients")}>
-            Back to Today's Queue
-          </button>
+        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
+          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
+              <VisitErrorIcon size={21} aria-hidden="true" />
+            </div>
+            <h1 className="mt-4 text-base font-bold text-[#0F172A]">{visitError.title}</h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">{visitError.message}</p>
+            <p className="mt-2 text-xs text-slate-400">Your saved records and drafts remain on this device.</p>
+            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
+              {visitError.retryable ? (
+                <Button
+                  type="button"
+                  variant="brand"
+                  disabled={visitRetrying}
+                  onClick={() => { void loadVisit({ retry: true }); }}
+                >
+                  <RefreshCcw size={15} className={visitRetrying ? "animate-spin" : ""} aria-hidden="true" />
+                  {visitRetrying ? "Retrying..." : "Retry"}
+                </Button>
+              ) : null}
+              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+                Back to Today's Queue
+              </Button>
+            </div>
+          </Card>
         </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!visit) {
+    return (
+      <DashboardLayout role="rhu" title="RHU Consultation">
+        <HealthRecordFormSkeleton message="Loading consultation..." />
       </DashboardLayout>
     );
   }
@@ -1271,12 +1358,25 @@ export default function RhuConsultationWorkspace() {
   if (patientQuery.isError) {
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="mx-auto max-w-lg border border-[#E5E7EB] bg-white p-6 text-sm text-[#374151]">
-          <h1 className="text-lg font-bold text-[#111827]">Patient details could not be loaded</h1>
-          <p className="mt-2">{patientQuery.error?.message || "This consultation cannot open until the patient record is available."}</p>
-          <button type="button" className="mt-4 text-sm font-semibold text-[#DC2626]" onClick={() => patientQuery.refetch()}>
-            Retry
-          </button>
+        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
+          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
+              <ServerCrash size={21} aria-hidden="true" />
+            </div>
+            <h1 className="mt-4 text-base font-bold text-[#0F172A]">Patient details could not be loaded</h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">
+              {patientQuery.error?.message || "This consultation cannot open until the patient record is available."}
+            </p>
+            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
+              <Button type="button" variant="brand" onClick={() => patientQuery.refetch()}>
+                <RefreshCcw size={15} aria-hidden="true" />
+                Retry
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+                Back to Today's Queue
+              </Button>
+            </div>
+          </Card>
         </div>
       </DashboardLayout>
     );

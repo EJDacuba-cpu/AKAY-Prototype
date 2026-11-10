@@ -298,6 +298,8 @@ class HealthRecordController extends Controller
             $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
         }
         $data['date_recorded'] ??= now();
+        $data['tb_assessment_authority'] = app(\App\Services\TbClinicalAuthority::class)
+            ->finalizationAttestation($request->user(), $data['diagnoses'] ?? []);
 
         try {
             $record = DB::transaction(function () use (
@@ -765,6 +767,25 @@ class HealthRecordController extends Controller
             : 'follow_up_visit';
 
         if ($data['visit_type'] === 'follow_up_visit') {
+            // RHU/BHC clients can know the selected pending task before the parent
+            // record id is resolved. Derive the parent from that task so finalization
+            // does not fail with a missing parent while still requiring the task to
+            // match during lockTaskForProcessing().
+            if (empty($data['parent_health_record_id'])) {
+                $monitoringData = is_array($data['monitoring_data'] ?? null) ? $data['monitoring_data'] : [];
+                $taskId = $monitoringData['followUpTaskId']
+                    ?? $monitoringData['follow_up_task_id']
+                    ?? $monitoringData['followUpId']
+                    ?? $monitoringData['follow_up_id']
+                    ?? null;
+                if (filter_var($taskId, FILTER_VALIDATE_INT) && (int) $taskId > 0) {
+                    $linkedTask = FollowUpTask::query()->find((int) $taskId);
+                    if ($linkedTask?->health_record_id) {
+                        $data['parent_health_record_id'] = $linkedTask->health_record_id;
+                    }
+                }
+            }
+
             abort_if(empty($data['parent_health_record_id']), 422, 'Follow-up visits must be linked to an original health record.');
 
             $parentRecord = HealthRecord::findOrFail($data['parent_health_record_id']);

@@ -75,6 +75,9 @@ class HealthRecordDraftPayloadService
             'nextAction' => self::SCALAR,
             'receivingBhcId' => self::SCALAR,
             'monitoringRecommendation' => self::SCALAR,
+            // RHU follow-up focus: keep the prior condition identity on resume.
+            'continued' => self::SCALAR,
+            'continuedConditionId' => self::SCALAR,
             'laboratoryEvidence' => ['*' => ['reference' => self::SCALAR, 'version' => self::SCALAR, 'attachmentIds' => ['*' => self::SCALAR]]],
             'laboratoryEvidenceConfirmed' => self::SCALAR,
             'tbManagement' => [
@@ -701,6 +704,8 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.nextAction' => ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc'])],
             'payload.diagnoses.*.receivingBhcId' => ['nullable', 'integer', 'min:1'],
             'payload.diagnoses.*.monitoringRecommendation' => ['nullable', 'string', 'max:5000'],
+            'payload.diagnoses.*.continued' => ['nullable', 'boolean'],
+            'payload.diagnoses.*.continuedConditionId' => ['nullable', 'integer', 'min:1'],
             'payload.diagnoses.*.tbManagement.diagnosisType' => ['nullable', 'string', 'max:50'],
             'payload.diagnoses.*.tbManagement.drugResistance' => ['nullable', 'string', 'max:100'],
             'payload.diagnoses.*.tbManagement.openTreatmentCard' => ['nullable', 'boolean'],

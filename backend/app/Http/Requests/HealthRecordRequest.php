@@ -432,6 +432,7 @@ class HealthRecordRequest extends FormRequest
             'tb_data.diagnosis.dateOfDiagnosis' => ['nullable', 'date'],
             'tb_data.diagnosis.dateOfNotification' => ['nullable', 'date'],
             'tb_data.diagnosis.tbCaseNumber' => ['nullable', 'string', 'max:100'],
+            'tb_assessment_authority' => ['prohibited'],
             'tb_data.diagnosis.attendingPhysician' => ['nullable', 'string', 'max:255'],
             'tb_data.diagnosis.referredTo' => ['nullable', 'string', 'max:255'],
             'tb_data.classification' => ['nullable', 'array'],

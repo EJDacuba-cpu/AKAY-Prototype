@@ -27,6 +27,47 @@ final class TbClinicalAuthority
         app(FacilityAccessService::class)->ensureValidFacilityAssignment($user);
     }
 
+    /** Durable provenance for new assessments; account reassignment is not a clinical amendment. */
+    public function finalizationAttestation(User $user, array $diagnoses): ?array
+    {
+        if (! self::canConfirm($user) || ! collect($diagnoses)->contains(fn ($entry) => $this->isTbName($entry['name'] ?? null))) {
+            return null;
+        }
+
+        return ['physician_id' => $user->id, 'physician_name' => $user->name,
+            'rural_health_unit_id' => $user->rural_health_unit_id, 'confirmed_at' => now()->toISOString(),
+            'assessment_hash' => $this->assessmentFingerprint($diagnoses)];
+    }
+
+    public function attestationMatches(HealthRecord $record): bool
+    {
+        $signed = $record->tb_assessment_authority;
+
+        return is_array($signed) && (int) ($signed['physician_id'] ?? 0) === (int) $record->finalized_by
+            && (int) ($signed['rural_health_unit_id'] ?? 0) === (int) $record->rural_health_unit_id
+            && filled($signed['confirmed_at'] ?? null)
+            && hash_equals($this->assessmentFingerprint($record->diagnoses ?? []), (string) ($signed['assessment_hash'] ?? ''));
+    }
+
+    public function hasPhysicianFinalization(HealthRecord $record): bool
+    {
+        $finalizer = User::find($record->finalized_by);
+        $legacy = $record->tb_assessment_authority === null && $finalizer
+            && $finalizer->getRawOriginal('role') === 'rhu' && $finalizer->staff_role === 'doctor'
+            && (int) $finalizer->getRawOriginal('rural_health_unit_id') === (int) $record->rural_health_unit_id;
+
+        return $record->finalized_at !== null && ($this->attestationMatches($record) || $legacy);
+    }
+
+    private function assessmentFingerprint(array $diagnoses): string
+    {
+        // Fixed scalar slots avoid depending on JSON object-key ordering.
+        $assessments = array_map(fn ($entry) => [$entry['name'] ?? '',
+            $entry['tbManagement']['diagnosisType'] ?? '', $entry['tbManagement']['drugResistance'] ?? ''], $diagnoses);
+
+        return hash('sha256', json_encode($assessments, JSON_THROW_ON_ERROR));
+    }
+
     public function isTbName(?string $name): bool
     {
         return ($this->registry->matchCondition($name)['key'] ?? null) === 'tuberculosis'
