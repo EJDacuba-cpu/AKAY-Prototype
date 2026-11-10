@@ -1,7 +1,6 @@
 import { formatEducation } from "../../../../utils/backgroundFormat";
 import { formatLongDate } from "../../../../utils/formatters";
 import { parentInformation } from "../../../../utils/parentLinks";
-import HistoricalParentLinks from '../HistoricalParentLinks';
 import { Input } from "../../../ui/input";
 import { DatePickerField } from "../../../common/forms/DatePickerField";
 import {
@@ -295,15 +294,14 @@ export default function RegistrationSections({
               const label = parent.role === 'mother' ? 'Mother' : 'Father';
               return <div key={parent.role}>
                 {editingSection === 'family' ? (
-                  <EditField label={`${label} name (reported${parent.role === 'mother' && infant ? '' : ', optional'})`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} required={parent.role === 'mother' && infant} />
+                  <EditField label={`${label} name (reported${parent.role === 'mother' && infant && !form.motherPatientId ? '' : ', optional'})`} name={`${parent.role}Name`} value={form[`${parent.role}Name`]} onChange={onChange} error={fieldErrors[`${parent.role}Name`]} required={parent.role === 'mother' && infant && !form.motherPatientId} />
                 ) : <FieldList rows={[
                   [`${label} (reported)`, parent.reportedName],
                   ...(parent.reportedBirthDate ? [[`${label}'s birthday (reported)`, formatLongDate(parent.reportedBirthDate, '')]] : []),
                 ]} />}
               </div>;
             })}
-            <p className="text-xs text-neutral-600">{infant ? "Mother name is required for infants. Father name is optional. A shared FSN does not confirm biological parenthood." : "Reported parent names are optional. A shared FSN does not confirm biological parenthood."}</p>
-            <HistoricalParentLinks patient={patient} />
+            <p className="text-xs text-neutral-600">{infant && form.motherPatientId ? "Mother is linked from the household relationship. Reported names stay optional." : infant ? "Mother name is required for infants unless the household relationship links the mother (Son/Daughter to a female head). Father name is optional." : "Reported parent names are optional. Husband/Wife/Mother/Father/Son/Daughter relationships confirm the family connection on save."}</p>
           </div>
         </ProfileSection>
         <ProfileSection id="guardian" title="Guardian Information" actions={editingSection === 'family' ? null : actionsFor('family')}>

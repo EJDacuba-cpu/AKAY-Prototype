@@ -499,6 +499,8 @@ export function getEpiVaccineEntries(record = {}) {
         entry.vaccine ||
         "",
       dateGiven: entry.dateGiven || entry.date_given || entry.date || "",
+      timeGiven: entry.timeGiven || entry.time_given || "",
+      time_given: entry.time_given || entry.timeGiven || "",
       weight: entry.weight || "",
       height: entry.height || "",
       temperature: entry.temperature || entry.temp || "",

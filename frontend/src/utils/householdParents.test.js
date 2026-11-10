@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyHouseholdParentFields,
   changeFamilySerial,
   linkParent,
   memberAgeLabel,
   omitParentLinks,
+  parentCandidateFor,
   parentRoleFor,
   unlinkParent,
 } from "./householdParents.js";
@@ -96,4 +98,26 @@ test("a household relationship label alone produces no parent link in the payloa
     assert.equal(Object.hasOwn(payload, "mother_patient_id"), false, label);
     assert.equal(Object.hasOwn(payload, "father_patient_id"), false, label);
   }
+});
+
+test("Son/Daughter auto-fills mother and father from head and spouse", () => {
+  const mother = { id: "m1", firstName: "Maria", lastName: "Cruz", sex: "Female", birthDate: yearsAgo(30), relationshipToHouseholdHead: "Household head" };
+  const father = { id: "f1", firstName: "Juan", lastName: "Cruz", sex: "Male", birthDate: yearsAgo(32), relationshipToHouseholdHead: "Husband" };
+  const household = { id: "hh1", headPatientId: "m1", members: [mother, father] };
+  const registry = { patients: [mother, father] };
+  const filled = applyHouseholdParentFields(form, registry, { kind: "existing", householdId: "hh1", relationship: "Daughter" }, household);
+  assert.equal(filled.motherPatientId, "m1");
+  assert.equal(filled.motherName, "Maria Cruz");
+  assert.equal(filled.fatherPatientId, "f1");
+  assert.equal(filled.fatherName, "Juan Cruz");
+  assert.equal(parentCandidateFor("mother", [mother, father], mother)?.id, "m1");
+  assert.equal(parentCandidateFor("father", [mother, father], mother)?.id, "f1");
+});
+
+test("Mother/Father relationship does not auto-fill parent information fields", () => {
+  const head = { id: "c1", firstName: "Ana", lastName: "Cruz", sex: "Female", birthDate: yearsAgo(2), relationshipToHouseholdHead: "Household head" };
+  const household = { id: "hh1", headPatientId: "c1", members: [head] };
+  const filled = applyHouseholdParentFields(form, { patients: [head] }, { kind: "existing", householdId: "hh1", relationship: "Mother" }, household);
+  assert.equal(filled.motherPatientId, "");
+  assert.equal(filled.fatherPatientId, "");
 });

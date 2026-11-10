@@ -6,7 +6,7 @@ import {
   householdForConnection, patientName, relationshipForConnection,
   validateConnection, validateHeadReplacement,
 } from "../../../services/familyRegistry";
-import { isAcceptedLabel, labelOptions } from "../../../utils/relationshipLabels";
+import { isAcceptedLabel, labelOptions, relationshipLinkFor } from "../../../utils/relationshipLabels";
 
 export const householdSelectClass = "h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus-visible:border-red-700 focus-visible:ring-2 focus-visible:ring-red-700/15 aria-invalid:border-red-700";
 
@@ -61,8 +61,13 @@ export default function HouseholdConnectionReview({
 
   function confirm() {
     const connection = nextConnection ? { ...nextConnection, relationship: nextRelationship } : null;
-    // Household review never carries legacy relationship commands into registration or transfer.
-    if (connection) delete connection.relationshipLink;
+    if (connection) {
+      const headId = connection.kind === "new" ? connection.headPatientId : target?.headPatientId;
+      const head = registry.patients.find((item) => item.id === headId);
+      const link = connection.kind === "existing" ? relationshipLinkFor(nextRelationship, head, patient) : null;
+      if (link) connection.relationshipLink = link;
+      else delete connection.relationshipLink;
+    }
     const replacement = departure?.members.length
       ? { householdId: departure.household.id, headPatientId: replacementHeadId, relationships }
       : null;

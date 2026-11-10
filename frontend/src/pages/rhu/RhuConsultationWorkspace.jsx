@@ -1800,10 +1800,27 @@ export default function RhuConsultationWorkspace() {
                     onWeightChange={setWeight}
                     onHeightChange={setHeight}
                     onToggleVaccine={(name, checked) => {
+                      const visitDay = String(
+                        visit?.consultationDate || visit?.date || "",
+                      ).slice(0, 10);
                       setImmunizationEntries((current) =>
                         checked
-                          ? [...current, { vaccineName: name }]
+                          ? [
+                              ...current,
+                              {
+                                vaccineName: name,
+                                dateGiven: visitDay,
+                                timeGiven: "",
+                              },
+                            ]
                           : current.filter((entry) => entry.vaccineName !== name),
+                      );
+                    }}
+                    onVaccineFieldChange={(name, field, value) => {
+                      setImmunizationEntries((current) =>
+                        current.map((entry) =>
+                          entry.vaccineName === name ? { ...entry, [field]: value } : entry,
+                        ),
                       );
                     }}
                     hideBasicMonitoring

@@ -3,7 +3,10 @@ const id = value => value == null ? '' : String(value);
 export function normalizeHouseholdPatient(patient = {}) {
   return { ...patient, id: id(patient.id),
     firstName: patient.first_name ?? patient.firstName ?? '', middleName: patient.middle_name ?? patient.middleName ?? '',
-    lastName: patient.last_name ?? patient.lastName ?? '', birthDate: patient.birthdate ?? patient.birthDate ?? '',
+    lastName: patient.last_name ?? patient.lastName ?? '',
+    fullName: patient.full_name ?? patient.fullName ?? '',
+    sex: patient.sex ?? '',
+    birthDate: patient.birthdate ?? patient.birthDate ?? '',
     householdId: id(patient.household_id ?? patient.householdId),
     familySerialNumber: patient.family_serial_number ?? patient.familySerialNumber ?? '',
     relationshipToHouseholdHead: patient.relationship_to_household_head ?? patient.relationshipToHouseholdHead ?? '',

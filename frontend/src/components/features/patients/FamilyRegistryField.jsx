@@ -7,6 +7,7 @@ import {
   HEAD_RELATIONSHIP, addressText, canHeadHousehold, householdForConnection, nextSerialNumber,
   patientName, relationshipForConnection, searchHouseholds,
 } from "../../../services/familyRegistry";
+import { relationshipLinkFor } from "../../../utils/relationshipLabels";
 
 const labelClass = "mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]";
 
@@ -163,7 +164,14 @@ export default function FamilyRegistryField({
           {!review && <RelationshipField live={live}
             value={relationshipForConnection(registry, connection, patient.id)} error={relationshipError}
             saved={savedConnection?.kind === "existing" && savedConnection.householdId === connection.householdId ? savedConnection.relationship : ""}
-            onChange={(relationship) => onChange({ ...connection, relationship, relationshipLink: undefined }, headReplacement)}
+            onChange={(relationship) => {
+              const link = connection?.kind === "existing" ? relationshipLinkFor(relationship, head, patient) : null;
+              onChange({
+                ...connection,
+                relationship,
+                ...(link ? { relationshipLink: link } : { relationshipLink: undefined }),
+              }, headReplacement);
+            }}
           />}
         </div>}
         {(searching || !connection) && !review && <div className={household ? "mt-3 space-y-3" : "space-y-3"}>

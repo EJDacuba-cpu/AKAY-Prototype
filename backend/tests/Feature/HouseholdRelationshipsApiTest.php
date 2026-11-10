@@ -178,7 +178,7 @@ class HouseholdRelationshipsApiTest extends TestCase
         $this->add($household, $wife['id'], $one['id'])->assertCreated();
 
         $target = $this->household($two['household_id']);
-        $this->patchJson('/api/patients/'.$wife['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Sister', 'version' => $target['version']]])->assertOk();
+        $this->patchJson('/api/patients/'.$wife['id'], ['household' => ['kind' => 'existing', 'household_id' => $two['household_id'], 'relationship' => 'Daughter', 'version' => $target['version']]])->assertOk();
         $this->assertSame([], $this->household($one['household_id'])['relationships']);
         $this->assertSame([], $this->household($two['household_id'])['relationships']);
         $this->assertDatabaseCount('patient_relationships', 1);
@@ -193,13 +193,13 @@ class HouseholdRelationshipsApiTest extends TestCase
         $this->actAs();
         $head = $this->newHead();
         $wife = $this->join($head, 'Wife', 'Wife');
-        $sister = $this->join($head, 'Sister', 'Sister');
+        $sister = $this->join($head, 'Daughter', 'Sister');
         $other = $this->newHead('Other');
         $household = $this->household($head['household_id']);
         $household = $this->add($household, $wife['id'], $head['id'])->assertCreated()->json('data');
         $household = $this->add($household, $sister['id'], $head['id'], 'sibling')->assertCreated()->json('data');
         $target = $this->household($other['household_id']);
-        $this->patchJson('/api/patients/'.$sister['id'], ['household' => ['kind' => 'existing', 'household_id' => $other['household_id'], 'relationship' => 'Cousin', 'version' => $target['version']]])->assertOk();
+        $this->patchJson('/api/patients/'.$sister['id'], ['household' => ['kind' => 'existing', 'household_id' => $other['household_id'], 'relationship' => 'Daughter', 'version' => $target['version']]])->assertOk();
         $remaining = $this->household($head['household_id'])['relationships'];
         $this->assertCount(1, $remaining);
         $this->assertSame('spouse', $remaining[0]['type']);

@@ -145,7 +145,12 @@ export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
   if (hasBirthDate && !infant && !form.civilStatus) {
     errors.civilStatus = "Civil status is required.";
   }
-  if (infant && !String(form.motherName || "").trim()) {
+  // Son/Daughter drafts motherPatientId from the household. Mother/Father means this
+  // patient is joining as a parent, so their own mother name is not required.
+  const householdRelationship = String(form.relationshipToHouseholdHead || "").trim();
+  const joiningAsParent = householdRelationship === "Mother" || householdRelationship === "Father";
+  const motherLinked = Boolean(String(form.motherPatientId || form.mother_patient_id || "").trim());
+  if (infant && !joiningAsParent && !motherLinked && !String(form.motherName || "").trim()) {
     errors.motherName = "Mother name is required.";
   }
   if (

@@ -23,16 +23,15 @@ test('empty parent and guardian information stays accessible for adults', () => 
   assert.doesNotMatch(html, /Historical parent links/);
 });
 
-test('reported names stay primary and historical links are read-only secondary references', () => {
+test('reported names stay primary and historical parent links stay hidden', () => {
   const html = render({ patient: {
     age: 40, mother_patient_id: 1, mother_name: 'Reported mother',
     mother: { id: 1, first_name: 'Linked', last_name: 'Mother' },
     father_patient_id: 2, father_name: 'Reported father',
     father: { id: 2, first_name: 'Linked', last_name: 'Father' }, guardian_name: 'Separate guardian',
   } });
-  for (const text of ['Linked Mother', 'Linked Father', 'Reported mother', 'Reported father', 'Separate guardian']) assert.ok(html.includes(text), text);
-  assert.ok(html.indexOf('Reported mother') < html.indexOf('Linked Mother'));
-  assert.match(html, /Historical parent links/);
+  for (const text of ['Reported mother', 'Reported father', 'Separate guardian']) assert.ok(html.includes(text), text);
+  assert.doesNotMatch(html, /Historical parent links|Linked patient details unavailable|Linked Mother|Linked Father/);
   assert.doesNotMatch(html, /Manage parent connections|Connect registered parents/);
 });
 
@@ -47,11 +46,10 @@ test('manual parent names remain editable even when a historical parent link exi
   assert.doesNotMatch(html, /name="fatherName"[^>]*required/);
 });
 
-test('blank manual names show no inferred value and inaccessible links reveal no identity', () => {
+test('blank manual names show no inferred value and hide historical parent links', () => {
   const html = render({ editingSection: 'family', patient: { mother_patient_id: 8, mother: null, mother_name: '' }, form: { motherName: '' } });
   assert.match(html, /name="motherName" value=""/);
-  assert.match(html, /Historical parent links/);
-  assert.match(html, /Linked patient details unavailable/);
+  assert.doesNotMatch(html, /Historical parent links|Linked patient details unavailable/);
   assert.doesNotMatch(html, /Unlink|Replace|Search registered/);
 });
 
@@ -98,11 +96,11 @@ test('infant family edit requires a mother name and leaves father optional', () 
   assert.doesNotMatch(html, /required(?:="")?[^>]*name="fatherName"/);
 });
 
-test('blank reported names remain blank when an authorized historical reference is available', () => {
+test('blank reported names remain blank when a parent link exists and historical links stay hidden', () => {
   for (const age of [4, 40]) {
     const html = render({ editingSection: 'family', patient: { age, mother_patient_id: 8, mother: { id: 8, first_name: 'Historical', last_name: 'Mother' } }, form: { motherName: '' } });
     assert.match(html, /name="motherName" value=""/);
-    assert.match(html, /Historical Mother/);
+    assert.doesNotMatch(html, /Historical Mother|Historical parent links/);
     assert.doesNotMatch(html, /name="motherName"[^>]*value="Historical Mother"/);
     assert.match(html, /Guardian Information/);
   }

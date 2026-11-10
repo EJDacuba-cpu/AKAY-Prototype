@@ -6,6 +6,14 @@ import { calculateAge, calculateAgeInMonths } from "./patientUtils.js";
  * the registration form's parent fields consistent with those links.
  */
 
+const memberName = (member = {}) =>
+  member.fullName || member.full_name ||
+  [member.firstName || member.first_name, member.middleName || member.middle_name, member.lastName || member.last_name]
+    .filter(Boolean).join(" ") || "";
+
+const memberLabel = (member = {}) =>
+  String(member.relationshipToHouseholdHead || member.relationship_to_household_head || "").trim();
+
 export const PARENT_FIELDS = {
   mother: {
     label: "Mother",
@@ -43,9 +51,54 @@ export function linkParent(form, role, member) {
   return {
     ...form,
     [fields.id]: String(member.id),
-    [fields.name]: member.fullName || member.full_name || "",
+    [fields.name]: memberName(member),
     [fields.birthDate]: member.birthdate || member.birthDate || "",
   };
+}
+
+function householdMembers(registry = {}, household) {
+  if (!household) return [];
+  const fromRegistry = (registry.patients || []).filter((item) => String(item.householdId || item.household_id) === String(household.id));
+  const fromHousehold = household.members || [];
+  return [...new Map([...fromHousehold, ...fromRegistry].filter(Boolean).map((item) => [String(item.id), item])).values()];
+}
+
+/** Prefer head by sex, then Mother/Father label, then Wife/Husband of the opposite-sex head. */
+export function parentCandidateFor(role, members = [], head) {
+  const label = role === "mother" ? "Mother" : "Father";
+  const spouseLabel = role === "mother" ? "Wife" : "Husband";
+  if (head && parentRoleFor(head) === role) return head;
+  const labeled = members.find((item) => item.id !== head?.id && memberLabel(item) === label && parentRoleFor(item) === role);
+  if (labeled) return labeled;
+  if (head && parentRoleFor(head) && parentRoleFor(head) !== role) {
+    return members.find((item) => item.id !== head.id && memberLabel(item) === spouseLabel && parentRoleFor(item) === role) || null;
+  }
+  return null;
+}
+
+/**
+ * When registering a Son/Daughter into an existing household, draft-fill Mother and
+ * Father fields from household members so infant validation does not block save.
+ * Backend still confirms links via household.relationship_link, not these draft IDs.
+ */
+export function applyHouseholdParentFields(form = {}, registry = {}, connection, household) {
+  const relationship = connection?.relationship;
+  if (relationship !== "Son" && relationship !== "Daughter") return form;
+
+  const members = householdMembers(registry, household);
+  const head = members.find((item) => String(item.id) === String(household?.headPatientId || household?.head_patient_id))
+    || (registry.patients || []).find((item) => String(item.id) === String(household?.headPatientId || household?.head_patient_id));
+
+  let next = { ...form };
+  for (const role of Object.keys(PARENT_FIELDS)) {
+    const candidate = parentCandidateFor(role, members, head);
+    if (!candidate?.id) continue;
+    const fields = PARENT_FIELDS[role];
+    // Always refresh draft link from the current household selection.
+    next = linkParent(next, role, candidate);
+    if (!String(next[fields.name] || "").trim()) next[fields.name] = memberName(candidate);
+  }
+  return next;
 }
 
 /** Drops the link; the name and birthdate stay as manually editable text. */
@@ -80,8 +133,9 @@ export function memberAgeLabel(member = {}) {
 const PARENT_LINK_KEYS = ["motherPatientId", "mother_patient_id", "fatherPatientId", "father_patient_id"];
 
 /**
- * Registration never sets, clears, or resends a confirmed parent link (mother/father patient IDs);
- * those are managed through Families. A household relationship label never creates one either.
+ * Registration never puts mother/father patient IDs on the patient payload.
+ * Parent links for Son/Daughter (and reverse Mother/Father) are confirmed through
+ * household.relationship_link during save; draft IDs on the form are UI-only.
  */
 export function omitParentLinks(form = {}) {
   const rest = { ...form };

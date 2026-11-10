@@ -98,10 +98,12 @@ test('existing household lookup and confirmed spouse label reach registration sa
     await act(async () => { select.value = 'Wife'; select.dispatchEvent(new dom.Event('change', { bubbles: true })); });
     await click(button(app.container, 'Confirm Household'));
     const household = householdPayload(connection, registry);
-    assert.deepEqual(household, { kind: 'existing', household_id: '8', relationship: 'Wife', version: 3 });
+    assert.deepEqual(household, { kind: 'existing', household_id: '8', relationship: 'Wife', version: 3, relationship_link: { type: 'spouse' } });
+    assert.deepEqual(connection.relationshipLink, { type: 'spouse' });
     await createPatient({ ...patient, household });
     assert.match(calls[0].url, /\/bhc\/households\/lookup\?/);
     assert.equal(JSON.parse(calls.at(-1).options.body).household.household_id, '8');
+    assert.equal(JSON.parse(calls.at(-1).options.body).household.relationship_link.type, 'spouse');
     assert.equal(calls.filter(c => c.options.method === 'POST').length, 1);
   } finally { globalThis.fetch = originalFetch; await app.close(); }
 });

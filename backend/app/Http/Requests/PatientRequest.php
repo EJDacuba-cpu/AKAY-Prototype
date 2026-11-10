@@ -95,7 +95,7 @@ class PatientRequest extends FormRequest
             'parent_link_base.mother_patient_id' => ['nullable', 'integer'],
             'parent_link_base.father_patient_id' => ['nullable', 'integer'],
             'mother_name' => [
-                Rule::requiredIf(fn () => $this->isMethod('post') && Patient::isInfantBirthdate($this->input('birthdate'))),
+                Rule::requiredIf(fn () => $this->infantNeedsReportedMotherName()),
                 'nullable',
                 'string',
                 'max:255',
@@ -122,5 +122,28 @@ class PatientRequest extends FormRequest
             'barangay_health_center_id' => ['nullable', 'exists:barangay_health_centers,id'],
             'rural_health_unit_id' => ['nullable', 'exists:rural_health_units,id'],
         ];
+    }
+
+    /**
+     * Infants still need a reported mother name unless a household parent connection
+     * already covers it: linked mother id, Son/Daughter→mother confirm, or joining as Mother/Father.
+     */
+    private function infantNeedsReportedMotherName(): bool
+    {
+        if (! $this->isMethod('post') || ! Patient::isInfantBirthdate($this->input('birthdate'))) {
+            return false;
+        }
+        if ($this->filled('mother_patient_id')) {
+            return false;
+        }
+        $relationship = trim((string) $this->input('household.relationship', ''));
+        if (in_array($relationship, ['Mother', 'Father'], true)) {
+            return false;
+        }
+        if ($this->input('household.relationship_link.type') === 'mother') {
+            return false;
+        }
+
+        return true;
     }
 }

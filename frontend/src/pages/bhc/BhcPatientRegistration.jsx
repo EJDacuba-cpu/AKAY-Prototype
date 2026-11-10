@@ -44,7 +44,7 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
     } catch(error) {if(seq === request.current) setSearchState({loading:false,error:error.message || 'Unable to search households.'});}
   }
   async function save(data,connection,id,replacement,options={}) {
-    const base={...data,household:householdPayload(connection,registry,{includeRelationshipLink:false}),
+    const base={...data,household:householdPayload(connection,registry),
       ...(replacement ? {head_replacement:{household_id:replacement.householdId,head_patient_id:replacement.headPatientId,relationships:replacement.relationships,version:registry.households.find(item=>item.id === replacement.householdId)?.version}} : {})};
     const payload=role === 'rhu' && !id ? withDuplicateConfirm(base, options.confirmDuplicate) : base;
     // A recovered household revision must not silently advance after refetch.

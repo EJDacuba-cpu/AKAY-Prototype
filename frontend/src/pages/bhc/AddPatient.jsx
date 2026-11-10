@@ -38,8 +38,7 @@ import {
 import { Button } from "../../components/ui/button";
 import ModalShell from "../../components/common/modals/ModalShell";
 import FamilyRegistryField from "../../components/features/patients/FamilyRegistryField";
-import HistoricalParentLinks from "../../components/features/patients/HistoricalParentLinks";
-import { isAcceptedLabel } from "../../utils/relationshipLabels";
+import { isAcceptedLabel, relationshipLinkFor } from "../../utils/relationshipLabels";
 import BhcPatientRegistration from "./BhcPatientRegistration";
 import { registrationErrors } from "../../utils/householdData";
 import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS, registrationRecoveryEnabled, registrationDraftSnapshot, restoreRegistrationDraft } from "../../utils/patientRegistrationPayload";
@@ -50,7 +49,7 @@ import { readRegistrationEntry, consumeRegistrationEntry, isWalkInRegistrationRe
 import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
 import {
-  ADDRESS_FIELDS, connectionForPatient,
+  ADDRESS_FIELDS, connectionForPatient, householdForConnection,
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
@@ -249,6 +248,8 @@ export function RegistrationForm({
   const isChildRegistration =
     hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
   const infant = isInfantPatient(form.birthDate);
+  const householdRelationship = form.relationshipToHouseholdHead || householdConnection?.relationship || "";
+  const joiningAsParent = householdRelationship === "Mother" || householdRelationship === "Father";
   const showGeneralProfileFields = !infant;
   const currentDate = new Date();
   const todayIso = [
@@ -328,18 +329,36 @@ function handleBirthDateChange(valueOrEvent) {
     setHouseholdConnection(connection);
     setHeadReplacement(replacement || null);
     setForm((current) => stageConnection(current, registry, connection, {preserveParentLinks:live}));
-    setFieldErrors((current) => ({ ...current, familySerialNumber: "", relationshipToHouseholdHead: "", ...Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, ""])) }));
+    setFieldErrors((current) => ({
+      ...current,
+      familySerialNumber: "",
+      relationshipToHouseholdHead: "",
+      motherName: "",
+      fatherName: "",
+      ...Object.fromEntries(ADDRESS_FIELDS.map((key) => [key, ""])),
+    }));
   }
 
   function cancelRegistration() {
     navigate(backPath);
   }
 
-    function validateForm() {
+  function connectionWithFreshLink(connection) {
+    if (!connection || connection.kind !== "existing") return connection;
+    const household = householdForConnection(registry, connection);
+    const head = (registry.patients || []).find((item) => item.id === household?.headPatientId);
+    const link = relationshipLinkFor(connection.relationship, head, form);
+    const next = { ...connection };
+    if (link) next.relationshipLink = link;
+    else delete next.relationshipLink;
+    return next;
+  }
+
+  function validateForm() {
     const nextErrors = {};
     if (householdEnabled) {
       if (householdReviewPending) nextErrors.familySerialNumber = "Confirm or cancel the household selection before saving.";
-      const connectionToSave = withFormAddress(householdConnection, form);
+      const connectionToSave = connectionWithFreshLink(withFormAddress(householdConnection, form));
       const allowedLabel = live ? isAcceptedLabel : undefined;
       const householdErrors = { ...validateConnection(registry, connectionToSave, editingPatientId, form, allowedLabel), ...validateHeadReplacement(registry, editingPatientId, connectionToSave, headReplacement, allowedLabel) };
       const { relationship, ...allOtherHouseholdErrors } = householdErrors;
@@ -349,7 +368,10 @@ function handleBirthDateChange(valueOrEvent) {
       if (Object.keys(otherHouseholdErrors).length) nextErrors.familySerialNumber = Object.values(otherHouseholdErrors)[0];
     }
 
-    Object.assign(nextErrors, validatePatientForm(form, todayIso));
+    Object.assign(nextErrors, validatePatientForm({
+      ...form,
+      relationshipToHouseholdHead: form.relationshipToHouseholdHead || householdConnection?.relationship || "",
+    }, todayIso));
     if (form.birthDate && form.birthDate > todayIso) {
       setFieldErrors(nextErrors);
       return false;
@@ -410,7 +432,7 @@ function handleBirthDateChange(valueOrEvent) {
       setSaving(true);
       const patientData = buildPatientPayload();
       const draftOptions = recoveryEnabled ? await draft.prepareCommit() : undefined;
-      const saved = await savePatient(patientData, withFormAddress(householdConnection, form), editingPatientId, headReplacement, { ...options, draftOptions, householdVersion });
+      const saved = await savePatient(patientData, connectionWithFreshLink(withFormAddress(householdConnection, form)), editingPatientId, headReplacement, { ...options, draftOptions, householdVersion });
       if (recoveryEnabled) {
         try { await draft.complete(); }
         catch { toast.error("The patient was saved. Recovery cleanup will be checked when you reopen registration."); }
@@ -709,7 +731,15 @@ function handleBirthDateChange(valueOrEvent) {
               <FormPanel
                 icon={Users}
                 title="Parent Information"
-                description={infant ? "Mother name is required for infants. Father name is optional. A shared FSN does not confirm biological parenthood." : "Reported parent names are optional. A shared FSN does not confirm biological parenthood."}
+                description={
+                  joiningAsParent
+                    ? "Mother/Father links the patient as parent of the household head (Female→Mother, Male→Father). For a child of this household, choose Son or Daughter instead."
+                    : infant && form.motherPatientId
+                      ? "Mother/Father were auto-filled from the household (Son/Daughter). You can edit the reported names if needed."
+                      : infant
+                        ? "For a child of this household, choose Son or Daughter — not Mother — so the mother auto-fills and CPAB can link."
+                        : "Reported parent names are optional. Son/Daughter auto-fills Mother/Father from the household when available."
+                }
               >
                 <div className="space-y-4">
                   {Object.keys(PARENT_FIELDS).map((role) => (
@@ -719,12 +749,11 @@ function handleBirthDateChange(valueOrEvent) {
                       form={form}
                       errors={fieldErrors}
                       todayIso={todayIso}
-                      required={role === "mother" && infant}
+                      required={role === "mother" && infant && !form.motherPatientId && !joiningAsParent}
                       onChange={handleChange}
                       onBirthDateChange={handleParentBirthDateChange}
                     />
                   ))}
-                  <HistoricalParentLinks patient={form} />
                 </div>
               </FormPanel>
 

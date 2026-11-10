@@ -12,13 +12,22 @@ test('existing household selection sends permanent identity and current version'
   assert.deepEqual(householdPayload({kind:'existing',householdId:'7',relationship:'Son / Daughter'}, {households:[{id:'7',version:3}]}),
     {kind:'existing',household_id:'7',relationship:'Son / Daughter',version:3});
 });
-test('registry-only registration omits every retired relationship command even from stale drafts', () => {
-  for (const type of ['spouse', 'sibling', 'mother', 'father']) {
-    assert.deepEqual(householdPayload({ kind: 'existing', householdId: '7', relationship: 'Mother', relationshipLink: { type } },
-      { households: [{ id: '7', version: 3 }] }, { includeRelationshipLink: false }), {
-      kind: 'existing', household_id: '7', relationship: 'Mother', version: 3,
-    });
-  }
+test('existing household selection sends the confirmed relationship link for CPAB/spouse connections', () => {
+  assert.deepEqual(householdPayload({ kind: 'existing', householdId: '7', relationship: 'Daughter', relationshipLink: { type: 'mother' } },
+    { households: [{ id: '7', version: 3 }] }), {
+    kind: 'existing', household_id: '7', relationship: 'Daughter', version: 3, relationship_link: { type: 'mother' },
+  });
+  assert.deepEqual(householdPayload({ kind: 'existing', householdId: '7', relationship: 'Wife', relationshipLink: { type: 'spouse' } },
+    { households: [{ id: '7', version: 3 }] }), {
+    kind: 'existing', household_id: '7', relationship: 'Wife', version: 3, relationship_link: { type: 'spouse' },
+  });
+});
+
+test('callers can still omit relationship_link when explicitly requested', () => {
+  assert.deepEqual(householdPayload({ kind: 'existing', householdId: '7', relationship: 'Mother', relationshipLink: { type: 'mother' } },
+    { households: [{ id: '7', version: 3 }] }, { includeRelationshipLink: false }), {
+    kind: 'existing', household_id: '7', relationship: 'Mother', version: 3,
+  });
 });
 
 test('live household drafts preserve historical parent references and manually reported information', () => {
@@ -30,9 +39,10 @@ test('live household drafts preserve historical parent references and manually r
   assert.equal(original.familySerialNumber, 'OLD');
 });
 test('household responses normalize numeric IDs and safe member demographics', () => {
-  const item=normalizeHousehold({id:7,serial_number:'FSN-2026-0001',head_patient_id:9,version:2,address:{barangay:'Pitpitan'},members:[{id:9,first_name:'Ana',last_name:'Cruz',birthdate:'1980-01-01',household_id:7} ]});
+  const item=normalizeHousehold({id:7,serial_number:'FSN-2026-0001',head_patient_id:9,version:2,address:{barangay:'Pitpitan'},members:[{id:9,first_name:'Ana',last_name:'Cruz',sex:'Female',birthdate:'1980-01-01',full_name:'Ana Cruz',household_id:7} ]});
   assert.equal(item.id,'7'); assert.equal(item.headPatientId,'9'); assert.equal(item.members[0].householdId,'7');
   assert.equal(item.members[0].firstName,'Ana'); assert.equal(item.members[0].birthDate,'1980-01-01');
+  assert.equal(item.members[0].sex,'Female'); assert.equal(item.members[0].fullName,'Ana Cruz');
   const registry=householdRegistry([item,item],{id:'9',firstName:'Updated'});
   assert.equal(registry.households.length,1); assert.equal(registry.patients.length,1); assert.equal(registry.patients[0].firstName,'Updated');
 });

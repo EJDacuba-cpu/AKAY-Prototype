@@ -130,7 +130,17 @@ class PatientRelationships
         if ((int) $child->{$column} === (int) $parent->id) {
             return;
         }
-        $child->update([$column => $parent->id]);
+        $nameColumn = $role.'_name';
+        $birthColumn = $role.'_birth_date';
+        $parentName = trim(collect([$parent->first_name, $parent->middle_name, $parent->last_name])->filter()->implode(' '));
+        $updates = [$column => $parent->id];
+        if ($parentName !== '' && blank($child->{$nameColumn})) {
+            $updates[$nameColumn] = $parentName;
+        }
+        if ($parent->birthdate && blank($child->{$birthColumn})) {
+            $updates[$birthColumn] = $parent->birthdate;
+        }
+        $child->update($updates);
         $this->audit->log($request, 'parent_links_updated', 'patients', "Patient {$child->id}: {$column}: none -> {$parent->id}. Confirmed during registration.");
     }
 

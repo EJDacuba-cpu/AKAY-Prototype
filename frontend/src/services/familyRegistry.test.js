@@ -64,7 +64,7 @@ const newSelf = (household = {}) => ({
 const newWithHead = (headPatientId, household = {}) => ({
   kind: "new",
   headPatientId,
-  relationship: "Brother",
+  relationship: "Son",
   household: {
     serialMode: "manual",
     serialNumber: "FSN-100",
@@ -209,6 +209,22 @@ test("stageConnection keeps a typed self-household address and live parent links
   assert.equal(liveDraft.familySerialNumber, "FSN-001");
   assert.equal(liveDraft.motherPatientId, "mom-1");
   assert.equal(liveDraft.fatherPatientId, "dad-1");
+});
+
+test("stageConnection fills mother and father when Son/Daughter joins a household", () => {
+  const store = registry();
+  store.patients[0] = { ...store.patients[0], sex: "Female", firstName: "Maria", lastName: "Santos", birthDate: "1990-01-01" };
+  store.patients[1] = { ...store.patients[1], sex: "Male", firstName: "Pedro", lastName: "Santos", birthDate: "1988-01-01", relationshipToHouseholdHead: "Husband" };
+  const staged = stageConnection(
+    { familySerialNumber: "", motherName: "", motherPatientId: "", motherBirthDate: "", fatherName: "", fatherPatientId: "", fatherBirthDate: "" },
+    store,
+    { ...join("Daughter"), relationshipLink: { type: "mother" } },
+  );
+  assert.equal(staged.motherPatientId, "p-head");
+  assert.equal(staged.motherName, "Maria Santos");
+  assert.equal(staged.motherBirthDate, "1990-01-01");
+  assert.equal(staged.fatherPatientId, "p-spouse");
+  assert.equal(staged.fatherName, "Pedro Santos");
 });
 
 test("headDeparture lists remaining members and validateHeadReplacement requires an explicit choice", () => {

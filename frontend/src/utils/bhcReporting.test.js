@@ -127,9 +127,11 @@ test("EPI counts dated doses, not children, and skips undated or non-dose rows",
   const result = report({ records }, "epi");
   assert.equal(cardValue(result, "doses"), 3);
   assert.equal(cardValue(result, "vaccines"), 3);
+  assert.equal(cardValue(result, "cpab"), 0);
   assert.equal(summaryValue(result, "BCG"), 1);
   assert.equal(summaryValue(result, "HEPA B"), 1);
   assert.equal(summaryValue(result, "OPV 1"), 1);
+  assert.equal(summaryValue(result, "Children Protected at Birth (CPAB)"), 0);
 });
 
 test("maternal active enrollments use period-end status, not today's later delivery", () => {

@@ -144,7 +144,7 @@ class RhuHouseholdsTest extends TestCase
         $id = $this->register()->assertCreated()->json('data.household_id');
         $bhc = BarangayHealthCenter::create(['name' => 'Owned BHC', 'status' => 'active']);
         $foreign = Patient::create(['first_name' => 'BHC', 'last_name' => 'Walkin', 'sex' => 'Female', 'birthdate' => '1988-01-01', 'barangay_health_center_id' => $bhc->id]);
-        $this->patchJson('/api/patients/'.$foreign->id, ['household' => ['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Sister']])->assertForbidden();
+        $this->patchJson('/api/patients/'.$foreign->id, ['household' => ['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Daughter']])->assertForbidden();
         $this->assertNull($foreign->fresh()->household_id);
         Sanctum::actingAs($rhuUser, ['akay:access']);
         $this->getJson('/api/rhu/households/'.$id)->assertOk()->assertJsonCount(1, 'data.members');

@@ -47,8 +47,11 @@ class RelationshipLabelsTest extends TestCase
     {
         $this->staff();
         $head = $this->newHead();
-        foreach (['Wife', 'Son', 'Grandmother', 'Partner', 'Daughter-in-law', 'Non-relative'] as $label) {
-            $this->join($head, $label)->assertCreated()->assertJsonPath('data.relationship_to_household_head', $label);
+        foreach (['Husband', 'Wife', 'Father', 'Mother', 'Son', 'Daughter'] as $label) {
+            $this->join($head, $label, ['sex' => in_array($label, ['Husband', 'Father', 'Son'], true) ? 'Male' : 'Female'])->assertCreated()->assertJsonPath('data.relationship_to_household_head', $label);
+        }
+        foreach (['Grandmother', 'Partner', 'Brother', 'Non-relative'] as $label) {
+            $this->join($head, $label)->assertUnprocessable()->assertJsonValidationErrors('household.relationship');
         }
     }
 

@@ -1,3 +1,5 @@
+import { applyHouseholdParentFields } from "../utils/householdParents.js";
+
 // Pure household form rules shared by live BHC and deferred prototypes.
 export const ADDRESS_FIELDS = ["streetAddress", "purokArea", "barangay", "municipality"];
 export const RELATIONSHIPS = [
@@ -128,15 +130,18 @@ export function validateConnection(registry, connection, patientId, patient, isA
 
 export function stageConnection(form, registry, connection, { preserveParentLinks = false } = {}) {
   const household = householdForConnection(registry, connection);
-  const serial = household?.serialNumber.trim() || "";
-  return {
+  const serial = household?.serialNumber?.trim?.() ? household.serialNumber.trim() : String(household?.serialNumber || "").trim();
+  const next = {
     ...form,
     ...(household && !isSelfHousehold(connection) ? addressValues(household.address) : {}),
     familySerialNumber: serial,
-    // Live registration keeps legacy references independent of the household draft.
-    // The default retains deferred prototype behavior; live saves omit IDs entirely.
+    relationshipToHouseholdHead: connection?.relationship || form.relationshipToHouseholdHead || "",
+    // Live registration keeps draft parent IDs for form validation; save still omits them
+    // because household.relationship_link is the authoritative confirmation path.
     ...(!preserveParentLinks && serial !== form.familySerialNumber ? { motherPatientId: "", fatherPatientId: "" } : {}),
   };
+  // Son/Daughter: auto-fill Mother/Father from household head + spouse/labeled parents.
+  return applyHouseholdParentFields(next, registry, connection, household);
 }
 
 export function headDeparture(registry, patientId, connection) {

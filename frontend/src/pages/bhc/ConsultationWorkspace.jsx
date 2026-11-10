@@ -498,6 +498,7 @@ const EMPTY_VACCINE_ENTRY = {
   customVaccineName: "",
   dose: "",
   dateGiven: "",
+  timeGiven: "",
   weight: "",
   height: "",
   temperature: "",
@@ -1605,6 +1606,7 @@ export default function ConsultationWorkspace() {
             "medicineId", "inventoryQuantity", "confirmedGiven", "allocations", "override_reason", "overrideReason",
             "dose",
             "dateGiven",
+            "timeGiven",
             "weight",
             "height",
             "temperature",
@@ -2839,9 +2841,24 @@ export default function ConsultationWorkspace() {
               ...EMPTY_VACCINE_ENTRY,
               vaccineName,
               dateGiven: dateOfVisit,
+              timeGiven: "",
             },
           ]
         : existingEntries.filter((entry) => entry.vaccineName !== vaccineName);
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleVaccineFieldChange(vaccineName, field, value) {
+    clearValidationError("vaccineEntries");
+    setImmunizationData((prev) => {
+      const entries = getVaccineEntries(prev).map((entry) =>
+        entry.vaccineName === vaccineName ? { ...entry, [field]: value } : entry,
+      );
       return {
         ...prev,
         vaccineEntries: entries,
@@ -5077,6 +5094,7 @@ export default function ConsultationWorkspace() {
               onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
               onToggleVaccine={handleVaccineToggle}
+              onVaccineFieldChange={handleVaccineFieldChange}
               onNotesChange={setConsultationNotes}
               medicinesSlot={null}
             />

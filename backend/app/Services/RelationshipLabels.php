@@ -5,25 +5,26 @@ namespace App\Services;
 use Illuminate\Validation\ValidationException;
 
 /**
- * A member's relationship to the household head is a display label. It never
- * creates a graph connection by itself; only Husband/Wife and Brother/Sister
- * may be confirmed as an explicit spouse/sibling link, and Partner may not.
+ * A member's relationship to the household head is a display label. New members
+ * may only choose Husband/Wife/Father/Mother/Son/Daughter; those labels may also
+ * be confirmed as an explicit spouse or parent connection during registration.
  */
 class RelationshipLabels
 {
     public const HEAD = 'Household head';
 
     public const LABELS = [
-        'Husband', 'Wife', 'Partner', 'Brother', 'Sister', 'Father', 'Mother', 'Son', 'Daughter',
+        'Husband', 'Wife', 'Father', 'Mother', 'Son', 'Daughter',
+    ];
+
+    /** Retired and combined labels: readable when unchanged, never offered for new picks. */
+    public const LEGACY = [
+        'Partner', 'Brother', 'Sister',
         'Grandfather', 'Grandmother', 'Grandson', 'Granddaughter',
         'Father-in-law', 'Mother-in-law', 'Son-in-law', 'Daughter-in-law',
         'Uncle', 'Aunt', 'Nephew', 'Niece', 'Cousin', 'Other relative', 'Non-relative',
-    ];
-
-    /** Combined labels saved before the specific list; readable and kept as saved, never rewritten. */
-    public const LEGACY = [
         'Spouse / Partner', 'Son / Daughter', 'Parent', 'Sibling', 'Grandchild', 'Grandparent',
-        'Son / Daughter-in-law', 'Parent-in-law', 'Niece / Nephew', 'Aunt / Uncle', 'Cousin', 'Other relative', 'Non-relative',
+        'Son / Daughter-in-law', 'Parent-in-law', 'Niece / Nephew', 'Aunt / Uncle',
     ];
 
     private const LINK_TYPES = ['Husband' => 'spouse', 'Wife' => 'spouse', 'Brother' => 'sibling', 'Sister' => 'sibling'];
