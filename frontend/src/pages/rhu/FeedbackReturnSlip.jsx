@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
-import { ConfirmationModal, SoftLoadingArea } from "../../components/common";
+import { ConfirmationModal, ConnectionErrorState, SoftLoadingArea } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { DatePickerField } from "../../components/common/forms/DatePickerField";
 
 import {
@@ -307,27 +308,40 @@ export default function FeedbackReturnSlip() {
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [retrying, setRetrying] = useState(false);
   const [referrals, setReferrals] = useState([]);
   const [conflict, setConflict] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const isAutoLoaded = !!routeTrackingId;
 
   useEffect(() => {
     let alive = true;
     async function load() {
+      setLoading(true);
+      setLoadError(null);
+      setRetrying(true);
       try {
         const all = await getReferrals();
         if (!alive) return;
         setReferrals(all);
+      } catch (error) {
+        if (!alive) return;
+        setReferrals([]);
+        setLoadError(error);
       } finally {
-        if (alive) setLoading(false);
+        if (alive) {
+          setLoading(false);
+          setRetrying(false);
+        }
       }
     }
     load();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!routeTrackingId || loading) return;
@@ -495,6 +509,19 @@ export default function FeedbackReturnSlip() {
         >
           <div className="min-h-[420px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <DashboardLayout role="rhu" title="Return Slip">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(loadError)}
+          onRetry={() => { if (!retrying) setReloadKey((key) => key + 1); }}
+          retrying={retrying}
+        />
       </DashboardLayout>
     );
   }

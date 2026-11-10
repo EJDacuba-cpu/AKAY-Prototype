@@ -192,6 +192,19 @@ export default function DoctorSchedule() {
     </DashboardLayout>
   );
 
+  if (error && (!dataUpdatedAt || [401, 403].includes(Number(error.status)))) {
+    return (
+      <DashboardLayout role="rhu" title="Doctor Availability">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(error)}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="rhu" title="Doctor Availability">
       {/* From xl up the module fits the screen (no page scroll at 1366x768); the
@@ -211,16 +224,12 @@ export default function DoctorSchedule() {
           ) : null}
         </div>
 
-        {error && (!dataUpdatedAt || [401, 403].includes(Number(error.status))) ? (
-          <div className="rounded-card border border-neutral-200 bg-white p-6">
-            <ConnectionErrorState
-              size="compact"
-              variant={errorStateVariant(error)}
-              onRetry={() => refetch()}
-              retrying={isFetching}
-            />
-          </div>
-        ) : !ready ? (
+        {error && dataUpdatedAt ? (
+          <p role="status" className="text-sm text-neutral-600">
+            Unable to refresh doctor availability. Showing the last roster that loaded.
+          </p>
+        ) : null}
+        {!ready ? (
           <div className="rounded-card border border-neutral-200 bg-white">
             <EmptyRoster />
           </div>

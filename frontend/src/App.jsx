@@ -31,6 +31,7 @@ import {
 } from "./utils/auth";
 import { getAuthRecoveryError, subscribeToAuthRecovery } from "./services/apiClient";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import AkayWordmark from "./components/common/AkayWordmark";
 import { FullScreenAkayLoader } from "./components/common";
 import LockedModulePage from "./components/common/access/LockedModulePage";
 import useAccess from "./hooks/useAccess";
@@ -284,7 +285,7 @@ function SessionRestoreUnavailable({ onRetry }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm text-center">
-        <img src="/akay-logo.png" alt="AKAY" className="mx-auto h-16 w-auto max-w-full object-contain" />
+        <AkayWordmark className="text-5xl" />
         <h1 className="mt-5 text-lg font-bold text-slate-900">
           Unable to restore your secure session
         </h1>

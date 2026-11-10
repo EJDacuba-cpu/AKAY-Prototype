@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registrationTarget, isWalkInRegistrationRecovery, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
+import { registrationTarget, isWalkInRegistrationRecovery, registrationRecoveryDialogProps, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
 
 const fixture = () => {
   const rows = new Map();
@@ -17,6 +17,20 @@ test("latest-copy recovery is limited to new RHU walk-in registration", () => {
     ["/bhc/patients/add?check_in=1", "bhc"], ["/rhu/patients/7/edit?check_in=1", "rhu"],
     ["/rhu/patients/add?check_in=1", "bhc"], ["//elsewhere.test/rhu/patients/add?check_in=1", "rhu"],
   ]) assert.equal(isWalkInRegistrationRecovery(path, role), false);
+});
+
+test("BHC and RHU registration recovery copy stays Resume/Discard unless copies conflict", () => {
+  assert.deepEqual(registrationRecoveryDialogProps({ hasDraft: true }), {
+    title: "Unfinished Registration",
+    description: "You have an unfinished registration. Would you like to continue?",
+    resumeLabel: "Resume Registration",
+  });
+  assert.deepEqual(registrationRecoveryDialogProps({ hasDraft: true, conflict: true }), {
+    title: "Unfinished Registration",
+    description: "Choose which unfinished copy to continue. Both are kept until restoration succeeds.",
+    resumeLabel: "Resume Registration",
+  });
+  assert.equal(registrationRecoveryDialogProps({ checkFailed: true }).title, "Unable to Check Registration");
 });
 
 test("registration entry matches new BHC/RHU registration, preserving household and walk-in queries", () => {

@@ -75,9 +75,12 @@ export default function RhuQueueTable({
 
   if (loadFailed) {
     return (
-      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-        <ConnectionErrorState onRetry={onRetry} retrying={isRefreshing} variant={errorStateVariant(queryError)} />
-      </div>
+      <ConnectionErrorState
+        fullPage
+        onRetry={onRetry}
+        retrying={isRefreshing}
+        variant={errorStateVariant(queryError)}
+      />
     );
   }
 

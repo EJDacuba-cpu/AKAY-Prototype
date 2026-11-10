@@ -285,6 +285,13 @@ export default function RHUDashboard() {
             </div>
           ) : null}
 
+          {!authorizationError && !hardError && trackedQueries.some((query) => query.isError) && hasDashboardData ? (
+            <p role="status" className="text-sm text-neutral-600">
+              Unable to refresh some dashboard panels. Showing the last data that loaded.{" "}
+              <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={() => queries.forEach((query) => query.refetch())} disabled={isFetching}>Retry</button>
+            </p>
+          ) : null}
+
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-5">
               <WelcomeSummary userName={userName} facilityName={facilityName} />

@@ -4,11 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 import {
+  ConnectionErrorState,
   ListFilterPopover,
   SearchField,
   SearchFilterCluster,
   pickFilterValues,
 } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import CloseVisitModal from "../../components/features/rhu-queue/CloseVisitModal";
 import RhuQueueTable from "../../components/features/rhu-queue/RhuQueueTable";
 import RhuStartConsultationModal from "../../components/features/rhu-queue/RhuStartConsultationModal";
@@ -113,6 +115,19 @@ export default function RhuPatientsWorkspace() {
     setVisitProgress(VISIT_PROGRESS_ALL);
   }
 
+  if (isQueue && canViewQueue && error && rows.length === 0 && !loading) {
+    return (
+      <DashboardLayout role="rhu" title={pageTitle}>
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(queryError)}
+          onRetry={refetch}
+          retrying={isRefreshing}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="rhu" title={pageTitle}>
       {/* h-full + min-h-0 keep the directory's pinned height chain intact (clinical-directory.css), so All Patients still scrolls. */}
@@ -175,13 +190,7 @@ export default function RhuPatientsWorkspace() {
             />
           </>
         ) : (
-          <>
-            <div className="min-w-0 shrink-0">
-              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">{pageTitle}</h1>
-              <p className="mt-1 text-[13px] text-neutral-600">{pageSubtitle}</p>
-            </div>
-            <PatientsModule role="rhu" basePath="/rhu" embedded />
-          </>
+          <PatientsModule role="rhu" basePath="/rhu" embedded showEmbeddedHeading />
         )}
       </div>
 

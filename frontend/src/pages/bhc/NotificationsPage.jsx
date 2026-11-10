@@ -396,8 +396,6 @@ export default function NotificationsPage() {
   const listBody = () =>
     showInitialTrashLoading ? (
       <PageSkeletonLoader skeleton="notifications" bodyOnly message="Loading trash..." />
-    ) : viewError && !hasLoadedView ? (
-      <ConnectionErrorState variant="error" onRetry={handleRefresh} retrying={viewLoading} />
     ) : filteredNotifications.length === 0 ? (
       <NotificationEmptyState
         title={currentFilter?.empty || "No notifications."}
@@ -478,11 +476,21 @@ export default function NotificationsPage() {
   });
 
   const deniedError = [notificationsError, trashError].find(error => [401, 403].includes(Number(error?.status)));
-  if (deniedError) return <ConnectionErrorState variant={errorStateVariant(deniedError)} onRetry={() => {
+  if (deniedError) return <ConnectionErrorState fullPage variant={errorStateVariant(deniedError)} onRetry={() => {
     if (deniedError === trashError) void refreshTrash({ search: searchTerm }).catch(() => {});
     else void refreshNotifications({ force: true, maxAgeMs: 0, search: searchTerm });
   }} retrying={deniedError === trashError ? trashLoading : notificationsLoading} />;
   if (showInitialLoading) return <PageSkeletonLoader skeleton="notifications" message="Loading notifications..." />;
+  if (viewError && !hasLoadedView) {
+    return (
+      <ConnectionErrorState
+        fullPage
+        variant={errorStateVariant(viewError)}
+        onRetry={handleRefresh}
+        retrying={viewLoading}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

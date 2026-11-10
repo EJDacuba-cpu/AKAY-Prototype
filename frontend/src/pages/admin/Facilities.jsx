@@ -154,6 +154,13 @@ export default function Facilities() {
             </div>
           )}
 
+          {loadError && dataUpdatedAt > 0 ? (
+            <p role="status" className="text-sm text-neutral-600">
+              Unable to refresh facilities. Showing the last list that loaded.{" "}
+              <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={() => refetch()} disabled={isFetching}>Retry</button>
+            </p>
+          ) : null}
+
           <ListToolbar
             heading={typeTabs}
             searchValue={filters.search}

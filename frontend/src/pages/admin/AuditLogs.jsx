@@ -200,6 +200,19 @@ export default function AuditLogs() {
     updateFilters((prev) => ({ ...prev, [key]: resetValues[key] }));
   }
 
+  if (!isInitialLoading && loadError && !hasLoadedData) {
+    return (
+      <DashboardLayout role="admin" title="Audit Logs">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(loadError)}
+          onRetry={() => setReloadKey((key) => key + 1)}
+          retrying={isLoading}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="admin" title="Audit Logs">
       <div className="mx-auto w-full max-w-[1500px]">
@@ -229,10 +242,6 @@ export default function AuditLogs() {
               onRemoveFilter={removeFilter}
               disabled={isInitialLoading}
             />
-          )}
-
-          {!isInitialLoading && loadError && !hasLoadedData && (
-            <ConnectionErrorState variant={errorStateVariant(loadError)} onRetry={() => setReloadKey((key) => key + 1)} />
           )}
 
           {!isInitialLoading && hasLoadedData && (

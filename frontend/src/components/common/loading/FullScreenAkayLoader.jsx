@@ -1,3 +1,5 @@
+import AkayWordmark from "../AkayWordmark";
+
 export default function FullScreenAkayLoader({
   message = "Loading system...",
 }) {
@@ -9,12 +11,7 @@ export default function FullScreenAkayLoader({
       aria-label={message}
     >
       <div className="flex flex-col items-center text-center">
-        <img
-          src="/akay-logo.png"
-          alt="AKAY"
-          className="akay-splash-logo h-16 w-auto max-w-full object-contain sm:h-20"
-          draggable="false"
-        />
+        <AkayWordmark className="akay-splash-logo text-5xl sm:text-6xl" />
 
         <p className="mt-6 text-sm font-medium text-slate-500">{message}</p>
       </div>

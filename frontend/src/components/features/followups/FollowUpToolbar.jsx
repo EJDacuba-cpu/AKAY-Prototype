@@ -61,10 +61,10 @@ export default function FollowUpToolbar({
     <div className="followup-modern-toolbar">
       <div className="followup-heading">
         <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
-          Follow-ups
+          Follow-up Worklist
         </h1>
         <p className="mt-1 text-[13px] text-neutral-600">
-          Scheduled return visits and follow-up records.
+          Review return visits, track due dates, and manage follow-up actions.
         </p>
       </div>
       <div className="followup-search-controls min-w-0 justify-self-end">

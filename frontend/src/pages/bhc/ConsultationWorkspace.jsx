@@ -22,10 +22,12 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import {
   ConfirmationModal,
+  ConnectionErrorState,
   ConnectionIssueModal,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
   getHealthRecordById,
@@ -907,7 +909,7 @@ export default function ConsultationWorkspace() {
   const [localRecoveryError, setLocalRecoveryError] = useState("");
   const recoveryActionGate = useRef(false);
   const [recoveryCheckReady, setRecoveryCheckReady] = useState(!isDraftRouteEligible);
-  const [recoveryCheckError, setRecoveryCheckError] = useState("");
+  const [recoveryCheckError, setRecoveryCheckError] = useState(null);
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   // True from recovering that copy until the server confirms it. It tells
   // autosave the restored form is NEWER than the server draft, so the content
@@ -1054,6 +1056,10 @@ export default function ConsultationWorkspace() {
   const {
     data: selectedPatientDetails,
     isLoading: selectedPatientLoading,
+    isError: selectedPatientFailed,
+    error: selectedPatientError,
+    isFetching: selectedPatientFetching,
+    refetch: refetchSelectedPatient,
   } = useQuery({
     ...getConsultationPatientQuery(selectedPatientId),
     enabled: Boolean(selectedPatientId),
@@ -2168,7 +2174,7 @@ export default function ConsultationWorkspace() {
   useEffect(() => {
     if (entryHandoff || requestedDraftId || localRecoveryCheckedRef.current || !isDraftRouteEligible || !localDraftOwnerKey || !opensNewConsultation || !selectedPatientId || draftListLoading) return undefined;
     let active = true;
-    setRecoveryCheckError("");
+    setRecoveryCheckError(null);
     const copies = localVaultAvailable ? listLocalDrafts(localDraftOwnerKey) : Promise.resolve([]);
     copies.then((entries) => {
       if (!active) return;
@@ -2180,7 +2186,7 @@ export default function ConsultationWorkspace() {
         setLocalRecovery(entry.local);
         if (FORM_DRAFTS_ENABLED && requestedRecoveryUuid === entry.local.record.draft.consultationUuid) void recoverLocalDraft(entry.local);
       } else setDraftDecision(entry.server);
-    }).catch((error) => { if (active) setRecoveryCheckError(error?.message || "Unable to check unfinished work. Retry while online."); });
+    }).catch((error) => { if (active) setRecoveryCheckError(error || new Error("Unable to check unfinished work. Retry while online.")); });
     return () => { active = false; };
     // Recovery callbacks run after this exact route has been checked once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2415,7 +2421,7 @@ export default function ConsultationWorkspace() {
     if (!draftId || recoveryActionGate.current) return;
     recoveryActionGate.current = true;
     setDraftResumingId(draftId);
-    setRecoveryCheckError("");
+    setRecoveryCheckError(null);
     try {
       const draft = await getHealthRecordDraft(draftId, FORM_DRAFTS_ENABLED ? { draftOwnerContext: localDraftOwnerKey } : {});
       if (!draft?.patient?.id) {
@@ -2436,7 +2442,7 @@ export default function ConsultationWorkspace() {
       restoreHealthRecordDraft(draft);
       return true;
     } catch (error) {
-      setRecoveryCheckError(error?.message || "Unable to resume this consultation. Retry while online.");
+      setRecoveryCheckError(error || new Error("Unable to resume this consultation. Retry while online."));
       if (FORM_DRAFTS_ENABLED && draftDecision) {
         setDraftDecisionError(error?.message || "Unable to resume this consultation. Retry while online.");
         return false;
@@ -4809,14 +4815,41 @@ export default function ConsultationWorkspace() {
     navigate(`${basePath}/patients/${selectedPatientId}`);
   }
 
+  if (selectedPatientId && selectedPatientFailed && !selectedPatient) {
+    return (
+      <DashboardLayout role={userRole} title={pageTitle}>
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(selectedPatientError)}
+          onRetry={() => refetchSelectedPatient()}
+          retrying={selectedPatientFetching}
+        />
+      </DashboardLayout>
+    );
+  }
+
   if (isDraftRouteEligible && !recoveryCheckReady && !draftDecision && !localRecovery) {
-    return <DashboardLayout role={userRole} title={pageTitle}>
-      {recoveryCheckError ? <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-alert-700">
-        <span>{recoveryCheckError}</span>
-        <button type="button" onClick={() => { if (requestedDraftId) { void handleResumeDraft(requestedDraftId); return; } localRecoveryCheckedRef.current = false; setRecoveryAttempt((value) => value + 1); void loadHealthRecordDrafts(); }}>Retry</button>
-        <button type="button" onClick={() => navigate(`${patientsPath}/${selectedPatientId}`)}>Cancel</button>
-      </div> : <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>}
-    </DashboardLayout>;
+    return (
+      <DashboardLayout role={userRole} title={pageTitle}>
+        {recoveryCheckError ? (
+          <ConnectionErrorState
+            fullPage
+            variant={errorStateVariant(recoveryCheckError)}
+            onRetry={() => {
+              if (requestedDraftId) {
+                void handleResumeDraft(requestedDraftId);
+                return;
+              }
+              localRecoveryCheckedRef.current = false;
+              setRecoveryAttempt((value) => value + 1);
+              void loadHealthRecordDrafts();
+            }}
+          />
+        ) : (
+          <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>
+        )}
+      </DashboardLayout>
+    );
   }
 
   return (

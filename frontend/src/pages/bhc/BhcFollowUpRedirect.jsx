@@ -2,9 +2,10 @@ import { Navigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import { SoftLoadingArea } from "../../components/common";
+import { ConnectionErrorState, SoftLoadingArea } from "../../components/common";
 import { getBhcFollowUpLegacyDestination } from "../../components/features/followups/followUpActions";
 import { getFollowUpTask } from "../../services/followUpTaskService";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { queryKeys } from "../../utils/queryKeys";
 
 /**
@@ -14,7 +15,7 @@ import { queryKeys } from "../../utils/queryKeys";
  */
 export default function BhcFollowUpRedirect() {
   const { taskId } = useParams();
-  const { data: task, error, isPending: isLoading } = useQuery({
+  const { data: task, error, isPending: isLoading, isFetching, refetch } = useQuery({
     queryKey: queryKeys.followUpTaskDetails("bhc", taskId),
     queryFn: () => getFollowUpTask(taskId),
     enabled: Boolean(taskId),
@@ -36,6 +37,19 @@ export default function BhcFollowUpRedirect() {
         >
           <div className="min-h-[240px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (error && !task && ![404].includes(Number(error?.status))) {
+    return (
+      <DashboardLayout role="bhc" title="Follow-ups">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(error)}
+          onRetry={() => refetch()}
+          retrying={isFetching}
+        />
       </DashboardLayout>
     );
   }

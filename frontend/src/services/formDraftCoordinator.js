@@ -311,8 +311,8 @@ class FormDraftCoordinator {
     } catch (error) { if (this.live(epoch)) this.patch({ busy: false, error: error.message, status: "error" }); return false; }
   }
 
-  // Opted into only by Visit Check-in -> Register New Patient. Other forms
-  // keep the existing recovery decisions above.
+  // Patient registration (BHC/RHU, including walk-in) auto-selects from sync
+  // metadata. Other forms keep the stricter recovery decisions in resume().
   async resumeLatestRecovery(source) {
     if (this.closed || this.state.busy) return false;
     const currentInput = this.state.hasPendingChanges ? copy(this.latest) : null;

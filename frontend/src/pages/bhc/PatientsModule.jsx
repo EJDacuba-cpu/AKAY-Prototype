@@ -36,6 +36,7 @@ import { formatDisplayValue } from "../../utils/formatters";
 import "../../components/features/patients/clinical-directory.css";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import { listMonitoringHandoffRequests } from "../../services/monitoringHandoffService";
+import { getTbEndorsements } from "../../services/tbCaseService";
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
@@ -75,7 +76,7 @@ function Shell({ embedded, children, ...layoutProps }) {
   return embedded ? <>{children}</> : <DashboardLayout {...layoutProps}>{children}</DashboardLayout>;
 }
 
-export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false } = {}) {
+export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedded = false, showEmbeddedHeading = false } = {}) {
   const access = useAccess();
   const canRegister = access.can("patients.register") && showDirectoryRegisterAction(role);
   const addPatientPath = `${basePath}/patients/add`;
@@ -89,6 +90,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
       : MONITORING_TAB_GENERAL;
   const showGeneralHandoffs = showHandoffs && monitoringTab === MONITORING_TAB_GENERAL;
   const showTbEndorsements = showHandoffs && monitoringTab === MONITORING_TAB_TB;
+  const tbPage = Math.max(1, Number(params.get("page")) || 1);
+  const tbCaseId = params.get("case") || "";
+  const tbListQuery = useQuery({
+    queryKey: ["tb-endorsements", tbPage, tbCaseId],
+    queryFn: () => getTbEndorsements(tbPage, tbCaseId),
+    enabled: showTbEndorsements,
+    retry: false,
+  });
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
@@ -205,19 +214,27 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const hasData = showGeneralHandoffs
     ? Array.isArray(handoffsQuery.data)
     : showTbEndorsements
-      ? true
+      ? Boolean(tbListQuery.data)
       : hasPatientData;
   const activeError = showGeneralHandoffs
     ? handoffsQuery.error
     : showTbEndorsements
-      ? null
+      ? tbListQuery.error
       : queryError;
-  const activeRefreshing = showGeneralHandoffs ? handoffsQuery.isFetching : isRefreshing;
-  const activeRetry = showGeneralHandoffs ? handoffsQuery.refetch : refetchPatients;
+  const activeRefreshing = showGeneralHandoffs
+    ? handoffsQuery.isFetching
+    : showTbEndorsements
+      ? tbListQuery.isFetching
+      : isRefreshing;
+  const activeRetry = showGeneralHandoffs
+    ? handoffsQuery.refetch
+    : showTbEndorsements
+      ? tbListQuery.refetch
+      : refetchPatients;
   const showInitialLoading = showGeneralHandoffs
     ? handoffsQuery.isPending && !hasData
     : showTbEndorsements
-      ? false
+      ? tbListQuery.isPending && !hasData
       : loading && !hasData;
   const showRefreshOverlay = activeRefreshing && hasData && !showHandoffs;
 
@@ -312,17 +329,19 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
         {!showInitialLoading && (
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 shrink">
-              {!embedded && (
+              {(!embedded || showEmbeddedHeading) && (
                 <>
                   <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
-                    {showHandoffs ? "Monitoring Requests" : "Patients"}
+                    {showHandoffs ? "Monitoring Requests" : role === "rhu" ? "All Patients" : "Patients"}
                   </h1>
                   <p className="mt-1 text-[13px] text-neutral-600">
                     {showTbEndorsements
                       ? "RHU-to-BHC TB treatment endorsements for your catchment."
                       : showHandoffs
                         ? "RHU Manage to BHC handoffs for your catchment."
-                        : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
+                        : role === "rhu"
+                          ? "Every patient record registered at this RHU."
+                          : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
                   </p>
                 </>
               )}

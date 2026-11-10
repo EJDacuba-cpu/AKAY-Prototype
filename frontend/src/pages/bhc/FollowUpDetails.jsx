@@ -181,8 +181,29 @@ export default function FollowUpDetails({ role = "bhc" }) {
     );
   }
 
-  if (notFound || error?.status === 403) {
-    const forbidden = error?.status === 403;
+  if (error?.status === 403) {
+    return (
+      <DashboardLayout role={role} title="Follow-up Details">
+        <div className="flex min-h-[calc(100dvh-9rem)] flex-col items-center justify-center px-4 py-12">
+          <ConnectionErrorState
+            fullPage
+            variant={errorStateVariant(error)}
+            title="Follow-up unavailable"
+            message="You do not have access to this follow-up schedule."
+          />
+          <Link
+            to={`${basePath}/follow-ups`}
+            className="-mt-2 inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 transition hover:bg-neutral-50"
+          >
+            <ArrowLeft size={14} />
+            Back to Follow-ups
+          </Link>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (notFound) {
     return (
       <DashboardLayout role={role} title="Follow-up Details">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-100 bg-white p-10 text-center shadow-sm">
@@ -190,12 +211,10 @@ export default function FollowUpDetails({ role = "bhc" }) {
             <XCircle size={26} />
           </div>
           <h1 className="mt-5 text-xl font-bold text-[#0F172A]">
-            {forbidden ? "Follow-up unavailable" : "Follow-up not found"}
+            Follow-up not found
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            {forbidden
-              ? "You do not have access to this follow-up schedule."
-              : "This follow-up schedule does not exist or is no longer available."}
+            This follow-up schedule does not exist or is no longer available.
           </p>
           <Link
             to={`${basePath}/follow-ups`}
@@ -253,7 +272,7 @@ export default function FollowUpDetails({ role = "bhc" }) {
           Loading visit chain...
         </div>
       ) : relatedRecordError ? (
-        <ConnectionErrorState size="compact" variant="error" onRetry={() => refetchRelatedRecord()} />
+        <ConnectionErrorState size="compact" variant={errorStateVariant(relatedRecordError)} onRetry={() => refetchRelatedRecord()} />
       ) : (
         <FollowUpEpisodeContent
           episode={relatedRecord?.followUpEpisode}
@@ -289,13 +308,16 @@ export default function FollowUpDetails({ role = "bhc" }) {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl font-bold text-[#0F172A]">
-                  Follow-up Details
+                  Return Visit Overview
                 </h1>
                 <StateBadge state={task.effectiveState} />
                 {updating && (
                   <RefreshingIndicator label="Updating follow-up details..." />
                 )}
               </div>
+              <p className="mt-2 text-[13px] text-slate-600">
+                Review the visit schedule, current status, and linked clinical record.
+              </p>
               <p className="mt-2 font-mono text-[11px] font-semibold text-slate-600">
                 Follow-up #{task.id}
               </p>
@@ -414,7 +436,7 @@ function FollowUpClinicalDetails({ task, record, loading, error, onRetry }) {
 
   if (error || !record) {
     return (
-      <ConnectionErrorState size="compact" variant="error" onRetry={onRetry ? () => onRetry() : undefined} />
+      <ConnectionErrorState size="compact" variant={errorStateVariant(error)} onRetry={onRetry ? () => onRetry() : undefined} />
     );
   }
 

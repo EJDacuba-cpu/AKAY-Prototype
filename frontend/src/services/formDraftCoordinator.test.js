@@ -486,6 +486,27 @@ test("other draft workflows keep the existing cross-transaction choice", async (
   assert.equal(engine.getSnapshot().ready, false);
 });
 
+test("ordinary BHC/RHU registration Resume auto-selects a single or matching copy without a conflict choice", async () => {
+  const f = await walkInRecovery();
+  // Same causal auto-select path now used by ordinary Add Patient, not only walk-in.
+  f.options.preferLatestRecovery = true;
+  const matching = await f.reopen();
+  assert.equal(await matching.resume(), true);
+  assert.equal(matching.getSnapshot().conflict, false);
+  assert.equal(matching.getSnapshot().decision, false);
+  matching.close();
+
+  f.remote({ ...f.server(), transaction_uuid: "other-transaction", version: 9, payload: registrationDraftSnapshot({ form: { firstName: "Other", lastName: "Session" } }) });
+  const before = structuredClone([...f.rows.values()][0]);
+  const conflicted = await f.reopen();
+  assert.equal(await conflicted.resume(), false);
+  assert.equal(conflicted.getSnapshot().conflict, true);
+  assert.equal(conflicted.getSnapshot().ready, false);
+  assert.deepEqual([...f.rows.values()][0], before);
+  assert.equal(await conflicted.resume("device"), true);
+  assert.deepEqual(conflicted.latest, f.saved);
+});
+
 test("walk-in Resume cannot revive a registration completed in another session", async () => {
   const f = await walkInRecovery();
   const engine = await f.reopen();

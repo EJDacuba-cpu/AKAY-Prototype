@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Check, Circle, KeyRound, LogOut } from "lucide-react";
+import AkayWordmark from "../components/common/AkayWordmark";
 import Field from "../components/features/access/FieldError";
 import Input from "../components/common/atoms/Input";
 import { changePassword } from "../services/apiClient";
 import { logoutUser } from "../utils/auth";
 import { fieldState } from "../utils/fieldState";
 import { meetsPasswordRules, passwordRules } from "../utils/passwordRules";
-
-const LOGO_SRC = "/akay-logo.png";
 
 const firstMessage = (message) => (Array.isArray(message) ? message[0] : message) || "";
 
@@ -100,12 +99,7 @@ export default function ChangePassword() {
     <div className="flex min-h-dvh items-center justify-center overflow-y-auto bg-[#F8FAFC] px-4 py-4 text-[#1F2937] sm:px-6">
       <main className="w-full max-w-[460px] rounded-3xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-xl shadow-slate-900/5 sm:px-9 sm:py-7">
         <div className="mb-5 text-center">
-          <img
-            src={LOGO_SRC}
-            alt="AKAY — Medical EHR and Referral System"
-            className="mx-auto h-14 w-auto max-w-full object-contain"
-            draggable="false"
-          />
+          <AkayWordmark className="text-5xl" />
         </div>
 
         <div className="mb-5 text-center">

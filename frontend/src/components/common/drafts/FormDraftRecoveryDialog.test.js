@@ -137,6 +137,33 @@ test("conflicting copies require an explicit source choice instead of a silent o
   assert.match(html, /replaces the other recovery copy/);
 });
 
+test("patient registration recovery stays Resume/Discard until an unresolved conflict", () => {
+  const normal = render({
+    title: "Unfinished Registration",
+    description: "You have an unfinished registration. Would you like to continue?",
+    resumeLabel: "Resume Registration",
+  });
+  assert.match(normal, /Unfinished Registration/);
+  assert.match(normal, /You have an unfinished registration\. Would you like to continue\?/);
+  assert.ok(button(normal, "Resume Registration"));
+  assert.ok(button(normal, "Discard"));
+  assert.equal(button(normal, "Use Device Copy"), undefined);
+  assert.equal(button(normal, "Use Synced Draft"), undefined);
+  assert.doesNotMatch(normal, /New patient registration|Device Copy|Synced Draft|server version/i);
+
+  const conflict = render({
+    title: "Unfinished Registration",
+    description: "Choose which unfinished copy to continue. Both are kept until restoration succeeds.",
+    onResume: undefined,
+    onResumeDevice: noop,
+    onResumeServer: noop,
+  });
+  assert.ok(button(conflict, "Use Device Copy"));
+  assert.ok(button(conflict, "Use Synced Draft"));
+  assert.equal(button(conflict, "Resume Registration"), undefined);
+  assert.ok(button(conflict, "Discard"));
+});
+
 test("restoration keeps one unfinished decision and puts progress on its primary button", () => {
   const html = renderToStaticMarkup(createElement(RhuDialog, {
     recovery: { decision: { server: { id: "d1", classification: "General Consultation" } }, busy: true, operation: "resume", resume: noop, discard: noop, retry: noop },

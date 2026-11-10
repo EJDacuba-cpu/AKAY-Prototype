@@ -11,9 +11,6 @@ import {
 import { REPORT_CATEGORIES } from "../../../utils/bhcReporting.js";
 import { RHU_REPORT_CATEGORIES } from "../../../utils/rhuReporting.js";
 
-export const LOGO_SRC = "/akay-mark.png";
-export const LOGO_WORDMARK_SRC = "/akay-wordmark.png";
-
 export const menuByRole = {
   admin: [
     {

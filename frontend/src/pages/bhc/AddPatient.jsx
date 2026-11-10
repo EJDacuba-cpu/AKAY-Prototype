@@ -46,7 +46,7 @@ import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS, registrationRecov
 import useFormDraft from "../../hooks/useFormDraft";
 import { getCurrentUser } from "../../utils/auth";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { readRegistrationEntry, consumeRegistrationEntry, isWalkInRegistrationRecovery } from "../../utils/patientRegistrationEntry";
+import { readRegistrationEntry, consumeRegistrationEntry, registrationRecoveryDialogProps } from "../../utils/patientRegistrationEntry";
 import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
 import { PatientRegistrationSkeleton } from "../../components/common/loading/SkeletonLoaders";
@@ -218,7 +218,7 @@ export function RegistrationForm({
     formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
     value: snapshot, initialValue: draftBaseline,
     preparedEngine,
-    preferLatestRecovery: isWalkInRegistrationRecovery(entryPath, role),
+    preferLatestRecovery: true,
     onEntryConsumed: () => consumeRegistrationEntry(client, owner, entryPath, preparedEngine),
     normalizeSnapshot: (payload) => {
       const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
@@ -530,6 +530,12 @@ function handleBirthDateChange(valueOrEvent) {
   );
 
   const showRegistrationSkeleton = (recoveryEnabled && !draft.ready) || householdRecoveryLoading;
+  const hasRecoverableDraft = Boolean(draft.engine?.draft || draft.engine?.local);
+  const recoveryCopy = registrationRecoveryDialogProps({
+    hasDraft: hasRecoverableDraft,
+    conflict: draft.conflict,
+    checkFailed: Boolean(draft.error) && !hasRecoverableDraft,
+  });
 
   // --- RENDER ---
 
@@ -930,9 +936,14 @@ function handleBirthDateChange(valueOrEvent) {
         {checkInError && <p role="alert" className="mt-3 text-sm text-alert-700">{checkInError}</p>}
       </SuccessModal>}
       {recoveryEnabled && !draft.ready && !draft.entryProps.checking && <FormDraftRecoveryDialog
-        {...draft.entryProps} title="Unfinished Registration" contextLabel="New patient registration"
-        description="An unfinished patient registration was found. Choose how you want to continue."
-        resumeLabel="Resume Registration" resuming={Boolean(draft.busy)} cancelLabel={draft.error ? "Cancel" : ""}
+        {...draft.entryProps}
+        title={recoveryCopy.title}
+        description={recoveryCopy.description}
+        lastSavedAt={draft.conflict ? "" : draft.entryProps.lastSavedAt}
+        deviceOnly={!draft.conflict && draft.entryProps.deviceOnly}
+        resumeLabel={recoveryCopy.resumeLabel}
+        resuming={Boolean(draft.busy)}
+        cancelLabel={draft.error ? "Cancel" : ""}
         onClose={() => navigate(backPath)}
       />}
       {modals.confirm && <ModalShell

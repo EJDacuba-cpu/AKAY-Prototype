@@ -27,7 +27,7 @@ export default function RhuReferralSlip() {
   const canViewHistory = (user?.permissions || []).includes("clinical.history");
   const { patientId, referralId } = useParams();
   const backPath = rhuPatientReferralsPath(patientId);
-  const { patient, referral, record, loading, unauthorized, missing, loadError, retry } =
+  const { patient, referral, record, loading, unauthorized, missing, loadError, retry, retrying } =
     useRhuReferralSlipData({ patientId, referralId });
 
   if (!canViewHistory) {
@@ -46,6 +46,34 @@ export default function RhuReferralSlip() {
     );
   }
 
+  if (unauthorized) {
+    return (
+      <Shell>
+        <p className="rounded-xl border border-neutral-200 bg-white p-8 text-sm text-neutral-600 shadow-card">
+          Clinical referral details are restricted to authorized RHU users.
+        </p>
+      </Shell>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Shell>
+        <ConnectionErrorState fullPage onRetry={retry} retrying={retrying} variant={errorStateVariant(loadError)} />
+      </Shell>
+    );
+  }
+
+  if (missing) {
+    return (
+      <Shell>
+        <p className="rounded-xl border border-neutral-200 bg-white p-8 text-sm text-neutral-600 shadow-card">
+          The referral linked to this visit could not be loaded for this patient.
+        </p>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <div className="mx-auto max-w-6xl space-y-4">
@@ -56,24 +84,9 @@ export default function RhuReferralSlip() {
           <ArrowLeft size={15} />
           Back to Patient Profile → Referrals
         </Link>
-
-        {unauthorized ? (
-          <p className="rounded-xl border border-neutral-200 bg-white p-8 text-sm text-neutral-600 shadow-card">
-            Clinical referral details are restricted to authorized RHU users.
-          </p>
-        ) : loadError ? (
-          <ConnectionErrorState onRetry={retry} variant={errorStateVariant(loadError)} />
-        ) : missing ? (
-          <p className="rounded-xl border border-neutral-200 bg-white p-8 text-sm text-neutral-600 shadow-card">
-            The referral linked to this visit could not be loaded for this patient.
-          </p>
-        ) : (
-          <>
-            <h1 className="text-lg font-semibold text-ink-900">Referral Details</h1>
-            <BhcReferralSlip referral={referral} record={record} patient={patient} />
-            <ReferralReturnSlipSection referral={referral} pendingMessage="Pending feedback. The return slip will appear here once submitted." />
-          </>
-        )}
+        <h1 className="text-lg font-semibold text-ink-900">Referral Details</h1>
+        <BhcReferralSlip referral={referral} record={record} patient={patient} />
+        <ReferralReturnSlipSection referral={referral} pendingMessage="Pending feedback. The return slip will appear here once submitted." />
       </div>
     </Shell>
   );

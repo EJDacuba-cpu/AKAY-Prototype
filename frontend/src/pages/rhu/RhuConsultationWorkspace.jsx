@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { AlertTriangle, RefreshCcw, ServerCrash, WifiOff } from "lucide-react";
-
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { HealthRecordFormSkeleton } from "../../components/common/loading/SkeletonLoaders";
 import { Card } from "../../components/ui/card";
@@ -16,7 +14,8 @@ import { Button } from "../../components/ui/button";
 import { rhuVisitLoadError, visitUnavailableError } from "../../utils/rhuVisitLoadError";
 import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
 import { referralSlipModel } from "../../utils/referralSlipView";
-import { SuccessModal } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
+import { ConnectionErrorState, SuccessModal } from "../../components/common";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
@@ -1394,40 +1393,20 @@ export default function RhuConsultationWorkspace() {
   ].filter(Boolean));
 
   if (visitError) {
-    const VisitErrorIcon = visitError.variant === "offline"
-      ? WifiOff
-      : visitError.variant === "timeout"
-        ? RefreshCcw
-        : visitError.kind === "unavailable"
-          ? AlertTriangle
-          : ServerCrash;
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
-          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
-              <VisitErrorIcon size={21} aria-hidden="true" />
-            </div>
-            <h1 className="mt-4 text-base font-bold text-[#0F172A]">{visitError.title}</h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">{visitError.message}</p>
-            <p className="mt-2 text-xs text-slate-400">Your saved records and drafts remain on this device.</p>
-            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
-              {visitError.retryable ? (
-                <Button
-                  type="button"
-                  variant="brand"
-                  disabled={visitRetrying}
-                  onClick={() => { void loadVisit({ retry: true }); }}
-                >
-                  <RefreshCcw size={15} className={visitRetrying ? "animate-spin" : ""} aria-hidden="true" />
-                  {visitRetrying ? "Retrying..." : "Retry"}
-                </Button>
-              ) : null}
-              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
-                Back to Today's Queue
-              </Button>
-            </div>
-          </Card>
+        <ConnectionErrorState
+          fullPage
+          title={visitError.title}
+          message={visitError.message}
+          variant={visitError.variant}
+          onRetry={visitError.retryable ? () => { void loadVisit({ retry: true }); } : undefined}
+          retrying={visitRetrying}
+        />
+        <div className="flex justify-center pb-8">
+          <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+            Back to Today's Queue
+          </Button>
         </div>
       </DashboardLayout>
     );
@@ -1444,25 +1423,18 @@ export default function RhuConsultationWorkspace() {
   if (patientQuery.isError) {
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
-          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
-              <ServerCrash size={21} aria-hidden="true" />
-            </div>
-            <h1 className="mt-4 text-base font-bold text-[#0F172A]">Patient details could not be loaded</h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {patientQuery.error?.message || "This consultation cannot open until the patient record is available."}
-            </p>
-            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
-              <Button type="button" variant="brand" onClick={() => patientQuery.refetch()}>
-                <RefreshCcw size={15} aria-hidden="true" />
-                Retry
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
-                Back to Today's Queue
-              </Button>
-            </div>
-          </Card>
+        <ConnectionErrorState
+          fullPage
+          title="Patient details could not be loaded"
+          message={patientQuery.error?.message || "This consultation cannot open until the patient record is available."}
+          variant={errorStateVariant(patientQuery.error)}
+          onRetry={() => patientQuery.refetch()}
+          retrying={patientQuery.isFetching}
+        />
+        <div className="flex justify-center pb-8">
+          <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+            Back to Today's Queue
+          </Button>
         </div>
       </DashboardLayout>
     );

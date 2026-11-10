@@ -3,18 +3,20 @@ import { DEFAULT_FILTERS } from "./AccessRequestTable";
 
 const SEARCH_DELAY_MS = 300;
 
-export const INITIAL_ACCESS_ROWS = { rows: [], loading: true, refreshing: false, hasLoaded: false, error: "" };
+export const INITIAL_ACCESS_ROWS = { rows: [], loading: true, refreshing: false, hasLoaded: false, error: null };
 
 export function accessRowsReducer(state, action) {
   switch (action.type) {
     case "start":
-      return { ...state, loading: !state.hasLoaded, refreshing: state.hasLoaded, error: "" };
+      return { ...state, loading: !state.hasLoaded, refreshing: state.hasLoaded, error: null };
     case "success":
-      return { rows: action.rows, loading: false, refreshing: false, hasLoaded: true, error: "" };
+      return { rows: action.rows, loading: false, refreshing: false, hasLoaded: true, error: null };
     case "failure":
-      if ([401, 403].includes(Number(action.status))) return { ...INITIAL_ACCESS_ROWS, loading: false, error: action.message };
-      // A successful empty response is usable content too. Later errors are toasted by the hook.
-      return { ...state, loading: false, refreshing: false, error: state.hasLoaded ? "" : action.message };
+      if ([401, 403].includes(Number(action.status))) {
+        return { ...INITIAL_ACCESS_ROWS, loading: false, error: action.error };
+      }
+      // Keep usable rows/empty frame on refresh failure; soft UI feedback shows the error.
+      return { ...state, loading: false, refreshing: false, error: action.error };
     default:
       return state;
   }
@@ -24,7 +26,7 @@ export function accessRowsReducer(state, action) {
  * Rows, filters and per-row action state for one Password & Invites tab. The first load shows the
  * loading overlay; later loads (filters, after an action) refresh in place so the toolbar keeps focus.
  * `runAction(row, fn)` runs one row action, then reloads the tab.
- * A failed action or a failed load is reported through `onActionError(message)` (the tabs show it as a toast).
+ * Action failures are reported through `onActionError(message)` (toast). Load/refresh failures stay on-page.
  */
 export default function useAccessRows(fetchRows, onActionError) {
   const [state, dispatch] = useReducer(accessRowsReducer, INITIAL_ACCESS_ROWS);
@@ -50,13 +52,11 @@ export default function useAccessRows(fetchRows, onActionError) {
       dispatch({ type: "success", rows: next });
     } catch (failure) {
       if (request === requestRef.current) {
-        const message = failure.message || "Unable to load this list.";
-        dispatch({ type: "failure", message, status: failure.status });
-        if (hasLoadedRef.current) onActionError?.(message);
+        dispatch({ type: "failure", error: failure, status: failure.status });
         if ([401, 403].includes(Number(failure.status))) hasLoadedRef.current = false;
       }
     }
-  }, [fetchRows, search, filters.status, onActionError]);
+  }, [fetchRows, search, filters.status]);
 
   useEffect(() => {
     void reload();

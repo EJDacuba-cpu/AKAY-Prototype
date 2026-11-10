@@ -156,6 +156,13 @@ export default function BHCDashboard() {
             </div>
           ) : null}
 
+          {loadError && hasDashboardData ? (
+            <p role="status" className="text-sm text-neutral-600">
+              Unable to refresh the dashboard. Showing the last data that loaded.{" "}
+              <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={() => refetch()} disabled={isFetching}>Retry</button>
+            </p>
+          ) : null}
+
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-7">
               {KPI_CARDS.map((card) => (

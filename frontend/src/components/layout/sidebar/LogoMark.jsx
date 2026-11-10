@@ -1,27 +1,17 @@
-import { LOGO_SRC, LOGO_WORDMARK_SRC } from "./sidebarData";
+import AkayWordmark from "../../common/AkayWordmark";
 
 export default function LogoMark({ size = "md" }) {
   const boxSize = size === "sm" ? "h-8 w-8" : "h-9 w-9";
 
   return (
     <div className={`flex ${boxSize} shrink-0 items-center justify-center`}>
-      <img
-        src={LOGO_SRC}
-        alt="AKAY Logo"
-        className="h-full w-full object-contain"
-        draggable="false"
-      />
+      <AkayWordmark compact className="text-[28px]" />
     </div>
   );
 }
 
-export function LogoWordmark({ className = "h-[18px]" }) {
+export function LogoWordmark({ className = "text-[28px]" }) {
   return (
-    <img
-      src={LOGO_WORDMARK_SRC}
-      alt="AKAY"
-      className={`w-auto max-w-full object-contain object-left ${className}`}
-      draggable="false"
-    />
+    <AkayWordmark className={className} />
   );
 }

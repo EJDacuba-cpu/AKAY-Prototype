@@ -95,7 +95,8 @@ test("RHU ITR loads the started visit by id with retryable load recovery", () =>
   assert.match(workspace, /visitLoadInFlight/);
   assert.match(workspace, /Unable to load consultation|rhuVisitLoadError/);
   assert.match(workspace, /Consultation not available|visitUnavailableError/);
-  assert.match(workspace, /min-h-\[calc\(100dvh-9rem\)\]/);
+  assert.match(workspace, /ConnectionErrorState/);
+  assert.match(workspace, /fullPage/);
   assert.match(workspace, /Back to Today's Queue/);
   assert.match(workspace, /patientQuery\.isError/);
   assert.match(workspace, /Retry/);
