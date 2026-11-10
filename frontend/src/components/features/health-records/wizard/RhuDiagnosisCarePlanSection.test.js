@@ -30,12 +30,47 @@ test("TB assessment remains while Treatment Decision and its disposition fields 
   assert.match(html, /name="diagnoses.tb.tbManagement.diagnosisType"/);
   assert.match(html, /name="diagnoses.tb.tbManagement.drugResistancePrimary"/);
   assert.doesNotMatch(html, /treatmentDecision|Treatment Decision|Disposition reason|Form 4B is required/);
+  assert.match(html, /Register Treatment · Form 4B/);
   assert.match(html, /Actions Taken \/ Treatment/);
   assert.match(html, /Prescription/);
   assert.equal((html.match(/name="diagnoses.tb.nextAction"/g) || []).length, 4);
   for (const label of ["No Further Follow-up Scheduled", "Schedule RHU Follow-up", "Manage to BHC", "Refer to Higher-Level Facility"]) {
     assert.ok(html.includes(label), label);
   }
+});
+
+test("DS-TB openTreatmentCard expands compact Form 4B inside the diagnosis card", () => {
+  const entry = {
+    ...tb,
+    tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true },
+  };
+  const html = render(entry, {
+    patientName: "Juan Dela Cruz",
+    physicianName: "Dr. Reyes",
+    visitWeightKg: "55",
+    prescriptionText: "2HRZE/4HR",
+    tbCaseRegistration: {
+      registration_key: "11111111-1111-4111-8111-111111111111",
+      reporting_year: 2026,
+      case_number: "",
+      treatment_start_date: "",
+      confirmed: false,
+      screeningDateSource: "rhu_visit",
+      referralSourceLabel: "RHU walk-in",
+      card_data: {
+        caseFinding: { dateOfScreening: "2026-11-10" },
+        classification: {},
+        regimen: { description: "2HRZE/4HR", weightKg: "55", rows: [] },
+      },
+    },
+  });
+  assert.match(html, /data-field="tbCaseRegistration"/);
+  assert.match(html, /Verified from this consultation/);
+  assert.match(html, /Juan Dela Cruz/);
+  assert.match(html, /Treatment start date/);
+  assert.match(html, /Additional Form 4B details/);
+  assert.match(html, /Cancel registration/);
+  assert.doesNotMatch(html, /Form 4B opens when you click Next/);
 });
 
 test("presumptive TB hides drug susceptibility and every diagnosis can link supporting labs", () => {

@@ -546,6 +546,7 @@ class HealthRecordController extends Controller
                         'reporting_year' => (int) $tbCaseRegistration['reporting_year'],
                         'case_number' => $tbCaseRegistration['case_number'] ?? null,
                         'confirmed' => true,
+                        'treatment_start_date' => $tbCaseRegistration['treatment_start_date'] ?? null,
                         'card_data' => $tbCaseRegistration['card_data'] ?? [],
                         'trust_source_revision' => true,
                         'source_revision' => app(\App\Services\TbCaseRegistrationService::class)->revision($record),

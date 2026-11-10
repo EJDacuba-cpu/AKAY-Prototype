@@ -221,6 +221,7 @@ class HealthRecordRequest extends FormRequest
             $rules['tb_case_registration.reporting_year'] = ['nullable', 'integer', 'between:1900,9999'];
             $rules['tb_case_registration.case_number'] = ['nullable', 'string', 'max:100'];
             $rules['tb_case_registration.confirmed'] = ['nullable', 'boolean'];
+            $rules['tb_case_registration.treatment_start_date'] = ['nullable', 'date_format:Y-m-d'];
             $rules['tb_case_registration.card_data'] = ['nullable', 'array'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
@@ -1121,13 +1122,18 @@ class HealthRecordRequest extends FormRequest
         }
         $initiating = collect($this->diagnosesInput())->contains(function ($entry) {
             $management = is_array($entry['tbManagement'] ?? null) ? $entry['tbManagement'] : [];
+            $isDsTb = ($management['diagnosisType'] ?? null) === 'tb_disease'
+                && ($management['drugResistance'] ?? null) === 'drug_susceptible';
 
-            return ($management['treatmentDecision'] ?? null) === 'initiate_at_rhu';
+            return $isDsTb && (
+                ! empty($management['openTreatmentCard'])
+                || ($management['treatmentDecision'] ?? null) === 'initiate_at_rhu'
+            );
         });
         $registration = $this->input('tb_case_registration');
         if (! $initiating) {
             if (filled($registration)) {
-                $validator->errors()->add('tb_case_registration', 'Form 4B registration is only submitted when initiating DS-TB treatment at this RHU.');
+                $validator->errors()->add('tb_case_registration', 'Form 4B registration is only submitted when registering DS-TB treatment in this consultation.');
             }
 
             return;
@@ -1146,6 +1152,9 @@ class HealthRecordRequest extends FormRequest
         $year = $registration['reporting_year'] ?? null;
         if (! is_numeric($year) || (int) $year < 1900 || (int) $year > 9999) {
             $validator->errors()->add('tb_case_registration.reporting_year', 'Enter a valid reporting year.');
+        }
+        if (blank($registration['treatment_start_date'] ?? null)) {
+            $validator->errors()->add('tb_case_registration.treatment_start_date', 'Enter the actual treatment start date.');
         }
         $card = is_array($registration['card_data'] ?? null) ? $registration['card_data'] : [];
         $classification = is_array($card['classification'] ?? null) ? $card['classification'] : [];

@@ -17,7 +17,9 @@ import {
   matchingMonitorableCondition,
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
+import TbInlineForm4bPanel from "../TbInlineForm4bPanel";
 import {
+  canOpenDsTbTreatmentCard,
   DR_TB_PRIMARY,
   DR_TB_SUBTYPE_OPTIONS,
   drugResistanceForPrimary,
@@ -25,11 +27,13 @@ import {
   isDrTbSubtype,
   isPresumptiveTb,
   isRecognizedTbDiagnosis,
+  shouldOpenDsTbTreatmentCard,
   TB_ASSESSMENT_OPTIONS,
   TB_SUSCEPTIBILITY_PRIMARY_OPTIONS,
   tbManagementFields,
   tbManagementFor,
 } from "../../../../utils/rhuTbCaseManagement";
+import { emptyTbCaseRegistration } from "../../../../utils/tbRegistration";
 
 function DiagnosisChoiceGroup({ options, disabled, ...props }) {
   const id = useId();
@@ -110,12 +114,46 @@ function DiagnosisFollowUp({ entry, schedule, errors, disabled, onFollowUpChange
   );
 }
 
-function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, canConfirmTb, errors, onChange }) {
+function TbCaseManagementSection({
+  entry,
+  registry,
+  existingTbCase,
+  disabled,
+  canConfirmTb,
+  errors,
+  onChange,
+  tbCaseRegistration = null,
+  onTbCaseRegistrationChange,
+  visit = null,
+  form4bLaboratoryTests = [],
+  facilityName = "",
+  patientName = "",
+  physicianName = "",
+  visitWeightKg = "",
+  prescriptionText = "",
+}) {
   if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
   const management = tbManagementFields(entry);
   const primaryResistance = drugResistancePrimary(management.drugResistance);
   const showDrSubtypes = primaryResistance === DR_TB_PRIMARY;
   const registered = String(existingTbCase?.tbCaseNumber || "").trim();
+  const canRegister = canOpenDsTbTreatmentCard(entry) && !registered;
+  const registrationOpen = canRegister && shouldOpenDsTbTreatmentCard(entry);
+
+  function startRegistration() {
+    onChange(tbManagementFor(entry, { openTreatmentCard: true }));
+    onTbCaseRegistrationChange?.(tbCaseRegistration || emptyTbCaseRegistration({
+      visit: visit || {},
+      weightKg: visitWeightKg,
+      prescriptionText,
+    }));
+  }
+
+  function cancelRegistration() {
+    onChange(tbManagementFor(entry, { openTreatmentCard: false }));
+    onTbCaseRegistrationChange?.(null);
+  }
+
   return (
     <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-4 pt-3">
       <div>
@@ -180,6 +218,51 @@ function TbCaseManagementSection({ entry, registry, existingTbCase, disabled, ca
         </div>
       </div>
 
+      {canRegister && !registrationOpen && (
+        <div className="rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3">
+          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
+          <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
+            Optional for this visit. Expands here — no separate wizard page.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="compact"
+            disabled={disabled || !canConfirmTb}
+            className="mt-3"
+            onClick={startRegistration}
+          >
+            Register Treatment · Form 4B
+          </Button>
+        </div>
+      )}
+
+      {registrationOpen && (
+        <TbInlineForm4bPanel
+          registration={tbCaseRegistration || emptyTbCaseRegistration({
+            visit: visit || {},
+            weightKg: visitWeightKg,
+            prescriptionText,
+          })}
+          onChange={(next) => {
+            if (next == null) {
+              cancelRegistration();
+              return;
+            }
+            onTbCaseRegistrationChange?.(next);
+          }}
+          laboratoryTests={form4bLaboratoryTests}
+          errors={errors}
+          disabled={disabled || !canConfirmTb}
+          facilityName={facilityName}
+          patientName={patientName}
+          physicianName={physicianName}
+          diagnosisLabel="TB Disease · Drug-susceptible"
+          visitWeightKg={visitWeightKg}
+          prescriptionText={prescriptionText}
+        />
+      )}
+
     </fieldset>
   );
 }
@@ -208,6 +291,8 @@ function DiagnosisCard({
   laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
   registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
+  tbCaseRegistration, onTbCaseRegistrationChange, visit,
+  form4bLaboratoryTests, facilityName, patientName, physicianName, visitWeightKg, prescriptionText,
 }) {
   const action = diagnosisNextAction(entry);
   const confirmed = diagnosisActivateConfirmed(entry, conditions);
@@ -261,6 +346,15 @@ function DiagnosisCard({
             errors={errors}
             disabled={disabled}
             onChange={onChange}
+            tbCaseRegistration={tbCaseRegistration}
+            onTbCaseRegistrationChange={onTbCaseRegistrationChange}
+            visit={visit}
+            form4bLaboratoryTests={form4bLaboratoryTests}
+            facilityName={facilityName}
+            patientName={patientName}
+            physicianName={physicianName}
+            visitWeightKg={visitWeightKg}
+            prescriptionText={prescriptionText}
           />
         </div>
         <div className="rhu-diagnosis-laboratory">
@@ -421,6 +515,14 @@ export default function RhuDiagnosisCarePlanSection({
   existingTbCase = null,
   canConfirmTb = false,
   conditionReferences = [],
+  tbCaseRegistration = null,
+  onTbCaseRegistrationChange,
+  visit = null,
+  form4bLaboratoryTests = [],
+  facilityName = "",
+  patientName = "",
+  physicianName = "",
+  visitWeightKg = "",
   errors = {},
   disabled = false,
 }) {
@@ -479,6 +581,15 @@ export default function RhuDiagnosisCarePlanSection({
               registry={registry}
               existingTbCase={existingTbCase}
               canConfirmTb={canConfirmTb}
+              tbCaseRegistration={tbCaseRegistration}
+              onTbCaseRegistrationChange={onTbCaseRegistrationChange}
+              visit={visit}
+              form4bLaboratoryTests={form4bLaboratoryTests}
+              facilityName={facilityName}
+              patientName={patientName}
+              physicianName={physicianName}
+              visitWeightKg={visitWeightKg}
+              prescriptionText={prescriptionText}
               onChange={(next) => onChangeDiagnosis?.(next)}
               onFollowUpChange={onFollowUpChange}
               onRemove={() => onRemoveDiagnosis?.(entry.id)}

@@ -106,7 +106,7 @@ import {
   restoreRhuFollowUpSchedules,
 } from "../../utils/rhuCarePlan";
 import {
-  diagnosesInitiateDsTbTreatment,
+  diagnosesOpenDsTbTreatmentCard,
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
   rhuTbAssessmentErrors,
@@ -115,7 +115,6 @@ import { canConfirmTbDiagnosis } from "../../utils/tbAssessment";
 import {
   emptyTbCaseRegistration,
   normalizeTbCaseRegistration,
-  SCREENING_DATE_SOURCES,
   tbRegistrationErrors,
   tbRegistrationPayload,
 } from "../../utils/tbRegistration";
@@ -493,7 +492,7 @@ export default function RhuConsultationWorkspace() {
     return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
   }, [diagnoses, existingTbCase, registry]);
   const includeForm4b = useMemo(
-    () => !existingTbCase && diagnosesInitiateDsTbTreatment(diagnoses),
+    () => !existingTbCase && diagnosesOpenDsTbTreatmentCard(diagnoses),
     [diagnoses, existingTbCase],
   );
   useEffect(() => {
@@ -509,8 +508,12 @@ export default function RhuConsultationWorkspace() {
       if (nextScreen === FORM_4B_STEP) setNextScreen(NEXT_STEP);
       return;
     }
-    setTbCaseRegistration((current) => current || emptyTbCaseRegistration({ visit }));
-  }, [includeForm4b, nextScreen, visit]);
+    setTbCaseRegistration((current) => current || emptyTbCaseRegistration({
+      visit,
+      weightKg: weight,
+      prescriptionText,
+    }));
+  }, [includeForm4b, nextScreen, visit, weight, prescriptionText]);
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
@@ -726,15 +729,16 @@ export default function RhuConsultationWorkspace() {
     if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
       setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
     }
-    const restored = resolveRestoredPosition(payload, stepOptions);
+    const restoredForm4b = !existingTbCase && diagnosesOpenDsTbTreatmentCard(restoredDiagnoses);
+    const restored = resolveRestoredPosition(payload, { ...stepOptions, includeForm4b: restoredForm4b });
     const storedScreen = typeof payload.formStep === "string" ? payload.formStep : restored.formStep;
     if (restored.phase === REVIEW_STEP || restored.phase === "review" || storedScreen === REVIEW_STEP) {
       setWizardPhase(WIZARD_REVIEW);
     } else if (restored.phase === "next" || storedScreen === NEXT_STEP || storedScreen === FORM_4B_STEP || storedScreen === TB_INTAKE_STEP) {
       setWizardPhase(WIZARD_NEXT);
       setNextScreen(
-        storedScreen === FORM_4B_STEP || storedScreen === TB_INTAKE_STEP || storedScreen === NEXT_STEP
-          ? storedScreen
+        storedScreen === TB_INTAKE_STEP
+          ? TB_INTAKE_STEP
           : NEXT_STEP,
       );
     } else {
@@ -807,7 +811,7 @@ export default function RhuConsultationWorkspace() {
       }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
     }
-    if ((currentStepKey === FORM_4B_STEP || currentStepKey === REVIEW_STEP) && includeForm4b && canFinalize) {
+    if ((currentStepKey === NEXT_STEP || currentStepKey === REVIEW_STEP) && includeForm4b && canFinalize) {
       const registration = normalizeTbCaseRegistration(tbCaseRegistration, { visit });
       const payload = tbRegistrationPayload({
         reportingYear: registration.reporting_year,
@@ -815,11 +819,19 @@ export default function RhuConsultationWorkspace() {
         sourceRevision: registration.source_revision || "0".repeat(64),
         confirmed: registration.confirmed,
         cardData: registration.card_data,
+        treatmentStartDate: registration.treatment_start_date,
       });
       // source_revision is pinned at finalize; consultation step only needs card completeness + confirmation.
       const registrationErrors = tbRegistrationErrors({ ...payload, source_revision: "a".repeat(64) });
       Object.entries(registrationErrors).forEach(([key, message]) => {
-        errors[key.startsWith("card_data.") || key === "reporting_year" || key === "confirmed" ? key : `tbCaseRegistration.${key}`] = message;
+        errors[
+          key.startsWith("card_data.")
+          || key === "reporting_year"
+          || key === "confirmed"
+          || key === "treatment_start_date"
+            ? key
+            : `tbCaseRegistration.${key}`
+        ] = message;
       });
     }
     setValidationErrors(errors);
@@ -833,7 +845,7 @@ export default function RhuConsultationWorkspace() {
     }
     if (key === NEXT_STEP || key === FORM_4B_STEP || key === TB_INTAKE_STEP) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(key);
+      setNextScreen(key === FORM_4B_STEP ? NEXT_STEP : key);
       return;
     }
     setWizardPhase(WIZARD_FORM);
@@ -844,15 +856,11 @@ export default function RhuConsultationWorkspace() {
     if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(includeTb ? TB_INTAKE_STEP : includeForm4b ? FORM_4B_STEP : NEXT_STEP);
+      setNextScreen(includeTb ? TB_INTAKE_STEP : NEXT_STEP);
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
-      if (nextScreen === TB_INTAKE_STEP) {
-        setNextScreen(includeForm4b ? FORM_4B_STEP : NEXT_STEP);
-        return;
-      }
-      if (nextScreen === FORM_4B_STEP) {
+      if (nextScreen === TB_INTAKE_STEP || nextScreen === FORM_4B_STEP) {
         setNextScreen(NEXT_STEP);
         return;
       }
@@ -890,16 +898,17 @@ export default function RhuConsultationWorkspace() {
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
-      if (nextScreen === NEXT_STEP && includeForm4b) {
-        setNextScreen(FORM_4B_STEP);
-        return;
-      }
       if (nextScreen === NEXT_STEP && includeTb) {
         setNextScreen(TB_INTAKE_STEP);
         return;
       }
-      if (nextScreen === FORM_4B_STEP && includeTb) {
-        setNextScreen(TB_INTAKE_STEP);
+      // Legacy drafts may still land on FORM_4B_STEP; Form 4B is inline on Diagnosis.
+      if (nextScreen === FORM_4B_STEP) {
+        if (includeTb) {
+          setNextScreen(TB_INTAKE_STEP);
+          return;
+        }
+        setWizardPhase(WIZARD_REVIEW);
         return;
       }
       setWizardPhase(WIZARD_REVIEW);
@@ -1170,6 +1179,7 @@ export default function RhuConsultationWorkspace() {
                 reporting_year: tbCaseRegistration.reporting_year,
                 case_number: tbCaseRegistration.case_number || null,
                 confirmed: Boolean(tbCaseRegistration.confirmed),
+                treatment_start_date: tbCaseRegistration.treatment_start_date || null,
                 card_data: tbCaseRegistration.card_data,
               }
             : null,
@@ -1300,7 +1310,6 @@ export default function RhuConsultationWorkspace() {
         ? "Record the patient's reason for visit, present illness, and who gave the history."
         : "Record the patient's reason for visit and present illness.",
       [ASSESSMENT_STEP]: "Record the vital signs and examination findings for this visit.",
-      [FORM_4B_STEP]: "Complete DS-TB Form 4B registration before finalizing this consultation.",
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
       [NEXT_STEP]: isReferredRhuVisit(visit)
         ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
@@ -1810,109 +1819,6 @@ export default function RhuConsultationWorkspace() {
                   </div>
                 </fieldset>
               )}
-              {currentStepKey === FORM_4B_STEP && tbCaseRegistration && (
-                <fieldset disabled={clinicalLocked} className="min-w-0 space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[#0B1C30]">DS-TB Form 4B Registration</p>
-                      <p className="mt-0.5 text-xs text-[#545F73]">
-                        Complete registration-critical fields before Review &amp; Finalize. Consultation and case registration save together.
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-[#B70011]/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#B70011]">
-                      Required
-                    </span>
-                  </div>
-
-                  <div className="border border-[#E5EEFF] bg-[#F8FAFF] px-4 py-3 text-xs text-[#545F73]">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#B70011]">Verified facility &amp; screening prefill</p>
-                    <dl className="grid gap-2 sm:grid-cols-2">
-                      <div>
-                        <dt className="font-semibold text-[#0B1C30]">Diagnosing facility</dt>
-                        <dd>{tbCaseRegistration.card_data?.caseFinding?.diagnosingFacility
-                          || currentUser.rural_health_unit?.name
-                          || currentUser.ruralHealthUnit?.name
-                          || currentUser.facility_name
-                          || "RHU facility (confirmed on save)"}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-[#0B1C30]">Province / HUC</dt>
-                        <dd>{tbCaseRegistration.card_data?.caseFinding?.provinceHuc || "From RHU facility address on save"}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-[#0B1C30]">Reporting year</dt>
-                        <dd>{tbCaseRegistration.reporting_year || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-[#0B1C30]">Referral / source</dt>
-                        <dd>{tbCaseRegistration.referralSourceLabel || "RHU walk-in"}</dd>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="font-semibold text-[#0B1C30]">Date of screening</dt>
-                        <dd>
-                          {tbCaseRegistration.card_data?.caseFinding?.dateOfScreening || "—"}
-                          <span className="ml-1 text-[#64748B]">
-                            ({SCREENING_DATE_SOURCES[tbCaseRegistration.screeningDateSource] || "Confirm screening date"})
-                          </span>
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-sm font-medium text-[#0B1C30]">
-                      Reporting year
-                      <input
-                        type="number"
-                        min="1900"
-                        max="9999"
-                        className="mt-1 h-10 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-sm"
-                        value={tbCaseRegistration.reporting_year}
-                        onChange={(event) => {
-                          clearError("reporting_year");
-                          setTbCaseRegistration((current) => ({ ...current, reporting_year: Number(event.target.value) }));
-                        }}
-                      />
-                      {validationErrors.reporting_year && <span role="alert" className="mt-1 block text-xs text-[var(--color-danger)]">{validationErrors.reporting_year}</span>}
-                    </label>
-                    <label className="text-sm font-medium text-[#0B1C30]">
-                      Case number (optional)
-                      <input
-                        className="mt-1 h-10 w-full rounded-lg border border-[#D1D5DB] bg-white px-3 text-sm"
-                        maxLength={100}
-                        value={tbCaseRegistration.case_number || ""}
-                        onChange={(event) => setTbCaseRegistration((current) => ({ ...current, case_number: event.target.value }))}
-                      />
-                      <span className="mt-1 block text-xs font-normal text-[#545F73]">Assigned on successful registration if left blank.</span>
-                    </label>
-                  </div>
-
-                  <TbTreatmentCardForm
-                    mode="registration"
-                    laboratoryContext="rhu"
-                    laboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
-                    value={normalizeTbData(tbCaseRegistration.card_data)}
-                    errors={validationErrors}
-                    onChange={(card) => {
-                      clearErrorsStartingWith(["card_data", "tbCaseRegistration"]);
-                      setTbCaseRegistration((current) => ({ ...current, card_data: card }));
-                    }}
-                  />
-                  <label className="flex items-start gap-2 text-sm text-[#0B1C30]">
-                    <input
-                      type="checkbox"
-                      className="mt-1 accent-[#B70011]"
-                      checked={Boolean(tbCaseRegistration.confirmed)}
-                      onChange={(event) => {
-                        clearError("confirmed");
-                        setTbCaseRegistration((current) => ({ ...current, confirmed: event.target.checked }));
-                      }}
-                    />
-                    <span>I reviewed the diagnostic evidence and authorize this drug-susceptible TB treatment case and prescribed regimen.</span>
-                  </label>
-                  {validationErrors.confirmed && <span role="alert" className="block text-xs text-[var(--color-danger)]">{validationErrors.confirmed}</span>}
-                </fieldset>
-              )}
               {currentStepKey === TB_INTAKE_STEP && (
                 <fieldset disabled={assessmentLocked}>
                   {existingTbCase?.tbCaseNumber ? (
@@ -1965,6 +1871,22 @@ export default function RhuConsultationWorkspace() {
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}
                     conditionReferences={conditionReferences}
+                    tbCaseRegistration={tbCaseRegistration}
+                    onTbCaseRegistrationChange={(next) => {
+                      clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
+                      setTbCaseRegistration(next);
+                    }}
+                    visit={visit}
+                    form4bLaboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
+                    facilityName={
+                      currentUser.rural_health_unit?.name
+                      || currentUser.ruralHealthUnit?.name
+                      || currentUser.facility_name
+                      || ""
+                    }
+                    patientName={formatPatientName(patient) || ""}
+                    physicianName={currentUser.name || ""}
+                    visitWeightKg={weight}
                     errors={validationErrors}
                     disabled={clinicalLocked}
                   />

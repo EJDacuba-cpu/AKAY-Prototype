@@ -51,12 +51,21 @@ test("an explicit DS-TB registration opens Form 4B and requires a case number", 
     tbManagement: {
       diagnosisType: "tb_disease",
       drugResistance: "drug_susceptible",
-      treatmentDecision: "initiate_at_rhu",
       openTreatmentCard: true,
     },
   };
   assert.equal(shouldOpenDsTbTreatmentCard(entry), true);
   assert.equal(tbCaseNumberRequired([entry]), true);
+  const legacy = {
+    name: "Tuberculosis",
+    tbManagement: {
+      diagnosisType: "tb_disease",
+      drugResistance: "drug_susceptible",
+      treatmentDecision: "initiate_at_rhu",
+      openTreatmentCard: false,
+    },
+  };
+  assert.equal(shouldOpenDsTbTreatmentCard(legacy), true);
 });
 
 test("DR-TB, pending DST, and TB infection never open DS-TB Form 4B", () => {

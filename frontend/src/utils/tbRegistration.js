@@ -54,12 +54,21 @@ export function screeningPrefillFromVisit(visit = {}, { today = new Date() } = {
   };
 }
 
-export function emptyTbCaseRegistration({ visit = {}, reportingYear = new Date().getFullYear(), createKey = createIdempotencyKey } = {}) {
+export function emptyTbCaseRegistration({
+  visit = {},
+  reportingYear = new Date().getFullYear(),
+  createKey = createIdempotencyKey,
+  weightKg = "",
+  prescriptionText = "",
+} = {}) {
   const screening = screeningPrefillFromVisit(visit);
+  const weight = Number(weightKg) > 0 ? String(weightKg) : "";
+  const regimenDescription = String(prescriptionText || "").trim().slice(0, 2000);
   return {
     registration_key: createKey(),
     reporting_year: Number(reportingYear),
     case_number: "",
+    treatment_start_date: "",
     confirmed: false,
     screeningDateSource: screening.screeningDateSource,
     referralSourceLabel: screening.referralSourceLabel,
@@ -80,7 +89,11 @@ export function emptyTbCaseRegistration({ visit = {}, reportingYear = new Date()
         registrationGroup: "",
       },
       comorbidities: {},
-      regimen: { description: "", weightKg: "", rows: [{ dateStart: "", drug4fdc: "", drug2fdc: "", drugH: "", drugR: "", drugZ: "", drugE: "", strength: "", unit: "" }] },
+      regimen: {
+        description: regimenDescription,
+        weightKg: weight,
+        rows: [{ dateStart: "", drug4fdc: "", drug2fdc: "", drugH: "", drugR: "", drugZ: "", drugE: "", strength: "", unit: "" }],
+      },
       treatmentSupporter: {},
       phases: {},
     },
@@ -96,6 +109,7 @@ export function normalizeTbCaseRegistration(value, { visit = {}, createKey = cre
     registration_key: String(value.registration_key || fallback.registration_key),
     reporting_year: Number(value.reporting_year || fallback.reporting_year),
     case_number: value.case_number == null ? "" : String(value.case_number),
+    treatment_start_date: dateOnly(value.treatment_start_date || value.treatmentStartDate || fallback.treatment_start_date),
     confirmed: Boolean(value.confirmed),
     screeningDateSource: value.screeningDateSource || fallback.screeningDateSource,
     referralSourceLabel: value.referralSourceLabel || fallback.referralSourceLabel,
@@ -116,20 +130,31 @@ export function normalizeTbCaseRegistration(value, { visit = {}, createKey = cre
   };
 }
 
-export function tbRegistrationPayload({ reportingYear, caseNumber, sourceRevision, confirmed, cardData }) {
+export function tbRegistrationPayload({ reportingYear, caseNumber, sourceRevision, confirmed, cardData, treatmentStartDate }) {
   const card = Object.fromEntries(Object.entries(editable).map(([group, keys]) => [group, pick(cardData[group], keys)]));
   card.regimen = {
     ...pick(cardData.regimen, ["description", "weightKg"]),
     rows: (cardData.regimen?.rows || []).map(row => pick(row, ["dateStart", ...doses, "strength", "unit"])),
   };
-  return { reporting_year: Number(reportingYear), case_number: caseNumber?.trim() || null,
-    source_revision: sourceRevision, confirmed: Boolean(confirmed), card_data: card };
+  const start = dateOnly(treatmentStartDate);
+  if (start && !card.phases?.intensiveStart) {
+    card.phases = { ...(card.phases || {}), intensiveStart: start };
+  }
+  return {
+    reporting_year: Number(reportingYear),
+    case_number: caseNumber?.trim() || null,
+    source_revision: sourceRevision,
+    confirmed: Boolean(confirmed),
+    treatment_start_date: start || null,
+    card_data: card,
+  };
 }
 
 export function tbRegistrationErrors(payload) {
   const errors = {};
   if (!Number.isInteger(payload.reporting_year) || payload.reporting_year < 1900 || payload.reporting_year > 9999) errors.reporting_year = "Enter a valid reporting year.";
   if (!payload.confirmed) errors.confirmed = "Confirm that you reviewed the diagnostic evidence and prescription.";
+  if (!dateOnly(payload.treatment_start_date)) errors.treatment_start_date = "Enter the actual treatment start date.";
   const data = payload.card_data || {};
   for (const [field, label] of [["bacteriologicalStatus", "Bacteriological status"], ["anatomicalSite", "Anatomical site"], ["registrationGroup", "Registration group"]]) {
     if (!data.classification?.[field]) errors[`card_data.classification.${field}`] = `${label} is required.`;

@@ -112,6 +112,7 @@ class TbAssessmentTest extends TestCase
                 'registration_key' => (string) Str::uuid(),
                 'reporting_year' => 2026,
                 'confirmed' => true,
+                'treatment_start_date' => '2026-11-10',
                 'card_data' => [
                     'classification' => [
                         'bacteriologicalStatus' => 'clinically_diagnosed',
@@ -255,13 +256,62 @@ class TbAssessmentTest extends TestCase
         $this->assertDatabaseCount('patient_conditions', 0);
     }
 
-    public function test_draft_without_treatment_decision_clears_orphan_open_card_flag(): void
+    public function test_draft_preserves_standalone_open_treatment_card_intent_for_ds_tb(): void
     {
         $payload = ['diagnoses' => [['id' => 'tb', 'name' => 'TB', 'tbManagement' => [
             'diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible', 'openTreatmentCard' => true,
         ]]]];
         $stored = app(HealthRecordDraftPayloadService::class)->sanitizeStored($payload);
-        $this->assertFalse($stored['diagnoses'][0]['tbManagement']['openTreatmentCard']);
+        $this->assertTrue($stored['diagnoses'][0]['tbManagement']['openTreatmentCard']);
         $this->assertSame('', $stored['diagnoses'][0]['tbManagement']['treatmentDecision'] ?? '');
+    }
+
+    public function test_standalone_open_treatment_card_requires_form_4b_and_registers_atomically(): void
+    {
+        $assessment = [
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'openTreatmentCard' => true,
+        ];
+        $this->submit($assessment)->assertUnprocessable()->assertJsonValidationErrors('tb_case_registration');
+
+        $visit = RhuVisitQueueEntry::where('patient_id', $this->patient->id)->where('status', 'in_consultation')->first();
+        $uuid = $visit->consultation_uuid;
+        $response = $this->actingAs($this->doctor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'consultation_workflow' => 'rhu_itr_v1', 'rhu_visit_id' => $visit->id, 'consultation_uuid' => $uuid,
+            'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Cough',
+            'diagnoses' => [['id' => 'tb', 'name' => 'TB', 'activate' => false, 'nextAction' => 'none', 'tbManagement' => $assessment]],
+            'tb_case_registration' => [
+                'registration_key' => (string) Str::uuid(),
+                'reporting_year' => 2026,
+                'confirmed' => true,
+                'treatment_start_date' => '2026-11-11',
+                'card_data' => [
+                    'classification' => [
+                        'bacteriologicalStatus' => 'clinically_diagnosed',
+                        'anatomicalSite' => 'pulmonary',
+                        'registrationGroup' => 'new',
+                    ],
+                    'regimen' => [
+                        'description' => 'Physician-entered regimen',
+                        'weightKg' => 55,
+                        'rows' => [[
+                            'dateStart' => '2026-11-11',
+                            'drug4fdc' => '4',
+                            'strength' => 'Physician-entered strength',
+                            'unit' => 'tablets/day',
+                        ]],
+                    ],
+                ],
+            ],
+        ])->assertCreated();
+
+        $id = $response->json('data.id');
+        $stored = HealthRecord::findOrFail($id)->diagnoses[0]['tbManagement'];
+        $this->assertTrue($stored['openTreatmentCard']);
+        $this->assertDatabaseCount('tb_treatment_cases', 1);
+        $this->assertDatabaseHas('tb_treatment_cases', ['source_health_record_id' => $id]);
+        $case = \App\Models\TbTreatmentCase::where('source_health_record_id', $id)->firstOrFail();
+        $this->assertSame('2026-11-11', $case->card_data['phases']['intensiveStart'] ?? null);
     }
 }

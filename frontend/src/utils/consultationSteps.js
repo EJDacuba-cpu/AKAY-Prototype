@@ -72,16 +72,14 @@ function tbIntakeKeys(options = {}) {
   return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
 }
 
-function form4bKeys(options = {}) {
-  return isRhuItr(options) && options.includeForm4b ? [FORM_4B_STEP] : [];
+function form4bKeys() {
+  // Form 4B is inline on Diagnosis; keep FORM_4B_STEP for draft restore only.
+  return [];
 }
 
 function rhuTbAfterDiagnosis(options = {}) {
   if (!isRhuItr(options)) return [];
   const steps = [];
-  if (options.includeForm4b) {
-    steps.push({ key: FORM_4B_STEP, phase: "next", label: "DS-TB Form 4B Registration" });
-  }
   if (options.includeTb) {
     steps.push({ key: TB_INTAKE_STEP, phase: "next", label: "TB Case Management" });
   }
@@ -423,8 +421,14 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key.startsWith("tbData.")) {
     return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
   }
-  if (key.startsWith("tbCaseRegistration") || key.startsWith("card_data.") || key === "reporting_year" || key === "confirmed") {
-    return workflow === "rhu_itr_v1" ? FORM_4B_STEP : NEXT_STEP;
+  if (
+    key.startsWith("tbCaseRegistration")
+    || key.startsWith("card_data.")
+    || key === "reporting_year"
+    || key === "confirmed"
+    || key === "treatment_start_date"
+  ) {
+    return NEXT_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");
