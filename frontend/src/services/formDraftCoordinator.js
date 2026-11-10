@@ -17,8 +17,8 @@ class FormDraftCoordinator {
     this.latest = copy(this.initial);
     this.confirmed = serialized(this.initial);
     this.listeners = new Set();
-    this.schedule = options.schedule || setTimeout;
-    this.cancel = options.cancel || clearTimeout;
+    this.schedule = options.schedule || ((...args) => globalThis.setTimeout(...args));
+    this.cancel = options.cancel || ((...args) => globalThis.clearTimeout(...args));
     this.online = options.online || (() => navigator.onLine !== false);
     this.uuid = options.uuid || (() => crypto.randomUUID());
     this.epoch = 0;

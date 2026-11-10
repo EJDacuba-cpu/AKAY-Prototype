@@ -478,3 +478,28 @@ test("walk-in uncheckpointed entries cannot be replaced by an acknowledged older
   assert.equal(engine.latest.registration.form.firstName, "Unsaved in open form");
   assert.deepEqual(f.calls, []);
 });
+
+test("registration commit uses browser timers without a coordinator receiver", async (t) => {
+  const f = fixture();
+  delete f.options.schedule;
+  delete f.options.cancel;
+  // Browser timers reject arbitrary receivers; Node timers do not.
+  const browserTimer = function () {
+    assert.ok(this === undefined || this === globalThis, "Illegal invocation: timer receiver");
+    return 1;
+  };
+  t.mock.method(globalThis, "setTimeout", browserTimer);
+  t.mock.method(globalThis, "clearTimeout", browserTimer);
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  try {
+    engine.setValue({ first_name: "Synthetic registrar test" });
+    const commit = await engine.prepareCommit();
+    assert.equal(commit.draftCommit.id, "draft");
+    assert.equal(commit.draftCommit.version, 1);
+    assert.deepEqual(f.calls, ["create"]);
+  } finally {
+    t.mock.restoreAll();
+    engine.close();
+  }
+});

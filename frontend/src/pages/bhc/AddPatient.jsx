@@ -250,15 +250,6 @@ export function RegistrationForm({
     hasBirthDate && ageYears !== "" && Number(ageYears) < 18;
   const infant = isInfantPatient(form.birthDate);
   const showGeneralProfileFields = !infant;
-  /**
-   * "Husband Information" is only meaningful for a married patient who has a
-   * husband. A married male patient has a wife, so the section is hidden and
-   * the two fields are cleared rather than submitted with stale values.
-   */
-  const showHusbandInformation =
-    showGeneralProfileFields &&
-    form.civilStatus === "Married" &&
-    form.sex !== "Male";
   const currentDate = new Date();
   const todayIso = [
     currentDate.getFullYear(),
@@ -298,12 +289,6 @@ export function RegistrationForm({
     setForm((prev) => ({
       ...prev,
       [name]: value,
-      // Either input can make the husband fields inapplicable: leaving
-      // Married, or switching the patient's sex to Male.
-      ...((name === "civilStatus" && value !== "Married") ||
-      (name === "sex" && value === "Male")
-        ? { spouseName: "", spouseOccupation: "" }
-        : {}),
       ...(name === "philHealthStatus" && value !== "With PhilHealth"
         ? { philHealthNumber: "" }
         : {}),
@@ -720,29 +705,6 @@ function handleBirthDateChange(valueOrEvent) {
                   />
                 )}
               </FormPanel>
-
-              {showHusbandInformation && (
-                <FormPanel
-                  icon={Users}
-                  title="Husband Information"
-                  description="Additional husband details for married adult patients."
-                >
-                  <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <FormInput
-                      label="Husband Name"
-                      name="spouseName"
-                      value={form.spouseName}
-                      onChange={handleChange}
-                    />
-                    <FormInput
-                      label="Husband Occupation"
-                      name="spouseOccupation"
-                      value={form.spouseOccupation}
-                      onChange={handleChange}
-                    />
-                  </div>
-                </FormPanel>
-              )}
 
               <FormPanel
                 icon={Users}

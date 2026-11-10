@@ -64,6 +64,37 @@ class BhcHouseholdsTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_registration_without_husband_fields_saves_auto_fsn_and_existing_household(): void
+    {
+        Carbon::setTestNow('2026-11-10');
+        $this->staff();
+        $head = $this->register([], ['sex' => 'Female', 'civil_status' => 'Married'])
+            ->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2026-0001')->json('data');
+        $household = $this->getJson('/api/bhc/households/'.$head['household_id'])->assertOk()->json('data');
+        $this->getJson('/api/bhc/households/lookup?search=FSN-2026-0001')
+            ->assertOk()->assertJsonPath('data.0.id', $household['id']);
+        $this->register([
+            'kind' => 'existing', 'household_id' => $household['id'],
+            'version' => $household['version'], 'relationship' => 'Husband',
+        ], ['first_name' => 'Synthetic member', 'civil_status' => 'Married'])
+            ->assertCreated()->assertJsonPath('data.household_id', $household['id'])
+            ->assertJsonPath('data.family_serial_number', 'FSN-2026-0001')
+            ->assertJsonPath('data.relationship_to_household_head', 'Husband');
+        $this->assertDatabaseCount('patients', 2);
+        $this->assertDatabaseCount('households', 1);
+    }
+
+    public function test_failed_registration_household_attachment_rolls_back_patient_and_fsn(): void
+    {
+        Carbon::setTestNow('2026-11-10');
+        $this->staff();
+        // A minor passes patient validation but cannot become a new household head.
+        $this->register([], ['birthdate' => '2010-01-01'])->assertUnprocessable();
+        $this->assertDatabaseCount('patients', 0);
+        $this->assertDatabaseCount('households', 0);
+        $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2026-0001');
+    }
+
     public function test_manual_override_normalizes_advances_counter_and_rejects_legacy_collision(): void
     {
         Carbon::setTestNow('2026-10-16');

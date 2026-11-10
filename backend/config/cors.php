@@ -29,6 +29,9 @@ return [
         'X-AKAY-Session',
         'X-Working-Facility',
         'X-Draft-Version',
+        'X-Form-Draft-Id',
+        'X-Form-Draft-Version',
+        'X-Form-Draft-Transaction',
         'X-Requested-With',
     ],
 
