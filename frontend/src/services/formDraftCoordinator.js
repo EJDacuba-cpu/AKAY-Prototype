@@ -433,7 +433,8 @@ class FormDraftCoordinator {
   }
 
   async prepareCommit() {
-    const draft = await this.flush(true);
+    this.clearTimers();
+    const draft = await this.flush(!this.draft);
     return { draftCommit: { id: draft.id, version: draft.version, transaction_uuid: this.transactionUuid }, draftOwnerContext: this.options.owner };
   }
 

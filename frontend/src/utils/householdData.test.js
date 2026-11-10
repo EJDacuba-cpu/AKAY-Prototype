@@ -55,7 +55,7 @@ test('household query identity separates account, active facility, and BHC/RHU n
 test('backend field errors map to registration inputs without losing general errors', () => {
   assert.deepEqual(registrationErrors({errors:{first_name:['Required'],'household.serial_number':['Already used'],'household.relationship':['Choose relationship']}}),
     {firstName:'Required',familySerialNumber:'Already used',relationshipToHouseholdHead:'Choose relationship'});
-  assert.equal(registrationErrors({status:409,message:'Reload and retry'}).familySerialNumber,'Reload and retry');
+  assert.equal(registrationErrors({status:409,message:'Reload and retry'}).submission,'Reload and retry');
   assert.deepEqual(registrationErrors({errors:{'relationships.12':['Review the new household member']}}),{familySerialNumber:'Review the new household member'});
 });
 test('automatic registration validates a new household without a browser number; manual requires a value', () => {

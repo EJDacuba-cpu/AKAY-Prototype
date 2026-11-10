@@ -42,14 +42,15 @@ export function PatientRegistrationEntryProvider({ role, children }) {
   }
   function enter(item, restored) {
     if (item.owner !== formDraftOwnerContext(getCurrentUser() || {})) throw new Error("Your account changed. Reopen registration in your current account.");
-    if (restored) {
+    {
+      item.engine.registrationEntryFresh = !restored;
       storeRegistrationEntry(client, item.owner, item.path, item.engine);
       // Only an unconsumed handoff is closed. No patient input is put in history.
       const expiry = setTimeout(() => {
         if (releaseRegistrationEntry(client, item.owner, item.path, item.engine)) item.engine.close();
       }, 59900);
       expiry.unref?.();
-    } else item.engine.close();
+    }
     current.current = null;
     setEntry(null); setOperation("");
     navigate(item.path);

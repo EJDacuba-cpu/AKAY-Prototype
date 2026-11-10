@@ -40,7 +40,7 @@ function CareTrackingSection({ entries, programLabels, onViewAll, compact = fals
         </div>
       )}
       {entries.length === 0 ? (
-        <OverviewNote>No applicable care programs for this patient yet.</OverviewNote>
+        <OverviewNote>No care tracking from finalized consultations yet.</OverviewNote>
       ) : (
         <ul className="divide-y divide-neutral-100">
           {entries.slice(0, compact ? previewCount : entries.length).map((entry) => (
@@ -241,9 +241,7 @@ export default function ClinicalOverviewColumn({
       {typeof onViewFollowUp === "function" && (
         <FollowUpsPreview compact previewCount={1} onViewAll={onViewFollowUp} followUps={activeFollowUps} onView={onViewFollowUp} />
       )}
-      {activeCareTracking.length > 0 ? (
-        <CareTrackingSection compact previewCount={1} entries={activeCareTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
-      ) : null}
+      <CareTrackingSection compact previewCount={1} entries={activeCareTracking} programLabels={programLabels} onViewAll={onViewPrograms} />
       <RecentVisitsPreview compact previewCount={1} records={records} isLoading={recordsLoading} onViewAll={onViewRecords} onView={onViewRecord} />
     </div>
   );

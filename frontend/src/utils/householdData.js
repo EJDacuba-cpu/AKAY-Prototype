@@ -47,6 +47,6 @@ export function registrationErrors(error = {}) {
       : key.startsWith('household') || key.startsWith('head_replacement') || key.startsWith('relationships') || key === 'head_patient_id' ? 'familySerialNumber' : fields[key] || key;
     result[target]=Array.isArray(value) ? value[0] : String(value);
   }
-  if (!Object.keys(result).length) result.familySerialNumber=error.message || 'Unable to save. Please try again.';
+  if (!Object.keys(result).length) result.submission=error.message || 'Unable to save. Please try again.';
   return result;
 }

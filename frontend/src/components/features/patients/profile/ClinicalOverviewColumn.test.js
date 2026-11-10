@@ -21,6 +21,7 @@ after(async () => {
 });
 const { default: ClinicalOverviewColumn } = await server.ssrLoadModule("/src/components/features/patients/profile/ClinicalOverviewColumn.jsx");
 const { getCareTracking } = await server.ssrLoadModule("/src/utils/careTracking.js");
+const { EPI_INFANT_SCHEDULE } = await server.ssrLoadModule("/src/utils/careTrackingConfig.js");
 const { getBhcPatientProfileQueries, getRhuPatientProfileQueries } = await server.ssrLoadModule("/src/services/patientProfileQueries.js");
 const { queryKeys } = await server.ssrLoadModule("/src/utils/queryKeys.js");
 
@@ -32,9 +33,11 @@ function render(records = [], options = {}) {
   }));
 }
 
-test("Overview omits Care programs when the patient is only eligible, with no enrollment", () => {
+test("Overview keeps the empty Care programs card when eligibility has no active enrollment", () => {
   const html = render();
-  assert.doesNotMatch(html, /Care programs|Nutrition Care|Not Enrolled|Not started|No record yet/);
+  assert.match(html, /Care programs/);
+  assert.match(html, /No care tracking from finalized consultations yet\./);
+  assert.doesNotMatch(html, /Nutrition Care|Not Enrolled|Not started|No record yet|View all/);
   assert.match(html, /Recent visits/);
 });
 
@@ -52,7 +55,8 @@ test("closed Nutrition summary overrides old enrollment records in the Overview"
   const html = render([
     { id: 2, dateOfVisit: "2026-11-02", selectedPrograms: ["Nutrition"] },
   ], { nutritionCare: { status: "Closed", enrolled: false } });
-  assert.doesNotMatch(html, /Care programs|Nutrition Care|View all/);
+  assert.match(html, /No care tracking from finalized consultations yet\./);
+  assert.doesNotMatch(html, /Nutrition Care|View all/);
 });
 
 test("active Nutrition summary appears even without a local enrollment record", () => {
@@ -66,7 +70,8 @@ test("completed maternal episodes stay out of the active program summary", () =>
   const html = render([
     { id: 1, dateOfVisit: "2026-09-01", selectedPrograms: ["Maternal"], maternalData: { deliveryDate: "2026-09-01" } },
   ]);
-  assert.doesNotMatch(html, /Care programs|Maternal Care|Completed/);
+  assert.match(html, /No care tracking from finalized consultations yet\./);
+  assert.doesNotMatch(html, /Maternal Care|Completed/);
 });
 
 test("diagnosis alone does not count as active monitoring; stopped monitoring stays hidden", () => {
@@ -74,7 +79,8 @@ test("diagnosis alone does not count as active monitoring; stopped monitoring st
     const html = render([], { conditions: [{
       conditionIdentity: "hypertension", conditionName: "Hypertension", status: "active", monitoring,
     }] });
-    assert.doesNotMatch(html, /Care programs|Hypertension/);
+    assert.match(html, /No care tracking from finalized consultations yet\./);
+    assert.doesNotMatch(html, /Hypertension/);
   }
 });
 
@@ -86,6 +92,50 @@ test("ongoing condition monitoring appears while resolved history stays hidden",
   assert.match(html, /Hypertension/);
   assert.match(html, /View all \(1\)/);
   assert.doesNotMatch(html, /Diabetes Mellitus/);
+});
+
+test("postpartum care remains visible while the maternal episode is ongoing", () => {
+  const html = render([
+    { id: 1, dateOfVisit: "2026-11-01", selectedPrograms: ["Maternal"], maternalData: { deliveryDate: "2026-11-01" } },
+  ]);
+  assert.match(html, /Maternal Care/);
+  assert.match(html, /Postpartum/);
+});
+
+test("EPI summary includes an incomplete series and omits a completed series", () => {
+  const makeRecord = (vaccineEntries) => ({
+    id: 1, dateOfVisit: "2026-11-01", selectedPrograms: ["EPI"], immunizationData: { vaccineEntries },
+  });
+  assert.match(render([makeRecord([{ vaccineName: "BCG", dateGiven: "2026-11-01" }])]), /EPI \/ Immunization/);
+  assert.doesNotMatch(render([makeRecord(EPI_INFANT_SCHEDULE.map((vaccineName) => ({ vaccineName, dateGiven: "2026-11-01" })))]), /EPI \/ Immunization/);
+});
+
+test("Family Planning requires actual program records and does not infer closure from an overdue appointment", () => {
+  const html = render([{
+    id: 1, dateOfVisit: "2026-10-01", selectedPrograms: ["Family Planning"],
+    familyPlanningData: { clientType: "CU — Current Users", nextAppointmentDate: "2026-11-01" },
+  }]);
+  assert.match(html, /Family Planning/);
+  assert.match(html, /View all \(1\)/);
+});
+
+test("TB treatment appears without a BHC monitoring enrollment when the RHU program is ongoing", () => {
+  const html = render([{
+    id: 1, dateOfVisit: "2026-11-01", selectedPrograms: ["TB"],
+    tbData: { phases: { intensiveStart: "2026-11-01" } },
+  }], { conditions: [{ conditionIdentity: "tuberculosis", status: "active", monitoring: null }] });
+  assert.match(html, /Tuberculosis/);
+});
+
+test("TB treatment outcomes and unconfirmed evaluation do not count as active enrollment", () => {
+  const completed = render([{
+    id: 1, dateOfVisit: "2026-11-01", selectedPrograms: ["TB"], tbData: { outcome: { status: "cured" } },
+  }]);
+  const evaluation = render([], { conditions: [{ conditionIdentity: "tuberculosis", status: "under_evaluation", monitoring: null }] });
+  assert.match(completed, /No care tracking from finalized consultations yet\./);
+  assert.match(evaluation, /No care tracking from finalized consultations yet\./);
+  assert.doesNotMatch(completed, /Tuberculosis/);
+  assert.doesNotMatch(evaluation, /Tuberculosis/);
 });
 
 for (const [role, getQueries] of [["BHC", getBhcPatientProfileQueries], ["RHU", getRhuPatientProfileQueries]]) {

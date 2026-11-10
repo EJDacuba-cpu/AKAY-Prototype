@@ -91,7 +91,7 @@ export function isActiveCareTrackingEntry(entry) {
         normalizeFpClientTypeCode(entry.status) || ["Recorded", "New Acceptor", "Current User"].includes(entry.status),
       );
     case "tb":
-      if (entry.records.length > 0 && ["Registered", "Intensive Phase", "Continuation Phase"].includes(entry.status)) return true;
+      if (entry.hasActiveTreatment && ["Registered", "Intensive Phase", "Continuation Phase", "Active", "Controlled"].includes(entry.status)) return true;
       // A diagnosis alone is not an active BHC monitoring enrollment.
       return entry.monitoringStatus === "Active" && ["Active", "Controlled"].includes(entry.status);
     case "hypertension":
@@ -475,6 +475,7 @@ function buildTbEntry(records, today, condition = null) {
     label: "Tuberculosis",
     status,
     monitoringStatus: monitoringStatusLabel(condition),
+    hasActiveTreatment: tbRecords.length > 0 && !outcomeStatus,
     statusTone,
     facts,
     lastVisit: latest ? getRecordDateValue(latest) : "",

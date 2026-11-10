@@ -19,6 +19,7 @@ import {
   ButtonSpinner,
   DatePickerField,
   FormInput,
+  SuccessModal,
 } from "../../components/common";
 
 // Import extracted utils and components
@@ -54,8 +55,9 @@ import {
 } from "../../services/familyRegistry";
 import toast from "react-hot-toast";
 import { checkInExistingPatient } from "../../services/rhuVisitService";
-import { duplicatePrompt, newCheckInKey, postSaveDestination, walkInCheckInPathForPatient } from "../../utils/walkInRegistration";
+import { duplicatePrompt, newCheckInKey, walkInCheckInPathForPatient } from "../../utils/walkInRegistration";
 import { queryKeys } from "../../utils/queryKeys";
+import { buildPatientConsultationPath } from "../../utils/consultationRoute";
 import "../../components/features/patients/registration-form.css";
 import { PARENT_FIELDS, omitParentLinks } from "../../utils/householdParents";
 import { reportedParentValues } from "../../utils/parentLinks";
@@ -79,7 +81,6 @@ const CIVIL_STATUS_OPTIONS = [
 // This receives the form refreshed from the successful save response, never a predicted FSN.
 export function PatientRegistrationSuccess({ householdEnabled, live, serialNumber }) {
   return <div className="space-y-3">
-    <p>{householdEnabled && live ? "Patient registration and household connection saved." : live ? "Patient registration saved." : "Patient registration saved for this mock session."}</p>
     {householdEnabled && live && serialNumber && <dl className="border-t border-neutral-200 pt-3">
       <dt className="text-xs text-neutral-600">Family Serial Number</dt>
       <dd className="mt-1 break-words text-lg font-semibold tabular-nums text-neutral-900">{serialNumber}</dd>
@@ -164,7 +165,7 @@ export function RegistrationForm({
   systemDescription = "Register a new patient profile into the Barangay Health Center system.",
   registry, savedPatientOverride, savePatient, live = false, householdEnabled = true, initialConnection,
   onSearch, searchResults, searchLoading, searchError, refreshError, onRefresh,
-  walkIn, onNewWalkIn,
+  walkIn,
   onRecoveryHouseholdChange, onRecoveryWalkIn, householdRecoveryLoading = false, householdRecoveryError = "",
 }) {
   const navigate = useNavigate();
@@ -172,7 +173,7 @@ export function RegistrationForm({
   const location = useLocation();
   const owner = formDraftOwnerContext(getCurrentUser() || {});
   const entryPath = location.pathname + location.search + location.hash;
-  const [preparedEntry, setPreparedEntry] = useState(() => !patientId && live ? readRegistrationEntry(client, owner, entryPath) : null);
+  const [preparedEntry] = useState(() => !patientId && live ? readRegistrationEntry(client, owner, entryPath) : null);
   const preparedEngine = preparedEntry?.options.owner === owner ? preparedEntry : null;
   const [createdPatientId, setCreatedPatientId] = useState("");
   const editingPatientId = patientId || createdPatientId || undefined;
@@ -205,7 +206,7 @@ export function RegistrationForm({
     : householdConnection?.kind === "existing" ? registry.households.find((row) => String(row.id) === String(householdConnection.householdId))?.version ?? null : null;
   const recoveryEnabled = registrationRecoveryEnabled({ role, live, patientId, createdPatientId });
   const snapshot = registrationDraftSnapshot({ form, connection: householdConnection, headReplacement, householdVersion, walkIn });
-  const [draftBaseline, setDraftBaseline] = useState(() => snapshot);
+  const [draftBaseline] = useState(() => snapshot);
   const draft = useFormDraft({
     formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
     value: snapshot, initialValue: draftBaseline,
@@ -393,7 +394,8 @@ function handleBirthDateChange(valueOrEvent) {
   function handleFormSubmit(e) {
     e.preventDefault();
     if (!validateForm()) return;
-    setModals({ ...modals, confirm: true });
+    if (patientId) setModals({ ...modals, confirm: true });
+    else void handleSubmit();
   }
 
   function buildPatientPayload() {
@@ -443,7 +445,6 @@ function handleBirthDateChange(valueOrEvent) {
       setHouseholdConnection(connectionForPatient(saved));
       setHeadReplacement(null);
       setModals({ ...modals, confirm: false, success: true });
-      toast.success(householdEnabled && live ? "Patient and household saved." : live ? "Patient saved." : "Patient saved in this mock session.");
     } catch (error) {
       const prompt = role === "rhu" ? duplicatePrompt(error) : null;
       if (prompt) {
@@ -458,23 +459,6 @@ function handleBirthDateChange(valueOrEvent) {
       setSaving(false);
     }
   };
-
-  function registerAnother() {
-    setPreparedEntry(null);
-    const nextWalkIn = walkIn ? onNewWalkIn?.() : null;
-    setDraftBaseline(registrationDraftSnapshot({ form: INITIAL_FORM_STATE, walkIn: nextWalkIn }));
-    setRestoredHouseholdVersion(undefined);
-    setForm({ ...INITIAL_FORM_STATE });
-    setHouseholdConnection(null);
-    setHeadReplacement(null);
-    setCreatedPatientId("");
-    setFieldErrors({});
-    setCheckInError("");
-    setModals({ confirm: false, success: false });
-    checkInKeyRef.current = "";
-    onRecoveryHouseholdChange?.("");
-    navigate(walkIn || role === "rhu" ? `${patientsPath}/add${walkIn ? "?check_in=1" : ""}` : `${patientsPath}/add`);
-  }
 
   function ensureCheckInKey() {
     if (!checkInKeyRef.current) checkInKeyRef.current = walkIn?.key || newCheckInKey();
@@ -889,53 +873,48 @@ function handleBirthDateChange(valueOrEvent) {
           </div>
 
           {/* ACTIONS */}
+          {fieldErrors.submission && <p role="alert" className="mt-4 text-sm text-red-700">{fieldErrors.submission} Your entries remain in this form.</p>}
           <div className="mt-4 flex min-w-0 flex-col-reverse gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-end">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={cancelRegistration}
-              className="w-full border border-gray-300 bg-white px-4 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 active:bg-gray-100 sm:w-auto"
+              className="w-full sm:w-auto"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="brand"
               disabled={saving || householdReviewPending}
-              className="flex w-full items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:opacity-50 sm:w-auto"
+              aria-busy={saving || undefined}
+              className="w-full sm:w-auto"
             >
               {saving ? <ButtonSpinner /> : <UserPlus size={15} />}
               {saving ? "Saving patient..." : "Save Patient"}
-            </button>
+            </Button>
           </div>
           </fieldset>
         </form>
       </DashboardLayout>
 
       {/* Modals */}
-      {modals.success && <ModalShell
-        title="Patient Saved" appearance="plain"
-        onClose={() => { if (checkingIn) return; setModals({ confirm: false, success: false }); navigate(postSaveDestination({ checkIn: Boolean(walkIn), role, patientsPath, patientId: createdPatientId })); }}
-        footer={<>
-          <Button type="button" variant="ghost" disabled={checkingIn} onClick={registerAnother}>Register Another Patient</Button>
-          {walkIn ? (
-            <Button type="button" onClick={() => {
-              setModals({ confirm: false, success: false });
-              navigate(postSaveDestination({ checkIn: true, role, patientsPath, patientId: createdPatientId }));
-            }}>
-              Continue to check-in
-            </Button>
-          ) : role === "rhu" && !patientId ? (
-            <>
-              <Button type="button" variant="secondary" disabled={checkingIn} onClick={goToQueue}>Back to Today's Queue</Button>
-              <Button type="button" disabled={checkingIn} onClick={checkInCreatedPatient}>{checkingIn ? "Checking in..." : "Check In Patient"}</Button>
-            </>
-          ) : (
-            <Button type="button" onClick={() => { setModals({ confirm: false, success: false }); navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`); }}>Edit Patient</Button>
-          )}
-        </>}
+      {modals.success && <SuccessModal
+        open title={patientId ? "Patient Updated" : "Patient Successfully Registered"}
+        description={patientId ? "Patient details updated successfully." : "Patient successfully registered."}
+        onClose={() => { if (checkingIn) return; setModals({ confirm: false, success: false }); navigate(patientsPath); }}
+        actions={[
+          { label: "Back to Patient Intake", disabled: checkingIn, onClick: () => navigate(patientsPath) },
+          role === "rhu" && !patientId
+            ? { label: checkingIn ? "Adding to queue..." : "Check In to Queue", variant: "primary", disabled: checkingIn, onClick: checkInCreatedPatient }
+            : role === "bhc" && !patientId
+              ? { label: "Start Consultation", variant: "primary", onClick: () => navigate(buildPatientConsultationPath(createdPatientId, basePath)) }
+              : { label: "Edit Patient", variant: "primary", onClick: () => navigate(`${patientsPath}/${createdPatientId}${live ? "?tab=patient-info&edit=demographics" : ""}`) },
+        ]}
       >
         <PatientRegistrationSuccess householdEnabled={householdEnabled} live={live} serialNumber={form.familySerialNumber} />
         {checkInError && <p role="alert" className="mt-3 text-sm text-alert-700">{checkInError}</p>}
-      </ModalShell>}
+      </SuccessModal>}
       {recoveryEnabled && !draft.ready && !draft.entryProps.checking && <FormDraftRecoveryDialog
         {...draft.entryProps} title="Unfinished Registration" contextLabel="New patient registration"
         description="An unfinished patient registration was found. Choose how you want to continue."

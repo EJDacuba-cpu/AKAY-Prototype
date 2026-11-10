@@ -46,6 +46,16 @@ function fixture(saved = null) {
   return { options, api, vault, rows, calls, restored, offline: () => { online = false; }, online: () => { online = true; }, remote: (value) => { server = value; }, consumed: () => { terminal = "consumed"; server = null; }, server: () => server };
 }
 
+test("commit reuses an unchanged saved draft without another write", async () => {
+  const f = fixture(); const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  engine.setValue({ first_name: "Clinic" }); await engine.flush();
+  const metadata = await engine.prepareCommit();
+  assert.deepEqual(f.calls, ["create"]);
+  assert.equal(metadata.draftCommit.version, 1);
+  engine.close();
+});
+
 test("opening defaults creates no draft; edits and retries update one identity", async () => {
   const f = fixture(); const engine = createFormDraftCoordinator(f.options);
   await engine.init();

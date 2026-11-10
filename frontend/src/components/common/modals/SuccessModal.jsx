@@ -16,6 +16,7 @@ export default function SuccessModal({
   open,
   title,
   description,
+  children,
   actions,
   buttonText = "Continue",
   tone = "success",
@@ -75,7 +76,7 @@ export default function SuccessModal({
         primary={action.resolvedVariant === "primary"}
         disabled={action.disabled}
         onClick={action.onClick}
-        className={widthClass}
+        className={`${widthClass} rounded-full!`}
       >
         {action.icon}
         {action.label}
@@ -84,7 +85,7 @@ export default function SuccessModal({
   ) : (
     <>
       {secondaryButtonText && onSecondaryAction && (
-        <ModalButton onClick={onSecondaryAction} className="w-full sm:w-auto">
+        <ModalButton onClick={onSecondaryAction} className="w-full rounded-full! sm:w-auto">
           {secondaryButtonText}
         </ModalButton>
       )}
@@ -92,7 +93,7 @@ export default function SuccessModal({
         variant="primary"
         primary
         onClick={onClose}
-        className="w-full sm:w-auto"
+        className="w-full rounded-full! sm:w-auto"
       >
         {buttonText}
       </ModalButton>
@@ -141,6 +142,7 @@ export default function SuccessModal({
             {description}
           </p>
         )}
+        {children}
       </div>
     </ModalShell>
   );
