@@ -30,7 +30,24 @@ test("restored registration transfers the same coordinator once without route pa
   storeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 100);
   assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), engine);
   assert.equal(consumeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 101), true);
+  // StrictMode remount must still see the same ready handoff; do not re-init.
+  assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), engine);
+  assert.equal(consumeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 101), true);
+  assert.equal(engine.closed, false);
+  assert.equal(releaseRegistrationEntry(client, "actor", "/bhc/patients/add", engine), false);
   assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), null);
+  assert.equal(engine.closed, false);
+});
+
+test("unclaimed handoff expiry can close the engine; consumed handoffs stay with the form", () => {
+  const { client, engine } = fixture();
+  const path = "/rhu/patients/add?check_in=1";
+  storeRegistrationEntry(client, "actor", path, engine, 100);
+  assert.equal(releaseRegistrationEntry(client, "actor", path, engine), true);
+  assert.equal(readRegistrationEntry(client, "actor", path, 101), null);
+  storeRegistrationEntry(client, "actor", path, engine, 100);
+  assert.equal(consumeRegistrationEntry(client, "actor", path, engine, 101), true);
+  assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);
   assert.equal(engine.closed, false);
 });
 
@@ -55,6 +72,7 @@ test("expired unclaimed handoffs can be cleared without closing a consumed or re
   storeRegistrationEntry(client, "actor", path, engine, 100);
   assert.equal(consumeRegistrationEntry(client, "actor", path, engine, 101), true);
   assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);
+  assert.equal(engine.closed, false);
   const replacement = { ...engine };
   storeRegistrationEntry(client, "actor", path, replacement, 100);
   assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);

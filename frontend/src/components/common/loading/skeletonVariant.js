@@ -18,7 +18,7 @@ export const SKELETON_VARIANTS = [
   "assignment-form", "account-form", "medicine-details", "admin-reports",
   "family-details", "family-form", "doctor-calendar", "notifications",
   "referral-slip", "referral-form", "feedback-form", "record-details",
-  "referral-details", "monitoring-handoff",
+  "referral-details", "monitoring-handoff", "patient-registration",
 ];
 
 export function resolveSkeletonVariant(name) {

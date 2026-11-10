@@ -71,6 +71,16 @@ test("workflow-specific forms and family views follow their loaded compositions"
   assert.doesNotMatch(slip, /size-32/);
 });
 
+test("patient registration skeleton mirrors the two-column registration layout for BHC and RHU", () => {
+  const html = render("patient-registration");
+  assert.match(html, /data-slot="registration-skeleton-header"/);
+  assert.match(html, /data-slot="registration-skeleton-columns"/);
+  assert.match(html, /lg:grid-cols-\[minmax\(0,2fr\)_minmax\(0,1fr\)\]/);
+  assert.equal((html.match(/data-slot="registration-skeleton-panel"/g) || []).length, 5);
+  assert.equal((html.match(/role="status"/g) || []).length, 1);
+  assert.doesNotMatch(html, /<(button|input|select|a)\b/);
+});
+
 test("RHU overview has its trend arrangement and report summary is not paginated", () => {
   const html = render("reports", { options: { role: "rhu", category: "overview" } });
   assert.match(html, /md:col-span-6/);

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/button';
+import { PatientRegistrationSkeleton } from '../../components/common/loading/SkeletonLoaders';
 import { RegistrationForm } from './AddPatient';
 import useHouseholdScope from '../../hooks/useBhcHouseholdScope';
 import { getHouseholdById, getHouseholds } from '../../services/householdService';
@@ -66,7 +67,8 @@ function RegistrationSource({patientId,scope,role='bhc',...props}) {
   }
   const waiting=(patientId && patient.isPending) || (selectedId && selected.isPending && recoveryHouseholdId === undefined);
   const error=(!patient.data && patient.error) || (!selected.data && selected.error && recoveryHouseholdId === undefined);
-  if(waiting || error) return <DashboardLayout role={role} title="Patient Registration"><div className="space-y-3 py-8"><p role={error ? 'alert':'status'}>{error ? 'Unable to load registration details. Please retry.' : 'Loading registration details…'}</p>{error && <Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button>}</div></DashboardLayout>;
+  if(error) return <DashboardLayout role={role} title="Patient Registration" contentClassName="patient-registration"><div className="space-y-3 py-8"><p role="alert">Unable to load registration details. Please retry.</p><Button onClick={()=>{patient.refetch();selected.refetch();}}>Retry</Button></div></DashboardLayout>;
+  if(waiting) return <DashboardLayout role={role} title="Patient Registration" contentClassName="patient-registration"><PatientRegistrationSkeleton message="Loading registration details..." /></DashboardLayout>;
   return <RegistrationForm {...props} role={role} patientId={patientId} registry={registry} savedPatientOverride={saved} savePatient={save} walkIn={walkIn} live
     onRecoveryHouseholdChange={setRecoveryHouseholdId} onRecoveryWalkIn={setWalkIn}
     householdRecoveryLoading={Boolean(recoveryHouseholdId && selected.isPending)}

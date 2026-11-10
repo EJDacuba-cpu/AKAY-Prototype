@@ -12,7 +12,7 @@ export function isWalkInRegistrationRecovery(to, role) {
 const key = (owner, path) => ["registration-entry", owner, path];
 export function storeRegistrationEntry(client, owner, path, engine, now = Date.now()) {
   engine.clearTimers();
-  client.setQueryData(key(owner, path), { engine, at: now });
+  client.setQueryData(key(owner, path), { engine, at: now, consumed: false });
 }
 export function readRegistrationEntry(client, owner, path, now = Date.now()) {
   const entry = client.getQueryData(key(owner, path));
@@ -22,10 +22,17 @@ export function readRegistrationEntry(client, owner, path, now = Date.now()) {
 }
 export function consumeRegistrationEntry(client, owner, path, engine, now = Date.now()) {
   if (readRegistrationEntry(client, owner, path, now) !== engine) return false;
-  return releaseRegistrationEntry(client, owner, path, engine);
+  const entry = client.getQueryData(key(owner, path));
+  if (!entry || entry.engine !== engine) return false;
+  // Keep the ready engine readable across StrictMode remount; do not re-init.
+  if (entry.consumed) return true;
+  client.setQueryData(key(owner, path), { ...entry, consumed: true });
+  return true;
 }
 export function releaseRegistrationEntry(client, owner, path, engine) {
-  if (client.getQueryData(key(owner, path))?.engine !== engine) return false;
+  const entry = client.getQueryData(key(owner, path));
+  if (entry?.engine !== engine) return false;
   client.removeQueries({ queryKey: key(owner, path), exact: true });
-  return true;
+  // Consumed handoffs belong to the open form — clear the bookmark only.
+  return !entry.consumed;
 }

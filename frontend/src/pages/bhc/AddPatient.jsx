@@ -49,6 +49,7 @@ import { formDraftOwnerContext } from "../../utils/formDraftRequest";
 import { readRegistrationEntry, consumeRegistrationEntry, isWalkInRegistrationRecovery } from "../../utils/patientRegistrationEntry";
 import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
+import { PatientRegistrationSkeleton } from "../../components/common/loading/SkeletonLoaders";
 import {
   ADDRESS_FIELDS, connectionForPatient, householdForConnection,
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
@@ -143,9 +144,15 @@ function registrationForm(patient) {
 
 const RhuPatientRegistration = lazy(() => import("../rhu/RhuPatientRegistration"));
 
+function RegistrationRouteSkeleton({ role = "bhc", title = "Patient Registration" }) {
+  return <DashboardLayout role={role} title={title} contentClassName="patient-registration">
+    <PatientRegistrationSkeleton message="Loading registration..." />
+  </DashboardLayout>;
+}
+
 export function PatientRegistrationPage(props) {
   if (props.role === "rhu") {
-    return <Suspense fallback={<p role="status">Loading registration…</p>}><RhuPatientRegistration {...props} /></Suspense>;
+    return <Suspense fallback={<RegistrationRouteSkeleton role="rhu" title={props.dashboardTitle || "Add Patient"} />}><RhuPatientRegistration {...props} /></Suspense>;
   }
   if (!props.role || props.role === "bhc") {
     return <BhcPatientRegistration {...props} />;
@@ -522,11 +529,17 @@ function handleBirthDateChange(valueOrEvent) {
     </DashboardLayout>
   );
 
+  const showRegistrationSkeleton = (recoveryEnabled && !draft.ready) || householdRecoveryLoading;
+
   // --- RENDER ---
 
   return (
     <>
       <DashboardLayout role={role} title={dashboardTitle} contentClassName="patient-registration">
+        {showRegistrationSkeleton ? (
+          <PatientRegistrationSkeleton message={householdRecoveryLoading ? "Loading the saved household selection..." : "Loading registration..."} />
+        ) : (
+        <>
         {/* Header */}
         <div className="mb-4 ml-0 mr-auto w-full max-w-7xl min-w-0">
           <div className="flex flex-col gap-2">
@@ -545,7 +558,6 @@ function handleBirthDateChange(valueOrEvent) {
                 {pageDescription}
               </p>
               {recoveryEnabled && <FormDraftStatus className="mt-2" {...draft.statusProps} />}
-              {householdRecoveryLoading && <p role="status" className="mt-2 text-sm text-neutral-600">Loading the saved household selection...</p>}
               {householdRecoveryError && <p role="alert" className="mt-2 text-sm text-alert-700">{householdRecoveryError} <Button variant="secondary" onClick={onRefresh}>Retry</Button></p>}
             </div>
           </div>
@@ -896,6 +908,8 @@ function handleBirthDateChange(valueOrEvent) {
           </div>
           </fieldset>
         </form>
+        </>
+        )}
       </DashboardLayout>
 
       {/* Modals */}

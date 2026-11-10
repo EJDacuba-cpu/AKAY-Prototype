@@ -30,6 +30,8 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
     if (engine && engine === preparedEngine && restoredEntry.current !== engine) {
       restoredEntry.current = engine;
       if (engine.registrationEntryFresh) {
+        // Fresh Discard/entry opens a blank form; do not keep a restore gate.
+        engine.awaitingRender = null;
         onEntryConsumed?.();
         return;
       }

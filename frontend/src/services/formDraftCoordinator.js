@@ -418,16 +418,29 @@ class FormDraftCoordinator {
     try {
       await this.localQueue.catch(() => {});
       if (!this.online()) throw problem("OFFLINE", "Connect to the internet before discarding this draft.");
+      const localUuid = this.local?.transactionUuid || null;
+      const localKey = this.local?.keyId || this.descriptor?.key_id;
       if (this.draft) await this.api.discard(this.draft);
-      else if (this.local || this.descriptor) await this.api.retireDevice(this.identity, this.transactionUuid, this.local?.keyId || this.descriptor?.key_id);
-      if (this.localAvailable) await this.vault.retire(this.slot, this.transactionUuid);
-      this.draft = this.local = this.key = this.descriptor = null;
+      else if (this.local || this.descriptor) await this.api.retireDevice(this.identity, localUuid || this.transactionUuid, localKey);
+      if (this.localAvailable) {
+        // Device and server transaction identities can diverge before Resume.
+        // Retire the device row by its own UUID, then force-clear any leftover.
+        await this.vault.retire(this.slot, localUuid || this.transactionUuid);
+        const leftover = await this.vault.inspect(this.slot);
+        if (leftover && !leftover.terminal && leftover.transactionUuid) {
+          await this.vault.retire(this.slot, leftover.transactionUuid);
+        }
+      }
+      this.draft = this.local = this.key = this.descriptor = this.recoveryReplacement = null;
       this.invalidSnapshot = null;
       this.latest = copy(this.initial);
       this.confirmed = serialized(this.initial);
-      this.awaitingRender = serialized(this.initial);
+      this.awaitingRender = null;
       this.options.onRestore(copy(this.initial));
       await this.init();
+      if (this.getSnapshot().decision) {
+        throw problem("DRAFT_DISCARD_INCOMPLETE", "The unfinished registration could not be fully cleared. Your draft is still saved. Retry Discard.");
+      }
     } catch (error) { this.patch({ busy: false, decision: true, error: error.message, status: "error" }); }
     finally { this.patch({ busy: false }); }
   }

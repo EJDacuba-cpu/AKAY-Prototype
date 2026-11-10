@@ -44,6 +44,7 @@ export function PatientRegistrationEntryProvider({ role, children }) {
     if (item.owner !== formDraftOwnerContext(getCurrentUser() || {})) throw new Error("Your account changed. Reopen registration in your current account.");
     {
       item.engine.registrationEntryFresh = !restored;
+      if (!restored) item.engine.awaitingRender = null;
       storeRegistrationEntry(client, item.owner, item.path, item.engine);
       // Only an unconsumed handoff is closed. No patient input is put in history.
       const expiry = setTimeout(() => {

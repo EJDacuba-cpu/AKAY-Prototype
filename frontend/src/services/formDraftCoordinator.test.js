@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createFormDraftCoordinator } from "./formDraftCoordinator.js";
-import { createFormDraftVault } from "./formDraftVault.js";
+import { createFormDraftVault, formDraftSlot, importRecoveryKey } from "./formDraftVault.js";
 import { registrationDraftSnapshot, restoreRegistrationDraft } from "../utils/patientRegistrationPayload.js";
 import { storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry } from "../utils/patientRegistrationEntry.js";
+
+const recoveryMaterial = btoa(String.fromCharCode(...new Uint8Array(32).fill(19)));
 
 function fixture(saved = null) {
   const rows = new Map();
@@ -14,13 +16,13 @@ function fixture(saved = null) {
   let server = saved;
   let online = true;
   let number = 0;
-  let terminal = null;
+  const terminals = new Map();
   const restored = [];
   const calls = [];
   const key = { key_id: "key", key_version: 1, key_material: btoa("x".repeat(32)), expires_at: "2099-01-01T00:00:00Z" };
   const api = {
     lookup: async () => server,
-    status: async () => terminal ? { status: terminal } : { status: "active" },
+    status: async (_identity, transactionUuid) => terminals.has(transactionUuid) ? { status: terminals.get(transactionUuid) } : { status: "active" },
     detail: async () => server,
     key: async () => key,
     create: async (identity, payload, transactionUuid) => {
@@ -34,8 +36,8 @@ function fixture(saved = null) {
       server = { ...server, ...identity, version: server.version + 1, payload: structuredClone(payload) };
       return server;
     },
-    discard: async () => { terminal = "discarded"; server = null; },
-    retireDevice: async () => { terminal = "discarded"; },
+    discard: async (draft) => { terminals.set(draft.transaction_uuid, "discarded"); server = null; },
+    retireDevice: async (_identity, transactionUuid) => { terminals.set(transactionUuid, "discarded"); },
   };
   const options = {
     identity: { form_type: "patient", mode: "create", context_key: "new" },
@@ -43,7 +45,7 @@ function fixture(saved = null) {
     vault, api, online: () => online, uuid: () => `00000000-0000-4000-8000-${String(++number).padStart(12, "0")}`,
     schedule: () => 1, cancel: () => {},
   };
-  return { options, api, vault, rows, calls, restored, offline: () => { online = false; }, online: () => { online = true; }, remote: (value) => { server = value; }, consumed: () => { terminal = "consumed"; server = null; }, server: () => server };
+  return { options, api, vault, rows, calls, restored, offline: () => { online = false; }, online: () => { online = true; }, remote: (value) => { server = value; }, consumed: () => { if (server?.transaction_uuid) terminals.set(server.transaction_uuid, "consumed"); server = null; }, server: () => server };
 }
 
 test("commit reuses an unchanged saved draft without another write", async () => {
@@ -114,6 +116,41 @@ test("entry Resume hands the loaded coordinator to registration without another 
   assert.equal(prepared.draft.version, 4);
   assert.equal(lookups, 2); // Original check and deliberate Resume revalidation only.
   assert.equal(f.calls.length, 0);
+  prepared.close();
+});
+
+test("Discard retires a divergent device row so the next ready state does not reopen recovery", async () => {
+  const serverUuid = "00000000-0000-4000-8000-000000000099";
+  const deviceUuid = "00000000-0000-4000-8000-000000000011";
+  const f = fixture({ id: "draft", version: 2, transaction_uuid: serverUuid, payload: { first_name: "Server copy" } });
+  const slot = await formDraftSlot({ owner: f.options.owner, formType: "patient", mode: "create", contextKey: "new" });
+  const key = await importRecoveryKey(recoveryMaterial);
+  await f.vault.write({
+    slot, key, descriptor: { key_id: "device-key", key_version: 1, expires_at: "2099-01-01T00:00:00Z" },
+    ownerTag: "owner", transactionUuid: deviceUuid, expectedRevision: 0,
+    snapshot: { payload: { first_name: "Device only" }, baseRevision: null, serverVersion: null, serverPayload: null, pendingPayload: null },
+  });
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  assert.equal(engine.getSnapshot().decision, true);
+  assert.equal(engine.transactionUuid, serverUuid);
+  assert.equal(engine.local?.transactionUuid, deviceUuid);
+  await engine.discard();
+  assert.equal(engine.getSnapshot().decision, false);
+  assert.equal(engine.getSnapshot().ready, true);
+  assert.equal(engine.local, null);
+  assert.equal(f.server(), null);
+  const leftover = await f.vault.inspect(slot);
+  // init may reserve a fresh empty slot; it must not keep recoverable ciphertext.
+  assert.ok(!leftover || leftover.terminal || leftover.reserved);
+  assert.equal(leftover?.ciphertext || null, null);
+  const rows = new Map();
+  const client = { setQueryData: (key, value) => rows.set(JSON.stringify(key), value), getQueryData: (key) => rows.get(JSON.stringify(key)), removeQueries: ({ queryKey }) => rows.delete(JSON.stringify(queryKey)) };
+  engine.registrationEntryFresh = true;
+  storeRegistrationEntry(client, f.options.owner, "/bhc/patients/add", engine);
+  const prepared = readRegistrationEntry(client, f.options.owner, "/bhc/patients/add");
+  assert.equal(prepared, engine);
+  assert.equal(prepared.getSnapshot().decision, false);
   prepared.close();
 });
 
