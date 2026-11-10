@@ -11,6 +11,7 @@ import {
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
 import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import FamilyPlanningTclSection from "../../components/features/reports/FamilyPlanningTclSection";
 import RhuOverviewBento from "../../components/features/reports/RhuOverviewBento";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
@@ -240,6 +241,15 @@ export default function RHUReports() {
                   )}
                 </CardContent>
               </Card>
+
+              {category === "family_planning" ? (
+                <FamilyPlanningTclSection
+                  role="rhu"
+                  records={Array.isArray(records) ? records : []}
+                  patients={Array.isArray(patients) ? patients : []}
+                  period={period}
+                />
+              ) : null}
             </>
           )}
 

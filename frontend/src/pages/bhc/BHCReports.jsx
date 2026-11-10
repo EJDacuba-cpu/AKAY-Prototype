@@ -11,6 +11,7 @@ import {
 } from "../../components/common";
 import BhcReportCharts from "../../components/features/reports/BhcReportCharts";
 import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPeriodFilter";
+import FamilyPlanningTclSection from "../../components/features/reports/FamilyPlanningTclSection";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -210,6 +211,15 @@ export default function BHCReports() {
               )}
             </CardContent>
           </Card>
+
+          {category === "family_planning" ? (
+            <FamilyPlanningTclSection
+              role="bhc"
+              records={Array.isArray(records) ? records : []}
+              patients={Array.isArray(patients) ? patients : []}
+              period={period}
+            />
+          ) : null}
 
           <PrintReport
             printState={loading || refreshing ? "loading" : loadError ? "error" : "ready"}

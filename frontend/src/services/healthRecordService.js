@@ -1139,11 +1139,6 @@ export async function getAllHealthRecords(role = "bhc", params = {}) {
   return fetchAllReportPages("/health-records", { params, mapItem: normalizeRecord });
 }
 
-export async function getFamilyPlanningHealthRecords(role = "bhc") {
-  void role;
-  return listRecords({ category: "Family Planning", per_page: 500 });
-}
-
 export async function getHealthRecordById(recordId) {
   const response = await apiRequest(`/health-records/${recordId}`);
   return normalizeRecord(unwrapData(response));
@@ -1252,7 +1247,6 @@ export default {
   saveBhcHealthRecords,
   saveRhuHealthRecords,
   getHealthRecords,
-  getFamilyPlanningHealthRecords,
   getHealthRecordById,
   getHealthRecordsByPatient,
   createBhcHealthRecord,

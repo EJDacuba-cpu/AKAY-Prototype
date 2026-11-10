@@ -16,6 +16,7 @@ import {
 } from "./healthRecordPrograms.js";
 import { getPrenatalEnrollment, isActivePrenatalEnrollment } from "./prenatalEnrollment.js";
 import { buildNutritionReportMetrics, NUTRITION_BMI_CATEGORIES } from "./nutritionReporting.js";
+import { isFpNewAcceptor } from "./familyPlanning.js";
 import { getSurveillanceReportEntries } from "./surveillance.js";
 
 export const REPORT_CATEGORIES = Object.freeze([
@@ -736,11 +737,7 @@ function rhuConfirmedNames(referral = {}) {
 }
 
 function isNewAcceptor(clientType) {
-  const value = String(clientType || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ");
-  return value === "na" || value.startsWith("na ") || value.includes("new acceptor");
+  return isFpNewAcceptor(clientType);
 }
 
 function fpMethodLabel(method) {

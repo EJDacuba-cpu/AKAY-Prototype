@@ -88,6 +88,79 @@ export const FP_CLIENT_TYPE_OPTIONS = [
   "CU-RS — Restarter",
 ];
 
+/** Canonical FP client-type codes, longest first so CU-CM beats CU. */
+export const FP_CLIENT_TYPE_CODES = Object.freeze([
+  "CU-CM",
+  "CU-CC",
+  "CU-RS",
+  "NA",
+  "CU",
+  "OA",
+]);
+
+/**
+ * Resolve a stored client-type value to its code (NA, CU, OA, CU-CM, …).
+ * Matches known option labels and bare codes only — no free-text guessing.
+ */
+export function normalizeFpClientTypeCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const exact = FP_CLIENT_TYPE_OPTIONS.find((option) => option === raw);
+  if (exact) {
+    const code = exact.split("—")[0].trim().toUpperCase();
+    return FP_CLIENT_TYPE_CODES.includes(code) ? code : "";
+  }
+
+  const normalized = raw
+    .toUpperCase()
+    .replace(/[_]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  for (const code of FP_CLIENT_TYPE_CODES) {
+    if (
+      normalized === code ||
+      normalized.startsWith(`${code} `) ||
+      normalized.startsWith(`${code}—`) ||
+      normalized.startsWith(`${code} -`)
+    ) {
+      return code;
+    }
+  }
+
+  return "";
+}
+
+/** True only for the NA / New Acceptors client-type code. */
+export function isFpNewAcceptor(clientType) {
+  return normalizeFpClientTypeCode(clientType) === "NA";
+}
+
+/**
+ * Bucket for TCL filters / summaries. Unknown or missing values stay unknown
+ * instead of being forced into "other" by substring matching.
+ */
+export function classifyFpClientType(clientType) {
+  const code = normalizeFpClientTypeCode(clientType);
+  if (code === "NA") return "new_acceptors";
+  if (code === "OA") return "other_acceptors";
+  if (code === "CU" || code === "CU-CM" || code === "CU-CC" || code === "CU-RS") {
+    return "current_users";
+  }
+  return "unknown";
+}
+
+/** Display label for a known code; empty input stays empty (caller picks fallback). */
+export function formatFpClientTypeLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (FP_CLIENT_TYPE_OPTIONS.includes(raw)) return raw;
+  const code = normalizeFpClientTypeCode(raw);
+  if (!code) return raw;
+  return FP_CLIENT_TYPE_OPTIONS.find((option) => option.startsWith(`${code} —`)) || raw;
+}
+
 /** Where the client obtained the service. */
 export const FP_SOURCE_OPTIONS = ["Public", "Private"];
 

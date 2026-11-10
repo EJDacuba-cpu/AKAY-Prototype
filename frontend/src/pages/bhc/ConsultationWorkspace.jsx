@@ -3118,9 +3118,6 @@ export default function ConsultationWorkspace() {
     queryClient.invalidateQueries({
       queryKey: queryKeys.healthRecords(userRole),
     });
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.familyPlanningRecords(userRole),
-    });
     if (userRole === "bhc") {
       queryClient.invalidateQueries({
         queryKey: queryKeys.followUpTasks("bhc"),
