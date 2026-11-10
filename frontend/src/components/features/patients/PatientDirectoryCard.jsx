@@ -121,15 +121,26 @@ function getPatientDisplayId(patient) {
 /**
  * Open Profile link that loads the profile's data first. It stays a real link
  * (new-tab and copy-link still work); only a plain left click is intercepted.
+ * Shared open-gate: only one profile may open at a time across the directory.
  */
 function OpenProfileLink({ to, patientId, role, className, onClick, children, ...linkProps }) {
-  const { openProfile, opening, error } = useOpenPatientProfile(role);
+  const {
+    openProfile,
+    isOpeningPatient,
+    isProfileOpenBlocked,
+    error,
+    errorPatientId,
+  } = useOpenPatientProfile(role);
+  const openingThis = isOpeningPatient(patientId);
+  const blocked = isProfileOpenBlocked(patientId);
+  const inactive = openingThis || blocked;
+  const showError = Boolean(error) && String(errorPatientId) === String(patientId);
 
   function handleClick(event) {
     onClick?.(event);
     const plainClick =
       event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
-    if (event.defaultPrevented || !plainClick) return;
+    if (event.defaultPrevented || !plainClick || inactive) return;
     event.preventDefault();
     openProfile(patientId, to);
   }
@@ -138,13 +149,14 @@ function OpenProfileLink({ to, patientId, role, className, onClick, children, ..
     <>
       <Link
         to={to}
-        className={`${className}${opening ? " pointer-events-none gap-2 opacity-90" : ""}`}
+        className={`${className}${inactive ? " pointer-events-none gap-2 opacity-90" : ""}`}
         onClick={handleClick}
-        aria-busy={opening}
-        aria-disabled={opening || undefined}
+        aria-busy={openingThis || undefined}
+        aria-disabled={inactive || undefined}
+        tabIndex={blocked ? -1 : undefined}
         {...linkProps}
       >
-        {opening ? (
+        {openingThis ? (
           <>
             <ButtonSpinner />
             <span>Opening...</span>
@@ -153,7 +165,7 @@ function OpenProfileLink({ to, patientId, role, className, onClick, children, ..
           children
         )}
       </Link>
-      {error && (
+      {showError && (
         <p role="alert" className="mt-1.5 text-[11px] font-medium text-red-600">
           Could not load this profile. Please try again.
         </p>
