@@ -218,6 +218,80 @@
 .ehr-consult__care-plan > .divide-y {
   display: contents;
 }
+.rhu-diagnosis-card {
+  container: rhu-diagnosis / inline-size;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0;
+}
+.rhu-diagnosis-card > * {
+  margin-block: 0;
+}
+.rhu-diagnosis-card [data-field] > p:first-child {
+  color: var(--color-text-secondary);
+}
+.rhu-diagnosis-card [data-field$=".nextAction"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.rhu-diagnosis-card [data-field] > div > label {
+  min-height: 32px;
+}
+.rhu-diagnosis-segments [data-field] > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rhu-diagnosis-segments [data-field] > div > label {
+  position: relative;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+.rhu-diagnosis-segments input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.rhu-diagnosis-segments label:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.rhu-diagnosis-segments label:has(input:checked) > span {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.rhu-diagnosis-segments label:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.rhu-diagnosis-segments label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.rhu-diagnosis-evidence {
+  display: grid;
+  gap: 18px;
+  padding-block: 8px;
+}
+.rhu-diagnosis-evidence > div {
+  min-width: 0;
+}
+.rhu-diagnosis-evidence > div > fieldset {
+  border-top: 0;
+  padding-top: 0;
+}
+@container rhu-diagnosis (min-width: 800px) {
+  .rhu-diagnosis-evidence:has(.rhu-diagnosis-assessment > fieldset) {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+  }
+}
 .ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] label {
   color: var(--color-text-secondary);
 }
