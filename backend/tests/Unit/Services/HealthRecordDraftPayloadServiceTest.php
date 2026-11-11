@@ -31,6 +31,35 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertSame($payload, $service->sanitize($service->sanitize($payload)));
     }
 
+    public function test_structured_prescriptions_keep_ids_and_diagnosis_links_in_drafts(): void
+    {
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'prescriptionText' => 'legacy line',
+            'prescriptions' => [[
+                'id' => 'rx-shared',
+                'diagnosisIds' => ['diag-htn', 'diag-dm'],
+                'medicineName' => 'Losartan',
+                'strength' => '50mg',
+                'dose' => '1 tablet',
+                'route' => 'PO',
+                'frequency' => 'Once daily',
+                'duration' => '30 days',
+                'instructions' => '',
+                'authorizedQuantity' => null,
+                'authorizedUnit' => '',
+                'source' => 'itr',
+                'tbCaseId' => '',
+            ]],
+        ];
+        $service = new HealthRecordDraftPayloadService();
+        $sanitized = $service->sanitize($payload);
+        $this->assertSame($payload, $sanitized);
+        $this->assertSame('rx-shared', $sanitized['prescriptions'][0]['id']);
+        $this->assertSame(['diag-htn', 'diag-dm'], $sanitized['prescriptions'][0]['diagnosisIds']);
+        $this->assertSame('legacy line', $sanitized['prescriptionText']);
+    }
+
     public function test_rhu_diagnosis_care_plan_survives_draft_flush_before_finalization(): void
     {
         $payload = [

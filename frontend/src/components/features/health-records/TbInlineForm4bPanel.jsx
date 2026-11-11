@@ -1,6 +1,6 @@
 import { Button } from "../../ui/button";
 import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
-import { SCREENING_DATE_SOURCES } from "../../../utils/tbRegistration";
+import { materialPrescriptionSignature, SCREENING_DATE_SOURCES } from "../../../utils/tbRegistration";
 
 /**
  * Compact Form 4B registration panel for Review & Finalize.
@@ -18,6 +18,7 @@ export default function TbInlineForm4bPanel({
   diagnosisLabel = "TB Disease · Drug-susceptible",
   visitWeightKg = "",
   prescriptionText = "",
+  birthDate = "",
   showCancel = true,
 }) {
   if (!registration) return null;
@@ -27,7 +28,12 @@ export default function TbInlineForm4bPanel({
   }
 
   function patchCard(card) {
-    patch({ card_data: card });
+    const next = { card_data: card };
+    if (registration.confirmed
+      && materialPrescriptionSignature(registration.card_data) !== materialPrescriptionSignature(card)) {
+      next.confirmed = false;
+    }
+    patch(next);
   }
 
   const labCount = (laboratoryTests || []).length;
@@ -175,6 +181,7 @@ export default function TbInlineForm4bPanel({
           value={normalizeTbData(registration.card_data)}
           errors={errors}
           disabled={disabled}
+          birthDate={birthDate}
           onChange={patchCard}
         />
       </div>
@@ -195,6 +202,7 @@ export default function TbInlineForm4bPanel({
             value={normalizeTbData(registration.card_data)}
             errors={errors}
             disabled={disabled}
+            birthDate={birthDate}
             onChange={patchCard}
           />
         </div>

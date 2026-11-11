@@ -1,6 +1,7 @@
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { LaboratoryEvidencePicker, SupportingLaboratoryTestsPicker } from "../LaboratoryEvidence";
+import RhuPrescriptionsSection from "./RhuPrescriptionsSection";
 
 import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
@@ -8,6 +9,7 @@ import { Input } from "../../../ui/input";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
+import { reconcilePrescriptionsForDiagnosisRemoval } from "../../../../utils/rhuPrescriptions";
 import { entryPurposeKey } from "../../../../utils/followUpSchedules";
 import {
   applyRhuNextAction,
@@ -38,7 +40,7 @@ function DiagnosisChoiceGroup({ options, disabled, ...props }) {
   const id = useId();
   const nextAction = props.name.endsWith(".nextAction");
   if (nextAction) return (
-    <fieldset disabled={disabled} className="rhu-diagnosis-segments min-w-0">
+    <fieldset disabled={disabled} className="rhu-diagnosis-segments min-w-0" data-field={props.name}>
       <RadioChoiceGroup {...props} options={options} />
     </fieldset>
   );
@@ -281,15 +283,21 @@ function DiagnosisCard({
   registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
   tbCaseRegistration, onTbCaseRegistrationChange, visit,
   visitWeightKg, prescriptionText,
+  prescriptions = [], diagnoses = [], onPrescriptionsChange, removalError = "",
+  prescriptionEditor = null, onPrescriptionEditorChange,
 }) {
   const action = diagnosisNextAction(entry);
   const confirmed = diagnosisActivateConfirmed(entry, conditions);
   const existing = matchingMonitorableCondition(entry.name, conditions);
   const key = `diagnoses.${entry.id}`;
-  const showWalkInActions = !isReferralVisit;
+  // Referral hides walk-in Next Action by default. Show it only when a restored
+  // draft still carries a walk-in action the clinician must change (not auto-cleared).
+  const legacyReferralWalkInAction = isReferralVisit
+    && (action === "rhu_follow_up" || action === "manage_to_bhc" || action === "refer_higher_level");
+  const showWalkInActions = !isReferralVisit || legacyReferralWalkInAction;
   const presumptive = isPresumptiveTb(entry);
   return (
-    <div className="rhu-diagnosis-card" data-field={errors[`${key}.nextAction`] ? `${key}.nextAction` : undefined}>
+    <div className="rhu-diagnosis-card" data-field={showWalkInActions && errors[`${key}.nextAction`] ? `${key}.nextAction` : undefined}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold text-[#0B1C30]">{entry.name}</p>
@@ -303,6 +311,7 @@ function DiagnosisCard({
           <Trash2 size={14} />
         </Button>
       </div>
+      {removalError ? <div role="alert"><FieldError error={removalError} /></div> : null}
       <label className="flex cursor-pointer items-start gap-3 px-1 py-1">
         <input
           type="checkbox"
@@ -350,6 +359,16 @@ function DiagnosisCard({
             selected={entry.supportingLaboratoryTests || []}
             disabled={disabled}
             onChange={(supportingLaboratoryTests) => onChange({ ...entry, supportingLaboratoryTests })}
+          />
+          <RhuPrescriptionsSection
+            diagnosisId={entry.id}
+            diagnoses={diagnoses}
+            prescriptions={prescriptions}
+            onPrescriptionsChange={onPrescriptionsChange}
+            errors={errors}
+            disabled={disabled}
+            editor={prescriptionEditor}
+            onEditorChange={onPrescriptionEditorChange}
           />
         </div>
       </div>
@@ -494,7 +513,8 @@ export default function RhuDiagnosisCarePlanSection({
   treatmentNotes = "",
   onTreatmentNotesChange,
   prescriptionText = "",
-  onPrescriptionTextChange,
+  prescriptions = [],
+  onPrescriptionsChange,
   registry = {},
   existingTbCase = null,
   canConfirmTb = false,
@@ -506,6 +526,51 @@ export default function RhuDiagnosisCarePlanSection({
   errors = {},
   disabled = false,
 }) {
+  const [removalErrors, setRemovalErrors] = useState({});
+  const [prescriptionEditor, setPrescriptionEditor] = useState(null);
+
+  useEffect(() => {
+    setPrescriptionEditor((current) => {
+      if (!current) return current;
+      const ownerExists = diagnoses.some((entry) => entry.id === current.ownerDiagnosisId);
+      const orderExists = current.mode !== "edit" || prescriptions.some((item) => item.id === current.draft?.id);
+      return ownerExists && orderExists ? current : null;
+    });
+  }, [diagnoses, prescriptions]);
+
+  useEffect(() => {
+    setRemovalErrors((current) => {
+      let changed = false;
+      const next = {};
+      for (const [id, message] of Object.entries(current)) {
+        const result = reconcilePrescriptionsForDiagnosisRemoval(prescriptions, id);
+        if (!result.blocked) {
+          changed = true;
+          continue;
+        }
+        next[id] = result.error;
+        if (result.error !== message) changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [prescriptions]);
+
+  function removeDiagnosis(id) {
+    const result = reconcilePrescriptionsForDiagnosisRemoval(prescriptions, id);
+    if (result.blocked) {
+      setRemovalErrors((current) => ({ ...current, [id]: result.error }));
+      return;
+    }
+    setRemovalErrors((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    onPrescriptionsChange?.(result.prescriptions);
+    onRemoveDiagnosis?.(id);
+  }
+
   function addDiagnosis() {
     const name = String(diagnosisDraft || "").trim().slice(0, DIAGNOSIS_LIMITS.name);
     if (!name || diagnoses.length >= DIAGNOSIS_LIMITS.count) return;
@@ -566,9 +631,15 @@ export default function RhuDiagnosisCarePlanSection({
               visit={visit}
               visitWeightKg={visitWeightKg}
               prescriptionText={prescriptionText}
+              prescriptions={prescriptions}
+              diagnoses={diagnoses}
+              onPrescriptionsChange={onPrescriptionsChange}
+              prescriptionEditor={prescriptionEditor}
+              onPrescriptionEditorChange={setPrescriptionEditor}
+              removalError={removalErrors[entry.id] || ""}
               onChange={(next) => onChangeDiagnosis?.(next)}
               onFollowUpChange={onFollowUpChange}
-              onRemove={() => onRemoveDiagnosis?.(entry.id)}
+              onRemove={() => removeDiagnosis(entry.id)}
             />
           ))}
           <FollowUpConditionReferences references={conditionReferences} />
@@ -593,15 +664,6 @@ export default function RhuDiagnosisCarePlanSection({
               rows={4}
               placeholder="What was done at this visit?"
               onChange={(event) => onTreatmentNotesChange?.(event.target.value)}
-            />
-            <FieldTextarea
-              label="Prescription"
-              name="prescriptionText"
-              value={prescriptionText}
-              error={errors.prescriptionText}
-              rows={4}
-              placeholder="Medicine names, how to take them, and for how long"
-              onChange={(event) => onPrescriptionTextChange?.(event.target.value)}
             />
           </>
         )}

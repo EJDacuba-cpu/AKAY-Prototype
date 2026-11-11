@@ -164,6 +164,9 @@ test("RHU ITR Diagnosis & Care Plan owns care-plan, follow-up and prescription e
   assert.equal(getErrorOwnerStepKey("carePlanOwner", RHU_ITR_STEP_OPTIONS), null);
   assert.equal(getErrorOwnerStepKey("prescribedMedicines", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("prescribedMedicines.0.quantity", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("prescriptions", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("prescriptions.rx-shared.medicineName", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
+  assert.equal(getErrorOwnerStepKey("prescriptions.rx-shared.diagnosisIds", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("diagnoses.0.nextAction", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("followUpSchedule.entry:abc.date", RHU_ITR_STEP_OPTIONS), NEXT_STEP);
   assert.equal(getErrorOwnerStepKey("informant.relation", RHU_ITR_STEP_OPTIONS), INTERVIEW_STEP);

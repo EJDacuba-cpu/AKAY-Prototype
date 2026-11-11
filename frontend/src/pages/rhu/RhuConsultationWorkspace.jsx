@@ -91,6 +91,7 @@ import {
   getPreviousStepKey,
   getProgramFormSteps,
   getStepOrder,
+  pickErrorsForStep,
   programStepKey,
   remapServerErrorKeys,
   resolveFormStep,
@@ -105,6 +106,14 @@ import {
   restoreRhuDiagnoses,
   restoreRhuFollowUpSchedules,
 } from "../../utils/rhuCarePlan";
+import {
+  formatPrescriptionLine,
+  normalizePrescriptions,
+  prescriptionErrors,
+  prescriptionReviewGroups,
+  prescriptionsForSave,
+  restorePrescriptions,
+} from "../../utils/rhuPrescriptions";
 import {
   diagnosesOpenDsTbTreatmentCard,
   existingRegisteredTbCase,
@@ -278,6 +287,7 @@ export default function RhuConsultationWorkspace() {
   const [immunizationEntries, setImmunizationEntries] = useState([]);
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
+  const [prescriptions, setPrescriptions] = useState([]);
   const [prescriptionText, setPrescriptionText] = useState("");
   const [treatmentNotes, setTreatmentNotes] = useState("");
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
@@ -601,6 +611,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationData: { vaccineEntries: immunizationEntries },
       diagnoses,
+      prescriptions,
       prescriptionText,
       medication: treatmentNotes,
       followUpSchedules,
@@ -654,6 +665,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationEntries,
       diagnoses,
+      prescriptions,
       prescriptionText,
       treatmentNotes,
       followUpSchedules,
@@ -722,6 +734,7 @@ export default function RhuConsultationWorkspace() {
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
+    setPrescriptions(restorePrescriptions(payload));
     setPrescriptionText(restorePrescriptionText(payload));
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
@@ -811,12 +824,57 @@ export default function RhuConsultationWorkspace() {
         conditions: openConditions,
       }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
+      Object.assign(errors, structuredPrescriptionErrors());
     }
     if (currentStepKey === REVIEW_STEP) {
       Object.assign(errors, form4bFinalizeErrors());
     }
     setValidationErrors(errors);
     return errors;
+  }
+
+  function setValidationErrorsAndFocus(errors) {
+    const nextErrors = Object.fromEntries(
+      Object.entries(errors || {}).filter(([, value]) => Boolean(value)),
+    );
+    setValidationErrors(nextErrors);
+    const fieldKeys = Object.keys(nextErrors);
+    if (!fieldKeys.length) return false;
+    window.requestAnimationFrame(() => {
+      const isFocusTargetVisible = (node) => {
+        if (!(node instanceof Element)) return false;
+        const style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0;
+      };
+      let element = null;
+      for (const field of fieldKeys) {
+        const matches = document.querySelectorAll(`[name="${field}"], [data-field="${field}"]`);
+        element = [...matches].find(isFocusTargetVisible) || null;
+        if (element) break;
+      }
+      if (!element) return;
+      const stage = element.closest("[data-consult-scroll], .ehr-consult__stage, .ehr-consult__form");
+      if (stage instanceof HTMLElement) {
+        const stageRect = stage.getBoundingClientRect();
+        const targetRect = element.getBoundingClientRect();
+        const footerReserve = 96;
+        const headerReserve = 24;
+        const nextTop = stage.scrollTop
+          + (targetRect.top - stageRect.top)
+          - Math.max(headerReserve, (stageRect.height - footerReserve - targetRect.height) / 2);
+        stage.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+      } else {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (typeof element.focus === "function") {
+        element.focus({ preventScroll: true });
+      }
+    });
+    return true;
   }
 
   function goToStepKey(key) {
@@ -869,7 +927,7 @@ export default function RhuConsultationWorkspace() {
 
   function handleContinue() {
     const errors = validateCurrent();
-    if (Object.keys(errors).length) return;
+    if (setValidationErrorsAndFocus(errors)) return;
     if (wizardPhase === WIZARD_REVIEW) {
       if (!canFinalize) {
         toast.error("This account cannot finalize the consultation.");
@@ -937,6 +995,15 @@ export default function RhuConsultationWorkspace() {
     const prefill = prenatalEnrollment.prefill;
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
     if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function structuredPrescriptionErrors() {
+    return prescriptionErrors(prescriptions, diagnoses);
+  }
+
+  function handlePrescriptionsChange(next) {
+    setPrescriptions(normalizePrescriptions(next));
+    clearErrorsStartingWith(["prescriptions"]);
   }
 
   function handleDiagnosisChange(next) {
@@ -1098,11 +1165,12 @@ export default function RhuConsultationWorkspace() {
         conditions: openConditions,
       }),
       ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
+      ...structuredPrescriptionErrors(),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
       if (first) goToStepKey(first);
-      setValidationErrors(errors);
+      setValidationErrorsAndFocus(errors);
       return;
     }
     const isWalkIn = visit?.source === "walk_in";
@@ -1160,6 +1228,7 @@ export default function RhuConsultationWorkspace() {
           monitoringData: {
             additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
             ...(nutritionIntent ? { nutritionIntent } : {}),
+            prescriptions: prescriptionsForSave(prescriptions),
           },
           physicalExam,
           laboratoryTests,
@@ -1247,9 +1316,9 @@ export default function RhuConsultationWorkspace() {
       if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
         goToStepKey(NEXT_STEP);
       }
-      setValidationErrors(fieldErrors);
       const first = findFirstErrorStepKey(fieldErrors, stepOrder, stepOptions);
       if (first) goToStepKey(first);
+      setValidationErrorsAndFocus(fieldErrors);
       toast.error(error?.message || "Unable to save this consultation.");
     } finally {
       setSaving(false);
@@ -1322,6 +1391,9 @@ export default function RhuConsultationWorkspace() {
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },
   });
+  const stepValidationMessages = Object.values(
+    pickErrorsForStep(validationErrors, currentStepKey, stepOptions),
+  ).filter(Boolean);
 
   const reviewSections = compactReviewSections([
     {
@@ -1383,7 +1455,16 @@ export default function RhuConsultationWorkspace() {
           { label: `${entry.name} — Clinical plan`, value: entry.higherLevelReferralPlan?.clinicalPlan },
         ]),
         { label: "Actions taken", value: treatmentNotes },
-        { label: "Prescription", value: prescriptionText },
+        ...(() => {
+          const structuredPrescriptionRows = prescriptionReviewGroups(prescriptions, diagnoses).map((group) => ({
+            label: group.label,
+            value: group.orders.map((rx) => formatPrescriptionLine(rx)).filter(Boolean).join("; "),
+          }));
+          if (structuredPrescriptionRows.length) return structuredPrescriptionRows;
+          return String(prescriptionText || "").trim()
+            ? [{ label: "Prescription", value: prescriptionText }]
+            : [];
+        })(),
         ...followUpSchedules.filter((item) => item.date).map((item) => ({
           label: item.purpose || "Follow-up",
           value: [item.date, item.time].filter(Boolean).join(" · "),
@@ -1492,6 +1573,19 @@ export default function RhuConsultationWorkspace() {
           />
         )}
       </div>
+      {stepValidationMessages.length > 0 && (
+        <div
+          role="alert"
+          className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
+        >
+          <p>Complete the required fields before continuing.</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {stepValidationMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </header>
   );
 
@@ -1537,6 +1631,7 @@ export default function RhuConsultationWorkspace() {
                   physicianName={currentUser.name || ""}
                   visitWeightKg={weight}
                   prescriptionText={prescriptionText}
+                  birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth || ""}
                 />
               </fieldset>
             )}
@@ -1897,7 +1992,8 @@ export default function RhuConsultationWorkspace() {
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
                     prescriptionText={prescriptionText}
-                    onPrescriptionTextChange={setPrescriptionText}
+                    prescriptions={prescriptions}
+                    onPrescriptionsChange={handlePrescriptionsChange}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}

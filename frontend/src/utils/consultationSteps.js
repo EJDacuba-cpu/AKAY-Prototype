@@ -464,6 +464,7 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   if (key === "prescribedMedicines" || key.startsWith("prescribedMedicines.")) {
     return isRhuItr(options) ? NEXT_STEP : PRESCRIPTION_STEP;
   }
+  if (key === "prescriptions" || key.startsWith("prescriptions.")) return carePlanStep;
   if (key.startsWith("carePlanStop.") || key.startsWith("carePlanAction.")) return carePlanStep;
   if (key === "followUpAcknowledged" || key === "referralAcknowledged") return carePlanStep;
   // Server-only v2 next-action keys.

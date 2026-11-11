@@ -74,6 +74,35 @@ test("referral visits cannot schedule RHU follow-up or Manage to BHC", () => {
     { isReferralVisit: true },
   );
   assert.match(errors["diagnoses.a.nextAction"], /Return Slip/);
+  const manage = rhuCarePlanErrors(
+    [{ id: "a", name: "TB", nextAction: "manage_to_bhc", activate: true, receivingBhcId: "9", monitoringRecommendation: "DOT" }],
+    { isReferralVisit: true, catchmentBhcIds: [9] },
+  );
+  assert.match(manage["diagnoses.a.nextAction"], /Return Slip/);
+});
+
+test("referral visits do not require a hidden empty Next Action", () => {
+  const empty = rhuCarePlanErrors(
+    [{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "" }],
+    { isReferralVisit: true },
+  );
+  assert.equal(empty["diagnoses.tb.nextAction"], undefined);
+  assert.deepEqual(empty, {});
+  const none = rhuCarePlanErrors(
+    [{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "none" }],
+    { isReferralVisit: true },
+  );
+  assert.deepEqual(none, {});
+  const saved = diagnosesForRhuSave([{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "" }]);
+  assert.equal(saved[0].nextAction, "");
+});
+
+test("walk-in visits still require an explicit Next Action", () => {
+  const errors = rhuCarePlanErrors(
+    [{ id: "a", name: "URI", activate: false, nextAction: "" }],
+    { isReferralVisit: false },
+  );
+  assert.equal(errors["diagnoses.a.nextAction"], "Choose a next action.");
 });
 
 test("old visit-level Manage maps onto one diagnosis, not every diagnosis", () => {

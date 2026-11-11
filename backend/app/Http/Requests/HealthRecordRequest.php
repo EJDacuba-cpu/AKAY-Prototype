@@ -32,6 +32,19 @@ class HealthRecordRequest extends FormRequest
         }
         $monitoringData = $this->input('monitoring_data');
         if (is_array($monitoringData)) {
+            if ($this->isRhuItrV1()) {
+                // Authorization is written at finalize. A client copy must not survive validation.
+                unset($monitoringData['prescriptionAuthorization']);
+                if (is_array($monitoringData['prescriptions'] ?? null)) {
+                    $monitoringData['prescriptions'] = array_values(array_map(function ($item) {
+                        if (is_array($item)) {
+                            unset($item['authorization']);
+                        }
+
+                        return $item;
+                    }, $monitoringData['prescriptions']));
+                }
+            }
             if ($this->isBhcGeneralV2()) {
                 // Accept existing aliases, but validate every value through the
                 // canonical rules before the schedule normalizer can read it.
@@ -213,6 +226,23 @@ class HealthRecordRequest extends FormRequest
             $rules['rhu_visit_id'] = ['required', 'integer', 'exists:rhu_visit_queue_entries,id'];
             $rules['consultation_uuid'] = ['required', 'uuid'];
             $rules['prescription_text'] = ['nullable', 'string', 'max:5000'];
+            $rules['monitoring_data.prescriptions'] = ['nullable', 'array', 'max:50'];
+            $rules['monitoring_data.prescriptions.*'] = ['array'];
+            $rules['monitoring_data.prescriptions.*.id'] = ['required', 'string', 'max:64', 'distinct'];
+            $rules['monitoring_data.prescriptions.*.diagnosisIds'] = ['required', 'array', 'min:1', 'max:20'];
+            $rules['monitoring_data.prescriptions.*.diagnosisIds.*'] = ['required', 'string', 'max:64'];
+            $rules['monitoring_data.prescriptions.*.medicineName'] = ['required', 'string', 'max:255'];
+            $rules['monitoring_data.prescriptions.*.strength'] = ['required', 'string', 'max:100'];
+            $rules['monitoring_data.prescriptions.*.dose'] = ['required', 'string', 'max:100'];
+            $rules['monitoring_data.prescriptions.*.route'] = ['required', 'string', 'max:50'];
+            $rules['monitoring_data.prescriptions.*.frequency'] = ['required', 'string', 'max:100'];
+            $rules['monitoring_data.prescriptions.*.duration'] = ['required', 'string', 'max:100'];
+            $rules['monitoring_data.prescriptions.*.instructions'] = ['nullable', 'string', 'max:2000'];
+            $rules['monitoring_data.prescriptions.*.authorizedQuantity'] = ['nullable', 'integer', 'min:1'];
+            $rules['monitoring_data.prescriptions.*.authorizedUnit'] = ['nullable', 'string', 'max:50'];
+            $rules['monitoring_data.prescriptions.*.source'] = ['required', Rule::in(['itr', 'tb_form4b_ref'])];
+            $rules['monitoring_data.prescriptions.*.tbCaseId'] = ['nullable', 'string', 'max:64'];
+            $rules['monitoring_data.prescriptions.*.authorization'] = ['prohibited'];
             $rules['prescribed_medicines'] = ['prohibited'];
             $rules['referral'] = ['prohibited'];
             $rules['dispensed_medicines'] = ['prohibited'];
@@ -714,6 +744,7 @@ class HealthRecordRequest extends FormRequest
             TbAssessment::validate($validator, $this->diagnosesInput());
             $this->validateSupportingLaboratoryTests($validator);
             $this->validateTbCaseRegistration($validator);
+            $this->validateStructuredPrescriptions($validator);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,
@@ -1119,6 +1150,78 @@ class HealthRecordRequest extends FormRequest
         }
     }
 
+    private function validateStructuredPrescriptions($validator): void
+    {
+        if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
+            return;
+        }
+        $prescriptions = $this->input('monitoring_data.prescriptions');
+        if (! is_array($prescriptions) || $prescriptions === []) {
+            return;
+        }
+
+        $known = [];
+        foreach ($this->diagnosesInput() as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $id = trim((string) ($entry['id'] ?? ''));
+            if ($id !== '') {
+                $known[$id] = true;
+            }
+        }
+
+        foreach ($prescriptions as $index => $prescription) {
+            if (! is_array($prescription)) {
+                continue;
+            }
+            foreach ([
+                'id' => 'Prescription id is required.',
+                'medicineName' => 'Enter the medicine name.',
+                'strength' => 'Enter the strength.',
+                'dose' => 'Enter the dose.',
+                'route' => 'Enter the route.',
+                'frequency' => 'Enter the frequency.',
+                'duration' => 'Enter the duration.',
+            ] as $field => $message) {
+                if (trim((string) ($prescription[$field] ?? '')) === '') {
+                    $validator->errors()->add("monitoring_data.prescriptions.$index.$field", $message);
+                }
+            }
+            $diagnosisIds = $prescription['diagnosisIds'] ?? null;
+            if (! is_array($diagnosisIds) || $diagnosisIds === []) {
+                $validator->errors()->add(
+                    "monitoring_data.prescriptions.$index.diagnosisIds",
+                    'Link this prescription to at least one diagnosis.'
+                );
+            } else {
+                foreach ($diagnosisIds as $diagnosisId) {
+                    if (! isset($known[trim((string) $diagnosisId)])) {
+                        $validator->errors()->add(
+                            "monitoring_data.prescriptions.$index.diagnosisIds",
+                            'Link this prescription only to diagnoses on this visit.'
+                        );
+                        break;
+                    }
+                }
+            }
+            $quantity = $prescription['authorizedQuantity'] ?? null;
+            $quantityPresent = $quantity !== null && $quantity !== '';
+            if ($quantityPresent && trim((string) ($prescription['authorizedUnit'] ?? '')) === '') {
+                $validator->errors()->add(
+                    "monitoring_data.prescriptions.$index.authorizedUnit",
+                    'Enter the unit for the authorized quantity.'
+                );
+            }
+            if (($prescription['source'] ?? null) === 'tb_form4b_ref' && trim((string) ($prescription['tbCaseId'] ?? '')) === '') {
+                $validator->errors()->add(
+                    "monitoring_data.prescriptions.$index.tbCaseId",
+                    'Link the registered TB case.'
+                );
+            }
+        }
+    }
+
     private function validateTbCaseRegistration($validator): void
     {
         if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
@@ -1167,12 +1270,19 @@ class HealthRecordRequest extends FormRequest
                 $validator->errors()->add("tb_case_registration.card_data.classification.$field", "$label is required.");
             }
         }
-        if (($classification['anatomicalSite'] ?? null) === 'extrapulmonary' && blank($classification['extrapulmonarySite'] ?? null)) {
+        $epSite = trim((string) ($classification['extrapulmonarySite'] ?? ''));
+        if (($classification['anatomicalSite'] ?? null) === 'extrapulmonary'
+            && ($epSite === '' || preg_match('/^other\s*:\s*$/i', $epSite))) {
             $validator->errors()->add('tb_case_registration.card_data.classification.extrapulmonarySite', 'Specify the extra-pulmonary site.');
         }
         $regimen = is_array($card['regimen'] ?? null) ? $card['regimen'] : [];
-        if (blank($regimen['description'] ?? null)) {
+        $description = trim((string) ($regimen['description'] ?? ''));
+        if ($description === '' || strcasecmp($description, 'none') === 0) {
             $validator->errors()->add('tb_case_registration.card_data.regimen.description', 'Enter the physician-prescribed regimen.');
+        }
+        $code = (string) ($regimen['code'] ?? '');
+        if ($code !== '' && ! in_array($code, ['2hrze_4hr', '2hrze_10hr', 'other'], true)) {
+            $validator->errors()->add('tb_case_registration.card_data.regimen.code', 'Select a physician-authorized regimen.');
         }
         if (! is_numeric($regimen['weightKg'] ?? null) || (float) $regimen['weightKg'] <= 0) {
             $validator->errors()->add('tb_case_registration.card_data.regimen.weightKg', 'Enter a positive baseline weight in kg.');
@@ -1189,6 +1299,10 @@ class HealthRecordRequest extends FormRequest
                 if (blank($row[$field] ?? null)) {
                     $validator->errors()->add("tb_case_registration.card_data.regimen.rows.$index.$field", "Regimen row ".($index + 1)." is incomplete.");
                 }
+            }
+            $phase = (string) ($row['phase'] ?? '');
+            if ($phase !== '' && ! in_array($phase, ['intensive', 'continuation', 'individualized'], true)) {
+                $validator->errors()->add("tb_case_registration.card_data.regimen.rows.$index.phase", 'Regimen row '.($index + 1).': select a valid treatment phase.');
             }
             $hasDose = collect(TbCaseRegistrationRequest::DOSE_FIELDS)->contains(
                 fn ($key) => is_numeric($row[$key] ?? null) && (float) $row[$key] > 0

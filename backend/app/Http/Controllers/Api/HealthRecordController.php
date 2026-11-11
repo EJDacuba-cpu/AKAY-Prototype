@@ -135,6 +135,9 @@ class HealthRecordController extends Controller
             $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         }
         app(\App\Services\TbClinicalAuthority::class)->authorizeRecord($request->user(), $patient, $data);
+        if ($rhuItr && is_array($data['monitoring_data']['prescriptions'] ?? null) && $data['monitoring_data']['prescriptions'] !== []) {
+            \App\Services\PrescriptionClinicalAuthority::ensureCanAuthorize($request->user());
+        }
         // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
         // A request without the discriminator runs every legacy step below unchanged.
         $v2 = $request->isBhcGeneralV2();
@@ -302,6 +305,11 @@ class HealthRecordController extends Controller
         $data['date_recorded'] ??= now();
         $data['tb_assessment_authority'] = app(\App\Services\TbClinicalAuthority::class)
             ->finalizationAttestation($request->user(), $data['diagnoses'] ?? []);
+        if ($rhuItr && is_array($data['monitoring_data'] ?? null)) {
+            // After the idempotency hash: authorizedAt must not change a retry's payload hash.
+            $data['monitoring_data'] = app(\App\Services\PrescriptionClinicalAuthority::class)
+                ->applyToMonitoringData($request->user(), $data['monitoring_data']);
+        }
 
         try {
             $record = DB::transaction(function () use (

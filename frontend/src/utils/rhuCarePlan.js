@@ -174,8 +174,12 @@ export function rhuCarePlanErrors(diagnoses = [], {
     if (!text(entry?.name) || !text(entry?.id)) continue;
     const action = diagnosisNextAction(entry);
     const key = `diagnoses.${entry.id}`;
+    // Referral ITRs hide walk-in Next Action; Return Slip owns follow-up. Empty is valid
+    // (backend nextAction is nullable). Do not invent a clinical choice here.
     if (!action) {
-      errors[`${key}.nextAction`] = "Choose a next action.";
+      if (!isReferralVisit) {
+        errors[`${key}.nextAction`] = "Choose a next action.";
+      }
       continue;
     }
     if (isReferralVisit && (action === "rhu_follow_up" || action === "manage_to_bhc")) {

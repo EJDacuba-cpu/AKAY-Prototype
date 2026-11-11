@@ -10,7 +10,20 @@ import TbDoseCalendar, {
   recomputeCalendar,
 } from "./TbDoseCalendar";
 import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
-import { withTbRegimenRows } from "../../../utils/tbRegistration";
+import {
+  adultFdcDailyTablets,
+  canShowAdultFdcReference,
+  formatExtrapulmonarySite,
+  parseExtrapulmonarySite,
+  regimenDescriptionForCode,
+  resolveRegimenCode,
+  TB_EPTB_SITE_OPTIONS,
+  TB_REGIMEN_CODE_OPTIONS,
+  TB_REGIMEN_CODES,
+  TB_REGIMEN_PHASE_OPTIONS,
+  withTbRegimenRows,
+} from "../../../utils/tbRegistration";
+import { calculateAge } from "../../../utils/patientUtils";
 
 // ---------------------------------------------------------------------------
 // Option sets (mirror the DOH Form 4b checkboxes)
@@ -104,8 +117,8 @@ function emptyLabTest() {
   return { collectionDate: "", examDate: "", result: "" };
 }
 
-export function createEmptyRegimenRow() {
-  return {
+export function createEmptyRegimenRow(phase = "") {
+  const row = {
     dateStart: "",
     drug4fdc: "",
     drug2fdc: "",
@@ -116,6 +129,8 @@ export function createEmptyRegimenRow() {
     strength: "",
     unit: "",
   };
+  if (phase) row.phase = phase;
+  return row;
 }
 
 export function createEmptyAdverseEvent() {
@@ -165,7 +180,7 @@ export const EMPTY_TB_DATA = {
     cptStartDate: "",
     otherComorbidities: "",
   },
-  regimen: { rows: [createEmptyRegimenRow()] },
+  regimen: { code: "", description: "", weightKg: "", rows: [createEmptyRegimenRow()] },
   treatmentSupporter: {
     locationOfTreatment: "",
     supporterName: "",
@@ -206,6 +221,7 @@ export function normalizeTbData(source) {
   const months = rawMonths.length
     ? rawMonths.map((m, i) => normalizeMonth(m, i))
     : [createEmptyMonth(0)];
+  const regimenSource = data.regimen && typeof data.regimen === "object" ? data.regimen : {};
 
   return {
     caseFinding: mergeGroup(EMPTY_TB_DATA.caseFinding, data.caseFinding),
@@ -225,9 +241,13 @@ export function normalizeTbData(source) {
       EMPTY_TB_DATA.comorbidities,
       data.comorbidities,
     ),
-    regimen: withTbRegimenRows(data.regimen, rawRows.length
-        ? rawRows.map((row) => mergeGroup(createEmptyRegimenRow(), row))
-        : [createEmptyRegimenRow()]),
+    regimen: withTbRegimenRows({
+      ...EMPTY_TB_DATA.regimen,
+      ...regimenSource,
+      code: regimenSource.code || resolveRegimenCode(regimenSource) || "",
+    }, rawRows.length
+      ? rawRows.map((row) => mergeGroup(createEmptyRegimenRow(), row))
+      : [createEmptyRegimenRow()]),
     treatmentSupporter: mergeGroup(
       EMPTY_TB_DATA.treatmentSupporter,
       data.treatmentSupporter,
@@ -362,9 +382,13 @@ export default function TbTreatmentCardForm({
   sections = "all",
   referenceCaseNumber = "",
   errors = {},
+  birthDate = "",
+  disabled = false,
 }) {
   const data = value || EMPTY_TB_DATA;
   const [downloading, setDownloading] = useState(false);
+  const [phaseView, setPhaseView] = useState("intensive");
+  const ageYears = calculateAge(birthDate);
 
   const handleDownloadPdf = async () => {
     if (!recordId || downloading) return;
@@ -395,6 +419,10 @@ export default function TbTreatmentCardForm({
     });
   };
 
+  const setRegimenField = (field, fieldValue) => {
+    onChange({ ...data, regimen: { ...data.regimen, [field]: fieldValue } });
+  };
+
   const setRegimenRow = (index, field, fieldValue) => {
     const rows = data.regimen.rows.map((row, i) =>
       i === index ? { ...row, [field]: fieldValue } : row,
@@ -406,7 +434,7 @@ export default function TbTreatmentCardForm({
     if (data.regimen.rows.length >= 10) return;
     onChange({
       ...data,
-      regimen: withTbRegimenRows(data.regimen, [...data.regimen.rows, createEmptyRegimenRow()]),
+      regimen: withTbRegimenRows(data.regimen, [...data.regimen.rows, createEmptyRegimenRow(phaseView)]),
     });
   };
 
@@ -414,8 +442,63 @@ export default function TbTreatmentCardForm({
     const rows = data.regimen.rows.filter((_, i) => i !== index);
     onChange({
       ...data,
-      regimen: withTbRegimenRows(data.regimen, rows.length ? rows : [createEmptyRegimenRow()]),
+      regimen: withTbRegimenRows(data.regimen, rows.length ? rows : [createEmptyRegimenRow(phaseView)]),
     });
+  };
+
+  const changeAnatomicalSite = (nextSite) => {
+    const currentSite = data.classification.anatomicalSite;
+    const existingEp = String(data.classification.extrapulmonarySite || "").trim();
+    if (nextSite === "pulmonary" && currentSite === "extrapulmonary" && existingEp) {
+      if (!window.confirm("Clear the extra-pulmonary site for Pulmonary classification?")) return;
+      onChange({
+        ...data,
+        classification: { ...data.classification, anatomicalSite: nextSite, extrapulmonarySite: "" },
+      });
+      return;
+    }
+    setGroupField("classification", "anatomicalSite", nextSite);
+  };
+
+  const changeRegimenCode = (nextCode) => {
+    const description = nextCode === TB_REGIMEN_CODES.other
+      ? (resolveRegimenCode(data.regimen) === TB_REGIMEN_CODES.other ? (data.regimen.description || "") : "")
+      : regimenDescriptionForCode(nextCode);
+    onChange({
+      ...data,
+      regimen: {
+        ...data.regimen,
+        code: nextCode,
+        description,
+      },
+    });
+  };
+
+  const applyAdultFdcSuggestion = () => {
+    const code = resolveRegimenCode(data.regimen);
+    const tablets = adultFdcDailyTablets(data.regimen.weightKg);
+    if (!canShowAdultFdcReference({ ageYears, weightKg: data.regimen.weightKg, regimenCode: code }) || tablets == null) {
+      return;
+    }
+    if (!window.confirm(`Apply ${tablets} tablet(s)/day to the selected phase row? Review before confirming registration.`)) {
+      return;
+    }
+    const field = phaseView === "continuation" ? "drug2fdc" : "drug4fdc";
+    const strength = phaseView === "continuation" ? "150/75" : "150/75/400/275";
+    const rows = [...(data.regimen.rows || [])];
+    let index = rows.findIndex((row) => row.phase === phaseView);
+    if (index < 0) {
+      rows.push(createEmptyRegimenRow(phaseView));
+      index = rows.length - 1;
+    }
+    rows[index] = {
+      ...rows[index],
+      phase: phaseView,
+      [field]: String(tablets),
+      strength: rows[index].strength || strength,
+      unit: rows[index].unit || "tablets/day",
+    };
+    onChange({ ...data, regimen: withTbRegimenRows(data.regimen, rows) });
   };
 
   const setAdverseEvent = (index, field, fieldValue) => {
@@ -453,7 +536,7 @@ export default function TbTreatmentCardForm({
   const showFinalize = (mode === "full" || mode === "finalize" || registration) && !additionalOnly;
   const showDots = mode === "full" || mode === "dots";
   const showChart = mode === "chart" || mode === "dots";
-  const fieldsLocked = readOnly || mode === "chart";
+  const fieldsLocked = readOnly || disabled || mode === "chart";
   const sectionProps = registration ? { compact: true } : {};
   const registrationGrid = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
   const registrationGrid3 = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
@@ -547,14 +630,16 @@ export default function TbTreatmentCardForm({
             }
             options={TB_BACTERIOLOGICAL_OPTIONS}
             placeholder="Select classification"
+            disabled={fieldsLocked}
           />
           <SelectField
             label="Anatomical Site"
             required={registration}
             value={data.classification.anatomicalSite}
-            onChange={(v) => setGroupField("classification", "anatomicalSite", v)}
+            onChange={changeAnatomicalSite}
             options={TB_ANATOMICAL_SITE_OPTIONS}
             placeholder="Select site"
+            disabled={fieldsLocked}
           />
           <SelectField
             label="Registration Group"
@@ -565,18 +650,59 @@ export default function TbTreatmentCardForm({
             }
             options={TB_REGISTRATION_GROUP_OPTIONS}
             placeholder="Select registration group"
+            disabled={fieldsLocked}
           />
-          <TextField
-            label="Extra-pulmonary Site"
-            value={data.classification.extrapulmonarySite}
-            onChange={(v) =>
-              setGroupField("classification", "extrapulmonarySite", v)
-            }
-          />
+          {data.classification.anatomicalSite === "extrapulmonary" && (
+            <>
+              <SelectField
+                label="Extra-pulmonary Site"
+                required={registration}
+                value={parseExtrapulmonarySite(data.classification.extrapulmonarySite).code || ""}
+                onChange={(code) => {
+                  const parsed = parseExtrapulmonarySite(data.classification.extrapulmonarySite);
+                  setGroupField(
+                    "classification",
+                    "extrapulmonarySite",
+                    formatExtrapulmonarySite(code, code === "other" ? parsed.otherText : ""),
+                  );
+                }}
+                options={[
+                  ...TB_EPTB_SITE_OPTIONS,
+                  ...(parseExtrapulmonarySite(data.classification.extrapulmonarySite).code === "legacy"
+                    ? [{ value: "legacy", label: "Existing documented site" }]
+                    : []),
+                ]}
+                placeholder="Select site"
+                disabled={fieldsLocked}
+              />
+              {(parseExtrapulmonarySite(data.classification.extrapulmonarySite).code === "other"
+                || parseExtrapulmonarySite(data.classification.extrapulmonarySite).code === "legacy") && (
+                <TextField
+                  label={parseExtrapulmonarySite(data.classification.extrapulmonarySite).code === "legacy" ? "Documented site" : "Other site"}
+                  required={registration}
+                  value={parseExtrapulmonarySite(data.classification.extrapulmonarySite).otherText}
+                  onChange={(text) => {
+                    const parsed = parseExtrapulmonarySite(data.classification.extrapulmonarySite);
+                    setGroupField(
+                      "classification",
+                      "extrapulmonarySite",
+                      parsed.code === "legacy" ? text : formatExtrapulmonarySite("other", text),
+                    );
+                  }}
+                  disabled={fieldsLocked}
+                />
+              )}
+              {errors["card_data.classification.extrapulmonarySite"] && (
+                <p role="alert" className="text-[11px] font-medium text-[#B91C1C] sm:col-span-3">
+                  {errors["card_data.classification.extrapulmonarySite"]}
+                </p>
+              )}
+            </>
+          )}
           <SelectField
             label="Drug Resistance Status"
             value={data.classification.drugResistance}
-            disabled={registration}
+            disabled={registration || fieldsLocked}
             onChange={(v) => setGroupField("classification", "drugResistance", v)}
             options={TB_DRUG_RESISTANCE_OPTIONS}
           />
@@ -622,18 +748,92 @@ export default function TbTreatmentCardForm({
       <SectionCard
         {...sectionProps}
         title={compactRegistration ? "Physician-authorized regimen" : registration ? "04 · Physician-authorized Regimen" : "Drug Regimen"}
-        subtitle={compactRegistration
-          ? "Reuse visit weight and prescription when clinically complete; revise if the TB regimen differs."
-          : registration ? "Enter the physician-prescribed regimen and dosage for each start date." : "Encircle a regimen change on the paper card. Add a row per date-start."}
+        subtitle={registration || compactRegistration ? undefined : "Encircle a regimen change on the paper card. Add a row per date-start."}
       >
-        {(registration || data.regimen.description || data.regimen.weightKg) && <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          <TextField label={registration ? "Physician-authorized Regimen" : "Prescribed Regimen"} required value={data.regimen.description || ""} onChange={value => setGroupField("regimen", "description", value)} placeholder={registration ? "Enter prescribed regimen" : undefined} />
-          <TextField label="Baseline Weight (kg)" required value={data.regimen.weightKg || ""} onChange={value => setGroupField("regimen", "weightKg", value)} />
-        </div>}
+        {(registration || compactRegistration || data.regimen.description || data.regimen.weightKg || data.regimen.code) && (
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <SelectField
+              label={registration || compactRegistration ? "Physician-authorized Regimen" : "Prescribed Regimen"}
+              required={registration || compactRegistration}
+              value={resolveRegimenCode(data.regimen) || ""}
+              onChange={changeRegimenCode}
+              options={TB_REGIMEN_CODE_OPTIONS}
+              placeholder="Select physician-authorized regimen..."
+              disabled={fieldsLocked}
+            />
+            {(resolveRegimenCode(data.regimen) === TB_REGIMEN_CODES.other || (!resolveRegimenCode(data.regimen) && data.regimen.description)) && (
+              <TextField
+                label="Prescribed regimen details"
+                required={registration || compactRegistration}
+                value={data.regimen.description || ""}
+                onChange={(value) => setRegimenField("description", value)}
+                disabled={fieldsLocked}
+                error={errors["card_data.regimen.description"]}
+              />
+            )}
+            {resolveRegimenCode(data.regimen) === TB_REGIMEN_CODES.standard_2hrze_10hr && (
+              <p className="text-[11px] text-[#545F73] sm:col-span-2">
+                NTP MOP guidance associates 2HRZE/10HR with CNS, bones, or joints EPTB; physician selection remains required.
+              </p>
+            )}
+            <div className="min-w-0">
+              <FieldLabel label="Baseline Weight (kg)" required={registration || compactRegistration} />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  max="300"
+                  step="0.1"
+                  disabled={fieldsLocked}
+                  value={data.regimen.weightKg ?? ""}
+                  onChange={(event) => setRegimenField("weightKg", event.target.value)}
+                  className={`${inputClass} max-w-[10rem] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-70`}
+                  aria-invalid={Boolean(errors["card_data.regimen.weightKg"])}
+                />
+                {canShowAdultFdcReference({
+                  ageYears,
+                  weightKg: data.regimen.weightKg,
+                  regimenCode: resolveRegimenCode(data.regimen),
+                }) && (
+                  <>
+                    <span className="text-[11px] text-[#545F73]">
+                      Reference daily dose: {adultFdcDailyTablets(data.regimen.weightKg)} tab/day (adult FDC)
+                    </span>
+                    {!fieldsLocked && (
+                      <button
+                        type="button"
+                        onClick={applyAdultFdcSuggestion}
+                        className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:border-[#B91C1C] hover:text-[#B91C1C]"
+                      >
+                        Apply Suggested Dose
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {errors["card_data.regimen.weightKg"] && (
+                <p role="alert" className="mt-1 text-[11px] font-medium text-[var(--color-danger)]">{errors["card_data.regimen.weightKg"]}</p>
+              )}
+            </div>
+          </div>
+        )}
+        {(registration || compactRegistration) && (
+          <div className="mb-3 max-w-sm">
+            <SelectField
+              label="Treatment Phase"
+              value={phaseView}
+              onChange={setPhaseView}
+              options={TB_REGIMEN_PHASE_OPTIONS}
+              disabled={fieldsLocked}
+            />
+          </div>
+        )}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[880px] border-collapse text-left">
+          <table className="w-full min-w-[760px] border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                <th className="px-2 py-2">Phase</th>
                 <th className="px-2 py-2">Date Start</th>
                 <th className="px-2 py-2">4FDC</th>
                 <th className="px-2 py-2">2FDC</th>
@@ -643,12 +843,31 @@ export default function TbTreatmentCardForm({
                 <th className="px-2 py-2">E</th>
                 <th className="px-2 py-2">Strength</th>
                 <th className="px-2 py-2">Unit</th>
-                {!readOnly && <th className="px-1 py-2" />}
+                {!fieldsLocked && <th className="px-1 py-2" />}
               </tr>
             </thead>
             <tbody>
-              {data.regimen.rows.map((row, index) => (
+              {data.regimen.rows.map((row, index) => {
+                const rowVisible = !(registration || compactRegistration)
+                  || !row.phase
+                  || row.phase === phaseView;
+                if (!rowVisible) return null;
+                return (
                 <tr key={index} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-1 py-1.5">
+                    <select
+                      aria-label={`Regimen row ${index + 1} phase`}
+                      disabled={fieldsLocked}
+                      value={row.phase || ""}
+                      onChange={(event) => setRegimenRow(index, "phase", event.target.value)}
+                      className="h-9 w-[7.5rem] rounded border border-[#E5E7EB] bg-white px-1 text-xs text-[#0F172A]"
+                    >
+                      <option value="">Unset</option>
+                      {TB_REGIMEN_PHASE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-2 py-1.5">
                     <DatePickerField
                       label={`Regimen row ${index + 1} start date`}
@@ -657,20 +876,24 @@ export default function TbTreatmentCardForm({
                       onChange={(v) => setRegimenRow(index, "dateStart", v)}
                       allowClear
                       placeholder="Date"
+                      disabled={fieldsLocked}
                     />
                   </td>
                   {["drug4fdc", "drug2fdc", "drugH", "drugR", "drugZ", "drugE"].map(
                     (drug) => (
                       <td key={drug} className="px-1 py-1.5">
                         <input
-                          type="text"
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="any"
+                          disabled={fieldsLocked}
                           aria-label={`Regimen row ${index + 1} ${drug}`}
                           value={row[drug] ?? ""}
-                          maxLength={20}
                           onChange={(e) =>
                             setRegimenRow(index, drug, e.target.value)
                           }
-                          className="h-9 w-16 rounded border border-[#E5E7EB] bg-white px-1 text-center text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                          className="h-9 w-16 rounded border border-[#E5E7EB] bg-white px-1 text-center text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20 disabled:bg-slate-50"
                         />
                       </td>
                     ),
@@ -678,22 +901,24 @@ export default function TbTreatmentCardForm({
                   <td className="px-1 py-1.5">
                     <input
                       type="text"
+                      disabled={fieldsLocked}
                       aria-label={`Regimen row ${index + 1} strength`}
                       value={row.strength ?? ""}
                       onChange={(e) => setRegimenRow(index, "strength", e.target.value)}
-                      className="h-9 w-28 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                      className="h-9 w-28 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20 disabled:bg-slate-50"
                     />
                   </td>
                   <td className="px-1 py-1.5">
                     <input
                       type="text"
+                      disabled={fieldsLocked}
                       aria-label={`Regimen row ${index + 1} unit`}
                       value={row.unit ?? ""}
                       onChange={(e) => setRegimenRow(index, "unit", e.target.value)}
-                      className="h-9 w-20 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20"
+                      className="h-9 w-20 rounded border border-[#E5E7EB] bg-white px-2 text-xs text-[#0F172A] outline-none transition focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C]/20 disabled:bg-slate-50"
                     />
                   </td>
-                  {!readOnly && (
+                  {!fieldsLocked && (
                     <td className="px-1 py-1.5">
                       <button
                         type="button"
@@ -706,11 +931,12 @@ export default function TbTreatmentCardForm({
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
-        {!readOnly && (
+        {!fieldsLocked && (
           <button
             type="button"
             onClick={addRegimenRow}

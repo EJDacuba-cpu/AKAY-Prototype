@@ -39,12 +39,14 @@ class TbCaseRegistrationRequest extends FormRequest
             'card_data.classification.anatomicalSite' => ['required', Rule::in(['pulmonary', 'extrapulmonary'])],
             'card_data.classification.extrapulmonarySite' => ['required_if:card_data.classification.anatomicalSite,extrapulmonary', 'nullable', 'string', 'max:150'],
             'card_data.classification.registrationGroup' => ['required', Rule::in(['new', 'relapse', 'taf', 'talf', 'ptou', 'unknown_history'])],
-            'card_data.regimen' => ['required', 'array:description,weightKg,rows'],
+            'card_data.regimen' => ['required', 'array:description,weightKg,rows,code'],
             'card_data.regimen.description' => ['required', 'string', 'max:255'],
+            'card_data.regimen.code' => ['nullable', Rule::in(['2hrze_4hr', '2hrze_10hr', 'other'])],
             'card_data.regimen.weightKg' => ['required', 'numeric', 'gt:0'],
             'card_data.regimen.rows' => ['required', 'array', 'min:1', 'max:10'],
-            'card_data.regimen.rows.*' => ['required', 'array:dateStart,drug4fdc,drug2fdc,drugH,drugR,drugZ,drugE,strength,unit'],
+            'card_data.regimen.rows.*' => ['required', 'array:dateStart,drug4fdc,drug2fdc,drugH,drugR,drugZ,drugE,strength,unit,phase'],
             'card_data.regimen.rows.*.dateStart' => ['required', 'date_format:Y-m-d'],
+            'card_data.regimen.rows.*.phase' => ['nullable', Rule::in(['intensive', 'continuation', 'individualized'])],
             'card_data.regimen.rows.*.strength' => ['required', 'string', 'max:100'],
             'card_data.regimen.rows.*.unit' => ['required', 'string', 'max:50'],
         ];
@@ -78,6 +80,17 @@ class TbCaseRegistrationRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             if (blank($this->input('treatment_start_date'))) {
                 $validator->errors()->add('treatment_start_date', 'Enter the actual treatment start date for delayed registration.');
+            }
+            $description = trim((string) $this->input('card_data.regimen.description', ''));
+            if ($description === '' || strcasecmp($description, 'none') === 0) {
+                $validator->errors()->add('card_data.regimen.description', 'Enter the physician-prescribed regimen.');
+            }
+            $anatomicalSite = (string) $this->input('card_data.classification.anatomicalSite', '');
+            $epSite = trim((string) $this->input('card_data.classification.extrapulmonarySite', ''));
+            if ($anatomicalSite === 'extrapulmonary') {
+                if ($epSite === '' || preg_match('/^other\s*:\s*$/i', $epSite)) {
+                    $validator->errors()->add('card_data.classification.extrapulmonarySite', 'Specify the extra-pulmonary site.');
+                }
             }
             foreach ((array) $this->input('card_data.regimen.rows', []) as $index => $row) {
                 if (! is_array($row)) {

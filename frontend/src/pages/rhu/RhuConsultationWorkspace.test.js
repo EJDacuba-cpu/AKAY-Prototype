@@ -70,8 +70,19 @@ test("assessment keeps previous BHC vitals distinct from editable RHU vitals", (
   assert.equal(workspace.includes("Previous BHC findings are listed below."), false);
 });
 
-test("RHU consult prescription is a textarea without catalog picker or consult dispensing", () => {
-  assert.match(carePlan, /label="Prescription"/);
+test("RHU consult prescription is structured on the diagnosis card without catalog picker or consult dispensing", () => {
+  const prescriptionsUi = readFileSync(
+    join(here, "../../components/features/health-records/wizard/RhuPrescriptionsSection.jsx"),
+    "utf8",
+  );
+  assert.match(prescriptionsUi, /Add Prescription/);
+  assert.match(prescriptionsUi, /Linked Diagnosis/);
+  assert.match(carePlan, /RhuPrescriptionsSection/);
+  assert.match(carePlan, /reconcilePrescriptionsForDiagnosisRemoval/);
+  assert.match(carePlan, /prescriptions=\{prescriptions\}/);
+  assert.match(carePlan, /onPrescriptionsChange=\{onPrescriptionsChange\}/);
+  assert.doesNotMatch(carePlan, /label="Prescription"/);
+  assert.match(carePlan, /label="Actions Taken \/ Treatment"/);
   assert.match(carePlan, /FieldTextarea/);
   assert.doesNotMatch(carePlan, /PrescribedMedicinesSection/);
   assert.doesNotMatch(workspace, /DispensedMedicinesSection/);
@@ -113,4 +124,61 @@ test("Nutrition service sets panel copy and nutritionIntent without a form step"
     assert.doesNotMatch(source, /NutritionAssessment/);
   }
   assert.match(workspace, /heading="Health Services"/);
+});
+
+test("workspace draft, review, and finalize keep structured prescriptions off prescriptionText", () => {
+  assert.match(workspace, /restorePrescriptions\(payload\)/);
+  assert.match(workspace, /normalizePrescriptions\(/);
+  assert.match(workspace, /prescriptionsForSave\(prescriptions\)/);
+  assert.match(workspace, /prescriptionErrors\(prescriptions, diagnoses\)/);
+  assert.match(workspace, /formatPrescriptionLine\(rx\)/);
+  assert.match(workspace, /prescriptions=\{prescriptions\}/);
+  assert.match(workspace, /onPrescriptionsChange=\{handlePrescriptionsChange\}/);
+
+  const payloadStart = workspace.indexOf("const draftPayload = useMemo");
+  const payloadEnd = workspace.indexOf("const autosave = useDraftAutosave");
+  const payload = workspace.slice(payloadStart, payloadEnd);
+  assert.match(payload, /diagnoses,\s*prescriptions,\s*prescriptionText,/);
+
+  const restoreStart = workspace.indexOf("function restoreDraft");
+  const restoreEnd = workspace.indexOf("const monitoredNames");
+  const restore = workspace.slice(restoreStart, restoreEnd);
+  assert.match(restore, /setPrescriptions\(restorePrescriptions\(payload\)\)/);
+  assert.match(restore, /setPrescriptionText\(restorePrescriptionText\(payload\)\)/);
+  assert.doesNotMatch(restore, /setPrescriptionText\([\s\S]*prescriptions/);
+
+  const saveStart = workspace.indexOf("async function saveRecord");
+  const saveEnd = workspace.indexOf("const fingerprint = JSON.stringify(recordInput)");
+  const save = workspace.slice(saveStart, saveEnd);
+  assert.match(save, /structuredPrescriptionErrors\(\)/);
+  assert.match(save, /prescriptions:\s*prescriptionsForSave\(prescriptions\)/);
+  assert.doesNotMatch(save, /setPrescriptionText\(/);
+  assert.doesNotMatch(save, /formatPrescriptionLine/);
+
+  const reviewStart = workspace.indexOf('title: "Diagnosis & Care Plan"');
+  const reviewEnd = workspace.indexOf("followUpSchedules.filter", reviewStart);
+  const review = workspace.slice(reviewStart, reviewEnd);
+  assert.match(review, /prescriptionReviewGroups\(prescriptions, diagnoses\)/);
+  assert.match(review, /formatPrescriptionLine\(rx\)/);
+  assert.match(review, /structuredPrescriptionRows\.length/);
+  assert.match(review, /label: "Prescription", value: prescriptionText/);
+  assert.doesNotMatch(review, /setPrescriptionText/);
+
+  const validateStart = workspace.indexOf("function validateCurrent");
+  const validateEnd = workspace.indexOf("function setValidationErrorsAndFocus");
+  assert.match(workspace.slice(validateStart, validateEnd), /structuredPrescriptionErrors\(\)/);
+});
+
+test("Next on Diagnosis & Care Plan surfaces validation errors instead of failing silently", () => {
+  const source = readFileSync(join(here, "RhuConsultationWorkspace.jsx"), "utf8");
+  assert.match(source, /function setValidationErrorsAndFocus\(/);
+  assert.match(source, /isFocusTargetVisible|getBoundingClientRect/);
+  const continueHandler = source.match(/function handleContinue\(\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(continueHandler, "expected handleContinue");
+  assert.match(continueHandler[0], /setValidationErrorsAndFocus\(errors\)/);
+  assert.doesNotMatch(continueHandler[0], /if \(Object\.keys\(errors\)\.length\) return;/);
+  assert.match(source, /stepValidationMessages/);
+  assert.match(source, /Complete the required fields before continuing\./);
+  assert.match(source, /pickErrorsForStep\(validationErrors, currentStepKey, stepOptions\)/);
+  assert.match(source, /isReferralVisit:\s*isReferredRhuVisit\(visit\)/);
 });
