@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { saveDraftBeforeNavigation } from "./backgroundNavigation.js";
 
-test("Background navigation stays blocked when only a device copy was saved", async () => {
+test("Background navigation stays blocked when the server save fails", async () => {
   const events = [];
   const error = await saveDraftBeforeNavigation({
     flush: async () => { events.push("server failed"); return false; },
-    protectLocal: async () => { events.push("device saved"); return true; },
-    notifyLocal: () => events.push("leaving with device copy"),
+    protectLocal: async () => { events.push("local unavailable"); return false; },
+    notifyLocal: () => events.push("notified"),
     requireServer: true,
   });
-  assert.ok(error, "must keep the workspace open until its return draft is on the server");
-  assert.deepEqual(events, ["server failed", "device saved"]);
+  assert.match(error, /couldn't be saved/i);
+  assert.deepEqual(events, ["server failed", "local unavailable"]);
 });
 
-test("a server save permits navigation without writing another local copy", async () => {
+test("a server save permits navigation without a local fallback", async () => {
   assert.equal(await saveDraftBeforeNavigation({
     flush: async () => true,
     protectLocal: () => assert.fail("server already has the draft"),
@@ -23,14 +23,13 @@ test("a server save permits navigation without writing another local copy", asyn
   }), "");
 });
 
-test("ordinary Leave and Resume Later still permits protected device recovery", async () => {
-  let notified = false;
-  assert.equal(await saveDraftBeforeNavigation({
+test("failed local protection still blocks leave when server save failed", async () => {
+  assert.match(await saveDraftBeforeNavigation({
     flush: async () => false,
     protectLocal: async () => true,
-    notifyLocal: () => { notified = true; },
-  }), "");
-  assert.equal(notified, true);
+    notifyLocal: () => assert.fail("device leave path removed"),
+    requireServer: true,
+  }), /couldn't be saved/i);
 });
 
 test("total save failure never reports that navigation is safe", async () => {

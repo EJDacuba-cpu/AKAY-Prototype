@@ -218,7 +218,6 @@ export function RegistrationForm({
     formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
     value: snapshot, initialValue: draftBaseline,
     preparedEngine,
-    preferLatestRecovery: true,
     onEntryConsumed: () => consumeRegistrationEntry(client, owner, entryPath, preparedEngine),
     normalizeSnapshot: (payload) => {
       const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
@@ -530,10 +529,9 @@ function handleBirthDateChange(valueOrEvent) {
   );
 
   const showRegistrationSkeleton = (recoveryEnabled && !draft.ready) || householdRecoveryLoading;
-  const hasRecoverableDraft = Boolean(draft.engine?.draft || draft.engine?.local);
+  const hasRecoverableDraft = Boolean(draft.engine?.draft);
   const recoveryCopy = registrationRecoveryDialogProps({
     hasDraft: hasRecoverableDraft,
-    conflict: draft.conflict,
     checkFailed: Boolean(draft.error) && !hasRecoverableDraft,
   });
 
@@ -939,8 +937,7 @@ function handleBirthDateChange(valueOrEvent) {
         {...draft.entryProps}
         title={recoveryCopy.title}
         description={recoveryCopy.description}
-        lastSavedAt={draft.conflict ? "" : draft.entryProps.lastSavedAt}
-        deviceOnly={!draft.conflict && draft.entryProps.deviceOnly}
+        lastSavedAt={draft.entryProps.lastSavedAt}
         resumeLabel={recoveryCopy.resumeLabel}
         resuming={Boolean(draft.busy)}
         cancelLabel={draft.error ? "Cancel" : ""}

@@ -6,6 +6,7 @@ function normalizeDraft(draft = {}) {
     reviewState: draft.review_state || "encoding",
     canEdit: draft.can_edit !== false,
     editor: draft.editor || null,
+    editorExpiresAt: draft.editor_expires_at || "",
     returnNote: draft.return_note || "",
     id: String(draft.id || ""),
     // Identity of the CONSULTATION (not the draft). Null for drafts created

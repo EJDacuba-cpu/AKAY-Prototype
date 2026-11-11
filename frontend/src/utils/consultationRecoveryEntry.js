@@ -1,54 +1,120 @@
-import { clinicalRecoveryChoice, clinicalDeviceDraft } from "./clinicalDraftRecovery.js";
+import {
+  assertConsultationEditable,
+  assertConsultationLeaseAvailable,
+} from "./clinicalConsultationLease.js";
 
-export const consultationEntryKey = (owner, patientId) => ["bhc-consultation-entry", owner, String(patientId)];
+export const consultationEntryKey = (owner, patientId) => ["consultation-entry", owner, String(patientId)];
 
-export function validConsultationHandoff(entry, { owner, patientId, draftId = "", now = Date.now() }) {
-  return Boolean(entry && entry.owner === owner && String(entry.patientId) === String(patientId)
-    && now - entry.createdAt < 60_000 && now >= entry.createdAt
-    && (!entry.draft || String(entry.draft.patient?.id) === String(patientId))
-    && (!draftId || entry.draft?.id === draftId));
-}
-
-/** Prepare the existing BHC draft before routing; never create a consultation here. */
-export async function prepareConsultationRecovery({ patientId, entry, lookup, load, claim, vault, ownerKey, source = "" }) {
-  const metadata = await lookup();
-  if ((metadata?.id || null) !== (entry.server?.id || null)) throw new Error("The unfinished draft changed. Retry the recovery check.");
-  const server = metadata ? await load(metadata.id) : null;
-  const local = entry.local ? await vault.readLocalDraft({ ownerKey, consultationKey: entry.local.consultationKey }) : null;
-  if (!server && !local) throw new Error("This unfinished consultation is no longer available.");
-  for (const draft of [server, local?.record?.draft].filter(Boolean)) {
-    if (String(draft.patient?.id) !== String(patientId)) throw new Error("This consultation does not match the selected patient.");
-    const expected = entry.server?.consultationUuid || entry.local?.record?.draft?.consultationUuid;
-    if (expected && draft.consultationUuid !== expected) throw new Error("The consultation identity changed.");
+/**
+ * Find an unfinished server draft for the selected patient.
+ * Device copies are ignored — server drafts are the only recovery source.
+ */
+export function consultationRecoveryEntry({ patientId, server = [] } = {}) {
+  const matches = (Array.isArray(server) ? server : []).filter((draft) => String(draft?.patient?.id) === String(patientId));
+  if (matches.length > 1) {
+    throw new Error("This patient has multiple unfinished consultations. Open one from the unfinished list before starting another.");
   }
-  const choice = local ? clinicalRecoveryChoice(local, server) : "server";
-  if ((choice === "conflict" && !source) || (choice === "locked" && source !== "server")) return { decision: { local, server, conflict: true, locked: choice === "locked" } };
-  const claimed = server && server.canEdit !== false ? { ...server, ...await claim(server.id, server.version), payload: server.payload, medicineSelections: server.medicineSelections } : server;
-  const expected = source && entry.conflict ? { ...local, base: { serverPayload: JSON.stringify(entry.server.payload) } } : local;
-  if (local && claimed && clinicalRecoveryChoice(expected, claimed) === "conflict") return { decision: { local, server: claimed, conflict: true } };
-  return claimed && (source === "server" || choice === "server")
-    ? { draft: claimed, unsynced: false }
-    : { draft: clinicalDeviceDraft(local.record.draft, claimed), unsynced: true };
-}
-
-export function consultationRecoveryEntry({ patientId, server = [], device = [] }) {
-  const matches = server.filter((row) => String(row.patient?.id) === String(patientId));
-  const copies = device.filter((row) => String(row.record?.draft?.patient?.id) === String(patientId));
-  const identities = new Set(matches.map((row) => row.consultationUuid || row.id));
-  for (const row of copies) {
-    const draft = row.record.draft;
-    const match = matches.find((item) => item.id && item.id === draft.id);
-    identities.add(match ? match.consultationUuid || match.id : draft.consultationUuid || row.consultationKey);
-  }
-  if (identities.size > 1) throw new Error("This patient has multiple unfinished consultations. Review the existing drafts before starting another.");
-  return matches.length || copies.length ? { server: matches[0] || null, local: copies[0] || null } : null;
+  if (!matches.length) return null;
+  return { server: matches[0], local: null };
 }
 
 export function consultationRecoveryPath(patientId, entry) {
-  const query = new URLSearchParams({ patientId: String(patientId) });
-  if (entry.local) {
-    query.set("mode", "new");
-    query.set("recoveryUuid", entry.local.record.draft.consultationUuid);
-  } else query.set("draftId", entry.server.id);
-  return `/bhc/health-records/add?${query}`;
+  const params = new URLSearchParams({ patientId: String(patientId) });
+  if (entry?.server?.id) params.set("draftId", String(entry.server.id));
+  else if (entry?.server?.consultationUuid) params.set("recoveryUuid", String(entry.server.consultationUuid));
+  return `/bhc/health-records/add?${params}`;
+}
+
+export function validConsultationHandoff(entry, { owner, patientId, draftId, now = Date.now() } = {}) {
+  if (!entry || entry.owner !== owner || String(entry.patientId) !== String(patientId)) return false;
+  if (!entry.createdAt || now - entry.createdAt < 0 || now - entry.createdAt >= 60_000) return false;
+  const handoffDraftId = entry.draft?.id || entry.draftId;
+  if (draftId && String(handoffDraftId) !== String(draftId)) return false;
+  return true;
+}
+
+function assertPatientMatch(draft, patientId) {
+  if (String(draft?.patient?.id || patientId) !== String(patientId)) {
+    throw new Error("This unfinished consultation no longer matches this patient. Please try again.");
+  }
+}
+
+export async function prepareConsultationRecovery({
+  patientId,
+  entry,
+  lookup,
+  load,
+  claim,
+  currentUserId,
+} = {}) {
+  const current = await lookup();
+  if ((current?.id || null) !== (entry?.server?.id || null)) {
+    throw new Error("The unfinished work changed. Please try again before continuing.");
+  }
+  if (!current?.id) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationLeaseAvailable(current, currentUserId);
+  assertConsultationEditable(current);
+  const loaded = await load(current.id);
+  if (!loaded) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationLeaseAvailable(loaded, currentUserId);
+  assertConsultationEditable(loaded);
+  const claimed = claim
+    ? { ...loaded, ...await claim(loaded.id, loaded.version), payload: loaded.payload }
+    : loaded;
+  assertConsultationEditable(claimed);
+  assertPatientMatch(claimed, patientId);
+  return { draft: claimed, unsynced: false };
+}
+
+export async function takeoverConsultationRecovery({
+  patientId,
+  entry,
+  lookup,
+  load,
+  takeover,
+  note,
+} = {}) {
+  const reason = String(note || "").trim();
+  if (!reason) throw new Error("A short reason is required before taking over.");
+  const current = await lookup();
+  if ((current?.id || null) !== (entry?.server?.id || null)) {
+    throw new Error("The unfinished work changed. Please try again before continuing.");
+  }
+  if (!current?.id) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationEditable(current);
+  const loaded = await load(current.id);
+  if (!loaded) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationEditable(loaded);
+  if (!takeover) throw new Error("Takeover is not available right now. Please try again.");
+  const claimed = {
+    ...loaded,
+    ...await takeover(loaded.id, loaded.version, reason),
+    payload: loaded.payload,
+  };
+  assertConsultationEditable(claimed);
+  assertPatientMatch(claimed, patientId);
+  return { draft: claimed, unsynced: false };
+}
+
+export async function discardConsultationRecovery({
+  patientId,
+  entry,
+  lookup,
+  claim,
+  discard,
+  currentUserId,
+} = {}) {
+  const current = await lookup();
+  if ((current?.id || null) !== (entry?.server?.id || null)) {
+    throw new Error("The unfinished work changed. Please try again before discarding.");
+  }
+  if (!current?.id) throw new Error("No unfinished consultation was found. Please try again.");
+  if (current.version !== entry.server?.version || current.consultationUuid !== entry.server?.consultationUuid) {
+    throw new Error("The unfinished work changed. Please try again before discarding.");
+  }
+  assertConsultationLeaseAvailable(current, currentUserId);
+  assertConsultationEditable(current);
+  const claimed = claim ? await claim(current.id, current.version) : current;
+  assertConsultationEditable(claimed);
+  await discard(claimed.id || current.id, claimed.version);
 }

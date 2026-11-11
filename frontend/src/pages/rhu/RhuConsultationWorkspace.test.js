@@ -28,7 +28,7 @@ test("Back to Queue flushes pending drafts and keeps the form when save fails", 
   assert.ok(leave, "expected Back to Queue leave path");
   assert.match(leave[0], /flushBeforeLeave/);
   assert.match(leave[0], /toast\.error/);
-  assert.match(leave[0], /have not synced|not synced/i);
+  assert.match(leave[0], /couldn't be saved|try again before leaving/i);
 });
 
 test("RHU autosave status shows error and conflict even when shared form drafts are disabled", () => {

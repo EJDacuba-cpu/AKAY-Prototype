@@ -13,7 +13,6 @@ import {
 } from "../../utils/sidebarNavigation";
 import { useLocation, useNavigate } from "react-router";
 import { getCurrentUser, logoutUser } from "../../utils/auth";
-import { FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
 import { prepareDraftLogout, draftLogoutDescription, hasActiveFormDraft } from "../../services/formDraftSession";
 import {
@@ -219,7 +218,7 @@ export default function DashboardLayout({
     setIsNotifOpen(false);
     setMobileDrawerOpen(false);
     setLogoutModalOpen(true);
-    if (FORM_DRAFTS_ENABLED || hasActiveFormDraft(formDraftOwnerContext(getCurrentUser() || {}))) {
+    if (hasActiveFormDraft(formDraftOwnerContext(getCurrentUser() || {}))) {
       setLogoutChecking(true);
       try {
         const report = await prepareDraftLogout(formDraftOwnerContext(getCurrentUser() || {}));

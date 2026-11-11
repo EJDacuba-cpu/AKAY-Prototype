@@ -9,26 +9,19 @@ export function isWalkInRegistrationRecovery(to, role) {
   return role === "rhu" && Boolean(target) && new URL(target, "https://akay.local").searchParams.get("check_in") === "1";
 }
 
-/** Shared BHC/RHU registration recovery copy. Conflict choices stay separate from Resume/Discard. */
-export function registrationRecoveryDialogProps({ hasDraft = false, conflict = false, checkFailed = false } = {}) {
-  if (checkFailed || (!hasDraft && !conflict)) {
+/** Shared BHC/RHU registration recovery copy. Server drafts only — Resume / Discard. */
+export function registrationRecoveryDialogProps({ hasDraft = false, checkFailed = false } = {}) {
+  if (checkFailed || !hasDraft) {
     return {
-      title: "Unable to Check Registration",
-      description: "Retry the draft check before starting a new registration.",
-      resumeLabel: "Resume Registration",
-    };
-  }
-  if (conflict) {
-    return {
-      title: "Unfinished Registration",
-      description: "Choose which unfinished copy to continue. Both are kept until restoration succeeds.",
-      resumeLabel: "Resume Registration",
+      title: "Unable to check unfinished work",
+      description: "We couldn't check for unfinished work. Please try again.",
+      resumeLabel: "Resume",
     };
   }
   return {
-    title: "Unfinished Registration",
-    description: "You have an unfinished registration. Would you like to continue?",
-    resumeLabel: "Resume Registration",
+    title: "You have unfinished work.",
+    description: "Continue where you left off?",
+    resumeLabel: "Resume",
   };
 }
 

@@ -6,7 +6,6 @@ const labels = {
   pending: "Unsaved changes",
   saving: "Saving draft…",
   saved: "Draft saved",
-  "device-only": "Saved on this device",
   offline: "Connection lost",
   unavailable: "Unable to save",
   error: "Unable to save",
@@ -35,17 +34,13 @@ function StatusIcon({ status }) {
 export default function FormDraftStatus({
   status = "idle",
   lastSavedAt = "",
-  deviceSavedAt = "",
   error = "",
   onRetry,
   className = "",
 }) {
   if (status === "idle") return null;
   const server = date(lastSavedAt);
-  const device = date(deviceSavedAt);
-  const newerDevice = device && (!server || device > server);
-  const resolved = status === "saved" && newerDevice ? "device-only" : status;
-  const label = labels[resolved] || labels.error;
+  const label = labels[status] || labels.error;
   const problem = typeof error === "string" ? error : error?.message || "";
   const canRetry = onRetry && ["error", "unavailable", "offline", "conflict"].includes(status);
   const tone =
@@ -56,16 +51,14 @@ export default function FormDraftStatus({
   return (
     <div className={`flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs ${tone} ${className}`}>
       <span role="status" aria-live="polite" aria-atomic="true" className="inline-flex min-w-0 items-center gap-1.5 font-medium">
-        <StatusIcon status={resolved === "device-only" ? "pending" : status} />
+        <StatusIcon status={status} />
         <span className="min-w-0">{label}</span>
       </span>
-      {status === "offline" && newerDevice && <span>Saved on this device</span>}
       {server && status !== "pending" && status !== "saving" && (
         <span className="text-ink-400">
-          Server saved <time dateTime={lastSavedAt}>{server.toLocaleTimeString("en-PH")}</time>
+          Saved <time dateTime={lastSavedAt}>{server.toLocaleTimeString("en-PH")}</time>
         </span>
       )}
-      {newerDevice && <span className="text-ink-400">Device saved <time dateTime={deviceSavedAt}>{device.toLocaleTimeString("en-PH")}</time></span>}
       {problem && <span role="alert" className="text-alert-700">{problem}</span>}
       {canRetry && (
         <Button type="button" variant="link" size="compact" onClick={onRetry}>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -10,8 +10,7 @@ import { startOrResumeRhuConsultation } from "../../../utils/rhuVisitConsultatio
 import { getRhuVisit } from "../../../services/rhuVisitService";
 import { getCurrentUser } from "../../../utils/auth";
 import { formDraftOwnerContext } from "../../../utils/formDraftRequest";
-import { createClinicalDraftRecovery } from "../../../services/clinicalDraftRecoveryService";
-import { FORM_DRAFTS_ENABLED, RHU_DRAFTS_ENABLED } from "../../../utils/featureFlags";
+import { RHU_DRAFTS_ENABLED } from "../../../utils/featureFlags";
 import { rhuConsultationPath, visitContinuedFollowUpIds } from "../../../utils/rhuVisitRoutes";
 import { rhuEntryKey, lookupRhuRecovery } from "../../../utils/rhuDraftResume";
 import { lookupHealthRecordDraft } from "../../../services/healthRecordDraftService";
@@ -37,8 +36,6 @@ export default function RhuStartConsultationModal({
   const client = useQueryClient();
   const user = getCurrentUser() || {};
   const owner = String(formDraftOwnerContext(user));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const vault = useMemo(() => createClinicalDraftRecovery(user), [owner]);
   const [selecting, setSelecting] = useState(false);
   const [entryError, setEntryError] = useState("");
   const starting = useRef(false);
@@ -50,20 +47,25 @@ export default function RhuStartConsultationModal({
     queryKey: ["rhu-consultation-entry-visit", owner, visitId],
     queryFn: async () => {
       const visit = await getRhuVisit(visitId);
-      if (String(visit?.patient?.id || visit?.patient_id) !== String(patientId) || !["waiting", "in_consultation"].includes(visit?.status)) throw new Error("This visit is no longer available for this patient.");
+      if (String(visit?.patient?.id || visit?.patient_id) !== String(patientId) || !["waiting", "in_consultation"].includes(visit?.status)) {
+        throw new Error("This visit is no longer available for this patient.");
+      }
       return visit;
     },
     staleTime: 0, retry: false, refetchOnMount: "always", refetchOnWindowFocus: false,
   });
   const visit = visitQuery.isFetching ? null : visitQuery.data;
-  function enter(readyVisit, draft = null, unsynced = false) {
+  function enter(readyVisit, draft = null) {
     if (closed.current || owner !== String(formDraftOwnerContext(getCurrentUser() || {}))) return;
-    client.setQueryData(rhuEntryKey(owner, visitId, patientId), { owner, draft, unsynced, consultationUuid: readyVisit.consultation_uuid || readyVisit.consultationUuid, createdAt: Date.now() });
+    client.setQueryData(rhuEntryKey(owner, visitId, patientId), {
+      owner, draft, consultationUuid: readyVisit.consultation_uuid || readyVisit.consultationUuid, createdAt: Date.now(),
+    });
     startedCallback.current?.(rhuConsultationPath(readyVisit.id, patientId, visitContinuedFollowUpIds(readyVisit)));
   }
   const recovery = useRhuConsultationRecovery({
-    visit, patientId, owner, vault, enabled: RHU_DRAFTS_ENABLED && !selecting, shared: FORM_DRAFTS_ENABLED,
-    onRestore: (draft, unsynced) => enter(visit, draft, unsynced),
+    visit, patientId, owner, currentUserId: user.id,
+    enabled: RHU_DRAFTS_ENABLED && !selecting,
+    onRestore: (draft) => enter(visit, draft),
     onDiscarded: () => { setSelecting(true); void visitQuery.refetch(); },
   });
   const showSelection = selecting || recovery.ready;
@@ -93,9 +95,9 @@ export default function RhuStartConsultationModal({
       if (closed.current) return;
       let latest;
       try {
-        latest = await lookupRhuRecovery({ visit: readyVisit, patientId, owner, vault, shared: FORM_DRAFTS_ENABLED, api: { lookup: lookupHealthRecordDraft } });
-      } catch (error) {
-        setEntryError(error?.message || "Unable to check unfinished consultation input.");
+        latest = await lookupRhuRecovery({ visit: readyVisit, patientId, owner, api: { lookup: lookupHealthRecordDraft } });
+      } catch {
+        setEntryError("We couldn't check for unfinished work. Please try again.");
         return;
       }
       if (latest) {

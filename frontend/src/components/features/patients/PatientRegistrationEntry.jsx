@@ -6,7 +6,6 @@ import { Loader2 } from "lucide-react";
 import FormDraftRecoveryDialog from "../../common/drafts/FormDraftRecoveryDialog";
 import { createFormDraftCoordinator } from "../../../services/formDraftCoordinator";
 import { createFormDraftApi } from "../../../services/formDraftService";
-import { formDraftVault } from "../../../services/formDraftVault";
 import { formDraftOwnerContext } from "../../../utils/formDraftRequest";
 import { getCurrentUser } from "../../../utils/auth";
 import { registrationTarget, registrationRecoveryDialogProps, storeRegistrationEntry, releaseRegistrationEntry } from "../../../utils/patientRegistrationEntry";
@@ -73,19 +72,17 @@ export function PatientRegistrationEntryProvider({ role, children }) {
     const initialValue = registrationDraftSnapshot({ form: INITIAL_FORM_STATE });
     const coordinator = createFormDraftCoordinator({
       identity: { form_type: "patient", mode: "create", context_key: "new" }, owner, initialValue,
-      // All new patient registration uses causal auto-select; walk-in keeps the same path.
-      preferLatestRecovery: true,
       normalizeSnapshot: (payload) => registrationDraftSnapshot(restoreRegistrationDraft(payload, INITIAL_FORM_STATE)),
-      onRestore: () => {}, vault: formDraftVault, api: createFormDraftApi({ owner, queryClient: client }),
+      onRestore: () => {}, api: createFormDraftApi({ owner, queryClient: client }),
     });
     const item = { engine: coordinator, owner, path };
     current.current = item; setEntry(item); void check(item);
   }
-  async function resume(source) {
+  async function resume() {
     if (operating.current || engine?.getSnapshot().busy || current.current !== entry) return;
     operating.current = true;
     setOperation("restoring");
-    try { if (await engine.resume(source)) enter(entry, true); }
+    try { if (await engine.resume()) enter(entry, true); }
     catch (error) { engine.handleError(error); }
     finally { operating.current = false; setOperation(""); }
   }
@@ -98,19 +95,16 @@ export function PatientRegistrationEntryProvider({ role, children }) {
     finally { operating.current = false; setOperation(""); }
   }
   const busy = Boolean(operation || state.busy);
-  const hasDraft = Boolean(engine?.draft || engine?.local);
-  const recoveryCopy = registrationRecoveryDialogProps({ hasDraft, conflict: state.conflict, checkFailed: Boolean(state.error) && !hasDraft });
+  const hasDraft = Boolean(engine?.draft);
+  const recoveryCopy = registrationRecoveryDialogProps({ hasDraft, checkFailed: Boolean(state.error) && !hasDraft });
   return <EntryContext.Provider value={{ role, open, path: entry?.path, checking: operation === "checking", disabled: Boolean(entry) }}>
     {children}
     {entry && operation !== "checking" && (state.decision || state.error || operation === "restoring") && createPortal(<FormDraftRecoveryDialog
       open title={recoveryCopy.title} description={recoveryCopy.description}
-      lastSavedAt={state.conflict ? "" : (state.deviceSavedAt || state.lastSavedAt)}
-      deviceOnly={!state.conflict && Boolean(state.deviceSavedAt)}
+      lastSavedAt={state.lastSavedAt}
       busy={busy} resuming={operation === "restoring"} error={state.error} cancelLabel={state.error ? "Cancel" : ""}
       resumeLabel={recoveryCopy.resumeLabel} onClose={close}
-      onResume={!state.conflict && hasDraft ? () => resume() : undefined}
-      onResumeDevice={state.conflict ? () => resume("device") : undefined}
-      onResumeServer={state.conflict && engine.draft ? () => resume("server") : undefined}
+      onResume={hasDraft ? resume : undefined}
       onDiscard={hasDraft ? discard : undefined}
       onRetry={state.error ? () => hasDraft ? resume() : check(entry) : undefined}
     />, document.body)}

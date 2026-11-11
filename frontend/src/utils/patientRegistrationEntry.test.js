@@ -19,18 +19,16 @@ test("latest-copy recovery is limited to new RHU walk-in registration", () => {
   ]) assert.equal(isWalkInRegistrationRecovery(path, role), false);
 });
 
-test("BHC and RHU registration recovery copy stays Resume/Discard unless copies conflict", () => {
+test("BHC and RHU registration recovery copy stays Resume/Discard for server drafts", () => {
   assert.deepEqual(registrationRecoveryDialogProps({ hasDraft: true }), {
-    title: "Unfinished Registration",
-    description: "You have an unfinished registration. Would you like to continue?",
-    resumeLabel: "Resume Registration",
+    title: "You have unfinished work.",
+    description: "Continue where you left off?",
+    resumeLabel: "Resume",
   });
-  assert.deepEqual(registrationRecoveryDialogProps({ hasDraft: true, conflict: true }), {
-    title: "Unfinished Registration",
-    description: "Choose which unfinished copy to continue. Both are kept until restoration succeeds.",
-    resumeLabel: "Resume Registration",
-  });
-  assert.equal(registrationRecoveryDialogProps({ checkFailed: true }).title, "Unable to Check Registration");
+  assert.equal(registrationRecoveryDialogProps({ checkFailed: true }).title, "Unable to check unfinished work");
+  assert.match(registrationRecoveryDialogProps({ checkFailed: true }).description, /couldn't check for unfinished work/i);
+  const copy = JSON.stringify(registrationRecoveryDialogProps({ hasDraft: true }));
+  assert.doesNotMatch(copy, /takeover|Being edited|editor lease/i);
 });
 
 test("registration entry matches new BHC/RHU registration, preserving household and walk-in queries", () => {

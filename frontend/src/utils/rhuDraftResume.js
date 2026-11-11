@@ -1,4 +1,13 @@
-import { clinicalRecoveryChoice, clinicalDeviceDraft } from "./clinicalDraftRecovery.js";
+import {
+  assertConsultationEditable,
+  assertConsultationLeaseAvailable,
+} from "./clinicalConsultationLease.js";
+
+export {
+  consultationEditorLease,
+  editorLeaseConflict,
+  isEditorLeaseConflict,
+} from "./clinicalConsultationLease.js";
 
 export const rhuEntryKey = (owner, visitId, patientId) => ["rhu-consultation-entry", owner, String(visitId), String(patientId)];
 
@@ -11,62 +20,76 @@ export function rhuRecoveryMatches({ visit, patientId, draft }) {
 }
 
 function assertDraft(visit, patientId, draft) {
-  if (!rhuRecoveryMatches({ visit, patientId, draft })) throw new Error("The consultation identity changed or does not match this visit. Cancel and reopen it from Today's Queue.");
+  if (!rhuRecoveryMatches({ visit, patientId, draft })) {
+    throw new Error("This unfinished consultation no longer matches this visit. Cancel and reopen it from Today's Queue.");
+  }
 }
 
-export async function lookupRhuRecovery({ visit, patientId, owner, vault, shared = false, api }) {
-  const [server, device] = await Promise.all([
-    api.lookup({ patientId, rhuVisitId: visit.id, draftOwnerContext: owner }),
-    shared ? vault.listLocalDrafts(owner) : [],
-  ]);
+export async function lookupRhuRecovery({ visit, patientId, owner, api }) {
+  const server = await api.lookup({ patientId, rhuVisitId: visit.id, draftOwnerContext: owner });
   if (server) assertDraft(visit, patientId, server);
-  const local = device.find((entry) => entry.record?.draft?.consultationUuid === (visit.consultation_uuid || visit.consultationUuid));
-  if (local) assertDraft(visit, patientId, local.record.draft);
-  return server || local ? { server, local } : null;
+  return server ? { server, local: null } : null;
 }
 
 async function currentServer({ visit, patientId, owner, decision, api }) {
   const metadata = await api.lookup({ patientId, rhuVisitId: visit.id, draftOwnerContext: owner });
   if (metadata) assertDraft(visit, patientId, metadata);
-  if ((metadata?.id || null) !== (decision?.server?.id || null)) throw new Error("The unfinished draft changed. Retry the recovery check before continuing.");
+  if ((metadata?.id || null) !== (decision?.server?.id || null)) {
+    throw new Error("The unfinished work changed. Please try again before continuing.");
+  }
   return metadata;
 }
 
-export async function resumeRhuRecovery({ visit, patientId, owner, decision, vault, shared = false, source = "", api }) {
+export async function resumeRhuRecovery({ visit, patientId, owner, decision, api, currentUserId }) {
   const options = { draftOwnerContext: owner };
-  const local = shared && decision?.local ? await vault.readLocalDraft({ ownerKey: owner, consultationKey: decision.local.consultationKey }) : null;
   const metadata = await currentServer({ visit, patientId, owner, decision, api });
-  const server = metadata ? await api.load(metadata.id, { ...options, claim: false }) : null;
+  if (!metadata) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationLeaseAvailable(metadata, currentUserId);
+  assertConsultationEditable(metadata);
+  const server = await api.load(metadata.id, { ...options, claim: false });
   if (server) assertDraft(visit, patientId, server);
-  if (local) assertDraft(visit, patientId, local.record.draft);
-  if (!local && !server) throw new Error("This unfinished consultation is no longer available. Retry the recovery check.");
-  const choice = local ? clinicalRecoveryChoice(local, server) : "server";
-  if (choice === "locked" && source !== "server") return { decision: { local, server, conflict: true, locked: true } };
-  if (choice === "conflict" && !source) return { decision: { local, server, conflict: true } };
-  // The claim uses the exact loaded revision; a concurrent edit must fail rather than be overwritten.
-  const claimed = server && server.canEdit !== false && api.claim ? { ...server, ...await api.claim(server.id, server.version, options), payload: server.payload } : server;
-  if (claimed?.canEdit === false && local && source !== "server") throw new Error("Another staff member is editing this consultation.");
-  const expected = source && decision.conflict ? { ...local, base: { serverPayload: JSON.stringify(decision.server.payload) } } : local;
-  if (local && claimed && clinicalRecoveryChoice(expected, claimed) === "conflict") return { decision: { local, server: claimed, conflict: true } };
-  if (claimed && (source === "server" || choice === "server")) {
-    if (local) await vault.saveLocalDraft({ ownerKey: owner, consultationKey: local.consultationKey, record: { draft: claimed }, base: { serverPayload: JSON.stringify(claimed.payload), version: claimed.version }, synced: true });
-    return { draft: claimed, unsynced: false };
-  }
-  return { draft: clinicalDeviceDraft(local.record.draft, claimed), unsynced: true };
+  if (!server) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationLeaseAvailable(server, currentUserId);
+  assertConsultationEditable(server);
+  const claimed = api.claim
+    ? { ...server, ...await api.claim(server.id, server.version, options), payload: server.payload }
+    : server;
+  assertConsultationEditable(claimed);
+  return { draft: claimed, unsynced: false };
 }
 
-export async function discardRhuRecovery({ visit, patientId, owner, decision, vault, shared = false, api }) {
+export async function takeoverRhuRecovery({ visit, patientId, owner, decision, api, note }) {
+  const reason = String(note || "").trim();
+  if (!reason) throw new Error("A short reason is required before taking over.");
+  const options = { draftOwnerContext: owner };
   const metadata = await currentServer({ visit, patientId, owner, decision, api });
-  if (metadata) {
-    if (metadata.version !== decision.server.version) throw new Error("The draft changed. Retry and review the latest input before discarding.");
-    if (metadata.canEdit === false) throw new Error("Another staff member is editing this consultation.");
-    const options = { draftOwnerContext: owner };
-    const claimed = api.claim ? await api.claim(metadata.id, metadata.version, options) : metadata;
-    await api.discard(metadata.id, claimed.version, options);
-    if (shared) await vault.deleteLocalDraft({ ownerKey: owner, consultationKey: `consultation:${metadata.consultationUuid}` });
-  } else if (shared && decision?.local) {
-    await vault.discardDeviceDraft({ ownerKey: owner, consultationKey: decision.local.consultationKey });
-  } else throw new Error("No unfinished consultation was found. Retry the recovery check.");
+  if (!metadata) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationEditable(metadata);
+  const server = await api.load(metadata.id, { ...options, claim: false });
+  if (server) assertDraft(visit, patientId, server);
+  if (!server) throw new Error("This unfinished consultation is no longer available. Please try again.");
+  assertConsultationEditable(server);
+  if (!api.takeover) throw new Error("Takeover is not available right now. Please try again.");
+  const claimed = {
+    ...server,
+    ...await api.takeover(server.id, server.version, reason, options),
+    payload: server.payload,
+  };
+  assertConsultationEditable(claimed);
+  return { draft: claimed, unsynced: false };
+}
+
+export async function discardRhuRecovery({ visit, patientId, owner, decision, api, currentUserId }) {
+  const metadata = await currentServer({ visit, patientId, owner, decision, api });
+  if (!metadata) throw new Error("No unfinished consultation was found. Please try again.");
+  if (metadata.version !== decision.server.version) {
+    throw new Error("The unfinished work changed. Please review the latest input before discarding.");
+  }
+  assertConsultationLeaseAvailable(metadata, currentUserId);
+  assertConsultationEditable(metadata);
+  const options = { draftOwnerContext: owner };
+  const claimed = api.claim ? await api.claim(metadata.id, metadata.version, options) : metadata;
+  await api.discard(metadata.id, claimed.version, options);
 }
 
 /**

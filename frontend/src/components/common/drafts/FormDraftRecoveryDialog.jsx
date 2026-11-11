@@ -6,13 +6,12 @@ import { draftRecoveryDialogReducer } from "./draftRecoveryDialogState";
 
 export function FormDraftRecoveryDialogView({
   open,
-  title = "Unfinished Form",
+  title,
   contextLabel = "",
   description = "",
   classification = "",
   draftStatus = "",
   lastSavedAt = "",
-  deviceOnly = false,
   checking = false,
   loadingMessage = "Checking for unfinished work…",
   cancelLabel = "",
@@ -25,8 +24,6 @@ export function FormDraftRecoveryDialogView({
   onClose,
   onRetry,
   onKeepDraft,
-  onResumeDevice,
-  onResumeServer,
   onRequestDiscard,
   phase = "decision",
   initialFocusRef,
@@ -35,13 +32,15 @@ export function FormDraftRecoveryDialogView({
   const savedDate = lastSavedAt ? new Date(lastSavedAt) : null;
   const validDate = savedDate && Number.isFinite(savedDate.getTime());
   const problem = typeof error === "string" ? error : error?.message || "";
+  const resolvedTitle = title
+    || (onResume ? "You have unfinished work." : (problem ? "Unable to check unfinished work" : "You have unfinished work."));
   const defaultDescription = onResume
-    ? "An unfinished consultation was found for this patient. Resume the saved draft, or discard it to open a fresh form."
-    : "";
+    ? "Continue where you left off?"
+    : (problem && onRetry ? "We couldn't check for unfinished work. Please try again." : "");
   return (
     <ModalShell
       open={open}
-      title={confirming ? "Discard unfinished work?" : title}
+      title={confirming ? "Discard unfinished work?" : resolvedTitle}
       size="sm"
       onClose={confirming ? onKeepDraft : onClose}
       closeDisabled={busy}
@@ -56,8 +55,6 @@ export function FormDraftRecoveryDialogView({
           {cancelLabel && <Button type="button" variant="secondary" disabled={busy} onClick={onClose}>{cancelLabel}</Button>}
           {problem && onRetry && <Button type="button" variant="secondary" disabled={busy} onClick={onRetry}>Retry</Button>}
           {onDiscard && <Button type="button" variant="secondary" disabled={busy} onClick={onRequestDiscard}>Discard</Button>}
-          {onResumeDevice && <Button type="button" variant="secondary" disabled={busy} onClick={onResumeDevice}>Use Device Copy</Button>}
-          {onResumeServer && <Button ref={initialFocusRef} type="button" variant="brand" data-modal-primary="true" disabled={busy} onClick={onResumeServer}>Use Synced Draft</Button>}
           {onResume && <Button ref={initialFocusRef} type="button" variant="brand" data-modal-primary="true" disabled={busy} aria-busy={resuming || undefined} onClick={onResume}>{resuming && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{resuming ? "Restoring..." : resumeLabel}</Button>}
         </>
       )}
@@ -87,14 +84,11 @@ export function FormDraftRecoveryDialogView({
                     ) : null}
                   </dl>
                 )}
-                {(onResumeDevice || onResumeServer) && (
-                  <p>Your choice replaces the other recovery copy. Saved official records remain unchanged until you save.</p>
-                )}
               </>
             )}
             {(onResume || confirming) && (
               <p className="text-xs text-ink-500">
-                {deviceOnly ? "Saved on this device" : "Last saved"}
+                Last saved
                 {" · "}
                 {validDate ? <time dateTime={lastSavedAt}>{savedDate.toLocaleString("en-PH")}</time> : "Saved time unavailable"}
               </p>

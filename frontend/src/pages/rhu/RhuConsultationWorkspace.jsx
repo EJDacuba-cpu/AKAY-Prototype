@@ -154,10 +154,9 @@ import {
 } from "../../utils/historyStep";
 import { formatPatientName } from "../../utils/formatters";
 import { createIdempotencyKey } from "../../utils/idempotency";
-import { RHU_DRAFTS_ENABLED, FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
+import { RHU_DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { getCurrentUser } from "../../utils/auth";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { createClinicalDraftRecovery } from "../../services/clinicalDraftRecoveryService";
 import RhuConsultationRecoveryDialog from "../../components/features/rhu-queue/RhuConsultationRecoveryDialog";
 import useRhuConsultationRecovery from "../../hooks/useRhuConsultationRecovery";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
@@ -209,9 +208,6 @@ export default function RhuConsultationWorkspace() {
   const access = useAccess();
   const currentUser = getCurrentUser() || {};
   const recoveryOwner = String(formDraftOwnerContext(currentUser));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const recoveryVault = useMemo(() => createClinicalDraftRecovery(currentUser), [recoveryOwner]);
-  const [unsyncedRecovery, setUnsyncedRecovery] = useState(false);
   const canEncode = access.can("consultations.encode");
   const canFinalize = access.can("consultations.finalize");
   const canConfirmTb = canConfirmTbDiagnosis(currentUser);
@@ -548,10 +544,11 @@ export default function RhuConsultationWorkspace() {
   const currentStepKey =
     wizardPhase === WIZARD_REVIEW ? REVIEW_STEP : wizardPhase === WIZARD_NEXT ? nextScreen : activeFormStep;
   const recovery = useRhuConsultationRecovery({
-    visit, patientId, owner: recoveryOwner, vault: recoveryVault,
-    enabled: RHU_DRAFTS_ENABLED, shared: FORM_DRAFTS_ENABLED,
+    visit, patientId, owner: recoveryOwner,
+    currentUserId: currentUser.id,
+    enabled: RHU_DRAFTS_ENABLED,
     handoff: entryHandoff,
-    onRestore: (draft, unsynced) => { restoreDraft(draft); setUnsyncedRecovery(Boolean(unsynced)); },
+    onRestore: (draft) => { restoreDraft(draft); },
     onDiscarded: () => navigate("/rhu/patients"),
   });
   const recoveryReady = recovery.ready;
@@ -683,13 +680,7 @@ export default function RhuConsultationWorkspace() {
     sectionKey: currentStepKey,
     consultationUuid,
     rhuVisitId: visit?.id,
-    onDraftSaved: (saved) => { setActiveDraft((current) => ({ ...current, ...saved })); setUnsyncedRecovery(false); },
-    ...(FORM_DRAFTS_ENABLED ? {
-      localDraft: { ownerKey: recoveryOwner, consultationKey: `consultation:${consultationUuid}`, contextKey: `visit:${visit?.id}` },
-      vault: recoveryVault,
-      unsyncedRecovery,
-      buildLocalRecord: () => ({ draft: { id: activeDraft?.id || "", consultationUuid, version: Number(activeDraft?.version || 0), patient: { id: patientId, label: formatPatientName(patient) || "Patient" }, classification: restoredClassification("General Consultation", primaryProgram), lastSavedAt: activeDraft?.lastSavedAt || "", payload: draftPayload, medicineSelections: [] } }),
-    } : {}),
+    onDraftSaved: (saved) => { setActiveDraft((current) => ({ ...current, ...saved })); },
   });
 
   function restoreDraft(draft) {
@@ -911,12 +902,7 @@ export default function RhuConsultationWorkspace() {
     const previous = getPreviousStepKey(formSequence, activeFormStep);
     if (previous === EXIT_STEP) {
       if (RHU_DRAFTS_ENABLED && !(await autosave.flushBeforeLeave())) {
-        await autosave.persistLocalNow();
-        toast.error(
-          autosave.error?.message
-            || autosave.conflict?.message
-            || "The latest changes have not synced. Stay on this consultation and retry before leaving.",
-        );
+        toast.error("Your changes couldn't be saved. Please try again before leaving.");
         return;
       }
       navigate("/rhu/patients");
@@ -1298,11 +1284,11 @@ export default function RhuConsultationWorkspace() {
           draftId: finalDraft?.id || activeDraft?.id,
           draftVersion: finalDraft?.version || activeDraft?.version,
           consultationUuid,
-          ...(FORM_DRAFTS_ENABLED ? { draftOwnerContext: recoveryOwner } : {}),
+          draftOwnerContext: recoveryOwner,
         },
       );
       try { await autosave.completeConsultation(); }
-      catch { toast.error("The record was saved. Device recovery cleanup will be checked when you reopen this consultation."); }
+      catch { /* Finalized record is saved; draft cleanup can retry later. */ }
       setSaveSuccess({ recordId: record.id });
       queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records", patientId] });
       queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
