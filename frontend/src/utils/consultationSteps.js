@@ -72,11 +72,6 @@ function tbIntakeKeys(options = {}) {
   return isRhuItr(options) && options.includeTb ? [TB_INTAKE_STEP] : [];
 }
 
-function form4bKeys() {
-  // Form 4B is inline on Diagnosis; keep FORM_4B_STEP for draft restore only.
-  return [];
-}
-
 function rhuTbAfterDiagnosis(options = {}) {
   if (!isRhuItr(options)) return [];
   const steps = [];
@@ -177,7 +172,6 @@ export function buildConsultationSteps({
   includeHistory = true,
   workflow = null,
   includeTb = false,
-  includeForm4b = false,
 } = {}) {
   const rhuItr = workflow === "rhu_itr_v1";
   return [
@@ -188,7 +182,7 @@ export function buildConsultationSteps({
       ? [{ key: PROGRAMS_STEP, phase: "form", label: "Service Details" }]
       : []),
     { key: NEXT_STEP, phase: "next", label: rhuItr ? "Diagnosis & Care Plan" : "Assessment & Care Plan" },
-    ...rhuTbAfterDiagnosis({ workflow, includeTb, includeForm4b }),
+    ...rhuTbAfterDiagnosis({ workflow, includeTb }),
     ...(includeOutcomeStep({ includeHistory, workflow })
       ? [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]
       : []),
@@ -260,7 +254,6 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     ASSESSMENT_STEP,
     ...programSteps.map((step) => step.key),
     NEXT_STEP,
-    ...form4bKeys(options),
     ...tbIntakeKeys(options),
     ...(includeOutcomeStep(options) ? [OUTCOME_STEP] : []),
     ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
@@ -420,15 +413,6 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
   }
   if (key.startsWith("tbData.")) {
     return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
-  }
-  if (
-    key.startsWith("tbCaseRegistration")
-    || key.startsWith("card_data.")
-    || key === "reporting_year"
-    || key === "confirmed"
-    || key === "treatment_start_date"
-  ) {
-    return REVIEW_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");

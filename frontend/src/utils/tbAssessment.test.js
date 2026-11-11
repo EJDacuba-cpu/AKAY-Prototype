@@ -79,11 +79,10 @@ test("legacy aliases normalize without introducing TB metadata on unrelated entr
   assert.equal(Object.hasOwn(normalizeDiagnoses([{ id: "other", name: "Asthma" }])[0], "tbManagement"), false);
 });
 
-test("standalone openTreatmentCard is explicit registration intent without treatmentDecision", () => {
+test("openTreatmentCard is not implied by legacy initiate_at_rhu", () => {
   const intent = { ...entry, tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true } };
   assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.openTreatmentCard, true);
   assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.treatmentDecision, "");
-  assert.equal(restoreRhuDiagnoses({ diagnoses: [intent] })[0].tbManagement.openTreatmentCard, true);
   const toggled = tbManagementFor(intent, { openTreatmentCard: false });
   assert.equal(toggled.tbManagement.openTreatmentCard, false);
   const legacy = {
@@ -97,8 +96,8 @@ test("standalone openTreatmentCard is explicit registration intent without treat
       openTreatmentCard: false,
     },
   };
-  assert.equal(tbManagementFields(legacy).openTreatmentCard, true);
-  assert.equal(diagnosesForRhuSave([legacy])[0].tbManagement.openTreatmentCard, true);
+  assert.equal(tbManagementFields(legacy).openTreatmentCard, false);
+  assert.equal(diagnosesForRhuSave([legacy])[0].tbManagement.openTreatmentCard, false);
 });
 
 test("TB assessment requires a physician at the current RHU with confirmation permission", () => {

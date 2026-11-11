@@ -19,11 +19,9 @@ export function tbManagementFields(entry = {}) {
   const dispositionPlan = treatmentDecision === "not_yet_initiated" || treatmentDecision === "refer_elsewhere"
     ? String(stored.dispositionPlan ?? stored.disposition_plan ?? "").trim()
     : "";
-  // Explicit registration intent. Legacy initiate_at_rhu still counts as intent on restore.
+  // Consultation no longer registers Form 4B; keep the field off for compatibility.
   const storedOpen = stored.openTreatmentCard ?? stored.open_treatment_card;
-  const openTreatmentCard = isDsTb && (
-    truthyFlag(storedOpen) || treatmentDecision === "initiate_at_rhu"
-  );
+  const openTreatmentCard = isDsTb && truthyFlag(storedOpen);
   return {
     diagnosisType,
     drugResistance,

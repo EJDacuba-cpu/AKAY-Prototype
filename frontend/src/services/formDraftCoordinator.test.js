@@ -143,6 +143,134 @@ test("a pending autosave started before Discard cannot recreate the discarded dr
   assert.equal(engine.getSnapshot().decision, false);
 });
 
+test("a delayed update after session replacement does not discard the existing server draft", async () => {
+  let releaseSave;
+  const gate = new Promise((resolve) => { releaseSave = resolve; });
+  const f = fixture({
+    id: "draft",
+    version: 1,
+    transaction_uuid: "00000000-0000-4000-8000-000000000001",
+    payload: { first_name: "Saved" },
+    form_type: "patient",
+    mode: "create",
+    context_key: "new",
+  });
+  const update = f.api.update;
+  const discard = f.api.discard;
+  let discards = 0;
+  f.api.update = async (...args) => {
+    await gate;
+    return update(...args);
+  };
+  f.api.discard = async (...args) => {
+    discards += 1;
+    return discard(...args);
+  };
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  assert.equal(await engine.resume(), true);
+  engine.setValue({ first_name: "Updated" });
+  const pending = engine.flush();
+  // Session replacement advances epoch without an intentional Discard.
+  await engine.init();
+  releaseSave();
+  await assert.rejects(pending, /reopen the form|current account|session/i);
+  assert.equal(discards, 0);
+  assert.ok(f.server());
+  assert.equal(f.server().id, "draft");
+  assert.equal(f.server().payload.first_name, "Updated");
+  assert.equal(f.server().version, 2);
+});
+
+test("a delayed update during Resume does not discard the existing server draft", async () => {
+  let releaseSave;
+  const gate = new Promise((resolve) => { releaseSave = resolve; });
+  const f = fixture({
+    id: "draft",
+    version: 1,
+    transaction_uuid: "00000000-0000-4000-8000-000000000001",
+    payload: { first_name: "Saved" },
+    form_type: "patient",
+    mode: "create",
+    context_key: "new",
+  });
+  const update = f.api.update;
+  const discard = f.api.discard;
+  let discards = 0;
+  f.api.update = async (...args) => {
+    await gate;
+    return update(...args);
+  };
+  f.api.discard = async (...args) => {
+    discards += 1;
+    return discard(...args);
+  };
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  assert.equal(await engine.resume(), true);
+  engine.setValue({ first_name: "Edited" });
+  const pending = engine.flush();
+  // Resume bumps epoch while the update is still in flight.
+  const resumed = engine.resume();
+  releaseSave();
+  await assert.rejects(pending, /reopen the form|current account|session/i);
+  assert.equal(await resumed, true);
+  assert.equal(discards, 0);
+  assert.ok(f.server());
+  assert.equal(f.server().payload.first_name, "Edited");
+});
+
+test("a delayed create after session replacement still retires the orphan draft", async () => {
+  let releaseSave;
+  const gate = new Promise((resolve) => { releaseSave = resolve; });
+  const f = fixture();
+  const create = f.api.create;
+  f.api.create = async (...args) => {
+    await gate;
+    return create(...args);
+  };
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  engine.setValue({ first_name: "Orphan" });
+  const pending = engine.flush();
+  await engine.init();
+  releaseSave();
+  await assert.rejects(pending, /reopen the form|current account|session/i);
+  assert.equal(f.server(), null);
+});
+
+test("Discard of an existing draft stays final when an update was still in flight", async () => {
+  let releaseSave;
+  const gate = new Promise((resolve) => { releaseSave = resolve; });
+  const f = fixture({
+    id: "draft",
+    version: 1,
+    transaction_uuid: "00000000-0000-4000-8000-000000000001",
+    payload: { first_name: "Saved" },
+    form_type: "patient",
+    mode: "create",
+    context_key: "new",
+  });
+  const update = f.api.update;
+  f.api.update = async (...args) => {
+    await gate;
+    return update(...args);
+  };
+  const engine = createFormDraftCoordinator(f.options);
+  await engine.init();
+  assert.equal(await engine.resume(), true);
+  engine.setValue({ first_name: "Updated" });
+  const pending = engine.flush();
+  await engine.discard();
+  releaseSave();
+  await assert.rejects(pending);
+  assert.equal(f.server(), null);
+  assert.equal(engine.draft, null);
+  assert.equal(engine.getSnapshot().ready, true);
+  assert.equal(engine.getSnapshot().decision, false);
+  assert.equal(engine.getSnapshot().conflict, false);
+});
+
 test("repeated Resume and Discard cannot compete while restoration is in progress", async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });

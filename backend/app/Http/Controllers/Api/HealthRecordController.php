@@ -197,10 +197,8 @@ class HealthRecordController extends Controller
         }
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
-        $tbCaseRegistration = is_array($data['tb_case_registration'] ?? null) ? $data['tb_case_registration'] : null;
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
-        unset($data['tb_case_registration']);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
         $carePlan = $data['care_plan'] ?? [];
         unset($data['care_plan']);
@@ -335,8 +333,7 @@ class HealthRecordController extends Controller
                 $patientConditions,
                 $v2,
                 $rhuItr,
-                $visit,
-                $tbCaseRegistration
+                $visit
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -546,27 +543,6 @@ class HealthRecordController extends Controller
                         $visit,
                         (string) $record->consultation_uuid
                     );
-                }
-
-                if (is_array($tbCaseRegistration)) {
-                    $registrationPayload = [
-                        'registration_key' => $tbCaseRegistration['registration_key'],
-                        'reporting_year' => (int) $tbCaseRegistration['reporting_year'],
-                        'case_number' => $tbCaseRegistration['case_number'] ?? null,
-                        'confirmed' => true,
-                        'treatment_start_date' => $tbCaseRegistration['treatment_start_date'] ?? null,
-                        'card_data' => $tbCaseRegistration['card_data'] ?? [],
-                        'trust_source_revision' => true,
-                        'source_revision' => app(\App\Services\TbCaseRegistrationService::class)->revision($record),
-                    ];
-                    $registered = app(\App\Services\TbCaseRegistrationService::class)->registerForSource(
-                        $request->user(),
-                        $record,
-                        $registrationPayload,
-                        $request,
-                        true
-                    );
-                    $record->setAttribute('tb_treatment_case', $registered['case']);
                 }
 
                 return $record;

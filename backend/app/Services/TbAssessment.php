@@ -61,26 +61,24 @@ final class TbAssessment
                 if (filled($decision)) {
                     $validator->errors()->add("$prefix.treatmentDecision", 'Treatment decision applies only to drug-susceptible TB Disease.');
                 }
-                if ($open) {
-                    $validator->errors()->add("$prefix.openTreatmentCard", 'Form 4B initiation applies only to drug-susceptible TB Disease.');
-                }
-
-                continue;
             }
 
-            // Legacy initiate_at_rhu still requires the open-card intent.
-            if ($decision === 'initiate_at_rhu' && ! $open) {
-                $validator->errors()->add("$prefix.openTreatmentCard", 'Initiating DS-TB treatment requires Form 4B registration in this consultation.');
-            }
-
-            // Deferred/referred dispositions cannot also open Form 4B in-consult.
-            if (in_array($decision, ['not_yet_initiated', 'refer_elsewhere'], true) && $open) {
-                $validator->errors()->add("$prefix.openTreatmentCard", 'Form 4B registration is not used when treatment is deferred or referred elsewhere.');
+            // Consultation no longer registers Form 4B; the flag must stay off.
+            if ($open) {
+                $validator->errors()->add(
+                    "$prefix.openTreatmentCard",
+                    $isDsTb
+                        ? 'Form 4B registration is completed after consultation on Health Record Details.'
+                        : 'Form 4B initiation applies only to drug-susceptible TB Disease.'
+                );
             }
         }
     }
 
-    /** Preserve DS-TB openTreatmentCard intent; clear incompatible leftovers. */
+    /**
+     * Strip consultation Form 4B registration intent from drafts.
+     * Registration happens post-finalize on Health Record Details.
+     */
     public static function normalizeDraft(array $payload): array
     {
         foreach ($payload['diagnoses'] ?? [] as $index => $entry) {
@@ -113,10 +111,13 @@ final class TbAssessment
                 continue;
             }
 
-            if ($decision === 'initiate_at_rhu') {
-                $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = true;
+            // Consultation no longer registers Form 4B. Clear legacy initiate intent
+            // so delayed registration on Details remains eligible.
+            if ($decision === 'initiate_at_rhu' || $decision === '') {
+                $payload['diagnoses'][$index]['tbManagement']['treatmentDecision'] = '';
                 $payload['diagnoses'][$index]['tbManagement']['dispositionReason'] = '';
                 $payload['diagnoses'][$index]['tbManagement']['dispositionPlan'] = '';
+                $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = false;
                 continue;
             }
 
@@ -125,13 +126,10 @@ final class TbAssessment
                 continue;
             }
 
-            // Empty/unknown decision: keep explicit openTreatmentCard for DS-TB.
             $payload['diagnoses'][$index]['tbManagement']['treatmentDecision'] = '';
-            $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = ! empty($management['openTreatmentCard']);
-            if (! $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard']) {
-                $payload['diagnoses'][$index]['tbManagement']['dispositionReason'] = '';
-                $payload['diagnoses'][$index]['tbManagement']['dispositionPlan'] = '';
-            }
+            $payload['diagnoses'][$index]['tbManagement']['openTreatmentCard'] = false;
+            $payload['diagnoses'][$index]['tbManagement']['dispositionReason'] = '';
+            $payload['diagnoses'][$index]['tbManagement']['dispositionPlan'] = '';
         }
 
         return $payload;

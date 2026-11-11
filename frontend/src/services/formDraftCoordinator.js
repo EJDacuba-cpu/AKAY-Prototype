@@ -178,11 +178,15 @@ class FormDraftCoordinator {
         this.pendingPayload = sent;
         this.patch({ status: "saving", error: "" });
         let saved;
+        let createdByThisWrite = false;
         try {
           if (!this.draft) this.firstAttempt ||= sent;
-          saved = this.draft
-            ? await this.api.update(this.draft, this.identity, payload, this.transactionUuid, this.options.baseRevision ?? null)
-            : await this.api.create(this.identity, payload, this.transactionUuid, this.options.baseRevision ?? null);
+          if (this.draft) {
+            saved = await this.api.update(this.draft, this.identity, payload, this.transactionUuid, this.options.baseRevision ?? null);
+          } else {
+            saved = await this.api.create(this.identity, payload, this.transactionUuid, this.options.baseRevision ?? null);
+            createdByThisWrite = true;
+          }
         } catch (error) {
           const candidate = error.payload?.data || error.data;
           if (error.status !== 409 || candidate?.transaction_uuid !== this.transactionUuid) throw error;
@@ -195,9 +199,10 @@ class FormDraftCoordinator {
           } else throw error;
         }
         if (!this.live(epoch)) {
-          // Discard/resume advanced the session while this write was in flight.
-          // Retire any draft the stale write just created so Discard stays final.
-          if (saved?.id) {
+          // Discard/resume/session replacement advanced the epoch while this write
+          // was in flight. Only retire a draft this request newly created — never
+          // an existing draft that a stale update merely revised.
+          if (createdByThisWrite && saved?.id) {
             try { await this.api.discard(saved); } catch { /* best effort */ }
           }
           throw problem("DRAFT_SESSION_CHANGED", MSG.session);

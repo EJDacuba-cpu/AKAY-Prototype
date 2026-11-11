@@ -121,7 +121,7 @@ test("screening prefill labels referral fallback versus walk-in visit date", () 
   assert.equal(walkIn.referralSourceLabel, "RHU walk-in");
 });
 
-test("consultation Form 4B draft keeps a stable registration key across normalize", () => {
+test("Form 4B draft keeps a stable registration key across normalize", () => {
   const first = emptyTbCaseRegistration({ visit: { consultationDate: "2026-05-01" }, createKey: () => "stable-key" });
   const restored = normalizeTbCaseRegistration({
     ...first,

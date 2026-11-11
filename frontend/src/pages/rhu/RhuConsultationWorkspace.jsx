@@ -28,7 +28,6 @@ import {
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import RhuDiagnosisCarePlanSection from "../../components/features/health-records/wizard/RhuDiagnosisCarePlanSection";
-import TbInlineForm4bPanel from "../../components/features/health-records/TbInlineForm4bPanel";
 import TbTreatmentCardForm, {
   EMPTY_TB_DATA,
   normalizeTbData,
@@ -115,19 +114,11 @@ import {
   restorePrescriptions,
 } from "../../utils/rhuPrescriptions";
 import {
-  diagnosesOpenDsTbTreatmentCard,
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
   rhuTbAssessmentErrors,
-  shouldOpenDsTbTreatmentCard,
 } from "../../utils/rhuTbCaseManagement";
-import { canConfirmTbDiagnosis, tbManagementFor } from "../../utils/tbAssessment";
-import {
-  emptyTbCaseRegistration,
-  normalizeTbCaseRegistration,
-  tbRegistrationErrors,
-  tbRegistrationPayload,
-} from "../../utils/tbRegistration";
+import { canConfirmTbDiagnosis } from "../../utils/tbAssessment";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
@@ -273,7 +264,6 @@ export default function RhuConsultationWorkspace() {
   // Draft resume keeps the saved enroll/continue until care-overview or records settle.
   const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
-  const [tbCaseRegistration, setTbCaseRegistration] = useState(null);
   const [conditionReferences, setConditionReferences] = useState([]);
   const followUpFocusApplied = useRef(false);
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
@@ -498,10 +488,6 @@ export default function RhuConsultationWorkspace() {
   const includeTb = useMemo(() => {
     return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
   }, [diagnoses, existingTbCase, registry]);
-  const includeForm4b = useMemo(
-    () => !existingTbCase && diagnosesOpenDsTbTreatmentCard(diagnoses),
-    [diagnoses, existingTbCase],
-  );
   useEffect(() => {
     if (!existingTbCase?.tbData) return;
     setTbData((current) => {
@@ -509,34 +495,22 @@ export default function RhuConsultationWorkspace() {
       return normalizeTbData(existingTbCase.tbData);
     });
   }, [existingTbCase]);
-  useEffect(() => {
-    if (!includeForm4b) {
-      setTbCaseRegistration(null);
-      if (nextScreen === FORM_4B_STEP) setNextScreen(NEXT_STEP);
-      return;
-    }
-    setTbCaseRegistration((current) => current || emptyTbCaseRegistration({
-      visit,
-      weightKg: weight,
-      prescriptionText,
-    }));
-  }, [includeForm4b, nextScreen, visit, weight, prescriptionText]);
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
   );
-  const stepOptions = { ...RHU_ITR_STEP_OPTIONS, includeTb, includeForm4b };
+  const stepOptions = { ...RHU_ITR_STEP_OPTIONS, includeTb };
   const consultationSteps = useMemo(
     () => buildConsultationSteps({ programSteps: programFormSteps, ...stepOptions }),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const formSequence = useMemo(
     () => getFormSequence(programFormSteps, stepOptions),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const stepOrder = useMemo(
     () => getStepOrder(programFormSteps, [], stepOptions),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
   const currentGlobalStepKey =
@@ -594,9 +568,7 @@ export default function RhuConsultationWorkspace() {
       selectedPrograms,
       primaryProgram,
       includeTb,
-      includeForm4b,
       tbData: includeTb ? tbData : null,
-      tbCaseRegistration: includeForm4b ? tbCaseRegistration : null,
       maternalData: {
         ...maternalData,
         ...withLaboratoryEntries(maternalData.laboratoryEntries),
@@ -650,9 +622,7 @@ export default function RhuConsultationWorkspace() {
       selectedPrograms,
       primaryProgram,
       includeTb,
-      includeForm4b,
       tbData,
-      tbCaseRegistration,
       nextScreen,
       maternalData,
       expectedDeliveryDate,
@@ -715,9 +685,6 @@ export default function RhuConsultationWorkspace() {
         : "",
     );
     if (payload.tbData) setTbData(normalizeTbData(payload.tbData));
-    if (payload.tbCaseRegistration) {
-      setTbCaseRegistration(normalizeTbCaseRegistration(payload.tbCaseRegistration, { visit }));
-    }
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.aog) setAog(payload.aog);
@@ -734,8 +701,7 @@ export default function RhuConsultationWorkspace() {
     if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
       setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
     }
-    const restoredForm4b = !existingTbCase && diagnosesOpenDsTbTreatmentCard(restoredDiagnoses);
-    const restored = resolveRestoredPosition(payload, { ...stepOptions, includeForm4b: restoredForm4b });
+    const restored = resolveRestoredPosition(payload, stepOptions);
     const storedScreen = typeof payload.formStep === "string" ? payload.formStep : restored.formStep;
     if (restored.phase === REVIEW_STEP || restored.phase === "review" || storedScreen === REVIEW_STEP) {
       setWizardPhase(WIZARD_REVIEW);
@@ -817,9 +783,6 @@ export default function RhuConsultationWorkspace() {
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
       Object.assign(errors, structuredPrescriptionErrors());
     }
-    if (currentStepKey === REVIEW_STEP) {
-      Object.assign(errors, form4bFinalizeErrors());
-    }
     setValidationErrors(errors);
     return errors;
   }
@@ -875,7 +838,7 @@ export default function RhuConsultationWorkspace() {
     }
     if (key === NEXT_STEP || key === FORM_4B_STEP || key === TB_INTAKE_STEP) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(key === FORM_4B_STEP ? NEXT_STEP : key);
+      setNextScreen(key === TB_INTAKE_STEP ? TB_INTAKE_STEP : NEXT_STEP);
       return;
     }
     setWizardPhase(WIZARD_FORM);
@@ -927,7 +890,7 @@ export default function RhuConsultationWorkspace() {
         setNextScreen(TB_INTAKE_STEP);
         return;
       }
-      // Legacy drafts may still land on FORM_4B_STEP; Form 4B is inline on Diagnosis.
+      // Legacy drafts may still land on FORM_4B_STEP; remap away from removed Form 4B.
       if (nextScreen === FORM_4B_STEP) {
         if (includeTb) {
           setNextScreen(TB_INTAKE_STEP);
@@ -1103,36 +1066,12 @@ export default function RhuConsultationWorkspace() {
     };
   }
 
-  function form4bFinalizeErrors() {
-    if (!includeForm4b || !canFinalize) return {};
-    const registration = normalizeTbCaseRegistration(tbCaseRegistration, { visit });
-    const payload = tbRegistrationPayload({
-      reportingYear: registration.reporting_year,
-      caseNumber: registration.case_number,
-      sourceRevision: registration.source_revision || "0".repeat(64),
-      confirmed: registration.confirmed,
-      cardData: registration.card_data,
-      treatmentStartDate: registration.treatment_start_date,
-    });
-    const registrationErrors = tbRegistrationErrors({ ...payload, source_revision: "a".repeat(64) });
-    return Object.fromEntries(Object.entries(registrationErrors).map(([key, message]) => [
-      key.startsWith("card_data.")
-      || key === "reporting_year"
-      || key === "confirmed"
-      || key === "treatment_start_date"
-        ? key
-        : `tbCaseRegistration.${key}`,
-      message,
-    ]));
-  }
-
   async function saveRecord() {
     if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     const errors = {
       ...laboratoryErrors(laboratoryTests),
       ...rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }),
       ...validateCurrent(),
-      ...form4bFinalizeErrors(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
       ...(canViewBackground
         ? stagedHistoryErrors(historyUpdateForSave(), { sections: ["family", "medical", "social"] })
@@ -1233,16 +1172,6 @@ export default function RhuConsultationWorkspace() {
           diagnoses: savedDiagnoses,
           prescriptionText,
           tbData: includeTb ? tbData : null,
-          tbCaseRegistration: includeForm4b && tbCaseRegistration
-            ? {
-                registration_key: tbCaseRegistration.registration_key,
-                reporting_year: tbCaseRegistration.reporting_year,
-                case_number: tbCaseRegistration.case_number || null,
-                confirmed: Boolean(tbCaseRegistration.confirmed),
-                treatment_start_date: tbCaseRegistration.treatment_start_date || null,
-                card_data: tbCaseRegistration.card_data,
-              }
-            : null,
           maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
           expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
           aog: selectedPrograms.includes("Maternal") ? aog : undefined,
@@ -1586,41 +1515,6 @@ export default function RhuConsultationWorkspace() {
         {showSidePanel && consultationHeading}
         {wizardPhase === WIZARD_REVIEW ? (
           <div className="min-w-0 space-y-4">
-            {includeForm4b && tbCaseRegistration && (
-              <fieldset disabled={clinicalLocked} className="min-w-0">
-                <TbInlineForm4bPanel
-                  registration={tbCaseRegistration}
-                  onChange={(next) => {
-                    if (next == null) {
-                      setDiagnoses((current) => current.map((entry) => (
-                        shouldOpenDsTbTreatmentCard(entry)
-                          ? tbManagementFor(entry, { openTreatmentCard: false })
-                          : entry
-                      )));
-                      clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                      setTbCaseRegistration(null);
-                      return;
-                    }
-                    clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                    setTbCaseRegistration(next);
-                  }}
-                  laboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
-                  errors={validationErrors}
-                  disabled={clinicalLocked}
-                  facilityName={
-                    currentUser.rural_health_unit?.name
-                    || currentUser.ruralHealthUnit?.name
-                    || currentUser.facility_name
-                    || ""
-                  }
-                  patientName={formatPatientName(patient) || ""}
-                  physicianName={currentUser.name || ""}
-                  visitWeightKg={weight}
-                  prescriptionText={prescriptionText}
-                  birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth || ""}
-                />
-              </fieldset>
-            )}
             <ConsultationReviewStep
               visitDate={new Date().toLocaleDateString()}
               visitTime={new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -1977,20 +1871,12 @@ export default function RhuConsultationWorkspace() {
                     onServiceFollowUp={handleServiceFollowUp}
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
-                    prescriptionText={prescriptionText}
                     prescriptions={prescriptions}
                     onPrescriptionsChange={handlePrescriptionsChange}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}
                     conditionReferences={conditionReferences}
-                    tbCaseRegistration={tbCaseRegistration}
-                    onTbCaseRegistrationChange={(next) => {
-                      clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                      setTbCaseRegistration(next);
-                    }}
-                    visit={visit}
-                    visitWeightKg={weight}
                     errors={validationErrors}
                     disabled={clinicalLocked}
                   />

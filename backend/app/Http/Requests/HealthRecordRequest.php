@@ -246,13 +246,8 @@ class HealthRecordRequest extends FormRequest
             $rules['prescribed_medicines'] = ['prohibited'];
             $rules['referral'] = ['prohibited'];
             $rules['dispensed_medicines'] = ['prohibited'];
-            $rules['tb_case_registration'] = ['nullable', 'array'];
-            $rules['tb_case_registration.registration_key'] = ['nullable', 'uuid'];
-            $rules['tb_case_registration.reporting_year'] = ['nullable', 'integer', 'between:1900,9999'];
-            $rules['tb_case_registration.case_number'] = ['nullable', 'string', 'max:100'];
-            $rules['tb_case_registration.confirmed'] = ['nullable', 'boolean'];
-            $rules['tb_case_registration.treatment_start_date'] = ['nullable', 'date_format:Y-m-d'];
-            $rules['tb_case_registration.card_data'] = ['nullable', 'array'];
+            // Form 4B registration is post-consultation only (Health Record Details).
+            $rules['tb_case_registration'] = ['prohibited'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
@@ -743,7 +738,6 @@ class HealthRecordRequest extends FormRequest
             VitalSigns::validate($validator, $this->all());
             TbAssessment::validate($validator, $this->diagnosesInput());
             $this->validateSupportingLaboratoryTests($validator);
-            $this->validateTbCaseRegistration($validator);
             $this->validateStructuredPrescriptions($validator);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
@@ -1218,97 +1212,6 @@ class HealthRecordRequest extends FormRequest
                     "monitoring_data.prescriptions.$index.tbCaseId",
                     'Link the registered TB case.'
                 );
-            }
-        }
-    }
-
-    private function validateTbCaseRegistration($validator): void
-    {
-        if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
-            return;
-        }
-        $initiating = collect($this->diagnosesInput())->contains(function ($entry) {
-            $management = is_array($entry['tbManagement'] ?? null) ? $entry['tbManagement'] : [];
-            $isDsTb = ($management['diagnosisType'] ?? null) === 'tb_disease'
-                && ($management['drugResistance'] ?? null) === 'drug_susceptible';
-
-            return $isDsTb && (
-                ! empty($management['openTreatmentCard'])
-                || ($management['treatmentDecision'] ?? null) === 'initiate_at_rhu'
-            );
-        });
-        $registration = $this->input('tb_case_registration');
-        if (! $initiating) {
-            if (filled($registration)) {
-                $validator->errors()->add('tb_case_registration', 'Form 4B registration is only submitted when registering DS-TB treatment in this consultation.');
-            }
-
-            return;
-        }
-        if (! is_array($registration)) {
-            $validator->errors()->add('tb_case_registration', 'Complete Form 4B registration before finalizing this consultation.');
-
-            return;
-        }
-        if (! \Illuminate\Support\Str::isUuid((string) ($registration['registration_key'] ?? ''))) {
-            $validator->errors()->add('tb_case_registration.registration_key', 'A stable registration key is required.');
-        }
-        if (! filter_var($registration['confirmed'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
-            $validator->errors()->add('tb_case_registration.confirmed', 'Confirm that you reviewed the diagnostic evidence and prescription.');
-        }
-        $year = $registration['reporting_year'] ?? null;
-        if (! is_numeric($year) || (int) $year < 1900 || (int) $year > 9999) {
-            $validator->errors()->add('tb_case_registration.reporting_year', 'Enter a valid reporting year.');
-        }
-        if (blank($registration['treatment_start_date'] ?? null)) {
-            $validator->errors()->add('tb_case_registration.treatment_start_date', 'Enter the actual treatment start date.');
-        }
-        $card = is_array($registration['card_data'] ?? null) ? $registration['card_data'] : [];
-        $classification = is_array($card['classification'] ?? null) ? $card['classification'] : [];
-        foreach (['bacteriologicalStatus' => 'Bacteriological status', 'anatomicalSite' => 'Anatomical site', 'registrationGroup' => 'Registration group'] as $field => $label) {
-            if (blank($classification[$field] ?? null)) {
-                $validator->errors()->add("tb_case_registration.card_data.classification.$field", "$label is required.");
-            }
-        }
-        $epSite = trim((string) ($classification['extrapulmonarySite'] ?? ''));
-        if (($classification['anatomicalSite'] ?? null) === 'extrapulmonary'
-            && ($epSite === '' || preg_match('/^other\s*:\s*$/i', $epSite))) {
-            $validator->errors()->add('tb_case_registration.card_data.classification.extrapulmonarySite', 'Specify the extra-pulmonary site.');
-        }
-        $regimen = is_array($card['regimen'] ?? null) ? $card['regimen'] : [];
-        $description = trim((string) ($regimen['description'] ?? ''));
-        if ($description === '' || strcasecmp($description, 'none') === 0) {
-            $validator->errors()->add('tb_case_registration.card_data.regimen.description', 'Enter the physician-prescribed regimen.');
-        }
-        $code = (string) ($regimen['code'] ?? '');
-        if ($code !== '' && ! in_array($code, ['2hrze_4hr', '2hrze_10hr', 'other'], true)) {
-            $validator->errors()->add('tb_case_registration.card_data.regimen.code', 'Select a physician-authorized regimen.');
-        }
-        if (! is_numeric($regimen['weightKg'] ?? null) || (float) $regimen['weightKg'] <= 0) {
-            $validator->errors()->add('tb_case_registration.card_data.regimen.weightKg', 'Enter a positive baseline weight in kg.');
-        }
-        $rows = is_array($regimen['rows'] ?? null) ? $regimen['rows'] : [];
-        if ($rows === []) {
-            $validator->errors()->add('tb_case_registration.card_data.regimen.rows', 'Enter a prescribed dosage row.');
-        }
-        foreach ($rows as $index => $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            foreach (['dateStart', 'strength', 'unit'] as $field) {
-                if (blank($row[$field] ?? null)) {
-                    $validator->errors()->add("tb_case_registration.card_data.regimen.rows.$index.$field", "Regimen row ".($index + 1)." is incomplete.");
-                }
-            }
-            $phase = (string) ($row['phase'] ?? '');
-            if ($phase !== '' && ! in_array($phase, ['intensive', 'continuation', 'individualized'], true)) {
-                $validator->errors()->add("tb_case_registration.card_data.regimen.rows.$index.phase", 'Regimen row '.($index + 1).': select a valid treatment phase.');
-            }
-            $hasDose = collect(TbCaseRegistrationRequest::DOSE_FIELDS)->contains(
-                fn ($key) => is_numeric($row[$key] ?? null) && (float) $row[$key] > 0
-            );
-            if (! $hasDose) {
-                $validator->errors()->add("tb_case_registration.card_data.regimen.rows.$index", 'Enter at least one positive physician-prescribed dose.');
             }
         }
     }

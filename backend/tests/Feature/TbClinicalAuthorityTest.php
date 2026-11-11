@@ -74,7 +74,7 @@ class TbClinicalAuthorityTest extends TestCase
     public function test_physician_can_finalize_evaluation_but_not_embed_clinical_tb_data(): void
     {
         $this->postRecord($this->doctor, $this->assessment())->assertCreated();
-        // Deferred disposition cannot flip openTreatmentCard on; Form 4B belongs to intent/atomic path.
+        // Consultation Form 4B is removed; openTreatmentCard must stay off on finalize.
         $this->postRecord($this->doctor, $this->assessment(['openTreatmentCard' => true]))
             ->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.openTreatmentCard');
         $this->postRecord($this->doctor, ['tb_data' => ['diagnosis' => ['tbCaseNumber' => 'TB-2026-0001']]])

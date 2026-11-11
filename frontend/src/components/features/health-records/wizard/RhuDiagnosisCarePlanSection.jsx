@@ -20,7 +20,6 @@ import {
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
 import {
-  canOpenDsTbTreatmentCard,
   DR_TB_PRIMARY,
   DR_TB_SUBTYPE_OPTIONS,
   drugResistanceForPrimary,
@@ -28,13 +27,11 @@ import {
   isDrTbSubtype,
   isPresumptiveTb,
   isRecognizedTbDiagnosis,
-  shouldOpenDsTbTreatmentCard,
   TB_ASSESSMENT_OPTIONS,
   TB_SUSCEPTIBILITY_PRIMARY_OPTIONS,
   tbManagementFields,
   tbManagementFor,
 } from "../../../../utils/rhuTbCaseManagement";
-import { emptyTbCaseRegistration } from "../../../../utils/tbRegistration";
 
 function DiagnosisChoiceGroup({ options, disabled, ...props }) {
   const id = useId();
@@ -123,40 +120,19 @@ function TbCaseManagementSection({
   canConfirmTb,
   errors,
   onChange,
-  tbCaseRegistration = null,
-  onTbCaseRegistrationChange,
-  visit = null,
-  visitWeightKg = "",
-  prescriptionText = "",
 }) {
   if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
   const management = tbManagementFields(entry);
   const primaryResistance = drugResistancePrimary(management.drugResistance);
   const showDrSubtypes = primaryResistance === DR_TB_PRIMARY;
   const registered = String(existingTbCase?.tbCaseNumber || "").trim();
-  const canRegister = canOpenDsTbTreatmentCard(entry) && !registered;
-  const registrationOpen = canRegister && shouldOpenDsTbTreatmentCard(entry);
-
-  function startRegistration() {
-    onChange(tbManagementFor(entry, { openTreatmentCard: true }));
-    onTbCaseRegistrationChange?.(tbCaseRegistration || emptyTbCaseRegistration({
-      visit: visit || {},
-      weightKg: visitWeightKg,
-      prescriptionText,
-    }));
-  }
-
-  function cancelRegistration() {
-    onChange(tbManagementFor(entry, { openTreatmentCard: false }));
-    onTbCaseRegistrationChange?.(null);
-  }
 
   return (
     <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-4 pt-3">
       <div>
         <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
         <p className="mt-0.5 text-xs text-[#545F73]">
-          Confirm diagnosis and drug susceptibility here.
+          Confirm diagnosis and drug susceptibility here. DS-TB Form 4B registration is available after this consultation is finalized.
         </p>
       </div>
       {!canConfirmTb && (
@@ -214,45 +190,6 @@ function TbCaseManagementSection({
           )}
         </div>
       </div>
-
-      {canRegister && !registrationOpen && (
-        <div className="rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3">
-          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
-          <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
-            Optional. Registration details open on Review &amp; Finalize.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="compact"
-            disabled={disabled || !canConfirmTb}
-            className="mt-3"
-            onClick={startRegistration}
-          >
-            Register Treatment · Form 4B
-          </Button>
-        </div>
-      )}
-
-      {registrationOpen && (
-        <div className="rounded-[12px] border border-[var(--color-border,#E4E7EC)] bg-[var(--color-surface-sunk,#F1F3F6)] p-3">
-          <p className="text-sm font-semibold text-[var(--color-text,#101828)]">Register Treatment · Form 4B</p>
-          <p className="mt-0.5 text-xs text-[var(--color-text-secondary,#475467)]">
-            Selected. Complete Form 4B on Review &amp; Finalize before saving.
-          </p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="compact"
-            disabled={disabled || !canConfirmTb}
-            className="mt-3 text-xs"
-            onClick={cancelRegistration}
-          >
-            Cancel registration
-          </Button>
-        </div>
-      )}
-
     </fieldset>
   );
 }
@@ -281,8 +218,6 @@ function DiagnosisCard({
   laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
   registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
-  tbCaseRegistration, onTbCaseRegistrationChange, visit,
-  visitWeightKg, prescriptionText,
   prescriptions = [], diagnoses = [], onPrescriptionsChange, removalError = "",
   prescriptionEditor = null, onPrescriptionEditorChange,
 }) {
@@ -343,11 +278,6 @@ function DiagnosisCard({
             errors={errors}
             disabled={disabled}
             onChange={onChange}
-            tbCaseRegistration={tbCaseRegistration}
-            onTbCaseRegistrationChange={onTbCaseRegistrationChange}
-            visit={visit}
-            visitWeightKg={visitWeightKg}
-            prescriptionText={prescriptionText}
           />
         </div>
         <div className="rhu-diagnosis-laboratory">
@@ -512,17 +442,12 @@ export default function RhuDiagnosisCarePlanSection({
   onServiceFollowUp,
   treatmentNotes = "",
   onTreatmentNotesChange,
-  prescriptionText = "",
   prescriptions = [],
   onPrescriptionsChange,
   registry = {},
   existingTbCase = null,
   canConfirmTb = false,
   conditionReferences = [],
-  tbCaseRegistration = null,
-  onTbCaseRegistrationChange,
-  visit = null,
-  visitWeightKg = "",
   errors = {},
   disabled = false,
 }) {
@@ -626,11 +551,6 @@ export default function RhuDiagnosisCarePlanSection({
               registry={registry}
               existingTbCase={existingTbCase}
               canConfirmTb={canConfirmTb}
-              tbCaseRegistration={tbCaseRegistration}
-              onTbCaseRegistrationChange={onTbCaseRegistrationChange}
-              visit={visit}
-              visitWeightKg={visitWeightKg}
-              prescriptionText={prescriptionText}
               prescriptions={prescriptions}
               diagnoses={diagnoses}
               onPrescriptionsChange={onPrescriptionsChange}
