@@ -1789,7 +1789,6 @@ export default function ConsultationWorkspace() {
 
   function restoreHealthRecordDraft(draft) {
     setRecoveryCheckReady(true);
-    setLocalRecovery(null);
     // A draft saved before the v2 model is converted once, here, before any
     // state is set from it: the first autosave then writes the converted
     // content (every autosave stamps consultationWorkflow, so an unconverted
