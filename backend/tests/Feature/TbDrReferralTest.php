@@ -103,17 +103,13 @@ class TbDrReferralTest extends TestCase
         $this->actingAs($this->nurse, 'sanctum')->getJson("/api/tb-dr-referrals/$id")->assertOk()->assertJsonPath('data.can_update', false);
     }
 
-    public function test_all_dr_variants_are_referrable_but_form_4b_remains_blocked(): void
+    public function test_all_dr_variants_are_referrable_without_creating_a_treatment_case(): void
     {
         foreach (['rr_tb', 'mdr_tb', 'clinically_mdr_tb', 'xdr_tb', 'other'] as $resistance) {
             $source = $this->newSource($resistance);
             $this->issue($this->payload($source), source: $source)->assertCreated();
-            $preview = $this->getJson("/api/health-records/{$source->id}/tb-registration")->assertOk()->assertJsonPath('data.eligible', false);
-            $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson("/api/health-records/{$source->id}/tb-registration", [
-                'reporting_year' => 2026, 'source_revision' => $preview->json('data.source_revision'), 'confirmed' => true,
-                'card_data' => ['classification' => ['bacteriologicalStatus' => 'clinically_diagnosed', 'anatomicalSite' => 'pulmonary', 'registrationGroup' => 'new'],
-                    'regimen' => ['description' => 'Prescription', 'weightKg' => 55, 'rows' => [['dateStart' => '2026-11-10', 'drug4fdc' => '4', 'strength' => 'Specified', 'unit' => 'tablets/day']]]],
-            ])->assertUnprocessable()->assertJsonPath('message', 'Form 4B requires TB Disease with drug-susceptible classification. TB Infection and DR-TB are not eligible.');
+            $this->getJson("/api/health-records/{$source->id}/tb-case")->assertOk()->assertJsonPath('data.case', null);
+            $this->postJson("/api/health-records/{$source->id}/tb-registration", [])->assertNotFound();
         }
         $this->assertDatabaseCount('tb_treatment_cases', 0);
     }

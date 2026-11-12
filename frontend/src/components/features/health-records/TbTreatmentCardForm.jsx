@@ -365,9 +365,9 @@ function SectionCard({ title, subtitle, children, compact = false, badge = null 
 // Main form section
 // ---------------------------------------------------------------------------
 /**
- * Full DOH Form 4b (DS-TB Treatment Card) editor. Controlled: `value` is the
- * tb_data object, `onChange(nextTbData)` receives every mutation. Shared by the
- * BHC and RHU health-record forms so the two stay in sync.
+ * DS-TB treatment card editor/viewer. Controlled: `value` is the tb_data object,
+ * `onChange(nextTbData)` receives every mutation. Shared by BHC/RHU record views,
+ * intake encode, and DOTS monitoring. Form 4B registration CREATE mode is removed.
  */
 export default function TbTreatmentCardForm({
   laboratoryContext = "legacy",
@@ -378,8 +378,6 @@ export default function TbTreatmentCardForm({
   includeLegacyDoseCalendar = true,
   recordId = null,
   mode = "full",
-  /** all | required | additional — splits registration UI for compact inline Form 4B */
-  sections = "all",
   referenceCaseNumber = "",
   errors = {},
   birthDate = "",
@@ -480,7 +478,7 @@ export default function TbTreatmentCardForm({
     if (!canShowAdultFdcReference({ ageYears, weightKg: data.regimen.weightKg, regimenCode: code }) || tablets == null) {
       return;
     }
-    if (!window.confirm(`Apply ${tablets} tablet(s)/day to the selected phase row? Review before confirming registration.`)) {
+    if (!window.confirm(`Apply ${tablets} tablet(s)/day to the selected phase row? Review before confirming.`)) {
       return;
     }
     const field = phaseView === "continuation" ? "drug2fdc" : "drug4fdc";
@@ -527,20 +525,17 @@ export default function TbTreatmentCardForm({
     onChange({ ...data, doseCalendar: nextCalendar });
   };
 
-  const registrationSections = mode === "compactRegistration" ? "required" : sections;
-  const requiredOnly = registrationSections === "required";
-  const additionalOnly = registrationSections === "additional";
-  const registration = mode === "registration" || mode === "compactRegistration" || additionalOnly || requiredOnly;
-  const showEncode = (mode === "full" || mode === "encode" || mode === "registration" || additionalOnly)
-    && !requiredOnly;
-  const showFinalize = (mode === "full" || mode === "finalize" || registration) && !additionalOnly;
+  // Registration CREATE UI removed; keep non-registration layout constants.
+  const registration = false;
+  const compactRegistration = false;
+  const showEncode = mode === "full" || mode === "encode";
+  const showFinalize = mode === "full" || mode === "finalize";
   const showDots = mode === "full" || mode === "dots";
   const showChart = mode === "chart" || mode === "dots";
   const fieldsLocked = readOnly || disabled || mode === "chart";
-  const sectionProps = registration ? { compact: true } : {};
-  const registrationGrid = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
-  const registrationGrid3 = registration ? "grid grid-cols-1 gap-3 sm:grid-cols-2" : "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
-  const compactRegistration = requiredOnly;
+  const sectionProps = {};
+  const registrationGrid = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4";
+  const registrationGrid3 = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
   return (
     <div className="space-y-4">
@@ -1017,7 +1012,7 @@ export default function TbTreatmentCardForm({
       )}
 
       {/* Secondary registration sections */}
-      {showEncode && laboratoryContext === "rhu" && !additionalOnly && (
+      {showEncode && laboratoryContext === "rhu" && (
         <SectionCard
           {...sectionProps}
           title={registration ? "06 · Laboratory References" : "Laboratory References"}

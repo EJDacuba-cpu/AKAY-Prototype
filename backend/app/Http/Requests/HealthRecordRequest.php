@@ -246,7 +246,7 @@ class HealthRecordRequest extends FormRequest
             $rules['prescribed_medicines'] = ['prohibited'];
             $rules['referral'] = ['prohibited'];
             $rules['dispensed_medicines'] = ['prohibited'];
-            // Form 4B registration is post-consultation only (Health Record Details).
+            // Form 4B registration CREATE is discontinued.
             $rules['tb_case_registration'] = ['prohibited'];
         } else {
             $rules['diagnoses.*.reportIn'] = ['prohibited'];

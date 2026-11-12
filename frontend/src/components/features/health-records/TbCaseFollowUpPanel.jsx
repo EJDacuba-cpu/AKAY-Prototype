@@ -99,7 +99,7 @@ export default function TbCaseFollowUpPanel({ caseId, enabled = true, onAccessDe
       await saveTbCaseFollowUp(attempt.current); setEditingId(null); setEpoch(previous => previous + 1);
       await Promise.all([refresh(), client.invalidateQueries({ queryKey: ["tb-case", String(caseId)] }),
         client.invalidateQueries({ queryKey: ["tb-monitoring", String(caseId)] }), client.invalidateQueries({ queryKey: ["tb-case-endorsements", String(caseId)] }),
-        client.invalidateQueries({ queryKey: ["tb-cases"] }), client.invalidateQueries({ queryKey: ["tb-registration", String(data.case.source_health_record_id)] })]);
+        client.invalidateQueries({ queryKey: ["tb-cases"] }), client.invalidateQueries({ queryKey: ["tb-linked-case", String(data.case.source_health_record_id)] })]);
     } catch (failure) {
       setError(failure.isNetworkError || failure.status >= 500 ? "The save could not be confirmed. Retry with the same entries, or refresh to review the case history." : failureMessage(failure));
       if ([403, 404].includes(failure.status)) { setAccessBlocked(true); onAccessDenied?.(); void refresh(); }

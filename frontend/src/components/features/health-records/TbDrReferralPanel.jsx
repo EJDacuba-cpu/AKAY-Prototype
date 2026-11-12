@@ -116,7 +116,7 @@ export default function TbDrReferralPanel({ recordId }) {
   }
   return <section aria-label="Outbound DR-TB referral" className="my-5 min-w-0 space-y-4 border-t border-neutral-200 bg-white px-4 py-5 sm:px-5">
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold text-ink-900">Outbound DR-TB referral</h2><Button variant="secondary" disabled={busy} onClick={revalidate}>Refresh referral</Button></div>
-    <p className="text-sm text-neutral-600">Refer to an external PMDT / DR-TB facility. DS-TB Form 4B is unavailable for this classification.</p>
+    <p className="text-sm text-neutral-600">Refer to an external PMDT / DR-TB facility. DS-TB treatment-card registration does not apply to this classification.</p>
     {(query.isError || accessBlocked) && <div className="space-y-2"><p role="alert" className="text-sm text-red-800">Unable to load outbound DR-TB referral. Access may have changed.</p><Button variant="secondary" onClick={revalidate}>Retry</Button></div>}
     {!ready && !query.isError && !accessBlocked && <p role="status" className="text-sm text-neutral-600">Checking referral access…</p>}
     {ready && error && <p role="alert" className="text-sm text-red-800">{error}</p>}

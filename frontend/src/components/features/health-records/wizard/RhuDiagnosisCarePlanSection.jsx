@@ -132,7 +132,7 @@ function TbCaseManagementSection({
       <div>
         <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
         <p className="mt-0.5 text-xs text-[#545F73]">
-          Confirm diagnosis and drug susceptibility here. DS-TB Form 4B registration is available after this consultation is finalized.
+          Confirm diagnosis and drug susceptibility here. Existing registered TB treatment cases remain available on the health record when present.
         </p>
       </div>
       {!canConfirmTb && (

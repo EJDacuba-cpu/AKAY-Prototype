@@ -42,7 +42,6 @@ use App\Http\Controllers\Api\StaffAssignmentController;
 use App\Http\Controllers\Api\StaffRoleController;
 use App\Http\Controllers\Api\TbCaseEndorsementController;
 use App\Http\Controllers\Api\TbCaseFollowUpController;
-use App\Http\Controllers\Api\TbCaseRegistrationController;
 use App\Http\Controllers\Api\TbDrReferralController;
 use App\Http\Controllers\Api\TbMonitoringController;
 use App\Http\Controllers\Api\TbTreatmentCaseController;
@@ -156,8 +155,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('tb-endorsements/{endorsement}', [TbCaseEndorsementController::class, 'show'])->whereNumber('endorsement');
         Route::post('tb-endorsements/{endorsement}/{action}', [TbCaseEndorsementController::class, 'transition'])
             ->whereNumber('endorsement')->whereIn('action', ['link', 'accept', 'decline', 'revoke']);
-        Route::get('health-records/{healthRecord}/tb-registration', [TbCaseRegistrationController::class, 'preview'])->whereNumber('healthRecord');
-        Route::post('health-records/{healthRecord}/tb-registration', [TbCaseRegistrationController::class, 'store'])->whereNumber('healthRecord');
+        Route::get('health-records/{healthRecord}/tb-case', [TbTreatmentCaseController::class, 'linkedToSource'])->whereNumber('healthRecord');
         Route::get('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'index']);
         Route::post('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);

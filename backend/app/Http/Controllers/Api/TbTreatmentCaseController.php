@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\TbCaseEndorsement;
 use App\Models\TbTreatmentCase;
@@ -13,6 +14,15 @@ use Illuminate\Http\Request;
 class TbTreatmentCaseController extends Controller
 {
     public function __construct(private readonly TbCaseAccessService $access) {}
+
+    /** Read-only linked case for a finalized RHU consultation (no Form 4B registration). */
+    public function linkedToSource(Request $request, HealthRecord $healthRecord)
+    {
+        $this->access->authorizeRhuSourceRead($request->user(), $healthRecord);
+        $case = TbTreatmentCase::where('source_health_record_id', $healthRecord->id)->first();
+
+        return response()->json(['data' => ['case' => $case]]);
+    }
 
     public function index(Request $request, Patient $patient)
     {

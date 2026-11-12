@@ -40,8 +40,8 @@ test("TB assessment remains while Treatment Decision and its disposition fields 
   assert.match(html, /name="diagnoses.tb.tbManagement.diagnosisType"/);
   assert.match(html, /name="diagnoses.tb.tbManagement.drugResistancePrimary"/);
   assert.doesNotMatch(html, /treatmentDecision|Treatment Decision|Disposition reason|Form 4B is required/);
-  assert.doesNotMatch(html, /Register Treatment · Form 4B|Complete Form 4B on Review/);
-  assert.match(html, /available after this consultation is finalized/);
+  assert.doesNotMatch(html, /Register Treatment · Form 4B|Complete Form 4B on Review|Register DS-TB Treatment/);
+  assert.match(html, /Existing registered TB treatment cases remain available on the health record when present/);
   assert.match(html, /Actions Taken \/ Treatment/);
   assert.match(html, /name="actionsTaken"/);
   assert.match(html, /Add Prescription/);
@@ -60,7 +60,7 @@ test("DS-TB assessment does not arm consultation Form 4B registration controls",
   };
   const html = render(entry);
   assert.match(html, /Physician TB Assessment/);
-  assert.doesNotMatch(html, /Register Treatment · Form 4B|Complete Form 4B on Review|Cancel registration/);
+  assert.doesNotMatch(html, /Register Treatment · Form 4B|Complete Form 4B on Review|Cancel registration|Register DS-TB Treatment|Authorize and register Form 4B/);
   assert.doesNotMatch(html, /data-field="tbCaseRegistration"|Treatment start date|Verified consultation summary/);
 });
 

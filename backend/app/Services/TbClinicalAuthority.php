@@ -119,7 +119,7 @@ final class TbClinicalAuthority
         }
         self::ensurePhysician($user);
         throw ValidationException::withMessages([
-            'tb_data' => 'Clinical TB card fields cannot be created or changed in a consultation. Form 4B registration is a separate action after finalization.',
+            'tb_data' => 'Clinical TB card fields cannot be created or changed in a consultation. Existing treatment cases remain read-only via TB case management.',
         ]);
     }
 

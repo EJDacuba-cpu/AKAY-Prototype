@@ -1,9 +1,7 @@
 import { apiRequest, unwrapData } from "./apiClient";
 
-export const getTbRegistration = async recordId => unwrapData(await apiRequest(`/health-records/${recordId}/tb-registration`));
-export const registerTbCase = async attempt => unwrapData(await apiRequest(`/health-records/${attempt.sourceId}/tb-registration`, {
-  method: "POST", headers: { "Idempotency-Key": attempt.key }, body: attempt.payload,
-}));
+/** Read-only linked TbTreatmentCase for a source health record (registration CREATE removed). */
+export const getLinkedTbCase = async recordId => unwrapData(await apiRequest(`/health-records/${recordId}/tb-case`));
 
 export const getTbCase = async id => unwrapData(await apiRequest(`/tb-cases/${id}`));
 export const getTbMonitoring = async (caseId, page = 1) => unwrapData(await apiRequest(`/tb-cases/${caseId}/monitoring?page=${page}`));

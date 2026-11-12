@@ -46,7 +46,6 @@ class EnforceActionPermissions
             str_contains($path, '/tb-cases') && (str_ends_with($path, '/close') || str_ends_with($path, '/reopen')) => 'consultations.finalize',
             str_contains($path, '/tb-cases') => 'clinical.history',
             str_contains($path, '/tb-dr-referral') => $read ? 'clinical.history' : 'referrals.submit',
-            str_contains($path, '/tb-registration') => $read ? 'clinical.history' : 'consultations.finalize',
             str_contains($path, '/corrections') => $read ? 'clinical.history' : 'records.correct',
             str_contains($path, 'dispensed-medicines') => 'items.dispense',
             str_contains($path, '/rhu/to-dispense') => 'items.dispense',

@@ -68,8 +68,8 @@ final class TbAssessment
                 $validator->errors()->add(
                     "$prefix.openTreatmentCard",
                     $isDsTb
-                        ? 'Form 4B registration is completed after consultation on Health Record Details.'
-                        : 'Form 4B initiation applies only to drug-susceptible TB Disease.'
+                        ? 'DS-TB Form 4B registration is discontinued. Leave treatment-card initiation off.'
+                        : 'Treatment-card initiation applies only to drug-susceptible TB Disease.'
                 );
             }
         }
