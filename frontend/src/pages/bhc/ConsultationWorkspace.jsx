@@ -124,7 +124,6 @@ import ConditionCardsSection from "../../components/features/health-records/wiza
 import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import { concernFollowUpTaskIds, continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, linkedScheduledFollowUpReviewRows, pruneContinuedSchedules, setContinuedSchedule, stripServiceConcernSchedules } from "../../utils/continuedConcerns";
-import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import MonitoringLaboratoryEvidence from "../../components/features/health-records/MonitoringLaboratoryEvidence";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
@@ -1318,10 +1317,9 @@ export default function ConsultationWorkspace() {
   // ---- Step-based consultation -------------------------------------------
   // Every consultation (new, continued or resumed) walks Patient Interview ->
   // Physical Examination -> each selected service's form -> Conditions ->
-  // Care and Outcome (-> Monitoring Details) -> Review & Finalize - see
-  // utils/consultationSteps.
-  // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
-  // whose Monitoring Details include the TB card.
+  // Care and Outcome -> Review & Finalize - see utils/consultationSteps.
+  // TB monitoring still classifies the visit (chief complaint / general-only),
+  // but BHC no longer edits a TB treatment card in this wizard.
   const isTb = monitoringDetailKeys.includes("tb_dots");
   // What this visit reports: a mirror of the Reporting entries. The server
   // re-derives the same value from the diagnoses on save.
@@ -1351,12 +1349,12 @@ export default function ConsultationWorkspace() {
           : "";
   const currentGlobalStepKey = getGlobalStepKey(currentStepKey);
 
-  // Monitoring Details disappears when nothing monitored needs it any more.
+  // Legacy drafts may still sit on the removed Monitoring Details screen.
   useEffect(() => {
-    if (monitoringDetailKeys.length === 0 && nextScreen === MONITORING_STEP) {
+    if (nextScreen === MONITORING_STEP || nextScreen === OUTCOME_STEP) {
       setNextScreen(NEXT_STEP);
     }
-  }, [monitoringDetailKeys.length, nextScreen]);
+  }, [nextScreen]);
 
   // Pre-fill the referral reason ("Referred for: ...") from the followed
   // conditions referred back, and keep it in step when that set changes - but
@@ -1949,8 +1947,7 @@ export default function ConsultationWorkspace() {
     // A draft saved on the old Patient History step reopens on Patient Interview.
     const restored = resolveRestoredPosition(payload, BHC_STEP_OPTIONS);
     {
-      const restoredScreen = payload.nextScreen === OUTCOME_STEP ? NEXT_STEP : payload.nextScreen;
-      setNextScreen([NEXT_STEP, MONITORING_STEP].includes(restoredScreen) ? restoredScreen : NEXT_STEP);
+      setNextScreen(NEXT_STEP);
     }
     setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
@@ -3411,8 +3408,8 @@ export default function ConsultationWorkspace() {
         isFamilyPlanning
           ? recordFamilyPlanningData
           : null,
-      // Sent whenever Monitoring Details includes the TB card (isTb).
-      tbData: isTb ? tbData : null,
+      // BHC consultation no longer edits TB treatment-card data in-wizard.
+      tbData: null,
       // Only an old draft's staged Patient History edits, kept by the clinician.
       backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(historyUpdateForSave) : undefined,
       // Per-visit history answers, saved on the record (null when not answered).
@@ -3915,7 +3912,7 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
     if (setValidationErrorsAndFocus(getNextStepErrors())) return;
-    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP ? NEXT_STEP : nextScreen, monitoringDetailKeys));
+    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP || nextScreen === MONITORING_STEP ? NEXT_STEP : nextScreen));
   }
 
   // ---- Wizard view models -------------------------------------------------
@@ -4100,9 +4097,7 @@ export default function ConsultationWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
 
-  // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
-  // Details when a condition monitored in this visit needs it.
-  const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP, BHC_STEP_OPTIONS)).filter(Boolean);
+  // The step flow's Next phase: Assessment & Care Plan, then Review & Finalize.
   const isGeneralOnly =
     !isImmunization &&
     !isFamilyPlanning &&
@@ -4196,29 +4191,7 @@ export default function ConsultationWorkspace() {
     </LockedFormContent>
   );
 
-  const renderCarePlanScreen = () => nextScreen === MONITORING_STEP ? (
-    <LockedFormContent locked={patientGateLocked}>
-      {monitoringDetailErrors.length > 0 && (
-        <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-          {monitoringDetailErrors.map((message) => (
-            <p key={message}>{message}</p>
-          ))}
-        </div>
-      )}
-      <MonitoringDetailsForms
-        detailKeys={monitoringDetailKeys}
-        tbData={tbData}
-        onTbDataChange={(next) => {
-          setTbData(next);
-          setValidationErrors((current) => Object.fromEntries(
-            Object.entries(current).filter(([key]) => !key.startsWith("tbData.")),
-          ));
-        }}
-        recordId={null}
-      />
-      {canViewBackground && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
-    </LockedFormContent>
-  ) : (
+  const renderCarePlanScreen = () => (
     <div className="ehr-consult__care-plan">
     {canViewBackground && (continuedMonitorings.length > 0 || startingConditions.length > 0) && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
     <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
@@ -4400,8 +4373,6 @@ export default function ConsultationWorkspace() {
       "Record each health concern, optional reporting classification, and its own care outcome.",
     [OUTCOME_STEP]:
       "Record each health concern, optional reporting classification, and its own care outcome.",
-    [MONITORING_STEP]:
-      "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
   };
   // Every screen keeps its own heading whatever programs are selected; only
@@ -4564,14 +4535,6 @@ export default function ConsultationWorkspace() {
         }),
       ],
     },
-    ...(monitoringDetailKeys.includes("tb_dots")
-      ? [{
-          key: MONITORING_STEP,
-          title: "Monitoring Details · TB-DOTS Treatment Card",
-          stepKey: MONITORING_STEP,
-          rows: programReviewRows(tbData),
-        }]
-      : []),
   ]);
   const reviewErrorMessages = Object.values(validationErrors).filter(Boolean);
 
@@ -4590,7 +4553,7 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
 
     if (wizardPhase === WIZARD_REVIEW) {
-      goToStepKey(reviewBackTarget(monitoringDetailKeys));
+      goToStepKey(reviewBackTarget());
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
@@ -4716,7 +4679,7 @@ export default function ConsultationWorkspace() {
         <NextActionStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
-          showVisitOverview={nextScreen === MONITORING_STEP}
+          showVisitOverview={false}
           unboxed={nextScreen === NEXT_STEP}
           saving={false}
           saveLabel="Save Record"

@@ -47,16 +47,15 @@ test("BHC steps go Patient Interview -> Physical Examination with no History ste
     ASSESSMENT_STEP,
     PROGRAMS_STEP,
     NEXT_STEP,
-    MONITORING_STEP,
     REVIEW_STEP,
   ]);
+  assert.ok(!keys.includes(MONITORING_STEP));
   assert.deepEqual(getFormSequence(programSteps, BHC), [INTERVIEW_STEP, ASSESSMENT_STEP, MATERNAL]);
   assert.deepEqual(getStepOrder(programSteps, ["tb_dots"], BHC), [
     INTERVIEW_STEP,
     ASSESSMENT_STEP,
     MATERNAL,
     NEXT_STEP,
-    MONITORING_STEP,
     REVIEW_STEP,
   ]);
 });

@@ -8,7 +8,6 @@ import { PROGRAM_CLASSIFICATIONS } from "./consultationPrograms.js";
  *       -> Service Details: one screen per selected service (Prenatal / Family
  *          Planning / EPI), only when a service is selected
  *       -> Assessment & Care Plan (inline concerns, reporting, one Care Outcome)
- *       -> Monitoring Details (when a monitored condition needs it)
  *       -> Review & Finalize
  *
  * The services are ticked in the Barangay Health Services panel on Patient
@@ -186,10 +185,6 @@ export function buildConsultationSteps({
     ...(includeOutcomeStep({ includeHistory, workflow })
       ? [{ key: OUTCOME_STEP, phase: "next", label: "Care and Outcome" }]
       : []),
-    // Only when a monitored condition needs data the ITR does not hold (TB today).
-    ...(!rhuItr && monitoringDetailKeys.length > 0
-      ? [{ key: MONITORING_STEP, phase: "next", label: "Monitoring Details" }]
-      : []),
     { key: REVIEW_STEP, phase: "review", label: "Review & Finalize" },
   ];
 }
@@ -245,9 +240,8 @@ export function getFormSequence(programSteps = [], options = {}) {
 }
 
 /** Every screen in order, used to rank validation errors. */
-export function getStepOrder(programSteps = [], monitoringDetailKeys = [], options = {}) {
+export function getStepOrder(programSteps = [], _monitoringDetailKeys = [], options = {}) {
   const { includeHistory = true } = options;
-  const rhuItr = isRhuItr(options);
   return [
     INTERVIEW_STEP,
     ...historySteps(includeHistory),
@@ -256,7 +250,6 @@ export function getStepOrder(programSteps = [], monitoringDetailKeys = [], optio
     NEXT_STEP,
     ...tbIntakeKeys(options),
     ...(includeOutcomeStep(options) ? [OUTCOME_STEP] : []),
-    ...(!rhuItr && monitoringDetailKeys.length > 0 ? [MONITORING_STEP] : []),
     REVIEW_STEP,
   ];
 }
@@ -412,7 +405,8 @@ export function getErrorOwnerStepKey(errorKey, options = {}) {
     return ASSESSMENT_STEP;
   }
   if (key.startsWith("tbData.")) {
-    return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : MONITORING_STEP;
+    // BHC no longer has a Monitoring Details step; route TB payload errors to Care Plan.
+    return workflow === "rhu_itr_v1" ? TB_INTAKE_STEP : NEXT_STEP;
   }
   if (key === "familyPlanningMethodUsed" || key.startsWith("familyPlanningData.")) {
     return programStepKey("Family Planning");

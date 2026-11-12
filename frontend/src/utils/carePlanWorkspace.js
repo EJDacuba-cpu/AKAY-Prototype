@@ -225,21 +225,22 @@ export function continuedVisitLink(continuedFollowUpTaskIds = [], continuedFollo
 }
 
 /** Continue from a screen of the Next phase. */
-export function nextPhaseForwardTarget(screen, monitoringDetailKeys = []) {
-  if (screen === NEXT_STEP || screen === OUTCOME_STEP) {
-    return monitoringDetailKeys.length > 0 ? MONITORING_STEP : REVIEW_STEP;
+export function nextPhaseForwardTarget(screen, _monitoringDetailKeys = []) {
+  if (screen === NEXT_STEP || screen === OUTCOME_STEP || screen === MONITORING_STEP) {
+    return REVIEW_STEP;
   }
   return REVIEW_STEP;
 }
 
 /** Previous from a screen of the Next phase; null means leave the phase. */
 export function nextPhaseBackTarget(screen) {
+  // Legacy drafts may still sit on MONITORING_STEP; treat like OUTCOME → Care Plan.
   return screen === MONITORING_STEP || screen === OUTCOME_STEP ? NEXT_STEP : null;
 }
 
 /** Previous from Review. */
-export function reviewBackTarget(monitoringDetailKeys = []) {
-  return monitoringDetailKeys.length > 0 ? MONITORING_STEP : NEXT_STEP;
+export function reviewBackTarget(_monitoringDetailKeys = []) {
+  return NEXT_STEP;
 }
 
 const NO_NEXT_ACTION = "No next action";
