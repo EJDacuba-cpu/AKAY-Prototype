@@ -141,7 +141,6 @@ export const menuByRole = {
             { label: "All Patients", path: "/rhu/patients?view=all" },
           ],
         },
-        { label: "Households", path: "/rhu/families", icon: House },
         {
           label: "Follow-ups",
           path: "/rhu/follow-ups",

@@ -54,26 +54,21 @@ class FamilyPermissionsTest extends TestCase
         }
     }
 
-    public function test_family_duties_are_available_at_both_facility_tiers_and_never_default(): void
+    public function test_family_duties_are_available_only_at_bhc_and_never_default(): void
     {
         $available = $this->getJson('/api/staff-roles')->assertOk()->json('data.available');
-        foreach (['bhc', 'rhu'] as $tier) {
-            $this->assertContains('families.view', $available[$tier]);
-            $this->assertContains('families.manage', $available[$tier]);
-        }
+        $this->assertContains('families.view', $available['bhc']);
+        $this->assertContains('families.manage', $available['bhc']);
+        $this->assertNotContains('families.view', $available['rhu']);
+        $this->assertNotContains('families.manage', $available['rhu']);
     }
 
-    public function test_admin_can_save_read_and_revoke_rhu_family_grants_on_the_server(): void
+    public function test_admin_cannot_grant_rhu_family_duties(): void
     {
         $payload = [...$this->payload(['clinical.history', 'families.view', 'families.manage']), 'email' => 'rhu-nurse@example.test', 'role' => 'rhu', 'staff_role' => 'nurse', 'barangay_health_center_id' => null, 'rural_health_unit_id' => $this->rhu->id];
-        $this->postJson('/api/users', $payload)->assertCreated();
-        $nurse = User::where('email', 'rhu-nurse@example.test')->firstOrFail();
-        $this->assertSame(['clinical.history', 'families.view', 'families.manage'], $nurse->permissions);
-        $this->assertTrue(ActionPermissions::allows($nurse, 'families.manage'));
-        $this->patchJson('/api/users/'.$nurse->id, ['permissions' => ['clinical.history', 'families.view'], 'permissions_confirmed' => true])->assertOk();
-        $this->assertTrue(ActionPermissions::allows($nurse->fresh(), 'families.view'));
-        $this->assertFalse(ActionPermissions::allows($nurse->fresh(), 'families.manage'));
+        $this->postJson('/api/users', $payload)->assertUnprocessable()->assertJsonValidationErrors('permissions');
         $this->postJson('/api/users', [...$payload, 'email' => 'rhu-manage-only@example.test', 'permissions' => ['families.manage']])->assertUnprocessable()->assertJsonValidationErrors('permissions');
+        $this->postJson('/api/users', [...$payload, 'email' => 'rhu-ok@example.test', 'permissions' => ['clinical.history']])->assertCreated();
     }
 
     public function test_admin_has_no_operational_families_access(): void

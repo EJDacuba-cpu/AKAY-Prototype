@@ -16,7 +16,8 @@ export function navigationAllowed(user, path = "") {
     path !== `/${user.role}/patients/add` &&
     permissions.includes("clinical.history")
   ) return true;
-  if (/^\/(bhc|rhu)\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
+  if (/^\/bhc\/families(?:\/|$)/.test(path)) return permissions.includes("families.view");
+  if (/^\/rhu\/families(?:\/|$)/.test(path)) return false;
   if (user?.role === "rhu" && /^\/rhu\/patient-intake(?:\/|$)/.test(path)) {
     return permissions.includes("rhu.intake") || permissions.includes("rhu.manage") || permissions.includes("patients.register");
   }

@@ -27,7 +27,7 @@ class RhuWalkInRegistrationTest extends TestCase
         parent::setUp();
         $this->rhu = RuralHealthUnit::create(['name' => 'Registration RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Registration BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
-        $this->registrar = User::create(['name' => 'RHU Registrar', 'email' => 'walk-in-registrar@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => ['patients.register', 'families.view', 'families.manage']]);
+        $this->registrar = User::create(['name' => 'RHU Registrar', 'email' => 'walk-in-registrar@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $this->rhu->id, 'permissions' => ['patients.register']]);
         Sanctum::actingAs($this->registrar, ['akay:access']);
     }
 
@@ -38,7 +38,6 @@ class RhuWalkInRegistrationTest extends TestCase
             'last_name' => 'Cruz',
             'sex' => 'Female',
             'birthdate' => '1990-01-01',
-            'household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => ['streetAddress' => 'Main street', 'purokArea' => 'Zone 1', 'barangay' => 'Local', 'municipality' => 'Bulakan']],
             ...$overrides,
         ];
     }
@@ -55,7 +54,9 @@ class RhuWalkInRegistrationTest extends TestCase
             ->assertJsonPath('data.rural_health_unit_id', $this->rhu->id)
             ->assertJsonMissingPath('visit');
 
-        $this->assertNotNull($response->json('data.household_id'));
+        $this->assertNull($response->json('data.household_id'));
+        $this->assertNull($response->json('data.family_serial_number'));
+        $this->assertSame(0, Household::count());
         $this->assertSame(0, RhuVisitQueueEntry::count());
     }
 
@@ -77,7 +78,7 @@ class RhuWalkInRegistrationTest extends TestCase
         ])->assertUnprocessable();
 
         $this->assertSame(1, Patient::count());
-        $this->assertSame(1, Household::count());
+        $this->assertSame(0, Household::count());
         $this->assertSame(0, RhuVisitQueueEntry::count());
 
         $this->postJson('/api/rhu-visits', [
@@ -164,10 +165,10 @@ class RhuWalkInRegistrationTest extends TestCase
     {
         Patient::create(['first_name' => 'Ana', 'last_name' => 'Cruz', 'sex' => 'Female', 'birthdate' => null, 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
 
-        // A new household needs a dated head, so register this patient without one.
         $this->postJson('/api/patients', ['first_name' => 'Ana', 'last_name' => 'Cruz', 'sex' => 'Female'])
             ->assertCreated()
-            ->assertJsonMissingPath('visit');
+            ->assertJsonMissingPath('visit')
+            ->assertJsonPath('data.household_id', null);
     }
 
     public function test_other_facility_same_name_does_not_warn(): void

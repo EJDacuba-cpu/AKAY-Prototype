@@ -188,10 +188,20 @@ class BhcHouseholdsTest extends TestCase
         Sanctum::actingAs($rhuUser, ['akay:access']);
         $this->getJson('/api/bhc/households/lookup')->assertForbidden();
         $this->getJson('/api/bhc/households/'.$id)->assertForbidden();
-        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])->assertNotFound();
+        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('household');
         $this->assertDatabaseCount('patients', 1);
-        $this->register()->assertCreated()->assertJsonPath('data.rural_health_unit_id', $rhu->id)->assertJsonPath('data.barangay_health_center_id', null);
-        $this->getJson('/api/rhu/households')->assertOk()->assertJsonCount(1, 'data');
+        $this->postJson('/api/patients', [
+            'first_name' => 'Walk',
+            'last_name' => 'In',
+            'sex' => 'Female',
+            'birthdate' => '1992-04-04',
+        ])->assertCreated()
+            ->assertJsonPath('data.rural_health_unit_id', $rhu->id)
+            ->assertJsonPath('data.barangay_health_center_id', null)
+            ->assertJsonPath('data.household_id', null);
+        $this->getJson('/api/rhu/households')->assertNotFound();
         $this->getJson('/api/bhc/households')->assertForbidden();
     }
 

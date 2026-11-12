@@ -424,7 +424,7 @@ function handleBirthDateChange(valueOrEvent) {
           ? form.philHealthNumber || null
           : null,
       purokArea: form.purokArea || null,
-      familySerialNumber: form.familySerialNumber || null,
+      ...(householdEnabled ? { familySerialNumber: form.familySerialNumber || null } : {}),
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
@@ -702,7 +702,7 @@ function handleBirthDateChange(valueOrEvent) {
                     />
                   </div>
                 )}
-                {householdEnabled ? (
+                {householdEnabled && (
                   <FamilyRegistryField
                     allowDirectCreate={live && !editingPatientId}
                     live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
@@ -715,15 +715,6 @@ function handleBirthDateChange(valueOrEvent) {
                     onPendingChange={setHouseholdReviewPending}
                     error={fieldErrors.familySerialNumber}
                     relationshipError={fieldErrors.relationshipToHouseholdHead}
-                  />
-                ) : (
-                  <FormInput
-                    label="Family Serial Number"
-                    name="familySerialNumber"
-                    value={form.familySerialNumber}
-                    onChange={handleChange}
-                    placeholder="Optional"
-                    error={fieldErrors.familySerialNumber}
                   />
                 )}
               </FormPanel>

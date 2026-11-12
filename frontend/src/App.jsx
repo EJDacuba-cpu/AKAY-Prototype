@@ -484,7 +484,7 @@ export default function App() {
         hidden={Boolean(consultationBackground)}
       >
       <Routes location={consultationBackground || location}>
-      {["bhc", "rhu"].flatMap(role => [
+      {["bhc"].flatMap(role => [
         <Route key={`${role}-families`} path={`/${role}/families`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamiliesDirectory role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyForm role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamilyDetails role={role} /></ProtectedPage>} />,
@@ -493,6 +493,7 @@ export default function App() {
         <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcAddMember role={role} /></ProtectedPage>} />,
         <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyConnections role={role} /></ProtectedPage>} />,
       ])}
+      <Route path="/rhu/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />

@@ -2,233 +2,143 @@
 
 namespace Tests\Feature;
 
-use App\Models\BarangayHealthCenter;
 use App\Models\Household;
 use App\Models\Patient;
-use App\Models\PatientRelationship;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
-use App\Services\AuditLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * RHU household/FSN management is removed. Legacy rows may still exist in the DB,
+ * but RHU APIs and registration must not create or manage households.
+ */
 class RhuHouseholdsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private int $patientSequence = 0;
-
-    protected function tearDown(): void
+    private function staff(array $permissions = ['patients.register', 'families.view', 'families.manage']): User
     {
-        Carbon::setTestNow();
-        parent::tearDown();
-    }
-
-    private function staff(?RuralHealthUnit $facility = null, array $permissions = ['patients.register', 'families.view', 'families.manage']): User
-    {
-        $facility ??= RuralHealthUnit::create(['name' => 'Test RHU '.uniqid(), 'status' => 'active']);
-        $user = User::create(['name' => 'RHU Registrar', 'email' => uniqid().'@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'rhu', 'staff_role' => 'nurse', 'rural_health_unit_id' => $facility->id, 'permissions' => $permissions]);
+        $facility = RuralHealthUnit::create(['name' => 'Test RHU '.uniqid(), 'status' => 'active']);
+        $user = User::create([
+            'name' => 'RHU Registrar',
+            'email' => uniqid().'@example.test',
+            'password' => 'password123',
+            'status' => 'active',
+            'role' => 'rhu',
+            'staff_role' => 'nurse',
+            'rural_health_unit_id' => $facility->id,
+            'permissions' => $permissions,
+        ]);
         Sanctum::actingAs($user, ['akay:access']);
 
         return $user;
     }
 
-    private function register(array $household = [], array $patient = [])
+    public function test_rhu_household_endpoints_are_not_registered(): void
     {
-        $this->patientSequence++;
-        $household = $household ?: ['kind' => 'new', 'serial_mode' => 'auto'];
-        if (($household['kind'] ?? '') === 'new' && ! array_key_exists('address', $household)) {
-            $household['address'] = $this->address();
+        $this->staff();
+        foreach ([
+            '/api/rhu/households',
+            '/api/rhu/households/lookup',
+            '/api/rhu/households/candidates',
+            '/api/rhu/households/1',
+        ] as $uri) {
+            $this->getJson($uri)->assertNotFound();
         }
+        $this->postJson('/api/rhu/households', [])->assertNotFound();
+        $this->patchJson('/api/rhu/households/1', [])->assertNotFound();
+    }
 
-        // Unique defaults avoid RHU possible-duplicate 409s across multi-patient fixtures.
-        // Explicit $patient keys still win (for example a minor birthdate).
-        $defaults = [
-            'first_name' => 'Adult'.$this->patientSequence,
-            'last_name' => 'Patient'.$this->patientSequence,
+    public function test_rhu_patient_registration_rejects_household_payload(): void
+    {
+        $this->staff(['patients.register']);
+        $this->postJson('/api/patients', [
+            'first_name' => 'Ana',
+            'last_name' => 'Cruz',
             'sex' => 'Female',
             'birthdate' => '1990-01-01',
-        ];
+            'household' => [
+                'kind' => 'new',
+                'serial_mode' => 'auto',
+                'address' => [
+                    'streetAddress' => 'Main street',
+                    'purokArea' => 'Zone 1',
+                    'barangay' => 'Local',
+                    'municipality' => 'Bulakan',
+                ],
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('household');
 
-        return $this->postJson('/api/patients', [...$defaults, ...$patient, 'household' => $household]);
+        $this->assertSame(0, Patient::count());
+        $this->assertSame(0, Household::count());
     }
 
-    private function address(): array
+    public function test_rhu_patient_registration_rejects_family_serial_number(): void
     {
-        return ['streetAddress' => 'Main street', 'purokArea' => 'Zone 1', 'barangay' => 'Local', 'municipality' => 'Bulakan'];
+        $this->staff(['patients.register']);
+        $this->postJson('/api/patients', [
+            'first_name' => 'Ana',
+            'last_name' => 'Cruz',
+            'sex' => 'Female',
+            'birthdate' => '1990-01-01',
+            'family_serial_number' => 'FSN-2026-0001',
+        ])->assertUnprocessable()->assertJsonValidationErrors('family_serial_number');
+
+        $this->assertSame(0, Patient::count());
     }
 
-    public function test_empty_directory_returns_no_records(): void
+    public function test_rhu_patient_registers_without_household_or_fsn(): void
     {
-        $this->staff();
-        $this->getJson('/api/rhu/households')->assertOk()->assertJsonPath('data', [])->assertJsonPath('meta.total', 0);
+        $user = $this->staff(['patients.register']);
+        $this->postJson('/api/patients', [
+            'first_name' => 'Ana',
+            'last_name' => 'Cruz',
+            'sex' => 'Female',
+            'birthdate' => '1990-01-01',
+        ])->assertCreated()
+            ->assertJsonPath('data.rural_health_unit_id', $user->rural_health_unit_id)
+            ->assertJsonPath('data.barangay_health_center_id', null)
+            ->assertJsonPath('data.household_id', null)
+            ->assertJsonPath('data.family_serial_number', null);
+
+        $this->assertSame(1, Patient::count());
+        $this->assertSame(0, Household::count());
     }
 
-    public function test_automatic_allocation_is_persisted_scoped_and_independent_of_bhc(): void
+    public function test_legacy_rhu_household_rows_are_not_deleted_by_registration(): void
     {
-        Carbon::setTestNow('2026-12-31 16:01:00 UTC');
-        $this->staff();
-        $first = $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2027-0001');
-        $id = $first->json('data.household_id');
-        $this->assertNotNull(Household::find($id)->rural_health_unit_id);
-        $this->assertNull(Household::find($id)->barangay_health_center_id);
-        $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2027-0002');
-        $this->getJson('/api/rhu/households/'.$id)->assertOk()->assertJsonPath('data.members.0.household_id', $id);
-        $this->staff();
-        $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-2027-0001');
-        $this->getJson('/api/rhu/households/'.$id)->assertNotFound();
-        Carbon::setTestNow();
-    }
+        $user = $this->staff(['patients.register']);
+        $legacy = Household::create([
+            'rural_health_unit_id' => $user->rural_health_unit_id,
+            'serial_number' => 'FSN-LEGACY-0001',
+            'address' => [],
+            'version' => 1,
+        ]);
+        $member = Patient::create([
+            'first_name' => 'Legacy',
+            'last_name' => 'Member',
+            'sex' => 'Female',
+            'birthdate' => '1988-02-02',
+            'status' => 'active',
+            'rural_health_unit_id' => $user->rural_health_unit_id,
+            'household_id' => $legacy->id,
+            'family_serial_number' => $legacy->serial_number,
+            'relationship_to_household_head' => 'Household head',
+        ]);
+        $legacy->update(['head_patient_id' => $member->id]);
 
-    public function test_same_fsn_may_exist_in_bhc_and_rhu_namespaces(): void
-    {
-        $rhuUser = $this->staff();
-        $this->register(['kind' => 'new', 'serial_mode' => 'manual', 'serial_number' => 'FSN-2026-0001'])->assertCreated();
-        $bhc = BarangayHealthCenter::create(['name' => 'Peer BHC', 'status' => 'active']);
-        $bhcUser = User::create(['name' => 'BHC Registrar', 'email' => uniqid().'@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'bhc', 'staff_role' => 'encoder', 'barangay_health_center_id' => $bhc->id, 'permissions' => ['patients.register', 'families.view', 'families.manage']]);
-        Sanctum::actingAs($bhcUser, ['akay:access']);
-        $this->register(['kind' => 'new', 'serial_mode' => 'manual', 'serial_number' => 'FSN-2026-0001'])->assertCreated()
-            ->assertJsonPath('data.barangay_health_center_id', $bhc->id)
-            ->assertJsonPath('data.rural_health_unit_id', null);
-        Sanctum::actingAs($rhuUser, ['akay:access']);
-        $this->getJson('/api/rhu/households')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.serial_number', 'FSN-2026-0001');
-        $this->getJson('/api/bhc/households')->assertForbidden();
-    }
+        $this->postJson('/api/patients', [
+            'first_name' => 'New',
+            'last_name' => 'WalkIn',
+            'sex' => 'Male',
+            'birthdate' => '1995-03-03',
+        ])->assertCreated()->assertJsonPath('data.household_id', null);
 
-    public function test_join_existing_household_and_reject_duplicate_manual_fsn(): void
-    {
-        $this->staff();
-        $head = $this->register()->assertCreated()->json('data');
-        $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife'])->assertCreated()
-            ->assertJsonPath('data.household_id', $head['household_id'])
-            ->assertJsonPath('data.relationship_to_household_head', 'Wife')
-            ->assertJsonPath('data.street_address', 'Main street');
-        $this->register(['kind' => 'new', 'serial_mode' => 'manual', 'serial_number' => $head['family_serial_number']])->assertUnprocessable()->assertJsonValidationErrors('household.serial_number');
-    }
-
-    public function test_registration_lookup_is_allowed_but_directory_is_not_granted(): void
-    {
-        $this->staff(null, ['patients.register']);
-        $this->register()->assertCreated();
-        $this->getJson('/api/rhu/households/lookup')->assertOk();
-        $this->getJson('/api/rhu/households')->assertForbidden();
-        $this->postJson('/api/rhu/households', [])->assertForbidden();
-    }
-
-    public function test_bhc_cannot_use_rhu_household_namespace(): void
-    {
-        $this->staff();
-        $id = $this->register()->assertCreated()->json('data.household_id');
-        $bhc = BarangayHealthCenter::create(['name' => 'Other BHC', 'status' => 'active']);
-        $bhcUser = User::create(['name' => 'BHC', 'email' => uniqid().'@example.test', 'password' => 'password123', 'status' => 'active', 'role' => 'bhc', 'staff_role' => 'encoder', 'barangay_health_center_id' => $bhc->id, 'permissions' => ['patients.register', 'families.view', 'families.manage']]);
-        Sanctum::actingAs($bhcUser, ['akay:access']);
-        $this->getJson('/api/rhu/households/lookup')->assertForbidden();
-        $this->getJson('/api/rhu/households/'.$id)->assertForbidden();
-        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])->assertNotFound();
-    }
-
-    public function test_other_rhu_cannot_read_or_join_household(): void
-    {
-        $this->staff();
-        $id = $this->register()->assertCreated()->json('data.household_id');
-        $this->staff();
-        $this->getJson('/api/rhu/households/'.$id)->assertNotFound();
-        $this->register(['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Son'])->assertNotFound();
-    }
-
-    public function test_bhc_owned_patient_cannot_join_rhu_household(): void
-    {
-        $rhuUser = $this->staff();
-        $id = $this->register()->assertCreated()->json('data.household_id');
-        $bhc = BarangayHealthCenter::create(['name' => 'Owned BHC', 'status' => 'active']);
-        $foreign = Patient::create(['first_name' => 'BHC', 'last_name' => 'Walkin', 'sex' => 'Female', 'birthdate' => '1988-01-01', 'barangay_health_center_id' => $bhc->id]);
-        $this->patchJson('/api/patients/'.$foreign->id, ['household' => ['kind' => 'existing', 'household_id' => $id, 'relationship' => 'Daughter']])->assertForbidden();
-        $this->assertNull($foreign->fresh()->household_id);
-        Sanctum::actingAs($rhuUser, ['akay:access']);
-        $this->getJson('/api/rhu/households/'.$id)->assertOk()->assertJsonCount(1, 'data.members');
-    }
-
-    public function test_family_editor_candidates_are_local_and_support_creation(): void
-    {
-        $local = RuralHealthUnit::create(['name' => 'Candidates local', 'status' => 'active']);
-        $foreign = RuralHealthUnit::create(['name' => 'Candidates foreign', 'status' => 'active']);
-        $head = Patient::create(['first_name' => 'Candidate', 'last_name' => 'Head', 'sex' => 'Female', 'birthdate' => '1980-01-01', 'rural_health_unit_id' => $local->id, 'medical_background' => ['private' => true]]);
-        Patient::create(['first_name' => 'Foreign', 'last_name' => 'Person', 'sex' => 'Male', 'rural_health_unit_id' => $foreign->id]);
-        $this->staff($local, ['families.view', 'families.manage']);
-        $this->getJson('/api/rhu/households/candidates')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $head->id)->assertJsonMissingPath('data.0.medical_background');
-        $this->postJson('/api/rhu/households', ['head_patient_id' => $head->id, 'serial_mode' => 'auto', 'address' => $this->address()])->assertCreated()->assertJsonPath('data.head_patient_id', $head->id);
-    }
-
-    public function test_head_departure_requires_review_and_empty_household_is_archived(): void
-    {
-        $this->staff();
-        $head = $this->register()->assertCreated()->json('data');
-        $member = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife'])->assertCreated()->json('data');
-        $this->patchJson('/api/patients/'.$head['id'], ['household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => $this->address()]])->assertUnprocessable()->assertJsonValidationErrors('head_replacement');
-        $source = $this->getJson('/api/rhu/households/'.$head['household_id'])->json('data');
-        $this->patchJson('/api/patients/'.$head['id'], ['household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => $this->address()], 'head_replacement' => ['household_id' => $source['id'], 'head_patient_id' => $member['id'], 'relationships' => [], 'version' => $source['version']]])->assertOk();
-        $this->getJson('/api/rhu/households/'.$source['id'])->assertJsonPath('data.head_patient_id', $member['id']);
-        $this->patchJson('/api/patients/'.$member['id'], ['household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => $this->address()]])->assertOk();
-        $this->assertNotNull(Household::find($source['id'])->archived_at);
-    }
-
-    public function test_relationship_persistence_is_facility_scoped(): void
-    {
-        $this->staff();
-        $head = $this->register()->assertCreated()->json('data');
-        $wife = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife', 'relationship_link' => ['type' => 'spouse']])->assertCreated()->json('data');
-        $household = $this->getJson('/api/rhu/households/'.$head['household_id'])->assertOk()->json('data');
-        $this->assertCount(1, $household['relationships']);
-        $this->assertSame('spouse', $household['relationships'][0]['type']);
-        $this->assertSame('spouse', PatientRelationship::sole()->type);
-        $this->assertNotNull(PatientRelationship::sole()->rural_health_unit_id);
-        $this->assertNull(PatientRelationship::sole()->barangay_health_center_id);
-        $url = '/api/rhu/households/'.$household['id'].'/relationships/'.$household['relationships'][0]['id'];
-        $this->patchJson($url, ['version' => $household['version'], 'type' => 'sibling'])->assertOk()->assertJsonPath('data.relationships.0.type', 'sibling');
-        $this->staff();
-        $this->patchJson($url, ['version' => $household['version'] + 1, 'type' => 'spouse'])->assertNotFound();
-        $this->assertSame('sibling', PatientRelationship::sole()->type);
-        $this->assertContains($wife['id'], [$household['relationships'][0]['patient_id'], $household['relationships'][0]['relative_id']]);
-    }
-
-    public function test_unauthorized_user_cannot_mutate_relationships(): void
-    {
-        $this->staff();
-        $head = $this->register()->assertCreated()->json('data');
-        $wife = $this->register(['kind' => 'existing', 'household_id' => $head['household_id'], 'relationship' => 'Wife'])->assertCreated()->json('data');
-        $household = $this->getJson('/api/rhu/households/'.$head['household_id'])->json('data');
-        $this->staff(null, ['patients.register', 'families.view']);
-        $this->postJson('/api/rhu/households/'.$household['id'].'/relationships', ['version' => $household['version'], 'patient_id' => $wife['id'], 'relative_id' => $head['id'], 'type' => 'spouse'])->assertForbidden();
-        $this->assertDatabaseCount('patient_relationships', 0);
-    }
-
-    public function test_audit_failure_rolls_back_rhu_patient_household_and_counter(): void
-    {
-        $this->staff();
-        $this->mock(AuditLogger::class)->shouldReceive('log')->once()->andThrow(new \RuntimeException('Audit unavailable'));
-        $this->register()->assertInternalServerError();
-        $this->assertDatabaseCount('patients', 0);
-        $this->assertDatabaseCount('households', 0);
-        $this->assertDatabaseCount('household_fsn_counters', 0);
-        app()->forgetInstance(AuditLogger::class);
-        $this->register()->assertCreated()->assertJsonPath('data.family_serial_number', 'FSN-'.now('Asia/Manila')->year.'-0001');
-    }
-
-    public function test_minor_cannot_head_a_new_rhu_household(): void
-    {
-        $this->staff();
-        $this->register([], ['birthdate' => '2020-01-01'])->assertUnprocessable();
-        $this->assertDatabaseCount('patients', 0);
-        $this->assertDatabaseCount('households', 0);
-    }
-
-    public function test_legacy_fsn_cannot_collide_with_rhu_household(): void
-    {
-        $this->staff();
-        $household = $this->register()->assertCreated()->json('data');
-        $this->postJson('/api/patients', ['first_name' => 'Legacy', 'last_name' => 'Patient', 'sex' => 'Male', 'family_serial_number' => strtolower($household['family_serial_number'])])
-            ->assertUnprocessable()->assertJsonValidationErrors('family_serial_number');
+        $this->assertDatabaseHas('households', ['id' => $legacy->id, 'serial_number' => 'FSN-LEGACY-0001']);
+        $this->assertSame($legacy->id, $member->fresh()->household_id);
+        $this->assertSame(2, Patient::count());
+        $this->assertSame(1, Household::count());
     }
 }
