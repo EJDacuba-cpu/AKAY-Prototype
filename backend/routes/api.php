@@ -239,6 +239,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/monitoring-handoff-requests', [MonitoringHandoffController::class, 'index']);
         Route::get('/monitoring-handoff-requests/{id}', [MonitoringHandoffController::class, 'show'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/link', [MonitoringHandoffController::class, 'link'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/register-source', [MonitoringHandoffController::class, 'registerSource'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/flag-identity-review', [MonitoringHandoffController::class, 'flagIdentityReview'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/accept', [MonitoringHandoffController::class, 'accept'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/decline', [MonitoringHandoffController::class, 'decline'])->whereNumber('id');
         Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);

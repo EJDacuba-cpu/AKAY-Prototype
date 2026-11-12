@@ -15,17 +15,27 @@ export async function linkMonitoringHandoffRequest(id, linkedPatientId) {
   }));
 }
 
+export async function registerMonitoringHandoffSource(id) {
+  return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/register-source`, {
+    method: "POST",
+  }));
+}
+
+export async function flagMonitoringHandoffIdentityReview(id, note) {
+  return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/flag-identity-review`, {
+    method: "POST",
+    body: { note: String(note || "").trim() },
+  }));
+}
+
 export async function acceptMonitoringHandoffRequest(id) {
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/accept`, { method: "POST" }));
 }
 
-export async function declineMonitoringHandoffRequest(id, { reason, redirectedToBhcId } = {}) {
+export async function declineMonitoringHandoffRequest(id, { reason } = {}) {
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/decline`, {
     method: "POST",
-    body: {
-      reason,
-      redirected_to_bhc_id: redirectedToBhcId ? Number(redirectedToBhcId) : undefined,
-    },
+    body: { reason },
   }));
 }
 

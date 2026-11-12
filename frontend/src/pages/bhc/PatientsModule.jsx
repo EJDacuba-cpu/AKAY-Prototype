@@ -529,7 +529,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
 
 const MONITORING_STATUS_LABELS = {
   pending_review: "Pending Review",
-  linkage_needed: "Linkage Needed",
+  linkage_needed: "Needs Verification",
   accepted_awaiting_first_visit: "Accepted — Awaiting First Visit",
   monitoring_active: "Monitoring Active",
   declined: "Declined",

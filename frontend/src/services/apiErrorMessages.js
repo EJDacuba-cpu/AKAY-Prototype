@@ -12,7 +12,12 @@ export const API_ERROR_MESSAGES = {
 
 /** The server's own message, else its first validation message, else the generic text. */
 export function serverErrorMessage(payload) {
-  if (payload?.message) return payload.message;
   const firstValidationError = payload?.errors ? Object.values(payload.errors).flat()[0] : null;
-  return firstValidationError || API_ERROR_MESSAGES.generic;
+  const message = firstValidationError || payload?.message || API_ERROR_MESSAGES.generic;
+  // Never surface driver/SQL internals in toasts.
+  if (/SQLSTATE\[/i.test(String(message)) || /current transaction is aborted/i.test(String(message))) {
+    return API_ERROR_MESSAGES.generic;
+  }
+
+  return String(message);
 }

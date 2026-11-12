@@ -46,7 +46,9 @@ $forms = [
     'facility-bhc' => $entry(['admin'], null, ['create' => ['new'], 'edit' => ['bhc']], [...$fields('name barangay address contact_information status rural_health_unit_id'), 'alternative_rhu_ids' => ['*' => true]]),
     'facility-rhu' => $entry(['admin'], null, ['create' => ['new'], 'edit' => ['rhu']], $fields('name barangay address contact_information status')),
     'handoff-link' => $entry(['bhc'], 'consultations.encode', ['edit' => ['handoff']], $fields('linked_patient_id')),
-    'handoff-decline' => $entry(['bhc'], 'consultations.encode', ['edit' => ['handoff']], $fields('reason redirected_to_bhc_id')),
+    'handoff-register-source' => $entry(['bhc'], 'consultations.encode', ['edit' => ['handoff']], ['*' => true]),
+    'handoff-flag-identity-review' => $entry(['bhc'], 'consultations.encode', ['edit' => ['handoff']], $fields('note')),
+    'handoff-decline' => $entry(['bhc'], 'consultations.encode', ['edit' => ['handoff']], $fields('reason')),
 ];
 foreach (['no-show', 'reschedule', 'cancel'] as $action) {
     $forms['follow-up-'.$action] = $entry($clinical, 'followups.manage', ['edit' => ['follow-up']], $fields($action === 'reschedule' ? 'due_date due_time notes' : 'notes'));

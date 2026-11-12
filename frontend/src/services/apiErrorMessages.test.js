@@ -19,3 +19,25 @@ test("no server message falls back to the generic text", () => {
   assert.equal(serverErrorMessage({}), "Something went wrong. Please try again.");
   assert.equal(serverErrorMessage(null), "Something went wrong. Please try again.");
 });
+
+test("SQLSTATE and aborted-transaction messages stay generic", () => {
+  assert.equal(
+    serverErrorMessage({
+      message: 'SQLSTATE[25P02]: In failed sql transaction: current transaction is aborted',
+    }),
+    API_ERROR_MESSAGES.generic,
+  );
+  assert.equal(
+    serverErrorMessage({
+      message: 'SQLSTATE[23514]: Check violation: patients_household_facility_exclusive',
+    }),
+    API_ERROR_MESSAGES.generic,
+  );
+  assert.equal(
+    serverErrorMessage({
+      errors: { patient_id: ["Patient information requires review before BHC registration."] },
+      message: "SQLSTATE[25P02]: ignored",
+    }),
+    "Patient information requires review before BHC registration.",
+  );
+});
