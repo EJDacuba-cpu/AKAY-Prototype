@@ -36,7 +36,7 @@ final class TbAssessment
         ];
     }
 
-    public static function validate(Validator $validator, array $diagnoses): void
+    public static function validate(Validator $validator, array $diagnoses, ?\App\Models\Patient $patient = null): void
     {
         $seenCaseNumbers = [];
         foreach ($diagnoses as $index => $entry) {
@@ -88,6 +88,10 @@ final class TbAssessment
                     }
                 }
             }
+        }
+
+        if ($patient !== null) {
+            app(TbClinicalAuthority::class)->enforceFollowUpAssessmentLock($validator, $patient, $diagnoses);
         }
     }
 

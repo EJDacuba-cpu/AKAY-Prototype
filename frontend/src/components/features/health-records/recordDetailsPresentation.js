@@ -235,7 +235,6 @@ export function recordDetailsPresentation(record = {}, linkedReferral = null) {
     visitFollowUps,
     visitReferral,
     referralHref: visitFacts.trackingId ? `/bhc/referrals/${visitFacts.trackingId}` : "",
-    followUpHref: schedules.length || tasks.length ? "/bhc/follow-ups" : "",
     outcomes,
     concerns,
     mapsReportingToConcerns,

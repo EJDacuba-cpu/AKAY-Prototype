@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\FollowUpTask;
 use App\Models\HealthRecord;
+use App\Models\Patient;
 use App\Models\Referral;
 use App\Services\ConsultationPrograms;
 use App\Services\NutritionEnrollment;
@@ -736,7 +737,9 @@ class HealthRecordRequest extends FormRequest
                 return;
             }
             VitalSigns::validate($validator, $this->all());
-            TbAssessment::validate($validator, $this->diagnosesInput());
+            $patientId = (int) ($this->input('patient_id') ?: $this->route('health_record')?->patient_id);
+            $patient = $patientId > 0 ? Patient::find($patientId) : null;
+            TbAssessment::validate($validator, $this->diagnosesInput(), $patient);
             $this->validateSupportingLaboratoryTests($validator);
             $this->validateStructuredPrescriptions($validator);
             $monitoringData = $this->input('monitoring_data', []);

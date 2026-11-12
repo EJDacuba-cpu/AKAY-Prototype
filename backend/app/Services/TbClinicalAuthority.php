@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\HealthRecord;
 use App\Models\Patient;
+use App\Models\PatientCondition;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Validator;
 
 /** Clinical TB authority is narrower than the configurable consultation duty. */
 final class TbClinicalAuthority
@@ -72,6 +74,87 @@ final class TbClinicalAuthority
     {
         return ($this->registry->matchCondition($name)['key'] ?? null) === 'tuberculosis'
             || preg_match('/\b(?:TB|PTB|LTBI|tuberculosis|tuberculous)\b/iu', (string) $name) === 1;
+    }
+
+    /**
+     * Continuing TB Disease care (Active/Controlled), not provisional under-evaluation.
+     */
+    public function hasContinuingTbDiseaseCondition(Patient $patient): bool
+    {
+        return PatientCondition::query()
+            ->where('patient_id', $patient->id)
+            ->where('condition_identity', 'tuberculosis')
+            ->whereIn('status', PatientCondition::MONITORABLE_STATUSES)
+            ->exists();
+    }
+
+    /**
+     * Latest physician-confirmed TB Disease from an authoritative finalized record.
+     * Active Condition alone is not sufficient.
+     *
+     * @return array{diagnosisType: string, drugResistance: string, tbCaseNumber: string, source_record_id: int}|null
+     */
+    public function latestPhysicianConfirmedTbDisease(Patient $patient): ?array
+    {
+        $records = HealthRecord::query()
+            ->where('patient_id', $patient->id)
+            ->whereNotNull('finalized_at')
+            ->orderByDesc('date_recorded')
+            ->orderByDesc('id')
+            ->get(['id', 'diagnoses', 'tb_assessment_authority', 'finalized_at', 'finalized_by', 'rural_health_unit_id']);
+
+        foreach ($records as $record) {
+            if (! $this->hasPhysicianFinalization($record)) {
+                continue;
+            }
+            foreach ($record->diagnoses ?? [] as $entry) {
+                if (! is_array($entry) || ! $this->isTbName($entry['name'] ?? null)) {
+                    continue;
+                }
+                $type = $entry['tbManagement']['diagnosisType'] ?? null;
+                if ($type !== 'tb_disease') {
+                    continue;
+                }
+
+                return [
+                    'diagnosisType' => 'tb_disease',
+                    'drugResistance' => (string) ($entry['tbManagement']['drugResistance'] ?? ''),
+                    'tbCaseNumber' => (string) ($entry['tbManagement']['tbCaseNumber'] ?? ''),
+                    'source_record_id' => (int) $record->id,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Ordinary follow-up / new consultation cannot downgrade a continuing
+     * physician-confirmed TB Disease assessment. Susceptibility remains editable.
+     */
+    public function enforceFollowUpAssessmentLock(Validator $validator, Patient $patient, array $diagnoses): void
+    {
+        if (! $this->hasContinuingTbDiseaseCondition($patient)) {
+            return;
+        }
+        $prior = $this->latestPhysicianConfirmedTbDisease($patient);
+        if ($prior === null) {
+            return;
+        }
+
+        foreach ($diagnoses as $index => $entry) {
+            if (! is_array($entry) || ! $this->isTbName($entry['name'] ?? null)) {
+                continue;
+            }
+            $type = $entry['tbManagement']['diagnosisType'] ?? null;
+            if ($type === 'tb_disease') {
+                continue;
+            }
+            $validator->errors()->add(
+                "diagnoses.$index.tbManagement.diagnosisType",
+                'TB Disease was confirmed in a previous consultation. This assessment cannot be changed during follow-up.'
+            );
+        }
     }
 
     /** Narrative diagnoses may qualify TB or combine it with another diagnosis. */

@@ -36,6 +36,58 @@ export function evidenceOptions(current = [], historical = []) {
   ];
 }
 
+/** Prefer examination date, then collection date, then created-at — not last-updated alone. */
+export function laboratoryClinicalDate(entry = {}) {
+  return String(entry.examinationDate || entry.collectionDate || entry.createdAt || "").slice(0, 10);
+}
+
+/** Deterministic newest-relevant-first ordering for Supporting Laboratory Tests. */
+export function sortLaboratoryOptionsByRelevance(options = []) {
+  return [...(options || [])].sort((a, b) => {
+    const dateA = laboratoryClinicalDate(a);
+    const dateB = laboratoryClinicalDate(b);
+    if (dateA !== dateB) {
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return dateB.localeCompare(dateA);
+    }
+    const currentA = String(a.reference || "").startsWith("current:") ? 0 : 1;
+    const currentB = String(b.reference || "").startsWith("current:") ? 0 : 1;
+    if (currentA !== currentB) return currentA - currentB;
+    return String(b.reference || "").localeCompare(String(a.reference || ""));
+  });
+}
+
+/** Newest-first ordering for patient-wide Laboratory & Diagnostic Tests. */
+export function sortPatientLaboratoryTests(entries = []) {
+  return [...(entries || [])].sort((a, b) => {
+    const dateA = laboratoryClinicalDate(a);
+    const dateB = laboratoryClinicalDate(b);
+    if (dateA !== dateB) {
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return dateB.localeCompare(dateA);
+    }
+    const visitA = String(a.visitDate || a.dateRecorded || "").slice(0, 10);
+    const visitB = String(b.visitDate || b.dateRecorded || "").slice(0, 10);
+    if (visitA !== visitB) {
+      if (!visitA) return 1;
+      if (!visitB) return -1;
+      return visitB.localeCompare(visitA);
+    }
+    return Number(b.recordId || 0) - Number(a.recordId || 0);
+  });
+}
+
+export function filterPatientLaboratoryTests(entries = [], { status = "All", search = "" } = {}) {
+  const needle = String(search || "").trim().toLowerCase();
+  return (entries || []).filter((entry) => {
+    if (status !== "All" && String(entry.resultStatus || "") !== status) return false;
+    if (!needle) return true;
+    return String(entry.testName || "").toLowerCase().includes(needle);
+  });
+}
+
 /** Clinical diagnosis↔lab links only — never BHC sharing confirmation payload. */
 export function normalizeSupportingLaboratoryTests(list = []) {
   if (!Array.isArray(list)) return [];

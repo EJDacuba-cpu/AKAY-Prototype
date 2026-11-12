@@ -884,12 +884,12 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
   });
 }
 
-test("BHC workspace links to referral and follow-up modules without live status", () => {
+test("BHC workspace links to referral module without follow-up navigation", () => {
   const html = wrap(createElement(BhcHealthRecordWorkspace, {
     record: {
       id: 35,
       monitoringData: {
-        followUpSchedules: [{ purposeKey: "visit", purpose: "Return", date: "2026-10-26" }],
+        followUpSchedules: [{ purposeKey: "visit", purpose: "Return", date: "2026-10-26", time: "09:00" }],
       },
     },
     linkedReferral: { trackingId: "TRK-35", reasonForReferral: "Needs review" },
@@ -902,8 +902,11 @@ test("BHC workspace links to referral and follow-up modules without live status"
   }));
   assert.match(html, /View in Referrals/);
   assert.match(html, /\/bhc\/referrals\/TRK-35/);
-  assert.match(html, /View in Follow-ups/);
-  assert.match(html, /\/bhc\/follow-ups/);
+  assert.doesNotMatch(html, /View in Follow-ups/);
+  assert.doesNotMatch(html, /\/bhc\/follow-ups/);
+  assert.match(html, /Follow-up/);
+  assert.match(html, /Scheduled date|October 26, 2026|2026-10-26/);
+  assert.match(html, /Follow-up purpose|Return/);
   const printed = wrap(createElement(BhcHealthRecordPrintDocument, {
     record: {
       id: 35,

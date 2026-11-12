@@ -107,6 +107,51 @@ test("presumptive TB hides drug susceptibility and every diagnosis can link supp
   assert.match(freeText, /Serum Creatinine/);
 });
 
+test("confirmed TB Disease assessment is locked while susceptibility stays editable", () => {
+  const html = render(tb, {
+    establishedLock: {
+      diagnosisType: "tb_disease",
+      drugResistance: "drug_susceptible",
+      tbCaseNumber: "TB-100",
+    },
+  });
+  assert.match(html, /TB Disease was confirmed in a previous consultation/);
+  assert.match(html, /name="diagnoses.tb.tbManagement.diagnosisType" disabled=""/);
+  assert.match(html, /name="diagnoses.tb.tbManagement.drugResistancePrimary" aria-invalid/);
+  assert.doesNotMatch(html, /name="diagnoses.tb.tbManagement.drugResistancePrimary" disabled/);
+});
+
+test("supporting labs show latest test first and result controls for eligible rows", () => {
+  const html = render(tb, {
+    canUpdateHistoricalLaboratory: true,
+    laboratoryOptions: [
+      {
+        reference: "record:1",
+        testName: "Older smear",
+        examinationDate: "2026-09-01",
+        resultStatus: "Result Available",
+        recordId: 1,
+        healthRecordId: 40,
+        version: 0,
+      },
+      {
+        reference: "current:abc",
+        id: "abc",
+        testName: "Newest GeneXpert",
+        examinationDate: "2026-11-10",
+        resultStatus: "Awaiting Result",
+        version: 0,
+      },
+    ],
+    onUpdateCurrentLaboratoryTest() {},
+  });
+  const newest = html.indexOf("Newest GeneXpert");
+  const older = html.indexOf("Older smear");
+  assert.ok(newest > -1 && older > -1 && newest < older);
+  assert.match(html, /Update Result|View \/ Update Result/);
+  assert.match(html, /Linking does not mark a result available/);
+});
+
 test("higher-level plan shows inline errors and saved details only when selected", () => {
   const entry = { ...tb, nextAction: "refer_higher_level", higherLevelReferralPlan: {
     reason: "Specialist assessment", intendedFacility: "Provincial hospital", clinicalPlan: "Review investigations",

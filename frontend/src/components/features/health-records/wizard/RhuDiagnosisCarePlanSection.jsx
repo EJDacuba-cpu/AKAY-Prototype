@@ -20,6 +20,11 @@ import {
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
 import {
+  applyEstablishedTbDiseaseAssessment,
+  isTbAssessmentLocked,
+  TB_DISEASE_FOLLOW_UP_LOCK_MESSAGE,
+} from "../../../../utils/establishedTbDisease";
+import {
   DR_TB_PRIMARY,
   DR_TB_SUBTYPE_OPTIONS,
   drugResistanceForPrimary,
@@ -118,17 +123,20 @@ function TbCaseManagementSection({
   existingTbCase,
   disabled,
   canConfirmTb,
+  establishedLock = null,
   errors,
   onChange,
 }) {
   if (!isRecognizedTbDiagnosis(entry?.name, registry)) return null;
+  const locked = isTbAssessmentLocked(entry, establishedLock);
   const management = tbManagementFields(entry);
   const primaryResistance = drugResistancePrimary(management.drugResistance);
   const showDrSubtypes = primaryResistance === DR_TB_PRIMARY;
   const registered = String(existingTbCase?.tbCaseNumber || "").trim();
+  const physicianLocked = disabled || !canConfirmTb;
 
   return (
-    <fieldset disabled={disabled || !canConfirmTb} className="min-w-0 space-y-4 pt-3">
+    <fieldset disabled={physicianLocked} className="min-w-0 space-y-4 pt-3">
       <div>
         <p className="text-sm font-semibold text-[#0B1C30]">TB Case Management</p>
         <p className="mt-0.5 text-xs text-[#545F73]">
@@ -155,9 +163,16 @@ function TbCaseManagementSection({
             name={`diagnoses.${entry.id}.tbManagement.diagnosisType`}
             options={TB_ASSESSMENT_OPTIONS}
             value={management.diagnosisType}
+            disabled={physicianLocked || locked}
             error={errors[`diagnoses.${entry.id}.tbManagement.diagnosisType`]}
-            onChange={(value) => onChange(tbManagementFor(entry, { diagnosisType: value }))}
+            onChange={(value) => {
+              if (locked) return;
+              onChange(tbManagementFor(entry, { diagnosisType: value }));
+            }}
           />
+          {locked ? (
+            <p className="text-xs text-[#545F73]">{TB_DISEASE_FOLLOW_UP_LOCK_MESSAGE}</p>
+          ) : null}
           {management.diagnosisType === "tb_disease" && (
             <div className="space-y-3">
               <DiagnosisChoiceGroup
@@ -175,7 +190,7 @@ function TbCaseManagementSection({
                 }))}
               />
               {showDrSubtypes && (
-                <div className="pt-3">
+                <div className="pt-3 space-y-2">
                   <DiagnosisChoiceGroup
                     label="Drug-resistant TB Classification"
                     name={`diagnoses.${entry.id}.tbManagement.drugResistance`}
@@ -184,6 +199,10 @@ function TbCaseManagementSection({
                     error={errors[`diagnoses.${entry.id}.tbManagement.drugResistance`]}
                     onChange={(value) => onChange(tbManagementFor(entry, { drugResistance: value }))}
                   />
+                  <p className="text-xs text-[#545F73]">
+                    Updating susceptibility here does not start DR-TB treatment or create a new case.
+                    DR-TB referral remains available after finalization on Health Record Details when clinically indicated.
+                  </p>
                 </div>
               )}
               <div className="rhu-diagnosis-select" data-field={`diagnoses.${entry.id}.tbManagement.tbCaseNumber`}>
@@ -207,7 +226,7 @@ function TbCaseManagementSection({
                     name={`diagnoses.${entry.id}.tbManagement.tbCaseNumber`}
                     value={management.tbCaseNumber || ""}
                     maxLength={100}
-                    disabled={disabled || !canConfirmTb}
+                    disabled={physicianLocked}
                     aria-invalid={Boolean(errors[`diagnoses.${entry.id}.tbManagement.tbCaseNumber`]) || undefined}
                     placeholder="Optional until assigned"
                     className="h-10 w-full min-w-0 rounded-input border border-neutral-200 bg-white px-3.5 text-sm text-(--color-text) outline-none focus-visible:border-ink-400 focus-visible:ring-2 focus-visible:ring-ink-400/40 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -249,8 +268,10 @@ function FollowUpConditionReferences({ references = [] }) {
 
 function DiagnosisCard({
   laboratoryOptions, laboratoryLoading, laboratoryError, onRefreshLaboratory,
+  onUpdateCurrentLaboratoryTest, canUpdateHistoricalLaboratory = false,
   entry, schedules, errors, disabled, conditions, catchmentBhcs, isReferralVisit,
-  registry, existingTbCase, canConfirmTb, onChange, onFollowUpChange, onRemove,
+  registry, existingTbCase, canConfirmTb, establishedLock = null,
+  onChange, onFollowUpChange, onRemove,
   prescriptions = [], diagnoses = [], onPrescriptionsChange, removalError = "",
   prescriptionEditor = null, onPrescriptionEditorChange,
 }) {
@@ -308,6 +329,7 @@ function DiagnosisCard({
             registry={registry}
             existingTbCase={existingTbCase}
             canConfirmTb={canConfirmTb}
+            establishedLock={establishedLock}
             errors={errors}
             disabled={disabled}
             onChange={onChange}
@@ -319,6 +341,8 @@ function DiagnosisCard({
             loading={laboratoryLoading}
             loadError={laboratoryError}
             onRefresh={onRefreshLaboratory}
+            onUpdateCurrentTest={onUpdateCurrentLaboratoryTest}
+            canUpdateHistorical={canUpdateHistoricalLaboratory}
             selected={entry.supportingLaboratoryTests || []}
             disabled={disabled}
             onChange={(supportingLaboratoryTests) => onChange({ ...entry, supportingLaboratoryTests })}
@@ -458,6 +482,8 @@ function DiagnosisCard({
 
 export default function RhuDiagnosisCarePlanSection({
   laboratoryOptions = [], laboratoryLoading = false, laboratoryError = false, onRefreshLaboratory,
+  onUpdateCurrentLaboratoryTest,
+  canUpdateHistoricalLaboratory = false,
   diagnoses = [],
   diagnosisDraft = "",
   onDiagnosisDraftChange,
@@ -480,6 +506,7 @@ export default function RhuDiagnosisCarePlanSection({
   registry = {},
   existingTbCase = null,
   canConfirmTb = false,
+  establishedLock = null,
   conditionReferences = [],
   errors = {},
   disabled = false,
@@ -532,7 +559,12 @@ export default function RhuDiagnosisCarePlanSection({
   function addDiagnosis() {
     const name = String(diagnosisDraft || "").trim().slice(0, DIAGNOSIS_LIMITS.name);
     if (!name || diagnoses.length >= DIAGNOSIS_LIMITS.count) return;
-    onAddDiagnosis?.(emptyRhuDiagnosis(name, createDiagnosisId()));
+    const created = emptyRhuDiagnosis(name, createDiagnosisId());
+    onAddDiagnosis?.(applyEstablishedTbDiseaseAssessment(created, establishedLock));
+  }
+
+  function changeDiagnosis(next) {
+    onChangeDiagnosis?.(applyEstablishedTbDiseaseAssessment(next, establishedLock));
   }
 
   return (
@@ -573,6 +605,8 @@ export default function RhuDiagnosisCarePlanSection({
               laboratoryLoading={laboratoryLoading}
               laboratoryError={laboratoryError}
               onRefreshLaboratory={onRefreshLaboratory}
+              onUpdateCurrentLaboratoryTest={onUpdateCurrentLaboratoryTest}
+              canUpdateHistoricalLaboratory={canUpdateHistoricalLaboratory}
               key={entry.id}
               entry={entry}
               schedules={schedules}
@@ -584,13 +618,14 @@ export default function RhuDiagnosisCarePlanSection({
               registry={registry}
               existingTbCase={existingTbCase}
               canConfirmTb={canConfirmTb}
+              establishedLock={establishedLock}
               prescriptions={prescriptions}
               diagnoses={diagnoses}
               onPrescriptionsChange={onPrescriptionsChange}
               prescriptionEditor={prescriptionEditor}
               onPrescriptionEditorChange={setPrescriptionEditor}
               removalError={removalErrors[entry.id] || ""}
-              onChange={(next) => onChangeDiagnosis?.(next)}
+              onChange={changeDiagnosis}
               onFollowUpChange={onFollowUpChange}
               onRemove={() => removeDiagnosis(entry.id)}
             />

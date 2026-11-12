@@ -69,11 +69,10 @@ function ReferralFacts({ referral, print = false }) {
   </div>;
 }
 
-function ModuleLinks({ referralHref, followUpHref, print = false }) {
-  if (print || (!referralHref && !followUpHref)) return null;
+function ModuleLinks({ referralHref, print = false }) {
+  if (print || !referralHref) return null;
   return <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-    {referralHref ? <Link className="font-medium text-neutral-900 underline underline-offset-4 focus-visible:outline-2" to={referralHref}>View in Referrals</Link> : null}
-    {followUpHref ? <Link className="font-medium text-neutral-900 underline underline-offset-4 focus-visible:outline-2" to={followUpHref}>View in Follow-ups</Link> : null}
+    <Link className="font-medium text-neutral-900 underline underline-offset-4 focus-visible:outline-2" to={referralHref}>View in Referrals</Link>
   </p>;
 }
 
@@ -90,7 +89,6 @@ export function HealthConcernsAndCareOutcomes({
     visitFollowUps,
     visitReferral,
     referralHref,
-    followUpHref,
     schedules,
     legacy,
   } = recordDetailsPresentation(record, linkedReferral);
@@ -100,7 +98,7 @@ export function HealthConcernsAndCareOutcomes({
     : null;
   const unlabeledFollowUps = visitAppointment ? [...visitFollowUps, visitAppointment] : visitFollowUps;
   const hasVisitLevel = unlabeledFollowUps.length || visitReferral || legacy.length || unmappedReporting.length
-    || monitoringNotes || referralHref || followUpHref;
+    || monitoringNotes || referralHref;
   if (!concerns.length && !hasVisitLevel) {
     return <p className={styles.muted}>No health concerns or reporting recorded.</p>;
   }
@@ -155,7 +153,7 @@ export function HealthConcernsAndCareOutcomes({
       <p className={print ? "bhc-print-muted" : "text-xs text-neutral-500"}>Saved at record level and not mapped to an individual health concern.</p>
       <ReportingCategories groups={unmappedReporting} print={print} />
     </section>}
-    <ModuleLinks referralHref={referralHref} followUpHref={followUpHref} print={print} />
+    <ModuleLinks referralHref={referralHref} print={print} />
   </div>;
 }
 

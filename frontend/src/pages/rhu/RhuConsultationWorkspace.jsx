@@ -119,6 +119,10 @@ import {
   rhuTbAssessmentErrors,
 } from "../../utils/rhuTbCaseManagement";
 import { canConfirmTbDiagnosis } from "../../utils/tbAssessment";
+import {
+  applyEstablishedTbDiseaseAssessment,
+  establishedTbDiseaseLock,
+} from "../../utils/establishedTbDisease";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
@@ -469,10 +473,15 @@ export default function RhuConsultationWorkspace() {
         if (!selected.length) return;
         const parentId = Number(selected[0].healthRecordId || selected[0].originalHealthRecordId) || null;
         setParentHealthRecordId(parentId);
+        const lock = establishedTbDiseaseLock({
+          conditions: openConditions,
+          patientRecords,
+        });
         const focus = focusedRhuFollowUps({
           tasks: selected,
           parentRecords: patientRecords,
           conditions: openConditions,
+          establishedLock: lock,
         });
         setConditionReferences(focus.references);
         if (focus.diagnoses.length && !followUpFocusApplied.current) {
@@ -485,6 +494,10 @@ export default function RhuConsultationWorkspace() {
 
   const consultationUuid = visit?.consultation_uuid || visit?.consultationUuid || "";
   const existingTbCase = useMemo(() => existingRegisteredTbCase(patientRecords), [patientRecords]);
+  const establishedLock = useMemo(
+    () => establishedTbDiseaseLock({ conditions: openConditions, patientRecords }),
+    [openConditions, patientRecords],
+  );
   const includeTb = useMemo(() => {
     return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
   }, [diagnoses, existingTbCase, registry]);
@@ -495,6 +508,18 @@ export default function RhuConsultationWorkspace() {
       return normalizeTbData(existingTbCase.tbData);
     });
   }, [existingTbCase]);
+  useEffect(() => {
+    if (!establishedLock) return;
+    setDiagnoses((current) => {
+      let changed = false;
+      const next = current.map((entry) => {
+        const locked = applyEstablishedTbDiseaseAssessment(entry, establishedLock);
+        if (locked !== entry) changed = true;
+        return locked;
+      });
+      return changed ? next : current;
+    });
+  }, [establishedLock]);
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
@@ -1851,6 +1876,11 @@ export default function RhuConsultationWorkspace() {
                     laboratoryLoading={laboratoryHistory.isFetching}
                     laboratoryError={laboratoryHistory.isError}
                     onRefreshLaboratory={() => { laboratoryHistory.refetch(); laboratoryAttachmentQueries.forEach(query => query.refetch()); }}
+                    onUpdateCurrentLaboratoryTest={(next) => {
+                      clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
+                      setLaboratoryTests((current) => current.map((entry) => (entry.id === next.id ? { ...entry, ...next } : entry)));
+                    }}
+                    canUpdateHistoricalLaboratory={access.can("records.correct")}
                     diagnoses={diagnoses}
                     diagnosisDraft={diagnosisDraft}
                     onDiagnosisDraftChange={setDiagnosisDraft}
@@ -1876,6 +1906,7 @@ export default function RhuConsultationWorkspace() {
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}
+                    establishedLock={establishedLock}
                     conditionReferences={conditionReferences}
                     errors={validationErrors}
                     disabled={clinicalLocked}

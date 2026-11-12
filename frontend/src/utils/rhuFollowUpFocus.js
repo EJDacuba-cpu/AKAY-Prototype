@@ -1,4 +1,6 @@
+import { applyEstablishedTbDiseaseAssessment } from "./establishedTbDisease.js";
 import { emptyRhuDiagnosis, matchingMonitorableCondition } from "./rhuCarePlan.js";
+import { tbManagementFields, tbManagementFor } from "./tbAssessment.js";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -41,6 +43,7 @@ export function focusedRhuFollowUp({
   task = null,
   parentRecord = null,
   conditions = [],
+  establishedLock = null,
 } = {}) {
   if (!task) {
     return { focused: null, diagnoses: [], references: [], linkedTaskId: null };
@@ -53,12 +56,26 @@ export function focusedRhuFollowUp({
     : null;
   const focusedName = diagnosisName(matched) || text(task.purpose || task.reason);
   const condition = focusedName ? matchingMonitorableCondition(focusedName, conditions) : null;
-  const focused = focusedName
+  let focused = focusedName
     ? {
         ...continuedDiagnosisFromCondition(condition || { name: focusedName }, matched?.id || entryId || `follow-up:${task.id}`),
         name: focusedName,
       }
     : null;
+
+  if (focused && matched) {
+    const parentManagement = tbManagementFields(matched);
+    if (parentManagement.diagnosisType) {
+      focused = tbManagementFor(focused, {
+        diagnosisType: parentManagement.diagnosisType,
+        drugResistance: parentManagement.drugResistance,
+        tbCaseNumber: parentManagement.tbCaseNumber,
+      });
+    }
+  }
+  if (focused) {
+    focused = applyEstablishedTbDiseaseAssessment(focused, establishedLock);
+  }
 
   return {
     focused,
@@ -83,6 +100,7 @@ export function focusedRhuFollowUps({
   tasks = [],
   parentRecords = [],
   conditions = [],
+  establishedLock = null,
 } = {}) {
   const diagnoses = [];
   const linkedTaskIds = [];
@@ -92,6 +110,7 @@ export function focusedRhuFollowUps({
       task,
       parentRecord: parentForTask(task, parentRecords),
       conditions,
+      establishedLock,
     });
     if (one.linkedTaskId) linkedTaskIds.push(one.linkedTaskId);
     if (!one.focused) continue;

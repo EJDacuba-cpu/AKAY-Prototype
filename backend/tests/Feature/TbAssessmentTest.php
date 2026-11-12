@@ -264,4 +264,101 @@ class TbAssessmentTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('tb_treatment_cases', 0);
     }
+
+    private function finalizeTbVisit(array $management, bool $activate = false): int
+    {
+        $this->actingAs($this->doctor, 'sanctum');
+        $visit = RhuVisitQueueEntry::create([
+            'rural_health_unit_id' => $this->doctor->rural_health_unit_id,
+            'patient_id' => $this->patient->id,
+            'source' => 'walk_in',
+            'status' => 'waiting',
+            'checked_in_at' => now(),
+            'check_in_key' => (string) Str::uuid(),
+        ]);
+        $uuid = $this->postJson("/api/rhu-visits/{$visit->id}/start")->assertOk()->json('data.consultation_uuid');
+
+        return $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'consultation_workflow' => 'rhu_itr_v1',
+            'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid,
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Cough',
+            'diagnoses' => [[
+                'id' => 'tb',
+                'name' => 'TB',
+                'activate' => $activate,
+                'nextAction' => 'none',
+                'tbManagement' => $management,
+            ]],
+        ])->assertCreated()->json('data.id');
+    }
+
+    public function test_follow_up_locks_prior_physician_confirmed_tb_disease_but_allows_susceptibility_update(): void
+    {
+        $firstId = $this->finalizeTbVisit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'openTreatmentCard' => false,
+        ], true);
+
+        $first = HealthRecord::findOrFail($firstId);
+        $this->assertNotNull($first->tb_assessment_authority);
+        $this->assertSame('drug_susceptible', $first->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertDatabaseHas('patient_conditions', [
+            'patient_id' => $this->patient->id,
+            'condition_identity' => 'tuberculosis',
+            'status' => 'active',
+        ]);
+
+        $this->submit([
+            'diagnosisType' => 'presumptive_tb',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.diagnosisType');
+
+        $this->submit([
+            'diagnosisType' => 'tb_infection',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.diagnosisType');
+
+        $followUpId = $this->submit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'rr_tb',
+            'openTreatmentCard' => false,
+        ])->assertCreated()->json('data.id');
+
+        $this->assertSame('drug_susceptible', HealthRecord::findOrFail($firstId)->fresh()->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertSame('rr_tb', HealthRecord::findOrFail($followUpId)->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertSame('tb_disease', HealthRecord::findOrFail($followUpId)->diagnoses[0]['tbManagement']['diagnosisType']);
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
+        $this->assertEquals(1, \App\Models\PatientCondition::query()
+            ->where('patient_id', $this->patient->id)
+            ->where('condition_identity', 'tuberculosis')
+            ->where('status', 'active')
+            ->count());
+    }
+
+    public function test_under_evaluation_presumptive_does_not_lock_later_assessment(): void
+    {
+        $this->finalizeTbVisit([
+            'diagnosisType' => 'presumptive_tb',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ], true);
+
+        $this->assertDatabaseHas('patient_conditions', [
+            'patient_id' => $this->patient->id,
+            'condition_identity' => 'tuberculosis',
+            'status' => 'under_evaluation',
+        ]);
+
+        $this->submit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'openTreatmentCard' => false,
+        ])->assertCreated();
+    }
 }
