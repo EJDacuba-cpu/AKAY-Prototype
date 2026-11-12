@@ -28,14 +28,19 @@ class RhuToDispenseController extends Controller
             ->get()
             ->filter(fn (HealthRecord $record) => $record->isRhuItrV1() && $record->prescriptionDisplayText() !== '')
             ->values()
-            ->map(fn (HealthRecord $record) => [
-                'id' => $record->id,
-                'patientId' => $record->patient_id,
-                'patientName' => $record->patient?->full_name ?: '',
-                'visitDate' => optional($record->date_recorded)->toDateString(),
-                'prescriptionText' => $record->prescriptionDisplayText(),
-                'status' => $record->dispensed_medicines_count > 0 ? 'given' : 'pending',
-            ]);
+            ->map(function (HealthRecord $record) {
+                $prescriptions = $record->structuredPrescriptionSummaries();
+
+                return [
+                    'id' => $record->id,
+                    'patientId' => $record->patient_id,
+                    'patientName' => $record->patient?->full_name ?: '',
+                    'visitDate' => optional($record->date_recorded)->toDateString(),
+                    'prescriptionText' => $record->prescriptionDisplayText(),
+                    'prescriptions' => $prescriptions,
+                    'status' => $record->dispensed_medicines_count > 0 ? 'given' : 'pending',
+                ];
+            });
 
         return response()->json(['data' => $rows]);
     }

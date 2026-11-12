@@ -217,6 +217,35 @@ export function FormSkeleton({ message = "Loading form...", profile = "form", fi
   </Root>;
 }
 
+/** Matches BHC/RHU patient registration: back link, title, two-column panels. */
+export function PatientRegistrationSkeleton({ message = "Loading registration..." }) {
+  const panel = (titleWidth, fields, columns = "sm:grid-cols-2 xl:grid-cols-3") => (
+    <section data-slot="registration-skeleton-panel" className={`${sheet} space-y-4 p-4`}>
+      <div className="space-y-2"><Block className={`h-4 ${titleWidth}`} /><Block className="h-2.5 w-56" /></div>
+      <div className={`grid gap-3 ${columns}`}>{repeat(fields, i => <div key={i} className="space-y-2"><Block className="h-2.5 w-20" /><Block className="h-10 w-full rounded-lg" /></div>)}</div>
+    </section>
+  );
+  return <Root message={message} className="patient-registration">
+    <div data-slot="registration-skeleton-header" className="mb-4 ml-0 mr-auto w-full max-w-7xl min-w-0 space-y-2">
+      <Block className="h-4 w-36" />
+      <Block className="h-5 w-48" />
+      <Block className="h-3 w-80 max-w-full" />
+    </div>
+    <div data-slot="registration-skeleton-columns" className="ml-0 mr-auto grid w-full max-w-7xl min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="min-w-0 space-y-4">
+        {panel("w-44", 6)}
+        {panel("w-40", 4, "sm:grid-cols-2")}
+        {panel("w-36", 3, "sm:grid-cols-2")}
+      </div>
+      <div className="min-w-0 space-y-4">
+        {panel("w-40", 2, "grid-cols-1")}
+        {panel("w-36", 3, "grid-cols-1")}
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Action /><Action /></div>
+      </div>
+    </div>
+  </Root>;
+}
+
 export function HealthRecordFormSkeleton(props) { return <FormSkeleton {...props} fields={6} />; }
 
 function FormFields({ count = 2, columns = "sm:grid-cols-2", multiline = false }) {
@@ -330,6 +359,7 @@ export function PageSkeletonLoader({ message = "Loading...", skeleton, bodyOnly 
   else if (name === "feedback-form") content = <FeedbackForm message={message} {...options} />;
   else if (name === "family-form") content = <FamilyForm message={message} />;
   else if (name === "referral-slip") content = <ReferralSlip message={message} />;
+  else if (name === "patient-registration") content = <PatientRegistrationSkeleton message={message} />;
   else if (["form", "assignment-form", "account-form"].includes(name)) content = <FormSkeleton message={message} profile={name} {...options} />;
   else if (["details", "record-details", "referral-details", "monitoring-handoff"].includes(name)) content = <DetailsSkeleton message={message} profile={name} {...options} />;
   else content = <ModuleSkeleton message={message} />;

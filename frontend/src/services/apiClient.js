@@ -216,6 +216,14 @@ async function sendRequest(endpoint, options = {}) {
     error.code = payload.code || "";
     error.errors = payload.errors || {};
     error.payload = payload;
+    if (response.status === 429) {
+      error.code = error.code || "RATE_LIMITED";
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfter = Number.parseInt(retryAfterHeader || "", 10);
+      if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+        error.retryAfter = retryAfter;
+      }
+    }
     throw error;
   }
 
@@ -265,10 +273,17 @@ export async function refreshAuthSession() {
   return refreshPromise;
 }
 
+function sessionClearReason(error) {
+  const code = String(error?.code || error?.payload?.code || "").toUpperCase();
+  if (code === "SESSION_EXPIRED") return "session-expired";
+  if (code === "SESSION_REPLACED") return "session-replaced";
+  return "session-invalid";
+}
+
 async function invalidateFrontendSession(error) {
   await clearSensitiveSessionState({
     queryClient,
-    reason: error?.code === "SESSION_EXPIRED" ? "session-expired" : "session-invalid",
+    reason: sessionClearReason(error),
   });
   clearAuthSession();
 }

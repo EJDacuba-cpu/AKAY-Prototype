@@ -422,12 +422,48 @@ export default function useDraftAutosave({
       };
 
       try {
-        const saved = current
-          ? await params.updateDraft(current.id, {
-              ...request,
-              version: current.version,
-            })
-          : await params.createDraft(request);
+        let saved;
+        if (current) {
+          saved = await params.updateDraft(current.id, {
+            ...request,
+            version: current.version,
+          });
+        } else {
+          try {
+            saved = await params.createDraft(request);
+          } catch (createErr) {
+            // Server already has this consultation's draft (race, reconnect, or
+            // remount) but this tab never learned the public id. Adopt it and
+            // continue with an update instead of pausing forever on conflict.
+            const code = createErr?.code || createErr?.payload?.code || "";
+            const existingId = createErr?.payload?.draft_id;
+            const existingVersion = createErr?.payload?.version;
+            if (
+              Number(createErr?.status) === 409 &&
+              code === DRAFT_CONSULTATION_EXISTS_CODE &&
+              existingId != null &&
+              existingVersion != null
+            ) {
+              draftRef.current = {
+                id: String(existingId),
+                version: Number(existingVersion),
+              };
+              if (isMountedRef.current) {
+                params.onDraftSaved?.({
+                  id: draftRef.current.id,
+                  version: draftRef.current.version,
+                  lastSavedAt: null,
+                });
+              }
+              saved = await params.updateDraft(draftRef.current.id, {
+                ...request,
+                version: draftRef.current.version,
+              });
+            } else {
+              throw createErr;
+            }
+          }
+        }
 
         if (epoch !== sessionEpochRef.current || finalizedRef.current) return;
 
@@ -761,12 +797,19 @@ export default function useDraftAutosave({
    */
   const saveNow = useCallback(async () => {
     clearDebounceTimer();
+    // Manual override: retry after a sticky error pause. Hard conflict /
+    // validation pauses still require an explicit user decision.
+    if (pausedRef.current) {
+      if (conflict || (error && error.type === "validation")) return false;
+      pausedRef.current = false;
+      if (isMountedRef.current) setError(null);
+    }
     await runSaveRef.current?.("manual");
     return (
       serializePayload(latestPayloadRef.current) ===
       lastSavedSerializedRef.current
     );
-  }, [clearDebounceTimer]);
+  }, [clearDebounceTimer, conflict, error]);
 
   /**
    * Save before the page is left. Unlike saveNow, this settles only once any
@@ -790,12 +833,17 @@ export default function useDraftAutosave({
 
     await waitForInFlight();
     if (isSaved()) return true;
-    if (pausedRef.current) return false;
+    if (pausedRef.current) {
+      if (conflict || (error && error.type === "validation")) return false;
+      // Transient sticky pause: allow one forced leave-save (manual override).
+      pausedRef.current = false;
+      if (isMountedRef.current) setError(null);
+    }
 
     await runSaveRef.current?.("leave");
     await waitForInFlight();
     return isSaved();
-  }, [clearDebounceTimer]);
+  }, [clearDebounceTimer, conflict, error]);
 
   useEffect(() => {
     if (!enabled || !localDraft?.ownerKey || !vault.prepareLocalDraft) return undefined;
@@ -819,9 +867,11 @@ export default function useDraftAutosave({
       setError(null);
       setStatus(lastSavedAtRef.current ? "saved" : getInitialStatus());
     } else {
-      // "Keep editing": stay, do not save, do not loop conflicts.
+      // "Keep editing": stay paused so autosave does not loop 409s, but keep
+      // status=conflict so Finalize/flush can still explain why save is blocked.
+      pausedRef.current = true;
       setConflict(null);
-      setStatus("idle");
+      setStatus("conflict");
     }
   }, []);
 

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { ArrowLeft, CheckCircle2, Lock, Mail } from "lucide-react";
+import AkayWordmark from "../components/common/AkayWordmark";
 import {
   completePasswordReset,
   verifyPasswordResetToken,
 } from "../services/passwordResetService";
-
-const LOGO_SRC = "/akay-logo.png";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -100,12 +99,7 @@ export default function ResetPassword() {
       <main className="w-full max-w-[460px] rounded-3xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-xl shadow-slate-900/5 sm:px-9 sm:py-7">
         <div className="mb-5 text-center">
           <h1>
-            <img
-              src={LOGO_SRC}
-              alt="AKAY — Medical EHR and Referral System"
-              className="mx-auto h-14 w-auto max-w-full object-contain"
-              draggable="false"
-            />
+            <AkayWordmark className="text-5xl" />
           </h1>
           <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF] sm:text-[10px]">
             Secure Password Reset

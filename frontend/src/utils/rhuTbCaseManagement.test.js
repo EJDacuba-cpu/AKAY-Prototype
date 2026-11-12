@@ -45,7 +45,7 @@ test("evaluation alone does not open Form 4B or require a case number", () => {
   assert.equal(tbCaseNumberRequired([entry]), false);
 });
 
-test("an explicit DS-TB registration opens Form 4B and requires a case number", () => {
+test("explicit openTreatmentCard is still readable but consultation no longer requires a case number", () => {
   const entry = {
     name: "Tuberculosis",
     tbManagement: {
@@ -65,7 +65,8 @@ test("an explicit DS-TB registration opens Form 4B and requires a case number", 
       openTreatmentCard: false,
     },
   };
-  assert.equal(shouldOpenDsTbTreatmentCard(legacy), true);
+  assert.equal(shouldOpenDsTbTreatmentCard(legacy), false);
+  assert.equal(tbCaseNumberRequired([legacy]), false);
 });
 
 test("DR-TB, pending DST, and TB infection never open DS-TB Form 4B", () => {

@@ -1,9 +1,8 @@
 /**
- * Monitoring Details: extra forms a monitored condition needs beyond the ITR.
- * A registered condition declares `monitoring_details: "<key>"` in the
- * backend registry (config/clinical_registry.php). This map holds each key's
- * copy; MonitoringDetailsForms.jsx maps the same key to its form component.
- * A key missing here is ignored, so the step never shows an empty section.
+ * Registry keys for monitored conditions that historically used a BHC
+ * Monitoring Details step (removed). Still used to classify TB visits
+ * (`tb_dots`) without editing a treatment card in the BHC wizard.
+ * Declared via `monitoring_details` on conditions in clinical_registry.php.
  */
 export const MONITORING_DETAILS = {
   tb_dots: {

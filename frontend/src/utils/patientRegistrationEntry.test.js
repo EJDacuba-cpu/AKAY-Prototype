@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { registrationTarget, isWalkInRegistrationRecovery, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
+import { registrationTarget, isWalkInRegistrationRecovery, registrationRecoveryDialogProps, storeRegistrationEntry, readRegistrationEntry, consumeRegistrationEntry, releaseRegistrationEntry } from "./patientRegistrationEntry.js";
 
 const fixture = () => {
   const rows = new Map();
@@ -19,6 +19,18 @@ test("latest-copy recovery is limited to new RHU walk-in registration", () => {
   ]) assert.equal(isWalkInRegistrationRecovery(path, role), false);
 });
 
+test("BHC and RHU registration recovery copy stays Resume/Discard for server drafts", () => {
+  assert.deepEqual(registrationRecoveryDialogProps({ hasDraft: true }), {
+    title: "You have unfinished work.",
+    description: "Continue where you left off?",
+    resumeLabel: "Resume",
+  });
+  assert.equal(registrationRecoveryDialogProps({ checkFailed: true }).title, "Unable to check unfinished work");
+  assert.match(registrationRecoveryDialogProps({ checkFailed: true }).description, /couldn't check for unfinished work/i);
+  const copy = JSON.stringify(registrationRecoveryDialogProps({ hasDraft: true }));
+  assert.doesNotMatch(copy, /takeover|Being edited|editor lease/i);
+});
+
 test("registration entry matches new BHC/RHU registration, preserving household and walk-in queries", () => {
   assert.equal(registrationTarget("/bhc/patients/add?household=12", "bhc"), "/bhc/patients/add?household=12");
   assert.equal(registrationTarget("/rhu/patients/add?check_in=1", "rhu"), "/rhu/patients/add?check_in=1");
@@ -30,7 +42,24 @@ test("restored registration transfers the same coordinator once without route pa
   storeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 100);
   assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), engine);
   assert.equal(consumeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 101), true);
+  // StrictMode remount must still see the same ready handoff; do not re-init.
+  assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), engine);
+  assert.equal(consumeRegistrationEntry(client, "actor", "/bhc/patients/add", engine, 101), true);
+  assert.equal(engine.closed, false);
+  assert.equal(releaseRegistrationEntry(client, "actor", "/bhc/patients/add", engine), false);
   assert.equal(readRegistrationEntry(client, "actor", "/bhc/patients/add", 101), null);
+  assert.equal(engine.closed, false);
+});
+
+test("unclaimed handoff expiry can close the engine; consumed handoffs stay with the form", () => {
+  const { client, engine } = fixture();
+  const path = "/rhu/patients/add?check_in=1";
+  storeRegistrationEntry(client, "actor", path, engine, 100);
+  assert.equal(releaseRegistrationEntry(client, "actor", path, engine), true);
+  assert.equal(readRegistrationEntry(client, "actor", path, 101), null);
+  storeRegistrationEntry(client, "actor", path, engine, 100);
+  assert.equal(consumeRegistrationEntry(client, "actor", path, engine, 101), true);
+  assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);
   assert.equal(engine.closed, false);
 });
 
@@ -55,6 +84,7 @@ test("expired unclaimed handoffs can be cleared without closing a consumed or re
   storeRegistrationEntry(client, "actor", path, engine, 100);
   assert.equal(consumeRegistrationEntry(client, "actor", path, engine, 101), true);
   assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);
+  assert.equal(engine.closed, false);
   const replacement = { ...engine };
   storeRegistrationEntry(client, "actor", path, replacement, 100);
   assert.equal(releaseRegistrationEntry(client, "actor", path, engine), false);

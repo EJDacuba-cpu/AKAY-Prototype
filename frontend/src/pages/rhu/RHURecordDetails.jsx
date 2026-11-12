@@ -23,7 +23,6 @@ import BhcHealthRecordPrintDocument, {
   BHC_HEALTH_RECORD_PRINT_PAGE_STYLES,
 } from "../../components/features/health-records/BhcHealthRecordPrintDocument";
 import { Button } from "../../components/ui/button";
-import LaboratoryRecordPanel from "../../components/features/health-records/LaboratoryRecordPanel";
 import TbCaseRegistrationPanel from "../../components/features/health-records/TbCaseRegistrationPanel";
 import TbDrReferralPanel from "../../components/features/health-records/TbDrReferralPanel";
 import { isRecognizedTbDiagnosis, isDrTb, tbManagementFields } from "../../utils/rhuTbCaseManagement";
@@ -258,10 +257,9 @@ export default function RHURecordDetails() {
             onPrint={handlePrint}
           />
           {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name)) && (
-            <TbCaseRegistrationPanel key={recordId} recordId={recordId} record={record} />
+            <TbCaseRegistrationPanel key={recordId} recordId={recordId} />
           )}
           {record.rural_health_unit_id && record.diagnoses?.some(entry => isRecognizedTbDiagnosis(entry.name) && isDrTb(entry) && tbManagementFields(entry).diagnosisType === "tb_disease") && <TbDrReferralPanel key={`dr-${recordId}`} recordId={recordId} />}
-          <LaboratoryRecordPanel recordId={recordId} patientId={record.patientId || record.patient_id} />
         </div>
 
         <div className="hidden print:block">

@@ -58,6 +58,13 @@ export default function useRhuReferralSlipData({ patientId, referralId, enabled 
     if (linkedId) recordQuery.refetch();
   }
 
+  const retrying = active && (
+    patientQuery.isFetching ||
+    listQuery.isFetching ||
+    referralQuery.isFetching ||
+    recordQuery.isFetching
+  );
+
   return {
     patient: active && !unauthorized ? patientQuery.data : null,
     referral: unauthorized ? null : referral,
@@ -69,5 +76,6 @@ export default function useRhuReferralSlipData({ patientId, referralId, enabled 
     missing: active && !referral && !loading && !unauthorized && !loadError,
     loadError,
     retry,
+    retrying,
   };
 }

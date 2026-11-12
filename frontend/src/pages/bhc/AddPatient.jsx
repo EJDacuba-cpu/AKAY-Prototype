@@ -46,9 +46,10 @@ import { EDUCATION_COMPLETED_OPTIONS, EDUCATION_LEVEL_OPTIONS, registrationRecov
 import useFormDraft from "../../hooks/useFormDraft";
 import { getCurrentUser } from "../../utils/auth";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { readRegistrationEntry, consumeRegistrationEntry, isWalkInRegistrationRecovery } from "../../utils/patientRegistrationEntry";
+import { readRegistrationEntry, consumeRegistrationEntry, registrationRecoveryDialogProps } from "../../utils/patientRegistrationEntry";
 import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
+import { PatientRegistrationSkeleton } from "../../components/common/loading/SkeletonLoaders";
 import {
   ADDRESS_FIELDS, connectionForPatient, householdForConnection,
   stageConnection, validateConnection, validateHeadReplacement, withFormAddress,
@@ -143,9 +144,15 @@ function registrationForm(patient) {
 
 const RhuPatientRegistration = lazy(() => import("../rhu/RhuPatientRegistration"));
 
+function RegistrationRouteSkeleton({ role = "bhc", title = "Patient Registration" }) {
+  return <DashboardLayout role={role} title={title} contentClassName="patient-registration">
+    <PatientRegistrationSkeleton message="Loading registration..." />
+  </DashboardLayout>;
+}
+
 export function PatientRegistrationPage(props) {
   if (props.role === "rhu") {
-    return <Suspense fallback={<p role="status">Loading registration…</p>}><RhuPatientRegistration {...props} /></Suspense>;
+    return <Suspense fallback={<RegistrationRouteSkeleton role="rhu" title={props.dashboardTitle || "Add Patient"} />}><RhuPatientRegistration {...props} /></Suspense>;
   }
   if (!props.role || props.role === "bhc") {
     return <BhcPatientRegistration {...props} />;
@@ -211,7 +218,6 @@ export function RegistrationForm({
     formType: "patient", mode: "create", contextKey: "new", enabled: recoveryEnabled,
     value: snapshot, initialValue: draftBaseline,
     preparedEngine,
-    preferLatestRecovery: isWalkInRegistrationRecovery(entryPath, role),
     onEntryConsumed: () => consumeRegistrationEntry(client, owner, entryPath, preparedEngine),
     normalizeSnapshot: (payload) => {
       const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
@@ -418,7 +424,7 @@ function handleBirthDateChange(valueOrEvent) {
           ? form.philHealthNumber || null
           : null,
       purokArea: form.purokArea || null,
-      familySerialNumber: form.familySerialNumber || null,
+      ...(householdEnabled ? { familySerialNumber: form.familySerialNumber || null } : {}),
       name: formatFullName(form.firstName, form.middleName, form.lastName),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
@@ -522,11 +528,22 @@ function handleBirthDateChange(valueOrEvent) {
     </DashboardLayout>
   );
 
+  const showRegistrationSkeleton = (recoveryEnabled && !draft.ready) || householdRecoveryLoading;
+  const hasRecoverableDraft = Boolean(draft.engine?.draft);
+  const recoveryCopy = registrationRecoveryDialogProps({
+    hasDraft: hasRecoverableDraft,
+    checkFailed: Boolean(draft.error) && !hasRecoverableDraft,
+  });
+
   // --- RENDER ---
 
   return (
     <>
       <DashboardLayout role={role} title={dashboardTitle} contentClassName="patient-registration">
+        {showRegistrationSkeleton ? (
+          <PatientRegistrationSkeleton message={householdRecoveryLoading ? "Loading the saved household selection..." : "Loading registration..."} />
+        ) : (
+        <>
         {/* Header */}
         <div className="mb-4 ml-0 mr-auto w-full max-w-7xl min-w-0">
           <div className="flex flex-col gap-2">
@@ -545,7 +562,6 @@ function handleBirthDateChange(valueOrEvent) {
                 {pageDescription}
               </p>
               {recoveryEnabled && <FormDraftStatus className="mt-2" {...draft.statusProps} />}
-              {householdRecoveryLoading && <p role="status" className="mt-2 text-sm text-neutral-600">Loading the saved household selection...</p>}
               {householdRecoveryError && <p role="alert" className="mt-2 text-sm text-alert-700">{householdRecoveryError} <Button variant="secondary" onClick={onRefresh}>Retry</Button></p>}
             </div>
           </div>
@@ -686,7 +702,7 @@ function handleBirthDateChange(valueOrEvent) {
                     />
                   </div>
                 )}
-                {householdEnabled ? (
+                {householdEnabled && (
                   <FamilyRegistryField
                     allowDirectCreate={live && !editingPatientId}
                     live={live} onSearch={onSearch} searchResults={searchResults} searchLoading={searchLoading} searchError={searchError} refreshError={refreshError} onRefresh={onRefresh}
@@ -699,15 +715,6 @@ function handleBirthDateChange(valueOrEvent) {
                     onPendingChange={setHouseholdReviewPending}
                     error={fieldErrors.familySerialNumber}
                     relationshipError={fieldErrors.relationshipToHouseholdHead}
-                  />
-                ) : (
-                  <FormInput
-                    label="Family Serial Number"
-                    name="familySerialNumber"
-                    value={form.familySerialNumber}
-                    onChange={handleChange}
-                    placeholder="Optional"
-                    error={fieldErrors.familySerialNumber}
                   />
                 )}
               </FormPanel>
@@ -896,6 +903,8 @@ function handleBirthDateChange(valueOrEvent) {
           </div>
           </fieldset>
         </form>
+        </>
+        )}
       </DashboardLayout>
 
       {/* Modals */}
@@ -916,9 +925,13 @@ function handleBirthDateChange(valueOrEvent) {
         {checkInError && <p role="alert" className="mt-3 text-sm text-alert-700">{checkInError}</p>}
       </SuccessModal>}
       {recoveryEnabled && !draft.ready && !draft.entryProps.checking && <FormDraftRecoveryDialog
-        {...draft.entryProps} title="Unfinished Registration" contextLabel="New patient registration"
-        description="An unfinished patient registration was found. Choose how you want to continue."
-        resumeLabel="Resume Registration" resuming={Boolean(draft.busy)} cancelLabel={draft.error ? "Cancel" : ""}
+        {...draft.entryProps}
+        title={recoveryCopy.title}
+        description={recoveryCopy.description}
+        lastSavedAt={draft.entryProps.lastSavedAt}
+        resumeLabel={recoveryCopy.resumeLabel}
+        resuming={Boolean(draft.busy)}
+        cancelLabel={draft.error ? "Cancel" : ""}
         onClose={() => navigate(backPath)}
       />}
       {modals.confirm && <ModalShell

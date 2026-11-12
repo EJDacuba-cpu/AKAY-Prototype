@@ -146,6 +146,36 @@ class AuthenticationSessionSecurityTest extends TestCase
         $this->usingToken($tokenB)->getJson('/api/auth/profile')->assertOk();
     }
 
+    public function test_a_second_login_kicks_the_first_session_with_session_replaced(): void
+    {
+        $first = $this->login($this->bhw)->assertOk();
+        $firstToken = $first->json('token');
+        $this->usingToken($firstToken)->getJson('/api/auth/profile')->assertOk();
+
+        $second = $this->login($this->bhw)->assertOk();
+        $secondToken = $second->json('token');
+
+        $this->assertNotSame($firstToken, $secondToken);
+        $this->assertNull(PersonalAccessToken::findToken($firstToken));
+        $this->assertNotNull(PersonalAccessToken::findToken($secondToken));
+
+        $this->usingToken($firstToken)->getJson('/api/auth/profile')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'SESSION_REPLACED')
+            ->assertJsonPath(
+                'message',
+                'You have been signed out because your account was logged in on another device.'
+            );
+
+        $this->usingToken($secondToken)->getJson('/api/auth/profile')->assertOk();
+        $this->assertNotNull($this->bhw->fresh()->active_session_id);
+        $this->assertSame(
+            2,
+            $this->bhw->tokens()->count(),
+            'Only the latest access+refresh pair should remain after First-In Kicked Out.'
+        );
+    }
+
     public function test_unauthenticated_logout_is_rejected_safely(): void
     {
         $this->postJson('/api/auth/logout')->assertUnauthorized();

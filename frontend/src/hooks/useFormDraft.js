@@ -4,7 +4,6 @@ import { getCurrentUser } from "../utils/auth";
 import { formDraftOwnerContext } from "../utils/formDraftRequest";
 import { createFormDraftApi } from "../services/formDraftService";
 import { createFormDraftCoordinator } from "../services/formDraftCoordinator";
-import { formDraftVault } from "../services/formDraftVault";
 import { SENSITIVE_SESSION_CLEARED_EVENT } from "../utils/sessionPrivacy";
 import { FORM_DRAFTS_ENABLED } from "../utils/featureFlags";
 
@@ -12,17 +11,20 @@ const disabledState = { ready: true, decision: false, status: "idle", error: "",
 const noSubscribe = () => () => {};
 const disabledSnapshot = () => disabledState;
 
-export default function useFormDraft({ formType, mode, contextKey, value, initialValue, onRestore, normalizeSnapshot, preparedEngine = null, onEntryConsumed, enabled = FORM_DRAFTS_ENABLED, baseRevision = null, preferLatestRecovery = false }) {
+export default function useFormDraft({
+  formType, mode, contextKey, value, initialValue, onRestore, normalizeSnapshot,
+  preparedEngine = null, onEntryConsumed, enabled = FORM_DRAFTS_ENABLED, baseRevision = null,
+}) {
   const queryClient = useQueryClient();
   const owner = formDraftOwnerContext(getCurrentUser() || {});
   const engine = useMemo(() => enabled ? preparedEngine || createFormDraftCoordinator({
     identity: { form_type: formType, mode, context_key: contextKey }, owner,
-    initialValue, baseRevision, normalizeSnapshot, preferLatestRecovery, onRestore: () => {},
-    vault: formDraftVault, api: createFormDraftApi({ owner, queryClient }),
+    initialValue, baseRevision, normalizeSnapshot, onRestore: () => {},
+    api: createFormDraftApi({ owner, queryClient }),
   }) : null,
   // The baseline belongs to the opened form identity. Typing/refetch must not replace it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [enabled, owner, formType, mode, contextKey, queryClient, preparedEngine, preferLatestRecovery]);
+  [enabled, owner, formType, mode, contextKey, queryClient, preparedEngine]);
   const restoredEntry = useRef(null);
   const lifetime = useRef(null);
   useEffect(() => {
@@ -30,23 +32,27 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
     if (engine && engine === preparedEngine && restoredEntry.current !== engine) {
       restoredEntry.current = engine;
       if (engine.registrationEntryFresh) {
+        // Fresh Discard/entry opens a blank form; do not keep a restore gate.
+        engine.awaitingRender = null;
         onEntryConsumed?.();
         return;
       }
-      if (preferLatestRecovery) {
-        try { onRestore(JSON.parse(JSON.stringify(engine.latest))); onEntryConsumed?.(); }
-        catch (error) { engine.patch({ ready: false, decision: true, busy: false, status: "error", error: `Unable to restore registration. Your draft is still saved. Retry. ${error.message || ""}` }); }
-      } else {
-        onEntryConsumed?.();
+      try {
         onRestore(JSON.parse(JSON.stringify(engine.latest)));
+        onEntryConsumed?.();
+      } catch {
+        engine.patch({
+          ready: false, decision: true, busy: false, status: "error",
+          error: "We couldn't restore your unfinished work. Please try again.",
+        });
       }
     }
-  }, [engine, preparedEngine, onRestore, onEntryConsumed, preferLatestRecovery]);
+  }, [engine, preparedEngine, onRestore, onEntryConsumed]);
   const state = useSyncExternalStore(engine?.subscribe || noSubscribe, engine?.getSnapshot || disabledSnapshot, engine?.getSnapshot || disabledSnapshot);
   useEffect(() => {
     // A failed handoff can succeed on Retry after the initial effect ran.
-    if (preferLatestRecovery && engine === preparedEngine && state.ready) onEntryConsumed?.();
-  }, [engine, preparedEngine, state.ready, preferLatestRecovery, onEntryConsumed]);
+    if (engine === preparedEngine && state.ready) onEntryConsumed?.();
+  }, [engine, preparedEngine, state.ready, onEntryConsumed]);
   const inputSnapshot = JSON.stringify(value);
   useEffect(() => {
     if (!engine) return;
@@ -56,7 +62,11 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
     if (engine !== preparedEngine) void engine.init();
     const clear = () => engine.close();
     const online = () => { void engine.connectionChanged().catch((error) => engine.handleError(error)); };
-    const hidden = () => { if (document.visibilityState === "hidden" && engine.getSnapshot().ready && engine.getSnapshot().hasPendingChanges) void engine.checkpoint().catch(() => {}); };
+    const hidden = () => {
+      if (document.visibilityState === "hidden" && engine.getSnapshot().ready && engine.getSnapshot().hasPendingChanges) {
+        void engine.flush().catch(() => {});
+      }
+    };
     window.addEventListener(SENSITIVE_SESSION_CLEARED_EVENT, clear);
     window.addEventListener("online", online);
     window.addEventListener("offline", online);
@@ -71,8 +81,9 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
       // Only a real detach closes it; hydration must not trigger another lookup.
       queueMicrotask(() => {
         if (!attachment.active) return;
-        if (engine.getSnapshot().ready && engine.getSnapshot().hasPendingChanges) void engine.checkpoint().catch(() => {}).finally(() => engine.close());
-        else engine.close();
+        if (engine.getSnapshot().ready && engine.getSnapshot().hasPendingChanges) {
+          void engine.flush().catch(() => {}).finally(() => engine.close());
+        } else engine.close();
       });
     };
   }, [engine, preparedEngine]);
@@ -93,19 +104,21 @@ export default function useFormDraft({ formType, mode, contextKey, value, initia
   };
   return {
     ...state, ready: engine ? engine.isReadyForValue(value) : state.ready, engine, flush, dismiss,
-    resume: (source) => engine?.resume(source), discard: () => engine?.discard(),
+    resume: () => engine?.resume(), discard: () => engine?.discard(),
     prepareCommit: () => engine ? engine.prepareCommit() : Promise.resolve({}),
     complete: () => engine?.complete(),
     entryProps: {
       open: !state.ready && !state.closed, checking: state.status === "checking", busy: state.busy,
-      error: state.error, lastSavedAt: state.deviceSavedAt || state.lastSavedAt,
-      deviceOnly: Boolean(state.deviceSavedAt),
-      onResume: !state.conflict && (engine?.draft || engine?.local) ? () => engine.resume() : undefined,
-      onResumeDevice: state.conflict ? () => engine?.resume("device") : undefined,
-      onResumeServer: state.conflict && engine?.draft ? () => engine.resume("server") : undefined,
-      onDiscard: engine?.draft || engine?.local ? () => engine.discard() : undefined,
+      error: state.error, lastSavedAt: state.lastSavedAt,
+      onResume: engine?.draft ? () => engine.resume() : undefined,
+      onDiscard: engine?.draft ? () => engine.discard() : undefined,
       onRetry: state.error ? () => engine?.init() : undefined,
     },
-    statusProps: { status: state.warning && state.status === "idle" ? "unavailable" : state.status, lastSavedAt: state.lastSavedAt, deviceSavedAt: state.deviceSavedAt, error: state.error || state.warning, onRetry: () => flush()?.catch(() => {}) },
+    statusProps: {
+      status: state.warning && state.status === "idle" ? "unavailable" : state.status,
+      lastSavedAt: state.lastSavedAt,
+      error: state.error || state.warning,
+      onRetry: () => flush()?.catch(() => {}),
+    },
   };
 }

@@ -87,6 +87,7 @@ export default function ResetRequestsTab({ rolesData, toolbarLead = null }) {
         emptyHint="When staff ask to reset their password, the request appears here for you to approve or decline."
         loading={list.loading}
         refreshing={list.refreshing}
+        hasLoaded={list.hasLoaded}
         error={list.error}
         onRetry={list.refresh}
         filters={list.filters}

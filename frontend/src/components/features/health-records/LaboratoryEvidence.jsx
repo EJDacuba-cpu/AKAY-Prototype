@@ -3,8 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, Paperclip, Plus } from "lucide-react";
 import { Button } from "../../ui/button";
 import ModalShell from "../../common/modals/ModalShell";
-import { LABORATORY_STATUSES, laboratorySummary, newLaboratoryTest } from "../../../utils/laboratoryTests";
-import { getLaboratoryAttachments, previewLaboratoryAttachment, removeLaboratoryAttachment, uploadLaboratoryAttachment } from "../../../services/laboratoryService";
+import { LABORATORY_STATUSES, laboratoryErrors, laboratorySummary, newLaboratoryTest, sortLaboratoryOptionsByRelevance } from "../../../utils/laboratoryTests";
+import { getLaboratoryAttachments, previewLaboratoryAttachment, removeLaboratoryAttachment, saveLaboratoryAddendum, uploadLaboratoryAttachment } from "../../../services/laboratoryService";
 
 const controlClass = "mt-1 min-h-9 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus-visible:ring-2 focus-visible:ring-ink-400";
 
@@ -190,15 +190,82 @@ export function LaboratoryEvidencePicker({ options = [], selected = [], confirme
   </fieldset>;
 }
 
-/** Compact clinical links only — never shares with BHC and never edits source laboratory rows. */
+/** Compact clinical links only — never shares with BHC. Result updates reuse General Examination / addendum flows. */
 export function SupportingLaboratoryTestsPicker({
-  options = [], selected = [], onChange, disabled = false, loading = false, loadError = false, onRefresh,
+  options = [],
+  selected = [],
+  onChange,
+  disabled = false,
+  loading = false,
+  loadError = false,
+  onRefresh,
+  onUpdateCurrentTest,
+  canUpdateHistorical = false,
 }) {
+  const [editing, setEditing] = useState(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const ordered = sortLaboratoryOptionsByRelevance(options);
+
+  function openEditor(entry) {
+    setEditing({ ...entry });
+    setReason("");
+    setError("");
+    setFieldErrors({});
+  }
+
+  async function saveEditor() {
+    if (!editing || busy) return;
+    const errors = laboratoryErrors([editing]);
+    const remapped = Object.fromEntries(
+      Object.entries(errors).map(([key, message]) => [key.replace(/^laboratoryTests\.0/, "laboratoryTests.0"), message]),
+    );
+    setFieldErrors(remapped);
+    if (Object.keys(remapped).length) return;
+
+    const isCurrent = String(editing.reference || "").startsWith("current:");
+    if (!isCurrent && !String(reason || "").trim()) {
+      setError("Enter a reason for this laboratory result update.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      if (isCurrent) {
+        const next = {
+          id: editing.id,
+          testName: editing.testName,
+          collectionDate: editing.collectionDate || "",
+          examinationDate: editing.examinationDate || "",
+          resultStatus: editing.resultStatus,
+          result: editing.result || "",
+        };
+        onUpdateCurrentTest?.(next);
+      } else {
+        const healthRecordId = editing.healthRecordId || editing.health_record_id;
+        if (!healthRecordId || !editing.recordId) {
+          throw new Error("Unable to locate the source laboratory record.");
+        }
+        await saveLaboratoryAddendum(healthRecordId, editing, reason.trim());
+        await onRefresh?.();
+      }
+      setEditing(null);
+      setReason("");
+    } catch (failure) {
+      setError(failure.message || "Unable to save laboratory result.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <fieldset disabled={disabled} className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3">
+    <fieldset className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3">
       <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Supporting Laboratory Tests</legend>
       <p className="text-xs text-[#545F73]">
-        Optional. Select existing tests that support this diagnosis. Linking does not share results with a BHC.
+        Optional. Select existing tests that support this diagnosis. Linking does not mark a result available or share with a BHC.
       </p>
       {loading && <p role="status" className="text-xs text-[#545F73]">Loading laboratory history…</p>}
       {loadError && <p role="alert" className="text-xs text-red-700">Unable to load laboratory history.</p>}
@@ -207,37 +274,100 @@ export function SupportingLaboratoryTestsPicker({
           Refresh Tests
         </Button>
       )}
-      {!options.length && !loading && (
+      {!ordered.length && !loading && (
         <p className="text-xs text-[#545F73]">No laboratory tests available. Add tests under General Examination first.</p>
       )}
-      <div className="max-h-48 space-y-1 overflow-y-auto">
-        {options.map((entry) => {
+      <div className="max-h-56 space-y-1 overflow-y-auto">
+        {ordered.map((entry) => {
           const checked = selected.some((item) => item.reference === entry.reference);
           const date = entry.examinationDate || entry.collectionDate || "";
+          const isCurrent = String(entry.reference || "").startsWith("current:");
+          const canEdit = isCurrent
+            ? typeof onUpdateCurrentTest === "function"
+            : canUpdateHistorical && Boolean(entry.recordId && (entry.healthRecordId || entry.health_record_id));
+          const actionLabel = entry.resultStatus === "Result Available" ? "View / Update Result" : "Update Result";
           return (
-            <label key={entry.reference} className="flex min-w-0 items-start gap-2 py-1 text-xs text-[#0B1C30]">
-              <input
-                type="checkbox"
-                className="mt-1 shrink-0 accent-[#B70011]"
-                checked={checked}
-                onChange={(event) => onChange(
-                  event.target.checked
-                    ? [...selected.filter((item) => item.reference !== entry.reference), { reference: entry.reference }]
-                    : selected.filter((item) => item.reference !== entry.reference),
-                )}
-              />
-              <span className="min-w-0 break-words">
-                <span className="font-medium">{entry.testName || "Unnamed test"}</span>
-                <span className="mt-0.5 block text-[#545F73]">
-                  {entry.resultStatus || "Requested"}
-                  {date ? ` · ${date}` : ""}
-                  {entry.reference.startsWith("current:") ? " · This visit" : " · Previous visit"}
+            <div key={entry.reference} className="flex min-w-0 items-start gap-2 py-1 text-xs text-[#0B1C30]">
+              <label className="flex min-w-0 flex-1 items-start gap-2">
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  className="mt-1 shrink-0 accent-[#B70011]"
+                  checked={checked}
+                  onChange={(event) => onChange(
+                    event.target.checked
+                      ? [...selected.filter((item) => item.reference !== entry.reference), { reference: entry.reference }]
+                      : selected.filter((item) => item.reference !== entry.reference),
+                  )}
+                />
+                <span className="min-w-0 break-words">
+                  <span className="font-medium">{entry.testName || "Unnamed test"}</span>
+                  <span className="mt-0.5 block text-[#545F73]">
+                    {entry.resultStatus || "Requested"}
+                    {date ? ` · ${date}` : ""}
+                    {isCurrent ? " · This visit" : " · Previous visit"}
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+              {canEdit ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="compact"
+                  disabled={disabled || busy}
+                  className="shrink-0 rounded-none"
+                  onClick={() => openEditor(entry)}
+                >
+                  {actionLabel}
+                </Button>
+              ) : null}
+            </div>
           );
         })}
       </div>
+      {editing ? (
+        <ModalShell
+          open
+          title={String(editing.reference || "").startsWith("current:") ? "Laboratory Result" : "Laboratory Result Addendum"}
+          size="wide"
+          onClose={() => { if (!busy) setEditing(null); }}
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-neutral-500">
+              {String(editing.reference || "").startsWith("current:")
+                ? "Updates apply to this visit’s laboratory entry in General Examination."
+                : "The finalized consultation snapshot stays preserved. This saves an authorized result addendum."}
+            </p>
+            <LaboratoryFields
+              entry={editing}
+              prefix="laboratoryTests.0"
+              errors={fieldErrors}
+              disabled={busy}
+              onChange={setEditing}
+            />
+            {!String(editing.reference || "").startsWith("current:") ? (
+              <label className="block text-xs font-medium text-neutral-700">
+                Reason *
+                <textarea
+                  rows={2}
+                  value={reason}
+                  maxLength={2000}
+                  disabled={busy}
+                  onChange={(event) => setReason(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-neutral-300 p-2 text-sm"
+                />
+              </label>
+            ) : null}
+            {error ? <p role="alert" className="text-xs text-red-700">{error}</p> : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</Button>
+              <Button type="button" variant="brand" disabled={busy} onClick={saveEditor}>
+                {busy ? "Saving…" : String(editing.reference || "").startsWith("current:") ? "Save Result" : "Save Addendum"}
+              </Button>
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
     </fieldset>
   );
 }

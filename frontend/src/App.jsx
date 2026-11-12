@@ -31,6 +31,7 @@ import {
 } from "./utils/auth";
 import { getAuthRecoveryError, subscribeToAuthRecovery } from "./services/apiClient";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import AkayWordmark from "./components/common/AkayWordmark";
 import { FullScreenAkayLoader } from "./components/common";
 import LockedModulePage from "./components/common/access/LockedModulePage";
 import useAccess from "./hooks/useAccess";
@@ -58,8 +59,7 @@ import AddPatient from "./pages/bhc/AddPatient";
 import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
 import BhcFamilyConnections from "./pages/bhc/BhcFamilyConnections";
 import FollowUps from "./pages/bhc/FollowUps";
-import BhcFollowUpRedirect from "./pages/bhc/BhcFollowUpRedirect";
-import FollowUpDetails from "./pages/bhc/FollowUpDetails";
+import FollowUpLegacyRedirect from "./pages/bhc/BhcFollowUpRedirect";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
 import WaitingReferralDetails from "./pages/bhc/WaitingReferralDetails";
@@ -284,7 +284,7 @@ function SessionRestoreUnavailable({ onRetry }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm text-center">
-        <img src="/akay-logo.png" alt="AKAY" className="mx-auto h-16 w-auto max-w-full object-contain" />
+        <AkayWordmark className="text-5xl" />
         <h1 className="mt-5 text-lg font-bold text-slate-900">
           Unable to restore your secure session
         </h1>
@@ -384,7 +384,7 @@ export default function App() {
         navigate("/login", {
           replace: true,
           state: {
-            sessionEnded: ["session-expired", "session-invalid"].includes(event.detail?.reason),
+            sessionEnded: ["session-expired", "session-invalid", "session-replaced"].includes(event.detail?.reason),
             sessionReason: event.detail?.reason,
           },
         });
@@ -484,7 +484,7 @@ export default function App() {
         hidden={Boolean(consultationBackground)}
       >
       <Routes location={consultationBackground || location}>
-      {["bhc", "rhu"].flatMap(role => [
+      {["bhc"].flatMap(role => [
         <Route key={`${role}-families`} path={`/${role}/families`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamiliesDirectory role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family-new`} path={`/${role}/families/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyForm role={role} /></ProtectedPage>} />,
         <Route key={`${role}-family`} path={`/${role}/families/:householdId`} element={<ProtectedPage allowedRole={role} module="families"><BhcFamilyDetails role={role} /></ProtectedPage>} />,
@@ -493,6 +493,7 @@ export default function App() {
         <Route key={`${role}-member-new`} path={`/${role}/families/:householdId/members/new`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcAddMember role={role} /></ProtectedPage>} />,
         <Route key={`${role}-member-edit`} path={`/${role}/families/:householdId/members/:memberId/edit`} element={<ProtectedPage allowedRole={role} module="familiesManage"><BhcFamilyConnections role={role} /></ProtectedPage>} />,
       ])}
+      <Route path="/rhu/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/families/*" element={<Navigate to="/unauthorized" replace />} />
       <Route path="/admin/facilities" element={<ProtectedPage allowedRole="admin"><Facilities /></ProtectedPage>} />
       <Route path="/admin/staff-assignments" element={<ProtectedPage allowedRole="admin"><StaffAssignments /></ProtectedPage>} />
@@ -641,7 +642,7 @@ export default function App() {
         path="/bhc/follow-ups/:taskId"
         element={
           <ProtectedPage allowedRole="bhc" module="history">
-            <BhcFollowUpRedirect />
+            <FollowUpLegacyRedirect role="bhc" />
           </ProtectedPage>
         }
       />
@@ -832,7 +833,7 @@ export default function App() {
         path="/rhu/follow-ups/:taskId"
         element={
           <ProtectedPage allowedRole="rhu" module="followups">
-            <FollowUpDetails role="rhu" />
+            <FollowUpLegacyRedirect role="rhu" />
           </ProtectedPage>
         }
       />

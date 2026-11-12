@@ -2,11 +2,13 @@ import { useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import { ConnectionErrorState, PageSkeletonLoader, RefreshingIndicator } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { TbEndorsementReview } from "../../components/features/health-records/TbEndorsementReview";
 import { getTbEndorsements, getTbEndorsement, actOnTbEndorsement } from "../../services/tbCaseService";
 import { TB_ENDORSEMENT_LABELS, tbDecisionRecorded } from "../../utils/tbEndorsements";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import { formatPatientName } from "../../utils/formatters";
 
 /** Deep links keep working; access lives under Monitoring Requests. */
@@ -88,6 +90,35 @@ export default function BhcTbEndorsements({ embedded = false } = {}) {
     }
   }
 
+  if (list.isError && !list.data) {
+    const errorState = (
+      <ConnectionErrorState
+        fullPage
+        variant={errorStateVariant(list.error)}
+        onRetry={() => list.refetch()}
+        retrying={list.isFetching}
+      />
+    );
+    if (embedded) return errorState;
+    return (
+      <DashboardLayout role="bhc" title="TB Endorsements">
+        {errorState}
+      </DashboardLayout>
+    );
+  }
+
+  if (list.isPending && !list.data) {
+    const loadingState = (
+      <PageSkeletonLoader skeleton="table" message="Loading TB endorsements…" options={{ columns: 1, action: false }} />
+    );
+    if (embedded) return loadingState;
+    return (
+      <DashboardLayout role="bhc" title="TB Endorsements">
+        {loadingState}
+      </DashboardLayout>
+    );
+  }
+
   const body = (
     <main className="min-w-0 space-y-4">
       <div className={`flex flex-wrap items-center gap-3 ${embedded ? "justify-end" : "justify-between"}`}>
@@ -113,20 +144,17 @@ export default function BhcTbEndorsements({ embedded = false } = {}) {
 
       {error && <p role="alert" className="text-sm text-alert-700">{error}</p>}
 
-      {list.isError ? (
-        <div className="space-y-3 rounded-xl border border-neutral-200 bg-white px-4 py-10 text-center shadow-card">
-          <p role="alert" className="text-sm font-semibold text-ink-800">
-            Unable to load TB endorsements.
-          </p>
-          <Button variant="secondary" size="sm" onClick={() => list.refetch()}>
-            Retry
-          </Button>
-        </div>
-      ) : list.isPending ? (
+      {list.isError && list.data ? (
         <p role="status" className="text-sm text-neutral-600">
-          Loading TB endorsements…
+          Unable to refresh TB endorsements. Showing the last list that loaded.
         </p>
-      ) : rows.length === 0 ? (
+      ) : null}
+
+      {list.isFetching && list.data ? (
+        <div className="flex justify-end"><RefreshingIndicator label="Updating TB endorsements..." /></div>
+      ) : null}
+
+      {rows.length === 0 ? (
         <div className="rounded-xl border border-neutral-200 bg-white px-4 py-14 text-center shadow-card">
           <p className="text-sm font-semibold text-ink-800">No TB endorsements for this BHC.</p>
           <p className="mt-1 text-xs text-neutral-600">
@@ -201,14 +229,12 @@ export default function BhcTbEndorsements({ embedded = false } = {}) {
 
             <div className="min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 shadow-card sm:p-5">
               {detail.isError ? (
-                <div className="space-y-3 text-center">
-                  <p role="alert" className="text-sm font-semibold text-ink-800">
-                    Unable to load this endorsement.
-                  </p>
-                  <Button variant="secondary" size="sm" onClick={() => detail.refetch()}>
-                    Retry
-                  </Button>
-                </div>
+                <ConnectionErrorState
+                  size="compact"
+                  variant={errorStateVariant(detail.error)}
+                  onRetry={() => detail.refetch()}
+                  retrying={detail.isFetching}
+                />
               ) : detail.isPending ? (
                 <p role="status" className="text-sm text-neutral-600">
                   Loading endorsement…

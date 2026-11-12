@@ -12,7 +12,7 @@ export const rolesData = {
     { key: "intake_staff", label: "RHU Staff", tier: "rhu", licensed: false, defaults: ["patients.register", "rhu.intake", "inventory.view"] },
   ],
   available: {
-    bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "clinical.background.update", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"],
-    rhu: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "inventory.view", "inventory.manage", "items.dispense", "reports.view", "rhu.manage", "rhu.intake", "rhu.providers.manage", "conditions.confirm", "families.view", "families.manage"],
+    bhc: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "clinical.background.update", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view", "families.view", "families.manage"],
+    rhu: ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "inventory.view", "inventory.manage", "items.dispense", "reports.view", "rhu.manage", "rhu.intake", "rhu.providers.manage", "conditions.confirm"],
   },
 };

@@ -10,7 +10,8 @@ export function createFormDraftApi({ owner, queryClient, request = apiRequest })
   const params = (identity, extra = {}) => new URLSearchParams({ ...identity, ...extra }).toString();
   const write = async (path, options) => {
     const result = await call(path, options);
-    await queryClient?.invalidateQueries({ queryKey: scope, refetchType: "none" });
+    // Drop cached lookups so Discard/Resume cannot revive a stale draft decision.
+    await queryClient?.removeQueries({ queryKey: scope });
     return data(result);
   };
   const body = (identity, payload, transactionUuid, baseRevision) => ({ ...identity, payload, transaction_uuid: transactionUuid, schema_version: 1, base_revision: baseRevision });

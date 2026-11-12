@@ -195,15 +195,22 @@ export default function RHUReferralDetails() {
     );
   }
 
-  if (unauthorized || notFound || !referral) {
+  if (unauthorized) {
+    return (
+      <DashboardLayout role="rhu" title="Patient Arrival">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(error)}
+        />
+      </DashboardLayout>
+    );
+  }
+
+  if (notFound || !referral) {
     return (
       <ArrivalUnavailableState
-        title={unauthorized ? "Referral Access Restricted" : "Referral Not Found"}
-        message={
-          unauthorized
-            ? "You do not have permission to view this arrival."
-            : "No incoming referral record matches this tracking ID."
-        }
+        title="Referral Not Found"
+        message="No incoming referral record matches this tracking ID."
       />
     );
   }

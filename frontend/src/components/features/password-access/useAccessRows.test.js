@@ -55,15 +55,16 @@ test('a populated refresh keeps its records visible', () => {
 
 test('first pending and failed requests remain distinct from a successful empty list', () => {
   assert.equal(INITIAL_ACCESS_ROWS.loading, true);
-  const failed = accessRowsReducer(INITIAL_ACCESS_ROWS, { type: 'failure', message: 'Offline' });
+  const offline = Object.assign(new Error('Offline'), { code: 'OFFLINE' });
+  const failed = accessRowsReducer(INITIAL_ACCESS_ROWS, { type: 'failure', error: offline });
   assert.equal(failed.loading, false);
-  assert.equal(failed.error, 'Offline');
+  assert.equal(failed.error, offline);
   assert.equal(failed.hasLoaded, false);
   assert.equal(accessRowsReducer(failed, { type: 'start' }).loading, true);
   const empty = accessRowsReducer(INITIAL_ACCESS_ROWS, { type: 'success', rows: [] });
   assert.equal(empty.hasLoaded, true);
   assert.equal(empty.loading, false);
-  assert.equal(empty.error, '');
+  assert.equal(empty.error, null);
 });
 
 for (const rows of [[], [{ id: 42, email: 'staff@example.test' }]]) {
@@ -73,12 +74,13 @@ for (const rows of [[], [{ id: 42, email: 'staff@example.test' }]]) {
     assert.equal(refreshing.loading, false);
     assert.equal(refreshing.refreshing, true);
     assert.equal(refreshing.rows, rows);
-    const failed = accessRowsReducer(refreshing, { type: 'failure', message: 'Offline' });
+    const offline = Object.assign(new Error('Offline'), { code: 'OFFLINE' });
+    const failed = accessRowsReducer(refreshing, { type: 'failure', error: offline });
     assert.equal(failed.rows, rows);
     assert.equal(failed.hasLoaded, true);
     assert.equal(failed.loading, false);
     assert.equal(failed.refreshing, false);
-    assert.equal(failed.error, '');
+    assert.equal(failed.error, offline);
   });
 }
 
@@ -88,15 +90,16 @@ test('a successful refresh replaces the prior rows and clears updating state', (
   const next = accessRowsReducer(accessRowsReducer(ready, { type: 'start' }), { type: 'success', rows: nextRows });
   assert.equal(next.rows, nextRows);
   assert.equal(next.refreshing, false);
-  assert.equal(next.error, '');
+  assert.equal(next.error, null);
 });
 
 test('expired or forbidden access removes retained account rows', () => {
   for (const status of [401, 403]) {
     const ready = accessRowsReducer(INITIAL_ACCESS_ROWS, { type: 'success', rows: [{ id: 1, email: 'private@example.test' }] });
-    const denied = accessRowsReducer(ready, { type: 'failure', status, message: 'Access denied' });
+    const deniedError = Object.assign(new Error('Access denied'), { status });
+    const denied = accessRowsReducer(ready, { type: 'failure', status, error: deniedError });
     assert.deepEqual(denied.rows, []);
     assert.equal(denied.hasLoaded, false);
-    assert.equal(denied.error, 'Access denied');
+    assert.equal(denied.error, deniedError);
   }
 });

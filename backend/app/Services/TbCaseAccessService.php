@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\HealthRecord;
 use App\Models\Patient;
 use App\Models\TbTreatmentCase;
 use App\Models\User;
@@ -10,6 +11,14 @@ use Illuminate\Database\Eloquent\Builder;
 final class TbCaseAccessService
 {
     public function __construct(private readonly FacilityAccessService $facilities) {}
+
+    /** RHU clinical-history read of a source consultation owned by the caller's facility. */
+    public function authorizeRhuSourceRead(User $user, HealthRecord $record): void
+    {
+        ActionPermissions::ensure($user, 'clinical.history');
+        $this->facilities->ensureValidFacilityAssignment($user);
+        abort_unless($user->isRhu() && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id, 403, FacilityAccessService::DENIED_MESSAGE);
+    }
 
     public function scope(Builder $query, User $user): Builder
     {

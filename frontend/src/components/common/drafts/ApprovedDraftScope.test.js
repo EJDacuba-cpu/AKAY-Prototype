@@ -55,7 +55,9 @@ test("both registration roles start locked for recovery checking without a loadi
     const client = new QueryClient();
     const router = createMemoryRouter([{ path: "*", element: createElement(NotificationProvider, null, createElement(RegistrationForm, { role, basePath: `/${role}`, live: true, registry: { patients: [], households: [] }, savePatient: noop })) }], { initialEntries: [`/${role}/patients/add`] });
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(RouterProvider, { router })));
-    assert.match(html, /<fieldset[^>]*disabled=""/);
+    // Shared registration skeleton holds the layout until draft readiness; no blank editable form.
+    assert.match(html, /data-slot="registration-skeleton-columns"|Loading registration/);
+    assert.doesNotMatch(html, /name="firstName"/);
     assert.doesNotMatch(html, /role="dialog"|Unfinished Registration/);
     router.dispose(); client.clear();
   }

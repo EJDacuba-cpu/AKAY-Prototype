@@ -245,14 +245,10 @@ export default function FollowUps({ role = "bhc" }) {
       setModal({ type: requestedOpen, task: requestedTask });
       return;
     }
-    // RHU still has Follow-up Details. BHC notifications and ?task= links
-    // stay on this list instead of opening the retired details page.
-    if (role === "rhu") {
-      navigate(`${basePath}/follow-ups/${requestedTask.id}`, { replace: true });
-      return;
-    }
+    // Notifications and ?task= links stay on this list; the dedicated
+    // Follow-up Details page is retired for both BHC and RHU.
     cleanTaskQuery();
-  }, [basePath, isLoading, navigate, requestedOpen, requestedTaskId, role, tasks]);
+  }, [isLoading, requestedOpen, requestedTaskId, tasks]);
 
   const dropdownFilters = [
     {

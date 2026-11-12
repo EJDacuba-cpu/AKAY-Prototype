@@ -65,10 +65,13 @@ export default function StaffAssignments({ mode = "directory" }) {
   const notify = useNotification();
   const id = useId();
   const formHeadingRef = useRef(null);
+  const hasLoadedRef = useRef(false);
   const [rows, setRows] = useState([]);
   const [nurses, setNurses] = useState([]);
   const [bhcs, setBhcs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -91,9 +94,19 @@ export default function StaffAssignments({ mode = "directory" }) {
   }, []);
 
   const firstLoad = useCallback(async () => {
-    setLoading(true);
+    if (hasLoadedRef.current) setRefreshing(true);
+    else setLoading(true);
     setLoadError(null);
-    try { await load(); } catch (error) { setLoadError(error); } finally { setLoading(false); }
+    try {
+      await load();
+      hasLoadedRef.current = true;
+      setHasLoadedData(true);
+    } catch (error) {
+      setLoadError(error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [load]);
 
   useEffect(() => { firstLoad(); }, [firstLoad]);
@@ -195,8 +208,14 @@ export default function StaffAssignments({ mode = "directory" }) {
 
   return (
     <DashboardLayout role="admin" title={creating ? "Add Nurse Assignment" : "Staff Assignments"}>
-      <PageStateWrapper skeleton={creating ? "assignment-form" : "assignments"} isLoading={loading} isError={Boolean(loadError)} hasData={!loading && !loadError} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
+      <PageStateWrapper skeleton={creating ? "assignment-form" : "assignments"} isLoading={loading && !hasLoadedData} isError={Boolean(loadError)} isFetching={refreshing || loading} hasData={hasLoadedData} error={loadError} onRetry={firstLoad} loadingMessage="Loading staff assignments...">
         <div className="staff-assignments staff-assignment-content mx-auto w-full max-w-[1500px] space-y-4">
+          {loadError && hasLoadedData ? (
+            <p role="status" className="text-sm text-neutral-600">
+              Unable to refresh staff assignments. Showing the last list that loaded.{" "}
+              <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={firstLoad} disabled={refreshing || loading}>Retry</button>
+            </p>
+          ) : null}
           {creating && <Button type="button" variant="link" size="sm" className="h-auto px-0 py-0 text-[12px] text-neutral-600" onClick={cancelForm} disabled={busy}><ArrowLeft size={14} aria-hidden="true" />Back to Staff Assignments</Button>}
           <header className="staff-assignment-header flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0">

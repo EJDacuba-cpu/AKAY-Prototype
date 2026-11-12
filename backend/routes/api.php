@@ -42,7 +42,6 @@ use App\Http\Controllers\Api\StaffAssignmentController;
 use App\Http\Controllers\Api\StaffRoleController;
 use App\Http\Controllers\Api\TbCaseEndorsementController;
 use App\Http\Controllers\Api\TbCaseFollowUpController;
-use App\Http\Controllers\Api\TbCaseRegistrationController;
 use App\Http\Controllers\Api\TbDrReferralController;
 use App\Http\Controllers\Api\TbMonitoringController;
 use App\Http\Controllers\Api\TbTreatmentCaseController;
@@ -103,19 +102,19 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
     });
 
     Route::middleware(['facility.assigned', 'actions.allowed'])->group(function () {
-        foreach (['bhc', 'rhu'] as $householdNamespace) {
-            Route::prefix($householdNamespace)->group(function () use ($householdNamespace) {
-                Route::get('households/lookup', [HouseholdController::class, 'lookup'])->defaults('householdNamespace', $householdNamespace);
-                Route::get('households/candidates', [HouseholdController::class, 'candidates'])->defaults('householdNamespace', $householdNamespace);
-                Route::get('households', [HouseholdController::class, 'index'])->defaults('householdNamespace', $householdNamespace);
-                Route::get('households/{id}', [HouseholdController::class, 'show'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
-                Route::post('households', [HouseholdController::class, 'store'])->defaults('householdNamespace', $householdNamespace);
-                Route::patch('households/{id}', [HouseholdController::class, 'update'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
-                Route::post('households/{id}/relationships', [HouseholdController::class, 'storeRelationship'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
-                Route::patch('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
-                Route::delete('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
-            });
-        }
+        // Household/FSN management is BHC-only. RHU household routes are intentionally absent.
+        Route::prefix('bhc')->group(function () {
+            $householdNamespace = 'bhc';
+            Route::get('households/lookup', [HouseholdController::class, 'lookup'])->defaults('householdNamespace', $householdNamespace);
+            Route::get('households/candidates', [HouseholdController::class, 'candidates'])->defaults('householdNamespace', $householdNamespace);
+            Route::get('households', [HouseholdController::class, 'index'])->defaults('householdNamespace', $householdNamespace);
+            Route::get('households/{id}', [HouseholdController::class, 'show'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+            Route::post('households', [HouseholdController::class, 'store'])->defaults('householdNamespace', $householdNamespace);
+            Route::patch('households/{id}', [HouseholdController::class, 'update'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+            Route::post('households/{id}/relationships', [HouseholdController::class, 'storeRelationship'])->whereNumber('id')->defaults('householdNamespace', $householdNamespace);
+            Route::patch('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'updateRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+            Route::delete('households/{id}/relationships/{relationshipId}', [HouseholdController::class, 'destroyRelationship'])->whereNumber(['id', 'relationshipId'])->defaults('householdNamespace', $householdNamespace);
+        });
         Route::get('patients/household', [PatientController::class, 'household']);
         Route::apiResource('patients', PatientController::class)->middlewareFor('store', CommitFormDraft::class);
         Route::apiResource('health-records', HealthRecordController::class)->middleware(ClinicalRecoveryBoundary::class);
@@ -156,8 +155,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('tb-endorsements/{endorsement}', [TbCaseEndorsementController::class, 'show'])->whereNumber('endorsement');
         Route::post('tb-endorsements/{endorsement}/{action}', [TbCaseEndorsementController::class, 'transition'])
             ->whereNumber('endorsement')->whereIn('action', ['link', 'accept', 'decline', 'revoke']);
-        Route::get('health-records/{healthRecord}/tb-registration', [TbCaseRegistrationController::class, 'preview'])->whereNumber('healthRecord');
-        Route::post('health-records/{healthRecord}/tb-registration', [TbCaseRegistrationController::class, 'store'])->whereNumber('healthRecord');
+        Route::get('health-records/{healthRecord}/tb-case', [TbTreatmentCaseController::class, 'linkedToSource'])->whereNumber('healthRecord');
         Route::get('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'index']);
         Route::post('health-records/{healthRecord}/corrections', [RecordCorrectionController::class, 'store']);
         Route::get('health-records/{healthRecord}/tb-card-pdf', [HealthRecordController::class, 'tbCardPdf']);
@@ -241,6 +239,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('/monitoring-handoff-requests', [MonitoringHandoffController::class, 'index']);
         Route::get('/monitoring-handoff-requests/{id}', [MonitoringHandoffController::class, 'show'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/link', [MonitoringHandoffController::class, 'link'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/register-source', [MonitoringHandoffController::class, 'registerSource'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/flag-identity-review', [MonitoringHandoffController::class, 'flagIdentityReview'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/accept', [MonitoringHandoffController::class, 'accept'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/decline', [MonitoringHandoffController::class, 'decline'])->whereNumber('id');
         Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);

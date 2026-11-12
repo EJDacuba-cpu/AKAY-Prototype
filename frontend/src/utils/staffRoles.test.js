@@ -27,10 +27,14 @@ test("roles are grouped by facility tier", () => {
 test("defaults and available duties come from the API data", () => {
   assert.deepEqual(roleDefaults(rolesData, "encoder"), encoder);
   assert.deepEqual(roleDefaults(rolesData, ""), []);
-  assert.equal(availableDuties(rolesData, "bhc").length, 12);
+  assert.equal(availableDuties(rolesData, "bhc").length, 14);
+  assert.ok(availableDuties(rolesData, "bhc").includes("families.view"));
+  assert.ok(availableDuties(rolesData, "bhc").includes("families.manage"));
   assert.ok(!availableDuties(rolesData, "bhc").includes("rhu.manage"));
   assert.ok(!availableDuties(rolesData, "bhc").includes("rhu.providers.manage"));
   assert.ok(availableDuties(rolesData, "rhu").includes("rhu.providers.manage"));
+  assert.ok(!availableDuties(rolesData, "rhu").includes("families.view"));
+  assert.ok(!availableDuties(rolesData, "rhu").includes("families.manage"));
   assert.deepEqual(availableDuties(rolesData, "admin"), []);
 });
 

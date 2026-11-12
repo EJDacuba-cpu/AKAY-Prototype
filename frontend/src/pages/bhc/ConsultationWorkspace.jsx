@@ -22,10 +22,12 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import "../../components/features/health-records/wizard/consultation-ehr.css";
 import {
   ConfirmationModal,
+  ConnectionErrorState,
   ConnectionIssueModal,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
   getHealthRecordById,
@@ -35,15 +37,15 @@ import {
   transitionDraft,
   discardHealthRecordDraft,
   getHealthRecordDraft,
-  listHealthRecordDrafts,
   lookupHealthRecordDraft,
 } from "../../services/healthRecordDraftService";
-import * as legacyLocalDraftVault from "../../services/localDraftVault";
-import { createClinicalDraftRecovery } from "../../services/clinicalDraftRecoveryService";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { clinicalRecoveryChoice, clinicalDeviceDraft } from "../../utils/clinicalDraftRecovery";
 import { consultationRecoveryEntry, consultationEntryKey, validConsultationHandoff } from "../../utils/consultationRecoveryEntry";
-import FormDraftRecoveryDialog from "../../components/common/drafts/FormDraftRecoveryDialog";
+import {
+  assertConsultationEditable,
+  assertConsultationLeaseAvailable,
+  isEditorLeaseConflict,
+} from "../../utils/clinicalConsultationLease";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
 import { getReferralDestination, isNoProviderAvailableError } from "../../services/referrals";
 import {
@@ -122,7 +124,6 @@ import ConditionCardsSection from "../../components/features/health-records/wiza
 import { conditionCardErrors, conditionCardReviewRows, namedConcern, restoreSharedReferralDraft, savedReferralSummary, sharedConditionEntries } from "../../utils/conditionCards";
 import FollowUpVisitLine from "../../components/features/health-records/wizard/FollowUpVisitLine";
 import { concernFollowUpTaskIds, continuedConcernErrors, continuedConcernPayload, continuedConcernReviewRows, continuedPurposeKey, linkedScheduledFollowUpReviewRows, pruneContinuedSchedules, setContinuedSchedule, stripServiceConcernSchedules } from "../../utils/continuedConcerns";
-import MonitoringDetailsForms from "../../components/features/health-records/wizard/MonitoringDetailsForms";
 import MonitoringLaboratoryEvidence from "../../components/features/health-records/MonitoringLaboratoryEvidence";
 import BackgroundConflictPanel from "../../components/features/health-records/wizard/BackgroundConflictPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
@@ -235,7 +236,7 @@ import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/he
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
 import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
-import { DRAFTS_ENABLED, FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
+import { DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { deriveReportingStatus } from "../../utils/diagnosisReporting";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import {
@@ -679,17 +680,6 @@ export default function ConsultationWorkspace() {
       currentUser?.facilityId ||
       "",
   ).trim();
-  // ---- On-device safety net for an interrupted consultation --------------
-  // AKAY stays ONLINE-FIRST. The vault holds only consultations that were
-  // already open when the connection dropped, encrypted and scoped to this
-  // user. Nothing else - patient search, inventory, referrals, reports - works
-  // offline, and nothing else is ever written here.
-  const localVaultAvailable = useMemo(() => legacyLocalDraftVault.isLocalDraftVaultAvailable(), []);
-  const localDraftOwnerKey = String(FORM_DRAFTS_ENABLED ? formDraftOwnerContext(currentUser || {}) : currentUser?.id || "");
-  // The actor/context string is the key; the auth object may be recreated each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const localVault = useMemo(() => FORM_DRAFTS_ENABLED ? createClinicalDraftRecovery(currentUser || {}) : legacyLocalDraftVault, [localDraftOwnerKey]);
-  const { listLocalDrafts, deleteLocalDraft } = localVault;
   const basePath = userRole === "bhc" ? "/bhc" : "/rhu";
   const healthRecordsPath = `${basePath}/health-records`;
   const patientsPath = `${basePath}/patients`;
@@ -902,17 +892,11 @@ export default function ConsultationWorkspace() {
   );
   // Encrypted on-device consultations belonging to this user are still loaded
   // for route-scoped recovery after a refresh, close, or restart.
-  const [localRecovery, setLocalRecovery] = useState(null);
-  const [localRecoveryBusy, setLocalRecoveryBusy] = useState(false);
-  const [localRecoveryError, setLocalRecoveryError] = useState("");
   const recoveryActionGate = useRef(false);
   const [recoveryCheckReady, setRecoveryCheckReady] = useState(!isDraftRouteEligible);
-  const [recoveryCheckError, setRecoveryCheckError] = useState("");
+  const [recoveryCheckError, setRecoveryCheckError] = useState(null);
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   // True from recovering that copy until the server confirms it. It tells
-  // autosave the restored form is NEWER than the server draft, so the content
-  // is pushed up instead of being mistaken for an already-saved baseline.
-  const [pendingLocalSync, setPendingLocalSync] = useState(false);
   // Which offline transition the midwife has already dismissed, so the
   // Connection Lost modal shows once per drop instead of on every retry.
   const [dismissedOfflineEpoch, setDismissedOfflineEpoch] = useState(0);
@@ -923,23 +907,19 @@ export default function ConsultationWorkspace() {
     setDraftListLoading(true);
     setDraftListError("");
     try {
-      setHealthRecordDrafts(FORM_DRAFTS_ENABLED
-        ? [await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: localDraftOwnerKey })].filter(Boolean)
-        : await listHealthRecordDrafts());
+      setHealthRecordDrafts([await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: entryOwner })].filter(Boolean));
     } catch (error) {
       // Server drafts only. The drawer still lists on-device drafts, so this
       // never becomes the whole state of Saved Drafts.
       setDraftListError(
         isConnectionError(error)
-          ? typeof navigator !== "undefined" && navigator.onLine === false
-            ? "Server drafts are unavailable while offline. Showing drafts saved on this device."
-            : "Server drafts could not be loaded. Showing drafts saved on this device."
-          : error?.message || "Unable to load server drafts right now.",
+          ? "We couldn't check for unfinished work. Please try again."
+          : "We couldn't check for unfinished work. Please try again.",
       );
     } finally {
       setDraftListLoading(false);
     }
-  }, [isDraftRouteEligible, selectedPatientId, localDraftOwnerKey]);
+  }, [isDraftRouteEligible, selectedPatientId, entryOwner]);
 
   useEffect(() => {
     if (!entryHandoff) void loadHealthRecordDrafts();
@@ -1054,6 +1034,10 @@ export default function ConsultationWorkspace() {
   const {
     data: selectedPatientDetails,
     isLoading: selectedPatientLoading,
+    isError: selectedPatientFailed,
+    error: selectedPatientError,
+    isFetching: selectedPatientFetching,
+    refetch: refetchSelectedPatient,
   } = useQuery({
     ...getConsultationPatientQuery(selectedPatientId),
     enabled: Boolean(selectedPatientId),
@@ -1333,10 +1317,9 @@ export default function ConsultationWorkspace() {
   // ---- Step-based consultation -------------------------------------------
   // Every consultation (new, continued or resumed) walks Patient Interview ->
   // Physical Examination -> each selected service's form -> Conditions ->
-  // Care and Outcome (-> Monitoring Details) -> Review & Finalize - see
-  // utils/consultationSteps.
-  // A TB record is one carrying TB-DOTS data: a visit monitoring a condition
-  // whose Monitoring Details include the TB card.
+  // Care and Outcome -> Review & Finalize - see utils/consultationSteps.
+  // TB monitoring still classifies the visit (chief complaint / general-only),
+  // but BHC no longer edits a TB treatment card in this wizard.
   const isTb = monitoringDetailKeys.includes("tb_dots");
   // What this visit reports: a mirror of the Reporting entries. The server
   // re-derives the same value from the diagnoses on save.
@@ -1366,12 +1349,12 @@ export default function ConsultationWorkspace() {
           : "";
   const currentGlobalStepKey = getGlobalStepKey(currentStepKey);
 
-  // Monitoring Details disappears when nothing monitored needs it any more.
+  // Legacy drafts may still sit on the removed Monitoring Details screen.
   useEffect(() => {
-    if (monitoringDetailKeys.length === 0 && nextScreen === MONITORING_STEP) {
+    if (nextScreen === MONITORING_STEP || nextScreen === OUTCOME_STEP) {
       setNextScreen(NEXT_STEP);
     }
-  }, [monitoringDetailKeys.length, nextScreen]);
+  }, [nextScreen]);
 
   // Pre-fill the referral reason ("Referred for: ...") from the followed
   // conditions referred back, and keep it in step when that set changes - but
@@ -1806,7 +1789,6 @@ export default function ConsultationWorkspace() {
 
   function restoreHealthRecordDraft(draft) {
     setRecoveryCheckReady(true);
-    setLocalRecovery(null);
     // A draft saved before the v2 model is converted once, here, before any
     // state is set from it: the first autosave then writes the converted
     // content (every autosave stamps consultationWorkflow, so an unconverted
@@ -1960,13 +1942,11 @@ export default function ConsultationWorkspace() {
     // Restored content matches whatever it was restored from. Recovering an
     // on-device copy sets this back to true right after, because that copy IS
     // ahead of the server; reloading after a conflict deliberately is not.
-    setPendingLocalSync(false);
     // Back to the exact screen the user left on - see resolveRestoredPosition.
     // A draft saved on the old Patient History step reopens on Patient Interview.
     const restored = resolveRestoredPosition(payload, BHC_STEP_OPTIONS);
     {
-      const restoredScreen = payload.nextScreen === OUTCOME_STEP ? NEXT_STEP : payload.nextScreen;
-      setNextScreen([NEXT_STEP, MONITORING_STEP].includes(restoredScreen) ? restoredScreen : NEXT_STEP);
+      setNextScreen(NEXT_STEP);
     }
     setWizardPhase(draft.reviewState === "review" ? WIZARD_REVIEW : WIZARD_PHASE_FOR_STEP[restored.phase]);
     setFormStep(draft.reviewState === "review" ? REVIEW_STEP : restored.formStep);
@@ -1998,7 +1978,6 @@ export default function ConsultationWorkspace() {
     entryHydrated.current = true;
     if (entryHandoff.draft) {
       restoreHealthRecordDraft(entryHandoff.draft);
-      setPendingLocalSync(Boolean(entryHandoff.unsynced));
       resumedRouteDraft.current = entryHandoff.draft.id || "";
     } else setRecoveryCheckReady(true);
     queryClient.removeQueries({ queryKey: consultationEntryKey(entryOwner, preselectedPatientId), exact: true });
@@ -2009,8 +1988,6 @@ export default function ConsultationWorkspace() {
   const handleDraftAutosaved = useCallback((saved) => {
     setActiveDraft({ id: saved.id, version: saved.version, reviewState: saved.reviewState });
     setDraftSavedAt(saved.lastSavedAt || "");
-    // The server has it, so the recovered copy is no longer ahead of it.
-    setPendingLocalSync(false);
     setHealthRecordDrafts((current) => [
       saved,
       ...current.filter((item) => item.id !== saved.id),
@@ -2036,63 +2013,7 @@ export default function ConsultationWorkspace() {
     [activeDraft, draftSavedAt],
   );
 
-  const localDraftIdentity = (() => {
-    if (
-      !canSaveCurrentDraft ||
-      !localVaultAvailable ||
-      !localDraftOwnerKey ||
-      !consultationUuid
-    ) {
-      return null;
-    }
-    // One slot per CONSULTATION, scoped to this user. Keyed on the stable
-    // consultation identity - never the patient - so two consultations for the
-    // same patient are two slots and neither can overwrite the other. Nor is
-    // it keyed on the server draft id or classification, which can appear or
-    // change mid-visit and would orphan the earlier snapshot. With no identity
-    // there is no slot: a new slot never falls back to the patient.
-    return {
-      ownerKey: localDraftOwnerKey,
-      consultationKey: localConsultationKey(consultationUuid),
-      contextKey: `patient:${selectedPatientId}`,
-    };
-  })();
 
-  // Rebuilt on demand at the moment of an offline write. Plain function, not
-  // memoized: the hook reads it from a ref refreshed on every render, so it
-  // always closes over the newest form state.
-  function buildLocalDraftRecord() {
-    return {
-      draft: {
-        id: activeDraft?.id || "",
-        consultationUuid,
-        version: Number(activeDraft?.version || 0),
-        patient: {
-          id: String(selectedPatientId || ""),
-          label: getPatientName(selectedPatient) || "Patient",
-        },
-        classification: normalizedHealthRecordType,
-        lastSavedAt: draftSavedAt || "",
-        payload: buildHealthRecordDraftPayload(),
-        // Names are kept for display on recovery only. Stock is re-checked
-        // against the server before the official save - see the warning
-        // raised by handleRecoverLocalDraft.
-        medicineSelections: dispensedMedicines.map((item) => ({
-          ...allocationIntent(item),
-          medicine_id: item.medicineId,
-          quantity: item.quantity,
-          remarks: item.remarks || "",
-          medicine: {
-            name: item.medicineName,
-            category: item.category,
-            quantity: item.availableStock,
-            unit: item.unit,
-          },
-          warning: "",
-        })),
-      },
-    };
-  }
 
   const draftAutosave = useDraftAutosave({
     enabled: canSaveCurrentDraft,
@@ -2103,10 +2024,6 @@ export default function ConsultationWorkspace() {
     sectionKey: draftAutosaveSectionKey,
     onDraftSaved: handleDraftAutosaved,
     consultationUuid,
-    localDraft: localDraftIdentity,
-    buildLocalRecord: buildLocalDraftRecord,
-    unsyncedRecovery: pendingLocalSync,
-    vault: localVault,
   });
 
   const {
@@ -2118,7 +2035,6 @@ export default function ConsultationWorkspace() {
     offlineEpoch: draftOfflineEpoch,
     saveNow: saveDraftNow,
     flushBeforeLeave: flushDraftBeforeLeave,
-    persistLocalNow: protectLocalRecovery,
     completeConsultation: completeDraftRecovery,
     getDraftIdentity,
     resolveConflict: resolveDraftConflict,
@@ -2130,7 +2046,6 @@ export default function ConsultationWorkspace() {
   // Connection Lost dialog and then stays silent while the midwife works.
   useEffect(() => {
     if (draftSyncStatus !== "synced") return;
-    toast.success("Saved automatically", { id: "consultation-draft-synced" });
     acknowledgeDraftSync();
   }, [draftSyncStatus, acknowledgeDraftSync]);
 
@@ -2161,133 +2076,6 @@ export default function ConsultationWorkspace() {
     }
   }
 
-  // Offer back a consultation this device kept through a refresh, tab close,
-  // or restart. Checked once, and only on a fresh entry - never over an open
-  // consultation, which would replace live work with an older snapshot.
-  const localRecoveryCheckedRef = useRef(false);
-  useEffect(() => {
-    if (entryHandoff || requestedDraftId || localRecoveryCheckedRef.current || !isDraftRouteEligible || !localDraftOwnerKey || !opensNewConsultation || !selectedPatientId || draftListLoading) return undefined;
-    let active = true;
-    setRecoveryCheckError("");
-    const copies = localVaultAvailable ? listLocalDrafts(localDraftOwnerKey) : Promise.resolve([]);
-    copies.then((entries) => {
-      if (!active) return;
-      if (draftListError) throw new Error(draftListError);
-      const entry = consultationRecoveryEntry({ patientId: selectedPatientId, server: healthRecordDrafts, device: entries });
-      localRecoveryCheckedRef.current = true;
-      if (!entry) { setRecoveryCheckReady(true); return; }
-      if (entry.local) {
-        setLocalRecovery(entry.local);
-        if (FORM_DRAFTS_ENABLED && requestedRecoveryUuid === entry.local.record.draft.consultationUuid) void recoverLocalDraft(entry.local);
-      } else setDraftDecision(entry.server);
-    }).catch((error) => { if (active) setRecoveryCheckError(error?.message || "Unable to check unfinished work. Retry while online."); });
-    return () => { active = false; };
-    // Recovery callbacks run after this exact route has been checked once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryHandoff, requestedDraftId, isDraftRouteEligible, localVaultAvailable, localDraftOwnerKey, selectedPatientId, opensNewConsultation, listLocalDrafts, draftListLoading, draftListError, healthRecordDrafts, requestedRecoveryUuid, recoveryAttempt]);
-
-  /**
-   * Reopen an encrypted on-device consultation: the same patient, programs,
-   * fields, medicines, and wizard step, continuing the SAME draft. Never
-   * creates a second consultation - the restored server draft id (when the
-   * copy had one) is what autosave keeps updating.
-   */
-  async function recoverLocalDraft(entry, preferred = "") {
-    if (!entry?.record?.draft) return;
-
-    if (FORM_DRAFTS_ENABLED) {
-      setLocalRecoveryBusy(true);
-      setLocalRecoveryError("");
-      try {
-        const fresh = await localVault.readLocalDraft({ ownerKey: localDraftOwnerKey, consultationKey: entry.consultationKey });
-        if (!fresh) throw new Error("This device recovery copy is no longer available.");
-        const found = await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: localDraftOwnerKey });
-        const metadata = found?.consultationUuid === fresh.record.draft.consultationUuid ? found : null;
-        const options = { draftOwnerContext: localDraftOwnerKey };
-        const server = metadata ? await getHealthRecordDraft(metadata.id, { ...options, claim: false }) : null;
-        const choice = clinicalRecoveryChoice(fresh, server);
-        if (choice === "locked" && preferred !== "server") {
-          setLocalRecovery({ ...fresh, serverConflict: server, locked: true });
-          setLocalRecoveryError("Another staff member is editing this consultation. You can open the shared draft with its current review restrictions.");
-          return;
-        }
-        if (choice === "conflict" && !preferred) {
-          setLocalRecovery({ ...fresh, serverConflict: server });
-          return;
-        }
-        const claimed = server ? await getHealthRecordDraft(server.id, options) : null;
-        if (claimed?.canEdit === false && preferred !== "server") throw new Error("This consultation is currently being edited by another staff member.");
-        const expected = preferred && entry.serverConflict ? { ...fresh, base: { serverPayload: JSON.stringify(entry.serverConflict.payload) } } : fresh;
-        if (claimed && clinicalRecoveryChoice(expected, claimed) === "conflict") {
-          setLocalRecovery({ ...fresh, serverConflict: claimed });
-          setLocalRecoveryError("The shared draft changed again. Review your recovery choice.");
-          return;
-        }
-        if (claimed && (preferred === "server" || choice === "server")) {
-          await localVault.saveLocalDraft({ ownerKey: localDraftOwnerKey, consultationKey: fresh.consultationKey, record: { draft: claimed }, base: { serverPayload: JSON.stringify(claimed.payload), version: claimed.version }, synced: true });
-          restoreHealthRecordDraft(claimed);
-          setPendingLocalSync(false);
-          setLocalRecovery(null);
-          return;
-        }
-        entry = { ...fresh, record: { draft: clinicalDeviceDraft(fresh.record.draft, claimed) } };
-      } catch (error) {
-        setLocalRecoveryError(error?.message || "Unable to check this recovery copy. Retry while online.");
-        return;
-      } finally {
-        setLocalRecoveryBusy(false);
-      }
-    }
-
-    restoreHealthRecordDraft(entry.record.draft);
-    // Autosave now treats the restored form as ahead of the server and pushes
-    // it up on the next connection; the on-device copy stays until it lands.
-    setPendingLocalSync(true);
-    setLocalRecovery(null);
-    if (entry.record.draft.medicineSelections?.length) {
-      setDraftMedicineWarnings((current) => [
-        ...current,
-        "Medicine availability was not re-checked while this consultation was offline. Confirm stock before saving.",
-      ]);
-    }
-  }
-
-  async function handleRecoverLocalDraft(preferred = "") {
-    if (recoveryActionGate.current) return;
-    recoveryActionGate.current = true;
-    setLocalRecoveryBusy(true);
-    try { await recoverLocalDraft(localRecovery, preferred); }
-    finally { recoveryActionGate.current = false; setLocalRecoveryBusy(false); }
-  }
-
-  async function discardLocalRecovery() {
-    if (recoveryActionGate.current) return;
-    recoveryActionGate.current = true;
-    setLocalRecoveryBusy(true);
-    setLocalRecoveryError("");
-    try {
-      const entry = localRecovery;
-      const found = await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: entryOwner });
-      const server = found?.consultationUuid === entry.record.draft.consultationUuid ? found : null;
-      if (server) {
-        if (server.id !== entry.record.draft.id || server.version !== entry.record.draft.version) throw new Error("The shared draft changed. Reopen the patient profile and review its latest input before discarding.");
-        const options = { draftOwnerContext: entryOwner };
-        const claimed = await transitionDraft(server.id, "claim", server.version, undefined, options);
-        if (!claimed.canEdit) throw new Error("Another staff member is editing this consultation.");
-        await discardHealthRecordDraft(claimed.id, claimed.version, options);
-        await deleteLocalDraft({ ownerKey: localDraftOwnerKey, consultationKey: entry.consultationKey });
-      } else if (FORM_DRAFTS_ENABLED) {
-        await localVault.discardDeviceDraft({ ownerKey: localDraftOwnerKey, consultationKey: entry.consultationKey });
-      } else await deleteLocalDraft({ ownerKey: localDraftOwnerKey, consultationKey: entry.consultationKey });
-      setLocalRecovery(null);
-      navigate(`${patientsPath}/${selectedPatientId}`);
-    } catch (error) {
-      setLocalRecoveryError(error?.message || "Unable to discard this draft. Retry while online.");
-    } finally {
-      recoveryActionGate.current = false;
-      setLocalRecoveryBusy(false);
-    }
-  }
 
   // Non-destructive conflict dialog: never silently overwrite a newer draft.
   useEffect(() => {
@@ -2376,14 +2164,13 @@ export default function ConsultationWorkspace() {
 
   const [leavingConsultation, setLeavingConsultation] = useState(false);
   const [leaveError, setLeaveError] = useState("");
-  // The Leave & Resume Later save: sync the draft, or else keep a protected
-  // copy on this device. "" when the work is safe to leave, else the error.
-  async function secureDraftBeforeLeaving(requireServer = false) {
+  // Leave only after a confirmed server save. Keep the form open if save fails.
+  async function secureDraftBeforeLeaving(requireServer = true) {
     return saveDraftBeforeNavigation({
       flush: flushDraftBeforeLeave,
-      protectLocal: protectLocalRecovery,
-      notifyLocal: () => toast("Saved securely on this device; not yet synced. Resume on this device."),
-      requireServer,
+      protectLocal: async () => false,
+      notifyLocal: () => {},
+      requireServer: true,
     });
   }
   async function leaveAndResumeLater() {
@@ -2415,10 +2202,11 @@ export default function ConsultationWorkspace() {
     if (!draftId || recoveryActionGate.current) return;
     recoveryActionGate.current = true;
     setDraftResumingId(draftId);
-    setRecoveryCheckError("");
+    setRecoveryCheckError(null);
     try {
-      const draft = await getHealthRecordDraft(draftId, FORM_DRAFTS_ENABLED ? { draftOwnerContext: localDraftOwnerKey } : {});
-      if (!draft?.patient?.id) {
+      const options = { draftOwnerContext: entryOwner };
+      const loaded = await getHealthRecordDraft(draftId, { ...options, claim: false });
+      if (!loaded?.patient?.id) {
         setNoticeModal({
           title: "Consultation Patient Missing",
           message:
@@ -2433,19 +2221,25 @@ export default function ConsultationWorkspace() {
         });
         return;
       }
+      assertConsultationLeaseAvailable(loaded, currentUser?.id);
+      assertConsultationEditable(loaded);
+      const claimed = await transitionDraft(loaded.id, "claim", loaded.version, undefined, options);
+      const draft = { ...loaded, ...claimed, payload: loaded.payload };
       restoreHealthRecordDraft(draft);
       return true;
     } catch (error) {
-      setRecoveryCheckError(error?.message || "Unable to resume this consultation. Retry while online.");
-      if (FORM_DRAFTS_ENABLED && draftDecision) {
+      setRecoveryCheckError(error || new Error("Unable to resume this consultation. Retry while online."));
+      if (draftDecision) {
         setDraftDecisionError(error?.message || "Unable to resume this consultation. Retry while online.");
         return false;
       }
       setNoticeModal({
-        title: "Unable to Resume Consultation",
+        title: isEditorLeaseConflict(error) ? "Consultation in use" : "Unable to Resume Consultation",
         message: isConnectionError(error)
           ? "Unable to reach the server. Please check your connection and try again."
-          : error?.message || "This unfinished consultation is no longer available.",
+          : isEditorLeaseConflict(error)
+            ? `${error.message} Open this patient from the profile to confirm takeover if needed.`
+            : error?.message || "This unfinished consultation is no longer available.",
       });
       void loadHealthRecordDrafts();
     } finally {
@@ -3079,12 +2873,32 @@ export default function ConsultationWorkspace() {
 
   async function saveHealthRecord(formData, submission = null) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      await protectLocalRecovery();
-      throw new Error("Reconnect before completing this consultation. Your progress remains available here.");
+      throw new Error("You're offline. Keep this form open and try again when you're back online.");
     }
-    if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) {
-      await protectLocalRecovery();
-      throw new Error("The latest changes have not synced. Keep this consultation open and retry synchronization before completing it.");
+    if (canSaveCurrentDraft) {
+      let flushed = await flushDraftBeforeLeave();
+      if (!flushed) {
+        // One forced manual retry recovers transient draft errors after pause.
+        flushed = await saveDraftNow();
+      }
+      if (!flushed) {
+        if (draftConflict || draftAutosaveStatus === "conflict") {
+          throw new Error(
+            draftConflict?.message ||
+              "This unfinished consultation was updated elsewhere. Reload the latest version before completing this consultation.",
+          );
+        }
+        if (draftAutosaveError?.type === "validation") {
+          throw new Error(
+            draftAutosaveError.message ||
+              "Some consultation details could not be saved. Review the form before completing this consultation.",
+          );
+        }
+        throw new Error(
+          draftAutosaveError?.message ||
+            "Your changes couldn't be saved. Please try again before completing this consultation.",
+        );
+      }
     }
     const finalDraftId = getDraftIdentity()?.id || activeDraft?.id;
     let finalDraftVersion = getDraftIdentity()?.version || activeDraft?.version;
@@ -3096,11 +2910,11 @@ export default function ConsultationWorkspace() {
       // never minted here. Retries keep it; only idempotencyKey is
       // per-attempt.
       consultationUuid,
-      ...(FORM_DRAFTS_ENABLED ? { draftOwnerContext: localDraftOwnerKey } : {}),
+      draftOwnerContext: entryOwner,
     });
     bypassLeaveGuardRef.current = true;
     try { await completeDraftRecovery(); }
-    catch { toast.error("The record was saved, but device recovery cleanup failed. Sign out when finished to clear protected session data."); }
+    catch { /* Finalized record is saved; draft cleanup can retry later. */ }
     queryClient.invalidateQueries({ queryKey: ["unfinished-consultations"] });
     queryClient.invalidateQueries({ queryKey: ["patient-records-height", selectedPatientId] });
     queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(selectedPatientId)] });
@@ -3615,8 +3429,8 @@ export default function ConsultationWorkspace() {
         isFamilyPlanning
           ? recordFamilyPlanningData
           : null,
-      // Sent whenever Monitoring Details includes the TB card (isTb).
-      tbData: isTb ? tbData : null,
+      // BHC consultation no longer edits TB treatment-card data in-wizard.
+      tbData: null,
       // Only an old draft's staged Patient History edits, kept by the clinician.
       backgroundUpdate: canViewBackground ? toRecordBackgroundUpdate(historyUpdateForSave) : undefined,
       // Per-visit history answers, saved on the record (null when not answered).
@@ -4119,7 +3933,7 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
     if (!checkStepGate(NEXT_STEP)) return;
     if (setValidationErrorsAndFocus(getNextStepErrors())) return;
-    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP ? NEXT_STEP : nextScreen, monitoringDetailKeys));
+    goToStepKey(nextPhaseForwardTarget(nextScreen === OUTCOME_STEP || nextScreen === MONITORING_STEP ? NEXT_STEP : nextScreen));
   }
 
   // ---- Wizard view models -------------------------------------------------
@@ -4304,9 +4118,7 @@ export default function ConsultationWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuedFollowUps, prenatalEnrollment.enrolled, selectedPrograms, routeContext.kind, selectedPatient, maternalResolving, maternalLoadFailed, maternalFollowUpResolved]);
 
-  // The step flow's Next phase: Medication, Treatment & Next Steps, then Monitoring
-  // Details when a condition monitored in this visit needs it.
-  const monitoringDetailErrors = Object.values(pickErrorsForStep(validationErrors, MONITORING_STEP, BHC_STEP_OPTIONS)).filter(Boolean);
+  // The step flow's Next phase: Assessment & Care Plan, then Review & Finalize.
   const isGeneralOnly =
     !isImmunization &&
     !isFamilyPlanning &&
@@ -4400,29 +4212,7 @@ export default function ConsultationWorkspace() {
     </LockedFormContent>
   );
 
-  const renderCarePlanScreen = () => nextScreen === MONITORING_STEP ? (
-    <LockedFormContent locked={patientGateLocked}>
-      {monitoringDetailErrors.length > 0 && (
-        <div role="alert" className="mb-4 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
-          {monitoringDetailErrors.map((message) => (
-            <p key={message}>{message}</p>
-          ))}
-        </div>
-      )}
-      <MonitoringDetailsForms
-        detailKeys={monitoringDetailKeys}
-        tbData={tbData}
-        onTbDataChange={(next) => {
-          setTbData(next);
-          setValidationErrors((current) => Object.fromEntries(
-            Object.entries(current).filter(([key]) => !key.startsWith("tbData.")),
-          ));
-        }}
-        recordId={null}
-      />
-      {canViewBackground && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
-    </LockedFormContent>
-  ) : (
+  const renderCarePlanScreen = () => (
     <div className="ehr-consult__care-plan">
     {canViewBackground && (continuedMonitorings.length > 0 || startingConditions.length > 0) && <MonitoringLaboratoryEvidence patientId={selectedPatientId} conditionIds={[...continuedMonitorings.map(item => item.conditionId), ...startingConditions.map(item => item.id)].filter(Boolean)} />}
     <ConditionCardsSection heading={inConsultationWorkspace && currentStepKey === NEXT_STEP ? null : <ConsultationStepHeading title={stepHeading.title} subtitle={stepHeading.subtitle} className="min-w-0" />} entries={reportingEntries} schedules={followUpSchedules} errors={validationErrors} disabled={conditionFieldsLocked} onChange={handleReportingEntriesChange} onFollowUpChange={handleConcernFollowUp} />
@@ -4490,7 +4280,7 @@ export default function ConsultationWorkspace() {
 
   const autosaveStatus = canSaveCurrentDraft ? (
     <span role="status" aria-live="polite" className="text-xs text-gray-500">
-      {draftSyncStatus === "syncing" ? "Syncing..." : draftAutosaveStatus === "saving" ? "Saving..." : draftAutosaveStatus === "saved" ? "Saved automatically" : ""}
+      {draftAutosaveStatus === "saving" ? "Saving..." : draftAutosaveStatus === "saved" ? "Draft saved" : draftAutosaveStatus === "offline" ? "Connection lost" : draftAutosaveStatus === "error" || draftAutosaveStatus === "conflict" ? "Unable to save" : ""}
     </span>
   ) : null;
 
@@ -4604,8 +4394,6 @@ export default function ConsultationWorkspace() {
       "Record each health concern, optional reporting classification, and its own care outcome.",
     [OUTCOME_STEP]:
       "Record each health concern, optional reporting classification, and its own care outcome.",
-    [MONITORING_STEP]:
-      "Details a monitored condition needs beyond this consultation record.",
     [REVIEW_STEP]: "Confirm the consultation details below before saving.",
   };
   // Every screen keeps its own heading whatever programs are selected; only
@@ -4768,14 +4556,6 @@ export default function ConsultationWorkspace() {
         }),
       ],
     },
-    ...(monitoringDetailKeys.includes("tb_dots")
-      ? [{
-          key: MONITORING_STEP,
-          title: "Monitoring Details · TB-DOTS Treatment Card",
-          stepKey: MONITORING_STEP,
-          rows: programReviewRows(tbData),
-        }]
-      : []),
   ]);
   const reviewErrorMessages = Object.values(validationErrors).filter(Boolean);
 
@@ -4794,7 +4574,7 @@ export default function ConsultationWorkspace() {
     closeDateTimePopovers();
 
     if (wizardPhase === WIZARD_REVIEW) {
-      goToStepKey(reviewBackTarget(monitoringDetailKeys));
+      goToStepKey(reviewBackTarget());
       return;
     }
     if (wizardPhase === WIZARD_NEXT) {
@@ -4809,14 +4589,40 @@ export default function ConsultationWorkspace() {
     navigate(`${basePath}/patients/${selectedPatientId}`);
   }
 
-  if (isDraftRouteEligible && !recoveryCheckReady && !draftDecision && !localRecovery) {
-    return <DashboardLayout role={userRole} title={pageTitle}>
-      {recoveryCheckError ? <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-alert-700">
-        <span>{recoveryCheckError}</span>
-        <button type="button" onClick={() => { if (requestedDraftId) { void handleResumeDraft(requestedDraftId); return; } localRecoveryCheckedRef.current = false; setRecoveryAttempt((value) => value + 1); void loadHealthRecordDrafts(); }}>Retry</button>
-        <button type="button" onClick={() => navigate(`${patientsPath}/${selectedPatientId}`)}>Cancel</button>
-      </div> : <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>}
-    </DashboardLayout>;
+  if (selectedPatientId && selectedPatientFailed && !selectedPatient) {
+    return (
+      <DashboardLayout role={userRole} title={pageTitle}>
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(selectedPatientError)}
+          onRetry={() => refetchSelectedPatient()}
+          retrying={selectedPatientFetching}
+        />
+      </DashboardLayout>
+    );
+  }
+
+  if (isDraftRouteEligible && !recoveryCheckReady && !draftDecision) {
+    return (
+      <DashboardLayout role={userRole} title={pageTitle}>
+        {recoveryCheckError ? (
+          <ConnectionErrorState
+            fullPage
+            variant={errorStateVariant(recoveryCheckError)}
+            onRetry={() => {
+              if (requestedDraftId) {
+                void handleResumeDraft(requestedDraftId);
+                return;
+              }
+              setRecoveryAttempt((value) => value + 1);
+              void loadHealthRecordDrafts();
+            }}
+          />
+        ) : (
+          <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>
+        )}
+      </DashboardLayout>
+    );
   }
 
   return (
@@ -4894,7 +4700,7 @@ export default function ConsultationWorkspace() {
         <NextActionStep
           visitDate={wizardVisitDate}
           visitTime={wizardVisitTime}
-          showVisitOverview={nextScreen === MONITORING_STEP}
+          showVisitOverview={false}
           unboxed={nextScreen === NEXT_STEP}
           saving={false}
           saveLabel="Save Record"
@@ -5479,26 +5285,6 @@ export default function ConsultationWorkspace() {
         retryLoadingLabel="Syncing..."
         onContinue={dismissConnectionLost}
         onRetry={handleOfflineDraftRetry}
-      />
-
-      <FormDraftRecoveryDialog
-        open={Boolean(localRecovery) && !draftDecision}
-        title="Unfinished Consultation"
-        description="An unfinished consultation was found for this patient. Choose how you want to continue."
-        contextLabel={localRecovery?.record?.draft?.patient?.label || "Selected patient"}
-        lastSavedAt={localRecovery?.savedAt}
-        deviceOnly
-        busy={localRecoveryBusy}
-        resuming={localRecoveryBusy}
-        error={localRecoveryError}
-        resumeLabel="Resume Consultation"
-        cancelLabel={localRecoveryError ? "Cancel" : ""}
-        onClose={() => navigate(`${patientsPath}/${selectedPatientId}`)}
-        onResume={localRecovery && !localRecovery?.serverConflict ? () => handleRecoverLocalDraft() : undefined}
-        onResumeDevice={localRecovery?.serverConflict && !localRecovery?.locked ? () => handleRecoverLocalDraft("device") : undefined}
-        onResumeServer={localRecovery?.serverConflict ? () => handleRecoverLocalDraft("server") : undefined}
-        onDiscard={localRecovery ? discardLocalRecovery : undefined}
-        onRetry={() => handleRecoverLocalDraft()}
       />
 
       <ConnectionIssueModal

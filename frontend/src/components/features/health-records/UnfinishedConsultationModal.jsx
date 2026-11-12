@@ -17,7 +17,8 @@ export default function UnfinishedConsultationModal({
   return (
     <FormDraftRecoveryDialog
       open={Boolean(draft)}
-      title="Unfinished Consultation"
+      title="You have unfinished work."
+      description="Continue where you left off?"
       contextLabel={draft?.patient?.label || selectedPatientName || "Selected patient"}
       lastSavedAt={draft?.lastSavedAt || ""}
       onClose={onCancel}

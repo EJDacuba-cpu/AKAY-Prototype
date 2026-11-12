@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BarangayHealthCenter;
 use App\Models\HealthRecord;
 use App\Models\LaboratoryAddendum;
 use App\Models\LaboratoryTest;
 use App\Models\MonitoringHandoffRequest;
 use App\Models\Patient;
+use App\Models\RuralHealthUnit;
 use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
@@ -34,18 +36,86 @@ class LaboratoryEvidenceController extends Controller
 
     public function patient(Request $request, Patient $patient)
     {
-        abort_unless($request->user()->isRhu(), 403);
-        ActionPermissions::ensure($request->user(), 'clinical.history');
+        $user = $request->user();
+        abort_unless($user->isRhu() || $user->isBhc(), 403);
+        ActionPermissions::ensure($user, 'clinical.history');
         $access = app(FacilityAccessService::class);
-        // Includes a catchment patient already authorized for a started visit.
-        if (! $access->isCatchmentBhcPatient($request->user(), $patient)) {
-            $access->authorizePatient($request->user(), $patient);
+        if ($user->isRhu()) {
+            // Includes a catchment patient already authorized for a started visit.
+            if (! $access->isCatchmentBhcPatient($user, $patient)) {
+                $access->authorizePatient($user, $patient);
+            }
+        } else {
+            $access->authorizePatient($user, $patient);
         }
-        $records = $access->scopePatientHealthRecords(HealthRecord::query(), $request->user())
-            ->where('patient_id', $patient->id)->where('rural_health_unit_id', $request->user()->rural_health_unit_id)
-            ->whereHas('laboratoryTests')->orderByDesc('date_recorded')->get();
 
-        return response()->json(['data' => $records->flatMap(fn ($record) => $this->evidence->present($record))->all()]);
+        $query = $access->scopePatientHealthRecords(HealthRecord::query(), $user)
+            ->where('patient_id', $patient->id)
+            ->whereHas('laboratoryTests')
+            ->orderByDesc('date_recorded')
+            ->orderByDesc('id');
+        if ($user->isRhu()) {
+            $query->where('rural_health_unit_id', $user->rural_health_unit_id);
+        } else {
+            // BHC may not read RHU laboratory source rows directly; shared evidence is appended below.
+            $query->whereNull('rural_health_unit_id')
+                ->where('barangay_health_center_id', $user->barangay_health_center_id);
+        }
+
+        $records = $query->get(['id', 'patient_id', 'date_recorded', 'rural_health_unit_id', 'barangay_health_center_id', 'category']);
+        $rhuNames = RuralHealthUnit::query()
+            ->whereIn('id', $records->pluck('rural_health_unit_id')->filter()->unique()->all())
+            ->pluck('name', 'id');
+        $bhcNames = BarangayHealthCenter::query()
+            ->whereIn('id', $records->pluck('barangay_health_center_id')->filter()->unique()->all())
+            ->pluck('name', 'id');
+        $canCorrect = ActionPermissions::allows($user, 'records.correct');
+
+        $entries = $records->flatMap(function (HealthRecord $record) use ($user, $rhuNames, $bhcNames, $canCorrect) {
+            $facilityName = $record->rural_health_unit_id
+                ? (string) ($rhuNames[$record->rural_health_unit_id] ?? 'RHU')
+                : (string) ($bhcNames[$record->barangay_health_center_id] ?? 'BHC');
+            $source = $record->rural_health_unit_id ? 'RHU' : 'BHC';
+            $canAddendum = $user->isRhu()
+                && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id
+                && $canCorrect;
+
+            return collect($this->evidence->present($record))->map(fn (array $entry) => [
+                ...$entry,
+                'visitDate' => $record->date_recorded?->toDateString(),
+                'facilityName' => $facilityName,
+                'facilityType' => $source,
+                'serviceType' => (string) ($record->category ?? ''),
+                'canAddendum' => $canAddendum,
+                'sourceKind' => 'consultation',
+            ]);
+        })->values();
+
+        if ($user->isBhc()) {
+            $sharing = app(HandoffLaboratoryEvidence::class);
+            $handoffs = MonitoringHandoffRequest::query()
+                ->where('linked_patient_id', $patient->id)
+                ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+                ->whereIn('status', ['accepted_awaiting_first_visit', 'monitoring_active'])
+                ->get();
+            foreach ($handoffs as $handoff) {
+                $sharing->authorizeReceiver($user, $handoff);
+                foreach ($sharing->present($handoff) as $entry) {
+                    $entries->push([
+                        ...$entry,
+                        'visitDate' => null,
+                        'facilityName' => 'RHU (shared evidence)',
+                        'facilityType' => 'RHU',
+                        'serviceType' => (string) ($entry['conditionName'] ?? 'Monitoring'),
+                        'canAddendum' => false,
+                        'sourceKind' => 'shared_monitoring',
+                        'createdAt' => $entry['sharedAt'] ?? ($entry['createdAt'] ?? null),
+                    ]);
+                }
+            }
+        }
+
+        return response()->json(['data' => $entries->all()]);
     }
 
     public function handoffs(Request $request, HealthRecord $healthRecord)

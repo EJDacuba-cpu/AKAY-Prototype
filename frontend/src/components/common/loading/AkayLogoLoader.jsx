@@ -1,30 +1,20 @@
-const LOGO_SRC = "/akay-mark.png";
 const BRAND_LETTERS = ["A", "K", "A", "Y"];
 
 const sizeClasses = {
   sm: {
-    logoWrap: "h-9 w-9 rounded-xl",
-    logo: "h-7 w-7",
     card: "px-3 py-2.5",
     brand: "text-[10px] tracking-[0.24em]",
     label: "text-[10px]",
-    gap: "mt-1.5",
   },
   md: {
-    logoWrap: "h-12 w-12 rounded-2xl",
-    logo: "h-9 w-9",
     card: "px-4 py-3.5",
     brand: "text-xs tracking-[0.28em]",
     label: "text-[11px]",
-    gap: "mt-2",
   },
   lg: {
-    logoWrap: "h-16 w-16 rounded-2xl",
-    logo: "h-12 w-12",
     card: "px-5 py-4",
     brand: "text-sm tracking-[0.32em]",
     label: "text-xs",
-    gap: "mt-2.5",
   },
 };
 
@@ -66,18 +56,7 @@ export default function AkayLogoLoader({
       aria-label={displayLabel || "Loading"}
     >
       <div
-        className={`akay-brand-loader-logo-wrap relative flex shrink-0 items-center justify-center border border-[#FEE2E2] bg-white shadow-sm shadow-red-950/[0.04] ${loaderSize.logoWrap}`}
-      >
-        <img
-          src={LOGO_SRC}
-          alt=""
-          className={`akay-brand-loader-logo object-contain ${loaderSize.logo}`}
-          draggable="false"
-        />
-      </div>
-
-      <div
-        className={`akay-brand-loader-word ${loaderSize.gap} flex items-center justify-center font-extrabold text-[#B91C1C] ${loaderSize.brand}`}
+        className={`akay-brand-loader-word flex items-center justify-center font-extrabold text-[#B91C1C] ${loaderSize.brand}`}
         aria-hidden="true"
       >
         {BRAND_LETTERS.map((letter, index) => (
@@ -106,24 +85,6 @@ export default function AkayLogoLoader({
 
       <style>
         {`
-          .akay-brand-loader-logo-wrap {
-            isolation: isolate;
-          }
-
-          .akay-brand-loader-logo-wrap::before {
-            content: "";
-            position: absolute;
-            inset: 15%;
-            z-index: -1;
-            border-radius: inherit;
-            background: radial-gradient(circle, rgba(185, 28, 28, 0.1), transparent 68%);
-          }
-
-          .akay-brand-loader-logo {
-            filter: drop-shadow(0 5px 10px rgba(185, 28, 28, 0.08));
-            animation: akayBrandLogoBreathe 2800ms ease-in-out infinite;
-          }
-
           .akay-brand-loader-letter {
             display: inline-block;
             opacity: 0.58;
@@ -153,24 +114,8 @@ export default function AkayLogoLoader({
             animation-duration: 1500ms;
           }
 
-          .akay-brand-loader--save .akay-brand-loader-logo {
-            animation-duration: 3200ms;
-          }
-
-          .akay-brand-loader--success .akay-brand-loader-letter,
-          .akay-brand-loader--success .akay-brand-loader-logo {
+          .akay-brand-loader--success .akay-brand-loader-letter {
             animation-duration: 2200ms;
-          }
-
-          @keyframes akayBrandLogoBreathe {
-            0%, 100% {
-              opacity: 0.96;
-              transform: scale(1);
-            }
-            50% {
-              opacity: 1;
-              transform: scale(1.025);
-            }
           }
 
           @keyframes akayBrandLetterGuide {
@@ -196,7 +141,6 @@ export default function AkayLogoLoader({
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .akay-brand-loader-logo,
             .akay-brand-loader-letter,
             .akay-brand-loader-dots span {
               animation: none !important;

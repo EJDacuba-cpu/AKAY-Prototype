@@ -1,19 +1,52 @@
 import { useEffect, useRef, useState } from "react";
 import { getHealthRecordDraft, lookupHealthRecordDraft, discardHealthRecordDraft, transitionDraft } from "../services/healthRecordDraftService";
-import { lookupRhuRecovery, resumeRhuRecovery, discardRhuRecovery } from "../utils/rhuDraftResume";
+import {
+  lookupRhuRecovery,
+  resumeRhuRecovery,
+  discardRhuRecovery,
+  takeoverRhuRecovery,
+} from "../utils/rhuDraftResume";
+import {
+  ownershipFromDraft,
+  ownershipFromProblem,
+  isEditorLeaseConflict,
+} from "../utils/clinicalConsultationLease";
 
 const api = {
   lookup: lookupHealthRecordDraft,
   load: getHealthRecordDraft,
   discard: discardHealthRecordDraft,
   claim: (id, version, options) => transitionDraft(id, "claim", version, undefined, options),
+  takeover: (id, version, note, options) => transitionDraft(id, "takeover", version, note, options),
 };
 
+const FRIENDLY = {
+  check: "We couldn't check for unfinished work. Please try again.",
+  recover: "We couldn't restore your unfinished work. Please try again.",
+};
+
+function friendlyMessage(problem, fallback) {
+  const raw = problem?.message || "";
+  if (!raw) return fallback;
+  if (/ECONN|timeout|500|404|403|version|DRAFT_|FORM_/i.test(raw)) return fallback;
+  return raw;
+}
+
 /** One recovery owner for queue entry and direct/refresh workspace entry. */
-export default function useRhuConsultationRecovery({ visit, patientId, owner, vault, enabled, shared, handoff, onRestore, onDiscarded }) {
+export default function useRhuConsultationRecovery({
+  visit,
+  patientId,
+  owner,
+  currentUserId,
+  enabled,
+  handoff,
+  onRestore,
+  onDiscarded,
+}) {
   const [ready, setReady] = useState(!enabled);
   const [checking, setChecking] = useState(enabled);
   const [decision, setDecision] = useState(null);
+  const [ownership, setOwnership] = useState(null);
   const [busy, setBusy] = useState(false);
   const [operation, setOperation] = useState("");
   const [failedOperation, setFailedOperation] = useState("");
@@ -35,22 +68,33 @@ export default function useRhuConsultationRecovery({ visit, patientId, owner, va
     setChecking(true);
     setError("");
     setFailedOperation("");
+    setOwnership(null);
     setDecision(null);
+    // A newer lookup must not leave a prior Resume stuck on "Restoring...".
+    setBusy(false);
+    setOperation("");
+    gate.current = false;
     if (handoff) {
-      if (handoff.draft) callbacks.current.onRestore?.(handoff.draft, handoff.unsynced);
+      if (handoff.draft) callbacks.current.onRestore?.(handoff.draft, false);
       setReady(true);
       setChecking(false);
       return () => { cancelled = true; generation.current = epoch + 1; };
     }
-    lookupRhuRecovery({ visit, patientId, owner, vault, shared, api })
-      .then((result) => { if (current()) { setDecision(result); setReady(!result); } })
-      .catch((problem) => { if (current()) setError(problem?.message || "Unable to check unfinished consultation input."); })
+    lookupRhuRecovery({ visit, patientId, owner, api })
+      .then((result) => {
+        if (!current()) return;
+        setDecision(result);
+        setOwnership(ownershipFromDraft(result?.server, currentUserId));
+        setReady(!result);
+      })
+      .catch((problem) => { if (current()) setError(friendlyMessage(problem, FRIENDLY.check)); })
       .finally(() => { if (current()) setChecking(false); });
     return () => { cancelled = true; generation.current = epoch + 1; };
-  }, [visit, uuid, patientId, owner, vault, enabled, shared, handoff, attempt]);
+  }, [visit, uuid, patientId, owner, currentUserId, enabled, handoff, attempt]);
 
-  async function run(kind, source = "") {
+  async function run(kind, note) {
     if (gate.current || checking || !decision) return;
+    if (kind !== "takeover" && ownership?.occupied) return;
     gate.current = true;
     const epoch = generation.current;
     setBusy(true);
@@ -58,26 +102,54 @@ export default function useRhuConsultationRecovery({ visit, patientId, owner, va
     setFailedOperation("");
     setError("");
     try {
-      const args = { visit, patientId, owner, decision, vault, shared, api };
+      const args = { visit, patientId, owner, decision, api, currentUserId };
       if (kind === "discard") {
         await discardRhuRecovery(args);
         if (epoch !== generation.current) return;
         setDecision(null);
+        setOwnership(null);
         callbacks.current.onDiscarded?.();
-      } else {
-        const result = await resumeRhuRecovery({ ...args, source });
+      } else if (kind === "takeover") {
+        const result = await takeoverRhuRecovery({ ...args, note });
         if (epoch !== generation.current) return;
-        if (result.decision) { setDecision(result.decision); return; }
-        callbacks.current.onRestore?.(result.draft, result.unsynced);
+        callbacks.current.onRestore?.(result.draft, false);
         setDecision(null);
+        setOwnership(null);
+        setReady(true);
+      } else {
+        const result = await resumeRhuRecovery(args);
+        if (epoch !== generation.current) return;
+        callbacks.current.onRestore?.(result.draft, false);
+        setDecision(null);
+        setOwnership(null);
         setReady(true);
       }
     } catch (problem) {
-      if (epoch === generation.current) { setFailedOperation(kind); setError(problem?.message || "Unable to recover this consultation. Retry while online."); }
+      if (epoch !== generation.current) return;
+      const lease = ownershipFromProblem(problem) || (isEditorLeaseConflict(problem)
+        ? ownershipFromDraft(decision?.server, currentUserId)
+        : null);
+      if (lease?.occupied) {
+        setOwnership({ ...lease, canTakeover: lease.canTakeover ?? decision?.server?.canEdit !== false });
+        setFailedOperation("");
+        setError("");
+      } else {
+        setFailedOperation(kind === "takeover" ? "takeover" : kind);
+        setError(friendlyMessage(problem, FRIENDLY.recover));
+      }
     } finally {
+      // Always clear busy so a Retry/lookup that bumps generation cannot leave
+      // recovery actions permanently disabled on "Restoring...".
       gate.current = false;
-      if (epoch === generation.current) { setBusy(false); setOperation(""); }
+      setBusy(false);
+      setOperation("");
     }
   }
-  return { ready, checking, decision, busy, operation, failedOperation, error, resume: (source) => run("resume", source), discard: () => run("discard"), retry: () => { if (!gate.current) setAttempt((value) => value + 1); } };
+  return {
+    ready, checking, decision, ownership, busy, operation, failedOperation, error,
+    resume: () => run("resume"),
+    discard: () => run("discard"),
+    takeover: (note) => run("takeover", note),
+    retry: () => { if (!gate.current) setAttempt((value) => value + 1); },
+  };
 }

@@ -9,6 +9,12 @@ import StartConsultationModal from "./StartConsultationModal";
 import { TextAction } from "./ProfileSection";
 import { formatDate } from "../../../../utils/formatters";
 import FormDraftRecoveryDialog from "../../../common/drafts/FormDraftRecoveryDialog";
+import ClinicalConsultationTakeoverDialog from "../../health-records/ClinicalConsultationTakeoverDialog";
+import {
+  ownershipFromDraft,
+  ownershipFromProblem,
+  isEditorLeaseConflict,
+} from "../../../../utils/clinicalConsultationLease";
 
 /**
  * `onStart` replaces the link (Start Consultation opens the confirmation
@@ -149,20 +155,35 @@ export function useConsultationActions(patient, patientId) {
   const consultation = usePatientConsultation(consultationPatientId);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [recovery, setRecovery] = useState(null);
+  const [ownership, setOwnership] = useState(null);
   const [checkingRecovery, setCheckingRecovery] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryOperation, setRecoveryOperation] = useState("");
+  const [failedOperation, setFailedOperation] = useState("");
   const [recoveryError, setRecoveryError] = useState("");
   const operationGate = useRef(false);
+  const patientLabel = patient.fullName || patient.name || "Selected patient";
+
+  function clearRecoveryDecision() {
+    setRecovery(null);
+    setOwnership(null);
+    setRecoveryError("");
+    setFailedOperation("");
+  }
 
   async function checkBeforeStarting() {
     if (operationGate.current) return;
     operationGate.current = true;
     setCheckingRecovery(true);
     setRecoveryError("");
+    setFailedOperation("");
+    setOwnership(null);
+    setRecoveryBusy(false);
+    setRecoveryOperation("");
     try {
       const entry = await consultation.checkRecovery();
       setRecovery(entry);
+      setOwnership(ownershipFromDraft(entry?.server, consultation.currentUserId));
       if (!entry) setStartModalOpen(true);
     } catch (error) {
       setRecoveryError(error?.message || "Unable to check unfinished work. Retry while online.");
@@ -172,56 +193,80 @@ export function useConsultationActions(patient, patientId) {
     }
   }
 
-  async function resumeRecovery(source = "") {
-    if (operationGate.current) return;
+  async function runRecovery(kind, note) {
+    if (operationGate.current || !recovery) return;
+    if (kind !== "takeover" && ownership?.occupied) return;
     operationGate.current = true;
     setRecoveryBusy(true);
-    setRecoveryOperation("resume");
+    setRecoveryOperation(kind);
+    setFailedOperation("");
     setRecoveryError("");
     try {
-      const result = await consultation.resumeRecovery(recovery, source);
-      if (result?.decision) setRecovery(result.decision);
+      if (kind === "discard") {
+        await consultation.discardRecovery(recovery);
+        clearRecoveryDecision();
+        setStartModalOpen(true);
+      } else if (kind === "takeover") {
+        await consultation.takeoverRecovery(recovery, note);
+        clearRecoveryDecision();
+      } else {
+        await consultation.resumeRecovery(recovery);
+        clearRecoveryDecision();
+      }
+    } catch (error) {
+      const lease = ownershipFromProblem(error) || (isEditorLeaseConflict(error)
+        ? ownershipFromDraft(recovery?.server, consultation.currentUserId)
+        : null);
+      if (lease?.occupied) {
+        setOwnership({ ...lease, canTakeover: lease.canTakeover ?? recovery?.server?.canEdit !== false });
+        setFailedOperation("");
+        setRecoveryError("");
+      } else {
+        setFailedOperation(kind);
+        setRecoveryError(
+          kind === "discard"
+            ? (error?.message || "Unable to discard this consultation.")
+            : (error?.message || "We couldn't restore your unfinished work. Please try again."),
+        );
+      }
+    } finally {
+      operationGate.current = false;
+      setRecoveryBusy(false);
+      setRecoveryOperation("");
     }
-    catch (error) { setRecoveryError(error?.message || "Unable to resume this consultation."); }
-    finally { operationGate.current = false; setRecoveryBusy(false); }
-  }
-
-  async function discardRecovery() {
-    if (operationGate.current) return;
-    operationGate.current = true;
-    setRecoveryBusy(true);
-    setRecoveryOperation("discard");
-    setRecoveryError("");
-    try {
-      await consultation.discardRecovery(recovery);
-      setRecovery(null);
-      setStartModalOpen(true);
-    } catch (error) { setRecoveryError(error?.message || "Unable to discard this consultation."); }
-    finally { operationGate.current = false; setRecoveryBusy(false); }
   }
 
   // Portaled for the same z-index reason as the discard confirmation.
   const recoveryModal = consultation.recoveryEnabled && recovery
-    ? createPortal(<FormDraftRecoveryDialog
+    ? createPortal(ownership?.occupied
+      ? <ClinicalConsultationTakeoverDialog
+          open
+          patientName={recovery.server?.patient?.label || patientLabel}
+          editorName={ownership.editorName}
+          canTakeover={ownership.canTakeover !== false}
+          busy={recoveryBusy}
+          takingOver={recoveryBusy && recoveryOperation === "takeover"}
+          error={recoveryError}
+          onClose={clearRecoveryDecision}
+          onTakeover={(note) => runRecovery("takeover", note)}
+        />
+      : <FormDraftRecoveryDialog
         open
-        title="Unfinished Consultation"
-        contextLabel={patient.fullName || patient.name || "Selected patient"}
-        lastSavedAt={recovery?.local?.savedAt || recovery?.server?.lastSavedAt}
-        deviceOnly={Boolean(recovery?.local)}
+        title="You have unfinished work."
+        contextLabel={patientLabel}
+        lastSavedAt={recovery?.server?.lastSavedAt}
         busy={recoveryBusy}
         resuming={recoveryBusy && recoveryOperation === "resume"}
         error={recoveryError}
         resumeLabel="Resume Consultation"
         cancelLabel={recoveryError ? "Cancel" : ""}
-        description="An unfinished consultation was found for this patient. Choose how you want to continue."
-        classification={recovery.server?.classification || recovery.local?.record?.draft?.classification || ""}
+        description="Continue where you left off?"
+        classification={recovery.server?.classification || ""}
         draftStatus={recovery.server?.reviewState === "review" ? "Draft needs review" : "Saved draft"}
-        onClose={() => { setRecovery(null); setRecoveryError(""); }}
-        onResume={!recovery.conflict && !recoveryError ? () => resumeRecovery() : undefined}
-        onResumeDevice={recovery.conflict && !recovery.locked ? () => resumeRecovery("device") : undefined}
-        onResumeServer={recovery.conflict ? () => resumeRecovery("server") : undefined}
-        onDiscard={!recoveryError ? discardRecovery : undefined}
-        onRetry={recoveryOperation === "resume" ? () => resumeRecovery() : checkBeforeStarting}
+        onClose={clearRecoveryDecision}
+        onResume={!recoveryError ? () => runRecovery("resume") : undefined}
+        onDiscard={!recoveryError ? () => runRecovery("discard") : undefined}
+        onRetry={failedOperation === "resume" ? () => runRecovery("resume") : checkBeforeStarting}
       />, document.body)
     : null;
   const lookupError = consultation.recoveryEnabled && recoveryError && !recovery

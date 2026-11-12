@@ -55,7 +55,7 @@ test("recovery offers Resume and Discard with an accessible close, never a fresh
   });
   assert.match(html, /role="dialog"/);
   assert.match(html, /Unfinished Consultation/);
-  assert.match(html, /An unfinished consultation was found for this patient/);
+  assert.match(html, /Continue where you left off\?/);
   assert.match(html, /Consultation type/);
   assert.match(html, /General Consultation/);
   assert.match(html, /Draft status/);
@@ -83,7 +83,8 @@ test("checking and failed lookup never pretend a recoverable draft was found", (
   assert.match(failed, /role="alert"[^>]*>Unable to check drafts/);
   assert.equal(button(failed, "Resume"), undefined);
   assert.equal(button(failed, "Discard"), undefined);
-  assert.doesNotMatch(failed, /No unfinished|No draft|Start new|You have unfinished/i);
+  assert.doesNotMatch(failed, /No unfinished|No draft|Start new|Continue where you left off/i);
+  assert.match(failed, /Unable to check unfinished work/);
 });
 
 test("discard requires confirmation in the same dialog and dismissal returns to the decision", () => {
@@ -121,20 +122,40 @@ test("busy transitions cannot dismiss a pending discard or enter a new confirmat
 
 test("context is escaped and can wrap, and invalid saved dates get a truthful fallback", () => {
   const contextLabel = "<script>unsafe()</script>" + "LongName".repeat(60);
-  const html = render({ contextLabel, lastSavedAt: "not-a-date", deviceOnly: true });
+  const html = render({ contextLabel, lastSavedAt: "not-a-date" });
   assert.match(html, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
   assert.match(html, /overflow-wrap:anywhere/);
-  assert.match(html, /Saved on this device/);
+  assert.match(html, /Last saved/);
   assert.match(html, /Saved time unavailable/);
-  assert.doesNotMatch(html, /Invalid Date|<script>|dateTime="not-a-date"/);
+  assert.doesNotMatch(html, /Invalid Date|<script>|dateTime="not-a-date"|Saved on this device|Use Device Copy|Use Synced Draft/);
 });
 
-test("conflicting copies require an explicit source choice instead of a silent overwrite", () => {
-  const html = render({ onResume: undefined, onResumeDevice: noop, onResumeServer: noop, error: "Draft changed in another session" });
-  assert.ok(button(html, "Use Device Copy"));
-  assert.ok(button(html, "Use Synced Draft"));
-  assert.equal(button(html, "Resume"), undefined);
-  assert.match(html, /replaces the other recovery copy/);
+test("recovery never offers device or synced-copy choices", () => {
+  const html = render({
+    title: "You have unfinished work.",
+    description: "Continue where you left off?",
+    error: "Your changes couldn't be saved. Please try again.",
+  });
+  assert.ok(button(html, "Resume"));
+  assert.ok(button(html, "Discard"));
+  assert.equal(button(html, "Use Device Copy"), undefined);
+  assert.equal(button(html, "Use Synced Draft"), undefined);
+  assert.doesNotMatch(html, /Device Copy|Synced Draft|replaces the other recovery copy|device/i);
+});
+
+test("patient registration recovery stays Resume/Discard only", () => {
+  const normal = render({
+    title: "You have unfinished work.",
+    description: "Continue where you left off?",
+    resumeLabel: "Resume Registration",
+  });
+  assert.match(normal, /You have unfinished work\./);
+  assert.match(normal, /Continue where you left off\?/);
+  assert.ok(button(normal, "Resume Registration"));
+  assert.ok(button(normal, "Discard"));
+  assert.equal(button(normal, "Use Device Copy"), undefined);
+  assert.equal(button(normal, "Use Synced Draft"), undefined);
+  assert.doesNotMatch(normal, /New patient registration|Device Copy|Synced Draft|server version/i);
 });
 
 test("restoration keeps one unfinished decision and puts progress on its primary button", () => {
@@ -142,8 +163,8 @@ test("restoration keeps one unfinished decision and puts progress on its primary
     recovery: { decision: { server: { id: "d1", classification: "General Consultation" } }, busy: true, operation: "resume", resume: noop, discard: noop, retry: noop },
     onClose: noop,
   }));
-  assert.match(html, /Unfinished Consultation/);
-  assert.doesNotMatch(html, /Restoring Consultation|Check Consultation/);
+  assert.match(html, /You have unfinished work\./);
+  assert.doesNotMatch(html, /Restoring Consultation|Check Consultation|Use Device Copy|Use Synced Draft/);
   assert.match(button(html, "Restoring...").attributes, /disabled=""/);
   assert.match(button(html, "Restoring...").attributes, /aria-busy="true"/);
   assert.equal(button(html, "Resume Consultation"), undefined);
@@ -156,14 +177,14 @@ test("entry lookup does not render a separate checking modal", () => {
   const html = renderToStaticMarkup(createElement(RhuDialog, {
     recovery: { checking: true, retry: noop }, onClose: noop,
   }));
-  assert.doesNotMatch(html, /role="dialog"|Check Consultation|Unfinished Consultation/);
+  assert.doesNotMatch(html, /role="dialog"|Check Consultation|You have unfinished work/);
 });
 
 test("a failed restore retains the unfinished decision with Retry and Cancel", () => {
   const html = renderToStaticMarkup(createElement(RhuDialog, {
     recovery: { decision: { server: { id: "d1" } }, error: "Unable to restore", retry: noop, resume: noop }, onClose: noop,
   }));
-  assert.match(html, /Unfinished Consultation/);
+  assert.match(html, /You have unfinished work\./);
   assert.ok(button(html, "Retry"));
   assert.ok(button(html, "Cancel"));
   assert.match(html, /role="alert"/);
@@ -178,4 +199,41 @@ test("RHU failed recovery offers Retry and Cancel without fresh start or destruc
   assert.equal(button(html, "Resume Consultation"), undefined);
   assert.equal(button(html, "Discard"), undefined);
   assert.match(html, /role="alert"/);
+});
+
+test("RHU ownership conflict offers confirmed takeover instead of Resume or Retry", () => {
+  const html = renderToStaticMarkup(createElement(RhuDialog, {
+    recovery: {
+      decision: { server: { id: "d1", patient: { label: "Ana Reyes" }, classification: "General Consultation" } },
+      ownership: { occupied: true, canTakeover: true, editorName: "Jane Midwife" },
+      takeover: noop,
+      resume: noop,
+      discard: noop,
+      retry: noop,
+    },
+    patientName: "Ana Reyes",
+    onClose: noop,
+  }));
+  assert.match(html, /Being edited by Jane Midwife/);
+  assert.ok(button(html, "Take Over"));
+  assert.ok(button(html, "Cancel"));
+  assert.equal(button(html, "Resume Consultation"), undefined);
+  assert.equal(button(html, "Discard"), undefined);
+  assert.equal(button(html, "Retry"), undefined);
+  assert.doesNotMatch(html, /Take over this consultation\?|device copy|Use Device/i);
+});
+
+test("RHU ownership conflict without edit permission keeps Cancel only", () => {
+  const html = renderToStaticMarkup(createElement(RhuDialog, {
+    recovery: {
+      decision: { server: { id: "d1" } },
+      ownership: { occupied: true, canTakeover: false, editorName: "Jane Midwife" },
+      retry: noop,
+    },
+    onClose: noop,
+  }));
+  assert.match(html, /Being edited by Jane Midwife/);
+  assert.equal(button(html, "Take Over"), undefined);
+  assert.equal(button(html, "Resume Consultation"), undefined);
+  assert.ok(button(html, "Cancel"));
 });

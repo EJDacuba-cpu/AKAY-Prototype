@@ -166,13 +166,15 @@ class PatientController extends Controller
         unset($data['household'], $data['head_replacement']);
         $patient = DB::transaction(function () use ($request, $data, $householdInput, $auditLogger) {
             $user = $request->user();
-            if ($user->isBhc() || $user->isRhu()) {
+            // Household/FSN attach is BHC-only. RHU creates patients without membership.
+            if ($user->isBhc()) {
                 $households = app(Households::class);
                 $owner = $households->owner($user);
                 $households->lock($owner);
                 $households->validateLegacySerial($owner, $data);
             }
             if ($householdInput) {
+                abort_unless($user->isBhc(), 422, 'RHU registration does not support household membership.');
                 app(Households::class)->owner($request->user());
                 ActionPermissions::ensure($request->user(), 'patients.register');
                 if (! empty($data['family_serial_number'])) {
@@ -247,7 +249,10 @@ class PatientController extends Controller
         }
         DB::transaction(function () use ($request, $patient, $data, $householdInput, $replacement, $parentBase, $auditLogger) {
             $user = $request->user();
-            if ($user->isBhc() || $user->isRhu()) {
+            if ($householdInput || $replacement) {
+                abort_unless($user->isBhc(), 422, 'RHU registration does not support household membership.');
+            }
+            if ($user->isBhc()) {
                 // Acquire the same facility lock before any patient row write;
                 // FSN corrections lock in this order too, avoiding deadlocks.
                 $households = app(Households::class);
@@ -296,7 +301,9 @@ class PatientController extends Controller
             if ($householdInput) {
                 app(Households::class)->attach($request, $patient, $householdInput, $replacement);
             }
-            app(Households::class)->validateHeadPatient($patient);
+            if ($user->isBhc() || $patient->household_id) {
+                app(Households::class)->validateHeadPatient($patient);
+            }
             $auditLogger->log($request, 'updated', 'patients', "Updated patient {$patient->full_name}.");
             if ($parentChanges) {
                 $auditLogger->log($request, 'parent_links_updated', 'patients', "Patient {$patient->id}: ".implode('; ', $parentChanges).'.');

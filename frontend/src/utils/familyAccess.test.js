@@ -11,10 +11,10 @@ test("Households is not an Admin/MHO module", () => {
   assert.ok(!items("admin").some(item => /famil|household/i.test(item.label) || /famil/i.test(item.path)));
 });
 
-test("BHC lists Households directly below Patients, and RHU keeps its placement", () => {
+test("BHC lists Households directly below Patients, and RHU has no Households module", () => {
   const bhc = items("bhc").map(item => item.label);
   assert.equal(bhc[bhc.indexOf("Patients") + 1], "Households");
-  assert.ok(items("rhu").some(item => item.path === "/rhu/families"));
+  assert.ok(!items("rhu").some(item => item.path === "/rhu/families" || /household/i.test(item.label)));
 });
 
 test("RHU sidebar has no standalone Health Records module", () => {

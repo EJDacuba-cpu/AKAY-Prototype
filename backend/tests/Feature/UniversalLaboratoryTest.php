@@ -180,6 +180,33 @@ class UniversalLaboratoryTest extends TestCase
         $this->getJson("/api/health-records/{$record->id}/laboratory-tests")->assertOk()->assertJsonCount(3, 'data');
     }
 
+    public function test_patient_laboratory_listing_includes_visit_context_and_addendum_capability(): void
+    {
+        $this->finalize([
+            $this->laboratoryEntry(['testName' => 'GeneXpert', 'resultStatus' => 'Awaiting Result']),
+            $this->laboratoryEntry(['testName' => 'CBC', 'resultStatus' => 'Requested']),
+        ])->assertCreated();
+
+        $payload = $this->getJson('/api/laboratory-evidence/patients/'.$this->patient->id)
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->json('data');
+        $this->assertNotEmpty($payload[0]['facilityName'] ?? null);
+        $this->assertSame('RHU', $payload[0]['facilityType']);
+        $this->assertTrue($payload[0]['canAddendum']);
+        $this->assertNotEmpty($payload[0]['visitDate'] ?? null);
+        $this->assertContains($payload[0]['testName'], ['GeneXpert', 'CBC']);
+
+        $this->as($this->bhcUser);
+        $this->getJson('/api/laboratory-evidence/patients/'.$this->patient->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $this->bhcUser->update(['permissions' => ['patients.register']]);
+        $this->as($this->bhcUser);
+        $this->getJson('/api/laboratory-evidence/patients/'.$this->patient->id)->assertForbidden();
+    }
+
     public function test_supporting_laboratory_tests_remap_without_sharing_or_deleting_source_rows(): void
     {
         $first = $this->laboratoryEntry(['testName' => 'Xpert MTB/RIF', 'resultStatus' => 'Awaiting Result']);

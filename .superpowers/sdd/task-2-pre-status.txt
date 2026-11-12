@@ -1,0 +1,17 @@
+ M backend/app/Http/Requests/HealthRecordRequest.php
+ M backend/app/Http/Requests/TbCaseRegistrationRequest.php
+ M frontend/src/components/features/health-records/TbInlineForm4bPanel.jsx
+ M frontend/src/components/features/health-records/TbTreatmentCardForm.jsx
+ M frontend/src/components/features/health-records/wizard/RhuDiagnosisCarePlanSection.jsx
+ M frontend/src/components/features/health-records/wizard/RhuDiagnosisCarePlanSection.test.js
+ M frontend/src/pages/rhu/RhuConsultationWorkspace.jsx
+ M frontend/src/pages/rhu/RhuConsultationWorkspace.test.js
+ M frontend/src/utils/rhuCarePlan.js
+ M frontend/src/utils/rhuCarePlan.test.js
+ M frontend/src/utils/tbRegistration.js
+ M frontend/src/utils/tbRegistration.test.js
+?? .superpowers/
+?? docs/superpowers/plans/2026-11-11-rhu-diagnosis-linked-prescription-dispense.md
+?? docs/superpowers/specs/2026-11-11-rhu-diagnosis-linked-prescription-dispense-design.md
+?? frontend/src/utils/rhuPrescriptions.js
+?? frontend/src/utils/rhuPrescriptions.test.js

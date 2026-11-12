@@ -4,6 +4,7 @@
  */
 export function errorStateVariant(error) {
   if (error?.status === 403) return "forbidden";
+  if (Number(error?.status) === 429 || error?.code === "RATE_LIMITED") return "rateLimited";
   if (error?.isOffline || error?.code === "OFFLINE") return "offline";
   if (error?.isTimeout || error?.code === "TIMEOUT") return "timeout";
   if (error?.isNetworkError || error?.code === "NETWORK_ERROR" || [502, 503, 504].includes(Number(error?.status))) {

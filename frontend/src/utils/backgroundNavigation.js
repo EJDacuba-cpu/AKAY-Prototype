@@ -1,12 +1,12 @@
-/** Preserve the existing leave flow, with a server-backed return path for Background. */
+/** Preserve the existing leave flow. Server confirmation is required to leave safely. */
 export async function saveDraftBeforeNavigation({ flush, protectLocal, notifyLocal, requireServer = false }) {
   if (await flush()) return "";
-  if (!(await protectLocal())) {
-    return "Your latest changes could not be saved securely. Keep this page open and reconnect before leaving.";
+  if (!(await protectLocal?.())) {
+    return "Your changes couldn't be saved. Please try again before leaving.";
   }
   if (requireServer) {
-    return "Your latest changes are protected on this device but have not synced. Keep this consultation open and reconnect before editing Patient Background.";
+    return "Your changes couldn't be saved. Please try again before leaving.";
   }
-  notifyLocal();
+  notifyLocal?.();
   return "";
 }

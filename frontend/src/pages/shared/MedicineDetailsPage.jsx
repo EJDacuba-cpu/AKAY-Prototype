@@ -90,8 +90,9 @@ function MedicineDetailsRoute({ role, medicineId }) {
     } catch (failure) { setRemoveError(failure.message || 'Unable to remove this item.'); setDialog(null); }
     finally { gate.current = false; setRemoving(false); }
   }
-  return <DashboardLayout role={role} title="Medicine Details"><PageStateWrapper skeleton="medicine-details" isLoading={query.isPending} isError={query.isError} hasData={Boolean(query.data)} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine details…">
+  return <DashboardLayout role={role} title="Medicine Details"><PageStateWrapper skeleton="medicine-details" isLoading={query.isPending} isError={query.isError} isFetching={query.isFetching} hasData={Boolean(query.data)} error={query.error} onRetry={() => query.refetch()} loadingMessage="Loading medicine details…">
     {query.isFetching && query.data && <div className="mb-3 flex justify-end"><RefreshingIndicator label="Updating medicine details..." /></div>}
+    {query.isError && query.data ? <p role="status" className="mb-3 text-sm text-neutral-600">Unable to refresh medicine details. Showing the last record that loaded.</p> : null}
     {query.data && <MedicineDetailsContent medicine={query.data} role={role} canManage={canManage} onEdit={() => setDialog({ mode: 'edit', item: query.data })} onRemove={() => setDialog({ mode: 'remove' })} onAction={(mode, groupId) => setDialog({ mode, groupId, medicineId })} history={<MedicineInventoryHistory key={medicineId} item={query.data} user={user} />} />}
     {removeError && <p role="alert" className="mt-3 text-sm text-alert-700">{removeError}</p>}
   </PageStateWrapper>

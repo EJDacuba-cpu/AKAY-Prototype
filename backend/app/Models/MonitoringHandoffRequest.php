@@ -40,6 +40,18 @@ class MonitoringHandoffRequest extends Model
         self::STATUS_REDIRECTED,
     ];
 
+    public const IDENTITY_SOURCE_RHU_WALK_IN = 'rhu_walk_in';
+
+    public const IDENTITY_SOURCE_BHC_REFERRAL_RETURN = 'bhc_referral_return';
+
+    public const IDENTITY_RESOLUTION_SAME_IDENTITY_AUTO = 'same_identity_auto';
+
+    public const IDENTITY_RESOLUTION_REUSED_EXISTING = 'reused_existing';
+
+    public const IDENTITY_RESOLUTION_REGISTERED_SOURCE = 'registered_source_at_bhc';
+
+    public const IDENTITY_RESOLUTION_NEEDS_REVIEW = 'needs_review';
+
     protected $fillable = [
         'patient_id',
         'linked_patient_id',
@@ -49,6 +61,9 @@ class MonitoringHandoffRequest extends Model
         'receiving_barangay_health_center_id',
         'recommendation',
         'status',
+        'identity_source',
+        'identity_resolution',
+        'identity_resolution_note',
         'decline_reason',
         'redirected_to_bhc_id',
         'created_by',

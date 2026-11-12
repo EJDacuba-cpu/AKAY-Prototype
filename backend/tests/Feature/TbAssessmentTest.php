@@ -92,19 +92,28 @@ class TbAssessmentTest extends TestCase
         $this->assertDatabaseCount('tb_treatment_cases', 0);
     }
 
-    public function test_initiate_treatment_requires_form_4b_and_registers_atomically(): void
+    public function test_ds_tb_finalizes_without_consultation_form_4b_and_rejects_tb_case_registration(): void
     {
         $assessment = [
             'diagnosisType' => 'tb_disease',
             'drugResistance' => 'drug_susceptible',
-            'treatmentDecision' => 'initiate_at_rhu',
-            'openTreatmentCard' => true,
+            'treatmentDecision' => '',
+            'openTreatmentCard' => false,
         ];
-        $this->submit($assessment)->assertUnprocessable()->assertJsonValidationErrors('tb_case_registration');
+        $id = $this->submit($assessment)->assertCreated()->json('data.id');
+        $stored = HealthRecord::findOrFail($id)->diagnoses[0]['tbManagement'];
+        $this->assertSame('drug_susceptible', $stored['drugResistance']);
+        $this->assertFalse($stored['openTreatmentCard']);
+        $this->assertNull(HealthRecord::findOrFail($id)->tb_data);
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
 
-        $visit = RhuVisitQueueEntry::where('patient_id', $this->patient->id)->where('status', 'in_consultation')->first();
-        $uuid = $visit->consultation_uuid;
-        $response = $this->actingAs($this->doctor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+        $visit = RhuVisitQueueEntry::create([
+            'rural_health_unit_id' => $this->doctor->rural_health_unit_id, 'patient_id' => $this->patient->id,
+            'source' => 'walk_in', 'status' => 'waiting', 'checked_in_at' => now(), 'check_in_key' => (string) Str::uuid(),
+        ]);
+        $this->actingAs($this->doctor, 'sanctum');
+        $uuid = $this->postJson("/api/rhu-visits/{$visit->id}/start")->assertOk()->json('data.consultation_uuid');
+        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
             'consultation_workflow' => 'rhu_itr_v1', 'rhu_visit_id' => $visit->id, 'consultation_uuid' => $uuid,
             'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Cough',
             'diagnoses' => [['id' => 'tb', 'name' => 'TB', 'activate' => false, 'nextAction' => 'none', 'tbManagement' => $assessment]],
@@ -113,33 +122,10 @@ class TbAssessmentTest extends TestCase
                 'reporting_year' => 2026,
                 'confirmed' => true,
                 'treatment_start_date' => '2026-11-10',
-                'card_data' => [
-                    'classification' => [
-                        'bacteriologicalStatus' => 'clinically_diagnosed',
-                        'anatomicalSite' => 'pulmonary',
-                        'registrationGroup' => 'new',
-                    ],
-                    'regimen' => [
-                        'description' => 'Physician-entered regimen',
-                        'weightKg' => 55,
-                        'rows' => [[
-                            'dateStart' => '2026-11-10',
-                            'drug4fdc' => '4',
-                            'strength' => 'Physician-entered strength',
-                            'unit' => 'tablets/day',
-                        ]],
-                    ],
-                ],
+                'card_data' => ['classification' => ['bacteriologicalStatus' => 'clinically_diagnosed']],
             ],
-        ])->assertCreated();
-
-        $id = $response->json('data.id');
-        $stored = HealthRecord::findOrFail($id)->diagnoses[0]['tbManagement'];
-        $this->assertSame('initiate_at_rhu', $stored['treatmentDecision']);
-        $this->assertTrue($stored['openTreatmentCard']);
-        $this->assertNull(HealthRecord::findOrFail($id)->tb_data);
-        $this->assertDatabaseCount('tb_treatment_cases', 1);
-        $this->assertDatabaseHas('tb_treatment_cases', ['source_health_record_id' => $id]);
+        ])->assertUnprocessable()->assertJsonValidationErrors('tb_case_registration');
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
     }
 
     public function test_final_assessment_rejects_invalid_types_and_resistance_combinations(): void
@@ -205,6 +191,7 @@ class TbAssessmentTest extends TestCase
             'treatmentDecision' => '',
             'dispositionReason' => '',
             'dispositionPlan' => '',
+            'tbCaseNumber' => '',
         ], $stored['diagnoses'][0]['tbManagement']);
     }
 
@@ -222,10 +209,11 @@ class TbAssessmentTest extends TestCase
             'treatmentDecision' => '',
             'dispositionReason' => '',
             'dispositionPlan' => '',
+            'tbCaseNumber' => '',
         ], $stored['diagnoses'][0]['tbManagement']);
     }
 
-    public function test_nurse_draft_retains_initiate_decision_without_creating_a_case(): void
+    public function test_nurse_draft_clears_consultation_form_4b_intent_without_creating_a_case(): void
     {
         $this->doctor->update(['staff_role' => 'nurse', 'permissions' => ['clinical.history', 'consultations.encode']]);
         $this->actingAs($this->doctor, 'sanctum');
@@ -250,68 +238,127 @@ class TbAssessmentTest extends TestCase
         $this->getJson("/api/health-record-drafts/$draft")->assertOk()
             ->assertJsonPath('data.payload.diagnoses.0.tbManagement.diagnosisType', 'tb_disease')
             ->assertJsonPath('data.payload.diagnoses.0.tbManagement.drugResistance', 'drug_susceptible')
-            ->assertJsonPath('data.payload.diagnoses.0.tbManagement.treatmentDecision', 'initiate_at_rhu')
-            ->assertJsonPath('data.payload.diagnoses.0.tbManagement.openTreatmentCard', true);
+            ->assertJsonPath('data.payload.diagnoses.0.tbManagement.treatmentDecision', '')
+            ->assertJsonPath('data.payload.diagnoses.0.tbManagement.openTreatmentCard', false);
         $this->assertDatabaseCount('health_records', 0);
         $this->assertDatabaseCount('patient_conditions', 0);
     }
 
-    public function test_draft_preserves_standalone_open_treatment_card_intent_for_ds_tb(): void
+    public function test_draft_clears_standalone_open_treatment_card_intent_for_ds_tb(): void
     {
         $payload = ['diagnoses' => [['id' => 'tb', 'name' => 'TB', 'tbManagement' => [
             'diagnosisType' => 'tb_disease', 'drugResistance' => 'drug_susceptible', 'openTreatmentCard' => true,
         ]]]];
         $stored = app(HealthRecordDraftPayloadService::class)->sanitizeStored($payload);
-        $this->assertTrue($stored['diagnoses'][0]['tbManagement']['openTreatmentCard']);
+        $this->assertFalse($stored['diagnoses'][0]['tbManagement']['openTreatmentCard']);
         $this->assertSame('', $stored['diagnoses'][0]['tbManagement']['treatmentDecision'] ?? '');
     }
 
-    public function test_standalone_open_treatment_card_requires_form_4b_and_registers_atomically(): void
+    public function test_open_treatment_card_on_finalize_is_rejected_without_creating_a_case(): void
     {
-        $assessment = [
+        $this->submit([
             'diagnosisType' => 'tb_disease',
             'drugResistance' => 'drug_susceptible',
             'openTreatmentCard' => true,
-        ];
-        $this->submit($assessment)->assertUnprocessable()->assertJsonValidationErrors('tb_case_registration');
+        ])->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.openTreatmentCard');
+        $this->assertDatabaseCount('health_records', 0);
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
+    }
 
-        $visit = RhuVisitQueueEntry::where('patient_id', $this->patient->id)->where('status', 'in_consultation')->first();
-        $uuid = $visit->consultation_uuid;
-        $response = $this->actingAs($this->doctor, 'sanctum')->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
-            'consultation_workflow' => 'rhu_itr_v1', 'rhu_visit_id' => $visit->id, 'consultation_uuid' => $uuid,
-            'patient_id' => $this->patient->id, 'category' => 'General Consultation', 'chief_complaint' => 'Cough',
-            'diagnoses' => [['id' => 'tb', 'name' => 'TB', 'activate' => false, 'nextAction' => 'none', 'tbManagement' => $assessment]],
-            'tb_case_registration' => [
-                'registration_key' => (string) Str::uuid(),
-                'reporting_year' => 2026,
-                'confirmed' => true,
-                'treatment_start_date' => '2026-11-11',
-                'card_data' => [
-                    'classification' => [
-                        'bacteriologicalStatus' => 'clinically_diagnosed',
-                        'anatomicalSite' => 'pulmonary',
-                        'registrationGroup' => 'new',
-                    ],
-                    'regimen' => [
-                        'description' => 'Physician-entered regimen',
-                        'weightKg' => 55,
-                        'rows' => [[
-                            'dateStart' => '2026-11-11',
-                            'drug4fdc' => '4',
-                            'strength' => 'Physician-entered strength',
-                            'unit' => 'tablets/day',
-                        ]],
-                    ],
-                ],
-            ],
+    private function finalizeTbVisit(array $management, bool $activate = false): int
+    {
+        $this->actingAs($this->doctor, 'sanctum');
+        $visit = RhuVisitQueueEntry::create([
+            'rural_health_unit_id' => $this->doctor->rural_health_unit_id,
+            'patient_id' => $this->patient->id,
+            'source' => 'walk_in',
+            'status' => 'waiting',
+            'checked_in_at' => now(),
+            'check_in_key' => (string) Str::uuid(),
+        ]);
+        $uuid = $this->postJson("/api/rhu-visits/{$visit->id}/start")->assertOk()->json('data.consultation_uuid');
+
+        return $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson('/api/health-records', [
+            'consultation_workflow' => 'rhu_itr_v1',
+            'rhu_visit_id' => $visit->id,
+            'consultation_uuid' => $uuid,
+            'patient_id' => $this->patient->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Cough',
+            'diagnoses' => [[
+                'id' => 'tb',
+                'name' => 'TB',
+                'activate' => $activate,
+                'nextAction' => 'none',
+                'tbManagement' => $management,
+            ]],
+        ])->assertCreated()->json('data.id');
+    }
+
+    public function test_follow_up_locks_prior_physician_confirmed_tb_disease_but_allows_susceptibility_update(): void
+    {
+        $firstId = $this->finalizeTbVisit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'openTreatmentCard' => false,
+        ], true);
+
+        $first = HealthRecord::findOrFail($firstId);
+        $this->assertNotNull($first->tb_assessment_authority);
+        $this->assertSame('drug_susceptible', $first->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertDatabaseHas('patient_conditions', [
+            'patient_id' => $this->patient->id,
+            'condition_identity' => 'tuberculosis',
+            'status' => 'active',
+        ]);
+
+        $this->submit([
+            'diagnosisType' => 'presumptive_tb',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.diagnosisType');
+
+        $this->submit([
+            'diagnosisType' => 'tb_infection',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ])->assertUnprocessable()->assertJsonValidationErrors('diagnoses.0.tbManagement.diagnosisType');
+
+        $followUpId = $this->submit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'rr_tb',
+            'openTreatmentCard' => false,
+        ])->assertCreated()->json('data.id');
+
+        $this->assertSame('drug_susceptible', HealthRecord::findOrFail($firstId)->fresh()->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertSame('rr_tb', HealthRecord::findOrFail($followUpId)->diagnoses[0]['tbManagement']['drugResistance']);
+        $this->assertSame('tb_disease', HealthRecord::findOrFail($followUpId)->diagnoses[0]['tbManagement']['diagnosisType']);
+        $this->assertDatabaseCount('tb_treatment_cases', 0);
+        $this->assertEquals(1, \App\Models\PatientCondition::query()
+            ->where('patient_id', $this->patient->id)
+            ->where('condition_identity', 'tuberculosis')
+            ->where('status', 'active')
+            ->count());
+    }
+
+    public function test_under_evaluation_presumptive_does_not_lock_later_assessment(): void
+    {
+        $this->finalizeTbVisit([
+            'diagnosisType' => 'presumptive_tb',
+            'drugResistance' => '',
+            'openTreatmentCard' => false,
+        ], true);
+
+        $this->assertDatabaseHas('patient_conditions', [
+            'patient_id' => $this->patient->id,
+            'condition_identity' => 'tuberculosis',
+            'status' => 'under_evaluation',
+        ]);
+
+        $this->submit([
+            'diagnosisType' => 'tb_disease',
+            'drugResistance' => 'drug_susceptible',
+            'openTreatmentCard' => false,
         ])->assertCreated();
-
-        $id = $response->json('data.id');
-        $stored = HealthRecord::findOrFail($id)->diagnoses[0]['tbManagement'];
-        $this->assertTrue($stored['openTreatmentCard']);
-        $this->assertDatabaseCount('tb_treatment_cases', 1);
-        $this->assertDatabaseHas('tb_treatment_cases', ['source_health_record_id' => $id]);
-        $case = \App\Models\TbTreatmentCase::where('source_health_record_id', $id)->firstOrFail();
-        $this->assertSame('2026-11-11', $case->card_data['phases']['intensiveStart'] ?? null);
     }
 }

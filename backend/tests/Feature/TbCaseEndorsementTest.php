@@ -272,24 +272,20 @@ class TbCaseEndorsementTest extends TestCase
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => true])->assertStatus(409);
     }
 
-    public function test_registration_cannot_create_an_overlapping_case_after_a_cross_registration_identity_link(): void
+    public function test_identity_link_blocks_a_second_active_case_for_the_linked_local_patient(): void
     {
         $this->patient->update(['barangay_health_center_id' => null]);
         $local = $this->newPatient($this->bhc->id);
         $id = $this->endorse()->assertCreated()->json('data.id');
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => true])->assertOk();
         $this->act($id, 'revoke', ['version' => 2, 'case_version' => 3, 'reason' => 'Change treatment partner'], $this->doctor)->assertOk();
-        $source = $this->source($local);
-        $preview = $this->actingAs($this->doctor, 'sanctum')->getJson("/api/health-records/{$source->id}/tb-registration")->assertOk()->assertJsonPath('data.eligible', false);
-        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson("/api/health-records/{$source->id}/tb-registration", [
-            'reporting_year' => 2026, 'source_revision' => $preview->json('data.source_revision'), 'confirmed' => true,
-            'card_data' => ['classification' => ['bacteriologicalStatus' => 'clinically_diagnosed', 'anatomicalSite' => 'pulmonary', 'registrationGroup' => 'new'],
-                'regimen' => ['description' => 'Prescription', 'weightKg' => 55, 'rows' => [['dateStart' => '2026-11-10', 'drug4fdc' => '4', 'strength' => 'Specified', 'unit' => 'tablets/day']]]],
-        ])->assertStatus(409);
+        $this->assertTrue(\App\Services\TbCaseEndorsementService::hasActiveLinkedCase((int) $local->id));
         $this->assertDatabaseCount('tb_treatment_cases', 1);
+        $this->actingAs($this->doctor, 'sanctum')->getJson("/api/health-records/{$this->source($local)->id}/tb-case")
+            ->assertOk()->assertJsonPath('data.case', null);
     }
 
-    public function test_historical_identity_links_block_a_new_case_in_both_directions_across_treatment_episodes(): void
+    public function test_historical_identity_links_remain_readable_across_treatment_episodes(): void
     {
         $original = $this->patient;
         $original->update(['barangay_health_center_id' => null]);
@@ -306,13 +302,9 @@ class TbCaseEndorsementTest extends TestCase
         $this->newCase($nextLocal, 'TB-2026-0003');
 
         $source = $this->source($original);
-        $preview = $this->actingAs($this->doctor, 'sanctum')->getJson("/api/health-records/{$source->id}/tb-registration")->assertOk();
-        $this->withHeader('Idempotency-Key', (string) Str::uuid())->postJson("/api/health-records/{$source->id}/tb-registration", [
-            'reporting_year' => 2026, 'source_revision' => $preview->json('data.source_revision'), 'confirmed' => true,
-            'card_data' => ['classification' => ['bacteriologicalStatus' => 'clinically_diagnosed', 'anatomicalSite' => 'pulmonary', 'registrationGroup' => 'new'],
-                'regimen' => ['description' => 'Prescription', 'weightKg' => 55, 'rows' => [['dateStart' => '2026-11-10', 'drug4fdc' => '4', 'strength' => 'Specified', 'unit' => 'tablets/day']]]],
-        ])->assertStatus(409);
-        $preview->assertJsonPath('data.eligible', false);
+        $this->actingAs($this->doctor, 'sanctum')->getJson("/api/health-records/{$source->id}/tb-case")
+            ->assertOk()->assertJsonPath('data.case', null);
+        $this->assertTrue(\App\Services\TbCaseEndorsementService::hasActiveLinkedCase((int) $original->id));
         $this->assertDatabaseCount('tb_treatment_cases', 3);
     }
 

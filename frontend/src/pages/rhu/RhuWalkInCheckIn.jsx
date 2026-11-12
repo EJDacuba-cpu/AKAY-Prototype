@@ -14,33 +14,32 @@ export default function RhuWalkInCheckIn() {
 
   return (
     <DashboardLayout role="rhu" title="Visit Check-in">
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Visit Check-in</h1>
-            <p className="mt-1 text-[13px] text-neutral-600">
-              Check patients into today's queue.
-            </p>
+      <WalkInCheckInPanel
+        selectedPatientId={selectedId}
+        onClearedSelection={() => {
+          const next = new URLSearchParams(params);
+          next.delete("patient_id");
+          setParams(next, { replace: true });
+        }}
+        header={(
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-bold tracking-tight text-ink-800">Visit Check-in</h1>
+              <p className="mt-1 text-[13px] text-neutral-600">
+                Check patients into today's queue.
+              </p>
+            </div>
+            <Button
+              asChild
+              variant="brand"
+              className="shrink-0 self-start"
+            >
+              <PatientRegistrationEntryLink to={registerPath}><Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+              Register New Patient</PatientRegistrationEntryLink>
+            </Button>
           </div>
-          <Button
-            asChild
-            variant="brand"
-            className="shrink-0 self-start"
-          >
-            <PatientRegistrationEntryLink to={registerPath}><Plus size={14} strokeWidth={2.5} aria-hidden="true" />
-            Register New Patient</PatientRegistrationEntryLink>
-          </Button>
-        </div>
-
-        <WalkInCheckInPanel
-          selectedPatientId={selectedId}
-          onClearedSelection={() => {
-            const next = new URLSearchParams(params);
-            next.delete("patient_id");
-            setParams(next, { replace: true });
-          }}
-        />
-      </div>
+        )}
+      />
     </DashboardLayout>
   );
 }

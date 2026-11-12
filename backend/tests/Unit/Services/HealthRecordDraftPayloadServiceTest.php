@@ -31,6 +31,35 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertSame($payload, $service->sanitize($service->sanitize($payload)));
     }
 
+    public function test_structured_prescriptions_keep_ids_and_diagnosis_links_in_drafts(): void
+    {
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'prescriptionText' => 'legacy line',
+            'prescriptions' => [[
+                'id' => 'rx-shared',
+                'diagnosisIds' => ['diag-htn', 'diag-dm'],
+                'medicineName' => 'Losartan',
+                'strength' => '50mg',
+                'dose' => '1 tablet',
+                'route' => 'PO',
+                'frequency' => 'Once daily',
+                'duration' => '30 days',
+                'instructions' => '',
+                'authorizedQuantity' => null,
+                'authorizedUnit' => '',
+                'source' => 'itr',
+                'tbCaseId' => '',
+            ]],
+        ];
+        $service = new HealthRecordDraftPayloadService();
+        $sanitized = $service->sanitize($payload);
+        $this->assertSame($payload, $sanitized);
+        $this->assertSame('rx-shared', $sanitized['prescriptions'][0]['id']);
+        $this->assertSame(['diag-htn', 'diag-dm'], $sanitized['prescriptions'][0]['diagnosisIds']);
+        $this->assertSame('legacy line', $sanitized['prescriptionText']);
+    }
+
     public function test_rhu_diagnosis_care_plan_survives_draft_flush_before_finalization(): void
     {
         $payload = [
@@ -46,6 +75,8 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'treatmentDecision' => '',
                     'dispositionReason' => '',
                     'dispositionPlan' => '',
+                    // normalizeDraft always writes this key on tbManagement.
+                    'tbCaseNumber' => '',
                 ],
             ]],
         ];
@@ -142,6 +173,71 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $sanitized = $service->sanitize($payload);
 
         $this->assertSame(['status' => '', 'date' => ''], $sanitized['tbData']['outcome']);
+    }
+
+    /**
+     * EMPTY_TB_DATA.regimen always carries code/description/weightKg alongside
+     * rows. Dropping them from the allowlist fails every draft that includes
+     * the default TB card shape (including non-TB consultations).
+     */
+    public function test_empty_tb_regimen_header_fields_are_accepted(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['tbData']['regimen'] = [
+            'code' => '',
+            'description' => '',
+            'weightKg' => '',
+            'rows' => [
+                [
+                    'dateStart' => '',
+                    'drug4fdc' => '',
+                    'drug2fdc' => '',
+                    'drugH' => '',
+                    'drugR' => '',
+                    'drugZ' => '',
+                    'drugE' => '',
+                    'strength' => '',
+                    'unit' => '',
+                ],
+            ],
+        ];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame('', $sanitized['tbData']['regimen']['code']);
+        $this->assertSame('', $sanitized['tbData']['regimen']['description']);
+        $this->assertSame('', $sanitized['tbData']['regimen']['weightKg']);
+    }
+
+    /**
+     * Dispensed lines draft their FEFO expiry pick via allocationIntent().
+     * Rejecting allocations/override_reason blocks leave/finalize after any
+     * stock selection on Treatment.
+     */
+    public function test_dispensed_medicine_allocations_survive_sanitize(): void
+    {
+        $service = new HealthRecordDraftPayloadService();
+
+        $payload = $this->fullFrontendPayload();
+        $payload['dispensedMedicines'] = [[
+            'medicineId' => 1,
+            'quantity' => 4,
+            'confirmedGiven' => true,
+            'remarks' => '',
+            'allocations' => [
+                ['expiry_group_id' => 12, 'quantity' => 4],
+            ],
+            'override_reason' => '',
+        ]];
+
+        $sanitized = $service->sanitize($payload);
+
+        $this->assertSame([
+            ['expiry_group_id' => 12, 'quantity' => 4],
+        ], $sanitized['dispensedMedicines'][0]['allocations']);
+        $this->assertSame('', $sanitized['dispensedMedicines'][0]['override_reason']);
     }
 
     public function test_draft_keeps_bhc_follow_up_flag(): void
@@ -515,6 +611,9 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'registrationGroup' => 'new',
                 ],
                 'regimen' => [
+                    'code' => '',
+                    'description' => '2HRZE/4HR',
+                    'weightKg' => '60',
                     'rows' => [
                         [
                             'dateStart' => '2026-07-10',

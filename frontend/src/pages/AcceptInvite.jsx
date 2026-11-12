@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, Check, Circle, Mail, RotateCw } from "lucide-react";
+import AkayWordmark from "../components/common/AkayWordmark";
 import Field from "../components/features/access/FieldError";
 import Input from "../components/common/atoms/Input";
 import { acceptInvite, verifyInvite } from "../services/accountInviteService";
 import { fieldState } from "../utils/fieldState";
 import { meetsPasswordRules, passwordRules } from "../utils/passwordRules";
 
-const LOGO_SRC = "/akay-logo.png";
 const INVALID_LINK_MESSAGE =
   "This invite link is invalid or expired. Ask your Admin to send a new one.";
 const CHECK_FAILED_MESSAGE =
@@ -114,12 +114,7 @@ export default function AcceptInvite() {
       <main className="w-full max-w-[460px] rounded-3xl border border-[#E5E7EB] bg-white px-6 py-6 shadow-xl shadow-slate-900/5 sm:px-9 sm:py-7">
         <div className="mb-5 text-center">
           <h1>
-            <img
-              src={LOGO_SRC}
-              alt="AKAY — Medical EHR and Referral System"
-              className="mx-auto h-14 w-auto max-w-full object-contain"
-              draggable="false"
-            />
+            <AkayWordmark className="text-5xl" />
           </h1>
           <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.18em] text-[#9CA3AF] sm:text-[10px]">
             Account Invitation

@@ -19,11 +19,12 @@ export function tbManagementFields(entry = {}) {
   const dispositionPlan = treatmentDecision === "not_yet_initiated" || treatmentDecision === "refer_elsewhere"
     ? String(stored.dispositionPlan ?? stored.disposition_plan ?? "").trim()
     : "";
-  // Explicit registration intent. Legacy initiate_at_rhu still counts as intent on restore.
+  // Consultation no longer registers Form 4B; keep the field off for compatibility.
   const storedOpen = stored.openTreatmentCard ?? stored.open_treatment_card;
-  const openTreatmentCard = isDsTb && (
-    truthyFlag(storedOpen) || treatmentDecision === "initiate_at_rhu"
-  );
+  const openTreatmentCard = isDsTb && truthyFlag(storedOpen);
+  const tbCaseNumber = diagnosisType === "tb_disease"
+    ? String(stored.tbCaseNumber ?? stored.tb_case_number ?? "").trim().slice(0, 100)
+    : "";
   return {
     diagnosisType,
     drugResistance,
@@ -31,6 +32,7 @@ export function tbManagementFields(entry = {}) {
     dispositionReason,
     dispositionPlan,
     openTreatmentCard,
+    tbCaseNumber,
   };
 }
 
@@ -67,6 +69,9 @@ export function tbManagementFor(entry, next = {}) {
     : next.treatmentDecision !== undefined
       ? next.treatmentDecision
       : previous.treatmentDecision;
+  const tbCaseNumber = diagnosisType === "tb_disease"
+    ? (next.tbCaseNumber !== undefined ? next.tbCaseNumber : previous.tbCaseNumber)
+    : "";
   const merged = {
     ...previous,
     ...next,
@@ -76,6 +81,7 @@ export function tbManagementFor(entry, next = {}) {
     dispositionReason: cleared ? "" : (next.dispositionReason !== undefined ? next.dispositionReason : previous.dispositionReason),
     dispositionPlan: cleared ? "" : (next.dispositionPlan !== undefined ? next.dispositionPlan : previous.dispositionPlan),
     openTreatmentCard,
+    tbCaseNumber,
   };
   return {
     ...entry,

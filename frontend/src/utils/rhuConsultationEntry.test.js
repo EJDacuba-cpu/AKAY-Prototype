@@ -111,3 +111,74 @@ test("discard uses the claimed revision and a failed claim never deletes input",
   }) });
   assert.deepEqual(calls, [["draft-1", 5, { draftOwnerContext: "owner" }]]);
 });
+
+test("editor lease occupancy ignores same-user and expired leases", () => {
+  const now = Date.parse("2026-11-12T01:00:00.000Z");
+  const activeOther = {
+    canEdit: true,
+    editor: { id: "9", name: "Jane Midwife" },
+    editorExpiresAt: "2026-11-12T01:10:00.000Z",
+  };
+  assert.deepEqual(recovery.consultationEditorLease(activeOther, "3", now), {
+    occupied: true,
+    sameUser: false,
+    canTakeover: true,
+    editorId: "9",
+    editorName: "Jane Midwife",
+  });
+  assert.equal(recovery.consultationEditorLease(activeOther, "9", now).occupied, false);
+  assert.equal(recovery.consultationEditorLease(activeOther, "9", now).sameUser, true);
+  assert.equal(recovery.consultationEditorLease({
+    ...activeOther,
+    editorExpiresAt: "2026-11-12T00:59:00.000Z",
+  }, "3", now).occupied, false);
+  assert.equal(recovery.consultationEditorLease({
+    ...activeOther,
+    canEdit: false,
+  }, "3", now).canTakeover, false);
+});
+
+test("resume refuses an active foreign editor lease without claiming", async () => {
+  let claimed = false;
+  await assert.rejects(recovery.resumeRhuRecovery({
+    visit,
+    patientId: "7",
+    owner: "owner",
+    currentUserId: "3",
+    decision: { server: draft },
+    api: dependencies({
+      lookup: async () => ({
+        ...draft,
+        canEdit: true,
+        editor: { id: "9", name: "Jane Midwife" },
+        editorExpiresAt: "2099-01-01T00:00:00.000Z",
+      }),
+      claim: async () => { claimed = true; return draft; },
+    }),
+  }), (error) => error?.code === "EDITOR_LEASE_OCCUPIED" && /Jane Midwife/.test(error.message));
+  assert.equal(claimed, false);
+});
+
+test("takeover requires a reason and claims through the takeover transition", async () => {
+  await assert.rejects(recovery.takeoverRhuRecovery({
+    visit, patientId: "7", owner: "owner", decision: { server: draft }, note: "  ", api: dependencies(),
+  }), /reason/i);
+  const calls = [];
+  const result = await recovery.takeoverRhuRecovery({
+    visit,
+    patientId: "7",
+    owner: "owner",
+    decision: { server: draft },
+    note: "Covering the rest of the interview",
+    api: dependencies({
+      takeover: async (id, version, note, options) => {
+        calls.push([id, version, note, options]);
+        return { ...draft, version: 5, payload: null };
+      },
+      claim: async () => { throw new Error("takeover must not claim"); },
+    }),
+  });
+  assert.deepEqual(calls, [["draft-1", 4, "Covering the rest of the interview", { draftOwnerContext: "owner" }]]);
+  assert.equal(result.draft.version, 5);
+  assert.equal(result.draft.payload.chiefComplaint, "Saved input");
+});

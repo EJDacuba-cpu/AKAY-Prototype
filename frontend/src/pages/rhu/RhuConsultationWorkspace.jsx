@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { AlertTriangle, RefreshCcw, ServerCrash, WifiOff } from "lucide-react";
-
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { HealthRecordFormSkeleton } from "../../components/common/loading/SkeletonLoaders";
 import { Card } from "../../components/ui/card";
@@ -16,7 +14,8 @@ import { Button } from "../../components/ui/button";
 import { rhuVisitLoadError, visitUnavailableError } from "../../utils/rhuVisitLoadError";
 import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
 import { referralSlipModel } from "../../utils/referralSlipView";
-import { SuccessModal } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
+import { ConnectionErrorState, SuccessModal } from "../../components/common";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
@@ -29,7 +28,6 @@ import {
 import { ConsultationReviewStep } from "../../components/features/health-records/wizard/HealthRecordWizardSteps";
 import ImmunizationVisitFields from "../../components/features/health-records/ImmunizationVisitFields";
 import RhuDiagnosisCarePlanSection from "../../components/features/health-records/wizard/RhuDiagnosisCarePlanSection";
-import TbInlineForm4bPanel from "../../components/features/health-records/TbInlineForm4bPanel";
 import TbTreatmentCardForm, {
   EMPTY_TB_DATA,
   normalizeTbData,
@@ -92,6 +90,7 @@ import {
   getPreviousStepKey,
   getProgramFormSteps,
   getStepOrder,
+  pickErrorsForStep,
   programStepKey,
   remapServerErrorKeys,
   resolveFormStep,
@@ -107,19 +106,23 @@ import {
   restoreRhuFollowUpSchedules,
 } from "../../utils/rhuCarePlan";
 import {
-  diagnosesOpenDsTbTreatmentCard,
+  formatPrescriptionLine,
+  normalizePrescriptions,
+  prescriptionErrors,
+  prescriptionReviewGroups,
+  prescriptionsForSave,
+  restorePrescriptions,
+} from "../../utils/rhuPrescriptions";
+import {
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
   rhuTbAssessmentErrors,
-  shouldOpenDsTbTreatmentCard,
 } from "../../utils/rhuTbCaseManagement";
-import { canConfirmTbDiagnosis, tbManagementFor } from "../../utils/tbAssessment";
+import { canConfirmTbDiagnosis } from "../../utils/tbAssessment";
 import {
-  emptyTbCaseRegistration,
-  normalizeTbCaseRegistration,
-  tbRegistrationErrors,
-  tbRegistrationPayload,
-} from "../../utils/tbRegistration";
+  applyEstablishedTbDiseaseAssessment,
+  establishedTbDiseaseLock,
+} from "../../utils/establishedTbDisease";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
 import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
@@ -146,10 +149,9 @@ import {
 } from "../../utils/historyStep";
 import { formatPatientName } from "../../utils/formatters";
 import { createIdempotencyKey } from "../../utils/idempotency";
-import { RHU_DRAFTS_ENABLED, FORM_DRAFTS_ENABLED } from "../../utils/featureFlags";
+import { RHU_DRAFTS_ENABLED } from "../../utils/featureFlags";
 import { getCurrentUser } from "../../utils/auth";
 import { formDraftOwnerContext } from "../../utils/formDraftRequest";
-import { createClinicalDraftRecovery } from "../../services/clinicalDraftRecoveryService";
 import RhuConsultationRecoveryDialog from "../../components/features/rhu-queue/RhuConsultationRecoveryDialog";
 import useRhuConsultationRecovery from "../../hooks/useRhuConsultationRecovery";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
@@ -201,9 +203,6 @@ export default function RhuConsultationWorkspace() {
   const access = useAccess();
   const currentUser = getCurrentUser() || {};
   const recoveryOwner = String(formDraftOwnerContext(currentUser));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const recoveryVault = useMemo(() => createClinicalDraftRecovery(currentUser), [recoveryOwner]);
-  const [unsyncedRecovery, setUnsyncedRecovery] = useState(false);
   const canEncode = access.can("consultations.encode");
   const canFinalize = access.can("consultations.finalize");
   const canConfirmTb = canConfirmTbDiagnosis(currentUser);
@@ -269,7 +268,6 @@ export default function RhuConsultationWorkspace() {
   // Draft resume keeps the saved enroll/continue until care-overview or records settle.
   const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
-  const [tbCaseRegistration, setTbCaseRegistration] = useState(null);
   const [conditionReferences, setConditionReferences] = useState([]);
   const followUpFocusApplied = useRef(false);
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
@@ -279,6 +277,7 @@ export default function RhuConsultationWorkspace() {
   const [immunizationEntries, setImmunizationEntries] = useState([]);
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
+  const [prescriptions, setPrescriptions] = useState([]);
   const [prescriptionText, setPrescriptionText] = useState("");
   const [treatmentNotes, setTreatmentNotes] = useState("");
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
@@ -474,10 +473,15 @@ export default function RhuConsultationWorkspace() {
         if (!selected.length) return;
         const parentId = Number(selected[0].healthRecordId || selected[0].originalHealthRecordId) || null;
         setParentHealthRecordId(parentId);
+        const lock = establishedTbDiseaseLock({
+          conditions: openConditions,
+          patientRecords,
+        });
         const focus = focusedRhuFollowUps({
           tasks: selected,
           parentRecords: patientRecords,
           conditions: openConditions,
+          establishedLock: lock,
         });
         setConditionReferences(focus.references);
         if (focus.diagnoses.length && !followUpFocusApplied.current) {
@@ -490,13 +494,13 @@ export default function RhuConsultationWorkspace() {
 
   const consultationUuid = visit?.consultation_uuid || visit?.consultationUuid || "";
   const existingTbCase = useMemo(() => existingRegisteredTbCase(patientRecords), [patientRecords]);
+  const establishedLock = useMemo(
+    () => establishedTbDiseaseLock({ conditions: openConditions, patientRecords }),
+    [openConditions, patientRecords],
+  );
   const includeTb = useMemo(() => {
     return Boolean(existingTbCase) && diagnoses.some((entry) => isRecognizedTbDiagnosis(entry.name, registry));
   }, [diagnoses, existingTbCase, registry]);
-  const includeForm4b = useMemo(
-    () => !existingTbCase && diagnosesOpenDsTbTreatmentCard(diagnoses),
-    [diagnoses, existingTbCase],
-  );
   useEffect(() => {
     if (!existingTbCase?.tbData) return;
     setTbData((current) => {
@@ -505,33 +509,33 @@ export default function RhuConsultationWorkspace() {
     });
   }, [existingTbCase]);
   useEffect(() => {
-    if (!includeForm4b) {
-      setTbCaseRegistration(null);
-      if (nextScreen === FORM_4B_STEP) setNextScreen(NEXT_STEP);
-      return;
-    }
-    setTbCaseRegistration((current) => current || emptyTbCaseRegistration({
-      visit,
-      weightKg: weight,
-      prescriptionText,
-    }));
-  }, [includeForm4b, nextScreen, visit, weight, prescriptionText]);
+    if (!establishedLock) return;
+    setDiagnoses((current) => {
+      let changed = false;
+      const next = current.map((entry) => {
+        const locked = applyEstablishedTbDiseaseAssessment(entry, establishedLock);
+        if (locked !== entry) changed = true;
+        return locked;
+      });
+      return changed ? next : current;
+    });
+  }, [establishedLock]);
   const programFormSteps = useMemo(
     () => getProgramFormSteps(selectedPrograms, primaryProgram),
     [selectedPrograms, primaryProgram],
   );
-  const stepOptions = { ...RHU_ITR_STEP_OPTIONS, includeTb, includeForm4b };
+  const stepOptions = { ...RHU_ITR_STEP_OPTIONS, includeTb };
   const consultationSteps = useMemo(
     () => buildConsultationSteps({ programSteps: programFormSteps, ...stepOptions }),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const formSequence = useMemo(
     () => getFormSequence(programFormSteps, stepOptions),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const stepOrder = useMemo(
     () => getStepOrder(programFormSteps, [], stepOptions),
-    [programFormSteps, includeTb, includeForm4b],
+    [programFormSteps, includeTb],
   );
   const activeFormStep = resolveFormStep(formStep, formSequence, programFormSteps);
   const currentGlobalStepKey =
@@ -539,10 +543,11 @@ export default function RhuConsultationWorkspace() {
   const currentStepKey =
     wizardPhase === WIZARD_REVIEW ? REVIEW_STEP : wizardPhase === WIZARD_NEXT ? nextScreen : activeFormStep;
   const recovery = useRhuConsultationRecovery({
-    visit, patientId, owner: recoveryOwner, vault: recoveryVault,
-    enabled: RHU_DRAFTS_ENABLED, shared: FORM_DRAFTS_ENABLED,
+    visit, patientId, owner: recoveryOwner,
+    currentUserId: currentUser.id,
+    enabled: RHU_DRAFTS_ENABLED,
     handoff: entryHandoff,
-    onRestore: (draft, unsynced) => { restoreDraft(draft); setUnsyncedRecovery(Boolean(unsynced)); },
+    onRestore: (draft) => { restoreDraft(draft); },
     onDiscarded: () => navigate("/rhu/patients"),
   });
   const recoveryReady = recovery.ready;
@@ -588,9 +593,7 @@ export default function RhuConsultationWorkspace() {
       selectedPrograms,
       primaryProgram,
       includeTb,
-      includeForm4b,
       tbData: includeTb ? tbData : null,
-      tbCaseRegistration: includeForm4b ? tbCaseRegistration : null,
       maternalData: {
         ...maternalData,
         ...withLaboratoryEntries(maternalData.laboratoryEntries),
@@ -602,6 +605,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationData: { vaccineEntries: immunizationEntries },
       diagnoses,
+      prescriptions,
       prescriptionText,
       medication: treatmentNotes,
       followUpSchedules,
@@ -643,9 +647,7 @@ export default function RhuConsultationWorkspace() {
       selectedPrograms,
       primaryProgram,
       includeTb,
-      includeForm4b,
       tbData,
-      tbCaseRegistration,
       nextScreen,
       maternalData,
       expectedDeliveryDate,
@@ -655,6 +657,7 @@ export default function RhuConsultationWorkspace() {
       familyPlanningData,
       immunizationEntries,
       diagnoses,
+      prescriptions,
       prescriptionText,
       treatmentNotes,
       followUpSchedules,
@@ -672,13 +675,7 @@ export default function RhuConsultationWorkspace() {
     sectionKey: currentStepKey,
     consultationUuid,
     rhuVisitId: visit?.id,
-    onDraftSaved: (saved) => { setActiveDraft((current) => ({ ...current, ...saved })); setUnsyncedRecovery(false); },
-    ...(FORM_DRAFTS_ENABLED ? {
-      localDraft: { ownerKey: recoveryOwner, consultationKey: `consultation:${consultationUuid}`, contextKey: `visit:${visit?.id}` },
-      vault: recoveryVault,
-      unsyncedRecovery,
-      buildLocalRecord: () => ({ draft: { id: activeDraft?.id || "", consultationUuid, version: Number(activeDraft?.version || 0), patient: { id: patientId, label: formatPatientName(patient) || "Patient" }, classification: restoredClassification("General Consultation", primaryProgram), lastSavedAt: activeDraft?.lastSavedAt || "", payload: draftPayload, medicineSelections: [] } }),
-    } : {}),
+    onDraftSaved: (saved) => { setActiveDraft((current) => ({ ...current, ...saved })); },
   });
 
   function restoreDraft(draft) {
@@ -713,9 +710,6 @@ export default function RhuConsultationWorkspace() {
         : "",
     );
     if (payload.tbData) setTbData(normalizeTbData(payload.tbData));
-    if (payload.tbCaseRegistration) {
-      setTbCaseRegistration(normalizeTbCaseRegistration(payload.tbCaseRegistration, { visit }));
-    }
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.aog) setAog(payload.aog);
@@ -723,6 +717,7 @@ export default function RhuConsultationWorkspace() {
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
+    setPrescriptions(restorePrescriptions(payload));
     setPrescriptionText(restorePrescriptionText(payload));
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
@@ -731,8 +726,7 @@ export default function RhuConsultationWorkspace() {
     if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
       setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
     }
-    const restoredForm4b = !existingTbCase && diagnosesOpenDsTbTreatmentCard(restoredDiagnoses);
-    const restored = resolveRestoredPosition(payload, { ...stepOptions, includeForm4b: restoredForm4b });
+    const restored = resolveRestoredPosition(payload, stepOptions);
     const storedScreen = typeof payload.formStep === "string" ? payload.formStep : restored.formStep;
     if (restored.phase === REVIEW_STEP || restored.phase === "review" || storedScreen === REVIEW_STEP) {
       setWizardPhase(WIZARD_REVIEW);
@@ -812,12 +806,54 @@ export default function RhuConsultationWorkspace() {
         conditions: openConditions,
       }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
-    }
-    if (currentStepKey === REVIEW_STEP) {
-      Object.assign(errors, form4bFinalizeErrors());
+      Object.assign(errors, structuredPrescriptionErrors());
     }
     setValidationErrors(errors);
     return errors;
+  }
+
+  function setValidationErrorsAndFocus(errors) {
+    const nextErrors = Object.fromEntries(
+      Object.entries(errors || {}).filter(([, value]) => Boolean(value)),
+    );
+    setValidationErrors(nextErrors);
+    const fieldKeys = Object.keys(nextErrors);
+    if (!fieldKeys.length) return false;
+    window.requestAnimationFrame(() => {
+      const isFocusTargetVisible = (node) => {
+        if (!(node instanceof Element)) return false;
+        const style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+          return false;
+        }
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0;
+      };
+      let element = null;
+      for (const field of fieldKeys) {
+        const matches = document.querySelectorAll(`[name="${field}"], [data-field="${field}"]`);
+        element = [...matches].find(isFocusTargetVisible) || null;
+        if (element) break;
+      }
+      if (!element) return;
+      const stage = element.closest("[data-consult-scroll], .ehr-consult__stage, .ehr-consult__form");
+      if (stage instanceof HTMLElement) {
+        const stageRect = stage.getBoundingClientRect();
+        const targetRect = element.getBoundingClientRect();
+        const footerReserve = 96;
+        const headerReserve = 24;
+        const nextTop = stage.scrollTop
+          + (targetRect.top - stageRect.top)
+          - Math.max(headerReserve, (stageRect.height - footerReserve - targetRect.height) / 2);
+        stage.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+      } else {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (typeof element.focus === "function") {
+        element.focus({ preventScroll: true });
+      }
+    });
+    return true;
   }
 
   function goToStepKey(key) {
@@ -827,7 +863,7 @@ export default function RhuConsultationWorkspace() {
     }
     if (key === NEXT_STEP || key === FORM_4B_STEP || key === TB_INTAKE_STEP) {
       setWizardPhase(WIZARD_NEXT);
-      setNextScreen(key === FORM_4B_STEP ? NEXT_STEP : key);
+      setNextScreen(key === TB_INTAKE_STEP ? TB_INTAKE_STEP : NEXT_STEP);
       return;
     }
     setWizardPhase(WIZARD_FORM);
@@ -854,12 +890,7 @@ export default function RhuConsultationWorkspace() {
     const previous = getPreviousStepKey(formSequence, activeFormStep);
     if (previous === EXIT_STEP) {
       if (RHU_DRAFTS_ENABLED && !(await autosave.flushBeforeLeave())) {
-        await autosave.persistLocalNow();
-        toast.error(
-          autosave.error?.message
-            || autosave.conflict?.message
-            || "The latest changes have not synced. Stay on this consultation and retry before leaving.",
-        );
+        toast.error("Your changes couldn't be saved. Please try again before leaving.");
         return;
       }
       navigate("/rhu/patients");
@@ -870,7 +901,7 @@ export default function RhuConsultationWorkspace() {
 
   function handleContinue() {
     const errors = validateCurrent();
-    if (Object.keys(errors).length) return;
+    if (setValidationErrorsAndFocus(errors)) return;
     if (wizardPhase === WIZARD_REVIEW) {
       if (!canFinalize) {
         toast.error("This account cannot finalize the consultation.");
@@ -884,7 +915,7 @@ export default function RhuConsultationWorkspace() {
         setNextScreen(TB_INTAKE_STEP);
         return;
       }
-      // Legacy drafts may still land on FORM_4B_STEP; Form 4B is inline on Diagnosis.
+      // Legacy drafts may still land on FORM_4B_STEP; remap away from removed Form 4B.
       if (nextScreen === FORM_4B_STEP) {
         if (includeTb) {
           setNextScreen(TB_INTAKE_STEP);
@@ -938,6 +969,15 @@ export default function RhuConsultationWorkspace() {
     const prefill = prenatalEnrollment.prefill;
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
     if (prefill.aog) setAog(prefill.aog);
+  }
+
+  function structuredPrescriptionErrors() {
+    return prescriptionErrors(prescriptions, diagnoses);
+  }
+
+  function handlePrescriptionsChange(next) {
+    setPrescriptions(normalizePrescriptions(next));
+    clearErrorsStartingWith(["prescriptions"]);
   }
 
   function handleDiagnosisChange(next) {
@@ -1051,36 +1091,12 @@ export default function RhuConsultationWorkspace() {
     };
   }
 
-  function form4bFinalizeErrors() {
-    if (!includeForm4b || !canFinalize) return {};
-    const registration = normalizeTbCaseRegistration(tbCaseRegistration, { visit });
-    const payload = tbRegistrationPayload({
-      reportingYear: registration.reporting_year,
-      caseNumber: registration.case_number,
-      sourceRevision: registration.source_revision || "0".repeat(64),
-      confirmed: registration.confirmed,
-      cardData: registration.card_data,
-      treatmentStartDate: registration.treatment_start_date,
-    });
-    const registrationErrors = tbRegistrationErrors({ ...payload, source_revision: "a".repeat(64) });
-    return Object.fromEntries(Object.entries(registrationErrors).map(([key, message]) => [
-      key.startsWith("card_data.")
-      || key === "reporting_year"
-      || key === "confirmed"
-      || key === "treatment_start_date"
-        ? key
-        : `tbCaseRegistration.${key}`,
-      message,
-    ]));
-  }
-
   async function saveRecord() {
     if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     const errors = {
       ...laboratoryErrors(laboratoryTests),
       ...rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }),
       ...validateCurrent(),
-      ...form4bFinalizeErrors(),
       ...(String(chiefComplaint).trim() ? {} : { chiefComplaint: "Chief complaint is required." }),
       ...(canViewBackground
         ? stagedHistoryErrors(historyUpdateForSave(), { sections: ["family", "medical", "social"] })
@@ -1099,11 +1115,12 @@ export default function RhuConsultationWorkspace() {
         conditions: openConditions,
       }),
       ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
+      ...structuredPrescriptionErrors(),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
       if (first) goToStepKey(first);
-      setValidationErrors(errors);
+      setValidationErrorsAndFocus(errors);
       return;
     }
     const isWalkIn = visit?.source === "walk_in";
@@ -1161,6 +1178,7 @@ export default function RhuConsultationWorkspace() {
           monitoringData: {
             additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
             ...(nutritionIntent ? { nutritionIntent } : {}),
+            prescriptions: prescriptionsForSave(prescriptions),
           },
           physicalExam,
           laboratoryTests,
@@ -1179,16 +1197,6 @@ export default function RhuConsultationWorkspace() {
           diagnoses: savedDiagnoses,
           prescriptionText,
           tbData: includeTb ? tbData : null,
-          tbCaseRegistration: includeForm4b && tbCaseRegistration
-            ? {
-                registration_key: tbCaseRegistration.registration_key,
-                reporting_year: tbCaseRegistration.reporting_year,
-                case_number: tbCaseRegistration.case_number || null,
-                confirmed: Boolean(tbCaseRegistration.confirmed),
-                treatment_start_date: tbCaseRegistration.treatment_start_date || null,
-                card_data: tbCaseRegistration.card_data,
-              }
-            : null,
           maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
           expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
           aog: selectedPrograms.includes("Maternal") ? aog : undefined,
@@ -1230,11 +1238,11 @@ export default function RhuConsultationWorkspace() {
           draftId: finalDraft?.id || activeDraft?.id,
           draftVersion: finalDraft?.version || activeDraft?.version,
           consultationUuid,
-          ...(FORM_DRAFTS_ENABLED ? { draftOwnerContext: recoveryOwner } : {}),
+          draftOwnerContext: recoveryOwner,
         },
       );
       try { await autosave.completeConsultation(); }
-      catch { toast.error("The record was saved. Device recovery cleanup will be checked when you reopen this consultation."); }
+      catch { /* Finalized record is saved; draft cleanup can retry later. */ }
       setSaveSuccess({ recordId: record.id });
       queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records", patientId] });
       queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
@@ -1248,9 +1256,9 @@ export default function RhuConsultationWorkspace() {
       if (fieldErrors.laboratoryEvidence || fieldErrors.laboratoryEvidenceConfirmed) {
         goToStepKey(NEXT_STEP);
       }
-      setValidationErrors(fieldErrors);
       const first = findFirstErrorStepKey(fieldErrors, stepOrder, stepOptions);
       if (first) goToStepKey(first);
+      setValidationErrorsAndFocus(fieldErrors);
       toast.error(error?.message || "Unable to save this consultation.");
     } finally {
       setSaving(false);
@@ -1323,6 +1331,9 @@ export default function RhuConsultationWorkspace() {
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },
   });
+  const stepValidationMessages = Object.values(
+    pickErrorsForStep(validationErrors, currentStepKey, stepOptions),
+  ).filter(Boolean);
 
   const reviewSections = compactReviewSections([
     {
@@ -1384,7 +1395,16 @@ export default function RhuConsultationWorkspace() {
           { label: `${entry.name} — Clinical plan`, value: entry.higherLevelReferralPlan?.clinicalPlan },
         ]),
         { label: "Actions taken", value: treatmentNotes },
-        { label: "Prescription", value: prescriptionText },
+        ...(() => {
+          const structuredPrescriptionRows = prescriptionReviewGroups(prescriptions, diagnoses).map((group) => ({
+            label: group.label,
+            value: group.orders.map((rx) => formatPrescriptionLine(rx)).filter(Boolean).join("; "),
+          }));
+          if (structuredPrescriptionRows.length) return structuredPrescriptionRows;
+          return String(prescriptionText || "").trim()
+            ? [{ label: "Prescription", value: prescriptionText }]
+            : [];
+        })(),
         ...followUpSchedules.filter((item) => item.date).map((item) => ({
           label: item.purpose || "Follow-up",
           value: [item.date, item.time].filter(Boolean).join(" · "),
@@ -1394,40 +1414,20 @@ export default function RhuConsultationWorkspace() {
   ].filter(Boolean));
 
   if (visitError) {
-    const VisitErrorIcon = visitError.variant === "offline"
-      ? WifiOff
-      : visitError.variant === "timeout"
-        ? RefreshCcw
-        : visitError.kind === "unavailable"
-          ? AlertTriangle
-          : ServerCrash;
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
-          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
-              <VisitErrorIcon size={21} aria-hidden="true" />
-            </div>
-            <h1 className="mt-4 text-base font-bold text-[#0F172A]">{visitError.title}</h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">{visitError.message}</p>
-            <p className="mt-2 text-xs text-slate-400">Your saved records and drafts remain on this device.</p>
-            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
-              {visitError.retryable ? (
-                <Button
-                  type="button"
-                  variant="brand"
-                  disabled={visitRetrying}
-                  onClick={() => { void loadVisit({ retry: true }); }}
-                >
-                  <RefreshCcw size={15} className={visitRetrying ? "animate-spin" : ""} aria-hidden="true" />
-                  {visitRetrying ? "Retrying..." : "Retry"}
-                </Button>
-              ) : null}
-              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
-                Back to Today's Queue
-              </Button>
-            </div>
-          </Card>
+        <ConnectionErrorState
+          fullPage
+          title={visitError.title}
+          message={visitError.message}
+          variant={visitError.variant}
+          onRetry={visitError.retryable ? () => { void loadVisit({ retry: true }); } : undefined}
+          retrying={visitRetrying}
+        />
+        <div className="flex justify-center pb-8">
+          <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+            Back to Today's Queue
+          </Button>
         </div>
       </DashboardLayout>
     );
@@ -1444,25 +1444,18 @@ export default function RhuConsultationWorkspace() {
   if (patientQuery.isError) {
     return (
       <DashboardLayout role="rhu" title="RHU Consultation">
-        <div className="flex min-h-[calc(100dvh-9rem)] items-center justify-center px-4 py-12">
-          <Card className="w-full max-w-md p-6 text-center shadow-xs" role="alert">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-red-100 bg-red-50 text-[#B91C1C]">
-              <ServerCrash size={21} aria-hidden="true" />
-            </div>
-            <h1 className="mt-4 text-base font-bold text-[#0F172A]">Patient details could not be loaded</h1>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {patientQuery.error?.message || "This consultation cannot open until the patient record is available."}
-            </p>
-            <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
-              <Button type="button" variant="brand" onClick={() => patientQuery.refetch()}>
-                <RefreshCcw size={15} aria-hidden="true" />
-                Retry
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
-                Back to Today's Queue
-              </Button>
-            </div>
-          </Card>
+        <ConnectionErrorState
+          fullPage
+          title="Patient details could not be loaded"
+          message={patientQuery.error?.message || "This consultation cannot open until the patient record is available."}
+          variant={errorStateVariant(patientQuery.error)}
+          onRetry={() => patientQuery.refetch()}
+          retrying={patientQuery.isFetching}
+        />
+        <div className="flex justify-center pb-8">
+          <Button type="button" variant="secondary" onClick={() => navigate("/rhu/patients")}>
+            Back to Today's Queue
+          </Button>
         </div>
       </DashboardLayout>
     );
@@ -1520,6 +1513,19 @@ export default function RhuConsultationWorkspace() {
           />
         )}
       </div>
+      {stepValidationMessages.length > 0 && (
+        <div
+          role="alert"
+          className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]"
+        >
+          <p>Complete the required fields before continuing.</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {stepValidationMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </header>
   );
 
@@ -1534,40 +1540,6 @@ export default function RhuConsultationWorkspace() {
         {showSidePanel && consultationHeading}
         {wizardPhase === WIZARD_REVIEW ? (
           <div className="min-w-0 space-y-4">
-            {includeForm4b && tbCaseRegistration && (
-              <fieldset disabled={clinicalLocked} className="min-w-0">
-                <TbInlineForm4bPanel
-                  registration={tbCaseRegistration}
-                  onChange={(next) => {
-                    if (next == null) {
-                      setDiagnoses((current) => current.map((entry) => (
-                        shouldOpenDsTbTreatmentCard(entry)
-                          ? tbManagementFor(entry, { openTreatmentCard: false })
-                          : entry
-                      )));
-                      clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                      setTbCaseRegistration(null);
-                      return;
-                    }
-                    clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                    setTbCaseRegistration(next);
-                  }}
-                  laboratoryTests={[...laboratoryTests, ...(laboratoryHistory.data || [])]}
-                  errors={validationErrors}
-                  disabled={clinicalLocked}
-                  facilityName={
-                    currentUser.rural_health_unit?.name
-                    || currentUser.ruralHealthUnit?.name
-                    || currentUser.facility_name
-                    || ""
-                  }
-                  patientName={formatPatientName(patient) || ""}
-                  physicianName={currentUser.name || ""}
-                  visitWeightKg={weight}
-                  prescriptionText={prescriptionText}
-                />
-              </fieldset>
-            )}
             <ConsultationReviewStep
               visitDate={new Date().toLocaleDateString()}
               visitTime={new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -1904,6 +1876,11 @@ export default function RhuConsultationWorkspace() {
                     laboratoryLoading={laboratoryHistory.isFetching}
                     laboratoryError={laboratoryHistory.isError}
                     onRefreshLaboratory={() => { laboratoryHistory.refetch(); laboratoryAttachmentQueries.forEach(query => query.refetch()); }}
+                    onUpdateCurrentLaboratoryTest={(next) => {
+                      clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
+                      setLaboratoryTests((current) => current.map((entry) => (entry.id === next.id ? { ...entry, ...next } : entry)));
+                    }}
+                    canUpdateHistoricalLaboratory={access.can("records.correct")}
                     diagnoses={diagnoses}
                     diagnosisDraft={diagnosisDraft}
                     onDiagnosisDraftChange={setDiagnosisDraft}
@@ -1924,19 +1901,13 @@ export default function RhuConsultationWorkspace() {
                     onServiceFollowUp={handleServiceFollowUp}
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
-                    prescriptionText={prescriptionText}
-                    onPrescriptionTextChange={setPrescriptionText}
+                    prescriptions={prescriptions}
+                    onPrescriptionsChange={handlePrescriptionsChange}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}
+                    establishedLock={establishedLock}
                     conditionReferences={conditionReferences}
-                    tbCaseRegistration={tbCaseRegistration}
-                    onTbCaseRegistrationChange={(next) => {
-                      clearErrorsStartingWith(["card_data", "tbCaseRegistration", "reporting_year", "confirmed", "treatment_start_date"]);
-                      setTbCaseRegistration(next);
-                    }}
-                    visit={visit}
-                    visitWeightKg={weight}
                     errors={validationErrors}
                     disabled={clinicalLocked}
                   />

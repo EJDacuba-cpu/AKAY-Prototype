@@ -216,16 +216,16 @@ test("the first continued follow-up links the visit to its source record", () =>
   assert.equal(continuedVisitLink([7], []), null);
 });
 
-test("Care Plan continues to Monitoring Details only when a form is needed", () => {
-  assert.equal(nextPhaseForwardTarget(NEXT_STEP, ["tb_dots"]), MONITORING_STEP);
+test("Care Plan continues directly to Review (Monitoring Details removed)", () => {
+  assert.equal(nextPhaseForwardTarget(NEXT_STEP, ["tb_dots"]), REVIEW_STEP);
   assert.equal(nextPhaseForwardTarget(NEXT_STEP, []), REVIEW_STEP);
-  assert.equal(nextPhaseForwardTarget(OUTCOME_STEP, ["tb_dots"]), MONITORING_STEP);
+  assert.equal(nextPhaseForwardTarget(OUTCOME_STEP, ["tb_dots"]), REVIEW_STEP);
   assert.equal(nextPhaseForwardTarget(OUTCOME_STEP, []), REVIEW_STEP);
   assert.equal(nextPhaseForwardTarget(MONITORING_STEP, ["tb_dots"]), REVIEW_STEP);
   assert.equal(nextPhaseBackTarget(MONITORING_STEP), NEXT_STEP);
   assert.equal(nextPhaseBackTarget(OUTCOME_STEP), NEXT_STEP);
   assert.equal(nextPhaseBackTarget(NEXT_STEP), null);
-  assert.equal(reviewBackTarget(["tb_dots"]), MONITORING_STEP);
+  assert.equal(reviewBackTarget(["tb_dots"]), NEXT_STEP);
   assert.equal(reviewBackTarget([]), NEXT_STEP);
 });
 

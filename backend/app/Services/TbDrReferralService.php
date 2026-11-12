@@ -37,7 +37,7 @@ final class TbDrReferralService
 
     private function authorizeSource(User $user, HealthRecord $source): void
     {
-        app(TbCaseRegistrationService::class)->authorizeRead($user, $source);
+        app(TbCaseAccessService::class)->authorizeRhuSourceRead($user, $source);
     }
 
     public function canAuthorize(User $user): bool

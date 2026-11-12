@@ -9,6 +9,7 @@ import CloseNutritionCareModal from "./CloseNutritionCareModal";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 import MaternalTrackingPanel from "./MaternalTrackingPanel";
 import NutritionTrackingPanel from "./NutritionTrackingPanel";
+import PatientLaboratorySection from "./PatientLaboratorySection";
 import { EmptyNote, FieldList } from "./ProfileSection";
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
@@ -25,8 +26,9 @@ import searchIcon from "../../../../assets/figma/search.svg";
 
 /**
  * Patient care tracking derived from finalized consultations and health records.
- * Includes clinical care tracking and dispensed medicines.
- * This view is read-only except for closing an active Nutrition Care episode.
+ * Includes clinical care tracking, patient-wide laboratory tests, and dispensed medicines.
+ * This view is read-only except for closing an active Nutrition Care episode
+ * and authorized laboratory result addenda.
  */
 
 function profileRole(basePath) {
@@ -257,6 +259,8 @@ export default function CareAndProgramsTab({
           ) : null}
         </div>
       </section>
+
+      <PatientLaboratorySection patientId={patientId} />
 
       <DispensedMedicinesSection rows={medicineRows} isLoading={isLoading} isError={isError} onRetry={onRetryRecords} onViewRecord={onViewRecord} />
 

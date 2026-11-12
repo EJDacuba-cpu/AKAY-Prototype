@@ -159,6 +159,16 @@ test("successful refresh followed by replay 503 preserves the newly verified ses
   assert.equal(h.calls[2].headers.Authorization, `Bearer ${session.token}`);
 });
 
+test("SESSION_REPLACED clears the session like a forced invalidation", async (t) => {
+  const h = await harness(t, () => json(401, {
+    message: "You have been signed out because your account was logged in on another device.",
+    code: "SESSION_REPLACED",
+  }));
+  await assert.rejects(h.api.apiRequest("/protected", { retryAfterRefresh: false }), { code: "SESSION_REPLACED" });
+  invalidated(h);
+  assert.equal(h.clears[0]?.reason, "session-replaced");
+});
+
 for (const code of ["SESSION_INVALID", "SESSION_EXPIRED"]) {
   test(`definitively rejected refresh (${code}) clears credentials and sensitive state`, async (t) => {
     const h = await harness(t, (call) => call.path === "/auth/refresh" ? json(401, { code }) : expired());
@@ -365,4 +375,17 @@ test("invalid local draft metadata fails before transport and is not a connectio
     return true;
   });
   assert.equal(h.calls.length, 0);
+});
+
+test("HTTP 429 preserves Retry-After seconds on the thrown error", async (t) => {
+  const h = await harness(t, () => new Response(JSON.stringify({ message: "Too Many Attempts." }), {
+    status: 429,
+    headers: { "Content-Type": "application/json", "Retry-After": "12" },
+  }));
+  await assert.rejects(h.api.apiRequest("/rhu-providers"), (error) => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfter, 12);
+    assert.match(error.message, /Too Many Attempts/i);
+    return true;
+  });
 });

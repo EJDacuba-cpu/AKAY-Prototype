@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\BarangayHealthCenter;
 use App\Models\MonitoringHandoffRequest;
 use App\Services\ActionPermissions;
 use App\Services\HandoffLaboratoryEvidence;
@@ -49,7 +48,30 @@ class MonitoringHandoffController extends Controller
         $handoff = $this->handoffs->link($request, $handoff, (int) $data['linked_patient_id']);
 
         return response()->json(['data' => $this->present($handoff->load([
-            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter',
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
+        ]), true)]);
+    }
+
+    public function registerSource(Request $request, int $id)
+    {
+        $handoff = $this->handoffs->findForBhc($request->user(), $id);
+        $handoff = $this->handoffs->registerSourceAtReceivingBhc($request, $handoff);
+
+        return response()->json(['data' => $this->present($handoff->load([
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
+        ]), true)]);
+    }
+
+    public function flagIdentityReview(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'note' => ['required', 'string', 'max:500'],
+        ]);
+        $handoff = $this->handoffs->findForBhc($request->user(), $id);
+        $handoff = $this->handoffs->flagIdentityReview($request, $handoff, $data['note']);
+
+        return response()->json(['data' => $this->present($handoff->load([
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
         ]), true)]);
     }
 
@@ -59,7 +81,7 @@ class MonitoringHandoffController extends Controller
         $handoff = $this->handoffs->accept($request, $handoff);
 
         return response()->json(['data' => $this->present($handoff->load([
-            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter',
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
         ]), true)]);
     }
 
@@ -67,18 +89,12 @@ class MonitoringHandoffController extends Controller
     {
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:1000'],
-            'redirected_to_bhc_id' => ['nullable', 'integer', 'exists:barangay_health_centers,id'],
         ]);
         $handoff = $this->handoffs->findForBhc($request->user(), $id);
-        $handoff = $this->handoffs->decline(
-            $request,
-            $handoff,
-            $data['reason'],
-            isset($data['redirected_to_bhc_id']) ? (int) $data['redirected_to_bhc_id'] : null
-        );
+        $handoff = $this->handoffs->decline($request, $handoff, $data['reason']);
 
         return response()->json(['data' => $this->present($handoff->load([
-            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'redirectedToBhc',
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'redirectedToBhc', 'healthRecord',
         ]), true)]);
     }
 
@@ -89,10 +105,23 @@ class MonitoringHandoffController extends Controller
     {
         $source = $handoff->patient;
         $linked = $handoff->linkedPatient;
+        $verifiedAtReceiving = $linked
+            && (int) $linked->barangay_health_center_id === (int) $handoff->receiving_barangay_health_center_id;
+        $identityVerified = $verifiedAtReceiving
+            && in_array($handoff->status, [
+                MonitoringHandoffRequest::STATUS_PENDING_REVIEW,
+                MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+            ], true);
         $payload = [
             'id' => $handoff->id,
             'status' => $handoff->status,
-            'recommendation' => $handoff->recommendation,
+            'identity_source' => $handoff->identity_source,
+            'identity_resolution' => $handoff->identity_resolution,
+            'identity_resolution_note' => $handoff->identity_resolution_note,
+            'verification_status' => $this->verificationStatus($handoff),
+            // Recommendation is clinical — only after identity verification.
+            'recommendation' => $identityVerified ? $handoff->recommendation : null,
             'decline_reason' => $handoff->decline_reason,
             'created_at' => $handoff->created_at?->toISOString(),
             'reviewed_at' => $handoff->reviewed_at?->toISOString(),
@@ -107,40 +136,112 @@ class MonitoringHandoffController extends Controller
             'condition' => [
                 'id' => $handoff->patient_condition_id,
                 'name' => $handoff->patientCondition?->condition_name,
-                'status' => $handoff->patientCondition?->status,
+                'status' => $identityVerified ? $handoff->patientCondition?->status : null,
             ],
-            'source_patient' => $source ? PatientIdentity::response($source, false) : null,
+            'source_patient' => $source ? $this->identityPreview($source) : null,
             'linked_patient' => $linked ? PatientIdentity::response($linked, false) : null,
             'registration_status' => $handoff->status === MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED
                 ? 'linkage_needed'
                 : ($linked || ((int) $source?->barangay_health_center_id === (int) $handoff->receiving_barangay_health_center_id)
                     ? 'registered_at_receiving_bhc'
                     : 'rhu_only'),
+            'requires_verification' => $handoff->status === MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED,
+            'can_start_consultation' => $identityVerified
+                && in_array($handoff->status, MonitoringHandoffRequest::STARTABLE_STATUSES, true)
+                && ActionPermissions::allows(request()->user(), 'consultations.encode'),
         ];
         if ($detail) {
             $evidence = app(HandoffLaboratoryEvidence::class);
-            // Linkage and inactive handoff states never disclose evidence.
             $payload['laboratory_evidence'] = [];
+            $payload['prescriptions'] = [];
             if (ActionPermissions::allows(request()->user(), 'clinical.history')
-                && in_array($handoff->status, ['pending_review', 'accepted_awaiting_first_visit', 'monitoring_active'], true)
+                && $identityVerified
                 && $handoff->linkedPatient
                 && $handoff->linkedPatient->status !== 'inactive'
                 && (int) $handoff->linkedPatient->barangay_health_center_id === (int) request()->user()->barangay_health_center_id) {
                 $evidence->authorizeReceiver(request()->user(), $handoff);
                 $payload['laboratory_evidence'] = $evidence->present($handoff);
+                $payload['prescriptions'] = $this->prescriptions($handoff);
             }
-            $payload['health_record_id'] = $handoff->health_record_id;
+            $payload['health_record_id'] = $identityVerified ? $handoff->health_record_id : null;
+            // Historical redirected rows remain readable; new redirects are disabled.
             $payload['redirected_to_bhc'] = $handoff->redirectedToBhc
                 ? ['id' => $handoff->redirectedToBhc->id, 'name' => $handoff->redirectedToBhc->name]
                 : null;
-            $payload['catchment_bhcs'] = BarangayHealthCenter::query()
-                ->where('rural_health_unit_id', $handoff->sending_rural_health_unit_id)
-                ->where('status', 'active')
-                ->whereKeyNot($handoff->receiving_barangay_health_center_id)
-                ->orderBy('name')
-                ->get(['id', 'name']);
         }
 
         return $payload;
+    }
+
+    /**
+     * Minimum authorized matching identity — no clinical payload.
+     *
+     * @return array<string, mixed>
+     */
+    private function identityPreview($patient): array
+    {
+        return [
+            'id' => $patient->id,
+            'first_name' => $patient->first_name,
+            'middle_name' => $patient->middle_name,
+            'last_name' => $patient->last_name,
+            'suffix' => $patient->suffix,
+            'full_name' => $patient->full_name,
+            'birthdate' => $patient->birthdate?->format('Y-m-d'),
+            'sex' => $patient->sex,
+            'contact_number' => $patient->contact_number,
+            'status' => $patient->status,
+            'barangay_health_center_id' => $patient->barangay_health_center_id,
+            'rural_health_unit_id' => $patient->rural_health_unit_id,
+        ];
+    }
+
+    private function verificationStatus(MonitoringHandoffRequest $handoff): string
+    {
+        if ($handoff->identity_resolution === MonitoringHandoffRequest::IDENTITY_RESOLUTION_NEEDS_REVIEW) {
+            return 'needs_review';
+        }
+        if ($handoff->status === MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED) {
+            return 'awaiting_verification';
+        }
+        if ($handoff->linked_patient_id) {
+            return 'verified';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function prescriptions(MonitoringHandoffRequest $handoff): array
+    {
+        $record = $handoff->healthRecord;
+        if (! $record) {
+            return [];
+        }
+        $auth = is_array($record->monitoring_data['prescriptionAuthorization'] ?? null)
+            ? $record->monitoring_data['prescriptionAuthorization']
+            : null;
+        if (! $auth) {
+            return [];
+        }
+
+        return array_values(array_map(function (array $row) use ($auth) {
+            return [
+                'medicineName' => $row['medicineName'] ?? null,
+                'strength' => $row['strength'] ?? null,
+                'dose' => $row['dose'] ?? null,
+                'route' => $row['route'] ?? null,
+                'frequency' => $row['frequency'] ?? null,
+                'duration' => $row['duration'] ?? null,
+                'instructions' => $row['instructions'] ?? null,
+                'authorizedQuantity' => $row['authorizedQuantity'] ?? null,
+                'authorizedUnit' => $row['authorizedUnit'] ?? null,
+                'line' => $row['line'] ?? null,
+                'physicianName' => $auth['physicianName'] ?? null,
+                'authorizedAt' => $auth['authorizedAt'] ?? null,
+            ];
+        }, $record->structuredPrescriptionSummaries()));
     }
 }

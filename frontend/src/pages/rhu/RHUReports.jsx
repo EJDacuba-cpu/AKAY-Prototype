@@ -149,6 +149,12 @@ export default function RHUReports() {
         loadingMessage="Loading reports..."
       >
         <div className="flex flex-col gap-5">
+          {loadError && patientsUpdatedAt > 0 && recordsUpdatedAt > 0 && referralsUpdatedAt > 0 && visitsUpdatedAt > 0 ? (
+            <p role="status" className="text-sm text-neutral-600">
+              Unable to refresh reports. Showing the last data that loaded.{" "}
+              <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={retryReports} disabled={refreshing}>Retry</button>
+            </p>
+          ) : null}
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h1 className="text-[17px] font-bold tracking-tight text-ink-800">

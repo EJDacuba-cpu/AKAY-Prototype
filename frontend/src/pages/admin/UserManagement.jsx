@@ -59,6 +59,7 @@ export default function UserManagement() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const {
     data: users = [],
+    dataUpdatedAt,
     isLoading,
     isFetching,
     error: loadError,
@@ -68,6 +69,7 @@ export default function UserManagement() {
     queryFn: loadAdminAccounts,
     retry: false,
   });
+  const hasLoadedAccounts = dataUpdatedAt > 0;
   // Role labels and defaults; until they load (or if they fail) the badge shows the raw role.
   const { data: rolesData = null } = useQuery({ queryKey: queryKeys.staffRoles(), queryFn: getStaffRoles, retry: false, staleTime: Infinity });
 
@@ -196,12 +198,18 @@ export default function UserManagement() {
         isLoading={isLoading}
         isError={Boolean(loadError)}
         isFetching={isFetching}
-        hasData={users.length > 0}
+        hasData={hasLoadedAccounts}
         error={loadError}
         onRetry={() => refetch()}
         loadingMessage="Loading accounts..."
       >
       <div className="account-directory-content mx-auto w-full max-w-[1500px] space-y-4">
+        {loadError && hasLoadedAccounts ? (
+          <p role="status" className="text-sm text-neutral-600">
+            Unable to refresh accounts. Showing the last list that loaded.{" "}
+            <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={() => refetch()} disabled={isFetching}>Retry</button>
+          </p>
+        ) : null}
         <header className="account-directory-header flex flex-wrap items-center justify-between gap-4">
           <div className="account-directory-heading min-w-0">
             <h1 className="account-directory-title text-[18px] leading-[1.3] font-bold tracking-tight text-ink-800">User accounts</h1>

@@ -24,14 +24,13 @@ after(async () => {
 const { default: Status } = await server.ssrLoadModule("/src/components/common/drafts/FormDraftStatus.jsx");
 const render = (props = {}) => renderToStaticMarkup(createElement(Status, props));
 
-test("status labels distinguish pending, saved, device, offline and unavailable outcomes", () => {
+test("status labels distinguish pending, saved, offline and unavailable outcomes", () => {
   assert.equal(render({ status: "idle" }), "");
   for (const [status, label] of [
     ["checking", "Checking for unfinished work…"],
     ["pending", "Unsaved changes"],
     ["saving", "Saving draft…"],
     ["saved", "Draft saved"],
-    ["device-only", "Saved on this device"],
     ["offline", "Connection lost"],
     ["unavailable", "Unable to save"],
     ["error", "Unable to save"],
@@ -42,35 +41,24 @@ test("status labels distinguish pending, saved, device, offline and unavailable 
     assert.ok(html.includes(label), status);
     assert.match(html, /role="status" aria-live="polite" aria-atomic="true"/);
   }
+  assert.doesNotMatch(render({ status: "saved" }), /Saved on this device|Device saved|Server saved/);
 });
 
-test("a newer device checkpoint does not claim current input is server saved", () => {
-  const html = render({ status: "saved", lastSavedAt: "2026-11-07T04:00:00Z", deviceSavedAt: "2026-11-07T04:01:00Z" });
-  assert.match(html, /Saved on this device/);
-  assert.doesNotMatch(html, /Draft saved/);
-  assert.match(html, /Server saved/);
-  assert.match(html, /Device saved/);
+test("confirmed server saves show a saved time without device wording", () => {
+  const html = render({ status: "saved", lastSavedAt: "2026-11-07T04:00:00Z" });
+  assert.match(html, /Draft saved/);
+  assert.match(html, /Saved/);
   assert.match(html, /dateTime="2026-11-07T04:00:00Z"/);
-  assert.match(html, /dateTime="2026-11-07T04:01:00Z"/);
+  assert.doesNotMatch(html, /Saved on this device|Device saved|Server saved/);
   const liveRegion = html.match(/<span role="status"[^>]*>(.*?)<\/span>/s)[1];
   assert.doesNotMatch(liveRegion, /<time/);
 });
 
-test("server acknowledgement at the same or newer time removes device-only wording", () => {
-  for (const deviceSavedAt of ["2026-11-07T03:59:00Z", "2026-11-07T04:00:00Z"]) {
-    const html = render({ status: "saved", lastSavedAt: "2026-11-07T04:00:00Z", deviceSavedAt });
-    assert.match(html, /Draft saved/);
-    assert.doesNotMatch(html, /Saved on this device|Device saved/);
-  }
-});
-
-test("offline feedback preserves separately labeled device and server checkpoints", () => {
-  const html = render({ status: "offline", lastSavedAt: "2026-11-07T04:00:00Z", deviceSavedAt: "2026-11-07T04:01:00Z", onRetry: () => {} });
+test("offline feedback offers Retry without claiming device protection", () => {
+  const html = render({ status: "offline", lastSavedAt: "2026-11-07T04:00:00Z", onRetry: () => {} });
   assert.match(html, /Connection lost/);
-  assert.match(html, /Saved on this device/);
-  assert.match(html, /Server saved/);
   assert.match(html, />Retry<\/button>/);
-  assert.doesNotMatch(html, /will sync|automatically sync|all changes are safe/i);
+  assert.doesNotMatch(html, /Saved on this device|will sync|automatically sync|all changes are safe/i);
 });
 
 test("errors stay inline and retry appears only when a real retry handler exists", () => {
@@ -84,7 +72,7 @@ test("errors stay inline and retry appears only when a real retry handler exists
 });
 
 test("invalid metadata never emits a broken time or fabricated save timestamp", () => {
-  const html = render({ status: "unavailable", lastSavedAt: "bad-date", deviceSavedAt: "also-bad" });
+  const html = render({ status: "unavailable", lastSavedAt: "bad-date" });
   assert.match(html, /Unable to save/);
   assert.doesNotMatch(html, /Invalid Date|<time|Server saved|Device saved/);
 });
@@ -92,7 +80,7 @@ test("invalid metadata never emits a broken time or fabricated save timestamp", 
 test("pending edits never display as saved and saving shows a spinner cue", () => {
   const pending = render({ status: "pending", lastSavedAt: "2026-11-07T04:00:00Z" });
   assert.match(pending, /Unsaved changes/);
-  assert.doesNotMatch(pending, /Draft saved|Server saved/);
+  assert.doesNotMatch(pending, /Draft saved/);
   assert.match(render({ status: "saving" }), /animate-spin|Saving draft/);
   assert.match(render({ status: "saved", lastSavedAt: "2026-11-07T04:00:00Z" }), /Draft saved/);
 });

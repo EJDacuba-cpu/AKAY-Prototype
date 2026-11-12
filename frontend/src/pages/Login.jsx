@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router";
 import { loginUser } from "../utils/auth";
 import { submitPasswordResetRequest } from "../services/passwordResetService";
 import ButtonSpinner from "../components/common/loading/ButtonSpinner";
+import AkayWordmark from "../components/common/AkayWordmark";
 import { TurnstileField } from "../components/features/auth/TurnstileField";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,6 +13,7 @@ import {
   loginErrorMessage,
   shouldResetTurnstile,
 } from "../config/turnstile";
+import { sessionEndedNotice } from "../utils/sessionEndedNotice";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -24,11 +26,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionNotice, setSessionNotice] = useState(() =>
-    location.state?.sessionReason === "session-expired"
-      ? "Your session has expired. Please sign in again."
-      : location.state?.sessionEnded
-        ? "Your session is no longer valid. Please sign in again."
-        : location.state?.notice || "",
+    sessionEndedNotice(location.state || {}),
   );
   const [fieldErrors, setFieldErrors] = useState({});
   const [mode, setMode] = useState("signin");
@@ -141,18 +139,18 @@ export default function Login() {
       <div className="m-auto w-full max-w-[420px]">
         <main aria-labelledby="login-title">
           <header className="text-center">
-            <img src="/akay-logo.png" alt="AKAY — Medical EHR and Referral System" className="mx-auto h-16 w-auto max-w-full object-contain short:h-12 tiny:h-10" draggable="false" />
-            <p className="mt-3 text-xs text-slate-500 short:mt-2">Bulakan, Bulacan</p>
+            <AkayWordmark className="text-5xl short:text-4xl tiny:text-3xl" />
+            <p className="mt-2 text-sm font-medium tracking-normal text-slate-500">Bulakan, Bulacan</p>
           </header>
 
           <h1 id="login-title" style={{ fontFamily: "var(--font-sans)" }} className="mt-8 text-center text-xl short:mt-5 tiny:mt-3 font-semibold tracking-tight">
             {isReset ? "Request password reset" : "Sign in"}
           </h1>
-          <p className="mt-2 text-center text-sm leading-6 short:mt-1 text-slate-600">
-            {isReset
-              ? "Enter your registered email address. An administrator must approve your request before you can reset your password."
-              : "Access patient health records and track referrals."}
-          </p>
+          {isReset && (
+            <p className="mt-2 text-center text-sm leading-6 short:mt-1 text-slate-600">
+              Enter your registered email address. An administrator must approve your request before you can reset your password.
+            </p>
+          )}
           {sessionNotice && <p role="status" className="mt-4 rounded-md bg-slate-50 p-3 text-sm leading-5 text-slate-600">{sessionNotice}</p>}
 
           <form onSubmit={isReset ? handleResetRequest : handleSubmit} noValidate aria-busy={isLoading} className="mt-6 space-y-4 short:mt-4 short:space-y-3">

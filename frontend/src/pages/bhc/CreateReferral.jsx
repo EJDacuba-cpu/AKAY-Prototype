@@ -23,10 +23,12 @@ import {
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import ButtonSpinner from "../../components/common/loading/ButtonSpinner";
 import {
+  ConnectionErrorState,
   ModalButton,
   ModalShell,
   SoftLoadingArea,
 } from "../../components/common";
+import { errorStateVariant } from "../../utils/errorStateVariant";
 import {
   isNoProviderAvailableError,
   createReferral,
@@ -109,6 +111,9 @@ export default function CreateReferral() {
   const [record, setRecord] = useState(null);
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [contextError, setContextError] = useState(null);
+  const [contextRetrying, setContextRetrying] = useState(false);
+  const contextLoadInFlight = useRef(false);
 
   const [form, setForm] = useState({
     dateOfReferral: today,
@@ -156,27 +161,33 @@ export default function CreateReferral() {
       );
   }, []);
 
-  useEffect(() => {
-    async function loadReferralContext() {
-      try {
-        setLoading(true);
-
-        const [patientList, records] = await Promise.all([
-          getPatients(),
-          getHealthRecords(),
-        ]);
-
-        setPatients(patientList);
-        setHealthRecords(records);
-      } catch {
-        // The existing unavailable-state UI handles context load failures.
-      } finally {
-        setLoading(false);
-      }
+  const loadReferralContext = useCallback(async () => {
+    if (contextLoadInFlight.current) return;
+    contextLoadInFlight.current = true;
+    setContextRetrying(true);
+    setLoading(true);
+    setContextError(null);
+    try {
+      const [patientList, records] = await Promise.all([
+        getPatients(),
+        getHealthRecords(),
+      ]);
+      setPatients(patientList);
+      setHealthRecords(records);
+    } catch (error) {
+      setPatients([]);
+      setHealthRecords([]);
+      setContextError(error);
+    } finally {
+      setLoading(false);
+      setContextRetrying(false);
+      contextLoadInFlight.current = false;
     }
-
-    loadReferralContext();
   }, []);
+
+  useEffect(() => {
+    void loadReferralContext();
+  }, [loadReferralContext]);
 
   const loadReferralDestination = useCallback(async () => {
     setDestinationLoading(true);
@@ -718,7 +729,7 @@ export default function CreateReferral() {
     }
   }
 
-  if (loading) {
+  if (loading && !contextError) {
     return (
       <DashboardLayout role="bhc" title="Submit Referral">
         <SoftLoadingArea skeleton="referral-form"
@@ -728,6 +739,19 @@ export default function CreateReferral() {
         >
           <div className="min-h-[520px]" />
         </SoftLoadingArea>
+      </DashboardLayout>
+    );
+  }
+
+  if (contextError) {
+    return (
+      <DashboardLayout role="bhc" title="Submit Referral">
+        <ConnectionErrorState
+          fullPage
+          variant={errorStateVariant(contextError)}
+          onRetry={() => { void loadReferralContext(); }}
+          retrying={contextRetrying}
+        />
       </DashboardLayout>
     );
   }

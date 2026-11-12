@@ -1,10 +1,28 @@
 import FormDraftRecoveryDialog from "../../common/drafts/FormDraftRecoveryDialog";
+import ClinicalConsultationTakeoverDialog from "../health-records/ClinicalConsultationTakeoverDialog";
 import { Button } from "../../ui/button";
 
 export default function RhuConsultationRecoveryDialog({ recovery, patientName, onClose }) {
-  const { decision, checking, busy, operation, error, resume, discard, retry } = recovery;
+  const { decision, checking, busy, operation, error, ownership, resume, discard, retry, takeover } = recovery;
   const restoring = busy && operation === "resume";
-  const draft = decision?.server || decision?.local?.record?.draft;
+  const draft = decision?.server;
+
+  if (decision && ownership?.occupied) {
+    return (
+      <ClinicalConsultationTakeoverDialog
+        open
+        patientName={draft?.patient?.label || patientName || "Selected patient"}
+        editorName={ownership.editorName}
+        canTakeover={ownership.canTakeover !== false}
+        busy={busy}
+        takingOver={busy && operation === "takeover"}
+        error={error}
+        onClose={onClose}
+        onTakeover={takeover}
+      />
+    );
+  }
+
   if (!decision) {
     if (checking || !error) return null;
     return <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-alert-200 bg-alert-50 p-3 text-sm text-alert-700">
@@ -15,22 +33,19 @@ export default function RhuConsultationRecoveryDialog({ recovery, patientName, o
   }
   return <FormDraftRecoveryDialog
     open
-    title="Unfinished Consultation"
-    description="An unfinished consultation was found for this patient. Choose how you want to continue."
+    title="You have unfinished work."
+    description="Continue where you left off?"
     contextLabel={draft?.patient?.label || patientName || "Selected patient"}
     classification={draft?.classification || ""}
-    draftStatus={draft ? (decision.local && !decision.server ? "Saved on this device" : draft.reviewState === "review" ? "Draft needs review" : "Saved draft") : ""}
-    lastSavedAt={decision?.local?.savedAt || draft?.lastSavedAt || ""}
-    deviceOnly={Boolean(decision?.local) && !decision?.server}
+    draftStatus={draft ? (draft.reviewState === "review" ? "Draft needs review" : "Saved draft") : ""}
+    lastSavedAt={draft?.lastSavedAt || ""}
     busy={busy}
     resuming={restoring}
     error={error}
     resumeLabel="Resume Consultation"
     cancelLabel={error ? "Cancel" : ""}
     onClose={onClose}
-    onResume={decision && !decision.conflict && !error ? () => resume() : undefined}
-    onResumeDevice={decision?.conflict && !decision.locked ? () => resume("device") : undefined}
-    onResumeServer={decision?.conflict ? () => resume("server") : undefined}
+    onResume={decision && !error ? () => resume() : undefined}
     onDiscard={decision && !error ? discard : undefined}
     onRetry={recovery.failedOperation === "resume" ? () => resume() : retry}
   />;

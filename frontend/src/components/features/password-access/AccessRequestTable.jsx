@@ -9,6 +9,7 @@ import {
 } from "../../common";
 import { STATUS_OPTIONS } from "../../../utils/accessRequestStatus";
 import { actionLabel, menuSections } from "../../../utils/accountAccess";
+import { errorStateVariant } from "../../../utils/errorStateVariant";
 import { roleFor } from "../../../utils/staffRoles";
 import AccessStatusBadge from "./AccessStatusBadge";
 import usePagedRows from "../../../hooks/usePagedRows";
@@ -36,7 +37,8 @@ export default function AccessRequestTable({
   emptyHint,
   loading = false,
   refreshing = false,
-  error = "",
+  hasLoaded = false,
+  error = null,
   onRetry,
   filters,
   onFiltersChange,
@@ -46,8 +48,20 @@ export default function AccessRequestTable({
 }) {
   const { page, setPage, totalPages, pageRows } = usePagedRows(rows, filters);
   const narrowed = Boolean(filters.search) || filters.status !== "all";
+  const loadFailed = Boolean(error) && !hasLoaded;
 
   if (loading) return <PageSkeletonLoader skeleton="access-requests" message="Loading access requests..." options={{ columns: columns.length + 2, rowHeight: TABLE_ROW_HEIGHT, headHeight: TABLE_HEAD_HEIGHT, action: false }} />;
+
+  if (loadFailed) {
+    return (
+      <ConnectionErrorState
+        fullPage
+        variant={errorStateVariant(error)}
+        onRetry={onRetry}
+        retrying={refreshing}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4" aria-busy={refreshing || undefined}>
@@ -58,73 +72,72 @@ export default function AccessRequestTable({
         searchPlaceholder={searchPlaceholder}
       />
       {refreshing && <div className="flex justify-end"><RefreshingIndicator label="Updating requests..." /></div>}
+      {error && hasLoaded ? (
+        <p role="status" className="text-sm text-neutral-600">
+          Unable to refresh requests. Showing the last list that loaded.{" "}
+          <button type="button" className="font-semibold text-brand-700 hover:underline disabled:opacity-60" onClick={onRetry} disabled={refreshing}>Retry</button>
+        </p>
+      ) : null}
 
       {/* The panel the page's tabs control: the tabs sit in the toolbar above it, not inside it. */}
       <div role={panelLabelledBy ? "tabpanel" : undefined} id={panelLabelledBy ? "access-tabpanel" : undefined} aria-labelledby={panelLabelledBy}>
-          <div>
-            {rows.length === 0 && error ? (
-              // The server's message is shown as a toast; this keeps a way to try again on the page.
-              <ConnectionErrorState variant="error" onRetry={onRetry} />
-            ) : (
-              <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-                <div className="hidden lg:block">
-                  <FixedTable minWidth="min-w-[880px]">
-                    <TableHead columns={columns} />
-                    <tbody className="divide-y divide-neutral-100">
-                      {rows.length === 0 ? (
-                        <tr>
-                          <td colSpan={columns.length + 2} className="px-6 py-0">
-                            <EmptyBody
-                              className="min-h-[300px]"
-                              message={emptyMessage}
-                              hint={emptyHint}
-                              narrowed={narrowed}
-                              onClear={() => onFiltersChange(DEFAULT_FILTERS)}
-                            />
-                          </td>
-                        </tr>
-                      ) : (
-                        pageRows.map((row) => (
-                          <tr key={row.id} className="transition-colors hover:bg-neutral-50">
-                            {columns.map((column) => (
-                              <td key={column.key} className={`px-4 ${column.className || "text-neutral-600"}`}>
-                                {column.render(row)}
-                              </td>
-                            ))}
-                            <td className="px-4">
-                              <StatusCell status={statusOf(row)} inline />
-                            </td>
-                            <td className="px-4 text-right">
-                              <RowActions row={row} menuFor={menuFor} />
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </FixedTable>
-                </div>
-
-                <div className="grid divide-y divide-neutral-100 md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-neutral-100 md:[&>*:last-child:nth-child(odd)]:col-span-2 lg:hidden">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
+            <div className="hidden lg:block">
+              <FixedTable minWidth="min-w-[880px]">
+                <TableHead columns={columns} />
+                <tbody className="divide-y divide-neutral-100">
                   {rows.length === 0 ? (
-                    <EmptyBody
-                      className="min-h-[240px] bg-white px-6 py-10 md:col-span-2"
-                      message={emptyMessage}
-                      hint={emptyHint}
-                      narrowed={narrowed}
-                      onClear={() => onFiltersChange(DEFAULT_FILTERS)}
-                    />
+                    <tr>
+                      <td colSpan={columns.length + 2} className="px-6 py-0">
+                        <EmptyBody
+                          className="min-h-[300px]"
+                          message={emptyMessage}
+                          hint={emptyHint}
+                          narrowed={narrowed}
+                          onClear={() => onFiltersChange(DEFAULT_FILTERS)}
+                        />
+                      </td>
+                    </tr>
                   ) : (
                     pageRows.map((row) => (
-                      <RowCard key={row.id} row={row} columns={columns} statusOf={statusOf} menuFor={menuFor} />
+                      <tr key={row.id} className="transition-colors hover:bg-neutral-50">
+                        {columns.map((column) => (
+                          <td key={column.key} className={`px-4 ${column.className || "text-neutral-600"}`}>
+                            {column.render(row)}
+                          </td>
+                        ))}
+                        <td className="px-4">
+                          <StatusCell status={statusOf(row)} inline />
+                        </td>
+                        <td className="px-4 text-right">
+                          <RowActions row={row} menuFor={menuFor} />
+                        </td>
+                      </tr>
                     ))
                   )}
-                </div>
+                </tbody>
+              </FixedTable>
+            </div>
 
-                {rows.length > 0 && (
-                  <div className="mt-auto border-t border-neutral-100">
-                    <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-                  </div>
-                )}
+            <div className="grid divide-y divide-neutral-100 md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-neutral-100 md:[&>*:last-child:nth-child(odd)]:col-span-2 lg:hidden">
+              {rows.length === 0 ? (
+                <EmptyBody
+                  className="min-h-[240px] bg-white px-6 py-10 md:col-span-2"
+                  message={emptyMessage}
+                  hint={emptyHint}
+                  narrowed={narrowed}
+                  onClear={() => onFiltersChange(DEFAULT_FILTERS)}
+                />
+              ) : (
+                pageRows.map((row) => (
+                  <RowCard key={row.id} row={row} columns={columns} statusOf={statusOf} menuFor={menuFor} />
+                ))
+              )}
+            </div>
+
+            {rows.length > 0 && (
+              <div className="mt-auto border-t border-neutral-100">
+                <TablePagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
             )}
           </div>

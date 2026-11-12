@@ -12,6 +12,7 @@ const assessment = {
   dispositionReason: "Awaiting labs",
   dispositionPlan: "Return in one week",
   openTreatmentCard: false,
+  tbCaseNumber: "",
 };
 const entry = { id: "tb-1", name: "Tuberculosis", activate: false, nextAction: "none", tbManagement: assessment };
 
@@ -32,6 +33,7 @@ test("switching to infection clears resistance and registration in actual state"
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   });
   assert.equal(tbManagementFor(infection, { diagnosisType: "tb_disease" }).tbManagement.drugResistance, "");
   assert.equal(disease.tbManagement.drugResistance, "drug_susceptible");
@@ -47,6 +49,7 @@ test("presumptive TB clears drug susceptibility and never opens Form 4B", () => 
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   });
   assert.equal(diagnosesForRhuSave([presumptive])[0].tbManagement.openTreatmentCard, false);
 });
@@ -60,6 +63,7 @@ test("restoring a stale infection draft clears hidden clinical state", () => {
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   };
   assert.deepEqual(restoreRhuDiagnoses({ diagnoses: [stale] })[0].tbManagement, expected);
   assert.deepEqual(normalizeDiagnoses([stale])[0].tbManagement, expected);
@@ -79,11 +83,10 @@ test("legacy aliases normalize without introducing TB metadata on unrelated entr
   assert.equal(Object.hasOwn(normalizeDiagnoses([{ id: "other", name: "Asthma" }])[0], "tbManagement"), false);
 });
 
-test("standalone openTreatmentCard is explicit registration intent without treatmentDecision", () => {
+test("openTreatmentCard is not implied by legacy initiate_at_rhu", () => {
   const intent = { ...entry, tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible", openTreatmentCard: true } };
   assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.openTreatmentCard, true);
   assert.equal(diagnosesForRhuSave([intent])[0].tbManagement.treatmentDecision, "");
-  assert.equal(restoreRhuDiagnoses({ diagnoses: [intent] })[0].tbManagement.openTreatmentCard, true);
   const toggled = tbManagementFor(intent, { openTreatmentCard: false });
   assert.equal(toggled.tbManagement.openTreatmentCard, false);
   const legacy = {
@@ -97,8 +100,8 @@ test("standalone openTreatmentCard is explicit registration intent without treat
       openTreatmentCard: false,
     },
   };
-  assert.equal(tbManagementFields(legacy).openTreatmentCard, true);
-  assert.equal(diagnosesForRhuSave([legacy])[0].tbManagement.openTreatmentCard, true);
+  assert.equal(tbManagementFields(legacy).openTreatmentCard, false);
+  assert.equal(diagnosesForRhuSave([legacy])[0].tbManagement.openTreatmentCard, false);
 });
 
 test("TB assessment requires a physician at the current RHU with confirmation permission", () => {

@@ -291,6 +291,18 @@
   .rhu-diagnosis-evidence:has(.rhu-diagnosis-assessment > fieldset) {
     grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
   }
+  /* Stack assessment + prescriptions while editing so the editor is not trapped in a narrow column. */
+  .rhu-diagnosis-evidence:has([data-rx-editor-open="true"]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.rhu-prescription-editor {
+  max-width: 100%;
+  overflow-x: clip;
+}
+.rhu-prescription-editor input,
+.rhu-prescription-editor textarea {
+  box-sizing: border-box;
 }
 .ehr-consult .ehr-consult__care-plan [data-field="diagnoses"] label {
   color: var(--color-text-secondary);

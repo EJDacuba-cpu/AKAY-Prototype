@@ -70,3 +70,32 @@ test("multiple selected follow-ups focus only those concerns and leave the rest 
   assert.deepEqual(result.diagnoses.map((item) => item.name), ["Hypertension", "Diabetes Mellitus"]);
   assert.deepEqual(result.references.map((item) => item.conditionName), ["Asthma"]);
 });
+
+test("TB follow-up seeds prior management and locks confirmed TB Disease", () => {
+  const TB = { id: 20, conditionName: "Tuberculosis", status: "active", conditionIdentity: "tuberculosis" };
+  const parent = {
+    id: 40,
+    diagnoses: [{
+      id: "dx-tb",
+      name: "Tuberculosis",
+      tbManagement: {
+        diagnosisType: "tb_disease",
+        drugResistance: "drug_susceptible",
+        tbCaseNumber: "TB-40",
+      },
+    }],
+  };
+  const result = focusedRhuFollowUp({
+    task: { id: 3, purposeKey: "entry:dx-tb", purpose: "TB review", healthRecordId: 40 },
+    parentRecord: parent,
+    conditions: [TB],
+    establishedLock: {
+      diagnosisType: "tb_disease",
+      drugResistance: "drug_susceptible",
+      tbCaseNumber: "TB-40",
+    },
+  });
+  assert.equal(result.focused.tbManagement.diagnosisType, "tb_disease");
+  assert.equal(result.focused.tbManagement.drugResistance, "drug_susceptible");
+  assert.equal(result.focused.tbManagement.tbCaseNumber, "TB-40");
+});

@@ -2,9 +2,11 @@ import { Link } from "react-router";
 
 import RestrictedArea from "../../common/access/RestrictedArea";
 import { DottedSpinner } from "../../common/loading/SoftLoadingOverlay";
+import ButtonSpinner from "../../common/loading/ButtonSpinner";
 import SummarySection from "./SummarySection";
 import PatientAlertChips from "./PatientAlertChips";
 import { formatPatientAddress } from "./PatientIdentityCard";
+import useOpenPatientProfile from "../../../hooks/useOpenPatientProfile";
 import usePatientConditionGroups from "../../../hooks/usePatientConditionGroups";
 import usePatientSummary from "../../../hooks/usePatientSummary";
 import { getCurrentUser } from "../../../utils/auth";
@@ -93,9 +95,21 @@ function VitalsGrid({ records }) {
  * panel (`showTitle`) or inside the slide-in Drawer, which draws its own title bar.
  */
 export default function PatientSummaryPanel({ patientId, basePath = "/bhc", showTitle = false }) {
+  const role = basePath === "/rhu" ? "rhu" : "bhc";
   const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
   const { patient, records, latest, isPending, error, refetch } = usePatientSummary(patientId);
   const { groups: conditionGroups } = usePatientConditionGroups(patientId, patient?.medicalBackground?.currentDiseases);
+  const {
+    openProfile,
+    isOpeningPatient,
+    isProfileOpenBlocked,
+    error: openError,
+    errorPatientId,
+  } = useOpenPatientProfile(role);
+  const profilePath = `${basePath}/patients/${patientId}`;
+  const openingThis = isOpeningPatient(patientId);
+  const profileBlocked = isProfileOpenBlocked(patientId);
+  const profileInactive = openingThis || profileBlocked;
 
   if (isPending) {
     return (
@@ -195,11 +209,41 @@ export default function PatientSummaryPanel({ patientId, basePath = "/bhc", show
 
       <footer className="patient-summary__footer">
         <Link
-          to={`${basePath}/patients/${patientId}`}
-          className="flex h-9 w-full items-center justify-center rounded-full bg-red-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
+          to={profilePath}
+          className={[
+            "flex h-9 w-full items-center justify-center gap-2 rounded-full bg-red-600 px-3 text-sm font-semibold text-white transition-colors",
+            profileInactive
+              ? "pointer-events-none opacity-90"
+              : "hover:bg-red-700 active:bg-red-800",
+          ].join(" ")}
+          aria-busy={openingThis || undefined}
+          aria-disabled={profileInactive || undefined}
+          tabIndex={profileBlocked ? -1 : undefined}
+          onClick={(event) => {
+            const plainClick =
+              event.button === 0 && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+            if (!plainClick || profileInactive) {
+              if (profileInactive) event.preventDefault();
+              return;
+            }
+            event.preventDefault();
+            openProfile(patientId, profilePath);
+          }}
         >
-          View Full Profile
+          {openingThis ? (
+            <>
+              <ButtonSpinner />
+              <span>Opening...</span>
+            </>
+          ) : (
+            "View Full Profile"
+          )}
         </Link>
+        {openError && String(errorPatientId) === String(patientId) ? (
+          <p role="alert" className="mt-1.5 text-center text-[11px] font-medium text-red-600">
+            Could not load this profile. Please try again.
+          </p>
+        ) : null}
       </footer>
     </div>
   );

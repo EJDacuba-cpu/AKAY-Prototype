@@ -1,24 +1,43 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { getPatientProfilePrefetch } from "../services/patientProfileQueries";
 import { getCurrentUser } from "../utils/auth";
+import {
+  clearProfileOpen,
+  endProfileOpen,
+  getProfileOpenPatientId,
+  subscribeProfileOpen,
+  tryBeginProfileOpen,
+} from "../utils/patientProfileOpenGate";
 import { prefetchPatientProfile } from "../utils/prefetchPatientProfile";
+
+function samePatient(a, b) {
+  return a != null && b != null && String(a) === String(b);
+}
 
 /**
  * Opens a patient profile only after its data has loaded, so the profile never
- * mounts empty. While loading, `opening` is true (the caller shows a spinner);
- * if the patient itself fails to load the user stays put and `error` is set.
+ * mounts empty. A shared gate allows only one active open across BHC/RHU
+ * directory controls. While loading, `openingPatientId` is set (callers show
+ * Opening... on that patient and disable conflicting profile actions).
  */
 export default function useOpenPatientProfile(role) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const [opening, setOpening] = useState(false);
   const [error, setError] = useState(null);
-  const busyRef = useRef(false);
+  const [errorPatientId, setErrorPatientId] = useState(null);
   const mountedRef = useRef(true);
+  const openTokenRef = useRef(null);
+  const openPatientRef = useRef(null);
+
+  const openingPatientId = useSyncExternalStore(
+    subscribeProfileOpen,
+    getProfileOpenPatientId,
+    () => null,
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -27,40 +46,85 @@ export default function useOpenPatientProfile(role) {
     };
   }, []);
 
-  // After a successful open the spinner stays until the route actually
-  // changes, so the directory never flashes back between fetch and navigation.
+  // Successful navigation releases the shared open lock. Skip the mount pass so
+  // newly rendered directory cards do not clear an in-flight open.
+  const locationKeyRef = useRef(location.key);
   useEffect(() => {
-    setOpening(false);
+    if (locationKeyRef.current === location.key) return;
+    locationKeyRef.current = location.key;
+    clearProfileOpen();
+    openTokenRef.current = null;
+    openPatientRef.current = null;
   }, [location.key]);
 
   const openProfile = useCallback(
     async (patientId, to) => {
-      // A second click while one is loading must not start another fetch.
-      if (busyRef.current) return;
-      busyRef.current = true;
-      setError(null);
-      setOpening(true);
+      const id = patientId == null ? "" : String(patientId).trim();
+      if (!id || !to) return false;
+
+      const token = tryBeginProfileOpen(id);
+      if (token == null) return false;
+
+      openTokenRef.current = token;
+      openPatientRef.current = id;
+      if (mountedRef.current) {
+        setError(null);
+        setErrorPatientId(null);
+      }
 
       try {
         const canViewHistory = (getCurrentUser()?.permissions || []).includes("clinical.history");
         await prefetchPatientProfile(
           queryClient,
-          getPatientProfilePrefetch(role, patientId, { canViewHistory }),
+          getPatientProfilePrefetch(role, id, { canViewHistory }),
         );
+        // Drop stale completions if this open was cleared or superseded.
+        if (openTokenRef.current !== token || !samePatient(openPatientRef.current, id)) {
+          endProfileOpen(token);
+          return false;
+        }
         navigate(to);
+        // Keep the lock until location.key changes so conflicting buttons stay disabled.
+        return true;
       } catch (caught) {
+        endProfileOpen(token);
+        if (openTokenRef.current === token) {
+          openTokenRef.current = null;
+          openPatientRef.current = null;
+        }
         if (mountedRef.current) {
           setError(caught || new Error("Could not load patient profile"));
-          setOpening(false);
+          setErrorPatientId(id);
         }
-      } finally {
-        busyRef.current = false;
+        return false;
       }
     },
     [navigate, queryClient, role],
   );
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorPatientId(null);
+  }, []);
 
-  return { openProfile, opening, error, clearError };
+  const isOpeningPatient = useCallback(
+    (patientId) => samePatient(openingPatientId, patientId),
+    [openingPatientId],
+  );
+
+  const isProfileOpenBlocked = useCallback(
+    (patientId) => openingPatientId != null && !samePatient(openingPatientId, patientId),
+    [openingPatientId],
+  );
+
+  return {
+    openProfile,
+    opening: openingPatientId != null,
+    openingPatientId,
+    isOpeningPatient,
+    isProfileOpenBlocked,
+    error,
+    errorPatientId,
+    clearError,
+  };
 }

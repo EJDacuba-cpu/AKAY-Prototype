@@ -833,7 +833,6 @@ function toPayload(record = {}, { partial = false } = {}) {
     // sends it only when Monitoring Details includes the TB card, the RHU page
     // only for its TB category (each sends null otherwise).
     tb_data: record.tbData || record.tb_data || null,
-    tb_case_registration: record.tbCaseRegistration || record.tb_case_registration || null,
     needs_referral: needsReferral,
     // The BHC General Consultation v2 discriminator (create only); sent only
     // when the caller sets it, so every other save is unchanged.

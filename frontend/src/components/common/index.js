@@ -73,6 +73,7 @@ export {
   ModuleSkeleton,
   PageSkeletonLoader,
   PatientDetailsSkeleton,
+  PatientRegistrationSkeleton,
   ReportsSkeleton,
   TableSkeleton,
   TopLoadingBar,

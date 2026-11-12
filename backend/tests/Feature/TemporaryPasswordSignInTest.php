@@ -206,7 +206,13 @@ class TemporaryPasswordSignInTest extends TestCase
         [$first] = $this->signIn();
         [$second] = $this->signIn();
 
-        $response = $this->withToken($first)->postJson('/api/auth/change-password', [
+        // First-In Kicked Out: the earlier sign-in is already dead before the password change.
+        $this->app['auth']->forgetGuards();
+        $this->withToken($first)->getJson('/api/auth/profile')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'SESSION_REPLACED');
+
+        $response = $this->withToken($second)->postJson('/api/auth/change-password', [
             'current_password' => $this->temporary,
             'password' => 'Brandnew123',
             'password_confirmation' => 'Brandnew123',

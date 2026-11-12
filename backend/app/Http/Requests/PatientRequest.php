@@ -6,12 +6,33 @@ use App\Http\Controllers\Api\HouseholdController;
 use App\Models\Patient;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class PatientRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return (bool) $this->user();
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $user = $this->user();
+            if (! $user?->isRhu()) {
+                return;
+            }
+            // RHU no longer manages households or FSNs.
+            if ($this->exists('household')) {
+                $validator->errors()->add('household', 'RHU registration does not support household membership.');
+            }
+            if ($this->exists('head_replacement')) {
+                $validator->errors()->add('head_replacement', 'RHU registration does not support household head replacement.');
+            }
+            if ($this->filled('family_serial_number')) {
+                $validator->errors()->add('family_serial_number', 'RHU registration does not assign a family serial number.');
+            }
+        });
     }
 
     protected function prepareForValidation(): void

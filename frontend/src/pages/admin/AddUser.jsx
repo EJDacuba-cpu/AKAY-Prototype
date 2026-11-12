@@ -39,9 +39,9 @@ const card = selected => `flex min-h-24 items-center gap-3 rounded-xl border p-4
 const EMAIL_TAKEN = "Email is already taken.";
 const pulse = "animate-pulse rounded bg-slate-200 motion-reduce:animate-none";
 
-export function AccountFormLoadState({ error, onRetry }) {
+export function AccountFormLoadState({ error, onRetry, retrying = false }) {
   return error
-    ? <ConnectionErrorState variant={errorStateVariant(error)} onRetry={onRetry} />
+    ? <ConnectionErrorState fullPage variant={errorStateVariant(error)} onRetry={onRetry} retrying={retrying} />
     : <PageSkeletonLoader skeleton="account-form" message="Loading account..." options={{ step: "facility" }} />;
 }
 
@@ -66,6 +66,7 @@ export default function AddUser() {
   const [loadedId, setLoadedId] = useState(undefined);
   const [loadFailure, setLoadFailure] = useState(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadRetrying, setLoadRetrying] = useState(false);
   const [touched, setTouched] = useState({});
   const [takenEmails, setTakenEmails] = useState({});
   const [checkingEmail, setCheckingEmail] = useState(false);
@@ -111,9 +112,11 @@ export default function AddUser() {
       setTouched({});
       setLoadedId(id);
       setLoadFailure(null);
+      setLoadRetrying(false);
     }).catch(e => {
       if (!active) return;
       setLoadFailure({ id, error: e });
+      setLoadRetrying(false);
     });
     return () => { active = false; };
   }, [id, loadAttempt]);
@@ -278,7 +281,7 @@ export default function AddUser() {
   const centered = current === STEPS.facility;
   const stepList = labels.map((label, i) => ({ label, i, hint: HEADINGS[keys[i]][1], done: i < step, locked: i > reached, here: i === step }));
   if (!loaded) return <DashboardLayout role="admin" title={id ? "Edit User Account" : "Create Account"} contentClassName="p-0">
-    <AccountFormLoadState error={loadError} onRetry={() => { setLoadFailure(null); setLoadAttempt(attempt => attempt + 1); }} />
+    <AccountFormLoadState error={loadError} retrying={loadRetrying} onRetry={() => { if (loadRetrying) return; setLoadRetrying(true); setLoadAttempt(attempt => attempt + 1); }} />
   </DashboardLayout>;
 
   // The Facility step draws its own choices; every other step shares this body.

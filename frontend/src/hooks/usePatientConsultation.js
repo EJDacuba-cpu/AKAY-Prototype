@@ -1,25 +1,29 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 
 import {
   discardHealthRecordDraft,
-  listHealthRecordDrafts,
   getHealthRecordDraft,
   lookupHealthRecordDraft,
   transitionDraft,
 } from "../services/healthRecordDraftService";
-import { createClinicalDraftRecovery } from "../services/clinicalDraftRecoveryService";
 import { formDraftOwnerContext } from "../utils/formDraftRequest";
-import { consultationRecoveryEntry, consultationRecoveryPath, consultationEntryKey, prepareConsultationRecovery } from "../utils/consultationRecoveryEntry";
-import * as legacyLocalDraftVault from "../services/localDraftVault";
+import {
+  consultationRecoveryEntry,
+  consultationRecoveryPath,
+  consultationEntryKey,
+  prepareConsultationRecovery,
+  takeoverConsultationRecovery,
+  discardConsultationRecovery,
+} from "../utils/consultationRecoveryEntry";
 import { getCareOverview } from "../services/careOverviewService";
 import { getConsultationPatientQuery } from "../services/consultationPatientQuery";
 import { prepareContinuedStart } from "../services/startConsultationService";
 import { getCurrentUser } from "../utils/auth";
 import { buildPatientConsultationPath } from "../utils/consultationRoute";
-import { DRAFTS_ENABLED, FORM_DRAFTS_ENABLED } from "../utils/featureFlags";
+import { DRAFTS_ENABLED } from "../utils/featureFlags";
 import { queryKeys } from "../utils/queryKeys";
 import { consultationNeedsStartModal, reachedPath, startRoute } from "../utils/startConsultation";
 
@@ -46,9 +50,6 @@ export default function usePatientConsultation(patientId) {
   const currentUser = getCurrentUser();
   const ownerId = String(currentUser?.id || "");
   const ownerContext = String(formDraftOwnerContext(currentUser || {}));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const recoveryVault = useMemo(() => FORM_DRAFTS_ENABLED ? createClinicalDraftRecovery(currentUser || {}) : legacyLocalDraftVault, [ownerContext]);
-  const vaultOwner = FORM_DRAFTS_ENABLED ? ownerContext : ownerId;
   // The care-overview endpoint's own permission rule (CareOverviewController).
   const permissions = currentUser?.permissions || [];
   const canReadCareOverview =
@@ -81,9 +82,7 @@ export default function usePatientConsultation(patientId) {
 
   const { data: unfinished = [], isPending, isError } = useQuery({
     queryKey,
-    queryFn: async () => FORM_DRAFTS_ENABLED
-      ? [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean)
-      : listHealthRecordDrafts(),
+    queryFn: async () => [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean),
     enabled: DRAFTS_ENABLED && Boolean(ownerId && patientId) && permissions.includes("consultations.encode"),
     staleTime: 0,
   });
@@ -104,7 +103,7 @@ export default function usePatientConsultation(patientId) {
 
   const discard = useMutation({
     mutationFn: async (id) => {
-      const options = FORM_DRAFTS_ENABLED ? { draftOwnerContext: ownerContext } : {};
+      const options = { draftOwnerContext: ownerContext };
       const current = await getHealthRecordDraft(id, options);
       if (!current.canEdit) throw new Error("Another staff member is editing this consultation.");
       return discardHealthRecordDraft(id, current.version, options);
@@ -114,11 +113,10 @@ export default function usePatientConsultation(patientId) {
       queryClient.setQueryData(queryKey, (current = []) =>
         current.filter((item) => item.id !== draftId),
       );
-      toast.success("Draft discarded.");
       await queryClient.invalidateQueries({ queryKey });
     },
-    onError: (error) => {
-      toast.error(error?.message || "Unable to discard this draft. Please try again.");
+    onError: () => {
+      toast.error("We couldn't discard this unfinished work. Please try again.");
     },
   });
 
@@ -130,28 +128,36 @@ export default function usePatientConsultation(patientId) {
     : buildPatientConsultationPath(patientId);
 
   async function checkRecovery() {
-    const [server, device] = await Promise.all([
-      queryClient.fetchQuery({ queryKey, queryFn: async () => [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean), staleTime: 0, retry: false }),
-      recoveryVault.listLocalDrafts(vaultOwner),
-    ]);
-    if (ownerContext !== formDraftOwnerContext(getCurrentUser() || {})) throw new Error("The account or working facility changed. Reopen the patient profile.");
-    return consultationRecoveryEntry({ patientId, server, device });
+    const server = await queryClient.fetchQuery({
+      queryKey,
+      queryFn: async () => [await lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext })].filter(Boolean),
+      staleTime: 0,
+      retry: false,
+    });
+    if (ownerContext !== formDraftOwnerContext(getCurrentUser() || {})) {
+      throw new Error("Your account or facility changed. Reopen the patient profile.");
+    }
+    return consultationRecoveryEntry({ patientId, server });
+  }
+
+  function recoveryApis() {
+    const options = { draftOwnerContext: ownerContext };
+    return {
+      lookup: () => lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext }),
+      load: (id) => getHealthRecordDraft(id, { ...options, claim: false }),
+      claim: (id, version) => transitionDraft(id, "claim", version, undefined, options),
+      takeover: (id, version, note) => transitionDraft(id, "takeover", version, note, options),
+      discard: (id, version) => discardHealthRecordDraft(id, version, options),
+    };
   }
 
   async function discardRecovery(entry) {
-    const fresh = await checkRecovery();
-    if (!fresh) return;
-    const beforeUuid = entry.server?.consultationUuid || entry.local?.record?.draft?.consultationUuid;
-    const currentUuid = fresh.server?.consultationUuid || fresh.local?.record?.draft?.consultationUuid;
-    if (beforeUuid !== currentUuid || (fresh.server && fresh.server.version !== entry.server?.version)) throw new Error("The unfinished consultation changed. Retry the recovery check before discarding.");
-    if (fresh.server) {
-      const options = { draftOwnerContext: ownerContext };
-      const current = await transitionDraft(fresh.server.id, "claim", fresh.server.version, undefined, options);
-      if (!current.canEdit) throw new Error("Another staff member is editing this consultation.");
-      await discardHealthRecordDraft(current.id, current.version, options);
-      if (fresh.local) await recoveryVault.deleteLocalDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
-    } else if (FORM_DRAFTS_ENABLED) await recoveryVault.discardDeviceDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
-    else await recoveryVault.deleteLocalDraft({ ownerKey: vaultOwner, consultationKey: fresh.local.consultationKey });
+    await discardConsultationRecovery({
+      patientId,
+      entry,
+      currentUserId: ownerId,
+      ...recoveryApis(),
+    });
     await queryClient.invalidateQueries({ queryKey });
   }
 
@@ -166,15 +172,24 @@ export default function usePatientConsultation(patientId) {
     recoveryEnabled: DRAFTS_ENABLED,
     checkRecovery,
     discardRecovery,
-    resumeRecovery: async (entry, source = "") => {
-      const options = { draftOwnerContext: ownerContext };
+    currentUserId: ownerId,
+    resumeRecovery: async (entry) => {
       const result = await prepareConsultationRecovery({
-        patientId, entry, source, vault: recoveryVault, ownerKey: vaultOwner,
-        lookup: () => lookupHealthRecordDraft({ patientId, draftOwnerContext: ownerContext }),
-        load: (id) => getHealthRecordDraft(id, { ...options, claim: false }),
-        claim: (id, version) => transitionDraft(id, "claim", version, undefined, options),
+        patientId,
+        entry,
+        currentUserId: ownerId,
+        ...recoveryApis(),
       });
-      if (result.decision) return result;
+      await openWorkspace(consultationRecoveryPath(patientId, entry), undefined, result);
+      return result;
+    },
+    takeoverRecovery: async (entry, note) => {
+      const result = await takeoverConsultationRecovery({
+        patientId,
+        entry,
+        note,
+        ...recoveryApis(),
+      });
       await openWorkspace(consultationRecoveryPath(patientId, entry), undefined, result);
       return result;
     },
@@ -196,7 +211,7 @@ export default function usePatientConsultation(patientId) {
         monitoringIds.length || startConditionIds.length || followUpIds.length
           ? () => prepareContinuedStart(queryClient, patientId, monitoringIds, startConditionIds, followUpIds)
           : undefined,
-        DRAFTS_ENABLED ? { draft: null, unsynced: false } : undefined,
+        DRAFTS_ENABLED ? { draft: null } : undefined,
       );
     },
     /** Start / Resume without the modal: loads the patient, then opens `startPath`. */

@@ -5,13 +5,17 @@ namespace App\Services;
 use App\Exceptions\PersistentSessionException;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\NewAccessToken;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class UserSessionRevocationService
 {
+    public const SESSION_REPLACED_MESSAGE = PersistentSessionException::MESSAGE_REPLACED;
+
     public function expirationMinutes(): int
     {
         return max(1, (int) config('sanctum.expiration', 480));
@@ -32,6 +36,15 @@ class UserSessionRevocationService
     {
         $this->revokeExpiredTokens($user);
 
+        $sessionId = (string) Str::uuid();
+
+        // Remember prior token hashes so Device A's next request can return SESSION_REPLACED
+        // after First-In Kicked Out deletes the rows.
+        $this->markExistingTokensReplaced($user);
+        $this->revokeAllTokens($user, 'single-session-login');
+
+        $user->forceFill(['active_session_id' => $sessionId])->save();
+
         return $this->newSessionPair($user);
     }
 
@@ -41,6 +54,10 @@ class UserSessionRevocationService
     ): array {
         if (! is_string($plainTextRefreshToken) || $plainTextRefreshToken === '') {
             throw new PersistentSessionException;
+        }
+
+        if ($this->isReplacedSessionToken($plainTextRefreshToken)) {
+            throw PersistentSessionException::replaced();
         }
 
         $result = DB::transaction(function () use ($plainTextRefreshToken, $facilityAccess): array|PersistentSessionException {
@@ -67,8 +84,9 @@ class UserSessionRevocationService
             // non-UTC timezone the reconstructed start would land one UTC offset
             // early, so the rotated refresh token inherited a deadline that had
             // already passed - the session died on its first rotation.
+            $nameParts = $this->refreshTokenNameParts($token);
             $absoluteStartedAt = CarbonImmutable::createFromTimestamp(
-                (int) explode(':', (string) $token->name, 3)[1],
+                (int) ($nameParts[1] ?? 0),
                 config('app.timezone')
             );
 
@@ -98,6 +116,12 @@ class UserSessionRevocationService
                 }
 
                 return new PersistentSessionException;
+            }
+
+            if (! $this->tokenMatchesActiveSession($token, $user)) {
+                $token->delete();
+
+                return PersistentSessionException::replaced();
             }
 
             $token->delete();
@@ -178,17 +202,105 @@ class UserSessionRevocationService
             || $token->created_at->lte(now()->subMinutes($this->expirationMinutes()));
     }
 
+    public function isReplacedSessionToken(?string $plainTextToken): bool
+    {
+        if (! is_string($plainTextToken) || $plainTextToken === '') {
+            return false;
+        }
+
+        return Cache::has($this->replacedSessionTokenCacheKey($this->hashPlainTextToken($plainTextToken)));
+    }
+
+    public function tokenMatchesActiveSession(PersonalAccessToken $token, User $user): bool
+    {
+        $activeSessionId = $user->active_session_id;
+        if (! is_string($activeSessionId) || $activeSessionId === '') {
+            return true;
+        }
+
+        $tokenSessionId = $this->tokenSessionId($token);
+
+        return is_string($tokenSessionId)
+            && $tokenSessionId !== ''
+            && hash_equals($activeSessionId, $tokenSessionId);
+    }
+
+    public function tokenSessionId(PersonalAccessToken $token): ?string
+    {
+        $name = (string) $token->name;
+
+        if (str_starts_with($name, 'akay-access:')) {
+            $sessionId = substr($name, strlen('akay-access:'));
+
+            return $sessionId !== '' ? $sessionId : null;
+        }
+
+        if (str_starts_with($name, 'akay-refresh:')) {
+            $parts = $this->refreshTokenNameParts($token);
+
+            return isset($parts[3]) && $parts[3] !== '' ? $parts[3] : null;
+        }
+
+        return null;
+    }
+
+    private function markExistingTokensReplaced(User $user): void
+    {
+        $ttlMinutes = max(
+            (int) config('auth_persistence.refresh_token_minutes', 480),
+            (int) config('auth_persistence.access_token_minutes', 15),
+            60
+        );
+
+        foreach ($user->tokens()->cursor() as $token) {
+            Cache::put(
+                $this->replacedSessionTokenCacheKey($token->token),
+                true,
+                now()->addMinutes($ttlMinutes)
+            );
+        }
+    }
+
+    private function replacedSessionTokenCacheKey(string $tokenHash): string
+    {
+        return 'akay:session-replaced:'.$tokenHash;
+    }
+
+    private function hashPlainTextToken(string $plainTextToken): string
+    {
+        if (! str_contains($plainTextToken, '|')) {
+            return hash('sha256', $plainTextToken);
+        }
+
+        [, $secret] = array_pad(explode('|', $plainTextToken, 2), 2, '');
+
+        return hash('sha256', (string) $secret);
+    }
+
     private function newSessionPair(
         User $user,
         ?CarbonImmutable $absoluteStartedAt = null
     ): array {
         $absoluteStartedAt ??= CarbonImmutable::now();
-        $access = $this->issueToken($user);
+        $sessionId = (string) ($user->active_session_id ?? '');
+        // Legacy sessions created before single-session enforcement get an id on
+        // their next successful refresh without treating that rotation as a kick.
+        if ($sessionId === '') {
+            $sessionId = (string) Str::uuid();
+            $user->forceFill(['active_session_id' => $sessionId])->save();
+        }
+
+        $access = $user->createToken(
+            'akay-access:'.$sessionId,
+            ['akay:access'],
+            now()->addMinutes(config('auth_persistence.access_token_minutes'))
+        );
         $refresh = $user->createToken(
             implode(':', [
                 'akay-refresh',
                 $absoluteStartedAt->getTimestamp(),
                 $this->securityContextHash($user),
+                $sessionId,
             ]),
             ['akay:refresh'],
             $absoluteStartedAt->addMinutes(config('auth_persistence.refresh_token_minutes'))
@@ -200,11 +312,17 @@ class UserSessionRevocationService
         ];
     }
 
+    private function refreshTokenNameParts(PersonalAccessToken $token): array
+    {
+        return explode(':', (string) $token->name, 4);
+    }
+
     private function matchesSecurityContext(PersonalAccessToken $token, User $user): bool
     {
-        $parts = explode(':', (string) $token->name, 3);
+        $parts = $this->refreshTokenNameParts($token);
 
-        return count($parts) === 3
+        return count($parts) >= 3
+            && ($parts[0] ?? '') === 'akay-refresh'
             && hash_equals($parts[2], $this->securityContextHash($user));
     }
 

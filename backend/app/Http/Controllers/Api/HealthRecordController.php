@@ -135,6 +135,9 @@ class HealthRecordController extends Controller
             $this->facilityAccess->authorizePatientModification($request->user(), $patient);
         }
         app(\App\Services\TbClinicalAuthority::class)->authorizeRecord($request->user(), $patient, $data);
+        if ($rhuItr && is_array($data['monitoring_data']['prescriptions'] ?? null) && $data['monitoring_data']['prescriptions'] !== []) {
+            \App\Services\PrescriptionClinicalAuthority::ensureCanAuthorize($request->user());
+        }
         // BHC-only General Consultation v2 (consultation_workflow: bhc_general_v2).
         // A request without the discriminator runs every legacy step below unchanged.
         $v2 = $request->isBhcGeneralV2();
@@ -194,10 +197,8 @@ class HealthRecordController extends Controller
         }
         $draftPublicId = $data['draft_public_id'] ?? null;
         unset($data['draft_public_id']);
-        $tbCaseRegistration = is_array($data['tb_case_registration'] ?? null) ? $data['tb_case_registration'] : null;
         $idempotencyKey = $data['idempotency_key'];
         $idempotencyHash = $idempotency->hash($data);
-        unset($data['tb_case_registration']);
         $legacyIdempotencyHash = $idempotency->legacyHash($data);
         $carePlan = $data['care_plan'] ?? [];
         unset($data['care_plan']);
@@ -302,6 +303,11 @@ class HealthRecordController extends Controller
         $data['date_recorded'] ??= now();
         $data['tb_assessment_authority'] = app(\App\Services\TbClinicalAuthority::class)
             ->finalizationAttestation($request->user(), $data['diagnoses'] ?? []);
+        if ($rhuItr && is_array($data['monitoring_data'] ?? null)) {
+            // After the idempotency hash: authorizedAt must not change a retry's payload hash.
+            $data['monitoring_data'] = app(\App\Services\PrescriptionClinicalAuthority::class)
+                ->applyToMonitoringData($request->user(), $data['monitoring_data']);
+        }
 
         try {
             $record = DB::transaction(function () use (
@@ -327,8 +333,7 @@ class HealthRecordController extends Controller
                 $patientConditions,
                 $v2,
                 $rhuItr,
-                $visit,
-                $tbCaseRegistration
+                $visit
             ) {
                 $lockedDraft = $draftPublicId
                     ? $drafts->lockForOfficialSave(
@@ -538,27 +543,6 @@ class HealthRecordController extends Controller
                         $visit,
                         (string) $record->consultation_uuid
                     );
-                }
-
-                if (is_array($tbCaseRegistration)) {
-                    $registrationPayload = [
-                        'registration_key' => $tbCaseRegistration['registration_key'],
-                        'reporting_year' => (int) $tbCaseRegistration['reporting_year'],
-                        'case_number' => $tbCaseRegistration['case_number'] ?? null,
-                        'confirmed' => true,
-                        'treatment_start_date' => $tbCaseRegistration['treatment_start_date'] ?? null,
-                        'card_data' => $tbCaseRegistration['card_data'] ?? [],
-                        'trust_source_revision' => true,
-                        'source_revision' => app(\App\Services\TbCaseRegistrationService::class)->revision($record),
-                    ];
-                    $registered = app(\App\Services\TbCaseRegistrationService::class)->registerForSource(
-                        $request->user(),
-                        $record,
-                        $registrationPayload,
-                        $request,
-                        true
-                    );
-                    $record->setAttribute('tb_treatment_case', $registered['case']);
                 }
 
                 return $record;

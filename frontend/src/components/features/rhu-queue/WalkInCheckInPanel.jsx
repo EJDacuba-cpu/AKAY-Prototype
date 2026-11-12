@@ -4,9 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { UserRound } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { SearchField } from "../../common";
+import { ConnectionErrorState, SearchField } from "../../common";
 import { Button } from "../../ui/button";
 import useAccess from "../../../hooks/useAccess";
+import { errorStateVariant } from "../../../utils/errorStateVariant";
 import { getRhuPatientById } from "../../../services/patientService";
 import {
   checkInExistingPatient,
@@ -90,46 +91,48 @@ function emptyVisitRecords() {
 export default function WalkInCheckInPanel({
   selectedPatientId = null,
   onClearedSelection,
+  header = null,
 }) {
   const access = useAccess();
   const canViewQueue = access.can("clinical.history");
   const client = useQueryClient();
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState([]);
-  const [recentStatus, setRecentStatus] = useState({ loading: true, error: "" });
+  const [recentStatus, setRecentStatus] = useState({ loading: true, error: null });
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState({ loading: false, error: "" });
+  const [status, setStatus] = useState({ loading: false, error: null });
   const [selected, setSelected] = useState(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
-  const [selectedError, setSelectedError] = useState("");
+  const [selectedError, setSelectedError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [successName, setSuccessName] = useState("");
   const [visitRecords, setVisitRecords] = useState(emptyVisitRecords);
   const [recordsReload, setRecordsReload] = useState(0);
   const walkIn = useRef(null);
   const [reloads, setReloads] = useState(0);
+  const [recentReloads, setRecentReloads] = useState(0);
   const latest = useRef(0);
   const searching = isSearchable(query);
 
   useEffect(() => {
     let cancelled = false;
-    setRecentStatus({ loading: true, error: "" });
+    setRecentStatus({ loading: true, error: null });
     (async () => {
       try {
         const rows = await listRecentPatientsForCheckIn(8);
         if (!cancelled) {
           setRecent(rows);
-          setRecentStatus({ loading: false, error: "" });
+          setRecentStatus({ loading: false, error: null });
         }
       } catch (error) {
         if (!cancelled) {
           setRecent([]);
-          setRecentStatus({ loading: false, error: error.message || "Unable to load recent patients." });
+          setRecentStatus({ loading: false, error });
         }
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [recentReloads]);
 
   useEffect(() => {
     if (!selectedPatientId) return undefined;
@@ -137,7 +140,7 @@ export default function WalkInCheckInPanel({
     setSelected(null);
     setVisitRecords(emptyVisitRecords());
     setSelectedLoading(true);
-    setSelectedError("");
+    setSelectedError(null);
     setSuccessName("");
     (async () => {
       try {
@@ -146,10 +149,10 @@ export default function WalkInCheckInPanel({
           setSelected(toCheckInRow(patient));
           setSelectedLoading(false);
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setSelected(null);
-          setSelectedError("Unable to load the registered patient.");
+          setSelectedError(error || new Error("Unable to load the registered patient."));
           setSelectedLoading(false);
         }
       }
@@ -161,20 +164,20 @@ export default function WalkInCheckInPanel({
     const request = ++latest.current;
     if (!isSearchable(query)) {
       setResults([]);
-      setStatus({ loading: false, error: "" });
+      setStatus({ loading: false, error: null });
       return undefined;
     }
-    setStatus({ loading: true, error: "" });
+    setStatus({ loading: true, error: null });
     const timer = setTimeout(async () => {
       try {
         const found = await searchPatientsForCheckIn(query.trim());
         if (request !== latest.current) return;
         setResults(found);
-        setStatus({ loading: false, error: "" });
+        setStatus({ loading: false, error: null });
       } catch (error) {
         if (request !== latest.current) return;
         setResults([]);
-        setStatus({ loading: false, error: error.message || "Unable to search patients." });
+        setStatus({ loading: false, error });
       }
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
@@ -239,7 +242,7 @@ export default function WalkInCheckInPanel({
 
   function selectPatient(patient) {
     setSuccessName("");
-    setSelectedError("");
+    setSelectedError(null);
     setSelectedLoading(false);
     setSelected(toCheckInRow(patient));
   }
@@ -247,10 +250,10 @@ export default function WalkInCheckInPanel({
   function resetWorkspace() {
     setQuery("");
     setResults([]);
-    setStatus({ loading: false, error: "" });
+    setStatus({ loading: false, error: null });
     setSelected(null);
     setSelectedLoading(false);
-    setSelectedError("");
+    setSelectedError(null);
     setSuccessName("");
     setVisitRecords(emptyVisitRecords());
     walkIn.current = null;
@@ -325,8 +328,21 @@ export default function WalkInCheckInPanel({
   const listRows = searching ? results : recent;
   const listLabel = searching ? "Matching patients" : "Available for Check-in";
 
+  if (recentStatus.error && !searching && !selectedPatientId) {
+    return (
+      <ConnectionErrorState
+        fullPage
+        variant={errorStateVariant(recentStatus.error)}
+        onRetry={() => setRecentReloads((count) => count + 1)}
+        retrying={recentStatus.loading}
+      />
+    );
+  }
+
   return (
-    <div className="grid min-h-0 gap-4 lg:grid-cols-2 lg:items-stretch">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      {header}
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2 lg:items-stretch">
       <section className={panelSheet} aria-labelledby="visit-check-in-find-heading">
         <div className="shrink-0 border-b border-neutral-100 px-3.5 py-3 sm:px-4">
           <h2 id="visit-check-in-find-heading" className="text-sm font-semibold text-ink-800">Find Patient</h2>
@@ -353,6 +369,8 @@ export default function WalkInCheckInPanel({
             listLabel={listLabel}
             selectedId={selected?.id}
             onSelect={selectPatient}
+            onRetrySearch={() => setReloads((count) => count + 1)}
+            onRetryRecent={() => setRecentReloads((count) => count + 1)}
           />
         </div>
       </section>
@@ -375,7 +393,26 @@ export default function WalkInCheckInPanel({
           ) : selectedLoading ? (
             <p role="status" className="m-auto py-6 text-center text-[13px] text-neutral-500">Loading patient...</p>
           ) : selectedError ? (
-            <p role="alert" className="m-auto py-6 text-center text-[13px] text-danger">{selectedError}</p>
+            <ConnectionErrorState
+              size="compact"
+              variant={errorStateVariant(selectedError)}
+              onRetry={() => {
+                if (!selectedPatientId) return;
+                setSelectedError(null);
+                setSelectedLoading(true);
+                getRhuPatientById(selectedPatientId)
+                  .then((patient) => {
+                    setSelected(toCheckInRow(patient));
+                    setSelectedLoading(false);
+                  })
+                  .catch((error) => {
+                    setSelected(null);
+                    setSelectedError(error || new Error("Unable to load the registered patient."));
+                    setSelectedLoading(false);
+                  });
+              }}
+              retrying={selectedLoading}
+            />
           ) : !selected ? (
             <EmptySelectionState />
           ) : (
@@ -414,6 +451,7 @@ export default function WalkInCheckInPanel({
           )}
         </div>
       </section>
+      </div>
     </div>
   );
 }
@@ -426,10 +464,19 @@ function PatientListBody({
   listLabel,
   selectedId,
   onSelect,
+  onRetrySearch,
+  onRetryRecent,
 }) {
   if (searching) {
     if (status.error) {
-      return <p role="alert" className="py-5 text-center text-[13px] text-danger">{status.error}</p>;
+      return (
+        <ConnectionErrorState
+          size="compact"
+          variant={errorStateVariant(status.error)}
+          onRetry={onRetrySearch}
+          retrying={status.loading}
+        />
+      );
     }
     if (status.loading) {
       return <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Searching...</p>;
@@ -443,7 +490,14 @@ function PatientListBody({
     }
   } else {
     if (recentStatus.error) {
-      return <p role="alert" className="py-5 text-center text-[13px] text-danger">{recentStatus.error}</p>;
+      return (
+        <ConnectionErrorState
+          size="compact"
+          variant={errorStateVariant(recentStatus.error)}
+          onRetry={onRetryRecent}
+          retrying={recentStatus.loading}
+        />
+      );
     }
     if (recentStatus.loading) {
       return <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Loading recent patients...</p>;
