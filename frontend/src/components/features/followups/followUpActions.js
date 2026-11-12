@@ -1,6 +1,6 @@
 /**
- * Follow-up list/calendar actions and navigation. BHC no longer has a
- * dedicated Follow-up Details page; RHU still does, so callers pass basePath.
+ * Follow-up list/calendar actions and navigation.
+ * The dedicated Follow-up Details page is retired for BHC and RHU.
  */
 
 export function getCompletedFollowUpRecordId(task) {
@@ -14,22 +14,27 @@ export function getCompletedFollowUpRecordId(task) {
 }
 
 /**
- * Bookmarks of the retired BHC Follow-up Details page. Completed visits with
+ * Bookmarks of the retired Follow-up Details page. Completed visits with
  * a recorded consultation go to that health record; pending/cancelled tasks
  * stay on the Follow-ups list instead of an unrelated source record.
  */
-export function getBhcFollowUpLegacyDestination(task) {
+export function getFollowUpLegacyDestination(task, basePath = "/bhc") {
+  const root = String(basePath || "/bhc").replace(/\/$/, "") || "/bhc";
   const recordId = getCompletedFollowUpRecordId(task);
-  return recordId ? `/bhc/health-records/${recordId}` : "/bhc/follow-ups";
+  return recordId ? `${root}/health-records/${recordId}` : `${root}/follow-ups`;
+}
+
+/** @deprecated Prefer getFollowUpLegacyDestination(task, "/bhc"). */
+export function getBhcFollowUpLegacyDestination(task) {
+  return getFollowUpLegacyDestination(task, "/bhc");
 }
 
 /**
- * Calendar/list click target. RHU still opens Follow-up Details. BHC only
- * navigates when a completed follow-up has its own recorded consultation.
+ * Calendar/list click target. Only navigates when a completed follow-up has
+ * its own recorded consultation; otherwise the row stays on the list.
  */
 export function getTaskNavigationTarget(task, basePath = "/bhc") {
   if (!task?.id) return "";
-  if (basePath === "/rhu") return `${basePath}/follow-ups/${task.id}`;
   const recordId = getCompletedFollowUpRecordId(task);
   return recordId ? `${basePath}/health-records/${recordId}` : "";
 }
@@ -38,10 +43,8 @@ export function getTaskNavigationTarget(task, basePath = "/bhc") {
  * The one follow-up action menu, shared by the List rows and every Calendar
  * event so the two views can never offer different actions for the same
  * task. Optional handlers are only listed when the caller supplies them.
- * BHC omits "View Follow-up Details"; RHU keeps that action.
  */
 export function buildTaskActions(task, handlers = {}) {
-  const basePath = handlers.basePath || "/bhc";
   const actions = [];
 
   if (
@@ -73,13 +76,6 @@ export function buildTaskActions(task, handlers = {}) {
     actions.push({
       label: "View Health Record",
       onClick: handlers.onViewRecord,
-    });
-  }
-
-  if (basePath === "/rhu" && task.id) {
-    actions.push({
-      label: "View Follow-up Details",
-      to: `${basePath}/follow-ups/${task.id}`,
     });
   }
 

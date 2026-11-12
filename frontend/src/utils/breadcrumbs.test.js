@@ -97,18 +97,11 @@ test("RHU health record details sit under Patients", () => {
   );
 });
 
-test("RHU follow-up details sit under Follow-ups", () => {
-  assert.deepEqual(
-    getBreadcrumbs("/rhu/follow-ups/12", "Follow-up Details"),
-    [
-      { label: "Follow-ups", path: "/rhu/follow-ups" },
-      { label: "Follow-up Details" },
-    ],
-  );
-});
-
-test("retired BHC follow-up details URLs do not form a details trail", () => {
+test("retired follow-up details URLs do not form a details trail", () => {
   assert.deepEqual(getBreadcrumbs("/bhc/follow-ups/12", "Follow-ups"), [
+    { label: "Follow-ups" },
+  ]);
+  assert.deepEqual(getBreadcrumbs("/rhu/follow-ups/12", "Follow-ups"), [
     { label: "Follow-ups" },
   ]);
 });

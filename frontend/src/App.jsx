@@ -59,8 +59,7 @@ import AddPatient from "./pages/bhc/AddPatient";
 import { BhcFamiliesDirectory, BhcFamilyDetails, BhcFamilyForm, BhcAddMember, BhcDeferredFamilyAction } from "./pages/bhc/BhcFamilies";
 import BhcFamilyConnections from "./pages/bhc/BhcFamilyConnections";
 import FollowUps from "./pages/bhc/FollowUps";
-import BhcFollowUpRedirect from "./pages/bhc/BhcFollowUpRedirect";
-import FollowUpDetails from "./pages/bhc/FollowUpDetails";
+import FollowUpLegacyRedirect from "./pages/bhc/BhcFollowUpRedirect";
 import Referrals from "./pages/bhc/Referrals";
 import CreateReferral from "./pages/bhc/CreateReferral";
 import WaitingReferralDetails from "./pages/bhc/WaitingReferralDetails";
@@ -642,7 +641,7 @@ export default function App() {
         path="/bhc/follow-ups/:taskId"
         element={
           <ProtectedPage allowedRole="bhc" module="history">
-            <BhcFollowUpRedirect />
+            <FollowUpLegacyRedirect role="bhc" />
           </ProtectedPage>
         }
       />
@@ -833,7 +832,7 @@ export default function App() {
         path="/rhu/follow-ups/:taskId"
         element={
           <ProtectedPage allowedRole="rhu" module="followups">
-            <FollowUpDetails role="rhu" />
+            <FollowUpLegacyRedirect role="rhu" />
           </ProtectedPage>
         }
       />
