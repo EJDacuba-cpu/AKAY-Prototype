@@ -22,6 +22,9 @@ export function tbManagementFields(entry = {}) {
   // Consultation no longer registers Form 4B; keep the field off for compatibility.
   const storedOpen = stored.openTreatmentCard ?? stored.open_treatment_card;
   const openTreatmentCard = isDsTb && truthyFlag(storedOpen);
+  const tbCaseNumber = diagnosisType === "tb_disease"
+    ? String(stored.tbCaseNumber ?? stored.tb_case_number ?? "").trim().slice(0, 100)
+    : "";
   return {
     diagnosisType,
     drugResistance,
@@ -29,6 +32,7 @@ export function tbManagementFields(entry = {}) {
     dispositionReason,
     dispositionPlan,
     openTreatmentCard,
+    tbCaseNumber,
   };
 }
 
@@ -65,6 +69,9 @@ export function tbManagementFor(entry, next = {}) {
     : next.treatmentDecision !== undefined
       ? next.treatmentDecision
       : previous.treatmentDecision;
+  const tbCaseNumber = diagnosisType === "tb_disease"
+    ? (next.tbCaseNumber !== undefined ? next.tbCaseNumber : previous.tbCaseNumber)
+    : "";
   const merged = {
     ...previous,
     ...next,
@@ -74,6 +81,7 @@ export function tbManagementFor(entry, next = {}) {
     dispositionReason: cleared ? "" : (next.dispositionReason !== undefined ? next.dispositionReason : previous.dispositionReason),
     dispositionPlan: cleared ? "" : (next.dispositionPlan !== undefined ? next.dispositionPlan : previous.dispositionPlan),
     openTreatmentCard,
+    tbCaseNumber,
   };
   return {
     ...entry,

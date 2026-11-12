@@ -60,8 +60,21 @@ test("DS-TB assessment does not arm consultation Form 4B registration controls",
   };
   const html = render(entry);
   assert.match(html, /Physician TB Assessment/);
+  assert.match(html, /TB Case Number/);
+  assert.match(html, /name="diagnoses.tb.tbManagement.tbCaseNumber"/);
   assert.doesNotMatch(html, /Register Treatment · Form 4B|Complete Form 4B on Review|Cancel registration|Register DS-TB Treatment|Authorize and register Form 4B/);
-  assert.doesNotMatch(html, /data-field="tbCaseRegistration"|Treatment start date|Verified consultation summary/);
+  assert.doesNotMatch(html, /data-field="tbCaseRegistration"|Treatment start date|Verified consultation summary|Linked Diagnosis/);
+});
+
+test("presumptive and infection assessments hide TB Case Number", () => {
+  assert.doesNotMatch(
+    render({ ...tb, tbManagement: { diagnosisType: "presumptive_tb" } }),
+    /name="diagnoses.tb.tbManagement.tbCaseNumber"/,
+  );
+  assert.doesNotMatch(
+    render({ ...tb, tbManagement: { diagnosisType: "tb_infection" } }),
+    /name="diagnoses.tb.tbManagement.tbCaseNumber"/,
+  );
 });
 
 test("presumptive TB hides drug susceptibility and every diagnosis can link supporting labs", () => {
@@ -261,12 +274,10 @@ test("Add Prescription saves one visit-level order and keeps field errors beside
   try {
     await clickButton(diagnosisCard(app.container, "Hypertension"), "Add Prescription");
     const form = diagnosisCard(app.container, "Hypertension");
-    assert.match(form.textContent, /Linked Diagnosis/);
+    assert.doesNotMatch(form.textContent, /Linked Diagnosis/);
+    assert.equal(form.querySelectorAll('input[name$=".diagnosisIds"]').length, 0);
     assert.match(form.textContent, /Medicine Name/);
     assert.match(form.textContent, /Authorized Quantity/);
-    const linked = [...form.querySelectorAll('input[name$=".diagnosisIds"]')];
-    assert.equal(linked.find((input) => input.value === "htn")?.checked, true);
-    assert.equal(linked.find((input) => input.value === "dm")?.checked, false);
     await clickButton(form, "Save Prescription");
     assert.match(form.textContent, /Enter the medicine name/);
     assert.equal(app.calls.prescriptions.length, 0);
@@ -280,20 +291,18 @@ test("Add Prescription saves one visit-level order and keeps field errors beside
     await setField(form.querySelector('[name$=".instructions"]'), "With breakfast");
     await setField(form.querySelector('[name$=".authorizedQuantity"]'), "14");
     await setField(form.querySelector('[name$=".authorizedUnit"]'), "tablet");
-    const diabetes = linked.find((input) => input.value === "dm");
-    await act(async () => { diabetes.click(); });
     await clickButton(form, "Save Prescription");
 
     assert.equal(app.calls.prescriptions.length, 1);
     const [saved] = app.calls.prescriptions[0];
     assert.equal(saved.medicineName, "Amlodipine");
-    assert.deepEqual(saved.diagnosisIds, ["htn", "dm"]);
+    assert.deepEqual(saved.diagnosisIds, ["htn"]);
     assert.equal(saved.authorizedQuantity, 14);
     assert.equal(saved.authorizedUnit, "tablet");
     assert.equal(saved.source, "itr");
     assert.match(diagnosisCard(app.container, "Hypertension").textContent, /Amlodipine 5 mg/);
-    assert.match(diagnosisCard(app.container, "Diabetes").textContent, /Amlodipine 5 mg/);
-    assert.doesNotMatch(app.container.textContent, /Enter the medicine name/);
+    assert.doesNotMatch(diagnosisCard(app.container, "Diabetes").textContent, /Amlodipine 5 mg/);
+    assert.doesNotMatch(app.container.textContent, /Enter the medicine name|Linked Diagnosis/);
   } finally {
     await app.close();
   }

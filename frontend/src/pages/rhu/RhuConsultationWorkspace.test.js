@@ -76,7 +76,7 @@ test("RHU consult prescription is structured on the diagnosis card without catal
     "utf8",
   );
   assert.match(prescriptionsUi, /Add Prescription/);
-  assert.match(prescriptionsUi, /Linked Diagnosis/);
+  assert.doesNotMatch(prescriptionsUi, /Linked Diagnosis/);
   assert.match(carePlan, /RhuPrescriptionsSection/);
   assert.match(carePlan, /reconcilePrescriptionsForDiagnosisRemoval/);
   assert.match(carePlan, /prescriptions=\{prescriptions\}/);

@@ -177,6 +177,61 @@ class RhuToDispenseQueueTest extends TestCase
             ->assertJsonPath('data.0.prescriptionText', 'Losartan 50mg · 14 tablets · Once daily after breakfast');
     }
 
+    public function test_structured_prescriptions_queue_as_medicine_lines_without_diagnosis_fields(): void
+    {
+        $patient = $this->patient();
+        HealthRecord::create([
+            'patient_id' => $patient->id,
+            'created_by' => $this->clinician()->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'category' => 'General Consultation',
+            'chief_complaint' => 'Cough',
+            'finalized_at' => now(),
+            'date_recorded' => now(),
+            'diagnoses' => [[
+                'id' => 'tb',
+                'name' => 'TB',
+                'tbManagement' => [
+                    'diagnosisType' => 'tb_disease',
+                    'drugResistance' => 'drug_susceptible',
+                    'tbCaseNumber' => 'TB-2026-0009',
+                ],
+            ]],
+            'monitoring_data' => [
+                'consultationWorkflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'prescriptions' => [[
+                    'id' => 'rx-1',
+                    'diagnosisIds' => ['tb'],
+                    'medicineName' => 'Rifampicin',
+                    'strength' => '150 mg',
+                    'dose' => '2 tablets',
+                    'route' => 'PO',
+                    'frequency' => 'Once daily',
+                    'duration' => '14 days',
+                    'instructions' => 'With food',
+                    'authorizedQuantity' => 28,
+                    'authorizedUnit' => 'tablet',
+                    'source' => 'itr',
+                ]],
+            ],
+        ]);
+
+        $row = $this->as($this->dispenser())
+            ->getJson('/api/rhu/to-dispense')
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertSame('pending', $row['status']);
+        $this->assertStringContainsString('Rifampicin 150 mg', $row['prescriptionText']);
+        $this->assertSame('Rifampicin', $row['prescriptions'][0]['medicineName']);
+        $this->assertSame(28, $row['prescriptions'][0]['authorizedQuantity']);
+        $this->assertArrayNotHasKey('diagnoses', $row);
+        $this->assertArrayNotHasKey('tbManagement', $row);
+        $this->assertArrayNotHasKey('diagnosisIds', $row['prescriptions'][0]);
+        $this->assertArrayNotHasKey('tbCaseNumber', $row['prescriptions'][0]);
+    }
+
     private function rhuUser(array $permissions, array $attributes = []): User
     {
         return User::create([

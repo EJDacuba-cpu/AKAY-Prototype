@@ -25,18 +25,20 @@ final class TbAssessment
     public static function rules(string $prefix = 'diagnoses.*.tbManagement'): array
     {
         return [
-            $prefix => ['nullable', 'array:diagnosisType,drugResistance,openTreatmentCard,treatmentDecision,dispositionReason,dispositionPlan'],
+            $prefix => ['nullable', 'array:diagnosisType,drugResistance,openTreatmentCard,treatmentDecision,dispositionReason,dispositionPlan,tbCaseNumber'],
             "$prefix.diagnosisType" => ['nullable', Rule::in(self::DIAGNOSIS_TYPES)],
             "$prefix.drugResistance" => ['nullable', Rule::in(self::RESISTANCE_TYPES)],
             "$prefix.openTreatmentCard" => ['nullable', 'boolean'],
             "$prefix.treatmentDecision" => ['nullable', Rule::in(self::TREATMENT_DECISIONS)],
             "$prefix.dispositionReason" => ['nullable', 'string', 'max:2000'],
             "$prefix.dispositionPlan" => ['nullable', 'string', 'max:2000'],
+            "$prefix.tbCaseNumber" => ['nullable', 'string', 'max:100', 'regex:/^(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-\\/. ]{0,98}[A-Za-z0-9])$/'],
         ];
     }
 
     public static function validate(Validator $validator, array $diagnoses): void
     {
+        $seenCaseNumbers = [];
         foreach ($diagnoses as $index => $entry) {
             $assessment = $entry['tbManagement'] ?? null;
             if (! is_array($assessment)) {
@@ -46,6 +48,7 @@ final class TbAssessment
             $resistance = $assessment['drugResistance'] ?? null;
             $decision = $assessment['treatmentDecision'] ?? null;
             $open = ! empty($assessment['openTreatmentCard']);
+            $caseNumber = trim((string) ($assessment['tbCaseNumber'] ?? ''));
             $prefix = "diagnoses.$index.tbManagement";
             $isDsTb = $type === 'tb_disease' && $resistance === 'drug_susceptible';
 
@@ -71,6 +74,19 @@ final class TbAssessment
                         ? 'DS-TB Form 4B registration is discontinued. Leave treatment-card initiation off.'
                         : 'Treatment-card initiation applies only to drug-susceptible TB Disease.'
                 );
+            }
+
+            if ($caseNumber !== '') {
+                if ($type !== 'tb_disease') {
+                    $validator->errors()->add("$prefix.tbCaseNumber", 'TB case number applies only to TB Disease.');
+                } else {
+                    $normalized = strtoupper($caseNumber);
+                    if (isset($seenCaseNumbers[$normalized])) {
+                        $validator->errors()->add("$prefix.tbCaseNumber", 'This TB case number is already used on another diagnosis in this visit.');
+                    } else {
+                        $seenCaseNumbers[$normalized] = $index;
+                    }
+                }
             }
         }
     }
@@ -98,9 +114,15 @@ final class TbAssessment
                     'treatmentDecision' => '',
                     'dispositionReason' => '',
                     'dispositionPlan' => '',
+                    'tbCaseNumber' => '',
                 ];
                 continue;
             }
+
+            $caseNumber = trim((string) ($management['tbCaseNumber'] ?? ''));
+            $payload['diagnoses'][$index]['tbManagement']['tbCaseNumber'] = $type === 'tb_disease'
+                ? mb_substr($caseNumber, 0, 100)
+                : '';
 
             $isDsTb = $type === 'tb_disease' && $resistance === 'drug_susceptible';
             if (! $isDsTb) {

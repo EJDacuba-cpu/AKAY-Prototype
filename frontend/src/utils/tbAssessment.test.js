@@ -12,6 +12,7 @@ const assessment = {
   dispositionReason: "Awaiting labs",
   dispositionPlan: "Return in one week",
   openTreatmentCard: false,
+  tbCaseNumber: "",
 };
 const entry = { id: "tb-1", name: "Tuberculosis", activate: false, nextAction: "none", tbManagement: assessment };
 
@@ -32,6 +33,7 @@ test("switching to infection clears resistance and registration in actual state"
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   });
   assert.equal(tbManagementFor(infection, { diagnosisType: "tb_disease" }).tbManagement.drugResistance, "");
   assert.equal(disease.tbManagement.drugResistance, "drug_susceptible");
@@ -47,6 +49,7 @@ test("presumptive TB clears drug susceptibility and never opens Form 4B", () => 
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   });
   assert.equal(diagnosesForRhuSave([presumptive])[0].tbManagement.openTreatmentCard, false);
 });
@@ -60,6 +63,7 @@ test("restoring a stale infection draft clears hidden clinical state", () => {
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   };
   assert.deepEqual(restoreRhuDiagnoses({ diagnoses: [stale] })[0].tbManagement, expected);
   assert.deepEqual(normalizeDiagnoses([stale])[0].tbManagement, expected);

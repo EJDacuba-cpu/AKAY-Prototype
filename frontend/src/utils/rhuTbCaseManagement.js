@@ -81,7 +81,16 @@ export function emptyTbManagement() {
     dispositionReason: "",
     dispositionPlan: "",
     openTreatmentCard: false,
+    tbCaseNumber: "",
   };
+}
+
+/** Optional physician-entered reference number for TB Disease (does not create a treatment case). */
+export function isValidTbCaseNumberFormat(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  if (text.length > 100) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9\-/. ]{0,98}[A-Za-z0-9]$|^[A-Za-z0-9]$/.test(text);
 }
 
 export const TB_TREATMENT_DECISION_VALUES = Object.freeze({
@@ -105,6 +114,7 @@ export function isRecognizedTbDiagnosis(name, registry = {}) {
 
 export function rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }) {
   const errors = {};
+  const seenCaseNumbers = new Map();
   for (const entry of diagnoses || []) {
     if (!isRecognizedTbDiagnosis(entry.name, registry)) continue;
     const key = `diagnoses.${entry.id}.tbManagement`;
@@ -116,6 +126,18 @@ export function rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }) {
         errors[`${key}.drugResistance`] = "Select drug resistance for TB Disease.";
       } else if (management.diagnosisType === "tb_disease" && management.drugResistance === DR_TB_PRIMARY) {
         errors[`${key}.drugResistance`] = "Select the drug-resistant TB classification.";
+      }
+      if (management.diagnosisType === "tb_disease" && management.tbCaseNumber) {
+        if (!isValidTbCaseNumberFormat(management.tbCaseNumber)) {
+          errors[`${key}.tbCaseNumber`] = "Enter a valid TB case number (letters, numbers, hyphen, slash, or period).";
+        } else {
+          const normalized = management.tbCaseNumber.toUpperCase();
+          if (seenCaseNumbers.has(normalized)) {
+            errors[`${key}.tbCaseNumber`] = "This TB case number is already used on another diagnosis in this visit.";
+          } else {
+            seenCaseNumbers.set(normalized, entry.id);
+          }
+        }
       }
     }
   }

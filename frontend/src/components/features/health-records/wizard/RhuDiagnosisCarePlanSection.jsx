@@ -186,6 +186,39 @@ function TbCaseManagementSection({
                   />
                 </div>
               )}
+              <div className="rhu-diagnosis-select" data-field={`diagnoses.${entry.id}.tbManagement.tbCaseNumber`}>
+                <label
+                  htmlFor={`tb-case-number-${entry.id}`}
+                  className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-(--color-text-secondary)"
+                >
+                  TB Case Number
+                </label>
+                {registered ? (
+                  <input
+                    id={`tb-case-number-${entry.id}`}
+                    name={`diagnoses.${entry.id}.tbManagement.tbCaseNumber`}
+                    value={registered}
+                    readOnly
+                    className="h-10 w-full min-w-0 rounded-input border border-neutral-200 bg-neutral-50 px-3.5 text-sm text-(--color-text)"
+                  />
+                ) : (
+                  <input
+                    id={`tb-case-number-${entry.id}`}
+                    name={`diagnoses.${entry.id}.tbManagement.tbCaseNumber`}
+                    value={management.tbCaseNumber || ""}
+                    maxLength={100}
+                    disabled={disabled || !canConfirmTb}
+                    aria-invalid={Boolean(errors[`diagnoses.${entry.id}.tbManagement.tbCaseNumber`]) || undefined}
+                    placeholder="Optional until assigned"
+                    className="h-10 w-full min-w-0 rounded-input border border-neutral-200 bg-white px-3.5 text-sm text-(--color-text) outline-none focus-visible:border-ink-400 focus-visible:ring-2 focus-visible:ring-ink-400/40 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    onChange={(event) => onChange(tbManagementFor(entry, { tbCaseNumber: event.target.value }))}
+                  />
+                )}
+                <FieldError error={errors[`diagnoses.${entry.id}.tbManagement.tbCaseNumber`]} />
+                <p className="mt-1 text-xs text-[#545F73]">
+                  Optional reference number. Entering a number does not open a treatment case.
+                </p>
+              </div>
             </div>
           )}
         </div>

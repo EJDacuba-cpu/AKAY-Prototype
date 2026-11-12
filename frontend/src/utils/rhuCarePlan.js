@@ -52,6 +52,7 @@ export function emptyRhuDiagnosis(name, id) {
       dispositionReason: "",
       dispositionPlan: "",
       openTreatmentCard: false,
+      tbCaseNumber: "",
     },
   };
 }

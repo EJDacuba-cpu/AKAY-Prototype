@@ -9,7 +9,7 @@ import {
 
 const MAX_PRESCRIPTIONS = 50;
 
-const controlClass = "mt-1 min-h-9 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus-visible:ring-2 focus-visible:ring-ink-400 aria-invalid:border-red-700";
+const controlClass = "mt-1 min-h-9 w-full max-w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-ink-900 outline-none focus-visible:ring-2 focus-visible:ring-ink-400 aria-invalid:border-red-700";
 
 const TEXT_FIELDS = [
   ["medicineName", "Medicine Name", 255],
@@ -27,9 +27,9 @@ function fieldMessages(id, errors) {
     .map(([key, message]) => ({ key, message }));
 }
 
-function RxField({ label, required, error, children }) {
+function RxField({ label, required, error, children, className = "" }) {
   return (
-    <label className="block min-w-0 text-xs font-medium text-neutral-700">
+    <label className={`block min-w-0 text-xs font-medium text-neutral-700 ${className}`.trim()}>
       <span>{label}{required ? " *" : ""}</span>
       {children}
       {error ? <span role="alert" className="mt-1 block text-red-700">{error}</span> : null}
@@ -39,39 +39,22 @@ function RxField({ label, required, error, children }) {
 
 function PrescriptionEditor({
   draft,
-  diagnoses,
   errors,
   disabled,
   onChange,
-  onToggleDiagnosis,
   onSave,
   onCancel,
 }) {
   const key = `prescriptions.${draft.id}`;
   const errorFor = (field) => errors[`${key}.${field}`] || "";
   return (
-    <div className="grid min-w-0 gap-3 border border-neutral-200 bg-white p-3 sm:grid-cols-2">
-      <fieldset className="min-w-0 sm:col-span-2" data-field={`${key}.diagnosisIds`}>
-        <legend className="text-xs font-medium text-neutral-700">Linked Diagnosis *</legend>
-        <div className="mt-1 space-y-1">
-          {diagnoses.map((entry) => (
-            <label key={entry.id} className="flex min-w-0 items-start gap-2 py-1 text-xs text-[#0B1C30]">
-              <input
-                type="checkbox"
-                name={`${key}.diagnosisIds`}
-                value={entry.id}
-                checked={draft.diagnosisIds.includes(entry.id)}
-                disabled={disabled}
-                aria-invalid={Boolean(errorFor("diagnosisIds")) || undefined}
-                className="mt-1 shrink-0 accent-[#B70011]"
-                onChange={(event) => onToggleDiagnosis(entry.id, event.target.checked)}
-              />
-              <span className="min-w-0 break-words">{entry.name}</span>
-            </label>
-          ))}
-        </div>
-        {errorFor("diagnosisIds") ? <span role="alert" className="mt-1 block text-xs text-red-700">{errorFor("diagnosisIds")}</span> : null}
-      </fieldset>
+    <div
+      className="rhu-prescription-editor grid min-w-0 gap-2 border border-neutral-200 bg-white p-3 sm:grid-cols-2"
+      data-field={`${key}.medicineName`}
+    >
+      {errorFor("diagnosisIds") ? (
+        <p role="alert" className="text-xs text-red-700 sm:col-span-2">{errorFor("diagnosisIds")}</p>
+      ) : null}
       {TEXT_FIELDS.map(([field, label, maxLength]) => (
         <RxField key={field} label={label} required error={errorFor(field)}>
           <input
@@ -86,7 +69,7 @@ function PrescriptionEditor({
           />
         </RxField>
       ))}
-      <RxField label="Instructions" error={errorFor("instructions")}>
+      <RxField label="Instructions" error={errorFor("instructions")} className="sm:col-span-2">
         <textarea
           name={`${key}.instructions`}
           data-field={`${key}.instructions`}
@@ -197,13 +180,19 @@ export default function RhuPrescriptionsSection({
 
   function save() {
     if (!ownsEditor) return;
-    const next = emptyPrescription(draft);
+    const next = emptyPrescription({
+      ...draft,
+      // Keep automatic link to this diagnosis card; preserve any historical multi-links.
+      diagnosisIds: Array.isArray(draft.diagnosisIds) && draft.diagnosisIds.length
+        ? draft.diagnosisIds
+        : (diagnosisId ? [diagnosisId] : []),
+    });
     const found = prescriptionErrors([next], diagnoses);
     const own = Object.fromEntries(
       Object.entries(found).filter(([key]) => key.startsWith(`prescriptions.${next.id}.`)),
     );
     if (Object.keys(own).length) {
-      onEditorChange?.({ ...editor, localErrors: own });
+      onEditorChange?.({ ...editor, draft: next, localErrors: own });
       return;
     }
     const result = commitPrescriptionDraft(prescriptions, next, editor.mode);
@@ -218,18 +207,26 @@ export default function RhuPrescriptionsSection({
 
   function changeDraft(field, value) {
     if (!ownsEditor) return;
-    onEditorChange?.({ ...editor, draft: { ...editor.draft, [field]: value } });
+    onEditorChange?.({ ...editor, draft: { ...editor.draft, [field]: value }, localErrors: {} });
   }
 
-  function toggleDiagnosis(id, checked) {
-    if (!ownsEditor) return;
-    const diagnosisIds = editor.draft.diagnosisIds.filter((item) => item !== id);
-    if (checked) diagnosisIds.push(id);
-    onEditorChange?.({ ...editor, draft: { ...editor.draft, diagnosisIds } });
-  }
+  const editorNode = draft ? (
+    <PrescriptionEditor
+      draft={draft}
+      errors={shownErrors}
+      disabled={disabled}
+      onChange={changeDraft}
+      onSave={save}
+      onCancel={cancel}
+    />
+  ) : null;
 
   return (
-    <fieldset disabled={disabled} className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3">
+    <fieldset
+      disabled={disabled}
+      className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3"
+      data-rx-editor-open={ownsEditor ? "true" : undefined}
+    >
       <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Prescriptions</legend>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#545F73]">Record the medicines for this diagnosis.</p>
@@ -242,17 +239,8 @@ export default function RhuPrescriptionsSection({
       <ul className="space-y-1">
         {linked.map((rx) => (
           rx.id === draft?.id ? (
-            <li key={rx.id}>
-              <PrescriptionEditor
-                draft={draft}
-                diagnoses={diagnoses}
-                errors={shownErrors}
-                disabled={disabled}
-                onChange={changeDraft}
-                onToggleDiagnosis={toggleDiagnosis}
-                onSave={save}
-                onCancel={cancel}
-              />
+            <li key={rx.id} className="min-w-0">
+              {editorNode}
             </li>
           ) : (
             <li key={rx.id} className="min-w-0 space-y-1 py-1">
@@ -276,18 +264,7 @@ export default function RhuPrescriptionsSection({
           )
         ))}
       </ul>
-      {draft && !linked.some((rx) => rx.id === draft.id) ? (
-        <PrescriptionEditor
-          draft={draft}
-          diagnoses={diagnoses}
-          errors={shownErrors}
-          disabled={disabled}
-          onChange={changeDraft}
-          onToggleDiagnosis={toggleDiagnosis}
-          onSave={save}
-          onCancel={cancel}
-        />
-      ) : null}
+      {draft && !linked.some((rx) => rx.id === draft.id) ? editorNode : null}
     </fieldset>
   );
 }

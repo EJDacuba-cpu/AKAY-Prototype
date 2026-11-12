@@ -93,6 +93,7 @@ class HealthRecordDraftPayloadService
                 'treatmentDecision' => self::SCALAR,
                 'dispositionReason' => self::SCALAR,
                 'dispositionPlan' => self::SCALAR,
+                'tbCaseNumber' => self::SCALAR,
             ],
             'referral' => [
                 'urgencyLevel' => self::SCALAR,
@@ -743,6 +744,7 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.tbManagement.treatmentDecision' => ['nullable', 'string', 'max:50'],
             'payload.diagnoses.*.tbManagement.dispositionReason' => ['nullable', 'string', 'max:2000'],
             'payload.diagnoses.*.tbManagement.dispositionPlan' => ['nullable', 'string', 'max:2000'],
+            'payload.diagnoses.*.tbManagement.tbCaseNumber' => ['nullable', 'string', 'max:100'],
             'payload.diagnoses.*.referral.urgencyLevel' => ['nullable', Rule::in(Referral::ATTENTION_LEVELS)],
             'payload.diagnoses.*.referral.receivingRhuId' => ['nullable', 'integer'],
             'payload.diagnoses.*.referral.reasonForReferral' => ['nullable', 'string', 'max:5000'],

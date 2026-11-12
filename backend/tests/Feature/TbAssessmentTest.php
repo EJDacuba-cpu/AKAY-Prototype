@@ -191,6 +191,7 @@ class TbAssessmentTest extends TestCase
             'treatmentDecision' => '',
             'dispositionReason' => '',
             'dispositionPlan' => '',
+            'tbCaseNumber' => '',
         ], $stored['diagnoses'][0]['tbManagement']);
     }
 
@@ -208,6 +209,7 @@ class TbAssessmentTest extends TestCase
             'treatmentDecision' => '',
             'dispositionReason' => '',
             'dispositionPlan' => '',
+            'tbCaseNumber' => '',
         ], $stored['diagnoses'][0]['tbManagement']);
     }
 

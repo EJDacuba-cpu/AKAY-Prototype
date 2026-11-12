@@ -135,6 +135,11 @@ class HealthRecord extends Model
 
     public function prescriptionDisplayText(): string
     {
+        $structured = $this->structuredPrescriptionSummaries();
+        if ($structured !== []) {
+            return implode("\n", array_column($structured, 'line'));
+        }
+
         $text = trim((string) ($this->monitoring_data['prescriptionText'] ?? ''));
         if ($text !== '') {
             return $text;
@@ -162,6 +167,71 @@ class HealthRecord extends Model
         }
 
         return implode("\n", $parts);
+    }
+
+    /**
+     * Medicine-only summaries for dispensing staff (no diagnosis / TB assessment chrome).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function structuredPrescriptionSummaries(): array
+    {
+        $orders = $this->monitoring_data['prescriptions'] ?? [];
+        if (! is_array($orders)) {
+            return [];
+        }
+
+        $summaries = [];
+        foreach ($orders as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $medicineName = trim((string) ($order['medicineName'] ?? ''));
+            if ($medicineName === '') {
+                continue;
+            }
+            $strength = trim((string) ($order['strength'] ?? ''));
+            $dose = trim((string) ($order['dose'] ?? ''));
+            $route = trim((string) ($order['route'] ?? ''));
+            $frequency = trim((string) ($order['frequency'] ?? ''));
+            $duration = trim((string) ($order['duration'] ?? ''));
+            $instructions = trim((string) ($order['instructions'] ?? ''));
+            $authorizedQuantity = $order['authorizedQuantity'] ?? null;
+            $authorizedUnit = trim((string) ($order['authorizedUnit'] ?? ''));
+            $qtyParts = [];
+            if (is_int($authorizedQuantity) || (is_string($authorizedQuantity) && ctype_digit($authorizedQuantity))) {
+                $qtyParts[] = (string) $authorizedQuantity;
+            }
+            if ($authorizedUnit !== '') {
+                $qtyParts[] = $authorizedUnit;
+            }
+            $authorized = trim(implode(' ', $qtyParts));
+            $line = implode(' · ', array_values(array_filter([
+                trim($medicineName.($strength !== '' ? ' '.$strength : '')),
+                $dose,
+                $route,
+                $frequency,
+                $duration,
+                $instructions,
+                $authorized,
+            ], fn ($value) => $value !== '')));
+
+            $summaries[] = [
+                'id' => (string) ($order['id'] ?? ''),
+                'medicineName' => $medicineName,
+                'strength' => $strength,
+                'dose' => $dose,
+                'route' => $route,
+                'frequency' => $frequency,
+                'duration' => $duration,
+                'instructions' => $instructions,
+                'authorizedQuantity' => is_numeric($authorizedQuantity) ? (int) $authorizedQuantity : null,
+                'authorizedUnit' => $authorizedUnit,
+                'line' => $line,
+            ];
+        }
+
+        return $summaries;
     }
 
     public function patient(): BelongsTo
