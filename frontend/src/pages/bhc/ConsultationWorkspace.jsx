@@ -2876,8 +2876,30 @@ export default function ConsultationWorkspace() {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       throw new Error("You're offline. Keep this form open and try again when you're back online.");
     }
-    if (canSaveCurrentDraft && !(await flushDraftBeforeLeave())) {
-      throw new Error("Your changes couldn't be saved. Please try again before completing this consultation.");
+    if (canSaveCurrentDraft) {
+      let flushed = await flushDraftBeforeLeave();
+      if (!flushed) {
+        // One forced manual retry recovers transient draft errors after pause.
+        flushed = await saveDraftNow();
+      }
+      if (!flushed) {
+        if (draftConflict || draftAutosaveStatus === "conflict") {
+          throw new Error(
+            draftConflict?.message ||
+              "This unfinished consultation was updated elsewhere. Reload the latest version before completing this consultation.",
+          );
+        }
+        if (draftAutosaveError?.type === "validation") {
+          throw new Error(
+            draftAutosaveError.message ||
+              "Some consultation details could not be saved. Review the form before completing this consultation.",
+          );
+        }
+        throw new Error(
+          draftAutosaveError?.message ||
+            "Your changes couldn't be saved. Please try again before completing this consultation.",
+        );
+      }
     }
     const finalDraftId = getDraftIdentity()?.id || activeDraft?.id;
     let finalDraftVersion = getDraftIdentity()?.version || activeDraft?.version;

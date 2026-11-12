@@ -285,10 +285,19 @@ class HealthRecordDraftPayloadService
                 'medicineId' => self::SCALAR,
                 'inventoryQuantity' => self::SCALAR,
                 'confirmedGiven' => self::SCALAR,
+                // Expiry-group FEFO pick; same shape as dispensedMedicines.
+                'allocations' => ['*' => [
+                    'expiry_group_id' => self::SCALAR,
+                    'quantity' => self::SCALAR,
+                ]],
+                'override_reason' => self::SCALAR,
+                // CamelCase alias the workspace still drafts via pickDraftFields.
+                'overrideReason' => self::SCALAR,
                 'vaccineName' => self::SCALAR,
                 'customVaccineName' => self::SCALAR,
                 'dose' => self::SCALAR,
                 'dateGiven' => self::SCALAR,
+                'timeGiven' => self::SCALAR,
                 'weight' => self::SCALAR,
                 'height' => self::SCALAR,
                 'temperature' => self::SCALAR,
@@ -389,7 +398,11 @@ class HealthRecordDraftPayloadService
                 'cptStartDate' => self::SCALAR,
                 'otherComorbidities' => self::SCALAR,
             ],
+            // EMPTY_TB_DATA always sends code/description/weightKg with rows.
             'regimen' => [
+                'code' => self::SCALAR,
+                'description' => self::SCALAR,
+                'weightKg' => self::SCALAR,
                 'rows' => ['*' => [
                     'dateStart' => self::SCALAR,
                     'drug4fdc' => self::SCALAR,
@@ -400,6 +413,8 @@ class HealthRecordDraftPayloadService
                     'drugE' => self::SCALAR,
                     'strength' => self::SCALAR,
                     'unit' => self::SCALAR,
+                    // Intensive / continuation tag the TB card writes on add-row.
+                    'phase' => self::SCALAR,
                 ]],
             ],
             'treatmentSupporter' => [
@@ -495,6 +510,13 @@ class HealthRecordDraftPayloadService
             // Typed per-line remarks used to be dropped here, so resuming a
             // draft silently lost them.
             'remarks' => self::SCALAR,
+            // Expiry-group FEFO pick (allocationIntent on the workspace).
+            // Without these, any dispensed line with stock dates fails sanitize.
+            'allocations' => ['*' => [
+                'expiry_group_id' => self::SCALAR,
+                'quantity' => self::SCALAR,
+            ]],
+            'override_reason' => self::SCALAR,
         ]],
         'prescribedMedicines' => ['*' => [
             'medicineId' => self::SCALAR,
@@ -786,6 +808,19 @@ class HealthRecordDraftPayloadService
                 'min:1',
                 'max:2147483647',
             ],
+            'payload.dispensedMedicines.*.allocations' => ['nullable', 'array', 'max:50'],
+            'payload.dispensedMedicines.*.allocations.*.expiry_group_id' => ['required', 'integer', 'min:1'],
+            'payload.dispensedMedicines.*.allocations.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'payload.dispensedMedicines.*.override_reason' => ['nullable', 'string', 'max:1000'],
+            'payload.immunizationData.vaccineEntries.*.allocations' => ['nullable', 'array', 'max:50'],
+            'payload.immunizationData.vaccineEntries.*.allocations.*.expiry_group_id' => ['required', 'integer', 'min:1'],
+            'payload.immunizationData.vaccineEntries.*.allocations.*.quantity' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'payload.immunizationData.vaccineEntries.*.override_reason' => ['nullable', 'string', 'max:1000'],
+            'payload.immunizationData.vaccineEntries.*.overrideReason' => ['nullable', 'string', 'max:1000'],
+            'payload.immunizationData.vaccineEntries.*.timeGiven' => ['nullable', 'string', 'max:20'],
+            'payload.tbData.regimen.code' => ['nullable', 'string', 'max:100'],
+            'payload.tbData.regimen.description' => ['nullable', 'string', 'max:500'],
+            'payload.tbData.regimen.weightKg' => ['nullable'],
             'payload.prescriptionText' => ['nullable', 'string', 'max:5000'],
             'payload.prescriptions' => ['nullable', 'array', 'max:50'],
             'payload.prescriptions.*.id' => ['nullable', 'string', 'max:64'],
