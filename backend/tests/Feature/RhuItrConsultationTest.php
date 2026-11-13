@@ -545,6 +545,50 @@ class RhuItrConsultationTest extends TestCase
         $this->getJson('/api/health-records/'.$hidden->id)->assertForbidden();
     }
 
+    public function test_rhu_itr_persists_independent_report_in_destinations_and_visit_mirrors(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $id = $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Dengue fever',
+                'activate' => true,
+                'nextAction' => 'none',
+                'reportIn' => ['morbidity', 'notifiable', 'surveillance'],
+            ]],
+        ])->assertCreated()->json('data.id');
+
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame(
+            ['morbidity', 'notifiable', 'surveillance'],
+            $record->diagnoses[0]['reportIn']
+        );
+        $this->assertSame('notifiable', $record->diagnoses[0]['reportAs']);
+        $this->assertTrue($record->diagnoses[0]['includeInSurveillance']);
+        $this->assertSame('notifiable', $record->monitoring_data['morbidityReportingStatus'] ?? null);
+    }
+
+    public function test_rhu_itr_still_prohibits_bhc_condition_card_fields_on_diagnoses(): void
+    {
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Cough',
+                'activate' => false,
+                'nextAction' => 'none',
+                'reportIn' => ['morbidity'],
+                'clinicalOutcome' => 'managed_at_bhc',
+            ]],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['diagnoses.0.clinicalOutcome']);
+    }
+
     public function test_walk_in_finalize_activates_condition_prescribes_without_stock_change_and_schedules_rhu_follow_up(): void
     {
         $patient = $this->patient();

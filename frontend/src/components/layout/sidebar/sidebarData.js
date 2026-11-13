@@ -8,8 +8,7 @@ import {
   LayoutGrid,
   Users,
 } from "lucide-react";
-import { REPORT_CATEGORIES } from "../../../utils/bhcReporting.js";
-import { RHU_REPORT_CATEGORIES } from "../../../utils/rhuReporting.js";
+import { REPORT_SIDEBAR_ITEMS } from "../../../utils/reportNavigation.js";
 
 export const menuByRole = {
   admin: [
@@ -99,10 +98,10 @@ export const menuByRole = {
           label: "Reports",
           path: "/bhc/reports",
           icon: FileText,
-          defaultPath: "/bhc/reports",
-          children: REPORT_CATEGORIES.map((category) => ({
-            label: category.label,
-            path: `/bhc/reports?type=${category.slug}`,
+          defaultPath: "/bhc/reports?type=overview",
+          children: REPORT_SIDEBAR_ITEMS.map((item) => ({
+            label: item.label,
+            path: `/bhc/reports?type=${item.slug}`,
           })),
         },
       ],
@@ -171,9 +170,9 @@ export const menuByRole = {
           path: "/rhu/reports",
           icon: Activity,
           defaultPath: "/rhu/reports?type=overview",
-          children: RHU_REPORT_CATEGORIES.map((category) => ({
-            label: category.label,
-            path: `/rhu/reports?type=${category.slug}`,
+          children: REPORT_SIDEBAR_ITEMS.map((item) => ({
+            label: item.label,
+            path: `/rhu/reports?type=${item.slug}`,
           })),
         },
       ],

@@ -9,6 +9,11 @@ import { Input } from "../../../ui/input";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
+import {
+  entryDestinations,
+  REPORT_DESTINATIONS,
+  toggleDestination,
+} from "../../../../utils/reportingEntries";
 import { reconcilePrescriptionsForDiagnosisRemoval } from "../../../../utils/rhuPrescriptions";
 import { entryPurposeKey } from "../../../../utils/followUpSchedules";
 import {
@@ -332,6 +337,38 @@ function DiagnosisCard({
         </span>
       </label>
       <FieldError error={errors[`${key}.activate`]} />
+      <fieldset className="border-t border-[#E5EEFF] pt-2" disabled={disabled}>
+        <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">
+          Reporting Classification (check all applicable)
+        </legend>
+        <p className="clear-both text-xs text-[#545F73]">
+          Optional. Choose the reports this diagnosis belongs to, if any apply.
+        </p>
+        <div className="mt-2 space-y-1">
+          {REPORT_DESTINATIONS.map((destination) => (
+            <label key={destination} className="flex cursor-pointer items-start gap-3 px-1 py-1.5 hover:bg-slate-50">
+              <input
+                type="checkbox"
+                name={`${key}.reportIn`}
+                checked={entryDestinations(entry).includes(destination)}
+                disabled={disabled}
+                onChange={(event) => onChange(toggleDestination(entry, destination, event.target.checked))}
+                className="mt-1 h-4 w-4 accent-[#B70011]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-[#0B1C30]">
+                  {destination === "morbidity"
+                    ? "Morbidity"
+                    : destination === "notifiable"
+                      ? "Notifiable Diseases"
+                      : "Community Surveillance"}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <FieldError error={errors[`${key}.reportIn`]} />
+      </fieldset>
       <div className="rhu-diagnosis-evidence">
         <div className="rhu-diagnosis-assessment">
           <TbCaseManagementSection

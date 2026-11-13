@@ -1,5 +1,5 @@
 import usePrintDocument from "../../hooks/usePrintDocument";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { FileText, Printer } from "lucide-react";
@@ -19,10 +19,16 @@ import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { getCurrentUser } from "../../utils/auth";
+import { buildRhuReport } from "../../utils/rhuReporting";
 import {
-  buildRhuReport,
-  normalizeRhuReportCategory,
-} from "../../utils/rhuReporting";
+  morbidityFilterLabel,
+  MORBIDITY_FILTER_OPTIONS,
+  reportNavLabel,
+  resolveReportEngineCategory,
+  seedReportFiltersFromType,
+  TCL_PROGRAM_OPTIONS,
+  tclProgramLabel,
+} from "../../utils/reportNavigation";
 import { queryKeys } from "../../utils/queryKeys";
 import { getAllHealthRecords } from "../../services/healthRecordService";
 import { getAllPatients } from "../../services/patientService";
@@ -37,7 +43,22 @@ export default function RHUReports() {
     user?.assignedRuralHealthUnit ||
     "Rural Health Unit";
   const [searchParams] = useSearchParams();
-  const category = normalizeRhuReportCategory(searchParams.get("type"));
+  const typeParam = searchParams.get("type");
+  const seeded = useMemo(() => seedReportFiltersFromType(typeParam), [typeParam]);
+  const [tclProgram, setTclProgram] = useState(seeded.tclProgram);
+  const [morbidityFilter, setMorbidityFilter] = useState(seeded.morbidityFilter);
+
+  useEffect(() => {
+    setTclProgram(seeded.tclProgram);
+    setMorbidityFilter(seeded.morbidityFilter);
+  }, [seeded.tclProgram, seeded.morbidityFilter]);
+
+  const nav = seeded.nav;
+  const category = resolveReportEngineCategory(
+    typeParam,
+    { nav, tclProgram, morbidityFilter },
+    "rhu",
+  );
   const [appliedPeriod, setAppliedPeriod] = useState(() => {
     const initial = prepareBhcReportPeriod({ preset: "monthly" });
     return {
@@ -49,6 +70,13 @@ export default function RHUReports() {
   const ageGroup = appliedPeriod.selection?.ageGroup || "all";
   const isOverview = category === "overview";
   const isNutrition = category === "nutrition";
+  const pageTitle = isOverview
+    ? "Reports & Analytics"
+    : nav === "tcl"
+      ? tclProgramLabel(tclProgram)
+      : nav === "morbidity"
+        ? morbidityFilterLabel(morbidityFilter)
+        : reportNavLabel(nav);
 
   const {
     data: patients = [],
@@ -158,11 +186,7 @@ export default function RHUReports() {
           <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h1 className="text-[17px] font-bold tracking-tight text-ink-800">
-                {isOverview
-                  ? "Reports & Analytics"
-                  : isNutrition
-                    ? "Nutrition Report"
-                    : report.categoryLabel}
+                {isNutrition ? "Nutrition Report" : pageTitle}
               </h1>
               <p className="mt-1 text-[13px] text-neutral-600">
                 {facilityName} · {period.label}
@@ -177,8 +201,34 @@ export default function RHUReports() {
             <div className="no-print flex flex-wrap items-center justify-end gap-2">
               <BhcReportPeriodFilter
                 applied={appliedPeriod}
-                onApply={setAppliedPeriod}
                 includeAgeGroup={isNutrition}
+                categoryFilter={
+                  nav === "tcl"
+                    ? {
+                        key: "tclProgram",
+                        label: "TCL program",
+                        options: TCL_PROGRAM_OPTIONS,
+                        value: tclProgram,
+                        defaultValue: "epi",
+                      }
+                    : nav === "morbidity"
+                      ? {
+                          key: "morbidityFilter",
+                          label: "Morbidity reports",
+                          options: MORBIDITY_FILTER_OPTIONS,
+                          value: morbidityFilter,
+                          defaultValue: "morbidity",
+                        }
+                      : null
+                }
+                onApply={(next) => {
+                  setAppliedPeriod({
+                    selection: next.selection,
+                    period: next.period,
+                  });
+                  if (nav === "tcl" && next.category != null) setTclProgram(next.category);
+                  if (nav === "morbidity" && next.category != null) setMorbidityFilter(next.category);
+                }}
               />
               <Button type="button" variant="secondary" size="compact" onClick={handlePrint}>
                 <FileText size={14} />
@@ -226,29 +276,31 @@ export default function RHUReports() {
                       No matching records in this reporting period.
                     </p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                            <th className="px-3 py-2.5">Indicator</th>
-                            <th className="px-3 py-2.5 text-right">Count</th>
-                            {category === "epi" || category === "maternal" ? null : (
-                              <th className="px-3 py-2.5">Notes</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {report.summary.map((row, index) => (
-                            <tr key={`${row.label}-${row.note || ""}-${index}`} className="border-b border-neutral-100">
-                              <td className="px-3 py-2.5 font-medium text-neutral-900">{row.label}</td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-900">{row.value}</td>
+                    <div className="overflow-hidden rounded-xl border border-neutral-200">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="h-11 border-b border-neutral-200 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                              <th className="px-3">Indicator</th>
+                              <th className="px-3 text-right">Count</th>
                               {category === "epi" || category === "maternal" ? null : (
-                                <td className="px-3 py-2.5 text-neutral-500">{row.note}</td>
+                                <th className="px-3">Notes</th>
                               )}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-100">
+                            {report.summary.map((row, index) => (
+                              <tr key={`${row.label}-${row.note || ""}-${index}`} className="h-14 hover:bg-neutral-50">
+                                <td className="px-3 text-sm font-semibold text-ink-800">{row.label}</td>
+                                <td className="px-3 text-right tabular-nums text-ink-800">{row.value}</td>
+                                {category === "epi" || category === "maternal" ? null : (
+                                  <td className="truncate px-3 text-[11px] text-neutral-600" title={row.note || undefined}>{row.note}</td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </CardContent>

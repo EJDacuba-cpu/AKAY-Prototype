@@ -36,17 +36,53 @@ test("RHU Patients sidebar nests Today's Queue and All Patients like BHC", () =>
   );
 });
 
-test("RHU reports sidebar type matching highlights the normalized category", () => {
+test("BHC and RHU Reports sidebars expose exactly Referrals, Overview, TCL, Morbidity", () => {
+  for (const role of ["bhc", "rhu"]) {
+    const reports = menuByRole[role]
+      .flatMap((section) => section.items)
+      .find((item) => item.path === `/${role}/reports`);
+    assert.deepEqual(
+      reports.children.map((child) => child.label),
+      ["Referrals", "Overview", "TCL", "Morbidity"],
+    );
+    assert.deepEqual(
+      reports.children.map((child) => child.path),
+      [
+        `/${role}/reports?type=referrals`,
+        `/${role}/reports?type=overview`,
+        `/${role}/reports?type=tcl`,
+        `/${role}/reports?type=morbidity`,
+      ],
+    );
+    assert.equal(reports.defaultPath, `/${role}/reports?type=overview`);
+  }
+});
+
+test("legacy patient-visits and program types highlight the four-nav Reports children", () => {
   const patientVisitsLocation = {
     pathname: "/rhu/reports",
     search: "?type=patient-visits",
   };
   assert.equal(
-    isSidebarPathActive("/rhu/reports?type=patient-visits", patientVisitsLocation, "rhu"),
+    isSidebarPathActive("/rhu/reports?type=overview", patientVisitsLocation, "rhu"),
     true,
   );
   assert.equal(
-    isSidebarPathActive("/rhu/reports?type=overview", patientVisitsLocation, "rhu"),
+    isSidebarPathActive("/rhu/reports?type=referrals", patientVisitsLocation, "rhu"),
+    false,
+  );
+
+  const epiLocation = { pathname: "/bhc/reports", search: "?type=epi" };
+  assert.equal(isSidebarPathActive("/bhc/reports?type=tcl", epiLocation, "bhc"), true);
+  assert.equal(isSidebarPathActive("/bhc/reports?type=morbidity", epiLocation, "bhc"), false);
+
+  const notifiableLocation = { pathname: "/bhc/reports", search: "?type=notifiable" };
+  assert.equal(
+    isSidebarPathActive("/bhc/reports?type=morbidity", notifiableLocation, "bhc"),
+    true,
+  );
+  assert.equal(
+    isSidebarPathActive("/bhc/reports?type=tcl", notifiableLocation, "bhc"),
     false,
   );
 });
@@ -58,7 +94,7 @@ test("RHU reports sidebar treats missing type as overview", () => {
     true,
   );
   assert.equal(
-    isSidebarPathActive("/rhu/reports?type=patient-visits", bareReports, "rhu"),
+    isSidebarPathActive("/rhu/reports?type=tcl", bareReports, "rhu"),
     false,
   );
 });
@@ -70,7 +106,7 @@ test("RHU reports refresh with an unknown type highlights overview", () => {
     true,
   );
   assert.equal(
-    isSidebarPathActive("/rhu/reports?type=patient-visits", refreshed, "rhu"),
+    isSidebarPathActive("/rhu/reports?type=morbidity", refreshed, "rhu"),
     false,
   );
   assert.equal(isSidebarPathActive("/rhu/reports", refreshed, "rhu"), true);
@@ -337,7 +373,9 @@ test("applySidebarAccess leaves query-style defaultPath unchanged when no matchi
   );
   assert.ok(queryParents.some((item) => item.path === "/bhc/patients"));
   assert.ok(queryParents.some((item) => item.path === "/bhc/referrals"));
-  assert.ok(queryParents.some((item) => item.path === "/bhc/reports"));
+  // Reports defaultPath now matches the Overview child (?type=overview).
+  assert.equal(queryParents.some((item) => item.path === "/bhc/reports"), false);
+  assert.equal(queryParents.some((item) => item.path === "/rhu/reports"), false);
   assert.ok(queryParents.some((item) => item.path === "/rhu/patients"));
 
   for (const item of queryParents) {

@@ -8,6 +8,7 @@
  */
 import { entryPurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
 import { normalizeSupportingLaboratoryTests } from "./laboratoryTests.js";
+import { entryDestinations } from "./reportingEntries.js";
 import { tbEvaluationEntryFields } from "./tbAssessment.js";
 import { isPresumptiveTb } from "./rhuTbCaseManagement.js";
 
@@ -246,9 +247,11 @@ export function diagnosesForRhuSave(diagnoses = []) {
   return (diagnoses || []).filter((entry) => text(entry?.name)).map((entry) => {
     const fields = rhuDiagnosisFields(entry);
     const supportingLaboratoryTests = normalizeSupportingLaboratoryTests(entry.supportingLaboratoryTests);
+    const reportIn = entryDestinations(entry);
     return {
       id: entry.id,
       name: entry.name,
+      reportIn,
       activate: fields.activate,
       nextAction: fields.nextAction,
       manageToBhc: fields.nextAction === "manage_to_bhc",

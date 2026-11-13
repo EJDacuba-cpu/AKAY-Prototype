@@ -33,6 +33,15 @@ function render(entry = tb, extra = {}) {
   return renderToStaticMarkup(createElement(CarePlan, { diagnoses: [entry], canConfirmTb: true, ...extra }));
 }
 
+test("each diagnosis exposes independent morbidity notifiable and surveillance checkboxes", () => {
+  const html = render({ id: "dx1", name: "Dengue", nextAction: "none", reportIn: ["morbidity", "notifiable"] });
+  assert.match(html, /Reporting Classification/);
+  assert.match(html, /name="diagnoses.dx1.reportIn"/);
+  assert.match(html, />Morbidity</);
+  assert.match(html, />Notifiable Diseases</);
+  assert.match(html, />Community Surveillance</);
+});
+
 test("TB assessment remains while Treatment Decision and its disposition fields are removed", () => {
   const html = render();
   assert.match(html, /Physician TB Assessment/);

@@ -184,9 +184,23 @@ class HealthRecordController extends Controller
             $data['needs_referral'] = false;
             $data['rural_health_unit_id'] = $request->user()->rural_health_unit_id;
             $data['consultation_uuid'] = $visit->consultation_uuid;
-            $data['diagnoses'] = $clinicalRegistry->resolveConditionEntries(
-                array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
-            );
+            $data['diagnoses'] = array_values(array_map(
+                function (array $diagnosis): array {
+                    $reportIn = ReportingEntries::destinations($diagnosis);
+
+                    return [
+                        ...$diagnosis,
+                        'reportIn' => $reportIn,
+                        'reportAs' => in_array('notifiable', $reportIn, true)
+                            ? 'notifiable'
+                            : (in_array('morbidity', $reportIn, true) ? 'morbidity' : null),
+                        'includeInSurveillance' => in_array('surveillance', $reportIn, true),
+                    ];
+                },
+                $clinicalRegistry->resolveConditionEntries(
+                    array_map(fn ($diagnosis) => Arr::except($diagnosis, ['addToConditions']), $data['diagnoses'] ?? [])
+                )
+            ));
         } else {
             // conditionKey is always server-resolved from the diagnosis name here -
             // any client-sent conditionKey is discarded and replaced, never trusted.
@@ -281,7 +295,7 @@ class HealthRecordController extends Controller
         $this->normalizeMaternalSupplements($request, $data);
         $this->normalizeFamilyPlanningData($data);
         $this->normalizeSurveillanceData($data);
-        $this->normalizeDiagnosisReporting($data, $v2);
+        $this->normalizeDiagnosisReporting($data, $v2 || $rhuItr);
         if (! $v2 && ! $rhuItr) {
             $this->applyRecheckReason($data);
             $this->normalizeConcernActions($data);

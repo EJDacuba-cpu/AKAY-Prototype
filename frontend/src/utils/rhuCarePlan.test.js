@@ -196,6 +196,25 @@ test("an already Active/Controlled identity is confirmed without silent activate
   ]), false);
 });
 
+test("diagnosesForRhuSave persists independent reportIn destinations", () => {
+  const saved = diagnosesForRhuSave([
+    {
+      id: "d1",
+      name: "Dengue",
+      reportIn: ["morbidity", "notifiable", "surveillance"],
+      nextAction: "none",
+    },
+    {
+      id: "d2",
+      name: "Cough",
+      reportIn: [],
+      nextAction: "none",
+    },
+  ]);
+  assert.deepEqual(saved[0].reportIn, ["morbidity", "notifiable", "surveillance"]);
+  assert.deepEqual(saved[1].reportIn, []);
+});
+
 test("diagnosesForRhuSave keeps activate and nextAction without fanning Manage", () => {
   const saved = diagnosesForRhuSave([
     { id: "a", name: "Hypertension", activate: true, nextAction: "manage_to_bhc", receivingBhcId: "3", monitoringRecommendation: "Weekly BP" },
