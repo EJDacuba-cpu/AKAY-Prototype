@@ -1321,7 +1321,7 @@ export default function RhuConsultationWorkspace() {
       [ASSESSMENT_STEP]: "Record the vital signs and examination findings for this visit.",
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
       [NEXT_STEP]: isReferredRhuVisit(visit)
-        ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
+        ? "Named diagnoses, treatment, and prescription. Manage to BHC sends a monitoring request; No further follow-up closes the referral with notes for the BHC."
         : "Named diagnoses, treatment, and prescription. Staff confirm given medicines on Health Commodities.",
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },

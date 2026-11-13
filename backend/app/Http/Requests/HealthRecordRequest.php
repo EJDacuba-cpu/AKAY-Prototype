@@ -214,6 +214,7 @@ class HealthRecordRequest extends FormRequest
             $rules['diagnoses.*.nextAction'] = ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc', 'refer_higher_level'])];
             $rules['diagnoses.*.receivingBhcId'] = ['nullable', 'integer', 'exists:barangay_health_centers,id'];
             $rules['diagnoses.*.monitoringRecommendation'] = ['nullable', 'string', 'max:2000'];
+            $rules['diagnoses.*.noFurtherFollowUpReason'] = ['nullable', 'string', 'max:2000'];
             $rules['diagnoses.*.higherLevelReferralPlan'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'array:reason,intendedFacility,clinicalPlan'];
             $rules['diagnoses.*.higherLevelReferralPlan.reason'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'string', 'max:2000'];
             $rules['diagnoses.*.higherLevelReferralPlan.intendedFacility'] = ['nullable', 'string', 'max:255'];

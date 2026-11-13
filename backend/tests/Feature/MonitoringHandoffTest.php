@@ -271,7 +271,9 @@ class MonitoringHandoffTest extends TestCase
         $this->assertSame(MonitoringHandoffRequest::IDENTITY_SOURCE_BHC_REFERRAL_RETURN, $handoff->identity_source);
         $this->assertSame($this->bhc->id, $patient->fresh()->barangay_health_center_id);
         $this->assertSame(1, Patient::whereKey($patient->id)->count());
-        $this->assertSame(Referral::STATUS_RECEIVED, $referral->fresh()->status);
+        $this->assertSame(Referral::STATUS_COMPLETED, $referral->fresh()->status);
+        $this->assertNotNull($referral->fresh()->feedback);
+        $this->assertStringContainsString('Diabetes', (string) $referral->fresh()->feedback->rhu_diagnosis);
     }
 
     public function test_bhc_lists_only_its_requests_and_cannot_link_another_bhcs_patient(): void

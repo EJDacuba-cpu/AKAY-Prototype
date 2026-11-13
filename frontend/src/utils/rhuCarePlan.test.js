@@ -103,33 +103,35 @@ test("Schedule RHU Follow-up requires date and reason on the entry schedule", ()
   assert.deepEqual(ok, {});
 });
 
-test("referral visits cannot schedule RHU follow-up or Manage to BHC", () => {
-  const errors = rhuCarePlanErrors(
-    [{ id: "a", name: "TB", nextAction: "rhu_follow_up" }],
-    { isReferralVisit: true },
-  );
-  assert.match(errors["diagnoses.a.nextAction"], /Return Slip/);
+test("referral visits allow Manage to BHC monitoring requests", () => {
   const manage = rhuCarePlanErrors(
     [{ id: "a", name: "TB", nextAction: "manage_to_bhc", activate: true, receivingBhcId: "9", monitoringRecommendation: "DOT" }],
     { isReferralVisit: true, catchmentBhcIds: [9] },
   );
-  assert.match(manage["diagnoses.a.nextAction"], /Return Slip/);
+  assert.deepEqual(manage, {});
 });
 
-test("referral visits do not require a hidden empty Next Action", () => {
+test("referral visits require a next action and closure notes for no further follow-up", () => {
   const empty = rhuCarePlanErrors(
     [{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "" }],
     { isReferralVisit: true },
   );
-  assert.equal(empty["diagnoses.tb.nextAction"], undefined);
-  assert.deepEqual(empty, {});
-  const none = rhuCarePlanErrors(
+  assert.equal(empty["diagnoses.tb.nextAction"], "Choose a next action.");
+  const noneMissing = rhuCarePlanErrors(
     [{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "none" }],
     { isReferralVisit: true },
   );
-  assert.deepEqual(none, {});
-  const saved = diagnosesForRhuSave([{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "" }]);
-  assert.equal(saved[0].nextAction, "");
+  assert.match(noneMissing["diagnoses.tb.noFurtherFollowUpReason"], /BHC/);
+  const noneOk = rhuCarePlanErrors(
+    [{ id: "tb", name: "Tuberculosis", activate: true, nextAction: "none", noFurtherFollowUpReason: "Resolved at RHU." }],
+    { isReferralVisit: true },
+  );
+  assert.deepEqual(noneOk, {});
+  const saved = diagnosesForRhuSave([{
+    id: "tb", name: "Tuberculosis", activate: true, nextAction: "none", noFurtherFollowUpReason: "Resolved at RHU.",
+  }]);
+  assert.equal(saved[0].nextAction, "none");
+  assert.equal(saved[0].noFurtherFollowUpReason, "Resolved at RHU.");
 });
 
 test("walk-in visits still require an explicit Next Action", () => {

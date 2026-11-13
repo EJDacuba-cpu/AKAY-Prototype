@@ -76,6 +76,7 @@ class HealthRecordDraftPayloadService
             'nextAction' => self::SCALAR,
             'receivingBhcId' => self::SCALAR,
             'monitoringRecommendation' => self::SCALAR,
+            'noFurtherFollowUpReason' => self::SCALAR,
             'higherLevelReferralPlan' => [
                 'reason' => self::SCALAR,
                 'intendedFacility' => self::SCALAR,
@@ -758,6 +759,7 @@ class HealthRecordDraftPayloadService
             'payload.diagnoses.*.nextAction' => ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc', 'refer_higher_level'])],
             'payload.diagnoses.*.receivingBhcId' => ['nullable', 'integer', 'min:1'],
             'payload.diagnoses.*.monitoringRecommendation' => ['nullable', 'string', 'max:5000'],
+            'payload.diagnoses.*.noFurtherFollowUpReason' => ['nullable', 'string', 'max:5000'],
             'payload.diagnoses.*.higherLevelReferralPlan.reason' => ['nullable', 'string', 'max:2000'],
             'payload.diagnoses.*.higherLevelReferralPlan.intendedFacility' => ['nullable', 'string', 'max:255'],
             'payload.diagnoses.*.higherLevelReferralPlan.clinicalPlan' => ['nullable', 'string', 'max:2000'],

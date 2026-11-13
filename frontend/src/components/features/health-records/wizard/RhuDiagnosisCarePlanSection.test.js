@@ -203,27 +203,28 @@ test("higher-level plan shows inline errors and saved details only when selected
   }
 });
 
-test("referral visits hide empty Next Action but surface restored walk-in actions", () => {
+test("referral visits show Next Action and BHC closure notes for no further follow-up", () => {
   const emptyReferral = render(
     { id: "tb", name: "TB", nextAction: "", tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" } },
     { isReferralVisit: true },
   );
-  assert.doesNotMatch(emptyReferral, /name="diagnoses.tb.nextAction"/);
-  assert.doesNotMatch(emptyReferral, /data-field="diagnoses.tb.nextAction"/);
-  const legacy = render(
+  assert.match(emptyReferral, /name="diagnoses.tb.nextAction"/);
+  const none = render(
     {
       id: "tb",
       name: "TB",
-      nextAction: "rhu_follow_up",
+      nextAction: "none",
+      noFurtherFollowUpReason: "",
       tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" },
     },
     {
       isReferralVisit: true,
-      errors: { "diagnoses.tb.nextAction": "Referral visits keep follow-up and monitoring on the Return Slip." },
+      errors: { "diagnoses.tb.noFurtherFollowUpReason": "Tell the BHC why no further follow-up is needed." },
     },
   );
-  assert.match(legacy, /name="diagnoses.tb.nextAction"/);
-  assert.match(legacy, /Return Slip/);
+  assert.match(none, /name="diagnoses.tb.noFurtherFollowUpReason"/);
+  assert.match(none, /closes this referral/i);
+  assert.match(none, /Tell the BHC why no further follow-up is needed/);
 });
 
 const htn = { id: "htn", name: "Hypertension", nextAction: "none" };

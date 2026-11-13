@@ -49,6 +49,7 @@ export function emptyRhuDiagnosis(name, id) {
     nextAction: "",
     receivingBhcId: "",
     monitoringRecommendation: "",
+    noFurtherFollowUpReason: "",
     supportingLaboratoryTests: [],
     tbManagement: {
       diagnosisType: "",
@@ -105,11 +106,13 @@ export function rhuDiagnosisFields(item = {}) {
   const nextAction = diagnosisNextAction(item);
   const receivingBhcId = item.receivingBhcId ?? item.receiving_bhc_id ?? "";
   const monitoringRecommendation = item.monitoringRecommendation ?? item.monitoring_recommendation ?? "";
+  const noFurtherFollowUpReason = item.noFurtherFollowUpReason ?? item.no_further_follow_up_reason ?? "";
   return {
     activate: Boolean(item.activate),
     nextAction,
     receivingBhcId: nextAction === "manage_to_bhc" ? String(receivingBhcId || "") : "",
     monitoringRecommendation: nextAction === "manage_to_bhc" ? String(monitoringRecommendation || "") : "",
+    noFurtherFollowUpReason: nextAction === "none" ? String(noFurtherFollowUpReason || "") : "",
     higherLevelReferralPlan: nextAction === "refer_higher_level" ? {
       reason: text(item.higherLevelReferralPlan?.reason),
       intendedFacility: text(item.higherLevelReferralPlan?.intendedFacility),
@@ -189,6 +192,7 @@ export function applyRhuNextAction(entry, nextAction) {
     manageToBhc: action === "manage_to_bhc",
     receivingBhcId: action === "manage_to_bhc" ? (entry.receivingBhcId || "") : "",
     monitoringRecommendation: action === "manage_to_bhc" ? (entry.monitoringRecommendation || "") : "",
+    noFurtherFollowUpReason: action === "none" ? (entry.noFurtherFollowUpReason || "") : "",
     higherLevelReferralPlan: action === "refer_higher_level" ? {
       reason: entry.higherLevelReferralPlan?.reason || "",
       intendedFacility: entry.higherLevelReferralPlan?.intendedFacility || "",
@@ -209,17 +213,14 @@ export function rhuCarePlanErrors(diagnoses = [], {
     if (!text(entry?.name) || !text(entry?.id)) continue;
     const action = diagnosisNextAction(entry);
     const key = `diagnoses.${entry.id}`;
-    // Referral ITRs hide walk-in Next Action; Return Slip owns follow-up. Empty is valid
-    // (backend nextAction is nullable). Do not invent a clinical choice here.
+    // Referral and walk-in ITRs both choose a next action here. Manage to BHC
+    // creates a monitoring request; No further follow-up closes a referral with notes.
     if (!action) {
-      if (!isReferralVisit) {
-        errors[`${key}.nextAction`] = "Choose a next action.";
-      }
+      errors[`${key}.nextAction`] = "Choose a next action.";
       continue;
     }
-    if (isReferralVisit && (action === "rhu_follow_up" || action === "manage_to_bhc")) {
-      errors[`${key}.nextAction`] = "Referral visits keep follow-up and monitoring on the Return Slip.";
-      continue;
+    if (action === "none" && isReferralVisit && !text(entry.noFurtherFollowUpReason)) {
+      errors[`${key}.noFurtherFollowUpReason`] = "Tell the BHC why no further follow-up is needed.";
     }
     if (action === "rhu_follow_up") {
       const purposeKey = entryPurposeKey(entry.id);
@@ -271,6 +272,9 @@ export function diagnosesForRhuSave(diagnoses = []) {
       manageToBhc: fields.nextAction === "manage_to_bhc",
       receivingBhcId: fields.receivingBhcId,
       monitoringRecommendation: fields.monitoringRecommendation,
+      ...(fields.nextAction === "none" && fields.noFurtherFollowUpReason
+        ? { noFurtherFollowUpReason: fields.noFurtherFollowUpReason }
+        : {}),
       ...(fields.higherLevelReferralPlan ? { higherLevelReferralPlan: fields.higherLevelReferralPlan } : {}),
       ...tbEvaluationEntryFields(entry),
       ...(supportingLaboratoryTests.length ? { supportingLaboratoryTests } : {}),

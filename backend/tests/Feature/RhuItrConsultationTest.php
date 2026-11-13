@@ -706,6 +706,100 @@ class RhuItrConsultationTest extends TestCase
         $this->assertDatabaseCount('follow_up_tasks', 0);
     }
 
+    public function test_referral_no_further_follow_up_completes_the_referral_with_bhc_notes(): void
+    {
+        Notification::fake();
+        $patient = $this->patient();
+        $referral = Referral::create([
+            'tracking_id' => 'AKY-ITR-'.Str::upper(Str::random(6)),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Evaluate hypertension.',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+        $visit = $this->visit($patient, [
+            'source' => RhuVisitQueueEntry::SOURCE_REFERRAL,
+            'referral_id' => $referral->id,
+        ]);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Hypertension',
+                'activate' => true,
+                'nextAction' => 'none',
+            ]],
+        ])->assertUnprocessable();
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Hypertension',
+                'activate' => true,
+                'nextAction' => 'none',
+                'noFurtherFollowUpReason' => 'BP controlled at RHU; continue lifestyle advice only.',
+            ]],
+        ])->assertCreated();
+
+        $this->assertSame(Referral::STATUS_COMPLETED, $referral->fresh()->status);
+        $this->assertDatabaseHas('feedback', [
+            'referral_id' => $referral->id,
+            'rhu_diagnosis' => 'Hypertension',
+        ]);
+        $this->assertStringContainsString(
+            'BP controlled at RHU',
+            (string) $referral->fresh()->feedback->remarks
+        );
+        $this->assertSame(RhuVisitQueueEntry::STATUS_CLOSED, $visit->fresh()->status);
+    }
+
+    public function test_referral_manage_to_bhc_creates_monitoring_request_and_completes_referral(): void
+    {
+        Notification::fake();
+        $patient = $this->patient([
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => null,
+        ]);
+        $referral = Referral::create([
+            'tracking_id' => 'AKY-ITR-'.Str::upper(Str::random(6)),
+            'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
+            'patient_id' => $patient->id,
+            'barangay_health_center_id' => $this->bhc->id,
+            'rural_health_unit_id' => $this->rhu->id,
+            'reason_for_referral' => 'Confirm hypertension.',
+            'status' => Referral::STATUS_RECEIVED,
+        ]);
+        $visit = $this->visit($patient, [
+            'source' => RhuVisitQueueEntry::SOURCE_REFERRAL,
+            'referral_id' => $referral->id,
+        ]);
+        $clinician = $this->clinician();
+        $uuid = $this->startVisit($clinician, $visit);
+
+        $this->postRecord($clinician, $patient, $visit, $uuid, [
+            'diagnoses' => [[
+                'name' => 'Hypertension',
+                'activate' => true,
+                'nextAction' => 'manage_to_bhc',
+                'receivingBhcId' => $this->bhc->id,
+                'monitoringRecommendation' => 'Weekly BP checks at the BHC.',
+            ]],
+        ])->assertCreated();
+
+        $this->assertSame(Referral::STATUS_COMPLETED, $referral->fresh()->status);
+        $this->assertDatabaseHas('feedback', [
+            'referral_id' => $referral->id,
+            'rhu_diagnosis' => 'Hypertension',
+        ]);
+        $this->assertDatabaseHas('monitoring_handoff_requests', [
+            'patient_id' => $patient->id,
+            'receiving_barangay_health_center_id' => $this->bhc->id,
+            'recommendation' => 'Weekly BP checks at the BHC.',
+        ]);
+    }
+
     public function test_later_rhu_consult_fulfills_the_pending_follow_up_task(): void
     {
         $patient = $this->patient();

@@ -29,6 +29,7 @@ use App\Services\PatientConditions;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
+use App\Services\ReferralWorkflowService;
 use App\Services\ReportingEntries;
 use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
@@ -455,6 +456,16 @@ class HealthRecordController extends Controller
                         $confirmedConditions,
                         $visit
                     );
+                    // Referral visits: Manage to BHC / No further follow-up close the
+                    // referral so the BHC gets monitoring request or closure notes.
+                    if ($visit?->referral_id) {
+                        app(ReferralWorkflowService::class)->completeFromRhuCarePlan(
+                            $request,
+                            (int) $visit->referral_id,
+                            $data['diagnoses'] ?? [],
+                            $request->user()
+                        );
+                    }
                 }
                 $monitoredNow = $monitoring->apply(
                     $patient,
