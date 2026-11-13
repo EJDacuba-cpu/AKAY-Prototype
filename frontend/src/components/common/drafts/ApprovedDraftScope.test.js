@@ -36,6 +36,11 @@ test("BHC profile lookup uses its disabled primary button and errors remain retr
   assert.doesNotMatch(checking, /role="dialog"/);
   const failed = renderToStaticMarkup(createElement(ConsultationButton, { consultation: { isError: true, primaryLabel: "Start Consultation" }, onStart: noop }));
   assert.doesNotMatch(failed, /disabled=""/);
+  const start = renderToStaticMarkup(createElement(ConsultationButton, { consultation: { primaryLabel: "Start Consultation" }, onStart: noop }));
+  assert.match(start, /Start Consultation/);
+  const cont = renderToStaticMarkup(createElement(ConsultationButton, { consultation: { primaryLabel: "Continue Consultation" }, onStart: noop }));
+  assert.match(cont, /Continue Consultation/);
+  assert.doesNotMatch(cont, /Open Consultation/);
 });
 
 test("ordinary Add/Edit BHC and RHU facilities render without draft infrastructure", () => {

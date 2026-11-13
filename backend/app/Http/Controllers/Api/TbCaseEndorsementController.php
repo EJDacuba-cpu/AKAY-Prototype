@@ -24,13 +24,15 @@ class TbCaseEndorsementController extends Controller
             'case_version' => $case->version, 'current' => $current ? $this->present($request, $current) : null,
             'history' => $history->map(fn ($row) => $this->present($request, $row))->values(),
             'candidates' => $this->endorsements->candidates($case)->orderBy('name')->get(['id', 'name']),
-            'can_endorse' => $case->status === 'active' && $this->endorsements->canIssue($request->user()),
+            // New creates retired; revoke remains for unresolved/active historical rows.
+            'can_endorse' => $case->status === 'active' && $this->endorsements->canCreateEndorsement($request->user()),
             'can_revoke' => $current !== null && $this->endorsements->canIssue($request->user()),
         ]]);
     }
 
     public function store(Request $request, int $tbCase)
     {
+        abort(410, 'TB treatment endorsements are no longer issued. Use Manage to BHC monitoring for continued BHC care.');
         $this->endorsements->ownerCase($request->user(), $tbCase, true);
         $request->merge(['request_key' => strtolower((string) $request->header('Idempotency-Key'))]);
         $data = $request->validate([

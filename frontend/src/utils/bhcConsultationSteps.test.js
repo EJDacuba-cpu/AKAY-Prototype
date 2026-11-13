@@ -206,18 +206,26 @@ test("BHC Patients module adds Monitoring Requests only for role bhc", () => {
   assert.match(module, /listMonitoringHandoffRequests/);
 });
 
-test("BHC Monitoring Requests hosts TB Endorsements tab, not the All Patients toolbar", () => {
+test("BHC Monitoring Requests uses one unified inbox for handoffs and TB endorsements", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const module = readFileSync(join(here, "../pages/bhc/PatientsModule.jsx"), "utf8");
   const app = readFileSync(join(here, "../App.jsx"), "utf8");
-  assert.match(module, /General Monitoring/);
-  assert.match(module, /TB Endorsements/);
+  const inbox = readFileSync(join(here, "./pendingHandoffInbox.js"), "utf8");
+  assert.match(module, /mergeMonitoringInbox/);
   assert.match(module, /BhcTbEndorsements/);
-  assert.match(module, /MONITORING_TAB_TB/);
+  assert.match(module, /KIND_TB_ENDORSEMENT/);
+  assert.doesNotMatch(module, /General Monitoring/);
+  assert.doesNotMatch(module, /MONITORING_TAB_TB/);
+  assert.doesNotMatch(module, /SegmentedFilter/);
   assert.doesNotMatch(module, /RouterLink to="\/bhc\/patients\/tb-endorsements"/);
-  assert.doesNotMatch(module, />TB endorsements</);
+  assert.match(inbox, /KIND_MONITORING_HANDOFF/);
+  assert.match(inbox, /KIND_TB_ENDORSEMENT/);
   assert.match(app, /BhcTbEndorsementsRedirect/);
   assert.match(app, /\/bhc\/patients\/tb-endorsements/);
+  const tbPage = readFileSync(join(here, "../pages/bhc/BhcTbEndorsements.jsx"), "utf8");
+  assert.match(tbPage, /BhcTbEndorsementsRedirect/);
+  assert.match(tbPage, /next\.delete\("tab"\)/);
+  assert.match(tbPage, /Back to Monitoring Requests/);
 });
 
 test("RHU ITR Diagnosis & Care Plan is one screen and does not mount BHC concern reporting", () => {

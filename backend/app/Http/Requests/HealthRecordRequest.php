@@ -198,7 +198,15 @@ class HealthRecordRequest extends FormRequest
             $rules['monitoring_data.additionalConcern'] = ['nullable', 'array:chiefComplaint,historyOfPresentIllness'];
             $rules['monitoring_data.additionalConcern.chiefComplaint'] = ['nullable', 'string', 'max:2000'];
             $rules['monitoring_data.additionalConcern.historyOfPresentIllness'] = ['nullable', 'string', 'max:5000'];
-            $rules['diagnoses.*.reportIn'] = ['prohibited'];
+            // RHU ITR may tag diagnoses for morbidity / notifiable / surveillance via
+            // canonical reportIn (same destinations as BHC v2). clinicalOutcome/referral
+            // remain BHC-card fields and stay prohibited here.
+            $rules['diagnoses.*.reportIn'] = ['bail', 'nullable', 'array', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_array($value) && count(array_unique($value, SORT_REGULAR)) !== count($value)) {
+                    $fail('Each report can be chosen once per entry.');
+                }
+            }];
+            $rules['diagnoses.*.reportIn.*'] = ['string', Rule::in(ReportingEntries::DESTINATIONS)];
             $rules['diagnoses.*.clinicalOutcome'] = ['prohibited'];
             $rules['diagnoses.*.referral'] = ['prohibited'];
             $rules['diagnoses.*.activate'] = ['nullable', 'boolean'];
@@ -267,11 +275,9 @@ class HealthRecordRequest extends FormRequest
             $rules['laboratory_tests'] = ['prohibited'];
         }
         $rules['diagnoses.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];
-        $rules['diagnoses.*.laboratoryEvidence.*'] = ['array:reference,version,attachmentIds'];
+        $rules['diagnoses.*.laboratoryEvidence.*'] = ['array:reference,version'];
         $rules['diagnoses.*.laboratoryEvidence.*.reference'] = ['required', 'string', 'max:80'];
         $rules['diagnoses.*.laboratoryEvidence.*.version'] = ['required', 'integer', 'min:0'];
-        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds'] = ['nullable', 'array', 'max:10'];
-        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds.*'] = ['uuid'];
         $rules['diagnoses.*.laboratoryEvidenceConfirmed'] = ['nullable', 'boolean'];
         $rules['diagnoses.*.supportingLaboratoryTests'] = ['nullable', 'array', 'max:50'];
         $rules['diagnoses.*.supportingLaboratoryTests.*'] = ['array:reference'];

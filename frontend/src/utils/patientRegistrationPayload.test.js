@@ -23,6 +23,16 @@ test('walk-in check-in fields pass through only when present', () => {
 test('legacy callers retain their explicit serial without a structured selection', () => {
   assert.equal(toPayload({familySerialNumber:'PAPER-01'}).family_serial_number,'PAPER-01');
 });
+test('toPayload omits family_serial_number when the form did not send the field', () => {
+  const body = toPayload({ firstName: 'Ana', lastName: 'Cruz', sex: 'Female' });
+  assert.equal(Object.hasOwn(body, 'family_serial_number'), false);
+  assert.equal(Object.hasOwn(body, 'household'), false);
+  assert.equal(Object.hasOwn(body, 'head_replacement'), false);
+});
+test('toPayload keeps explicit family_serial_number when provided', () => {
+  const body = toPayload({ firstName: 'Ana', lastName: 'Cruz', sex: 'Female', familySerialNumber: 'FSN-2026-0001' });
+  assert.equal(body.family_serial_number, 'FSN-2026-0001');
+});
 test('an identity save without a structured selection never sends a household command', () => {
   const payload = toPayload({ firstName: 'Ana', lastName: 'Cruz', familySerialNumber: 'PAPER-01' });
   assert.equal(Object.hasOwn(payload, 'household'), false);

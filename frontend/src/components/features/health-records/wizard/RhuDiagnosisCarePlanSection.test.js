@@ -33,6 +33,15 @@ function render(entry = tb, extra = {}) {
   return renderToStaticMarkup(createElement(CarePlan, { diagnoses: [entry], canConfirmTb: true, ...extra }));
 }
 
+test("each diagnosis exposes independent morbidity notifiable and surveillance checkboxes", () => {
+  const html = render({ id: "dx1", name: "Dengue", nextAction: "none", reportIn: ["morbidity", "notifiable"] });
+  assert.match(html, /Reporting Classification/);
+  assert.match(html, /name="diagnoses.dx1.reportIn"/);
+  assert.match(html, />Morbidity</);
+  assert.match(html, />Notifiable Diseases</);
+  assert.match(html, />Community Surveillance</);
+});
+
 test("TB assessment remains while Treatment Decision and its disposition fields are removed", () => {
   const html = render();
   assert.match(html, /Physician TB Assessment/);
@@ -95,8 +104,11 @@ test("presumptive TB hides drug susceptibility and every diagnosis can link supp
     }],
   });
   assert.match(html, /Presumptive TB/);
+  assert.match(html, /Record as Under Evaluation/);
+  assert.match(html, /does not confirm Active TB Disease/);
   assert.match(html, /Supporting Laboratory Tests/);
   assert.match(html, /Xpert MTB\/RIF/);
+  assert.match(html, /Manage to BHC is available only for Active or Controlled/);
   assert.doesNotMatch(html, /name="diagnoses.tb.tbManagement.drugResistancePrimary"/);
   assert.doesNotMatch(html, /I confirm sharing these/);
   const freeText = render(
@@ -105,6 +117,30 @@ test("presumptive TB hides drug susceptibility and every diagnosis can link supp
   );
   assert.match(freeText, /Supporting Laboratory Tests/);
   assert.match(freeText, /Serum Creatinine/);
+  assert.match(freeText, /Active Patient Condition/);
+});
+
+test("presumptive Manage to BHC draft conflict shows next-action error and keeps the choice", () => {
+  const html = render(
+    {
+      id: "tb",
+      name: "Tuberculosis",
+      activate: true,
+      nextAction: "manage_to_bhc",
+      receivingBhcId: "9",
+      monitoringRecommendation: "Weekly check",
+      tbManagement: { diagnosisType: "presumptive_tb", drugResistance: "" },
+    },
+    {
+      errors: {
+        "diagnoses.tb.nextAction":
+          "Presumptive TB is Under Evaluation. Manage to BHC is available only for Active or Controlled conditions.",
+      },
+    },
+  );
+  assert.match(html, /name="diagnoses.tb.nextAction"[^>]*checked=""[^>]*value="manage_to_bhc"/);
+  assert.match(html, /Presumptive TB is Under Evaluation/);
+  assert.doesNotMatch(html, /Receiving Barangay Health Center/);
 });
 
 test("confirmed TB Disease assessment is locked while susceptibility stays editable", () => {

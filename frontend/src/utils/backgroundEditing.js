@@ -161,14 +161,6 @@ export function backgroundSavedFeedback({ draft, section }) {
   };
 }
 
-/**
- * The Consultation in progress banner depends on the patient's open draft
- * only - not on navigation state and not on the editing duty.
- */
-export function consultationBannerVisible({ draft }) {
-  return Boolean(draft);
-}
-
 function tabOf(location) {
   return new URLSearchParams(location?.search || "").get("tab") || "";
 }

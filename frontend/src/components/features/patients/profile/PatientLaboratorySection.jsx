@@ -14,7 +14,7 @@ import {
   laboratorySummary,
   sortPatientLaboratoryTests,
 } from "../../../../utils/laboratoryTests";
-import { LaboratoryAttachments, LaboratoryFields } from "../../health-records/LaboratoryEvidence";
+import { LaboratoryFields } from "../../health-records/LaboratoryEvidence";
 import searchIcon from "../../../../assets/figma/search.svg";
 
 const STATUS_FILTERS = ["All", ...LABORATORY_STATUSES];
@@ -289,15 +289,6 @@ export default function PatientLaboratorySection({ patientId }) {
                 className="mt-1 w-full rounded-lg border border-neutral-300 p-2 text-sm"
               />
             </label>
-            <p className="text-xs text-neutral-500">Attachment changes are saved immediately with the reason above.</p>
-            <LaboratoryAttachments
-              context={{ recordId: editing.healthRecordId || editing.health_record_id, testId: editing.id }}
-              attachments={editing.attachments || []}
-              reason={reason}
-              disabled={busy}
-              onBusyChange={setBusy}
-              onChanged={refresh}
-            />
             {error ? <p role="alert" className="text-xs text-red-700">{error}</p> : null}
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="secondary" disabled={busy} onClick={() => setEditing(null)}>Cancel</Button>

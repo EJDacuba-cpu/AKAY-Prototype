@@ -11,12 +11,14 @@ import { TB_ENDORSEMENT_LABELS, tbDecisionRecorded } from "../../utils/tbEndorse
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import { formatPatientName } from "../../utils/formatters";
 
-/** Deep links keep working; access lives under Monitoring Requests. */
+/** Deep links keep working; access lives under Monitoring Requests (unified inbox). */
 export function BhcTbEndorsementsRedirect() {
   const [params] = useSearchParams();
   const next = new URLSearchParams(params);
   next.set("view", "monitoring-requests");
-  next.set("tab", "tb-endorsements");
+  // Do not force the old TB tab; the unified list is the entry. Explicit
+  // case/endorsement query params still open the TB review UI.
+  next.delete("tab");
   return <Navigate to={`/bhc/patients?${next.toString()}`} replace />;
 }
 
@@ -119,6 +121,16 @@ export default function BhcTbEndorsements({ embedded = false } = {}) {
     );
   }
 
+  function backToUnifiedInbox() {
+    const next = new URLSearchParams(params);
+    next.set("view", "monitoring-requests");
+    next.delete("tab");
+    next.delete("case");
+    next.delete("page");
+    next.delete("endorsement");
+    setParams(next, { replace: true });
+  }
+
   const body = (
     <main className="min-w-0 space-y-4">
       <div className={`flex flex-wrap items-center gap-3 ${embedded ? "justify-end" : "justify-between"}`}>
@@ -131,7 +143,11 @@ export default function BhcTbEndorsements({ embedded = false } = {}) {
           </div>
         )}
         <div className="flex gap-2">
-          {!embedded && (
+          {embedded ? (
+            <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={backToUnifiedInbox}>
+              Back to Monitoring Requests
+            </Button>
+          ) : (
             <Button asChild variant="secondary" size="sm">
               <Link to="/bhc/patients?view=monitoring-requests">Monitoring Requests</Link>
             </Button>

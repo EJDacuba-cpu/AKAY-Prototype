@@ -28,11 +28,14 @@ function render(Component, props) {
 }
 const entry = { id: "550e8400-e29b-41d4-a716-446655440000", testName: "Any diagnostic test", collectionDate: "", examinationDate: "", resultStatus: "Result Available", result: "Preserved laboratory result" };
 
-test("universal editor renders accessible test fields, validation, upload and native mobile capture", () => {
-  const html = render(components.LaboratoryTestsEditor, { tests: [entry], onChange() {}, context: {}, errors: { "laboratoryTests.0.result": "Enter a result" } });
-  for (const text of ["Test Name", "Collection Date", "Examination Date", "Result Status", "Laboratory Result", "Requested", "Awaiting Result", "Result Available", "Enter a result", "Add Test", "Remove Test", "Upload File", "Take Photo", 'capture="environment"']) assert.ok(html.includes(text), text);
-  assert.ok(html.includes('accept="application/pdf,image/jpeg,image/png"'));
+test("universal editor renders accessible test fields and validation without attachment controls", () => {
+  const html = render(components.LaboratoryTestsEditor, { tests: [entry], onChange() {}, errors: { "laboratoryTests.0.result": "Enter a result" } });
+  for (const text of ["Test Name", "Collection Date", "Examination Date", "Result Status", "Laboratory Result", "Requested", "Awaiting Result", "Result Available", "Enter a result", "Add Test", "Remove Test"]) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes("Upload File"));
+  assert.ok(!html.includes("Take Photo"));
+  assert.ok(!html.includes('capture="environment"'));
   assert.ok(!html.includes("getUserMedia"));
+  assert.ok(!html.includes("Supporting Attachments"));
 });
 
 test("BHC evidence is read-only and shows only the supplied shared version", () => {

@@ -22,7 +22,7 @@ import RegistrationSections from "../../components/features/patients/profile/Reg
 import PatientRecordsTab from "../../components/features/patients/profile/PatientRecordsTab";
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
-import PatientTbCasesPanel from "../../components/features/health-records/PatientTbCasesPanel";
+import RhuSharedClinicalSection from "../../components/features/patients/profile/RhuSharedClinicalSection";
 import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
@@ -130,6 +130,13 @@ function LivePatientDetails() {
     error: followUpsError,
     refetch: refetchFollowUps,
   } = useQuery(profileQueries.followUps);
+
+  const {
+    data: rhuSharedClinical = [],
+    isLoading: rhuSharedLoading,
+    error: rhuSharedError,
+    refetch: refetchRhuShared,
+  } = useQuery(profileQueries.rhuSharedClinical);
 
   const overrideMatchesPatient =
     patientOverride &&
@@ -510,7 +517,12 @@ function LivePatientDetails() {
 
                 {activeTab === "programs" && canViewHistory && (
                   <>
-                  <PatientTbCasesPanel key={patientId} patientId={patientId} />
+                  <RhuSharedClinicalSection
+                    entries={rhuSharedClinical}
+                    isLoading={rhuSharedLoading}
+                    isError={Boolean(rhuSharedError)}
+                    onRetry={() => refetchRhuShared()}
+                  />
                   <CareAndProgramsTab
                     patient={patient}
                     patientId={patientId}

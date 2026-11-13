@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\LaboratoryAddendum;
-use App\Models\LaboratoryAttachment;
 use App\Models\LaboratoryTest;
 use App\Models\MonitoringHandoffRequest;
 use App\Models\PatientCondition;
@@ -43,8 +42,7 @@ class HandoffLaboratoryEvidence
         if ($selected !== [] && ! $confirmed) {
             throw ValidationException::withMessages(['laboratoryEvidenceConfirmed' => ['Confirm the selected laboratory evidence before sharing.']]);
         }
-        // Every row pins one existing version and explicit attachment IDs.
-        // Sort references for a consistent lock order across handoffs.
+        // Every row pins one existing result version. Sort references for a consistent lock order.
         usort($selected, fn ($a, $b) => strcmp($a['reference'], $b['reference']));
         $seen = [];
         $rows = [];
@@ -69,19 +67,12 @@ class HandoffLaboratoryEvidence
                 throw ValidationException::withMessages(['laboratoryEvidence' => ['Laboratory evidence has changed. Review it and confirm sharing again.']]);
             }
             $seen[$test->id] = true;
-            $attachmentIds = LaboratoryAttachment::query()
-                ->where('health_record_id', $test->health_record_id)->where('test_client_id', $test->client_id)
-                ->whereNull('removed_at')->whereNotNull('uploaded_at')->orderBy('id')->pluck('id')->all();
-            $reviewedIds = $selection['attachmentIds'] ?? [];
-            sort($reviewedIds);
-            if ($reviewedIds !== $attachmentIds) {
-                throw ValidationException::withMessages(['laboratoryEvidence' => ['Supporting attachments have changed. Review the evidence and confirm sharing again.']]);
-            }
             $rows[] = [
                 'monitoring_handoff_request_id' => $handoff->id,
                 'laboratory_test_id' => $test->id,
                 'laboratory_addendum_id' => $latest ?: null,
-                'attachment_ids' => json_encode($attachmentIds, JSON_THROW_ON_ERROR),
+                // Schema requires attachment_ids; new shares never include file attachments.
+                'attachment_ids' => json_encode([], JSON_THROW_ON_ERROR),
                 'shared_by' => $request->user()->id, 'shared_at' => now(),
             ];
         }
@@ -102,27 +93,16 @@ class HandoffLaboratoryEvidence
                 $test = LaboratoryTest::findOrFail($share->laboratory_test_id);
                 $version = $share->laboratory_addendum_id ? LaboratoryAddendum::query()
                     ->where('laboratory_test_id', $test->id)->findOrFail($share->laboratory_addendum_id) : null;
-                $files = LaboratoryAttachment::query()->whereIn('id', json_decode($share->attachment_ids, true))
-                    ->where('patient_id', $test->patient_id)->where('health_record_id', $test->health_record_id)
-                    ->where('test_client_id', $test->client_id)->get();
 
+                // Option A: preserve stored attachment_ids in DB but never load or return files/metadata.
                 return [
                     ...($version?->data ?? $test->data), 'recordId' => $test->id,
                     'healthRecordId' => $test->health_record_id, 'version' => $version?->id ?? 0,
                     'sharedAt' => $share->shared_at, 'sharedBy' => $share->shared_by,
-                    'handoffId' => $handoff->id, 'attachments' => $files->all(),
+                    'handoffId' => $handoff->id,
                     'conditionId' => $handoff->patient_condition_id,
                     'conditionName' => $handoff->patientCondition?->condition_name,
                 ];
             })->all();
-    }
-
-    public function allowsAttachment(MonitoringHandoffRequest $handoff, LaboratoryAttachment $attachment): bool
-    {
-        return DB::table('monitoring_laboratory_evidence')->where('monitoring_handoff_request_id', $handoff->id)
-            ->whereNull('withdrawn_at')->get()->contains(fn ($share) => in_array($attachment->id, json_decode($share->attachment_ids, true), true)
-                && LaboratoryTest::query()->whereKey($share->laboratory_test_id)
-                    ->where('patient_id', $attachment->patient_id)->where('health_record_id', $attachment->health_record_id)
-                    ->where('client_id', $attachment->test_client_id)->exists());
     }
 }

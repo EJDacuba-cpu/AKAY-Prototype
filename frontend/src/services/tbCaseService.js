@@ -14,7 +14,16 @@ export const getTbCaseEndorsements = async caseId => unwrapData(await apiRequest
 export const createTbEndorsement = async attempt => unwrapData(await apiRequest(`/tb-cases/${attempt.sourceId}/endorsements`, {
   method: "POST", headers: { "Idempotency-Key": attempt.key }, body: attempt.payload,
 }));
-export const getTbEndorsements = async (page = 1, caseId = "") => unwrapData(await apiRequest(`/tb-endorsements?${new URLSearchParams({ page, ...(caseId ? { case_id: caseId } : {}) })}`));
+export const getTbEndorsements = async (page = 1, caseId = "", { perPage } = {}) =>
+  unwrapData(
+    await apiRequest(
+      `/tb-endorsements?${new URLSearchParams({
+        page,
+        ...(caseId ? { case_id: caseId } : {}),
+        ...(perPage ? { per_page: String(perPage) } : {}),
+      })}`,
+    ),
+  );
 export const getTbEndorsement = async id => unwrapData(await apiRequest(`/tb-endorsements/${id}`));
 export const actOnTbEndorsement = async (id, action, payload) => unwrapData(await apiRequest(`/tb-endorsements/${id}/${action}`, { method: "POST", body: payload }));
 

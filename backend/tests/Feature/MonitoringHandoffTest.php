@@ -289,7 +289,9 @@ class MonitoringHandoffTest extends TestCase
 
         $this->as($owner)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
             'linked_patient_id' => $foreignPatient->id,
-        ])->assertUnprocessable();
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Foreign facility attempt.',
+        ])->assertForbidden();
         $this->assertNull($handoff->fresh()->linked_patient_id);
         $this->assertNull($patient->fresh()->barangay_health_center_id);
     }
@@ -567,5 +569,306 @@ class MonitoringHandoffTest extends TestCase
         $this->finalizeManage($clinician, $patient);
         $this->assertSame(1, MonitoringHandoffRequest::count());
         $this->assertNull($patient->fresh()->barangay_health_center_id);
+    }
+
+    public function test_verified_cross_record_link_keeps_both_patient_ids_and_starts_monitoring(): void
+    {
+        $source = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Testing',
+            'middle_name' => 'T',
+            'last_name' => 'Bee',
+            'sex' => 'Male',
+            'birthdate' => '2000-08-24',
+            'contact_number' => '09171234567',
+        ]);
+        $destination = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Testing',
+            'middle_name' => 'T',
+            'last_name' => 'Bee',
+            'sex' => 'Male',
+            'birthdate' => '2000-08-24',
+            'contact_number' => '09171234567',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $source);
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+        ])->assertUnprocessable();
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
+        ])->assertOk()
+            ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_PENDING_REVIEW)
+            ->assertJsonPath('data.source_patient.id', $source->id)
+            ->assertJsonPath('data.linked_patient.id', $destination->id)
+            ->assertJsonPath('data.identity_resolution', MonitoringHandoffRequest::IDENTITY_RESOLUTION_VERIFIED_CROSS_RECORD);
+
+        $this->assertSame($source->id, $handoff->fresh()->patient_id);
+        $this->assertSame($destination->id, $handoff->fresh()->linked_patient_id);
+        $this->assertNull($source->fresh()->barangay_health_center_id);
+        $this->assertSame($this->bhc->id, $destination->fresh()->barangay_health_center_id);
+        $this->assertSame(1, Patient::whereKey($source->id)->count());
+        $this->assertSame(1, Patient::whereKey($destination->id)->count());
+
+        // Idempotent retry.
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Matched name, birthdate, sex, and contact with BHC registration card.',
+        ])->assertOk()
+            ->assertJsonPath('data.linked_patient.id', $destination->id);
+
+        $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/accept")->assertOk();
+
+        $shared = $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")
+            ->assertOk()
+            ->assertJsonPath('data.0.handoff_id', $handoff->id)
+            ->assertJsonPath('data.0.source_patient_id', $source->id)
+            ->assertJsonPath('data.0.condition.name', 'Hypertension')
+            ->json('data');
+        $this->assertNotEmpty($shared[0]['recommendation'] ?? null);
+        $this->assertSame('Weekly BP.', $shared[0]['recommendation']);
+
+        $outsider = $this->bhcUser($this->otherBhc);
+        $this->as($outsider)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")->assertForbidden();
+
+        $condition = PatientCondition::query()->where('patient_id', $source->id)->sole();
+        $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/conditions")
+            ->assertOk()
+            ->assertJsonPath('data.conditions.0.id', $condition->id)
+            ->assertJsonPath('data.conditions.0.shared_via_handoff', true)
+            ->assertJsonPath('data.conditions.0.source_patient_id', $source->id);
+
+        $this->as($bhcStaff)
+            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+            ->postJson('/api/health-records', [
+                'patient_id' => $destination->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Cross-record monitoring start',
+                'care_plan' => ['start_monitoring_condition_ids' => [$condition->id]],
+            ])
+            ->assertCreated();
+
+        $this->assertSame($destination->id, ConditionMonitoring::sole()->patient_id);
+        $this->assertSame($condition->id, ConditionMonitoring::sole()->patient_condition_id);
+        $this->assertSame(MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE, $handoff->fresh()->status);
+        $this->assertSame($source->id, HealthRecord::query()->where('chief_complaint', 'Hypertension follow-up')->value('patient_id'));
+        $this->assertSame($destination->id, HealthRecord::query()->where('chief_complaint', 'Cross-record monitoring start')->value('patient_id'));
+    }
+
+    public function test_cross_record_link_rejects_demographic_conflict_and_inactive_destination(): void
+    {
+        $source = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Same',
+            'last_name' => 'Person',
+            'sex' => 'Female',
+            'birthdate' => '1995-01-15',
+        ]);
+        $conflict = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Different',
+            'last_name' => 'Person',
+            'sex' => 'Female',
+            'birthdate' => '1995-01-15',
+        ]);
+        $inactive = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Same',
+            'last_name' => 'Person',
+            'sex' => 'Female',
+            'birthdate' => '1995-01-15',
+            'status' => 'inactive',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $source);
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $conflict->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Attempted link despite name mismatch.',
+        ])->assertUnprocessable();
+        $this->assertNull($handoff->fresh()->linked_patient_id);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $inactive->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Inactive destination.',
+        ])->assertUnprocessable();
+        $this->assertNull($handoff->fresh()->linked_patient_id);
+    }
+
+    public function test_declined_cross_record_handoff_does_not_expose_shared_clinical(): void
+    {
+        $source = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Decline',
+            'last_name' => 'Match',
+            'sex' => 'Male',
+            'birthdate' => '1992-04-04',
+        ]);
+        $destination = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Decline',
+            'last_name' => 'Match',
+            'sex' => 'Male',
+            'birthdate' => '1992-04-04',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $source);
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Demographics verified against registration.',
+        ])->assertOk();
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/decline", [
+            'reason' => 'Unable to monitor after verification.',
+        ])->assertOk();
+
+        $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->as($bhcStaff)->getJson("/api/monitoring-handoff-requests/{$handoff->id}")
+            ->assertOk()
+            ->assertJsonPath('data.recommendation', null)
+            ->assertJsonPath('data.health_record_id', null);
+    }
+
+    public function test_resolve_identity_review_allows_verified_relink(): void
+    {
+        $source = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Review',
+            'last_name' => 'Case',
+            'sex' => 'Female',
+            'birthdate' => '1987-07-07',
+        ]);
+        $destination = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Review',
+            'last_name' => 'Case',
+            'sex' => 'Female',
+            'birthdate' => '1987-07-07',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $source);
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/flag-identity-review", [
+            'note' => 'Ambiguous match list; hold for review.',
+        ])->assertOk()
+            ->assertJsonPath('data.identity_resolution', MonitoringHandoffRequest::IDENTITY_RESOLUTION_NEEDS_REVIEW);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Should stay blocked.',
+        ])->assertUnprocessable();
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/resolve-identity-review", [
+            'note' => 'Reviewed registration card; safe to verify linkage.',
+        ])->assertOk()
+            ->assertJsonPath('data.verification_status', 'awaiting_verification')
+            ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Card and demographics confirmed after review.',
+        ])->assertOk()
+            ->assertJsonPath('data.linked_patient.id', $destination->id);
+    }
+
+    public function test_cross_record_link_rejects_conflicting_destination_association(): void
+    {
+        $sourceA = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Alpha',
+            'last_name' => 'Conflict',
+            'sex' => 'Male',
+            'birthdate' => '1990-01-01',
+        ]);
+        $sourceB = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Beta',
+            'last_name' => 'Conflict',
+            'sex' => 'Male',
+            'birthdate' => '1991-02-02',
+        ]);
+        $destination = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Alpha',
+            'last_name' => 'Conflict',
+            'sex' => 'Male',
+            'birthdate' => '1990-01-01',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $sourceA);
+        $handoffA = MonitoringHandoffRequest::query()->where('patient_id', $sourceA->id)->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoffA->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'First verified link.',
+        ])->assertOk();
+
+        $this->finalizeManage($this->rhuClinician(), $sourceB, ['name' => 'Diabetes', 'monitoringRecommendation' => 'Monitor glucose.']);
+        $handoffB = MonitoringHandoffRequest::query()->where('patient_id', $sourceB->id)->sole();
+        $destination->update([
+            'first_name' => 'Beta',
+            'last_name' => 'Conflict',
+            'birthdate' => '1991-02-02',
+        ]);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoffB->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Should conflict with existing association.',
+        ])->assertUnprocessable();
+        $this->assertNull($handoffB->fresh()->linked_patient_id);
+    }
+
+    public function test_correct_pending_cross_record_link_preserves_audit_and_blocks_clinical(): void
+    {
+        $source = $this->rhuPatient([
+            'barangay_health_center_id' => null,
+            'first_name' => 'Correct',
+            'last_name' => 'Link',
+            'sex' => 'Female',
+            'birthdate' => '1985-05-05',
+        ]);
+        $destination = $this->bhcPatient($this->bhc, [
+            'first_name' => 'Correct',
+            'last_name' => 'Link',
+            'sex' => 'Female',
+            'birthdate' => '1985-05-05',
+        ]);
+        $this->finalizeManage($this->rhuClinician(), $source);
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $bhcStaff = $this->bhcUser($this->bhc);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/link", [
+            'linked_patient_id' => $destination->id,
+            'identity_confirmed' => true,
+            'verification_evidence' => 'Initial verification.',
+        ])->assertOk();
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/correct-identity-link", [
+            'note' => 'Wrong BHC registration selected; unlink for correction.',
+        ])->assertOk()
+            ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED)
+            ->assertJsonPath('data.linked_patient', null)
+            ->assertJsonPath('data.identity_resolution', MonitoringHandoffRequest::IDENTITY_RESOLUTION_NEEDS_REVIEW);
+
+        $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->assertSame($source->id, $handoff->fresh()->patient_id);
     }
 }

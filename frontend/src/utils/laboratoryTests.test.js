@@ -35,20 +35,35 @@ test("evidence references stay distinct across current and historical visits", (
   assert.equal(options[1].version, 9);
 });
 
-test("selected evidence, pinned versions and attachment references survive normalization, resume and save", () => {
+test("selected evidence and pinned versions survive normalization, resume and save without attachment IDs", () => {
+  const evidence = [{ reference: "record:5", version: 8 }];
   const diagnosis = { id: "d1", name: "Hypertension", activate: true, nextAction: "manage_to_bhc", receivingBhcId: "2", monitoringRecommendation: "Monitor",
-    laboratoryEvidence: [{ reference: "record:5", version: 8, attachmentIds: [crypto.randomUUID()] }], laboratoryEvidenceConfirmed: true };
+    laboratoryEvidence: evidence, laboratoryEvidenceConfirmed: true };
   const normalized = normalizeDiagnoses([diagnosis]);
   const restored = restoreRhuDiagnoses({ diagnoses: normalized });
   const saved = diagnosesForRhuSave(restored);
-  assert.deepEqual(saved[0].laboratoryEvidence, diagnosis.laboratoryEvidence);
+  assert.deepEqual(saved[0].laboratoryEvidence, evidence);
   assert.equal(saved[0].laboratoryEvidenceConfirmed, true);
   assert.equal(rhuCarePlanErrors([{ ...diagnosis, laboratoryEvidenceConfirmed: false }])["diagnoses.d1.laboratoryEvidenceConfirmed"], "Confirm the selected laboratory evidence before sharing.");
   assert.equal(diagnosesForRhuSave([{ ...diagnosis, nextAction: "none" }])[0].laboratoryEvidence, undefined);
 });
 
+test("legacy draft attachment IDs are stripped and require reconfirmation", () => {
+  const legacy = {
+    id: "d1", name: "Hypertension", activate: true, nextAction: "manage_to_bhc", receivingBhcId: "2", monitoringRecommendation: "Monitor",
+    laboratoryEvidence: [{ reference: "record:5", version: 8, attachmentIds: [crypto.randomUUID()] }],
+    laboratoryEvidenceConfirmed: true,
+  };
+  const normalized = normalizeDiagnoses([legacy]);
+  assert.deepEqual(normalized[0].laboratoryEvidence, [{ reference: "record:5", version: 8 }]);
+  assert.equal(normalized[0].laboratoryEvidenceConfirmed, false);
+  const restored = restoreRhuDiagnoses({ diagnoses: [legacy] });
+  assert.deepEqual(restored[0].laboratoryEvidence, [{ reference: "record:5", version: 8 }]);
+  assert.equal(restored[0].laboratoryEvidenceConfirmed, false);
+});
+
 test("supporting laboratory tests stay independent of BHC sharing and survive save for any diagnosis", () => {
-  const sharedRef = { reference: "record:5", version: 8, attachmentIds: [crypto.randomUUID()] };
+  const sharedRef = { reference: "record:5", version: 8 };
   const support = [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }, { reference: "record:9" }];
   const hypertension = {
     id: "d1", name: "Hypertension", activate: true, nextAction: "none",

@@ -1,6 +1,6 @@
 import { PatientRegistrationEntryLink as Link } from "../../components/features/patients/PatientRegistrationEntry";
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, useBlocker, useNavigate, useParams } from 'react-router';
+import { Navigate, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MapPin, Plus, User, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,6 +19,7 @@ import FamilyDirectoryTable from '../../components/features/families/FamilyDirec
 import FamilyDirectoryFilter from '../../components/features/families/FamilyDirectoryFilter';
 import FamilyMembersList from '../../components/features/families/FamilyMembersList';
 import TransferHouseholdModal from '../../components/features/families/TransferHouseholdModal';
+import AddExistingMemberModal from '../../components/features/families/AddExistingMemberModal';
 import { RELATIONSHIP_LABELS } from '../../utils/relationshipLabels';
 import { errorStateVariant } from '../../utils/errorStateVariant';
 import { queryKeys } from '../../utils/queryKeys';
@@ -165,36 +166,47 @@ function Directory({scope,role}) {
 }
 export function BhcFamilyDetails({role='bhc'}={}) {
   const {householdId}=useParams();
+  const [params,setParams]=useSearchParams();
   const scope=useHouseholdScope(role);
   const access=useAccess();
   const navigate=useNavigate();
   const base=familyBase(role);
   const [view,setView]=useState('tree');
   const [transferring,setTransferring]=useState(null);
+  const [addingMember,setAddingMember]=useState(false);
+  const canRegister=access.can('patients.register');
   const query=useQuery({queryKey:[...scope.key,'detail',householdId],queryFn:()=>getHouseholdById(householdId, role),retry:false});
   const item=query.data;
   const members=useMemo(()=>[...(item?.members || [])].sort((a,b)=>Number(b.id === item?.headPatientId)-Number(a.id === item?.headPatientId)),[item]);
   const head=item?.members.find(member=>member.id === item.headPatientId);
   const tabs=[['tree','Household Relationships'],['list','Members List']];
   const openMember=id=>navigate(`/${role}/patients/${id}?tab=patient-info`);
+  useEffect(()=>{
+    if(!item || item.archivedAt || !canRegister || params.get('addMember') !== '1') return;
+    setAddingMember(true);
+    const next=new URLSearchParams(params);
+    next.delete('addMember');
+    setParams(next,{replace:true});
+  },[item,canRegister,params,setParams]);
   function moveTab(event) {
     if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
     event.preventDefault();
     const next=event.key === 'Home' ? 'tree' : event.key === 'End' ? 'list' : view === 'tree' ? 'list' : 'tree';
     setView(next);document.getElementById(`family-tab-${next}`)?.focus();
   }
-  if(accessDenied(query.error) || (query.isPending && !item)) return <FamilyFrame role={role} title="Family Details"><QueryState query={query} label="Loading household…" skeleton="family-details" options={{view,canManage:access.can('families.manage'),canRegister:access.can('patients.register')}}/></FamilyFrame>;
+  if(accessDenied(query.error) || (query.isPending && !item)) return <FamilyFrame role={role} title="Family Details"><QueryState query={query} label="Loading household…" skeleton="family-details" options={{view,canManage:access.can('families.manage'),canRegister}}/></FamilyFrame>;
   if(!item && query.error) return <FamilyFrame role={role} title="Family Details"><QueryState query={query} label="Loading household…" skeleton="family-details"/></FamilyFrame>;
   const viewTabs=<div role="tablist" aria-label="Family view" className="inline-flex gap-1 rounded-full border border-neutral-200 bg-neutral-100 p-1">{tabs.map(([key,label])=><button key={key} type="button" role="tab" id={`family-tab-${key}`} aria-selected={view === key} aria-controls={`family-panel-${key}`} tabIndex={view === key ? 0 : -1} onClick={()=>setView(key)} onKeyDown={moveTab} className={`h-7 rounded-full px-4 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink-400/50 ${view === key ? 'bg-ink-700 text-white' : 'text-neutral-600 hover:text-neutral-900'}`}>{label}</button>)}</div>;
   return <FamilyFrame role={role} title="Family Details"><BackLink to={base}/>{item.archivedAt ? <p role="status" className={`${SHEET} px-6 py-10 text-center text-sm text-neutral-600`}>This household is archived.</p> : <>
     {query.isFetching && <div className="flex justify-end"><RefreshingIndicator label="Updating household..."/></div>}
     <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2.5"><h1 className={TITLE}>{head ? `${head.lastName} Household` : 'Household'}</h1><span className="rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 font-mono text-xs text-neutral-600">{item.serialNumber}</span></div>
       <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-neutral-600"><span className="inline-flex items-center gap-1.5"><User size={14} className="text-neutral-500" aria-hidden="true"/>Head: <b className="font-semibold text-ink-800">{head ? patientName(head) : 'Not assigned'}</b></span><span className="inline-flex min-w-0 items-center gap-1.5"><MapPin size={14} className="shrink-0 text-neutral-500" aria-hidden="true"/>{addressText(item.address) || 'No address recorded'}</span><span className="inline-flex items-center gap-1.5"><Users size={14} className="text-neutral-500" aria-hidden="true"/>{item.members.length} {item.members.length === 1 ? 'member' : 'members'}</span></p></div>
-      <div className="flex flex-wrap gap-2">{access.can('families.manage') && <Button asChild variant="secondary"><Link to={`${base}/${item.id}/edit`}>Edit Family</Link></Button>}{access.can('patients.register') && <Button asChild variant="brand"><Link to={`/${role}/patients/add?household=${item.id}`}><Plus size={17}/>Register Member</Link></Button>}</div></header>
+      <div className="flex flex-wrap gap-2">{access.can('families.manage') && <Button asChild variant="secondary"><Link to={`${base}/${item.id}/edit`}>Edit Family</Link></Button>}{canRegister && <Button type="button" variant="brand" onClick={()=>setAddingMember(true)}><Plus size={17}/>Add Existing Member</Button>}</div></header>
     <section id={`family-panel-${view}`} className="space-y-3" aria-label="Household members">{view === 'tree'
       ? <FamilyTreeCanvas leading={viewTabs} members={members} headId={item.headPatientId} onOpenMember={openMember}/>
-      : <>{viewTabs}<FamilyMembersList members={members} headId={item.headPatientId} canTransfer={access.can('patients.register')} onTransfer={setTransferring} patientPath={`/${role}/patients`}/></>}</section>
+      : <>{viewTabs}<FamilyMembersList members={members} headId={item.headPatientId} canTransfer={canRegister} onTransfer={setTransferring} patientPath={`/${role}/patients`}/></>}</section>
     {transferring && <TransferHouseholdModal role={role} member={transferring} household={item} onClose={()=>setTransferring(null)}/>}
+    {addingMember && <AddExistingMemberModal role={role} household={item} onClose={()=>setAddingMember(false)}/>}
   </>}</FamilyFrame>;
 }
 function Field({name,label,error,children}) {
@@ -254,7 +266,7 @@ function FamilyEditor({scope,role,initialItem,refreshError,onRefresh}) {
 }
 export function BhcAddMember({role='bhc'}={}) {
   const {householdId}=useParams();
-  return <Navigate replace to={`/${role}/patients/add?household=${householdId}`}/>;
+  return <Navigate replace to={`/${role}/families/${householdId}?addMember=1`}/>;
 }
 export function BhcDeferredFamilyAction({role='bhc'}={}) {
   const {householdId}=useParams();

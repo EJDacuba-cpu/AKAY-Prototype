@@ -161,15 +161,21 @@ export function RadioChoiceGroup({
         {choices.map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]"
+            className={`flex items-center gap-2 text-sm font-medium text-[#475569] ${
+              option.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+            }`}
           >
             <input
               type="radio"
               name={name}
               value={option.value}
               checked={value === option.value}
-              onChange={() => onChange(option.value)}
-              className="h-4 w-4 accent-[#B91C1C]"
+              disabled={Boolean(option.disabled)}
+              onChange={() => {
+                if (option.disabled) return;
+                onChange(option.value);
+              }}
+              className="h-4 w-4 accent-[#B91C1C] disabled:cursor-not-allowed"
             />
             <span
               className={

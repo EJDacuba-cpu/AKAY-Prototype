@@ -143,7 +143,6 @@ export function toPayload(patient = {}) {
     guardian_name: optional('guardianName', 'guardian_name'),
     guardian_relationship: optional('guardianRelationship', 'guardian_relationship'),
     guardian_contact_number: optional('guardianContactNumber', 'guardianContact', 'guardian_contact_number'),
-    family_serial_number: optional('familySerialNumber', 'family_serial_number'),
     nhts_status: optional('nhtsStatus', 'nhts_status'),
     philhealth_number: shouldSendPhilHealthNumber
       ? optional('philHealthNumber', 'philhealthNumber', 'philhealth_number')
@@ -169,6 +168,13 @@ export function toPayload(patient = {}) {
   Object.entries(educationKeys).forEach(([field, keys]) => {
     if (keys.some((key) => Object.hasOwn(patient, key) && patient[key] !== undefined)) payload[field] = optional(...keys);
   });
+
+  // FSN is sent only when the form explicitly carries it. Missing keys must not
+  // invent family_serial_number: null (that would break edit of household members).
+  const fsnKeys = ['familySerialNumber', 'family_serial_number'];
+  if (fsnKeys.some((key) => Object.hasOwn(patient, key) && patient[key] !== undefined)) {
+    payload.family_serial_number = optional(...fsnKeys);
+  }
 
   // Birth details (place, time, weight, height) are not part of general registration, so they are never
   // sent and stored values stay untouched. Parent links are sent only by forms that carry them, so a

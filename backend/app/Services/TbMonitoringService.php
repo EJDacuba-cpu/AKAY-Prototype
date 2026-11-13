@@ -26,8 +26,8 @@ final class TbMonitoringService
             ->where('status', 'accepted')->first() : null;
         $start = $this->startDate($case);
 
-        return ['can_write' => $case->status === 'active' && $endorsement !== null && $start !== null
-            && ActionPermissions::allows($user, 'consultations.encode'),
+        // Daily DOTS observation entry is retired. Historical GET remains available.
+        return ['can_write' => false,
             'endorsement' => $endorsement ? ['id' => $endorsement->id, 'version' => $endorsement->version] : null,
             'start_date' => $start, 'today' => now('Asia/Manila')->toDateString()];
     }
@@ -39,6 +39,7 @@ final class TbMonitoringService
 
     public function write(Request $request, int $caseId, array $data, ?int $entryId = null): array
     {
+        abort(410, 'Daily DOTS observation recording has been retired. Use BHC consultation follow-up and facility dispensing for continued care.');
         $user = $request->user();
         abort_unless($user->isBhc(), 403, 'Daily observations are recorded by the accepted BHC treatment partner.');
         ActionPermissions::ensure($user, 'clinical.history');

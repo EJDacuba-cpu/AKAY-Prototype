@@ -9,6 +9,11 @@ import { Input } from "../../../ui/input";
 import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import NextStepsSection from "./NextStepsSection";
 import { createDiagnosisId, DIAGNOSIS_LIMITS } from "../../../../utils/diagnoses";
+import {
+  entryDestinations,
+  REPORT_DESTINATIONS,
+  toggleDestination,
+} from "../../../../utils/reportingEntries";
 import { reconcilePrescriptionsForDiagnosisRemoval } from "../../../../utils/rhuPrescriptions";
 import { entryPurposeKey } from "../../../../utils/followUpSchedules";
 import {
@@ -17,6 +22,8 @@ import {
   diagnosisNextAction,
   emptyRhuDiagnosis,
   matchingMonitorableCondition,
+  PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR,
+  presumptiveManageToBhcBlocked,
   RHU_NEXT_ACTION_OPTIONS,
 } from "../../../../utils/rhuCarePlan";
 import {
@@ -285,6 +292,12 @@ function DiagnosisCard({
     && (action === "rhu_follow_up" || action === "manage_to_bhc" || action === "refer_higher_level");
   const showWalkInActions = !isReferralVisit || legacyReferralWalkInAction;
   const presumptive = isPresumptiveTb(entry);
+  const blockPresumptiveManage = presumptive && !existing;
+  const nextActionOptions = RHU_NEXT_ACTION_OPTIONS.map((option) => (
+    option.value === "manage_to_bhc" && blockPresumptiveManage
+      ? { ...option, disabled: true }
+      : option
+  ));
   return (
     <div className="rhu-diagnosis-card" data-field={showWalkInActions && errors[`${key}.nextAction`] ? `${key}.nextAction` : undefined}>
       <div className="flex items-start gap-2">
@@ -311,17 +324,51 @@ function DiagnosisCard({
           className="mt-1 h-4 w-4 accent-[#B70011]"
         />
         <span>
-          <span className="block text-sm font-semibold text-[#0B1C30]">Active Patient Condition</span>
+          <span className="block text-sm font-semibold text-[#0B1C30]">
+            {presumptive ? "Record as Under Evaluation" : "Active Patient Condition"}
+          </span>
           <span className="mt-0.5 block text-xs text-[#545F73]">
             {existing || entry.continued
               ? "This identity is already Active or Controlled. Continuing it does not create another confirmation."
               : presumptive
-                ? "Confirm Presumptive TB as Under Evaluation. This does not open an active TB treatment case."
+                ? "Records Presumptive TB as Under Evaluation. This does not confirm Active TB Disease or open an active TB treatment case."
                 : "Confirm this diagnosis as an Active patient condition. Off by default."}
           </span>
         </span>
       </label>
       <FieldError error={errors[`${key}.activate`]} />
+      <fieldset className="border-t border-[#E5EEFF] pt-2" disabled={disabled}>
+        <legend className="float-left mb-1 w-full text-sm font-semibold text-[#0B1C30]">
+          Reporting Classification (check all applicable)
+        </legend>
+        <p className="clear-both text-xs text-[#545F73]">
+          Optional. Choose the reports this diagnosis belongs to, if any apply.
+        </p>
+        <div className="mt-2 space-y-1">
+          {REPORT_DESTINATIONS.map((destination) => (
+            <label key={destination} className="flex cursor-pointer items-start gap-3 px-1 py-1.5 hover:bg-slate-50">
+              <input
+                type="checkbox"
+                name={`${key}.reportIn`}
+                checked={entryDestinations(entry).includes(destination)}
+                disabled={disabled}
+                onChange={(event) => onChange(toggleDestination(entry, destination, event.target.checked))}
+                className="mt-1 h-4 w-4 accent-[#B70011]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-[#0B1C30]">
+                  {destination === "morbidity"
+                    ? "Morbidity"
+                    : destination === "notifiable"
+                      ? "Notifiable Diseases"
+                      : "Community Surveillance"}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <FieldError error={errors[`${key}.reportIn`]} />
+      </fieldset>
       <div className="rhu-diagnosis-evidence">
         <div className="rhu-diagnosis-assessment">
           <TbCaseManagementSection
@@ -366,11 +413,14 @@ function DiagnosisCard({
             label="Next action"
             name={`${key}.nextAction`}
             required
-            options={RHU_NEXT_ACTION_OPTIONS}
+            options={nextActionOptions}
             value={action}
             error={errors[`${key}.nextAction`]}
             onChange={(value) => onChange(applyRhuNextAction(entry, value))}
           />
+          {blockPresumptiveManage && action !== "manage_to_bhc" ? (
+            <p className="text-xs text-[#545F73]">{PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR}</p>
+          ) : null}
           {action === "none" && (
             <p className="text-xs text-[#545F73]">No additional return is scheduled. An Active condition stays Active.</p>
           )}
@@ -423,7 +473,7 @@ function DiagnosisCard({
               />
             </fieldset>
           )}
-          {action === "manage_to_bhc" && (
+          {action === "manage_to_bhc" && !presumptiveManageToBhcBlocked(entry, conditions) && (
             <fieldset disabled={disabled} className="min-w-0 space-y-3 pt-2">
               <p className="text-xs text-[#545F73]">
                 Sends a monitoring request to the receiving BHC. Monitoring does not start until that BHC accepts and begins a consultation.

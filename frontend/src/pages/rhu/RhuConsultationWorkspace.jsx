@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { HealthRecordFormSkeleton } from "../../components/common/loading/SkeletonLoaders";
@@ -156,7 +156,7 @@ import RhuConsultationRecoveryDialog from "../../components/features/rhu-queue/R
 import useRhuConsultationRecovery from "../../hooks/useRhuConsultationRecovery";
 import FormDraftStatus from "../../components/common/drafts/FormDraftStatus";
 import { LaboratoryTestsEditor } from "../../components/features/health-records/LaboratoryEvidence";
-import { getLaboratoryAttachments, getPatientLaboratoryTests } from "../../services/laboratoryService";
+import { getPatientLaboratoryTests } from "../../services/laboratoryService";
 import { evidenceOptions, laboratoryErrors, laboratorySummary, restoreLaboratoryTests } from "../../utils/laboratoryTests";
 import useDraftAutosave from "../../hooks/useDraftAutosave";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
@@ -251,11 +251,6 @@ export default function RhuConsultationWorkspace() {
   const [fbs, setFbs] = useState("");
   const [physicalExam, setPhysicalExam] = useState("");
   const [laboratoryTests, setLaboratoryTests] = useState([]);
-  const [laboratoryOperationCount, setLaboratoryOperationCount] = useState(0);
-  const laboratoryBusy = laboratoryOperationCount > 0;
-  function setLaboratoryBusy(busy) {
-    setLaboratoryOperationCount(current => Math.max(0, current + (busy ? 1 : -1)));
-  }
   const laboratoryHistory = useQuery({
     queryKey: ["patient-laboratory-tests", patientId],
     queryFn: () => getPatientLaboratoryTests(patientId),
@@ -558,11 +553,6 @@ export default function RhuConsultationWorkspace() {
   const encodeLocked = !canEncode;
   const finalizeLocked = !canFinalize;
   const assessmentLocked = encodeLocked || !recoveryReady || saving || Boolean(saveSuccess);
-  const laboratoryAttachmentQueries = useQueries({ queries: laboratoryTests.map(entry => ({
-    queryKey: ["laboratory-attachments", patientId, consultationUuid, entry.id],
-    queryFn: () => getLaboratoryAttachments({ patientId, visitId: visit?.id, consultationUuid, testId: entry.id }),
-    enabled: recoveryReady && Boolean(visit?.id && consultationUuid),
-  })) });
   const clinicalLocked = finalizeLocked || !recoveryReady || saving || Boolean(saveSuccess);
 
   const draftPayload = useMemo(
@@ -871,7 +861,6 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function handlePrevious() {
-    if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
       setNextScreen(includeTb ? TB_INTAKE_STEP : NEXT_STEP);
@@ -1092,7 +1081,6 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function saveRecord() {
-    if (laboratoryBusy) { toast.error("Wait for the laboratory attachment operation to finish."); return; }
     const errors = {
       ...laboratoryErrors(laboratoryTests),
       ...rhuTbAssessmentErrors(diagnoses, { registry, canConfirmTb }),
@@ -1715,17 +1703,8 @@ export default function RhuConsultationWorkspace() {
                           supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                         })));
                       }}
-                      context={{ patientId, visitId: visit?.id, consultationUuid }}
-                      disabled={assessmentLocked || saving || laboratoryBusy}
+                      disabled={assessmentLocked || saving}
                       errors={validationErrors}
-                      onAttachmentsChange={(id, files) => {
-                        const ids = files.map(file => file.id).sort().join(",");
-                        setDiagnoses(current => current.map(entry => (entry.laboratoryEvidence || []).some(item => item.reference === `current:${id}` && [...(item.attachmentIds || [])].sort().join(",") !== ids) ? { ...entry, laboratoryEvidenceConfirmed: false } : entry));
-                      }}
-                      onBusyChange={(busy) => {
-                        setLaboratoryBusy(busy);
-                        if (busy) setDiagnoses(current => current.map(entry => ({ ...entry, laboratoryEvidenceConfirmed: false })));
-                      }}
                     />
                     <div className="mt-6 border-t border-[#E5E7EB] pt-4">
                       <BodyFindingsList
@@ -1872,10 +1851,10 @@ export default function RhuConsultationWorkspace() {
               {currentStepKey === NEXT_STEP && (
                 <fieldset disabled={clinicalLocked} className="min-w-0">
                   <RhuDiagnosisCarePlanSection
-                    laboratoryOptions={evidenceOptions(laboratoryTests.map((entry, index) => ({ ...entry, attachments: laboratoryAttachmentQueries[index]?.data?.data || [], attachmentsReady: laboratoryAttachmentQueries[index]?.isSuccess === true })), laboratoryHistory.data || [])}
+                    laboratoryOptions={evidenceOptions(laboratoryTests, laboratoryHistory.data || [])}
                     laboratoryLoading={laboratoryHistory.isFetching}
                     laboratoryError={laboratoryHistory.isError}
-                    onRefreshLaboratory={() => { laboratoryHistory.refetch(); laboratoryAttachmentQueries.forEach(query => query.refetch()); }}
+                    onRefreshLaboratory={() => { laboratoryHistory.refetch(); }}
                     onUpdateCurrentLaboratoryTest={(next) => {
                       clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
                       setLaboratoryTests((current) => current.map((entry) => (entry.id === next.id ? { ...entry, ...next } : entry)));
@@ -1956,7 +1935,7 @@ export default function RhuConsultationWorkspace() {
           continueLabel={wizardPhase === WIZARD_REVIEW ? "Finalize Consultation" : "Next"}
           continueBusy={saving}
           continueBusyLabel="Saving..."
-          continueDisabled={!recoveryReady || laboratoryBusy || (wizardPhase === WIZARD_REVIEW && !canFinalize)}
+          continueDisabled={!recoveryReady || (wizardPhase === WIZARD_REVIEW && !canFinalize)}
         />
       {isReferred && canViewBackground && referralSlipOpen && (
         <ModalShell open size="wide" title="BHC Referral Slip" onClose={() => setReferralSlipOpen(false)} bodyClassName="max-h-[min(80vh,720px)] overflow-y-auto">

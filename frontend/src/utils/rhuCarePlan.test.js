@@ -52,6 +52,41 @@ test("Manage to BHC is invalid unless Active is explicit or already confirmed", 
   assert.equal(already["diagnoses.a.activate"], undefined);
 });
 
+test("Presumptive TB activate does not satisfy Manage to BHC without an Active or Controlled condition", () => {
+  const entry = {
+    id: "tb",
+    name: "Tuberculosis",
+    activate: true,
+    nextAction: "manage_to_bhc",
+    receivingBhcId: "9",
+    monitoringRecommendation: "Weekly follow-up",
+    tbManagement: { diagnosisType: "presumptive_tb", drugResistance: "" },
+  };
+  assert.equal(diagnosisActivateConfirmed(entry, []), false);
+  const errors = rhuCarePlanErrors([entry], { catchmentBhcIds: [9] });
+  assert.match(
+    errors["diagnoses.tb.nextAction"],
+    /Presumptive TB is Under Evaluation\. Manage to BHC is available only for Active or Controlled conditions\./,
+  );
+  assert.equal(errors["diagnoses.tb.activate"], undefined);
+
+  const disease = rhuCarePlanErrors(
+    [{ ...entry, tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" } }],
+    { catchmentBhcIds: [9] },
+  );
+  assert.equal(disease["diagnoses.tb.nextAction"], undefined);
+
+  const alreadyActive = rhuCarePlanErrors(
+    [{ ...entry, activate: false }],
+    {
+      catchmentBhcIds: [9],
+      conditions: [{ conditionName: "Tuberculosis", status: "active" }],
+    },
+  );
+  assert.equal(alreadyActive["diagnoses.tb.nextAction"], undefined);
+  assert.equal(diagnosisActivateConfirmed(entry, [{ conditionName: "Tuberculosis", status: "active" }]), true);
+});
+
 test("No Further Follow-up does not require Active and does not resolve", () => {
   const errors = rhuCarePlanErrors([{ id: "a", name: "URI", activate: false, nextAction: "none" }]);
   assert.deepEqual(errors, {});
@@ -159,6 +194,25 @@ test("an already Active/Controlled identity is confirmed without silent activate
   assert.equal(diagnosisActivateConfirmed({ name: "Asthma", activate: false }, [
     { conditionName: "Hypertension", status: "active" },
   ]), false);
+});
+
+test("diagnosesForRhuSave persists independent reportIn destinations", () => {
+  const saved = diagnosesForRhuSave([
+    {
+      id: "d1",
+      name: "Dengue",
+      reportIn: ["morbidity", "notifiable", "surveillance"],
+      nextAction: "none",
+    },
+    {
+      id: "d2",
+      name: "Cough",
+      reportIn: [],
+      nextAction: "none",
+    },
+  ]);
+  assert.deepEqual(saved[0].reportIn, ["morbidity", "notifiable", "surveillance"]);
+  assert.deepEqual(saved[1].reportIn, []);
 });
 
 test("diagnosesForRhuSave keeps activate and nextAction without fanning Manage", () => {

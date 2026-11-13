@@ -76,6 +76,22 @@ test("RHU read-only users see endorsement status without issuing or revoking con
   assert.doesNotMatch(html, /Endorse to BHC|Revoke endorsement/);
 });
 
+test("retired endorsement creation points clinicians to Manage to BHC", () => {
+  const client = makeClient();
+  client.setQueryData(["tb-case-endorsements", "7"], {
+    case_version: 1,
+    can_endorse: false,
+    can_revoke: false,
+    candidates: [],
+    history: [],
+    current: null,
+  });
+  const html = render(TbCaseEndorsementPanel, { caseId: 7 }, client);
+  assert.match(html, /New TB treatment endorsements are retired/);
+  assert.match(html, /Manage to BHC/);
+  assert.doesNotMatch(html, /Endorse to BHC/);
+});
+
 const monitoringData = (canWrite = false) => ({ can_write: canWrite, start_date: "2026-11-01", today: "2026-11-10", endorsement: { id: 3, version: 2 },
   entries: { data: [{ id: 12, observed_on: "2026-11-09", dose_status: "taken", weight_kg: "55.25", version: 1, recorder_name: "BHC Recorder", facility_name: "Treatment BHC", can_correct: canWrite }], current_page: 1, last_page: 1 } });
 
@@ -89,15 +105,14 @@ test("RHU monitoring view shows attributed observations without write controls",
   assert.doesNotMatch(html, /Save observation|Correct entry/);
 });
 
-test("accepted BHC monitoring offers direct observations without diagnosis or prescription inputs", () => {
+test("accepted BHC monitoring keeps historical log read-only after DOTS write retirement", () => {
   const client = makeClient(Infinity);
-  client.setQueryData(["tb-monitoring", "7", 1], monitoringData(true));
+  client.setQueryData(["tb-monitoring", "7", 1], monitoringData(false));
   const html = render(TbMonitoringPanel, { caseId: 7 }, client);
-  assert.match(html, /Save observation/);
-  assert.match(html, /Correct entry/);
+  assert.match(html, /Daily DOTS observation entry is retired/);
+  assert.match(html, /55.25/);
+  assert.doesNotMatch(html, /Save observation|Correct entry/);
   assert.doesNotMatch(html, /Drug Resistance|Prescribed Regimen/);
-  assert.match(html, /min="2026-11-01"/);
-  assert.match(html, /max="2026-11-10"/);
 });
 
 test("monitoring failure hides cached observations and write controls", () => {

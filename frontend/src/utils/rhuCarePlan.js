@@ -8,7 +8,12 @@
  */
 import { entryPurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
 import { normalizeSupportingLaboratoryTests } from "./laboratoryTests.js";
+import { entryDestinations } from "./reportingEntries.js";
 import { tbEvaluationEntryFields } from "./tbAssessment.js";
+import { isPresumptiveTb } from "./rhuTbCaseManagement.js";
+
+export const PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR =
+  "Presumptive TB is Under Evaluation. Manage to BHC is available only for Active or Controlled conditions.";
 
 function normalizeNameKey(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -76,9 +81,24 @@ export function matchingMonitorableCondition(name, conditions = []) {
   }) || null;
 }
 
+/**
+ * True when Manage to BHC can rely on an Active/Controlled condition.
+ * Checking activate on Presumptive TB only records Under Evaluation — that
+ * alone is not monitorable for handoff.
+ */
 export function diagnosisActivateConfirmed(entry, conditions = []) {
-  if (entry?.activate === true) return true;
-  return Boolean(matchingMonitorableCondition(entry?.name, conditions));
+  if (matchingMonitorableCondition(entry?.name, conditions)) return true;
+  if (entry?.activate !== true) return false;
+  if (isPresumptiveTb(entry)) return false;
+  return true;
+}
+
+export function presumptiveManageToBhcBlocked(entry, conditions = []) {
+  return (
+    diagnosisNextAction(entry) === "manage_to_bhc"
+    && isPresumptiveTb(entry)
+    && !matchingMonitorableCondition(entry?.name, conditions)
+  );
 }
 
 export function rhuDiagnosisFields(item = {}) {
@@ -112,11 +132,25 @@ function visitFollowUp(payload = {}) {
  */
 export function restoreRhuDiagnoses(payload = {}) {
   const list = Array.isArray(payload.diagnoses) ? payload.diagnoses : [];
-  const restored = list.map((entry) => ({
-    ...entry,
-    ...rhuDiagnosisFields(entry),
-    ...tbEvaluationEntryFields(entry),
-  }));
+  const restored = list.map((entry) => {
+    const evidence = Array.isArray(entry.laboratoryEvidence)
+      ? entry.laboratoryEvidence.map((selection) => ({
+        reference: selection.reference,
+        version: selection.version,
+      }))
+      : entry.laboratoryEvidence;
+    const hadLegacyAttachments = Array.isArray(entry.laboratoryEvidence)
+      && entry.laboratoryEvidence.some((selection) => Array.isArray(selection?.attachmentIds) && selection.attachmentIds.length > 0);
+    return {
+      ...entry,
+      ...rhuDiagnosisFields(entry),
+      ...tbEvaluationEntryFields(entry),
+      ...(Array.isArray(evidence) ? {
+        laboratoryEvidence: evidence,
+        laboratoryEvidenceConfirmed: hadLegacyAttachments ? false : entry.laboratoryEvidenceConfirmed === true,
+      } : {}),
+    };
+  });
   if (!visitManage(payload)) return restored;
   if (restored.some((entry) => diagnosisNextAction(entry) === "manage_to_bhc")) return restored;
   const index = restored.findIndex((entry) => !diagnosisNextAction(entry));
@@ -199,19 +233,24 @@ export function rhuCarePlanErrors(diagnoses = [], {
       if (!text(plan?.clinicalPlan)) errors[`${key}.higherLevelReferralPlan.clinicalPlan`] = "Enter the clinical plan.";
     }
     if (action === "manage_to_bhc") {
-      if (!diagnosisActivateConfirmed(entry, conditions)) {
+      if (presumptiveManageToBhcBlocked(entry, conditions)) {
+        // Keep the draft choice; require the clinician to pick a valid next action.
+        errors[`${key}.nextAction`] = PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR;
+      } else if (!diagnosisActivateConfirmed(entry, conditions)) {
         errors[`${key}.activate`] = "Mark this as an Active patient condition, or choose a different next action.";
       }
-      if (!text(entry.receivingBhcId)) {
-        errors[`${key}.receivingBhcId`] = "Choose the receiving Barangay Health Center.";
-      } else if (allowedBhcs.size > 0 && !allowedBhcs.has(String(entry.receivingBhcId))) {
-        errors[`${key}.receivingBhcId`] = "Choose a catchment Barangay Health Center of this RHU.";
-      }
-      if (!text(entry.monitoringRecommendation)) {
-        errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
-      }
-      if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
-        errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+      if (!presumptiveManageToBhcBlocked(entry, conditions)) {
+        if (!text(entry.receivingBhcId)) {
+          errors[`${key}.receivingBhcId`] = "Choose the receiving Barangay Health Center.";
+        } else if (allowedBhcs.size > 0 && !allowedBhcs.has(String(entry.receivingBhcId))) {
+          errors[`${key}.receivingBhcId`] = "Choose a catchment Barangay Health Center of this RHU.";
+        }
+        if (!text(entry.monitoringRecommendation)) {
+          errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
+        }
+        if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
+          errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+        }
       }
     }
   }
@@ -222,9 +261,11 @@ export function diagnosesForRhuSave(diagnoses = []) {
   return (diagnoses || []).filter((entry) => text(entry?.name)).map((entry) => {
     const fields = rhuDiagnosisFields(entry);
     const supportingLaboratoryTests = normalizeSupportingLaboratoryTests(entry.supportingLaboratoryTests);
+    const reportIn = entryDestinations(entry);
     return {
       id: entry.id,
       name: entry.name,
+      reportIn,
       activate: fields.activate,
       nextAction: fields.nextAction,
       manageToBhc: fields.nextAction === "manage_to_bhc",
@@ -234,7 +275,10 @@ export function diagnosesForRhuSave(diagnoses = []) {
       ...tbEvaluationEntryFields(entry),
       ...(supportingLaboratoryTests.length ? { supportingLaboratoryTests } : {}),
       ...(fields.nextAction === "manage_to_bhc" ? {
-        laboratoryEvidence: entry.laboratoryEvidence || [],
+        laboratoryEvidence: (entry.laboratoryEvidence || []).map((selection) => ({
+          reference: selection.reference,
+          version: selection.version,
+        })),
         laboratoryEvidenceConfirmed: entry.laboratoryEvidenceConfirmed === true,
       } : {}),
     };

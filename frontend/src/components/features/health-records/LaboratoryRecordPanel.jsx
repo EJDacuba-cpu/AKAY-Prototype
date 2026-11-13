@@ -5,7 +5,7 @@ import ModalShell from "../../common/modals/ModalShell";
 import useAccess from "../../../hooks/useAccess";
 import { getLaboratoryTests, getLaboratoryHandoffs, getPatientLaboratoryTests, saveLaboratoryAddendum, shareLaboratoryEvidence } from "../../../services/laboratoryService";
 import { laboratoryErrors, laboratorySummary } from "../../../utils/laboratoryTests";
-import { LaboratoryAttachments, LaboratoryEvidenceList, LaboratoryEvidencePicker, LaboratoryFields } from "./LaboratoryEvidence";
+import { LaboratoryEvidenceList, LaboratoryEvidencePicker, LaboratoryFields } from "./LaboratoryEvidence";
 
 export default function LaboratoryRecordPanel({ recordId, patientId }) {
   const access = useAccess();
@@ -56,7 +56,7 @@ export default function LaboratoryRecordPanel({ recordId, patientId }) {
         {entry.addenda.map(item => <div key={item.id} className="mt-2 border-l-2 border-neutral-200 pl-3"><p>{new Date(item.createdAt).toLocaleString()} · Staff #{item.createdBy} · {item.reason}</p><p className="whitespace-pre-wrap break-words">{laboratorySummary(item.data)}</p></div>)}
       </details>}
     </div>)}
-    {handoffs.data?.length > 0 && <div className="space-y-2 border-t border-neutral-200 pt-3"><h3 className="text-xs font-semibold text-ink-900">BHC evidence sharing</h3><p className="text-xs text-neutral-500">Addenda and new attachments remain private until explicitly shared.</p>
+    {handoffs.data?.length > 0 && <div className="space-y-2 border-t border-neutral-200 pt-3"><h3 className="text-xs font-semibold text-ink-900">BHC evidence sharing</h3><p className="text-xs text-neutral-500">Addenda remain private until explicitly shared.</p>
       {handoffs.data.map(handoff => <div key={handoff.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-600"><span>{handoff.condition} → {handoff.receivingBhc} · {handoff.evidence.length} shared</span>
         {access.can("consultations.finalize") && ["pending_review", "linkage_needed", "accepted_awaiting_first_visit", "monitoring_active"].includes(handoff.status) && <Button type="button" variant="secondary" size="compact" disabled={history.isPending || history.isError} onClick={() => { setSharing({ ...handoff, selected: handoff.evidence.map(entry => ({ reference: `record:${entry.recordId}`, version: entry.version })), confirmed: false }); setReason(""); setError(""); }}>Update Shared Evidence</Button>}
       </div>)}
@@ -71,7 +71,6 @@ export default function LaboratoryRecordPanel({ recordId, patientId }) {
         }} onChange={(selected, confirmed) => setSharing({ ...sharing, selected, confirmed })} />}
         {sharing && sharing.selected.length === 0 && <label className="flex gap-2 text-xs"><input type="checkbox" checked={sharing.confirmed} onChange={event => setSharing({ ...sharing, confirmed: event.target.checked })} />I confirm withdrawing all shared laboratory evidence from this handoff.</label>}
         <label className="block text-xs font-medium text-neutral-700">Reason *<textarea rows={2} value={reason} maxLength={2000} disabled={busy} onChange={event => setReason(event.target.value)} className="mt-1 w-full rounded-lg border border-neutral-300 p-2 text-sm" /></label>
-        {editing && <><p className="text-xs text-neutral-500">Attachment changes are saved immediately with the reason above.</p><LaboratoryAttachments context={{ recordId, testId: editing.id }} attachments={entries.find(entry => entry.recordId === editing.recordId)?.attachments || []} reason={reason} disabled={busy} uploadsAvailable={query.data?.uploads_available} onBusyChange={setBusy} onChanged={refresh} /></>}
         {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
         <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" disabled={busy} onClick={() => { setEditing(null); setSharing(null); }}>Cancel</Button><Button type="button" variant="brand" disabled={busy} onClick={save}>{busy ? "Saving…" : sharing ? "Confirm Sharing Update" : "Save Addendum"}</Button></div>
       </div>

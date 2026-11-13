@@ -107,8 +107,13 @@ export function normalizeDiagnoses(list) {
       ...(item.carePlan === "refer" && item.bhcFollowUp === true ? { bhcFollowUp: true } : {}),
       ...(item.includeInSurveillance === true ? { includeInSurveillance: true } : {}),
       ...(Array.isArray(item.laboratoryEvidence) ? {
-        laboratoryEvidence: item.laboratoryEvidence.map(selection => ({ reference: selection.reference, version: selection.version, attachmentIds: selection.attachmentIds || [] })),
-        laboratoryEvidenceConfirmed: item.laboratoryEvidenceConfirmed === true,
+        laboratoryEvidence: item.laboratoryEvidence.map(selection => ({
+          reference: selection.reference,
+          version: selection.version,
+        })),
+        // Legacy drafts that still carry attachmentIds need explicit reconfirmation.
+        laboratoryEvidenceConfirmed: item.laboratoryEvidenceConfirmed === true
+          && !(item.laboratoryEvidence || []).some((selection) => Array.isArray(selection?.attachmentIds) && selection.attachmentIds.length > 0),
       } : {}),
       ...(Array.isArray(item.supportingLaboratoryTests) ? {
         supportingLaboratoryTests: item.supportingLaboratoryTests

@@ -60,7 +60,9 @@ const CHART_COLORS = {
 const CATEGORY_ALIASES = Object.freeze({
   all: "all",
   "all-categories": "all",
+  overview: "all",
   epi: "epi",
+  tcl: "epi",
   immunization: "epi",
   "epi-target-client-list": "epi",
   "child-health": "epi",
