@@ -23,7 +23,6 @@ import PatientRecordsTab from "../../components/features/patients/profile/Patien
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
 import RhuSharedClinicalSection from "../../components/features/patients/profile/RhuSharedClinicalSection";
-import PatientTbCasesPanel from "../../components/features/health-records/PatientTbCasesPanel";
 import { ReferralsSection } from "../../components/features/patients/profile/FollowUpsAndReferrals";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { getBhcPatientProfileQueries } from "../../services/patientProfileQueries";
@@ -518,7 +517,6 @@ function LivePatientDetails() {
 
                 {activeTab === "programs" && canViewHistory && (
                   <>
-                  <PatientTbCasesPanel key={patientId} patientId={patientId} />
                   <RhuSharedClinicalSection
                     entries={rhuSharedClinical}
                     isLoading={rhuSharedLoading}
