@@ -9,6 +9,10 @@
 import { entryPurposeKey, VISIT_PURPOSE_KEY } from "./followUpSchedules.js";
 import { normalizeSupportingLaboratoryTests } from "./laboratoryTests.js";
 import { tbEvaluationEntryFields } from "./tbAssessment.js";
+import { isPresumptiveTb } from "./rhuTbCaseManagement.js";
+
+export const PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR =
+  "Presumptive TB is Under Evaluation. Manage to BHC is available only for Active or Controlled conditions.";
 
 function normalizeNameKey(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -76,9 +80,24 @@ export function matchingMonitorableCondition(name, conditions = []) {
   }) || null;
 }
 
+/**
+ * True when Manage to BHC can rely on an Active/Controlled condition.
+ * Checking activate on Presumptive TB only records Under Evaluation — that
+ * alone is not monitorable for handoff.
+ */
 export function diagnosisActivateConfirmed(entry, conditions = []) {
-  if (entry?.activate === true) return true;
-  return Boolean(matchingMonitorableCondition(entry?.name, conditions));
+  if (matchingMonitorableCondition(entry?.name, conditions)) return true;
+  if (entry?.activate !== true) return false;
+  if (isPresumptiveTb(entry)) return false;
+  return true;
+}
+
+export function presumptiveManageToBhcBlocked(entry, conditions = []) {
+  return (
+    diagnosisNextAction(entry) === "manage_to_bhc"
+    && isPresumptiveTb(entry)
+    && !matchingMonitorableCondition(entry?.name, conditions)
+  );
 }
 
 export function rhuDiagnosisFields(item = {}) {
@@ -199,19 +218,24 @@ export function rhuCarePlanErrors(diagnoses = [], {
       if (!text(plan?.clinicalPlan)) errors[`${key}.higherLevelReferralPlan.clinicalPlan`] = "Enter the clinical plan.";
     }
     if (action === "manage_to_bhc") {
-      if (!diagnosisActivateConfirmed(entry, conditions)) {
+      if (presumptiveManageToBhcBlocked(entry, conditions)) {
+        // Keep the draft choice; require the clinician to pick a valid next action.
+        errors[`${key}.nextAction`] = PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR;
+      } else if (!diagnosisActivateConfirmed(entry, conditions)) {
         errors[`${key}.activate`] = "Mark this as an Active patient condition, or choose a different next action.";
       }
-      if (!text(entry.receivingBhcId)) {
-        errors[`${key}.receivingBhcId`] = "Choose the receiving Barangay Health Center.";
-      } else if (allowedBhcs.size > 0 && !allowedBhcs.has(String(entry.receivingBhcId))) {
-        errors[`${key}.receivingBhcId`] = "Choose a catchment Barangay Health Center of this RHU.";
-      }
-      if (!text(entry.monitoringRecommendation)) {
-        errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
-      }
-      if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
-        errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+      if (!presumptiveManageToBhcBlocked(entry, conditions)) {
+        if (!text(entry.receivingBhcId)) {
+          errors[`${key}.receivingBhcId`] = "Choose the receiving Barangay Health Center.";
+        } else if (allowedBhcs.size > 0 && !allowedBhcs.has(String(entry.receivingBhcId))) {
+          errors[`${key}.receivingBhcId`] = "Choose a catchment Barangay Health Center of this RHU.";
+        }
+        if (!text(entry.monitoringRecommendation)) {
+          errors[`${key}.monitoringRecommendation`] = "Write the monitoring recommendation.";
+        }
+        if (entry.laboratoryEvidence?.length && entry.laboratoryEvidenceConfirmed !== true) {
+          errors[`${key}.laboratoryEvidenceConfirmed`] = "Confirm the selected laboratory evidence before sharing.";
+        }
       }
     }
   }

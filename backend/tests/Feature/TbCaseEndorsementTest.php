@@ -90,6 +90,37 @@ class TbCaseEndorsementTest extends TestCase
         return ['case_version' => $this->case->fresh()->version, 'receiving_bhc_id' => $bhc ?? $this->bhc->id, 'note' => 'Endorsed for DOTS at receiving BHC.'];
     }
 
+    /** Seed a historical endorsement — API create is retired. */
+    private function seedEndorsement(array $attrs = []): TbCaseEndorsement
+    {
+        $receivingBhcId = (int) ($attrs['receiving_bhc_id'] ?? $this->bhc->id);
+        $linked = array_key_exists('linked_patient_id', $attrs)
+            ? $attrs['linked_patient_id']
+            : ((int) $this->patient->barangay_health_center_id === $receivingBhcId ? $this->patient->id : null);
+        $status = $attrs['status'] ?? ($linked ? 'pending_review' : 'linkage_needed');
+
+        return TbCaseEndorsement::create([
+            'tb_treatment_case_id' => $this->case->id,
+            'receiving_bhc_id' => $receivingBhcId,
+            'linked_patient_id' => $linked,
+            'patient_snapshot' => $attrs['patient_snapshot'] ?? [
+                'id' => $this->patient->id,
+                'first_name' => $this->patient->first_name,
+                'last_name' => $this->patient->last_name,
+            ],
+            'note' => $attrs['note'] ?? 'Endorsed for DOTS at receiving BHC.',
+            'status' => $status,
+            'endorsed_by' => $this->doctor->id,
+            'endorsed_at' => now(),
+            'version' => $attrs['version'] ?? 1,
+            'request_key' => $attrs['request_key'] ?? (string) Str::uuid(),
+            'request_hash' => $attrs['request_hash'] ?? str_repeat('e', 64),
+            'reason' => $attrs['reason'] ?? null,
+            'reviewed_by' => $attrs['reviewed_by'] ?? null,
+            'reviewed_at' => $attrs['reviewed_at'] ?? null,
+        ]);
+    }
+
     private function endorse(?array $payload = null, ?string $key = null, ?User $user = null)
     {
         return $this->actingAs($user ?? $this->doctor, 'sanctum')->withHeader('Idempotency-Key', $key ?? (string) Str::uuid())
@@ -101,30 +132,36 @@ class TbCaseEndorsementTest extends TestCase
         return $this->actingAs($user ?? $this->receiver, 'sanctum')->postJson("/api/tb-endorsements/$id/$action", $body);
     }
 
-    public function test_physician_endorsement_shares_the_same_card_and_bhc_acceptance_does_not_change_clinical_data(): void
+    public function test_new_endorsement_creation_api_is_retired(): void
+    {
+        $this->endorse()->assertStatus(410);
+        $this->actingAs($this->doctor, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}/endorsements")
+            ->assertOk()
+            ->assertJsonPath('data.can_endorse', false);
+    }
+
+    public function test_historical_endorsement_acceptance_shares_card_without_mutating_clinical_data(): void
     {
         $source = $this->case->sourceHealthRecord->getRawOriginal();
         $card = $this->case->card_data;
-        $id = $this->endorse()->assertCreated()->assertJsonPath('data.status', 'pending_review')
-            ->assertJsonPath('data.linked_patient.id', $this->patient->id)->json('data.id');
-        $this->assertSame(2, $this->case->fresh()->version);
+        $row = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id]);
         $this->actingAs($this->receiver, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}")->assertOk()
             ->assertJsonPath('data.card_data.classification.drugResistance', 'drug_susceptible');
         $this->getJson("/api/patients/{$this->patient->id}/tb-cases")->assertOk()->assertJsonPath('data.data.0.id', $this->case->id);
-        $this->act($id, 'accept', ['version' => 1, 'confirmed' => true])->assertOk()->assertJsonPath('data.status', 'accepted');
-        $this->act($id, 'accept', ['version' => 1, 'confirmed' => true])->assertOk()->assertJsonPath('data.version', 2);
+        $this->act($row->id, 'accept', ['version' => 1, 'confirmed' => true])->assertOk()->assertJsonPath('data.status', 'accepted');
+        $this->act($row->id, 'accept', ['version' => 1, 'confirmed' => true])->assertOk()->assertJsonPath('data.version', 2);
         $this->get("/api/tb-cases/{$this->case->id}/pdf")->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->patchJson("/api/tb-cases/{$this->case->id}", ['card_data' => ['classification' => ['drugResistance' => 'rr_tb']]])->assertStatus(405);
         $this->assertSame($card, $this->case->fresh()->card_data);
         $this->assertSame($source, $this->case->sourceHealthRecord->fresh()->getRawOriginal());
-        $this->assertSame(2, AuditLog::where('module', 'tb_case_endorsements')->count());
+        $this->assertSame(1, AuditLog::where('module', 'tb_case_endorsements')->count());
     }
 
     public function test_rhu_only_walk_in_needs_explicit_local_identity_link_without_changing_original_ownership(): void
     {
         $this->patient->update(['barangay_health_center_id' => null, 'rural_health_unit_id' => $this->rhu->id]);
         $local = $this->newPatient($this->bhc->id);
-        $id = $this->endorse()->assertCreated()->assertJsonPath('data.status', 'linkage_needed')->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'linkage_needed', 'linked_patient_id' => null])->id;
         $this->actingAs($this->receiver, 'sanctum')->getJson('/api/tb-endorsements')->assertOk()->assertJsonPath('data.data.0.id', $id);
         $this->getJson("/api/tb-endorsements/$id")->assertOk()->assertJsonMissingPath('data.card_data')->assertJsonMissingPath('data.diagnosis_snapshot');
         $this->getJson("/api/tb-cases/{$this->case->id}")->assertNotFound();
@@ -140,60 +177,55 @@ class TbCaseEndorsementTest extends TestCase
         $this->assertDatabaseCount('health_records', 1);
     }
 
-    public function test_patient_home_bhc_is_a_valid_return_target_even_when_attached_to_another_rhu(): void
+    public function test_patient_home_bhc_remains_listed_as_candidate_and_create_stays_retired(): void
     {
         $other = RuralHealthUnit::create(['name' => 'Other RHU', 'status' => 'active']);
         $this->bhc->update(['rural_health_unit_id' => $other->id]);
         $this->actingAs($this->doctor, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}/endorsements")
-            ->assertOk()->assertJsonFragment(['id' => $this->bhc->id, 'name' => 'Receiving BHC']);
-        $this->endorse()->assertCreated()->assertJsonPath('data.status', 'pending_review');
-        $outside = BarangayHealthCenter::create(['name' => 'Unrelated', 'status' => 'active', 'rural_health_unit_id' => $other->id]);
-        $this->endorse($this->payload($outside->id))->assertUnprocessable();
+            ->assertOk()
+            ->assertJsonFragment(['id' => $this->bhc->id, 'name' => 'Receiving BHC'])
+            ->assertJsonPath('data.can_endorse', false);
+        $this->endorse()->assertStatus(410);
     }
 
-    public function test_only_the_owning_physician_can_issue_or_revoke_with_proper_duties(): void
+    public function test_new_endorsement_create_is_retired_for_all_actors(): void
     {
         $payload = $this->payload();
-        foreach ([$this->nurse, $this->receiver] as $actor) {
-            $this->endorse($payload, user: $actor)->assertForbidden();
-        }
-        $admin = User::create(['name' => 'Admin', 'email' => 'admin@tb-endorsement.example.test', 'password' => 'password123', 'role' => 'admin', 'status' => 'active']);
-        $this->endorse($payload, user: $admin)->assertForbidden();
-        foreach (['conditions.confirm', 'consultations.finalize', 'clinical.history'] as $missing) {
-            $this->doctor->update(['permissions' => array_values(array_diff(['conditions.confirm', 'consultations.finalize', 'clinical.history'], [$missing]))]);
-            $this->endorse($payload)->assertForbidden();
+        foreach ([$this->nurse, $this->receiver, $this->doctor] as $actor) {
+            $this->endorse($payload, user: $actor)->assertStatus(410);
         }
         $this->assertDatabaseCount('tb_case_endorsements', 0);
     }
 
-    public function test_creation_retries_preserve_identity_and_changed_payload_or_stale_version_cannot_overwrite(): void
+    public function test_physician_can_revoke_historical_endorsement_with_proper_duties(): void
     {
-        $payload = $this->payload();
-        $key = (string) Str::uuid();
-        $id = $this->endorse($payload, $key)->assertCreated()->json('data.id');
-        $this->endorse($payload, $key)->assertOk()->assertJsonPath('data.id', $id);
-        $this->endorse([...$payload, 'note' => 'Different'], $key)->assertStatus(409);
-        $this->endorse($payload)->assertStatus(409);
-        $this->act($id, 'revoke', ['version' => 1, 'case_version' => 2, 'reason' => 'Transfer treatment partner'], $this->doctor)->assertOk();
-        $this->endorse($payload, $key)->assertOk()->assertJsonPath('data.status', 'revoked');
-        $this->endorse($payload)->assertStatus(409);
-        $this->assertDatabaseCount('tb_case_endorsements', 1);
-        $this->assertSame(3, $this->case->fresh()->version);
+        $row = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id]);
+        $this->act($row->id, 'revoke', [
+            'version' => 1,
+            'case_version' => $this->case->fresh()->version,
+            'reason' => 'Transfer treatment partner',
+        ], $this->doctor)->assertOk()->assertJsonPath('data.status', 'revoked');
+        $this->actingAs($this->nurse, 'sanctum')->postJson("/api/tb-endorsements/{$row->id}/revoke", [
+            'version' => 2,
+            'case_version' => $this->case->fresh()->version,
+            'reason' => 'Nurse cannot revoke',
+        ])->assertForbidden();
     }
 
-    public function test_revocation_immediately_removes_old_bhc_card_and_pdf_access_before_reassignment(): void
+    public function test_revocation_immediately_removes_old_bhc_card_and_pdf_access(): void
     {
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $this->act($id, 'accept', ['version' => 1, 'confirmed' => true])->assertOk();
         $this->act($id, 'revoke', ['version' => 1, 'case_version' => 2, 'reason' => 'Stale'], $this->doctor)->assertStatus(409);
-        $body = ['version' => 2, 'case_version' => 3, 'reason' => 'BHC transfer'];
+        $body = ['version' => 2, 'case_version' => $this->case->fresh()->version, 'reason' => 'BHC transfer'];
         $this->act($id, 'revoke', $body, $this->doctor)->assertOk()->assertJsonPath('data.status', 'revoked');
         $this->act($id, 'revoke', $body, $this->doctor)->assertOk();
         $this->actingAs($this->receiver, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}")->assertNotFound();
         $this->getJson("/api/tb-cases/{$this->case->id}/pdf")->assertNotFound();
         $this->getJson("/api/patients/{$this->patient->id}/tb-cases")->assertOk()->assertJsonPath('data.total', 0);
-        $this->endorse($this->payload($this->secondBhc->id))->assertCreated()->assertJsonPath('data.status', 'linkage_needed');
-        $this->actingAs($this->doctor, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}/endorsements")->assertOk()->assertJsonCount(2, 'data.history');
+        // Reassignment via create is retired; history still lists the revoked row.
+        $this->endorse($this->payload($this->secondBhc->id))->assertStatus(410);
+        $this->actingAs($this->doctor, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}/endorsements")->assertOk()->assertJsonCount(1, 'data.history');
     }
 
     public function test_recipient_cannot_link_wrong_facility_or_inactive_registration_or_skip_confirmation(): void
@@ -201,7 +233,7 @@ class TbCaseEndorsementTest extends TestCase
         $this->patient->update(['barangay_health_center_id' => null]);
         $local = $this->newPatient($this->bhc->id);
         $wrong = $this->newPatient($this->secondBhc->id);
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'linkage_needed', 'linked_patient_id' => null])->id;
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $wrong->id, 'identity_confirmed' => true])->assertForbidden();
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => false])->assertUnprocessable();
         $local->update(['status' => 'inactive']);
@@ -211,7 +243,7 @@ class TbCaseEndorsementTest extends TestCase
 
     public function test_wrong_bhc_and_read_only_staff_cannot_receive_or_mutate_endorsements(): void
     {
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $this->actingAs($this->otherReceiver, 'sanctum')->getJson("/api/tb-endorsements/$id")->assertNotFound();
         $this->act($id, 'accept', ['version' => 1, 'confirmed' => true], $this->otherReceiver)->assertNotFound();
         $this->receiver->update(['permissions' => ['clinical.history']]);
@@ -224,9 +256,8 @@ class TbCaseEndorsementTest extends TestCase
 
     public function test_clinical_fields_cannot_be_smuggled_through_endorsement_actions(): void
     {
-        $payload = $this->payload();
-        $this->endorse([...$payload, 'card_data' => ['outcome' => ['status' => 'cured']]])->assertUnprocessable();
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $this->endorse([...$this->payload(), 'card_data' => ['outcome' => ['status' => 'cured']]])->assertStatus(410);
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $this->act($id, 'accept', ['version' => 1, 'confirmed' => true, 'status' => 'accepted', 'card_data' => ['classification' => ['drugResistance' => 'rr_tb']]])->assertUnprocessable();
         $this->assertSame('drug_susceptible', $this->case->fresh()->card_data['classification']['drugResistance']);
         $this->assertSame('pending_review', TbCaseEndorsement::findOrFail($id)->status);
@@ -234,17 +265,17 @@ class TbCaseEndorsementTest extends TestCase
 
     public function test_decline_is_terminal_and_stale_accept_does_not_restore_access(): void
     {
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $this->act($id, 'decline', ['version' => 1, 'reason' => 'Unable to provide treatment support'])->assertOk()->assertJsonPath('data.status', 'declined');
         $this->act($id, 'decline', ['version' => 1, 'reason' => 'Unable to provide treatment support'])->assertOk();
         $this->act($id, 'accept', ['version' => 1, 'confirmed' => true])->assertStatus(409);
         $this->actingAs($this->receiver, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}")->assertNotFound();
-        $this->endorse()->assertCreated();
+        $this->endorse()->assertStatus(410);
     }
 
     public function test_local_patient_movement_or_deactivation_does_not_grant_another_facility_case_access(): void
     {
-        $this->endorse()->assertCreated();
+        $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id]);
         $this->patient->update(['barangay_health_center_id' => $this->secondBhc->id]);
         foreach ([$this->receiver, $this->otherReceiver] as $user) {
             $this->actingAs($user, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}")->assertNotFound();
@@ -253,13 +284,13 @@ class TbCaseEndorsementTest extends TestCase
         $this->actingAs($this->receiver, 'sanctum')->getJson("/api/tb-cases/{$this->case->id}/pdf")->assertNotFound();
     }
 
-    public function test_closed_case_or_inactive_target_cannot_receive_a_new_endorsement(): void
+    public function test_closed_case_or_inactive_target_still_cannot_create_endorsements(): void
     {
         $this->case->update(['status' => 'closed']);
-        $this->endorse()->assertUnprocessable();
+        $this->endorse()->assertStatus(410);
         $this->case->update(['status' => 'active']);
         $this->bhc->update(['status' => 'inactive']);
-        $this->endorse()->assertUnprocessable();
+        $this->endorse()->assertStatus(410);
         $this->assertDatabaseCount('tb_case_endorsements', 0);
     }
 
@@ -268,7 +299,7 @@ class TbCaseEndorsementTest extends TestCase
         $this->patient->update(['barangay_health_center_id' => null]);
         $local = $this->newPatient($this->bhc->id);
         $this->newCase($local, 'TB-2026-0002');
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'linkage_needed', 'linked_patient_id' => null])->id;
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => true])->assertStatus(409);
     }
 
@@ -276,9 +307,13 @@ class TbCaseEndorsementTest extends TestCase
     {
         $this->patient->update(['barangay_health_center_id' => null]);
         $local = $this->newPatient($this->bhc->id);
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'linkage_needed', 'linked_patient_id' => null])->id;
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => true])->assertOk();
-        $this->act($id, 'revoke', ['version' => 2, 'case_version' => 3, 'reason' => 'Change treatment partner'], $this->doctor)->assertOk();
+        $this->act($id, 'revoke', [
+            'version' => 2,
+            'case_version' => $this->case->fresh()->version,
+            'reason' => 'Change treatment partner',
+        ], $this->doctor)->assertOk();
         $this->assertTrue(\App\Services\TbCaseEndorsementService::hasActiveLinkedCase((int) $local->id));
         $this->assertDatabaseCount('tb_treatment_cases', 1);
         $this->actingAs($this->doctor, 'sanctum')->getJson("/api/health-records/{$this->source($local)->id}/tb-case")
@@ -291,12 +326,16 @@ class TbCaseEndorsementTest extends TestCase
         $original->update(['barangay_health_center_id' => null]);
         $local = $this->newPatient($this->bhc->id);
         $nextLocal = $this->newPatient($this->secondBhc->id);
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'linkage_needed', 'linked_patient_id' => null])->id;
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $local->id, 'identity_confirmed' => true])->assertOk();
         // Closing an episode must not erase an explicitly confirmed patient identity.
         $this->case->update(['status' => 'closed']);
         $this->case = $this->newCase($local, 'TB-2026-0002');
-        $id = $this->endorse($this->payload($this->secondBhc->id))->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement([
+            'status' => 'linkage_needed',
+            'linked_patient_id' => null,
+            'receiving_bhc_id' => $this->secondBhc->id,
+        ])->id;
         $this->act($id, 'link', ['version' => 1, 'linked_patient_id' => $nextLocal->id, 'identity_confirmed' => true], $this->otherReceiver)->assertOk();
         $this->case->update(['status' => 'closed']);
         $this->newCase($nextLocal, 'TB-2026-0003');
@@ -311,7 +350,7 @@ class TbCaseEndorsementTest extends TestCase
     public function test_endorsement_migration_does_not_change_registered_card_or_source_data(): void
     {
         $card = $this->case->card_data;
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $this->assertNotNull(TbCaseEndorsement::find($id));
         $migration = require database_path('migrations/2026_11_10_000004_create_tb_case_endorsements.php');
         $migration->down();
@@ -324,26 +363,26 @@ class TbCaseEndorsementTest extends TestCase
 
     public function test_inbox_case_filter_does_not_return_unrelated_cases(): void
     {
-        $this->endorse()->assertCreated();
+        $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id]);
         $this->actingAs($this->receiver, 'sanctum')->getJson('/api/tb-endorsements?case_id=9999')->assertOk()->assertJsonPath('data.total', 0);
     }
 
     public function test_database_rejects_a_second_current_endorsement_even_if_service_is_bypassed(): void
     {
-        $id = $this->endorse()->assertCreated()->json('data.id');
+        $id = $this->seedEndorsement(['status' => 'pending_review', 'linked_patient_id' => $this->patient->id])->id;
         $copy = TbCaseEndorsement::findOrFail($id)->replicate();
         $copy->request_key = (string) Str::uuid();
         $this->expectException(QueryException::class);
         $copy->save();
     }
 
-    public function test_identical_creation_retry_does_not_reissue_an_endorsement_when_target_becomes_inactive(): void
+    public function test_retired_create_does_not_reissue_when_target_is_inactive(): void
     {
         $payload = $this->payload();
         $key = (string) Str::uuid();
-        $id = $this->endorse($payload, $key)->assertCreated()->json('data.id');
+        $this->endorse($payload, $key)->assertStatus(410);
         $this->bhc->update(['status' => 'inactive']);
-        $this->endorse($payload, $key)->assertOk()->assertJsonPath('data.id', $id);
-        $this->assertDatabaseCount('tb_case_endorsements', 1);
+        $this->endorse($payload, $key)->assertStatus(410);
+        $this->assertDatabaseCount('tb_case_endorsements', 0);
     }
 }

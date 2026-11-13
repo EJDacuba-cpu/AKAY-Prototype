@@ -431,6 +431,9 @@ export default function MonitoringHandoffReview() {
           {verified && (
             <section className="border-b border-neutral-200 p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-ink-900">Physician-authorized prescriptions</h2>
+              <p className="mt-1 text-xs text-neutral-600">
+                Informational only. Dispense from this BHC through consultation inventory workflows; RHU prescriptions are fulfilled at the RHU To Dispense desk.
+              </p>
               {(request.prescriptions || []).length === 0 ? (
                 <p className="mt-2 text-sm text-neutral-600">None shared with this request.</p>
               ) : (

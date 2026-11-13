@@ -28,8 +28,26 @@ after(async () => {
 });
 
 const card = { id: 7, case_number: "PRIVATE-SHARED-CARD", reporting_year: 2026, card_data: {}, diagnosis_snapshot: {} };
-const monitoring = { can_write: true, start_date: "2026-11-01", today: "2026-11-10", endorsement: { id: 3, version: 2 },
-  entries: { data: [{ id: 12, observed_on: "2026-11-09", dose_status: "taken", notes: "PRIVATE-LOG-NOTE", version: 1, can_correct: true }], current_page: 1, last_page: 1 } };
+const monitoring = {
+  can_write: false,
+  start_date: "2026-11-01",
+  today: "2026-11-10",
+  endorsement: { id: 3, version: 2 },
+  entries: {
+    data: [{
+      id: 12,
+      observed_on: "2026-11-09",
+      dose_status: "taken",
+      notes: "PRIVATE-LOG-NOTE",
+      version: 1,
+      can_correct: false,
+      recorder_name: "BHC Recorder",
+      facility_name: "Treatment BHC",
+    }],
+    current_page: 1,
+    last_page: 1,
+  },
+};
 const json = (data, status = 200) => new Response(JSON.stringify({ data, ...(status >= 400 ? { message: "Access revoked" } : {}) }), { status, headers: { "Content-Type": "application/json" } });
 async function settle(predicate) {
   for (let index = 0; index < 100; index++) {
@@ -46,7 +64,7 @@ async function mount(fetcher) {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => root.render(createElement(QueryClientProvider, { client }, createElement(SharedTbCaseView, { caseId: 7 }))));
-  await settle(() => container.querySelector('form[aria-label="Record DOTS observation"]'));
+  await settle(() => container.textContent.includes("Daily DOTS") || container.textContent.includes("DOTS monitoring is unavailable") || container.textContent.includes("Form 4B is unavailable"));
   return { container, client, async close() { await act(async () => root.unmount()); client.clear(); container.remove(); } };
 }
 const button = (container, text) => [...container.querySelectorAll("button")].find(node => node.textContent === text);
@@ -56,88 +74,43 @@ function visibleText(container) {
   return copy.textContent;
 }
 
-test("an uncertain save retains its draft and original UUID through reconnect and monitoring rechecks", async () => {
-  const writes = [];
-  let caseReads = 0;
-  let releaseCase;
-  let releaseMonitoring;
-  let holdMonitoring = false;
-  const app = await mount(async (url, options = {}) => {
+test("shared case view shows historical DOTS log without a write form", async () => {
+  const app = await mount(async (url) => {
     const path = new URL(url, "http://localhost").pathname;
-    if (options.method === "POST") {
-      writes.push({ key: new Headers(options.headers).get("Idempotency-Key"), payload: JSON.parse(options.body) });
-      if (writes.length === 1) throw new TypeError("Lost response");
-      return json({ id: 13, version: 1 });
-    }
-    if (path.endsWith("/monitoring")) {
-      if (holdMonitoring) { await new Promise(resolveRead => { releaseMonitoring = resolveRead; }); holdMonitoring = false; }
-      return json(monitoring);
-    }
-    if (path.endsWith("/tb-cases/7")) {
-      if (++caseReads === 2) await new Promise(resolveRead => { releaseCase = resolveRead; });
-      return json(card);
-    }
+    if (path.endsWith("/monitoring")) return json(monitoring);
+    if (path.endsWith("/tb-cases/7")) return json(card);
     throw new Error(`Unexpected test request: ${path}`);
   });
   try {
-    const form = app.container.querySelector('form[aria-label="Record DOTS observation"]');
-    await act(async () => {
-      const select = form.querySelector("select"); select.value = "taken"; select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await act(async () => {
-      const notes = form.querySelector("textarea");
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(notes, "Retain this draft");
-      notes.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    await settle(() => app.container.textContent.includes("save could not be confirmed"));
-    assert.equal(writes[0].payload.notes, "Retain this draft");
-    await act(async () => { onlineManager.setOnline(false); onlineManager.setOnline(true); });
-    await settle(() => releaseCase);
-    await act(async () => releaseCase());
-    await settle(() => app.container.querySelector('form[aria-label="Record DOTS observation"]'));
-    assert.equal(app.container.querySelector('form[aria-label="Record DOTS observation"] textarea').value, "Retain this draft");
-    holdMonitoring = true;
-    let refresh;
-    await act(async () => { refresh = app.client.refetchQueries({ queryKey: ["tb-monitoring", "7"] }); });
-    await settle(() => releaseMonitoring);
-    await act(async () => { releaseMonitoring(); await refresh; });
-    await settle(() => app.container.querySelector('form[aria-label="Record DOTS observation"]'));
-    assert.equal(app.container.querySelector('form[aria-label="Record DOTS observation"] textarea').value, "Retain this draft");
-    await act(async () => app.container.querySelector('form[aria-label="Record DOTS observation"]').dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    await settle(() => writes.length === 2);
-    assert.equal(writes[1].key, writes[0].key);
-    assert.deepEqual(writes[1].payload, writes[0].payload);
-  } finally { releaseCase?.(); releaseMonitoring?.(); await app.close(); }
+    assert.match(app.container.textContent, /Daily DOTS observation entry is retired/);
+    assert.match(app.container.textContent, /PRIVATE-LOG-NOTE/);
+    assert.equal(app.container.querySelector('form[aria-label="Record DOTS observation"]'), null);
+  } finally {
+    await app.close();
+  }
 });
 
-for (const discovery of ["History", "Save observation"]) {
-  test(`revocation discovered through ${discovery} hides both cached clinical and monitoring data`, async () => {
-    let revoked = false;
-    let caseReads = 0;
-    const app = await mount(async (url, options = {}) => {
-      const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/tb-cases/7")) { caseReads++; return revoked ? json(null, 404) : json(card); }
-      if (revoked || options.method === "POST") return json(null, 404);
-      if (path.endsWith("/monitoring")) return json(monitoring);
-      throw new Error(`Unexpected test request: ${path}`);
-    });
-    try {
-      revoked = true;
-      await act(async () => {
-        if (discovery === "History") button(app.container, "History").click();
-        else {
-          const form = app.container.querySelector('form[aria-label="Record DOTS observation"]');
-          const select = form.querySelector("select"); select.value = "taken"; select.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      });
-      if (discovery !== "History") await act(async () => app.container.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-      await settle(() => app.container.textContent.includes(discovery === "History" ? "Unable to load observation history" : "monitoring is unavailable") || app.container.textContent.includes("Form 4B is unavailable"));
-      await settle(() => caseReads > 1);
-      assert.doesNotMatch(visibleText(app.container), /PRIVATE-SHARED-CARD|PRIVATE-LOG-NOTE|Save observation|Correct entry/);
-    } finally { await app.close(); }
+test("revocation discovered through History hides both cached clinical and monitoring data", async () => {
+  let revoked = false;
+  let caseReads = 0;
+  const app = await mount(async (url) => {
+    const path = new URL(url, "http://localhost").pathname;
+    if (path.endsWith("/tb-cases/7")) { caseReads++; return revoked ? json(null, 404) : json(card); }
+    if (revoked) return json(null, 404);
+    if (path.endsWith("/monitoring")) return json(monitoring);
+    if (path.includes("/monitoring/12")) return revoked ? json(null, 404) : json({ ...monitoring.entries.data[0], revisions: [] });
+    throw new Error(`Unexpected test request: ${path}`);
   });
-}
+  try {
+    revoked = true;
+    await act(async () => button(app.container, "History").click());
+    await settle(() => app.container.textContent.includes("Unable to load observation history") || app.container.textContent.includes("Form 4B is unavailable"));
+    await settle(() => caseReads > 1);
+    assert.doesNotMatch(visibleText(app.container), /PRIVATE-SHARED-CARD|PRIVATE-LOG-NOTE|Save observation|Correct entry/);
+  } finally {
+    await app.close();
+  }
+});
 
 test("a denied shared-card PDF hides the entire cached case during offline revalidation", async () => {
   let denied = false; let restored = false;
@@ -153,5 +126,9 @@ test("a denied shared-card PDF hides the entire cached case during offline reval
     assert.doesNotMatch(visibleText(app.container), /PRIVATE-SHARED-CARD|PRIVATE-LOG-NOTE|Save observation/);
     restored = true; await act(async () => onlineManager.setOnline(true));
     await settle(() => app.container.textContent.includes("PRIVATE-SHARED-CARD"));
-  } finally { restored = true; await act(async () => onlineManager.setOnline(true)); await app.close(); }
+  } finally {
+    restored = true;
+    await act(async () => onlineManager.setOnline(true));
+    await app.close();
+  }
 });

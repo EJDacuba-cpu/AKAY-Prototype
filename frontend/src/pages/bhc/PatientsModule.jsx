@@ -13,7 +13,6 @@ import {
   RefreshingIndicator,
   SearchField,
   SearchFilterCluster,
-  SegmentedFilter,
   pickFilterValues,
 } from "../../components/common";
 import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
@@ -40,14 +39,16 @@ import { getTbEndorsements } from "../../services/tbCaseService";
 import { formatPatientName } from "../../utils/formatters";
 import { queryKeys } from "../../utils/queryKeys";
 import { showDirectoryRegisterAction } from "../../utils/patientDirectory";
+import {
+  KIND_TB_ENDORSEMENT,
+  mergeMonitoringInbox,
+  monitoringInboxShowsTbReview,
+  monitoringInboxStatusTone,
+} from "../../utils/pendingHandoffInbox";
 import BhcTbEndorsements from "./BhcTbEndorsements";
 
-const MONITORING_TAB_GENERAL = "general";
-const MONITORING_TAB_TB = "tb-endorsements";
-const MONITORING_TAB_OPTIONS = [
-  { value: MONITORING_TAB_GENERAL, label: "General Monitoring" },
-  { value: MONITORING_TAB_TB, label: "TB Endorsements" },
-];
+/** First page of TB endorsements for the unified inbox (API max 100). */
+const TB_INBOX_PER_PAGE = 100;
 
 const DEFAULT_FILTERS = {
   search: "",
@@ -84,37 +85,38 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const [params, setParams] = useSearchParams();
   const showHandoffs = role === "bhc" && params.get("view") === "monitoring-requests";
   const canTbEndorsements = role === "bhc" && access.can("clinical.history");
-  const monitoringTab =
-    showHandoffs && canTbEndorsements && params.get("tab") === MONITORING_TAB_TB
-      ? MONITORING_TAB_TB
-      : MONITORING_TAB_GENERAL;
-  const showGeneralHandoffs = showHandoffs && monitoringTab === MONITORING_TAB_GENERAL;
-  const showTbEndorsements = showHandoffs && monitoringTab === MONITORING_TAB_TB;
-  const tbPage = Math.max(1, Number(params.get("page")) || 1);
-  const tbCaseId = params.get("case") || "";
-  const tbListQuery = useQuery({
-    queryKey: ["tb-endorsements", tbPage, tbCaseId],
-    queryFn: () => getTbEndorsements(tbPage, tbCaseId),
-    enabled: showTbEndorsements,
-    retry: false,
-  });
+  // Deep links (legacy tab / case / endorsement) open the existing TB review UI.
+  const showTbReview = showHandoffs && monitoringInboxShowsTbReview(params, { canTbEndorsements });
+  const showUnifiedInbox = showHandoffs && !showTbReview;
   const handoffsQuery = useQuery({
     queryKey: queryKeys.monitoringHandoffs(),
     queryFn: listMonitoringHandoffRequests,
-    enabled: showGeneralHandoffs,
+    enabled: showUnifiedInbox,
+  });
+  const tbInboxQuery = useQuery({
+    queryKey: ["tb-endorsements", "inbox", TB_INBOX_PER_PAGE],
+    queryFn: () => getTbEndorsements(1, "", { perPage: TB_INBOX_PER_PAGE }),
+    enabled: showUnifiedInbox && canTbEndorsements,
+    retry: false,
+  });
+  const unifiedInboxRows = mergeMonitoringInbox({
+    handoffs: handoffsQuery.data || [],
+    endorsements: tbInboxQuery.data?.data || [],
+    includeTb: canTbEndorsements,
   });
 
-  function setMonitoringTab(nextTab) {
-    const next = new URLSearchParams(params);
-    if (nextTab === MONITORING_TAB_TB) {
-      next.set("tab", MONITORING_TAB_TB);
-    } else {
+  function openMonitoringInboxRow(row) {
+    if (row.kind === KIND_TB_ENDORSEMENT) {
+      const next = new URLSearchParams(params);
+      next.set("view", "monitoring-requests");
+      next.set("endorsement", String(row.id));
+      if (row.caseId) next.set("case", String(row.caseId));
       next.delete("tab");
-      next.delete("case");
       next.delete("page");
-      next.delete("endorsement");
+      setParams(next);
+      return;
     }
-    setParams(next, { replace: true });
+    navigate(`/bhc/patients/monitoring-requests/${row.id}`);
   }
   const {
     patients,
@@ -211,30 +213,35 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     hasMore: hasMorePatients,
     loadMore: loadMorePatients,
   } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
-  const hasData = showGeneralHandoffs
-    ? Array.isArray(handoffsQuery.data)
-    : showTbEndorsements
-      ? Boolean(tbListQuery.data)
+  const inboxHandoffsReady = Array.isArray(handoffsQuery.data);
+  const inboxTbReady = !canTbEndorsements || Boolean(tbInboxQuery.data) || Boolean(tbInboxQuery.error);
+  const hasData = showUnifiedInbox
+    ? inboxHandoffsReady || (canTbEndorsements && Boolean(tbInboxQuery.data))
+    : showTbReview
+      ? true
       : hasPatientData;
-  const activeError = showGeneralHandoffs
-    ? handoffsQuery.error
-    : showTbEndorsements
-      ? tbListQuery.error
+  // Prefer handoff failures for the hard error shell; TB-only failures still
+  // allow the handoff list through with a soft status line below.
+  const activeError = showUnifiedInbox
+    ? handoffsQuery.error || (!inboxHandoffsReady ? tbInboxQuery.error : null)
+    : showTbReview
+      ? null
       : queryError;
-  const activeRefreshing = showGeneralHandoffs
-    ? handoffsQuery.isFetching
-    : showTbEndorsements
-      ? tbListQuery.isFetching
+  const activeRefreshing = showUnifiedInbox
+    ? handoffsQuery.isFetching || (canTbEndorsements && tbInboxQuery.isFetching)
+    : showTbReview
+      ? false
       : isRefreshing;
-  const activeRetry = showGeneralHandoffs
-    ? handoffsQuery.refetch
-    : showTbEndorsements
-      ? tbListQuery.refetch
-      : refetchPatients;
-  const showInitialLoading = showGeneralHandoffs
-    ? handoffsQuery.isPending && !hasData
-    : showTbEndorsements
-      ? tbListQuery.isPending && !hasData
+  const activeRetry = showUnifiedInbox
+    ? () => {
+        void handoffsQuery.refetch();
+        if (canTbEndorsements) void tbInboxQuery.refetch();
+      }
+    : refetchPatients;
+  const showInitialLoading = showUnifiedInbox
+    ? (handoffsQuery.isPending || (canTbEndorsements && tbInboxQuery.isPending && !inboxTbReady)) && !hasData
+    : showTbReview
+      ? false
       : loading && !hasData;
   const showRefreshOverlay = activeRefreshing && hasData && !showHandoffs;
 
@@ -335,31 +342,21 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                     {showHandoffs ? "Monitoring Requests" : role === "rhu" ? "All Patients" : "Patients"}
                   </h1>
                   <p className="mt-1 text-[13px] text-neutral-600">
-                    {showTbEndorsements
-                      ? "RHU-to-BHC TB treatment endorsements for your catchment."
+                    {showTbReview
+                      ? "RHU-to-BHC TB treatment endorsement for your catchment."
                       : showHandoffs
-                        ? "RHU Manage to BHC handoffs for your catchment."
+                        ? "RHU Manage to BHC handoffs and TB treatment endorsements for your catchment."
                         : role === "rhu"
                           ? "Every patient record registered at this RHU."
                           : `Patients registered in your ${role === "rhu" ? "RHU" : "BHC"}.`}
                   </p>
                 </>
               )}
-              {showHandoffs && canTbEndorsements ? (
-                <div className="mt-3">
-                  <SegmentedFilter
-                    label="Monitoring request type"
-                    value={monitoringTab}
-                    onChange={setMonitoringTab}
-                    options={MONITORING_TAB_OPTIONS}
-                  />
-                </div>
-              ) : null}
               <p className="sr-only" role="status">
-                {showTbEndorsements
-                  ? "TB endorsements"
+                {showTbReview
+                  ? "TB endorsement review"
                   : showHandoffs
-                    ? `${(handoffsQuery.data || []).length} monitoring request${(handoffsQuery.data || []).length === 1 ? "" : "s"}`
+                    ? `${unifiedInboxRows.length} monitoring request${unifiedInboxRows.length === 1 ? "" : "s"}`
                     : patientCountLabel}
               </p>
             </div>
@@ -463,14 +460,24 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   addPatientPath={addPatientPath}
                 />
               )}
-              {showGeneralHandoffs && (
-                <MonitoringRequestList
-                  requests={handoffsQuery.data || []}
-                  loading={handoffsQuery.isLoading}
-                  onOpen={(id) => navigate(`/bhc/patients/monitoring-requests/${id}`)}
-                />
+              {showUnifiedInbox && (
+                <>
+                  {tbInboxQuery.error && inboxHandoffsReady ? (
+                    <p role="status" className="mb-3 text-sm text-neutral-600">
+                      TB endorsements could not be loaded. Showing monitoring handoffs only.
+                    </p>
+                  ) : null}
+                  <MonitoringRequestList
+                    rows={unifiedInboxRows}
+                    loading={
+                      (handoffsQuery.isLoading && !inboxHandoffsReady) ||
+                      (canTbEndorsements && tbInboxQuery.isLoading && !tbInboxQuery.data && !tbInboxQuery.error)
+                    }
+                    onOpen={openMonitoringInboxRow}
+                  />
+                </>
               )}
-              {showTbEndorsements && <BhcTbEndorsements embedded />}
+              {showTbReview && <BhcTbEndorsements embedded />}
             </div>
 
             {/* Below desktop the toolbar button is hidden and this floating one takes
@@ -527,69 +534,53 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   );
 }
 
-const MONITORING_STATUS_LABELS = {
-  pending_review: "Pending Review",
-  linkage_needed: "Needs Verification",
-  accepted_awaiting_first_visit: "Accepted — Awaiting First Visit",
-  monitoring_active: "Monitoring Active",
-  declined: "Declined",
-  redirected: "Redirected",
-};
-
-function monitoringStatusTone(status) {
-  if (status === "monitoring_active" || status === "accepted_awaiting_first_visit") return "success";
-  if (status === "pending_review") return "info";
-  if (status === "linkage_needed") return "warning";
-  if (status === "declined") return "danger";
-  return "neutral";
-}
-
-function MonitoringRequestList({ requests, loading, onOpen }) {
-  if (loading && requests.length === 0) {
+function MonitoringRequestList({ rows, loading, onOpen }) {
+  if (loading && rows.length === 0) {
     return <p className="px-4 py-10 text-sm text-neutral-600">Loading monitoring requests…</p>;
   }
-  if (requests.length === 0) {
+  if (rows.length === 0) {
     return (
       <FilteredEmptyPanel
         icon={<Users size={20} className="text-neutral-400" aria-hidden="true" />}
         title="No monitoring requests"
-        description="RHU Manage to BHC requests for this Barangay Health Center will appear here."
+        description="RHU Manage to BHC handoffs and TB treatment endorsements for this Barangay Health Center will appear here."
       />
     );
   }
   return (
     <div className="space-y-2">
       <p className="text-xs tabular-nums text-neutral-600">
-        {requests.length} request{requests.length === 1 ? "" : "s"}
+        {rows.length} request{rows.length === 1 ? "" : "s"}
       </p>
       <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-        <div className="hidden h-11 items-center bg-neutral-100 px-4 text-[10px] font-bold uppercase tracking-wide text-neutral-600 md:grid md:grid-cols-[minmax(0,1fr)_180px]">
+        <div className="hidden h-11 items-center bg-neutral-100 px-4 text-[10px] font-bold uppercase tracking-wide text-neutral-600 md:grid md:grid-cols-[minmax(0,1.4fr)_140px_180px]">
           <span>Patient / Condition</span>
+          <span>Type</span>
           <span>Status</span>
         </div>
         <ul className="divide-y divide-neutral-100">
-          {requests.map((request) => (
-            <li key={request.id}>
+          {rows.map((row) => (
+            <li key={row.key}>
               <button
                 type="button"
-                onClick={() => onOpen(request.id)}
-                className="grid w-full grid-cols-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:h-14 md:grid-cols-[minmax(0,1fr)_180px] md:py-0"
+                onClick={() => onOpen(row)}
+                className="grid w-full grid-cols-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 md:h-14 md:grid-cols-[minmax(0,1.4fr)_140px_180px] md:py-0"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-ink-800">
-                    {formatPatientName(request.source_patient) || "Patient"}
+                    {formatPatientName(row.patient) || "Patient"}
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] text-neutral-600">
-                    {request.condition?.name || "Condition"} · {request.sending_rhu?.name || "RHU"}
+                    {row.conditionLabel} · {row.sendingRhu}
                   </span>
+                </span>
+                <span className="min-w-0 text-xs font-medium text-neutral-700 md:truncate">
+                  {row.typeLabel}
                 </span>
                 <span className="shrink-0">
                   <PlainStatusStamp
-                    label={
-                      MONITORING_STATUS_LABELS[request.status] ||
-                      String(request.status || "Unknown").replaceAll("_", " ")
-                    }
-                    tone={monitoringStatusTone(request.status)}
+                    label={row.statusLabel}
+                    tone={monitoringInboxStatusTone(row.status)}
                   />
                 </span>
               </button>

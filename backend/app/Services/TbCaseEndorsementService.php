@@ -50,8 +50,16 @@ final class TbCaseEndorsementService
 
     public function canIssue(User $user): bool
     {
+        // Still used for revoke on existing endorsements. New creates are retired
+        // separately (canCreateEndorsement / create()).
         return TbClinicalAuthority::canConfirm($user) && ActionPermissions::allows($user, 'consultations.finalize')
             && ActionPermissions::allows($user, 'clinical.history');
+    }
+
+    /** New independent TB endorsement handoffs are retired in favor of manage_to_bhc. */
+    public function canCreateEndorsement(User $user): bool
+    {
+        return false;
     }
 
     public function candidates(TbTreatmentCase $case): Builder
@@ -110,6 +118,7 @@ final class TbCaseEndorsementService
 
     public function create(Request $request, int $caseId, array $data): array
     {
+        abort(410, 'TB treatment endorsements are no longer issued. Use Manage to BHC monitoring for continued BHC care.');
         $this->ownerCase($request->user(), $caseId, true);
         $hash = hash('sha256', json_encode([$caseId, (int) $data['case_version'], (int) $data['receiving_bhc_id'], $data['note']], JSON_THROW_ON_ERROR));
         $key = $data['request_key'];

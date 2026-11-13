@@ -93,7 +93,7 @@ export default function TbMonitoringPanel({ caseId, enabled = true }) {
     {show && error && <p role="alert" className="text-sm text-red-800">{error}</p>}
     {data?.can_write && <TbMonitoringForm key={`${editing?.id || "new"}:${editing?.version || 0}:${formEpoch}`} context={data} entry={editing} busy={busy} suspended={!show} onSave={save} onCancel={() => setEditing(null)} />}
     {show && <>
-    {!data.can_write && <p className="text-sm text-neutral-600">Observation entry requires an active case, a prescribed start date and acceptance by the assigned BHC. RHU staff review this log.</p>}
+    {!data.can_write && <p className="text-sm text-neutral-600">Daily DOTS observation entry is retired. This log remains read-only. Use BHC consultation follow-up and facility dispensing for continued care; dispensing is not proof of supervised intake.</p>}
     {data.entries.data.length === 0 ? <p className="text-sm text-neutral-600">No observations recorded.</p>
       : <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><caption className="sr-only">Dated medication and weight observations</caption><thead className="border-b border-neutral-200 text-neutral-600"><tr>{["Date", "Dose observation", "Weight (kg)", "Recorded by / BHC", "Notes", "Actions"].map(label => <th key={label} scope="col" className="px-2 py-2 font-medium">{label}</th>)}</tr></thead><tbody className="divide-y divide-neutral-200">{data.entries.data.map(row => <tr key={row.id} className="align-top text-neutral-700">
         <td className="whitespace-nowrap px-2 py-3 tabular-nums">{row.observed_on}<span className="mt-1 block text-xs text-neutral-500">v{row.version}</span></td>

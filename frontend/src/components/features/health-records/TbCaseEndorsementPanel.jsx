@@ -62,7 +62,7 @@ export default function TbCaseEndorsementPanel({ caseId }) {
       </fieldset>
       {data.candidates.length === 0 && <p className="text-sm text-neutral-600">No active eligible BHC is available.</p>}
       <Button type="submit" variant="brand" disabled={busy || data.candidates.length === 0}>{busy ? "Saving…" : "Endorse to BHC"}</Button>
-    </form> : <p className="text-sm text-neutral-600">An RHU physician authorizes endorsement of an active case to a BHC.</p>}
+    </form> : <p className="text-sm text-neutral-600">New TB treatment endorsements are retired. Use Manage to BHC on the RHU consultation for continued BHC monitoring. Historical endorsements remain listed below.</p>}
     {data.history.length > 0 && <details><summary className="cursor-pointer text-sm font-medium text-neutral-700">Endorsement history</summary><ul className="mt-2 divide-y divide-neutral-200">{data.history.map(row => <li key={row.id} className="py-2 text-sm text-neutral-600"><span className="font-medium text-ink-900">{row.receiving_bhc?.name}</span> · {TB_ENDORSEMENT_LABELS[row.status]}{row.reason && <p>{row.reason}</p>}</li>)}</ul></details>}
   </section>;
 }
