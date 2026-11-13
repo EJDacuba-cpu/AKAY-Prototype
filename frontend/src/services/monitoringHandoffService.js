@@ -8,10 +8,21 @@ export async function getMonitoringHandoffRequest(id) {
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}`));
 }
 
-export async function linkMonitoringHandoffRequest(id, linkedPatientId) {
+export async function linkMonitoringHandoffRequest(id, linkedPatientId, {
+  identityConfirmed = false,
+  verificationEvidence = "",
+} = {}) {
+  const body = { linked_patient_id: Number(linkedPatientId) };
+  if (identityConfirmed) {
+    body.identity_confirmed = true;
+  }
+  const evidence = String(verificationEvidence || "").trim();
+  if (evidence) {
+    body.verification_evidence = evidence;
+  }
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/link`, {
     method: "POST",
-    body: { linked_patient_id: Number(linkedPatientId) },
+    body,
   }));
 }
 
@@ -26,6 +37,24 @@ export async function flagMonitoringHandoffIdentityReview(id, note) {
     method: "POST",
     body: { note: String(note || "").trim() },
   }));
+}
+
+export async function resolveMonitoringHandoffIdentityReview(id, note) {
+  return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/resolve-identity-review`, {
+    method: "POST",
+    body: { note: String(note || "").trim() },
+  }));
+}
+
+export async function correctMonitoringHandoffIdentityLink(id, note) {
+  return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/correct-identity-link`, {
+    method: "POST",
+    body: { note: String(note || "").trim() },
+  }));
+}
+
+export async function getPatientRhuSharedClinical(patientId) {
+  return unwrapList(await apiRequest(`/patients/${patientId}/rhu-shared-clinical`)) || [];
 }
 
 export async function acceptMonitoringHandoffRequest(id) {

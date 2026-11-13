@@ -102,9 +102,11 @@ class PatientConditionReadTest extends TestCase
         $this->assertNotNull($response->json('data.conditions.0.confirmed_at'));
         $this->assertNotNull($response->json('data.conditions.0.monitoring.started_at'));
         $this->assertSame(
-            ['id', 'condition_name', 'condition_identity', 'status', 'confirmed_at', 'confirmed_by_name', 'source_type', 'source_id', 'bhc_monitoring_recommended_at', 'monitoring', 'events'],
+            ['id', 'condition_name', 'condition_identity', 'status', 'confirmed_at', 'confirmed_by_name', 'source_type', 'source_id', 'shared_via_handoff', 'source_patient_id', 'bhc_monitoring_recommended_at', 'monitoring', 'events'],
             array_keys($response->json('data.conditions.0'))
         );
+        $this->assertFalse($response->json('data.conditions.0.shared_via_handoff'));
+        $this->assertNull($response->json('data.conditions.0.source_patient_id'));
         $this->assertSame(
             ['from_status', 'to_status', 'note', 'source_type', 'source_id', 'changed_by_name', 'changed_at'],
             array_keys($response->json('data.conditions.0.events.0'))

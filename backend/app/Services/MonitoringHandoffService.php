@@ -190,17 +190,37 @@ class MonitoringHandoffService
     }
 
     /**
-     * Reuse an existing receiving-BHC patient identity. Different patient IDs
-     * are never silently merged — only the shared source patient row is allowed.
+     * Verify receiving-BHC patient identity for a monitoring handoff.
+     * Same-ID reuse remains the default. Different IDs require an explicit
+     * staff confirmation after a name+birthdate+sex potential match — records
+     * are never merged and primary keys are never changed.
      */
-    public function link(Request $http, MonitoringHandoffRequest $handoff, int $linkedPatientId): MonitoringHandoffRequest
-    {
+    public function link(
+        Request $http,
+        MonitoringHandoffRequest $handoff,
+        int $linkedPatientId,
+        bool $identityConfirmed = false,
+        ?string $verificationEvidence = null,
+    ): MonitoringHandoffRequest {
         $user = $http->user();
         $this->assertBhcEncoder($user);
         $this->assertReceivingBhc($user, $handoff);
 
-        return DB::transaction(function () use ($http, $handoff, $linkedPatientId, $user) {
+        return DB::transaction(function () use ($http, $handoff, $linkedPatientId, $identityConfirmed, $verificationEvidence, $user) {
             $locked = MonitoringHandoffRequest::query()->whereKey($handoff->id)->lockForUpdate()->firstOrFail();
+
+            // Idempotent: already verified to the same destination.
+            if (
+                (int) $locked->linked_patient_id === $linkedPatientId
+                && in_array($locked->status, [
+                    MonitoringHandoffRequest::STATUS_PENDING_REVIEW,
+                    MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                    MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+                ], true)
+            ) {
+                return $locked->fresh();
+            }
+
             if ($locked->status !== MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED) {
                 throw ValidationException::withMessages([
                     'status' => ['Only a request that needs linkage can be linked.'],
@@ -211,11 +231,7 @@ class MonitoringHandoffService
                     'identity_resolution' => ['This patient identity requires administrative review before linkage.'],
                 ]);
             }
-            if ((int) $linkedPatientId !== (int) $locked->patient_id) {
-                throw ValidationException::withMessages([
-                    'linked_patient_id' => ['A different patient record cannot be linked. Confirm the RHU source patient or escalate for identity review.'],
-                ]);
-            }
+
             $linked = Patient::query()->whereKey($linkedPatientId)->lockForUpdate()->firstOrFail();
             abort_unless(
                 $this->facilityAccess->sameAssignedId($linked->barangay_health_center_id, $user->barangay_health_center_id),
@@ -227,11 +243,32 @@ class MonitoringHandoffService
                     'linked_patient_id' => ['An inactive patient cannot be linked.'],
                 ]);
             }
+
+            $source = Patient::query()->whereKey($locked->patient_id)->lockForUpdate()->firstOrFail();
+            $sameRecord = (int) $linked->id === (int) $source->id;
+            $evidence = mb_substr(trim((string) $verificationEvidence), 0, 500);
+
+            if (! $sameRecord) {
+                if (! $identityConfirmed) {
+                    throw ValidationException::withMessages([
+                        'identity_confirmed' => ['Confirm that the selected BHC registration is the same person as the RHU source patient before linking.'],
+                    ]);
+                }
+                if (! $this->isPotentialDemographicMatch($source, $linked)) {
+                    throw ValidationException::withMessages([
+                        'linked_patient_id' => ['Selected BHC registration demographics conflict with the RHU source patient. Escalate for identity review.'],
+                    ]);
+                }
+                $this->assertNoConflictingIdentityAssociation($locked, $linked->id);
+            }
+
             $locked->update([
                 'linked_patient_id' => $linked->id,
                 'status' => MonitoringHandoffRequest::STATUS_PENDING_REVIEW,
-                'identity_resolution' => MonitoringHandoffRequest::IDENTITY_RESOLUTION_REUSED_EXISTING,
-                'identity_resolution_note' => null,
+                'identity_resolution' => $sameRecord
+                    ? MonitoringHandoffRequest::IDENTITY_RESOLUTION_REUSED_EXISTING
+                    : MonitoringHandoffRequest::IDENTITY_RESOLUTION_VERIFIED_CROSS_RECORD,
+                'identity_resolution_note' => $sameRecord ? null : ($evidence !== '' ? $evidence : null),
                 'reviewed_by' => $user->id,
                 'reviewed_at' => now(),
             ]);
@@ -239,7 +276,9 @@ class MonitoringHandoffService
                 $http,
                 'updated',
                 'monitoring_handoff_requests',
-                "Verified existing BHC identity for monitoring handoff {$locked->id} (patient {$linked->id})."
+                $sameRecord
+                    ? "Verified existing BHC identity for monitoring handoff {$locked->id} (patient {$linked->id})."
+                    : "Verified cross-record linkage for monitoring handoff {$locked->id} (source patient {$source->id} → BHC patient {$linked->id})."
             );
 
             return $locked->fresh();
@@ -409,6 +448,95 @@ class MonitoringHandoffService
         });
     }
 
+    /**
+     * Clear a needs_review flag so authorized BHC staff can resume verification.
+     * Does not invent a patient link; staff must verify again deliberately.
+     */
+    public function resolveIdentityReview(Request $http, MonitoringHandoffRequest $handoff, string $note): MonitoringHandoffRequest
+    {
+        $user = $http->user();
+        $this->assertBhcEncoder($user);
+        $this->assertReceivingBhc($user, $handoff);
+        $note = trim($note);
+        if ($note === '') {
+            throw ValidationException::withMessages([
+                'note' => ['A resolution note is required.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($http, $handoff, $user, $note) {
+            $locked = MonitoringHandoffRequest::query()->whereKey($handoff->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only a request that needs linkage can clear identity review.'],
+                ]);
+            }
+            if ($locked->identity_resolution !== MonitoringHandoffRequest::IDENTITY_RESOLUTION_NEEDS_REVIEW) {
+                throw ValidationException::withMessages([
+                    'identity_resolution' => ['This request is not flagged for identity review.'],
+                ]);
+            }
+            $locked->update([
+                'identity_resolution' => null,
+                'identity_resolution_note' => mb_substr($note, 0, 500),
+                'linked_patient_id' => null,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+            ]);
+            $this->auditLogger->log(
+                $http,
+                'updated',
+                'monitoring_handoff_requests',
+                "Cleared identity review for monitoring handoff {$locked->id}: {$note}"
+            );
+
+            return $locked->fresh();
+        });
+    }
+
+    /**
+     * Undo an incorrect pending verification without deleting historical audit
+     * or reassigning medical records. Returns the request to linkage_needed.
+     */
+    public function correctIdentityLink(Request $http, MonitoringHandoffRequest $handoff, string $note): MonitoringHandoffRequest
+    {
+        $user = $http->user();
+        $this->assertBhcEncoder($user);
+        $this->assertReceivingBhc($user, $handoff);
+        $note = trim($note);
+        if ($note === '') {
+            throw ValidationException::withMessages([
+                'note' => ['A correction note is required.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($http, $handoff, $user, $note) {
+            $locked = MonitoringHandoffRequest::query()->whereKey($handoff->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status !== MonitoringHandoffRequest::STATUS_PENDING_REVIEW) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only a pending verified request can correct its patient linkage.'],
+                ]);
+            }
+            $previousLinked = $locked->linked_patient_id;
+            $locked->update([
+                'linked_patient_id' => null,
+                'status' => MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED,
+                'identity_resolution' => MonitoringHandoffRequest::IDENTITY_RESOLUTION_NEEDS_REVIEW,
+                'identity_resolution_note' => mb_substr($note, 0, 500),
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+            ]);
+            $this->auditLogger->log(
+                $http,
+                'updated',
+                'monitoring_handoff_requests',
+                "Corrected identity link for monitoring handoff {$locked->id} (cleared linked patient {$previousLinked}): {$note}"
+            );
+
+            return $locked->fresh();
+        });
+    }
+
     public function accept(Request $http, MonitoringHandoffRequest $handoff): MonitoringHandoffRequest
     {
         $user = $http->user();
@@ -525,6 +653,77 @@ class MonitoringHandoffService
             ->get();
     }
 
+    /**
+     * Read-only RHU clinical slice authorized for accepted/active handoffs linked
+     * to this BHC patient. Does not grant unrestricted RHU history access.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function sharedClinicalFor(Patient $patient, User $user): Collection
+    {
+        $this->assertBhcViewer($user);
+        abort_unless(
+            $this->facilityAccess->sameAssignedId($patient->barangay_health_center_id, $user->barangay_health_center_id),
+            403,
+            FacilityAccessService::DENIED_MESSAGE
+        );
+
+        $handoffs = MonitoringHandoffRequest::query()
+            ->with([
+                'patientCondition',
+                'sendingRuralHealthUnit:id,name',
+                'healthRecord',
+                'linkedPatient',
+            ])
+            ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+            ->where('linked_patient_id', $patient->id)
+            ->whereIn('status', [
+                MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+            ])
+            ->orderByDesc('id')
+            ->get();
+
+        $evidence = app(HandoffLaboratoryEvidence::class);
+
+        return $handoffs->map(function (MonitoringHandoffRequest $handoff) use ($user, $evidence) {
+            $evidence->authorizeReceiver($user, $handoff);
+            $record = $handoff->healthRecord;
+
+            return [
+                'handoff_id' => $handoff->id,
+                'status' => $handoff->status,
+                'source_facility' => [
+                    'id' => $handoff->sending_rural_health_unit_id,
+                    'name' => $handoff->sendingRuralHealthUnit?->name,
+                ],
+                'source_patient_id' => $handoff->patient_id,
+                'linked_patient_id' => $handoff->linked_patient_id,
+                'consultation_date' => $record?->date_recorded?->toDateString(),
+                'chief_complaint' => $record?->chief_complaint,
+                'clinical_assessment' => $record?->assessment_notes,
+                'physical_exam' => $record?->physical_exam,
+                'vital_signs' => is_array($record?->vital_signs) ? $record->vital_signs : null,
+                'condition' => [
+                    'id' => $handoff->patient_condition_id,
+                    'name' => $handoff->patientCondition?->condition_name,
+                    'status' => $handoff->patientCondition?->status,
+                ],
+                'recommendation' => $handoff->recommendation,
+                'laboratory_evidence' => ActionPermissions::allows($user, 'clinical.history')
+                    ? $evidence->present($handoff)
+                    : [],
+                'prescriptions' => ActionPermissions::allows($user, 'clinical.history')
+                    ? $this->prescriptionSummaries($handoff)
+                    : [],
+                'follow_up_recommendations' => $handoff->recommendation,
+                'health_record_id' => $handoff->health_record_id,
+                'identity_resolution' => $handoff->identity_resolution,
+                'read_only' => true,
+            ];
+        })->values();
+    }
+
     public function markMonitoringActive(Patient $patient, PatientCondition $condition, User $user): void
     {
         if (! $user->isBhc() || ! $user->barangay_health_center_id) {
@@ -623,6 +822,102 @@ class MonitoringHandoffService
         $birthdate = $patient->birthdate;
 
         return $first !== '' && $last !== '' && $sex !== '' && $birthdate !== null;
+    }
+
+    private function isPotentialDemographicMatch(Patient $source, Patient $candidate): bool
+    {
+        $sourceName = $this->normalizedFullName($source);
+        $candidateName = $this->normalizedFullName($candidate);
+        $sourceDob = $this->normalizedBirthdate($source);
+        $candidateDob = $this->normalizedBirthdate($candidate);
+        $sourceSex = mb_strtolower(trim((string) $source->sex));
+        $candidateSex = mb_strtolower(trim((string) $candidate->sex));
+
+        return $sourceName !== ''
+            && $candidateName !== ''
+            && $sourceName === $candidateName
+            && $sourceDob !== null
+            && $candidateDob !== null
+            && $sourceDob === $candidateDob
+            && $sourceSex !== ''
+            && $candidateSex !== ''
+            && $sourceSex === $candidateSex;
+    }
+
+    private function normalizedFullName(Patient $patient): string
+    {
+        $parts = [
+            mb_strtolower(trim((string) $patient->first_name)),
+            mb_strtolower(trim((string) $patient->middle_name)),
+            mb_strtolower(trim((string) $patient->last_name)),
+            mb_strtolower(trim((string) $patient->suffix)),
+        ];
+        $joined = preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, fn ($part) => $part !== ''))) ?? '';
+
+        return trim($joined);
+    }
+
+    private function normalizedBirthdate(Patient $patient): ?string
+    {
+        if ($patient->birthdate === null) {
+            return null;
+        }
+
+        return $patient->birthdate->format('Y-m-d');
+    }
+
+    private function assertNoConflictingIdentityAssociation(MonitoringHandoffRequest $handoff, int $destinationPatientId): void
+    {
+        $conflict = MonitoringHandoffRequest::query()
+            ->where('receiving_barangay_health_center_id', $handoff->receiving_barangay_health_center_id)
+            ->where('linked_patient_id', $destinationPatientId)
+            ->where('patient_id', '!=', $handoff->patient_id)
+            ->whereIn('status', [
+                MonitoringHandoffRequest::STATUS_PENDING_REVIEW,
+                MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+            ])
+            ->lockForUpdate()
+            ->exists();
+        if ($conflict) {
+            throw ValidationException::withMessages([
+                'linked_patient_id' => ['This BHC patient is already linked to another RHU source monitoring request.'],
+            ]);
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function prescriptionSummaries(MonitoringHandoffRequest $handoff): array
+    {
+        $record = $handoff->healthRecord;
+        if (! $record) {
+            return [];
+        }
+        $auth = is_array($record->monitoring_data['prescriptionAuthorization'] ?? null)
+            ? $record->monitoring_data['prescriptionAuthorization']
+            : null;
+        if (! $auth) {
+            return [];
+        }
+
+        return array_values(array_map(function (array $row) use ($auth) {
+            return [
+                'medicineName' => $row['medicineName'] ?? null,
+                'strength' => $row['strength'] ?? null,
+                'dose' => $row['dose'] ?? null,
+                'route' => $row['route'] ?? null,
+                'frequency' => $row['frequency'] ?? null,
+                'duration' => $row['duration'] ?? null,
+                'instructions' => $row['instructions'] ?? null,
+                'authorizedQuantity' => $row['authorizedQuantity'] ?? null,
+                'authorizedUnit' => $row['authorizedUnit'] ?? null,
+                'line' => $row['line'] ?? null,
+                'physicianName' => $auth['physicianName'] ?? null,
+                'authorizedAt' => $auth['authorizedAt'] ?? null,
+            ];
+        }, $record->structuredPrescriptionSummaries()));
     }
 
     /**

@@ -39,6 +39,77 @@ export function isSameSharedPatient(source, candidate) {
   return Number.isInteger(sourceId) && sourceId > 0 && sourceId === candidateId;
 }
 
+/** Normalize name parts for exact demographic potential-match (not fuzzy). */
+export function normalizedFullName(patient) {
+  if (!patient) return "";
+  if (patient.full_name || patient.fullName) {
+    return String(patient.full_name || patient.fullName).trim().toLowerCase().replace(/\s+/g, " ");
+  }
+  return [patient.first_name || patient.firstName, patient.middle_name || patient.middleName, patient.last_name || patient.lastName, patient.suffix]
+    .map((part) => String(part || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ");
+}
+
+export function normalizedBirthdate(patient) {
+  const raw = patient?.birthdate || patient?.birthDate || "";
+  const value = String(raw).trim();
+  return value || null;
+}
+
+export function normalizedSex(patient) {
+  return String(patient?.sex || "").trim().toLowerCase();
+}
+
+/**
+ * Name + birthdate + sex exact match after normalization = Potential Match only.
+ * Never treats matching IDs or phones as conclusive proof by itself.
+ */
+export function isPotentialDemographicMatch(source, candidate) {
+  if (!source || !candidate) return false;
+  const name = normalizedFullName(source);
+  const otherName = normalizedFullName(candidate);
+  const dob = normalizedBirthdate(source);
+  const otherDob = normalizedBirthdate(candidate);
+  const sex = normalizedSex(source);
+  const otherSex = normalizedSex(candidate);
+  return Boolean(
+    name
+    && otherName
+    && name === otherName
+    && dob
+    && otherDob
+    && dob === otherDob
+    && sex
+    && otherSex
+    && sex === otherSex,
+  );
+}
+
+export function hasDemographicConflict(source, candidate) {
+  if (!source || !candidate) return true;
+  if (isSameSharedPatient(source, candidate)) return false;
+  return !isPotentialDemographicMatch(source, candidate);
+}
+
+/**
+ * Cross-record link requires a potential demographic match plus deliberate staff confirmation.
+ * Multiple directory hits still require an explicit selected candidate.
+ */
+export function canVerifyCrossRecordLink({
+  source,
+  candidate,
+  identityConfirmed = false,
+  needsReview = false,
+  matchCount = 0,
+} = {}) {
+  if (needsReview || !source || !candidate || !identityConfirmed) return false;
+  if (isSameSharedPatient(source, candidate)) return false;
+  if (Number(matchCount) > 1 && !candidate?.id) return false;
+  return isPotentialDemographicMatch(source, candidate);
+}
+
 /** Register-at-BHC only after a successful empty directory search (not on idle/error). */
 export function canRegisterSourceAtBhc({ searchState, matches = [], selectedMatch = null, needsReview = false } = {}) {
   return searchState === "success"

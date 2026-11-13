@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   canRegisterSourceAtBhc,
+  canVerifyCrossRecordLink,
   compareIdentityFields,
+  hasDemographicConflict,
   identitySourceLabel,
+  isPotentialDemographicMatch,
   isSameSharedPatient,
   verificationStatusLabel,
 } from "./handoffIdentityVerification.js";
@@ -28,6 +31,26 @@ test("identity comparison marks mismatched ids", () => {
   const idRow = rows.find((row) => row.label === "Patient ID");
   assert.equal(idRow.match, false);
   assert.equal(rows.find((row) => row.label === "Name").match, true);
+});
+
+test("potential demographic match ignores capitalization and spacing", () => {
+  const source = { first_name: "Testing", middle_name: "T", last_name: "Bee", birthdate: "2000-08-24", sex: "Male" };
+  const candidate = { first_name: " testing ", middle_name: "t", last_name: "BEE", birthdate: "2000-08-24", sex: "male" };
+  assert.equal(isPotentialDemographicMatch(source, candidate), true);
+  assert.equal(hasDemographicConflict(source, { ...candidate, last_name: "Bea" }), true);
+});
+
+test("cross-record link never auto-links without staff confirmation", () => {
+  const source = { id: 19, first_name: "Testing", middle_name: "T", last_name: "Bee", birthdate: "2000-08-24", sex: "Male" };
+  const candidate = { id: 20, first_name: "Testing", middle_name: "T", last_name: "Bee", birthdate: "2000-08-24", sex: "Male" };
+  assert.equal(canVerifyCrossRecordLink({ source, candidate, identityConfirmed: false }), false);
+  assert.equal(canVerifyCrossRecordLink({ source, candidate, identityConfirmed: true }), true);
+  assert.equal(canVerifyCrossRecordLink({ source, candidate, identityConfirmed: true, needsReview: true }), false);
+  assert.equal(canVerifyCrossRecordLink({
+    source,
+    candidate: { ...candidate, last_name: "Other" },
+    identityConfirmed: true,
+  }), false);
 });
 
 test("register-at-bhc eligibility requires a successful empty search", () => {

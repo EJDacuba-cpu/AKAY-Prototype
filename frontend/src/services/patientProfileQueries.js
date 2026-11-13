@@ -1,5 +1,6 @@
 import { getPatientFollowUpTasks } from "./followUpTaskService";
 import { getCareOverview } from "./careOverviewService";
+import { getPatientRhuSharedClinical } from "./monitoringHandoffService";
 import {
   getPatientById,
   getPatientDetailsListByRole,
@@ -23,6 +24,13 @@ export function getBhcPatientProfileQueries(patientId, { canViewHistory = false 
     careOverview: {
       queryKey: queryKeys.careOverview(patientId),
       queryFn: () => getCareOverview(patientId),
+      enabled: historyEnabled,
+      staleTime: 0,
+      retry: false,
+    },
+    rhuSharedClinical: {
+      queryKey: queryKeys.rhuSharedClinical(patientId),
+      queryFn: () => getPatientRhuSharedClinical(patientId),
       enabled: historyEnabled,
       staleTime: 0,
       retry: false,

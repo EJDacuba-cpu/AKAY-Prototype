@@ -54,11 +54,15 @@ class PatientConditionController extends Controller
             ->orderBy('started_at')
             ->get();
 
+        $linkedIds = $linked->pluck('id')->all();
+
         return response()->json(['data' => [
-            'conditions' => $conditions->map(function (PatientCondition $condition) use ($patient) {
+            'conditions' => $conditions->map(function (PatientCondition $condition) use ($patient, $linkedIds) {
                 $monitoring = $condition->monitorings->first(
                     fn (ConditionMonitoring $row) => (int) $row->patient_id === (int) $patient->id
                 );
+                $sharedViaHandoff = in_array($condition->id, $linkedIds, true)
+                    && (int) $condition->patient_id !== (int) $patient->id;
 
                 return [
                     'id' => $condition->id,
@@ -69,6 +73,8 @@ class PatientConditionController extends Controller
                     'confirmed_by_name' => $condition->confirmedBy?->name,
                     'source_type' => $condition->source_type,
                     'source_id' => $condition->source_id,
+                    'shared_via_handoff' => $sharedViaHandoff,
+                    'source_patient_id' => $sharedViaHandoff ? $condition->patient_id : null,
                     'bhc_monitoring_recommended_at' => $condition->bhc_monitoring_recommended_at?->toISOString(),
                     'monitoring' => $monitoring === null ? null : [
                         'id' => $monitoring->id,

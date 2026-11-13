@@ -50,6 +50,8 @@ class MonitoringHandoffRequest extends Model
 
     public const IDENTITY_RESOLUTION_REGISTERED_SOURCE = 'registered_source_at_bhc';
 
+    public const IDENTITY_RESOLUTION_VERIFIED_CROSS_RECORD = 'verified_cross_record';
+
     public const IDENTITY_RESOLUTION_NEEDS_REVIEW = 'needs_review';
 
     protected $fillable = [

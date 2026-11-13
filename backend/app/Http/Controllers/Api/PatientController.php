@@ -57,18 +57,31 @@ class PatientController extends Controller
                     ->scopePatients($query, $user),
             ]);
 
-        if ($search = $request->query('search')) {
-            $query->where(function ($q) use ($search): void {
-                if (ctype_digit((string) $search)) {
-                    $q->orWhereKey((int) $search);
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            // Lower-cased on both sides: PostgreSQL LIKE is case-sensitive; SQLite's is not.
+            // Tokenize so "Testing Bee" matches across first/middle/last name fields.
+            // '!' is the escape character because it needs no quoting on any driver.
+            $tokens = array_slice(preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, 8);
+            $query->where(function ($q) use ($search, $tokens): void {
+                if (ctype_digit($search)) {
+                    $q->orWhere((new Patient)->getQualifiedKeyName(), (int) $search);
                 }
 
-                $q->orWhere('first_name', 'like', "%{$search}%")
-                    ->orWhere('middle_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%")
-                    ->orWhere('philhealth_number', 'like', "%{$search}%")
-                    ->orWhere('contact_number', 'like', "%{$search}%")
-                    ->orWhere('barangay', 'like', "%{$search}%");
+                if ($tokens === []) {
+                    return;
+                }
+
+                $q->orWhere(function ($nameMatch) use ($tokens): void {
+                    foreach ($tokens as $token) {
+                        $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($token)).'%';
+                        $nameMatch->where(function ($fieldMatch) use ($like): void {
+                            foreach (['first_name', 'middle_name', 'last_name', 'philhealth_number', 'contact_number', 'barangay'] as $column) {
+                                $fieldMatch->orWhereRaw("LOWER({$column}) LIKE ? ESCAPE '!'", [$like]);
+                            }
+                        });
+                    }
+                });
             });
         }
 

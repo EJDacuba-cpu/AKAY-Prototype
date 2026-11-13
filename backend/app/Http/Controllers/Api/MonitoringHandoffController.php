@@ -43,9 +43,17 @@ class MonitoringHandoffController extends Controller
     {
         $data = $request->validate([
             'linked_patient_id' => ['required', 'integer', 'exists:patients,id'],
+            'identity_confirmed' => ['sometimes', 'boolean'],
+            'verification_evidence' => ['nullable', 'string', 'max:500'],
         ]);
         $handoff = $this->handoffs->findForBhc($request->user(), $id);
-        $handoff = $this->handoffs->link($request, $handoff, (int) $data['linked_patient_id']);
+        $handoff = $this->handoffs->link(
+            $request,
+            $handoff,
+            (int) $data['linked_patient_id'],
+            (bool) ($data['identity_confirmed'] ?? false),
+            $data['verification_evidence'] ?? null,
+        );
 
         return response()->json(['data' => $this->present($handoff->load([
             'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
@@ -73,6 +81,39 @@ class MonitoringHandoffController extends Controller
         return response()->json(['data' => $this->present($handoff->load([
             'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
         ]), true)]);
+    }
+
+    public function resolveIdentityReview(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'note' => ['required', 'string', 'max:500'],
+        ]);
+        $handoff = $this->handoffs->findForBhc($request->user(), $id);
+        $handoff = $this->handoffs->resolveIdentityReview($request, $handoff, $data['note']);
+
+        return response()->json(['data' => $this->present($handoff->load([
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
+        ]), true)]);
+    }
+
+    public function correctIdentityLink(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'note' => ['required', 'string', 'max:500'],
+        ]);
+        $handoff = $this->handoffs->findForBhc($request->user(), $id);
+        $handoff = $this->handoffs->correctIdentityLink($request, $handoff, $data['note']);
+
+        return response()->json(['data' => $this->present($handoff->load([
+            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'healthRecord',
+        ]), true)]);
+    }
+
+    public function sharedClinicalForPatient(Request $request, \App\Models\Patient $patient)
+    {
+        $rows = $this->handoffs->sharedClinicalFor($patient, $request->user());
+
+        return response()->json(['data' => $rows->values()]);
     }
 
     public function accept(Request $request, int $id)

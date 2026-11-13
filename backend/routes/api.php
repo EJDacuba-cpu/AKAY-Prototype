@@ -129,6 +129,7 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'show']);
         Route::delete('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'destroy']);
         Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
+        Route::get('patients/{patient}/rhu-shared-clinical', [MonitoringHandoffController::class, 'sharedClinicalForPatient']);
         Route::post('patients/{patient}/nutrition-care/close', [NutritionCareController::class, 'close']);
         Route::get('patients/{patient}/background-history', PatientBackgroundHistoryController::class);
         Route::patch('patients/{patient}/background', PatientBackgroundController::class);
@@ -241,6 +242,8 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::post('/monitoring-handoff-requests/{id}/link', [MonitoringHandoffController::class, 'link'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/register-source', [MonitoringHandoffController::class, 'registerSource'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/flag-identity-review', [MonitoringHandoffController::class, 'flagIdentityReview'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/resolve-identity-review', [MonitoringHandoffController::class, 'resolveIdentityReview'])->whereNumber('id');
+        Route::post('/monitoring-handoff-requests/{id}/correct-identity-link', [MonitoringHandoffController::class, 'correctIdentityLink'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/accept', [MonitoringHandoffController::class, 'accept'])->whereNumber('id');
         Route::post('/monitoring-handoff-requests/{id}/decline', [MonitoringHandoffController::class, 'decline'])->whereNumber('id');
         Route::get('/follow-up-tasks', [FollowUpTaskController::class, 'index']);

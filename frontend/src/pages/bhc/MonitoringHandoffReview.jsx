@@ -10,11 +10,13 @@ import PlainStatusStamp from "../../components/common/badges/PlainStatusStamp";
 import { Button } from "../../components/ui/button";
 import {
   acceptMonitoringHandoffRequest,
+  correctMonitoringHandoffIdentityLink,
   declineMonitoringHandoffRequest,
   flagMonitoringHandoffIdentityReview,
   getMonitoringHandoffRequest,
   linkMonitoringHandoffRequest,
   registerMonitoringHandoffSource,
+  resolveMonitoringHandoffIdentityReview,
   searchBhcPatients,
 } from "../../services/monitoringHandoffService";
 import { formatDisplayValue, formatPatientName } from "../../utils/formatters";
@@ -25,8 +27,11 @@ import { LaboratoryEvidenceList } from "../../components/features/health-records
 import { startRoute } from "../../utils/startConsultation";
 import {
   canRegisterSourceAtBhc,
+  canVerifyCrossRecordLink,
   compareIdentityFields,
+  hasDemographicConflict,
   identitySourceLabel,
+  isPotentialDemographicMatch,
   isSameSharedPatient,
   verificationStatusLabel,
 } from "../../utils/handoffIdentityVerification";
@@ -56,6 +61,8 @@ export default function MonitoringHandoffReview() {
   const [searchError, setSearchError] = useState("");
   const [reason, setReason] = useState("");
   const [reviewNote, setReviewNote] = useState("");
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [verificationEvidence, setVerificationEvidence] = useState("");
   const [busy, setBusy] = useState("");
 
   const detailsQuery = useQuery({
@@ -70,12 +77,24 @@ export default function MonitoringHandoffReview() {
     || request?.identity_resolution === "needs_review";
   const verified = Boolean(request?.linked_patient)
     && ["pending_review", "accepted_awaiting_first_visit", "monitoring_active"].includes(request?.status);
+  const canCorrectLink = canAct && request?.status === "pending_review" && Boolean(request?.linked_patient);
 
   const comparison = useMemo(
     () => (selectedMatch ? compareIdentityFields(request?.source_patient, selectedMatch) : []),
     [request?.source_patient, selectedMatch],
   );
   const samePatientSelected = isSameSharedPatient(request?.source_patient, selectedMatch);
+  const potentialMatchSelected = isPotentialDemographicMatch(request?.source_patient, selectedMatch);
+  const demographicConflict = selectedMatch
+    && !samePatientSelected
+    && hasDemographicConflict(request?.source_patient, selectedMatch);
+  const canCrossLink = canVerifyCrossRecordLink({
+    source: request?.source_patient,
+    candidate: selectedMatch,
+    identityConfirmed,
+    needsReview,
+    matchCount: linkMatches.length,
+  });
   const canRegisterSource = needsVerification
     && canAct
     && !searching
@@ -89,6 +108,7 @@ export default function MonitoringHandoffReview() {
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.monitoringHandoffs() });
     await queryClient.invalidateQueries({ queryKey: ["patients"] });
+    await queryClient.invalidateQueries({ queryKey: ["rhu-shared-clinical"] });
     await detailsQuery.refetch();
   }
 
@@ -99,6 +119,8 @@ export default function MonitoringHandoffReview() {
     setSearchState("idle");
     setSearchError("");
     setReviewNote("");
+    setIdentityConfirmed(false);
+    setVerificationEvidence("");
   }
 
   async function searchDirectory(event) {
@@ -335,9 +357,87 @@ export default function MonitoringHandoffReview() {
                 </Button>
               )}
 
-              {selectedMatch && !samePatientSelected && (
+              {selectedMatch && !samePatientSelected && potentialMatchSelected && (
+                <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <PlainStatusStamp label="Potential Match" tone="warning" />
+                  <p className="text-sm text-neutral-700">
+                    Name, birthdate, and sex match. Confirm supporting identity details before linking.
+                    Patient IDs stay unchanged; records are not merged.
+                  </p>
+                  {linkMatches.length > 1 && (
+                    <p className="text-sm text-warning-700">
+                      Multiple potential registrations were found. Confirm you selected the correct BHC record.
+                    </p>
+                  )}
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                    Verification evidence summary
+                    <textarea
+                      value={verificationEvidence}
+                      onChange={(event) => setVerificationEvidence(event.target.value)}
+                      rows={2}
+                      placeholder="e.g. Contact and address matched registration card"
+                      className={`mt-1 ${controlClass} h-auto py-2`}
+                      disabled={Boolean(busy)}
+                    />
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-neutral-700">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={identityConfirmed}
+                      onChange={(event) => setIdentityConfirmed(event.target.checked)}
+                      disabled={Boolean(busy)}
+                    />
+                    <span>
+                      I verified that BHC Patient ID {selectedMatch.id} is the same person as RHU
+                      Patient ID {request.source_patient?.id}.
+                    </span>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="brand"
+                    disabled={busy === "link" || !canCrossLink}
+                    onClick={() => run(
+                      "link",
+                      () => linkMonitoringHandoffRequest(request.id, selectedMatch.id, {
+                        identityConfirmed: true,
+                        verificationEvidence,
+                      }),
+                      "Cross-record patient identity verified.",
+                    )}
+                  >
+                    Verify &amp; Link Existing Patient
+                  </Button>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                    Or escalate for review
+                    <textarea
+                      value={reviewNote}
+                      onChange={(event) => setReviewNote(event.target.value)}
+                      rows={2}
+                      className={`mt-1 ${controlClass} h-auto py-2`}
+                      disabled={Boolean(busy)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy === "review" || !reviewNote.trim()}
+                    onClick={() => run(
+                      "review",
+                      () => flagMonitoringHandoffIdentityReview(request.id, reviewNote.trim()),
+                      "Escalated for identity review.",
+                    )}
+                  >
+                    Escalate for Review
+                  </Button>
+                </div>
+              )}
+
+              {selectedMatch && demographicConflict && (
                 <div className="space-y-2">
-                  <p className="text-sm text-warning-700">Different patient records cannot be linked.</p>
+                  <p className="text-sm text-warning-700">
+                    Demographics conflict with the RHU source patient. Do not link. Escalate for identity review.
+                  </p>
                   <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
                     Review note
                     <textarea
@@ -381,29 +481,89 @@ export default function MonitoringHandoffReview() {
           )}
 
           {needsReview && (
-            <section className="border-b border-neutral-200 bg-warning-50 px-4 py-3 sm:px-5">
+            <section className="space-y-3 border-b border-neutral-200 bg-warning-50 px-4 py-3 sm:px-5">
               <div className="flex flex-wrap items-center gap-2">
                 <PlainStatusStamp label="Requires Review" tone="warning" />
                 <p className="text-sm text-warning-700">
                   {request.identity_resolution_note || "Identity requires authorized review."}
                 </p>
               </div>
+              {canAct && needsVerification && (
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                    Resolution note
+                    <textarea
+                      value={reviewNote}
+                      onChange={(event) => setReviewNote(event.target.value)}
+                      rows={2}
+                      className={`mt-1 ${controlClass} h-auto py-2 bg-white`}
+                      disabled={Boolean(busy)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="brand"
+                    disabled={busy === "resolve" || !reviewNote.trim()}
+                    onClick={() => run(
+                      "resolve",
+                      () => resolveMonitoringHandoffIdentityReview(request.id, reviewNote.trim()),
+                      "Identity review cleared. Verify linkage again.",
+                    )}
+                  >
+                    Clear Review &amp; Resume Verification
+                  </Button>
+                </div>
+              )}
             </section>
           )}
 
           {verified && (
-            <section className="border-b border-neutral-200 p-4 sm:p-5">
+            <section className="space-y-3 border-b border-neutral-200 p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-[17px] font-bold text-ink-900">Verified at Receiving BHC</h2>
                   <p className="mt-1 text-sm tabular-nums text-neutral-700">
                     {formatPatientName(linkedPatient) || sourceName} · ID {linkedId}
                   </p>
+                  {request.identity_resolution === "verified_cross_record" && (
+                    <p className="mt-1 text-xs text-neutral-600">
+                      Cross-record link: RHU source ID {request.source_patient?.id} → BHC ID {linkedId}. Both records preserved.
+                    </p>
+                  )}
                 </div>
                 <Button asChild variant="secondary" size="sm">
                   <Link to={`/bhc/patients/${linkedId}`}>Patient Profile</Link>
                 </Button>
               </div>
+              {canCorrectLink && (
+                <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <p className="text-sm text-neutral-700">
+                    Incorrect verification? Unlink and return this request to identity review. Existing consultations stay on their original patient IDs.
+                  </p>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                    Correction note
+                    <textarea
+                      value={reviewNote}
+                      onChange={(event) => setReviewNote(event.target.value)}
+                      rows={2}
+                      className={`mt-1 ${controlClass} h-auto py-2 bg-white`}
+                      disabled={Boolean(busy)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy === "correct" || !reviewNote.trim()}
+                    onClick={() => run(
+                      "correct",
+                      () => correctMonitoringHandoffIdentityLink(request.id, reviewNote.trim()),
+                      "Identity link cleared for correction.",
+                    )}
+                  >
+                    Correct Identity Link
+                  </Button>
+                </div>
+              )}
             </section>
           )}
 
