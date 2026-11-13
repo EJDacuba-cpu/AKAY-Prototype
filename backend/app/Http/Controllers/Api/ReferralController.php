@@ -18,6 +18,7 @@ use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRescheduleService;
 use App\Services\ReferralRoutingService;
+use App\Services\ReferralLinkedRecordRedactor;
 use App\Services\ReferralWorkflowService;
 use App\Support\StoredFunction;
 use Illuminate\Database\QueryException;
@@ -29,7 +30,8 @@ class ReferralController extends Controller
     public function __construct(
         private readonly FacilityAccessService $facilityAccess,
         private readonly ReferralRoutingService $referralRouting,
-        private readonly AkayCacheService $cache
+        private readonly AkayCacheService $cache,
+        private readonly ReferralLinkedRecordRedactor $linkedRecordRedactor
     ) {
     }
 
@@ -94,7 +96,12 @@ class ReferralController extends Controller
                     ->orWhere('last_name', 'like', "%{$search}%")));
         }
 
-        return response()->json(['data' => $query->latest()->paginate($request->integer('per_page', 25))]);
+        $page = $query->latest()->paginate($request->integer('per_page', 25));
+        $page->setCollection(
+            $this->linkedRecordRedactor->redactMany($page->getCollection(), $request->user())
+        );
+
+        return response()->json(['data' => $page]);
     }
 
     public function store(
@@ -182,7 +189,11 @@ class ReferralController extends Controller
             return response()->json(['data' => $this->stripQrSecrets($data)]);
         }
 
-        return response()->json(['data' => $referral->load(['patient', 'healthRecord', 'updates.user', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit'])]);
+        $referral->load(['patient', 'healthRecord', 'updates.user', 'feedback', 'barangayHealthCenter', 'ruralHealthUnit']);
+
+        return response()->json([
+            'data' => $this->linkedRecordRedactor->redact($referral, $request->user()),
+        ]);
     }
 
     public function updateStatus(
@@ -208,6 +219,9 @@ class ReferralController extends Controller
                 'status' => $result['referral']->status,
                 'arrival' => ReferralArrivalSummary::for($result['referral']),
             ];
+        } elseif ($referralData instanceof Referral) {
+            $referralData->loadMissing(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit']);
+            $referralData = $this->linkedRecordRedactor->redact($referralData, $request->user());
         }
 
         return response()->json([
@@ -258,8 +272,10 @@ class ReferralController extends Controller
 
     protected function storeResponse(Referral $referral, int $status)
     {
+        $referral->load(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit']);
+
         return response()->json([
-            'data' => $referral->load(['patient', 'healthRecord', 'barangayHealthCenter', 'ruralHealthUnit']),
+            'data' => $this->linkedRecordRedactor->redact($referral, request()->user()),
         ], $status);
     }
 

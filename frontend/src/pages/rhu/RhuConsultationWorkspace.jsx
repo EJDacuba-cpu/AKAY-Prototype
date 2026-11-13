@@ -309,7 +309,14 @@ export default function RhuConsultationWorkspace() {
     staleTime: 30_000,
   });
   const patientRecords = recordsQuery.data ?? EMPTY_HEALTH_RECORDS;
-  const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecords, "ongoing").findings, [patientRecords]);
+  const previousBodyFindings = useMemo(() => {
+    const sources = Array.isArray(patientRecords) ? [...patientRecords] : [];
+    const slipRecord = referralData?.record;
+    if (slipRecord?.id && !sources.some((record) => String(record.id) === String(slipRecord.id))) {
+      sources.push(slipRecord);
+    }
+    return summarizeBodyFindings(sources, "ongoing").findings;
+  }, [patientRecords, referralData?.record]);
   function changeBodyReassessments(next) {
     setBodyFindingReassessments(next);
     setValidationErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("monitoring_data.bodyFindingReassessments"))));

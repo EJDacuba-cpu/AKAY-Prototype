@@ -529,7 +529,8 @@ class RhuItrConsultationTest extends TestCase
         $visit = $this->visit($patient, ['source' => RhuVisitQueueEntry::SOURCE_REFERRAL, 'referral_id' => $referral->id]);
         $uuid = $this->startVisit($clinician, $visit);
         $ids = $this->getJson('/api/health-records?patient_id='.$patient->id)->assertOk()->json('data.data');
-        $this->assertSame([$source->id], array_column($ids, 'id'));
+        $this->assertSame([], array_column($ids, 'id'));
+        $this->getJson('/api/health-records/'.$source->id)->assertForbidden();
         $this->postRecord($clinician, $patient, $visit, $uuid, ['monitoring_data' => ['bodyFindingReassessments' => [[
             'sourceRecordId' => $hidden->id, 'sourceFindingIndex' => 0, 'expectedRevision' => 0, 'status' => 'still_present',
         ]]]])->assertUnprocessable();
@@ -541,8 +542,9 @@ class RhuItrConsultationTest extends TestCase
         ])->assertCreated()->json('data.id');
         $this->getJson('/api/health-records/'.$id)->assertOk()->assertJsonPath('data.monitoring_data.bodyFindingReassessments.0.status', 'no_longer_present');
         $ids = $this->getJson('/api/health-records?patient_id='.$patient->id)->assertOk()->json('data.data');
-        $this->assertEqualsCanonicalizing([$source->id, $id], array_column($ids, 'id'));
+        $this->assertSame([$id], array_column($ids, 'id'));
         $this->getJson('/api/health-records/'.$hidden->id)->assertForbidden();
+        $this->getJson('/api/health-records/'.$source->id)->assertForbidden();
     }
 
     public function test_rhu_itr_persists_independent_report_in_destinations_and_visit_mirrors(): void
@@ -967,7 +969,7 @@ class RhuItrConsultationTest extends TestCase
         $this->assertDatabaseCount('monitoring_handoff_requests', 0);
     }
 
-    public function test_rhu_can_read_referred_follow_up_and_its_parent_but_not_unrelated_bhc_records(): void
+    public function test_rhu_cannot_open_bhc_health_record_details_even_when_referred(): void
     {
         $patient = $this->patient(['rural_health_unit_id' => null]);
         $clinician = $this->clinician();
@@ -986,6 +988,9 @@ class RhuItrConsultationTest extends TestCase
             'parent_health_record_id' => $parent->id,
             'category' => 'General Consultation',
             'chief_complaint' => 'Cough worsened',
+            'history_of_present_illness' => 'Worse at night',
+            'physical_exam' => 'Wheeze',
+            'body_findings' => [['id' => 'f1', 'region' => 'chest', 'side' => 'front', 'finding' => 'Wheeze']],
             'visit_type' => 'follow_up_visit',
         ]);
         $unrelated = HealthRecord::create([
@@ -995,7 +1000,7 @@ class RhuItrConsultationTest extends TestCase
             'category' => 'General Consultation',
             'chief_complaint' => 'Unrelated visit',
         ]);
-        Referral::create([
+        $referral = Referral::create([
             'tracking_id' => 'AKY-PARENT-'.Str::upper(Str::random(6)),
             'qr_code_value' => app(ReferralService::class)->makeLegacyQrPlaceholder(),
             'patient_id' => $patient->id,
@@ -1006,18 +1011,23 @@ class RhuItrConsultationTest extends TestCase
             'status' => Referral::STATUS_RECEIVED,
         ]);
 
-        $this->as($clinician)->getJson('/api/health-records/'.$followUp->id)
-            ->assertOk()
-            ->assertJsonPath('data.id', $followUp->id)
-            ->assertJsonPath('data.parent_health_record_id', $parent->id);
-        $this->as($clinician)->getJson('/api/health-records/'.$parent->id)
-            ->assertOk()
-            ->assertJsonPath('data.id', $parent->id)
-            ->assertJsonPath('data.chief_complaint', 'Initial cough');
+        $this->as($clinician)->getJson('/api/health-records/'.$followUp->id)->assertForbidden();
+        $this->as($clinician)->getJson('/api/health-records/'.$parent->id)->assertForbidden();
         $this->as($clinician)->getJson('/api/health-records/'.$unrelated->id)->assertForbidden();
         $ids = $this->as($clinician)->getJson('/api/health-records?patient_id='.$patient->id)
             ->assertOk()
             ->json('data.data');
-        $this->assertEqualsCanonicalizing([$followUp->id, $parent->id], array_column($ids, 'id'));
+        $this->assertSame([], array_column($ids, 'id'));
+
+        $slipRecord = $this->as($clinician)->getJson('/api/referrals/'.$referral->id)
+            ->assertOk()
+            ->json('data.health_record');
+        $this->assertSame($followUp->id, $slipRecord['id']);
+        $this->assertSame('Worse at night', $slipRecord['history_of_present_illness']);
+        $this->assertSame('Wheeze', $slipRecord['physical_exam']);
+        $this->assertSame('Wheeze', $slipRecord['body_findings'][0]['finding']);
+        $this->assertArrayNotHasKey('diagnoses', $slipRecord);
+        $this->assertArrayNotHasKey('monitoring_data', $slipRecord);
+        $this->assertArrayNotHasKey('maternal_data', $slipRecord);
     }
 }

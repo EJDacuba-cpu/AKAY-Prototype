@@ -18,14 +18,32 @@ after(async () => { await server.close(); delete globalThis.__rhuSlipTestUser; }
 const { default: Page } = await server.ssrLoadModule("/src/pages/rhu/RhuReferralSlip.jsx");
 const { queryKeys } = await server.ssrLoadModule("/src/utils/queryKeys.js");
 const { default: useSlip } = await server.ssrLoadModule("/src/hooks/useRhuReferralSlipData.js");
-const referral = { id: 9, patientId: 7, healthRecordId: 31, referringHci: "Test BHC", chiefComplaint: "Original BHC complaint", status: "Received" };
+const slipClinical = {
+  id: 31,
+  history_of_present_illness: "BHC history",
+  physical_exam: "Clinic findings",
+  body_findings: [{ id: "f1", region: "chest", side: "front", finding: "Wheeze" }],
+  vital_signs: { systolic_bp: 120, diastolic_bp: 80 },
+};
+const referral = {
+  id: 9,
+  patientId: 7,
+  healthRecordId: 31,
+  health_record: slipClinical,
+  referringHci: "Test BHC",
+  chiefComplaint: "Original BHC complaint",
+  status: "Received",
+};
 
 function clientFor(overrides = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity, gcTime: Infinity } } });
+  const next = { ...referral, ...overrides };
+  if (overrides.health_record === undefined && overrides.healthRecord === undefined && !("healthRecordId" in overrides) && !("health_record_id" in overrides)) {
+    next.health_record = slipClinical;
+  }
   client.setQueryData(queryKeys.patientDetails("rhu", "7"), { id: 7, firstName: "Test", lastName: "Patient" });
-  client.setQueryData([...queryKeys.referrals("rhu"), "patient", "7"], [{ ...referral, ...overrides }]);
-  client.setQueryData(queryKeys.referralDetails("rhu", "9"), { ...referral, ...overrides });
-  client.setQueryData(queryKeys.healthRecordData("rhu", "31"), { id: 31, history_of_present_illness: "BHC history", systolic_bp: 120, diastolic_bp: 80 });
+  client.setQueryData([...queryKeys.referrals("rhu"), "patient", "7"], [next]);
+  client.setQueryData(queryKeys.referralDetails("rhu", "9"), next);
   return client;
 }
 
@@ -73,42 +91,24 @@ test("disabled slip queries and revoked history permission do not expose cached 
   } finally { permissions = ["clinical.history"]; client.clear(); }
 });
 
-test("missing linked records keep the referral readable while network failures can be retried", () => {
-  for (const status of [404, 500, 403]) {
-    const client = clientFor();
-    const error = Object.assign(new Error("Record unavailable"), { status });
-    client.getQueryCache().find({ queryKey: queryKeys.healthRecordData("rhu", "31") })
-      .setState({ data: undefined, error, status: "error", fetchStatus: "idle" });
-    let result;
-    function Probe() { result = useSlip({ patientId: "7", referralId: "9" }); return null; }
-    renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(Probe)));
-    if (status === 404) { assert.equal(Boolean(result.loadError), false); assert.equal(result.referral.id, 9); assert.equal(result.record, null); }
-    if (status === 500) assert.equal(result.loadError, error);
-    if (status === 403) { assert.equal(result.unauthorized, true); assert.equal(result.referral, null); assert.equal(result.record, null); }
-    client.clear();
-  }
-});
-
-test("slip raw-record cache does not collide with the Health Record details wrapper", () => {
-  const client = clientFor({ healthRecordId: "31" });
-  const record = { id: "31", history_of_present_illness: "Source BHC history" };
-  client.setQueryData(queryKeys.healthRecordDetails("rhu", "31"), { record, patient: { id: 7 }, linkedReferral: null });
-  client.setQueryData(queryKeys.healthRecordData("rhu", "31"), record);
+test("slip clinical fields come from the redacted nested referral health_record", () => {
+  const client = clientFor();
   let result;
   function Probe() { result = useSlip({ patientId: "7", referralId: "9" }); return null; }
   renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(Probe)));
-  assert.equal(result.record.id, "31");
-  assert.equal(result.record.history_of_present_illness, "Source BHC history");
+  assert.equal(result.record.id, 31);
+  assert.equal(result.record.history_of_present_illness, "BHC history");
+  assert.equal(result.record.body_findings[0].finding, "Wheeze");
   client.clear();
 });
 
-test("source-record 404 never falls back to stale cached clinical measurements", () => {
-  const client = clientFor();
-  client.getQueryCache().find({ queryKey: queryKeys.healthRecordData("rhu", "31") })
-    .setState({ error: Object.assign(new Error("Missing source"), { status: 404 }), status: "error", fetchStatus: "idle" });
+test("missing nested slip clinical keeps the referral readable", () => {
+  const client = clientFor({ health_record: null, healthRecord: null, healthRecordId: null, health_record_id: null });
   let result;
   function Probe() { result = useSlip({ patientId: "7", referralId: "9" }); return null; }
   renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(Probe)));
+  assert.equal(result.referral.id, 9);
   assert.equal(result.record, null);
+  assert.equal(Boolean(result.loadError), false);
   client.clear();
 });

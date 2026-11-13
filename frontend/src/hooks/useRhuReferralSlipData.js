@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { getReferralById } from "../services/referrals";
-import { getHealthRecordById } from "../services/healthRecordService";
 import { getRhuPatientProfileQueries } from "../services/patientProfileQueries";
 import { getCurrentUser } from "../utils/auth";
 import { queryKeys } from "../utils/queryKeys";
@@ -29,48 +28,34 @@ export default function useRhuReferralSlipData({ patientId, referralId, enabled 
   const referral = active
     ? candidates.find((candidate) => referralBelongsToPatient(candidate, patientId)) || null
     : null;
-  const linkedId = String(referral?.healthRecordId || referral?.health_record_id || "");
-  const recordQuery = useQuery({
-    // Details pages cache { record, patient, linkedReferral }; this key caches raw records.
-    queryKey: queryKeys.healthRecordData("rhu", linkedId),
-    queryFn: () => getHealthRecordById(linkedId),
-    enabled: active && Boolean(linkedId),
-    retry: false,
-  });
-  const errors = [patientQuery.error, listQuery.error, referralQuery.error, recordQuery.error];
-  // A deleted/unavailable source record is different from a failed connection.
-  const recordError = Number(recordQuery.error?.status) === 404 ? null : recordQuery.error;
+  // Slip clinical fields come from the redacted nested health_record on the referral.
+  // Do not open the BHC Clinic Ledger via GET /health-records/{id}.
+  const record = active && !referral ? null : linkedReferralRecord(referral, []);
+  const errors = [patientQuery.error, listQuery.error, referralQuery.error];
   const unauthorized = !canViewHistory || errors.some((error) => [401, 403].includes(Number(error?.status)));
   const loading = active && (
     (patientQuery.isPending && !patientQuery.data) ||
-    ((listQuery.isPending || (fetchById && referralQuery.isPending)) && !referral) ||
-    (Boolean(linkedId) && recordQuery.isPending)
+    ((listQuery.isPending || (fetchById && referralQuery.isPending)) && !referral)
   );
-  const loadError = active && !unauthorized && (
-    (!referral && (patientQuery.error || listQuery.error || referralQuery.error)) || recordError
-  );
+  const loadError = active && !unauthorized && !referral && (patientQuery.error || listQuery.error || referralQuery.error);
 
   function retry() {
     if (!active) return;
     patientQuery.refetch();
     listQuery.refetch();
     if (fetchById) referralQuery.refetch();
-    if (linkedId) recordQuery.refetch();
   }
 
   const retrying = active && (
     patientQuery.isFetching ||
     listQuery.isFetching ||
-    referralQuery.isFetching ||
-    recordQuery.isFetching
+    referralQuery.isFetching
   );
 
   return {
     patient: active && !unauthorized ? patientQuery.data : null,
     referral: unauthorized ? null : referral,
-    record: active && !unauthorized && referral && Number(recordQuery.error?.status) !== 404
-      ? recordQuery.data || linkedReferralRecord(referral, [])
-      : null,
+    record: active && !unauthorized && referral ? record : null,
     loading,
     unauthorized,
     missing: active && !referral && !loading && !unauthorized && !loadError,
