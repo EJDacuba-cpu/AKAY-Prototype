@@ -152,6 +152,81 @@ class BhcHouseholdsTest extends TestCase
         $this->postJson('/api/bhc/households', ['head_patient_id' => $head->id, 'serial_mode' => 'auto', 'address' => $this->address()])->assertCreated()->assertJsonPath('data.head_patient_id', $head->id);
     }
 
+    public function test_candidates_are_readable_with_patients_register(): void
+    {
+        $local = BarangayHealthCenter::create(['name' => 'Register candidates']);
+        Patient::create(['first_name' => 'Maria', 'middle_name' => 'L', 'last_name' => 'Santos', 'sex' => 'Female', 'birthdate' => '1990-05-05', 'barangay_health_center_id' => $local->id]);
+        $this->staff($local, ['patients.register']);
+        $this->getJson('/api/bhc/households/candidates')->assertOk()->assertJsonCount(1, 'data');
+    }
+
+    public function test_candidates_match_partial_full_name_and_patient_id(): void
+    {
+        $local = BarangayHealthCenter::create(['name' => 'Search candidates']);
+        $patient = Patient::create(['first_name' => 'Maria', 'middle_name' => 'Luna', 'last_name' => 'Santos', 'sex' => 'Female', 'birthdate' => '1990-05-05', 'barangay_health_center_id' => $local->id]);
+        $this->staff($local, ['patients.register']);
+        $this->getJson('/api/bhc/households/candidates?search=maria san')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $patient->id)
+            ->assertJsonPath('data.0.birthdate', '1990-05-05');
+        $this->getJson('/api/bhc/households/candidates?search='.$patient->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $patient->id);
+    }
+
+    public function test_bhc_can_register_patient_without_household_or_fsn(): void
+    {
+        $this->staff(null, ['patients.register']);
+        $this->postJson('/api/patients', [
+            'first_name' => 'Walk',
+            'last_name' => 'In',
+            'sex' => 'Female',
+            'birthdate' => '1992-04-04',
+        ])->assertCreated()
+            ->assertJsonPath('data.household_id', null)
+            ->assertJsonPath('data.family_serial_number', null)
+            ->assertJsonPath('data.relationship_to_household_head', null);
+    }
+
+    public function test_patch_without_household_preserves_membership(): void
+    {
+        $this->staff();
+        $created = $this->register()->assertCreated()->json('data');
+        $this->patchJson('/api/patients/'.$created['id'], [
+            'first_name' => 'Renamed',
+            'last_name' => $created['last_name'],
+            'sex' => $created['sex'],
+        ])->assertOk()
+            ->assertJsonPath('data.household_id', $created['household_id'])
+            ->assertJsonPath('data.family_serial_number', $created['family_serial_number'])
+            ->assertJsonPath('data.first_name', 'Renamed');
+    }
+
+    public function test_attach_existing_patient_to_household_does_not_create_patient(): void
+    {
+        $this->staff();
+        $head = $this->register()->assertCreated()->json('data');
+        $unlinked = $this->postJson('/api/patients', [
+            'first_name' => 'Member',
+            'last_name' => 'Only',
+            'sex' => 'Male',
+            'birthdate' => '1991-02-02',
+        ])->assertCreated()->json('data');
+        $before = Patient::count();
+        $household = $this->getJson('/api/bhc/households/'.$head['household_id'])->json('data');
+        $this->patchJson('/api/patients/'.$unlinked['id'], [
+            'household' => [
+                'kind' => 'existing',
+                'household_id' => $household['id'],
+                'relationship' => 'Son',
+                'version' => $household['version'],
+            ],
+        ])->assertOk()
+            ->assertJsonPath('data.household_id', $household['id'])
+            ->assertJsonPath('data.relationship_to_household_head', 'Son');
+        $this->assertSame($before, Patient::count());
+    }
+
     public function test_head_departure_requires_review_and_empty_household_is_archived(): void
     {
         $this->staff();

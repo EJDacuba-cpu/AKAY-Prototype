@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useBlocker } from "react-router";
-import { ArrowRight } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -22,7 +21,6 @@ import {
   BHC_HIDDEN_SOCIAL_FIELDS,
   backgroundSaveErrorLines,
   backgroundSavedFeedback,
-  consultationBannerVisible,
   isSectionEditDirty,
   resolveSectionConflict,
   sectionConflict,
@@ -101,22 +99,16 @@ function visibleSections(patient) {
  * the latest saved chart unless `canEdit` (a BHC user granted
  * clinical.background.update). Visit-specific details stay on Health Records.
  * Education / Past Occupations rows are omitted (Patient Information owns
- * Education). Both views show the Consultation in progress banner while the
- * patient has an open draft.
+ * Education). Consultation entry stays on the profile header; this tab only
+ * keeps the post-save Continue Consultation modal when a draft is open.
  */
 export default function PatientBackgroundTab({ canEdit = false, ...props }) {
   return canEdit ? <EditableBackground {...props} /> : <ReadOnlyBackground {...props} />;
 }
 
-function ReadOnlyBackground({ patientId, patient, background, conditions }) {
-  const consultation = usePatientConsultation(patientId);
-
+function ReadOnlyBackground({ patient, background, conditions }) {
   return (
     <div>
-      {consultationBannerVisible({ draft: consultation.draft }) && (
-        <ConsultationBanner consultation={consultation} />
-      )}
-
       {visibleSections(patient).map((section) => (
         <ProfileSection
           key={section}
@@ -191,29 +183,6 @@ function SectionConflict({ conflict, edit, onResolve, hiddenSocialKeys = [] }) {
           Keep my changes
         </button>
       </div>
-    </div>
-  );
-}
-
-function ConsultationBanner({ consultation }) {
-  return (
-    <div
-      role="status"
-      className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-card border border-neutral-200/80 border-l-4 border-l-brand-600 bg-white px-4 py-2.5 shadow-card"
-    >
-      <p className="text-sm text-neutral-700">
-        <span className="font-semibold text-neutral-900">Consultation in progress</span>
-        <span className="text-neutral-500"> · This patient&apos;s consultation is saved and still open.</span>
-      </p>
-      <button
-        type="button"
-        onClick={() => consultation.open()}
-        disabled={consultation.opening}
-        className="inline-flex h-8 items-center gap-1 rounded-lg bg-ink-700 px-3 text-[13px] font-medium text-white shadow-xs transition hover:bg-ink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-1 disabled:bg-ink-300"
-      >
-        {consultation.opening ? "Opening..." : "Continue Consultation"}
-        <ArrowRight size={13} aria-hidden="true" />
-      </button>
     </div>
   );
 }
@@ -321,10 +290,6 @@ function EditableBackground({ patientId, patient, background, conditions }) {
 
   return (
     <div>
-      {consultationBannerVisible({ draft: consultation.draft }) && (
-        <ConsultationBanner consultation={consultation} />
-      )}
-
       {visibleSections(patient).map((section) => {
         const editing = edit?.section === section;
         return (

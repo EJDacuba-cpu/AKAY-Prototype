@@ -30,8 +30,8 @@ import { consultationNeedsStartModal, reachedPath, startRoute } from "../utils/s
 /**
  * The consultation state of one patient: whether the signed-in user has an
  * unfinished consultation (draft) for them, where Start / Resume goes, and how
- * to discard the draft. Shared by the profile header's primary button and its
- * draft banner so both read one query.
+ * to discard the draft. Shared by the profile header's primary button so the
+ * header stays the single consultation entry point.
  *
  * Without a draft, Start Consultation always opens the selection modal, even
  * when the patient has no pending follow-up (New Consultation is the default).
@@ -226,6 +226,6 @@ export default function usePatientConsultation(patientId) {
     discarding: discard.isPending,
     discard: () => draft && discard.mutateAsync(draft.id),
     startPath,
-    primaryLabel: draft ? "Open Consultation" : "Start Consultation",
+    primaryLabel: draft ? "Continue Consultation" : "Start Consultation",
   };
 }

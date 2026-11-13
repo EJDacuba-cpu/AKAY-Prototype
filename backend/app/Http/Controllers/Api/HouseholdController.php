@@ -31,12 +31,36 @@ class HouseholdController extends Controller
     public function candidates(Request $request)
     {
         $owner = $this->owner($request);
-        ActionPermissions::ensure($request->user(), 'families.manage');
+        // Read-only search for Add Family (manage) and Add Existing Member (register).
+        abort_unless(
+            ActionPermissions::allows($request->user(), 'patients.register')
+                || ActionPermissions::allows($request->user(), 'families.manage'),
+            403
+        );
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $query = $owner->scopePatients(Patient::query())->with(['household' => fn ($q) => $q->withCount('members')])->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'inactive'));
         if ($search = trim($data['search'] ?? '')) {
-            $needle = '%'.mb_strtolower($search).'%';
-            $query->where(fn ($q) => $q->whereRaw('LOWER(first_name) LIKE ?', [$needle])->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])->orWhereRaw('LOWER(family_serial_number) LIKE ?', [$needle]));
+            $fullName = $query->getConnection()->getDriverName() === 'sqlite'
+                ? "LOWER(TRIM(REPLACE(TRIM(COALESCE(first_name,'') || ' ' || COALESCE(middle_name,'') || ' ' || COALESCE(last_name,'')), '  ', ' ')))"
+                : "LOWER(TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)))";
+            $tokens = preg_split('/\s+/', mb_strtolower($search), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $query->where(function ($outer) use ($tokens, $search, $fullName) {
+                if (ctype_digit($search)) {
+                    $outer->orWhere('id', (int) $search);
+                }
+                $outer->orWhere(function ($and) use ($tokens, $fullName) {
+                    foreach ($tokens as $token) {
+                        $needle = '%'.$token.'%';
+                        $and->where(function ($q) use ($needle, $fullName) {
+                            $q->whereRaw('LOWER(first_name) LIKE ?', [$needle])
+                                ->orWhereRaw('LOWER(middle_name) LIKE ?', [$needle])
+                                ->orWhereRaw('LOWER(last_name) LIKE ?', [$needle])
+                                ->orWhereRaw('LOWER(family_serial_number) LIKE ?', [$needle])
+                                ->orWhereRaw("{$fullName} LIKE ?", [$needle]);
+                        });
+                    }
+                });
+            });
         }
         $page = $query->orderBy('last_name')->orderBy('id')->paginate($data['per_page'] ?? 25);
 

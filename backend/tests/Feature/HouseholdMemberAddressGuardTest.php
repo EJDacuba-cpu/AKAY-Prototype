@@ -80,7 +80,7 @@ class HouseholdMemberAddressGuardTest extends TestCase
         $member = $this->member();
         $other = $this->postJson('/api/patients', ['first_name' => 'Other', 'last_name' => 'Head', 'sex' => 'Female', 'birthdate' => '1975-05-05', 'household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => ['streetAddress' => 'Far road', 'purokArea' => 'Zone 7', 'barangay' => 'Distant', 'municipality' => 'Bulakan']]])->assertCreated()->json('data');
         $version = Household::find($other['household_id'])->version;
-        $this->patchJson('/api/patients/'.$member['id'], ['street_address' => 'Far road', 'purok_area' => 'Zone 7', 'barangay' => 'Distant', 'household' => ['kind' => 'existing', 'household_id' => $other['household_id'], 'relationship' => 'Niece', 'version' => $version]])->assertOk();
+        $this->patchJson('/api/patients/'.$member['id'], ['street_address' => 'Far road', 'purok_area' => 'Zone 7', 'barangay' => 'Distant', 'household' => ['kind' => 'existing', 'household_id' => $other['household_id'], 'relationship' => 'Daughter', 'version' => $version]])->assertOk();
         $fresh = Patient::find($member['id']);
         $this->assertSame((int) $other['household_id'], $fresh->household_id);
         $this->assertSame('Far road', $fresh->street_address);

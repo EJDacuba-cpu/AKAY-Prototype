@@ -7,7 +7,6 @@ import {
   backgroundSaveErrorLines,
   backgroundSavedFeedback,
   canUpdateBackground,
-  consultationBannerVisible,
   historyReferenceSections,
   isSectionEditDirty,
   omitHiddenSocialFromUpdate,
@@ -192,13 +191,6 @@ test("after a save: modal while a consultation draft is open, toast otherwise", 
   });
   assert.equal(BACKGROUND_SAVED_TITLE, "Background saved");
   assert.deepEqual(backgroundSavedFeedback({ draft: null, section: "medical" }), { kind: "toast", message: "Background saved" });
-});
-
-test("the Consultation in progress banner follows the draft, not navigation", () => {
-  assert.equal(consultationBannerVisible({ draft: { id: 1 } }), true);
-  assert.equal(consultationBannerVisible({ draft: null }), false);
-  // Any BHC user viewing the tab sees it: it does not depend on the editing duty.
-  assert.equal(consultationBannerVisible({ draft: { id: 1 }, canEdit: false }), true);
 });
 
 test("leaving with an unsaved edit is blocked, staying on Background is not", () => {

@@ -18,7 +18,8 @@ export default function BhcPatientRegistration({ role = 'bhc', ...props }) {
   return <RegistrationSource key={`${scope.identity}:${props.patientId || 'new'}`} {...props} scope={scope} role={role} />;
 }
 function RegistrationSource({patientId,scope,role='bhc',...props}) {
-  const householdEnabled = role !== 'rhu';
+  // FSN and membership are managed only in Households. Shared FamilyRegistryField stays for dormant gating.
+  const householdEnabled = false;
   const client=useQueryClient();
   const [params]=useSearchParams();
   const initialHouseholdId=householdEnabled ? params.get('household') : null;

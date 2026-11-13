@@ -225,15 +225,21 @@ export function RegistrationForm({
     },
     onRestore: (payload) => {
       const restored = restoreRegistrationDraft(payload, INITIAL_FORM_STATE);
-      setForm(restored.form);
-      setHouseholdConnection(restored.connection);
-      setHeadReplacement(restored.headReplacement);
-      setRestoredHouseholdVersion(restored.householdVersion);
+      // Legacy household draft keys must not re-stage membership when registration no longer manages FSN.
+      const connection = householdEnabled ? restored.connection : null;
+      const replacement = householdEnabled ? restored.headReplacement : null;
+      const version = householdEnabled ? restored.householdVersion : null;
+      setForm(householdEnabled ? restored.form : { ...restored.form, familySerialNumber: "", relationshipToHouseholdHead: "" });
+      setHouseholdConnection(connection);
+      setHeadReplacement(replacement);
+      setRestoredHouseholdVersion(version);
       setModals({ confirm: false, success: false });
       setDuplicates(null);
       setFieldErrors({});
-      setHouseholdReviewPending(Boolean(restored.connection?.kind === "existing" && !Number.isInteger(restored.householdVersion)));
-      onRecoveryHouseholdChange?.(restored.connection?.kind === "existing" ? restored.connection.householdId : "");
+      setHouseholdReviewPending(Boolean(householdEnabled && connection?.kind === "existing" && !Number.isInteger(version)));
+      if (householdEnabled) {
+        onRecoveryHouseholdChange?.(connection?.kind === "existing" ? connection.householdId : "");
+      }
       if (role === "rhu") { onRecoveryWalkIn?.(restored.walkIn); checkInKeyRef.current = restored.walkIn?.key || ""; }
     },
   });
