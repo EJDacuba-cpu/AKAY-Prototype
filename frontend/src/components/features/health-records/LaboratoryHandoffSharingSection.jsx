@@ -97,7 +97,7 @@ export default function LaboratoryHandoffSharingSection({ patientId, recordIds =
     <div className="mt-4 space-y-2 border border-neutral-200 bg-white p-4" data-testid="laboratory-handoff-sharing">
       <h4 className="text-xs font-semibold text-ink-900">BHC monitoring evidence sharing</h4>
       <p className="text-xs text-neutral-500">
-        Addenda and new attachments remain private until explicitly shared with an active monitoring handoff.
+        Addenda remain private until explicitly shared with an active monitoring handoff.
       </p>
       {handoffQueries.some((query) => query.isPending) ? (
         <p role="status" className="text-xs text-neutral-500">Loading monitoring handoffs…</p>
@@ -118,7 +118,6 @@ export default function LaboratoryHandoffSharingSection({ patientId, recordIds =
                 selected: (handoff.evidence || []).map((entry) => ({
                   reference: `record:${entry.recordId}`,
                   version: entry.version,
-                  attachmentIds: (entry.attachments || []).map((file) => file.id).filter(Boolean),
                 })),
                 confirmed: false,
               });

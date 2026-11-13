@@ -16,7 +16,6 @@ use App\Http\Controllers\Api\HealthRecordController;
 use App\Http\Controllers\Api\HealthRecordDraftController;
 use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\IncomingReferralController;
-use App\Http\Controllers\Api\LaboratoryAttachmentController;
 use App\Http\Controllers\Api\LaboratoryEvidenceController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\MonitoringHandoffController;
@@ -124,10 +123,6 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
         Route::get('laboratory-evidence/patients/{patient}', [LaboratoryEvidenceController::class, 'patient']);
         Route::get('laboratory-evidence/monitoring/{patient}', [LaboratoryEvidenceController::class, 'monitoring']);
         Route::post('laboratory-evidence/handoffs/{handoff}/share', [LaboratoryEvidenceController::class, 'share']);
-        Route::get('laboratory-attachments', [LaboratoryAttachmentController::class, 'index']);
-        Route::post('laboratory-attachments', [LaboratoryAttachmentController::class, 'store'])->middleware('throttle:30,1');
-        Route::get('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'show']);
-        Route::delete('laboratory-attachments/{laboratoryAttachment}', [LaboratoryAttachmentController::class, 'destroy']);
         Route::get('patients/{patient}/care-overview', [CareOverviewController::class, 'show']);
         Route::get('patients/{patient}/rhu-shared-clinical', [MonitoringHandoffController::class, 'sharedClinicalForPatient']);
         Route::post('patients/{patient}/nutrition-care/close', [NutritionCareController::class, 'close']);

@@ -132,11 +132,25 @@ function visitFollowUp(payload = {}) {
  */
 export function restoreRhuDiagnoses(payload = {}) {
   const list = Array.isArray(payload.diagnoses) ? payload.diagnoses : [];
-  const restored = list.map((entry) => ({
-    ...entry,
-    ...rhuDiagnosisFields(entry),
-    ...tbEvaluationEntryFields(entry),
-  }));
+  const restored = list.map((entry) => {
+    const evidence = Array.isArray(entry.laboratoryEvidence)
+      ? entry.laboratoryEvidence.map((selection) => ({
+        reference: selection.reference,
+        version: selection.version,
+      }))
+      : entry.laboratoryEvidence;
+    const hadLegacyAttachments = Array.isArray(entry.laboratoryEvidence)
+      && entry.laboratoryEvidence.some((selection) => Array.isArray(selection?.attachmentIds) && selection.attachmentIds.length > 0);
+    return {
+      ...entry,
+      ...rhuDiagnosisFields(entry),
+      ...tbEvaluationEntryFields(entry),
+      ...(Array.isArray(evidence) ? {
+        laboratoryEvidence: evidence,
+        laboratoryEvidenceConfirmed: hadLegacyAttachments ? false : entry.laboratoryEvidenceConfirmed === true,
+      } : {}),
+    };
+  });
   if (!visitManage(payload)) return restored;
   if (restored.some((entry) => diagnosisNextAction(entry) === "manage_to_bhc")) return restored;
   const index = restored.findIndex((entry) => !diagnosisNextAction(entry));
@@ -261,7 +275,10 @@ export function diagnosesForRhuSave(diagnoses = []) {
       ...tbEvaluationEntryFields(entry),
       ...(supportingLaboratoryTests.length ? { supportingLaboratoryTests } : {}),
       ...(fields.nextAction === "manage_to_bhc" ? {
-        laboratoryEvidence: entry.laboratoryEvidence || [],
+        laboratoryEvidence: (entry.laboratoryEvidence || []).map((selection) => ({
+          reference: selection.reference,
+          version: selection.version,
+        })),
         laboratoryEvidenceConfirmed: entry.laboratoryEvidenceConfirmed === true,
       } : {}),
     };

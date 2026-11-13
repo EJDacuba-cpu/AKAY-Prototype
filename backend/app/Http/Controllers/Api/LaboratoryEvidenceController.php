@@ -14,7 +14,6 @@ use App\Services\ActionPermissions;
 use App\Services\AuditLogger;
 use App\Services\FacilityAccessService;
 use App\Services\HandoffLaboratoryEvidence;
-use App\Services\LaboratoryAttachmentStorage;
 use App\Services\LaboratoryEvidenceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +27,6 @@ class LaboratoryEvidenceController extends Controller
         $this->evidence->authorizeRead($request->user(), $healthRecord);
 
         return response()->json(['data' => $this->evidence->present($healthRecord),
-            'uploads_available' => app(LaboratoryAttachmentStorage::class)->ready(),
             'can_addendum' => $request->user()->isRhu()
                 && (int) $healthRecord->rural_health_unit_id === (int) $request->user()->rural_health_unit_id
                 && ActionPermissions::allows($request->user(), 'records.correct')]);
@@ -140,11 +138,9 @@ class LaboratoryEvidenceController extends Controller
         $sharing->authorizeSender($request->user(), $handoff);
         $data = $request->validate([
             'selected' => ['present', 'array', 'max:50'],
-            'selected.*' => ['array:reference,version,attachmentIds'],
+            'selected.*' => ['array:reference,version'],
             'selected.*.reference' => ['required', 'string', 'max:80'],
             'selected.*.version' => ['required', 'integer', 'min:0'],
-            'selected.*.attachmentIds' => ['nullable', 'array', 'max:10'],
-            'selected.*.attachmentIds.*' => ['uuid'],
             'confirmed' => ['required', 'accepted'], 'reason' => ['required', 'string', 'max:2000'],
             'sharingRevision' => ['required', 'integer', 'min:0'],
         ]);

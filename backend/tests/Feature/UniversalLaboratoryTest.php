@@ -13,16 +13,11 @@ use App\Models\Patient;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
-use App\Services\LaboratoryAttachmentStorage;
 use App\Services\LaboratoryEvidenceService;
 use App\Services\StaffRoles;
-use GuzzleHttp\Promise\Create;
-use GuzzleHttp\Psr7\Response;
-use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -100,63 +95,6 @@ class UniversalLaboratoryTest extends TestCase
     {
         return ['patient_id' => $this->patient->id, 'rhu_visit_id' => $this->visit->id,
             'consultation_uuid' => $this->uuid, 'test_client_id' => $testId];
-    }
-
-    private function fakeDurableDisk(): void
-    {
-        Storage::fake('laboratory-test');
-        $this->mock(LaboratoryAttachmentStorage::class, function ($mock) {
-            $mock->shouldReceive('ready')->andReturn(true);
-            $mock->shouldReceive('ensureReady')->andReturn('laboratory-test');
-            $mock->shouldReceive('purge')->andReturnUsing(function ($attachment) {
-                if (! $attachment->health_record_id) {
-                    Storage::disk($attachment->disk)->delete($attachment->getRawOriginal('path'));
-                    $attachment->update(['purged_at' => now()]);
-                }
-            });
-        });
-    }
-
-    private function report(): UploadedFile
-    {
-        return UploadedFile::fake()->createWithContent('report.pdf', "%PDF-1.4\nSynthetic laboratory report\n%%EOF");
-    }
-
-    private function isolatedS3(?string $endpoint = 'https://objects.example.test', bool $pathStyle = true): object
-    {
-        // Exercise the actual Laravel/Flysystem/AWS driver with an isolated HTTP
-        // transport. No network requests or operational credentials are used.
-        $state = (object) ['objects' => [], 'requests' => [], 'failWrites' => false, 'failReads' => false];
-        Storage::forgetDisk('s3');
-        config(['laboratory.disk' => 's3', 'filesystems.disks.s3' => [
-            'driver' => 's3', 'key' => 'synthetic-test-key', 'secret' => 'synthetic-test-secret',
-            'region' => 'us-east-1', 'bucket' => 'private-test-bucket', 'endpoint' => $endpoint,
-            'use_path_style_endpoint' => $pathStyle, 'visibility' => 'private', 'throw' => true, 'retries' => 0,
-            'http_handler' => static function ($request) use ($state) {
-                $state->requests[] = $request;
-                $path = $request->getUri()->getPath();
-                $method = $request->getMethod();
-                if (($method === 'PUT' && $state->failWrites) || ($method === 'GET' && $state->failReads)) {
-                    return Create::rejectionFor([
-                        'exception' => new \RuntimeException('synthetic-provider-detail'),
-                        'response' => new Response(503, [], '<Error><Code>ServiceUnavailable</Code><Message>synthetic-provider-detail</Message></Error>'),
-                        'connection_error' => false,
-                    ]);
-                }
-                if ($method === 'PUT') {
-                    $state->objects[$path] = (string) $request->getBody();
-                } elseif ($method === 'DELETE') {
-                    unset($state->objects[$path]);
-                }
-                $body = $method === 'GET' ? ($state->objects[$path] ?? '') : '';
-
-                return Create::promiseFor(new Response(200, [
-                    'Content-Type' => 'application/pdf', 'Content-Length' => strlen($body), 'ETag' => '"synthetic-etag"',
-                ], $body));
-            },
-        ]]);
-
-        return $state;
     }
 
     private function diagnosis(array $changes = []): array
@@ -247,7 +185,7 @@ class UniversalLaboratoryTest extends TestCase
         $first = $this->laboratoryEntry();
         $second = $this->laboratoryEntry();
         $payload = ['laboratoryTests' => [$first, $second], 'diagnoses' => [$this->diagnosis([
-            'laboratoryEvidence' => [['reference' => 'current:'.$first['id'], 'version' => 0, 'attachmentIds' => []]],
+            'laboratoryEvidence' => [['reference' => 'current:'.$first['id'], 'version' => 0]],
             'laboratoryEvidenceConfirmed' => true,
         ])]];
         $created = $this->postJson('/api/health-record-drafts', $this->draftInput($payload))->assertCreated();
@@ -332,76 +270,110 @@ class UniversalLaboratoryTest extends TestCase
         $this->getJson('/api/monitoring-handoff-requests/'.$handoff->id)->assertOk()->assertJsonCount(0, 'data.laboratory_evidence');
     }
 
-    public function test_upload_validation_and_local_storage_blocker(): void
+    public function test_retired_attachment_endpoints_are_unavailable(): void
     {
         $context = $this->context((string) Str::uuid());
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => UploadedFile::fake()->create('bad.txt', 1, 'text/plain')], ['Accept' => 'application/json'])->assertUnprocessable();
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => UploadedFile::fake()->create('large.pdf', 10241, 'application/pdf')], ['Accept' => 'application/json'])->assertUnprocessable();
-        config(['laboratory.disk' => 'local']);
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertStatus(503);
+        $id = (string) Str::uuid();
+        $this->getJson('/api/laboratory-attachments?'.http_build_query($context))->assertNotFound();
+        $this->post('/api/laboratory-attachments', [
+            ...$context,
+            'file' => UploadedFile::fake()->create('report.pdf', 100, 'application/pdf'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
         $this->assertDatabaseCount('laboratory_attachments', 0);
+        $this->deleteJson('/api/laboratory-attachments/'.$id, $context)->assertNotFound();
     }
 
-    public function test_private_attachment_resume_finalization_sharing_and_retrieval(): void
+    public function test_structured_sharing_does_not_require_attachment_ids(): void
     {
-        $this->fakeDurableDisk();
-        $entry = $this->laboratoryEntry();
-        $context = $this->context($entry['id']);
-        $uploaded = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated();
-        $id = $uploaded->json('data.id');
-        $uploaded->assertJsonMissingPath('data.path')->assertJsonMissingPath('data.disk');
-        $this->getJson('/api/laboratory-attachments?'.http_build_query($context))->assertOk()->assertJsonPath('data.0.id', $id);
-        $this->get('/api/laboratory-attachments/'.$id.'?'.http_build_query($context))->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $entry = $this->laboratoryEntry(['resultStatus' => 'Result Available', 'result' => 'Structured share result']);
         $this->finalize([$entry], ['diagnoses' => [$this->diagnosis([
-            'laboratoryEvidence' => [['reference' => 'current:'.$entry['id'], 'version' => 0, 'attachmentIds' => [$id]]], 'laboratoryEvidenceConfirmed' => true,
+            'laboratoryEvidence' => [['reference' => 'current:'.$entry['id'], 'version' => 0]],
+            'laboratoryEvidenceConfirmed' => true,
         ])]])->assertCreated();
-        $attachment = LaboratoryAttachment::findOrFail($id);
-        $this->assertNotNull($attachment->health_record_id);
+        $shareRow = DB::table('monitoring_laboratory_evidence')->sole();
+        $this->assertSame([], json_decode($shareRow->attachment_ids, true, 512, JSON_THROW_ON_ERROR));
         $handoff = MonitoringHandoffRequest::firstOrFail();
         $this->as($this->bhcUser);
-        $this->get('/api/laboratory-attachments/'.$id)->assertForbidden();
-        $this->get('/api/laboratory-attachments/'.$id.'?handoff_id='.$handoff->id)->assertOk();
-        $this->deleteJson('/api/laboratory-attachments/'.$id, ['reason' => 'BHC remove'])->assertForbidden();
-        $handoff->update(['status' => 'linkage_needed', 'linked_patient_id' => null]);
-        $this->get('/api/laboratory-attachments/'.$id.'?handoff_id='.$handoff->id)->assertForbidden();
+        $response = $this->getJson('/api/monitoring-handoff-requests/'.$handoff->id)->assertOk();
+        $response->assertJsonCount(1, 'data.laboratory_evidence')
+            ->assertJsonPath('data.laboratory_evidence.0.result', 'Structured share result')
+            ->assertJsonMissingPath('data.laboratory_evidence.0.attachments');
+        $this->as($this->clinician);
+        $this->postJson('/api/laboratory-evidence/handoffs/'.$handoff->id.'/share', [
+            'selected' => [['reference' => 'record:'.LaboratoryTest::firstOrFail()->id, 'version' => 0]],
+            'confirmed' => true,
+            'reason' => 'Reconfirm structured evidence',
+            'sharingRevision' => (int) $handoff->laboratory_evidence_revision,
+        ])->assertOk();
+        $this->assertSame([], json_decode(
+            DB::table('monitoring_laboratory_evidence')->whereNull('withdrawn_at')->value('attachment_ids'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        ));
     }
 
-    public function test_removed_draft_files_are_purged_and_discard_marks_remaining_files_for_cleanup(): void
+    public function test_historical_share_attachment_ids_are_preserved_but_not_returned(): void
     {
-        $this->fakeDurableDisk();
-        $entry = $this->laboratoryEntry();
-        $context = $this->context($entry['id']);
-        $id = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $attachment = LaboratoryAttachment::findOrFail($id);
-        $this->deleteJson('/api/laboratory-attachments/'.$id, $context)->assertNoContent();
-        Storage::disk('laboratory-test')->assertMissing($attachment->getRawOriginal('path'));
-        $this->assertNotNull($attachment->fresh()->purged_at);
-        $next = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $draft = $this->postJson('/api/health-record-drafts', $this->draftInput(['laboratoryTests' => [$entry]]))->assertCreated();
-        $this->deleteJson('/api/health-record-drafts/'.$draft->json('data.id'), ['version' => $draft->json('data.version')])->assertNoContent();
-        $this->assertNotNull(LaboratoryAttachment::findOrFail($next)->removed_at);
-    }
-
-    public function test_unselected_attachment_patient_and_facility_access_are_denied(): void
-    {
-        $this->fakeDurableDisk();
-        $private = $this->laboratoryEntry(['testName' => 'Private evidence']);
-        $shared = $this->laboratoryEntry();
-        $context = $this->context($private['id']);
-        $id = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $wrongPatient = $context;
-        $wrongPatient['patient_id']++;
-        $this->get('/api/laboratory-attachments/'.$id.'?'.http_build_query($wrongPatient))->assertForbidden();
-        $this->finalize([$shared, $private], ['diagnoses' => [$this->diagnosis([
-            'laboratoryEvidence' => [['reference' => 'current:'.$shared['id'], 'version' => 0]], 'laboratoryEvidenceConfirmed' => true,
+        $entry = $this->laboratoryEntry(['resultStatus' => 'Result Available', 'result' => 'Legacy row result']);
+        $this->finalize([$entry], ['diagnoses' => [$this->diagnosis([
+            'laboratoryEvidence' => [['reference' => 'current:'.$entry['id'], 'version' => 0]],
+            'laboratoryEvidenceConfirmed' => true,
         ])]])->assertCreated();
         $handoff = MonitoringHandoffRequest::firstOrFail();
+        $test = LaboratoryTest::firstOrFail();
+        $record = HealthRecord::firstOrFail();
+        $legacyAttachmentId = (string) Str::uuid();
+        LaboratoryAttachment::create([
+            'id' => $legacyAttachmentId,
+            'patient_id' => $this->patient->id,
+            'health_record_id' => $record->id,
+            'consultation_uuid' => $this->uuid,
+            'test_client_id' => strtolower($entry['id']),
+            'disk' => 'historical',
+            'path' => 'laboratory/historical/'.$legacyAttachmentId,
+            'name' => 'legacy-report.pdf',
+            'mime_type' => 'application/pdf',
+            'size' => 128,
+            'created_by' => $this->clinician->id,
+            'uploaded_at' => now(),
+        ]);
+        $legacyIds = [$legacyAttachmentId, (string) Str::uuid()];
+        DB::table('monitoring_laboratory_evidence')->where('monitoring_handoff_request_id', $handoff->id)
+            ->whereNull('withdrawn_at')
+            ->update(['attachment_ids' => json_encode($legacyIds, JSON_THROW_ON_ERROR)]);
         $this->as($this->bhcUser);
-        $this->get('/api/laboratory-attachments/'.$id.'?handoff_id='.$handoff->id)->assertForbidden();
-        $otherBhc = BarangayHealthCenter::create(['name' => 'Other BHC', 'status' => 'active', 'rural_health_unit_id' => $this->clinician->rural_health_unit_id]);
+        $this->postJson('/api/monitoring-handoff-requests/'.$handoff->id.'/accept')->assertOk();
+        $this->getJson('/api/monitoring-handoff-requests/'.$handoff->id)
+            ->assertOk()
+            ->assertJsonPath('data.laboratory_evidence.0.result', 'Legacy row result')
+            ->assertJsonMissingPath('data.laboratory_evidence.0.attachments');
+        $this->getJson('/api/laboratory-evidence/monitoring/'.$this->patient->id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonMissingPath('data.0.attachments');
+        $stored = json_decode(
+            DB::table('monitoring_laboratory_evidence')->where('laboratory_test_id', $test->id)->whereNull('withdrawn_at')->value('attachment_ids'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR
+        );
+        $this->assertSame($legacyIds, $stored);
+    }
+
+    public function test_unauthorized_bhc_cannot_read_rhu_source_laboratory_listing(): void
+    {
+        $this->finalize([$this->laboratoryEntry(['testName' => 'RHU-only listing'])])->assertCreated();
+        $this->as($this->bhcUser);
+        $this->getJson('/api/laboratory-evidence/patients/'.$this->patient->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $otherBhc = BarangayHealthCenter::create([
+            'name' => 'Foreign BHC', 'status' => 'active', 'rural_health_unit_id' => $this->clinician->rural_health_unit_id,
+        ]);
         $this->bhcUser->update(['barangay_health_center_id' => $otherBhc->id]);
         $this->as($this->bhcUser->fresh());
-        $this->getJson('/api/monitoring-handoff-requests/'.$handoff->id)->assertForbidden();
+        $this->getJson('/api/laboratory-evidence/patients/'.$this->patient->id)->assertForbidden();
     }
 
     public function test_historical_maternal_tb_and_form_4b_results_stay_readable(): void
@@ -451,196 +423,5 @@ class UniversalLaboratoryTest extends TestCase
         $test->update(['patient_id' => $otherPatient->id]);
         $this->postJson($url, [...$selection, 'sharingRevision' => $handoff->fresh()->laboratory_evidence_revision])->assertUnprocessable();
         $this->assertSame(1, DB::table('monitoring_laboratory_evidence')->whereNull('withdrawn_at')->count());
-    }
-
-    public function test_a_new_late_attachment_requires_explicit_sharing_and_removal_preserves_shared_evidence(): void
-    {
-        $this->fakeDurableDisk();
-        $entry = $this->laboratoryEntry();
-        $this->finalize([$entry], ['diagnoses' => [$this->diagnosis([
-            'laboratoryEvidence' => [['reference' => 'current:'.$entry['id'], 'version' => 0]], 'laboratoryEvidenceConfirmed' => true,
-        ])]])->assertCreated();
-        $handoff = MonitoringHandoffRequest::firstOrFail();
-        $test = LaboratoryTest::firstOrFail();
-        $record = HealthRecord::firstOrFail();
-        $context = ['health_record_id' => $record->id, 'test_client_id' => $entry['id'], 'reason' => 'Supporting report arrived'];
-        $id = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $this->as($this->bhcUser);
-        $this->getJson('/api/monitoring-handoff-requests/'.$handoff->id)->assertOk()->assertJsonCount(0, 'data.laboratory_evidence.0.attachments');
-        $this->get('/api/laboratory-attachments/'.$id.'?handoff_id='.$handoff->id)->assertForbidden();
-        $this->as($this->clinician);
-        $share = ['selected' => [['reference' => 'record:'.$test->id, 'version' => 0]], 'confirmed' => true,
-            'sharingRevision' => $handoff->laboratory_evidence_revision, 'reason' => 'Share report'];
-        $url = '/api/laboratory-evidence/handoffs/'.$handoff->id.'/share';
-        $this->postJson($url, $share)->assertUnprocessable();
-        $share['selected'][0]['attachmentIds'] = [$id];
-        $this->postJson($url, $share)->assertOk();
-        $this->deleteJson('/api/laboratory-attachments/'.$id, $context)->assertNoContent();
-        $this->assertNull(LaboratoryAttachment::findOrFail($id)->purged_at);
-        $this->as($this->bhcUser);
-        $this->get('/api/laboratory-attachments/'.$id.'?handoff_id='.$handoff->id)->assertOk();
-    }
-
-    public function test_failed_upload_is_tracked_and_cleaned_up(): void
-    {
-        $this->fakeDurableDisk();
-        $disk = \Mockery::mock(FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
-        $disk->shouldReceive('delete')->once()->andReturn(true);
-        Storage::shouldReceive('disk')->with('laboratory-test')->andReturn($disk);
-        $this->post('/api/laboratory-attachments', [...$this->context((string) Str::uuid()), 'file' => $this->report()], ['Accept' => 'application/json'])->assertStatus(503);
-        $row = LaboratoryAttachment::firstOrFail();
-        $this->assertNotNull($row->removed_at);
-        $this->assertNotNull($row->purged_at);
-        $this->assertNull($row->uploaded_at);
-    }
-
-    public function test_storage_cleanup_survives_a_failed_database_completion(): void
-    {
-        $this->fakeDurableDisk();
-        AuditLog::creating(function () {
-            throw new \RuntimeException('Synthetic audit failure');
-        });
-        $this->post('/api/laboratory-attachments', [...$this->context((string) Str::uuid()), 'file' => $this->report()], ['Accept' => 'application/json'])->assertStatus(500);
-        $row = LaboratoryAttachment::firstOrFail();
-        Storage::disk('laboratory-test')->assertMissing($row->getRawOriginal('path'));
-        $this->assertNull($row->uploaded_at);
-        $this->assertNotNull($row->purged_at);
-    }
-
-    public function test_attachment_count_limit_and_ended_draft_editor_are_enforced(): void
-    {
-        $this->fakeDurableDisk();
-        $entry = $this->laboratoryEntry();
-        $context = $this->context($entry['id']);
-        config(['laboratory.max_files_per_test' => 1]);
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated();
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertUnprocessable();
-        $draft = $this->postJson('/api/health-record-drafts', $this->draftInput(['laboratoryTests' => [$entry]]))->assertCreated();
-        DB::table('health_record_drafts')->where('public_id', $draft->json('data.id'))->update(['editor_expires_at' => now()->subMinute()]);
-        $this->post('/api/laboratory-attachments', [...$this->context((string) Str::uuid()), 'file' => $this->report()], ['Accept' => 'application/json'])->assertConflict();
-        $this->assertDatabaseCount('laboratory_attachments', 1);
-    }
-
-    public function test_device_only_discard_and_cleanup_retry_leave_no_untracked_files(): void
-    {
-        $this->fakeDurableDisk();
-        $context = $this->context((string) Str::uuid());
-        $id = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $input = ['form_type' => 'consultation', 'mode' => 'edit', 'context_key' => 'visit:'.$this->visit->id, 'transaction_uuid' => $this->uuid];
-        $key = $this->postJson('/api/form-drafts/device-key', $input)->assertOk()->json('data');
-        $this->postJson('/api/form-drafts/clinical-discard', [...$input, 'key_id' => $key['key_id']])->assertNoContent();
-        $row = LaboratoryAttachment::findOrFail($id);
-        $this->assertNotNull($row->removed_at);
-        $row->update(['removed_at' => now()->subHours(2)]);
-        $this->artisan('laboratory-attachments:prune')->assertSuccessful();
-        $this->assertNotNull($row->fresh()->purged_at);
-        Storage::disk('laboratory-test')->assertMissing($row->getRawOriginal('path'));
-    }
-
-    public function test_replacement_is_atomic_at_the_attachment_limit_and_keeps_association(): void
-    {
-        $this->fakeDurableDisk();
-        config(['laboratory.max_files_per_test' => 1]);
-        $context = $this->context((string) Str::uuid());
-        $first = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $replacement = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report(), 'replace_attachment_id' => $first], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $this->assertNotSame($first, $replacement);
-        $this->assertNotNull(LaboratoryAttachment::findOrFail($first)->purged_at);
-        $this->getJson('/api/laboratory-attachments?'.http_build_query($context))->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $replacement);
-        $this->assertTrue(AuditLog::where('module', 'laboratory_attachments')->where('action', 'replaced')->exists());
-        $this->post('/api/laboratory-attachments', [...$this->context((string) Str::uuid()), 'file' => $this->report(), 'replace_attachment_id' => $replacement], ['Accept' => 'application/json'])->assertNotFound();
-    }
-
-    public function test_finalization_during_an_upload_cleans_the_uncommitted_file(): void
-    {
-        $this->fakeDurableDisk();
-        $entry = $this->laboratoryEntry();
-        $realDisk = Storage::disk('laboratory-test');
-        $disk = \Mockery::mock(FilesystemAdapter::class);
-        $disk->shouldReceive('putFileAs')->once()->andReturnUsing(function (...$arguments) use ($realDisk, $entry) {
-            $path = $realDisk->putFileAs(...$arguments);
-            // Deterministically interleave finalization after the durable write
-            // and before the attachment's metadata completion transaction.
-            $this->finalize([$entry])->assertCreated();
-
-            return $path;
-        });
-        $disk->shouldReceive('delete')->once()->andReturnUsing(fn ($path) => $realDisk->delete($path));
-        Storage::shouldReceive('disk')->with('laboratory-test')->andReturn($disk);
-        $this->post('/api/laboratory-attachments', [...$this->context($entry['id']), 'file' => $this->report()], ['Accept' => 'application/json'])->assertConflict();
-        $attachment = LaboratoryAttachment::firstOrFail();
-        $realDisk->assertMissing($attachment->getRawOriginal('path'));
-        $this->assertNotNull($attachment->purged_at);
-        $this->assertNull($attachment->health_record_id);
-        $this->assertDatabaseCount('laboratory_tests', 1);
-    }
-
-    public function test_real_s3_driver_upload_and_authorized_retrieval_without_object_acls(): void
-    {
-        $state = $this->isolatedS3();
-        $context = $this->context((string) Str::uuid());
-        $response = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated();
-        $attachment = LaboratoryAttachment::findOrFail($response->json('data.id'));
-        $this->assertSame('s3', $attachment->disk);
-        $this->assertStringStartsWith('laboratory/', $attachment->path);
-        $response->assertJsonMissingPath('data.path')->assertJsonMissingPath('data.disk');
-        $put = $state->requests[0];
-        $this->assertSame('PUT', $put->getMethod());
-        $this->assertSame('https', $put->getUri()->getScheme());
-        $this->assertSame('objects.example.test', $put->getUri()->getHost());
-        $this->assertStringStartsWith('/private-test-bucket/laboratory/', $put->getUri()->getPath());
-        $this->assertFalse($put->hasHeader('x-amz-acl'));
-        $preview = $this->get('/api/laboratory-attachments/'.$attachment->id.'?'.http_build_query($context))->assertOk()->assertHeader('Content-Type', 'application/pdf');
-        $this->assertStringContainsString('Synthetic laboratory report', $preview->streamedContent());
-        $reads = count($state->requests);
-        $this->as($this->bhcUser);
-        $this->getJson('/api/laboratory-attachments/'.$attachment->id.'?'.http_build_query($context))->assertForbidden();
-        $this->assertCount($reads, $state->requests, 'Unauthorized access must not contact storage.');
-    }
-
-    public function test_aws_default_endpoint_and_virtual_host_addressing_are_supported(): void
-    {
-        $state = $this->isolatedS3(null, false);
-        $this->post('/api/laboratory-attachments', [...$this->context((string) Str::uuid()), 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated();
-        $request = $state->requests[0];
-        $this->assertStringStartsWith('private-test-bucket.', $request->getUri()->getHost());
-        $this->assertStringContainsString('.amazonaws.com', $request->getUri()->getHost());
-        $this->assertStringStartsWith('/laboratory/', $request->getUri()->getPath());
-        $this->assertFalse($request->hasHeader('x-amz-acl'));
-    }
-
-    public function test_storage_failure_returns_clear_production_error_and_preserves_draft(): void
-    {
-        $state = $this->isolatedS3();
-        $entry = $this->laboratoryEntry(['result' => 'Preserve this draft text']);
-        $draft = $this->postJson('/api/health-record-drafts', $this->draftInput(['laboratoryTests' => [$entry]]))->assertCreated()->json('data.id');
-        config(['app.env' => 'production']);
-        $state->failWrites = true;
-        $response = $this->post('/api/laboratory-attachments', [...$this->context($entry['id']), 'file' => $this->report()], ['Accept' => 'application/json'])->assertStatus(503);
-        $this->assertStringContainsString('Your laboratory text and draft have not been changed', $response->json('message'));
-        $this->assertStringNotContainsString('synthetic-provider-detail', $response->getContent());
-        $this->getJson('/api/health-record-drafts/'.$draft)->assertOk()->assertJsonPath('data.payload.laboratoryTests.0.result', 'Preserve this draft text');
-        $this->assertNotNull(LaboratoryAttachment::firstOrFail()->purged_at);
-        $this->assertSame([], $state->objects);
-        $this->assertDatabaseCount('laboratory_tests', 0);
-    }
-
-    public function test_missing_configuration_and_read_failure_return_clear_production_errors(): void
-    {
-        $state = $this->isolatedS3();
-        config(['app.env' => 'production', 'filesystems.disks.s3.bucket' => '']);
-        $context = $this->context((string) Str::uuid());
-        $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertStatus(503)
-            ->assertJsonPath('message', 'Laboratory uploads require configured durable private storage. Contact your administrator.');
-        $this->assertDatabaseCount('laboratory_attachments', 0);
-        $this->assertSame([], $state->requests);
-        config(['filesystems.disks.s3.bucket' => 'private-test-bucket']);
-        $id = $this->post('/api/laboratory-attachments', [...$context, 'file' => $this->report()], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
-        $state->failReads = true;
-        $response = $this->getJson('/api/laboratory-attachments/'.$id.'?'.http_build_query($context))->assertStatus(503);
-        $this->assertStringContainsString('Unable to retrieve this laboratory report', $response->json('message'));
-        $this->assertStringNotContainsString('synthetic-provider-detail', $response->getContent());
-        $this->assertNotNull(LaboratoryAttachment::findOrFail($id)->uploaded_at);
     }
 }

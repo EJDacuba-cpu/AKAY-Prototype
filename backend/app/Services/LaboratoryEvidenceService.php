@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\HealthRecord;
-use App\Models\LaboratoryAttachment;
 use App\Models\LaboratoryTest;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -53,26 +52,17 @@ class LaboratoryEvidenceService
     public function finalize(Request $request, HealthRecord $record, array $entries): void
     {
         foreach ($entries as $entry) {
-            $test = LaboratoryTest::create([
+            LaboratoryTest::create([
                 'patient_id' => $record->patient_id,
                 'health_record_id' => $record->id,
                 'client_id' => strtolower($entry['id']),
                 'data' => $entry,
                 'created_by' => $request->user()->id,
             ]);
-            LaboratoryAttachment::query()
-                ->where('patient_id', $record->patient_id)
-                ->where('consultation_uuid', $record->consultation_uuid)
-                ->where('test_client_id', $test->client_id)
-                ->whereNull('health_record_id')->whereNull('removed_at')
-                ->update(['health_record_id' => $record->id]);
         }
         if ($entries !== []) {
             app(AuditLogger::class)->log($request, 'created', 'laboratory_tests', "Recorded laboratory evidence for health record {$record->id}.");
         }
-        LaboratoryAttachment::query()->where('patient_id', $record->patient_id)
-            ->where('consultation_uuid', $record->consultation_uuid)->whereNull('health_record_id')
-            ->whereNull('removed_at')->update(['removed_at' => now()]);
 
         $this->remapDiagnosisLaboratoryReferences($record);
     }
@@ -135,10 +125,7 @@ class LaboratoryEvidenceService
 
     public function present(HealthRecord $record): array
     {
-        $attachments = LaboratoryAttachment::query()->where('health_record_id', $record->id)
-            ->whereNull('removed_at')->get()->groupBy('test_client_id');
-
-        return $record->laboratoryTests()->with('addenda')->orderBy('id')->get()->map(function ($test) use ($attachments) {
+        return $record->laboratoryTests()->with('addenda')->orderBy('id')->get()->map(function ($test) {
             $latest = $test->addenda->last();
 
             return [
@@ -154,7 +141,6 @@ class LaboratoryEvidenceService
                     'id' => $addendum->id, 'data' => $addendum->data, 'reason' => $addendum->reason,
                     'createdBy' => $addendum->created_by, 'createdAt' => $addendum->created_at->toISOString(),
                 ])->all(),
-                'attachments' => ($attachments->get($test->client_id) ?? collect())->values()->all(),
             ];
         })->all();
     }

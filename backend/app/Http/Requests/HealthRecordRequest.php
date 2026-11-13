@@ -275,11 +275,9 @@ class HealthRecordRequest extends FormRequest
             $rules['laboratory_tests'] = ['prohibited'];
         }
         $rules['diagnoses.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];
-        $rules['diagnoses.*.laboratoryEvidence.*'] = ['array:reference,version,attachmentIds'];
+        $rules['diagnoses.*.laboratoryEvidence.*'] = ['array:reference,version'];
         $rules['diagnoses.*.laboratoryEvidence.*.reference'] = ['required', 'string', 'max:80'];
         $rules['diagnoses.*.laboratoryEvidence.*.version'] = ['required', 'integer', 'min:0'];
-        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds'] = ['nullable', 'array', 'max:10'];
-        $rules['diagnoses.*.laboratoryEvidence.*.attachmentIds.*'] = ['uuid'];
         $rules['diagnoses.*.laboratoryEvidenceConfirmed'] = ['nullable', 'boolean'];
         $rules['diagnoses.*.supportingLaboratoryTests'] = ['nullable', 'array', 'max:50'];
         $rules['diagnoses.*.supportingLaboratoryTests.*'] = ['array:reference'];

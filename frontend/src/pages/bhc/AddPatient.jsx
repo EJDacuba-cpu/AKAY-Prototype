@@ -451,6 +451,8 @@ function handleBirthDateChange(valueOrEvent) {
         try { await draft.complete(); }
         catch { toast.error("The patient was saved. Recovery cleanup will be checked when you reopen registration."); }
       }
+      // Keep All Patients / directory lists in sync after walk-in or intake registration.
+      await client.invalidateQueries({ queryKey: queryKeys.patients(role) });
       const savedId = saved?.id ? String(saved.id) : "";
       setCreatedPatientId(savedId);
       setForm(registrationForm(saved));

@@ -438,8 +438,6 @@ export default function BhcHealthRecordPrintDocument({
               <Narrative label="Addendum laboratory entry" value={addendum.data ? laboratorySummary(addendum.data) : ""} />
             </div>)}
           </>}
-          {entry.attachments?.length > 0 && <Narrative label="Supporting attachments"
-            value={entry.attachments.map((file) => file.name || "Name not recorded").join("\n")} />}
         </div>)}
       </Section>}
 
