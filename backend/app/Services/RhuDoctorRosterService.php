@@ -9,10 +9,10 @@ use Illuminate\Http\Request;
 /**
  * Keeps official RHU Doctor accounts on the assigned RHU roster.
  *
- * Identity (name, facility membership) comes from Admin-managed accounts.
- * Availability stays independently writable by authorized RHU staff on the
- * existing rhu_providers row. New, moved, and reactivated official rows start
- * Unavailable so the referral gate stays closed until RHU staff confirm duty.
+ * Identity (name, specialization, facility membership) comes from Admin-managed
+ * accounts. Availability stays independently writable by authorized RHU staff
+ * on the existing rhu_providers row. New, moved, and reactivated official rows
+ * start Unavailable so the referral gate stays closed until RHU staff confirm duty.
  * Covering/unlinked roster rows are left in place and are never claimed by
  * matching names. They are excluded from the live roster and referral gate.
  * Deactivation keeps the last availability on the hidden official row.
@@ -83,6 +83,7 @@ class RhuDoctorRosterService
             'rural_health_unit_id' => $ruralHealthUnitId,
             'user_id' => $user->id,
             'name' => $user->name,
+            'specialization' => $user->specialization,
             'availability_status' => RhuProvider::STATUS_UNAVAILABLE,
             'availability_status_set_at' => now(),
             'is_active' => true,
@@ -112,6 +113,10 @@ class RhuDoctorRosterService
 
         if ($provider->name !== $user->name) {
             $attributes['name'] = $user->name;
+        }
+
+        if ($provider->specialization !== $user->specialization) {
+            $attributes['specialization'] = $user->specialization;
         }
 
         if ($moved) {

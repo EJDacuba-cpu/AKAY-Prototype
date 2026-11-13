@@ -22,7 +22,7 @@ import { errorStateVariant } from "../../utils/errorStateVariant";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
-const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
+const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", specialization: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
   { tier: TIERS.bhc, label: "Barangay Health Center", icon: House, description: "Barangay-level staff who register patients, record consultations and refer to the RHU." },
   { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital, description: "Municipal clinic staff who receive referrals, confirm conditions and manage doctor availability." },
@@ -98,7 +98,7 @@ export default function AddUser() {
         const u = unwrapData(response);
         // Accounts saved before roles existed hold no role; Role & Access asks for one before saving.
         const permissions = withRequirements(u.permissions ?? roleDefaults(roles, u.staff_role));
-        setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
+        setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", specialization: u.specialization || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
         setOriginalTier(u.role);
       } else {
         setForm(empty);
@@ -194,7 +194,16 @@ export default function AddUser() {
 
   function chooseRole(key) {
     if (key === form.staff_role) return;
-    const apply = () => { setForm(f => ({ ...f, staff_role: key, permissions: roleDefaults(rolesData, key) })); setConfirmed(false); setErrors(e => ({ ...e, staff_role: undefined, permissions: undefined })); };
+    const apply = () => {
+      setForm(f => ({
+        ...f,
+        staff_role: key,
+        specialization: key === "doctor" ? f.specialization : "",
+        permissions: roleDefaults(rolesData, key),
+      }));
+      setConfirmed(false);
+      setErrors(e => ({ ...e, staff_role: undefined, permissions: undefined, specialization: undefined }));
+    };
     if (needsReplaceConfirm(rolesData, form.staff_role, form.permissions)) {
       setPending({ title: "Replace access?", description: `Replace current access with ${roleFor(rolesData, key).label} defaults?`, confirmText: "Replace", apply });
     } else apply();
@@ -240,6 +249,9 @@ export default function AddUser() {
       name: form.name.trim(), email: form.email, contact_number: normalizeContactNumber(form.contact_number), role: form.role,
       staff_role: admin ? null : form.staff_role, permissions: admin ? [] : form.permissions, permissions_confirmed: true,
       barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
+      ...(form.staff_role === "doctor"
+        ? { specialization: String(form.specialization || "").trim() || null }
+        : {}),
     };
     try {
       const result = await apiRequest(id ? `/users/${id}` : "/users", { method: id ? "PATCH" : "POST", body });
@@ -275,6 +287,9 @@ export default function AddUser() {
     ["Facility", admin ? "Municipal Health Officer (not tied to a facility)" : homeName],
     ["Name", form.name], ["Email", form.email], ["Contact number", normalizeContactNumber(form.contact_number)],
     ["Role", admin ? "Municipal Health Officer" : role?.label],
+    ...(form.staff_role === "doctor"
+      ? [["Specialization", String(form.specialization || "").trim() || "Not recorded"]]
+      : []),
     ...(id ? [] : [["Sign-in", "Emailed invitation; setup stays pending until they set a password"]]),
   ];
   const [title, subtitle] = HEADINGS[current];
@@ -300,6 +315,17 @@ export default function AddUser() {
         })}</div>
         : <div aria-busy="true" aria-label="Loading roles" className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map(i => <span key={i} className={`block h-24 ${pulse}`} />)}</div>}
       <FieldMessage>{errors.staff_role || errors.permissions}</FieldMessage>
+      {form.staff_role === "doctor" && (
+        <Field label="Specialization" error={fieldError("specialization")} state={stateOf("specialization")}>
+          <Input
+            value={form.specialization}
+            onChange={e => change("specialization", e.target.value)}
+            onBlur={() => blur("specialization")}
+            placeholder="e.g. Pediatrics"
+            maxLength={255}
+          />
+        </Field>
+      )}
       {form.staff_role
         ? <PermissionMatrix permissions={form.permissions} available={availableDuties(rolesData, form.role)} defaults={defaults} licensedRole={Boolean(role?.licensed)} onChange={changeAccess} onReset={() => { setForm(f => ({ ...f, permissions: defaults })); setConfirmed(false); setErrors(e => ({ ...e, permissions: undefined })); }} />
         : <p className="text-sm text-slate-500">Choose a role to see its access.</p>}

@@ -220,6 +220,67 @@ class RhuDoctorRosterTest extends TestCase
         ]);
     }
 
+    public function test_admin_sets_doctor_specialization_on_account_and_roster(): void
+    {
+        $id = $this->postJson('/api/users', $this->doctorPayload([
+            'specialization' => '  Pediatrics  ',
+        ]))
+            ->assertCreated()
+            ->assertJsonPath('data.specialization', 'Pediatrics')
+            ->json('data.id');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $id,
+            'specialization' => 'Pediatrics',
+        ]);
+        $this->assertDatabaseHas('rhu_providers', [
+            'user_id' => $id,
+            'specialization' => 'Pediatrics',
+        ]);
+
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->getJson('/api/rhu-providers/availability')
+            ->assertOk()
+            ->assertJsonPath('data.providers.0.specialization', 'Pediatrics');
+
+        Sanctum::actingAs($this->admin, ['*']);
+
+        $this->patchJson("/api/users/{$id}", $this->doctorPayload([
+            'specialization' => 'Internal Medicine',
+        ]))
+            ->assertOk()
+            ->assertJsonPath('data.specialization', 'Internal Medicine');
+
+        $this->assertDatabaseHas('rhu_providers', [
+            'user_id' => $id,
+            'specialization' => 'Internal Medicine',
+        ]);
+
+        $this->patchJson("/api/users/{$id}", $this->doctorPayload([
+            'specialization' => '   ',
+        ]))
+            ->assertOk()
+            ->assertJsonPath('data.specialization', null);
+
+        $this->assertDatabaseHas('rhu_providers', [
+            'user_id' => $id,
+            'specialization' => null,
+        ]);
+    }
+
+    public function test_non_doctor_account_cannot_set_specialization(): void
+    {
+        $this->postJson('/api/users', $this->doctorPayload([
+            'name' => 'Nurse Reyes',
+            'email' => 'nurse.specialization@example.test',
+            'staff_role' => 'nurse',
+            'permissions' => StaffRoles::defaults('nurse'),
+            'specialization' => 'Pediatrics',
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('specialization');
+    }
+
     public function test_deactivation_preserves_last_availability_and_reactivation_stays_unavailable_until_rhu_confirms(): void
     {
         $userId = $this->postJson('/api/users', $this->doctorPayload())->assertCreated()->json('data.id');

@@ -22,6 +22,7 @@ use Laravel\Sanctum\HasApiTokens;
     'rural_health_unit_id',
     'created_by',
     'staff_role',
+    'specialization',
     'contact_number',
     'permissions',
 ])]

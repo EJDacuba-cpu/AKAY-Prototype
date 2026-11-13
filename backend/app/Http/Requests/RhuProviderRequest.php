@@ -24,7 +24,8 @@ class RhuProviderRequest extends FormRequest
 
         return [
             'name' => [$creating ? 'required' : 'sometimes', 'string', 'max:255'],
-            'specialization' => ['nullable', 'string', 'max:255'],
+            // Identity field: Admin sets specialization on the Doctor account.
+            'specialization' => ['prohibited'],
             'availability_status' => [
                 $creating ? 'sometimes' : 'sometimes',
                 Rule::in(RhuProvider::AVAILABILITY_STATUSES),

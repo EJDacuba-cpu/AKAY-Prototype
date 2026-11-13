@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STEPS, isValidEmail, profileChanges, routeServerErrors, validateAccountProfile, validateAccountStep } from "./accountForm.js";
+import { STEPS, isDoctorAccount, isValidEmail, profileChanges, routeServerErrors, validateAccountProfile, validateAccountStep } from "./accountForm.js";
 
 const form = {
   role: "bhc", name: "Joshua", email: "joshua@example.test", contact_number: "0917 123 4567",
@@ -91,6 +91,42 @@ test("profile changes send only what changed", () => {
   assert.deepEqual(profileChanges(account, { ...same, name: "Ana M. Cruz" }), { name: "Ana M. Cruz" });
   assert.deepEqual(profileChanges(account, { ...same, contact_number: "0918 000 0000" }), { contact_number: "09180000000" });
   assert.deepEqual(profileChanges(account, { ...same, email: " New@Example.test " }), { email: "New@Example.test" });
+});
+
+test("doctor profile edits include specialization changes", () => {
+  const doctor = {
+    name: "Dr. Reyes",
+    contact_number: "09171234567",
+    email: "reyes@example.test",
+    staff_role: "doctor",
+    backendRole: "rhu",
+    specialization: "Pediatrics",
+  };
+  const same = {
+    name: "Dr. Reyes",
+    contact_number: "09171234567",
+    email: "reyes@example.test",
+    specialization: " Pediatrics ",
+  };
+  assert.equal(isDoctorAccount(doctor), true);
+  assert.deepEqual(profileChanges(doctor, same), {});
+  assert.deepEqual(profileChanges(doctor, { ...same, specialization: "Internal Medicine" }), {
+    specialization: "Internal Medicine",
+  });
+  assert.deepEqual(profileChanges(doctor, { ...same, specialization: "  " }), {
+    specialization: null,
+  });
+  assert.deepEqual(
+    validateAccountProfile({ ...same, specialization: "x".repeat(256) }, doctor),
+    { specialization: "Enter at most 255 characters." },
+  );
+  assert.deepEqual(validateAccountStep(STEPS.access, {
+    ...form,
+    role: "rhu",
+    staff_role: "doctor",
+    permissions: ["rhu.providers.manage"],
+    specialization: "x".repeat(256),
+  }, create), { specialization: "Enter at most 255 characters." });
 });
 
 test("an account without a contact number can be edited without inventing one", () => {
