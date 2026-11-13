@@ -10,6 +10,7 @@ import {
   roleLabel,
   setupStatusLabel,
 } from "../../../utils/accountSetup";
+import { isDoctorAccount } from "../../../utils/accountForm";
 import { formatUserName } from "../../../utils/formatters";
 import { queryKeys } from "../../../utils/queryKeys";
 
@@ -26,6 +27,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
   });
   const current = data || account;
   const isAdmin = current?.backendRole === "admin";
+  const doctor = isDoctorAccount(current);
 
   return (
     <ModalShell
@@ -54,6 +56,9 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
             <Row label="Email">{current.email || "Not recorded"}</Row>
             <Row label="Contact number">{current.contact_number || "Not recorded"}</Row>
             <Row label="Role">{roleLabel(current, rolesData)}</Row>
+            {doctor && (
+              <Row label="Specialization">{current.specialization || "Not recorded"}</Row>
+            )}
             <Row label="Account type">{accountTypeLabel(current) || "Not recorded"}</Row>
             <Row label="Home facility">{homeFacilityLabel(current)}</Row>
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>

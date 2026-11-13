@@ -17,10 +17,29 @@ class UserRequest extends FormRequest
         return $this->user()?->isAdmin() ?? false;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! $this->exists('specialization')) {
+            return;
+        }
+
+        $value = $this->input('specialization');
+        if (! is_string($value)) {
+            return;
+        }
+
+        $trimmed = trim($value);
+        $this->merge(['specialization' => $trimmed === '' ? null : $trimmed]);
+    }
+
     public function rules(): array
     {
         $userId = $this->route('user')?->id;
         $isUpdate = $this->isMethod('patch') || $this->isMethod('put');
+        $existingUser = $this->route('user');
+        $role = $this->input('role', $existingUser?->role);
+        $staffRole = $this->input('staff_role', $existingUser?->staff_role);
+        $isDoctor = $role === User::ROLE_RHU && $staffRole === 'doctor';
 
         return [
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
@@ -45,6 +64,9 @@ class UserRequest extends FormRequest
             'role' => [$isUpdate ? 'sometimes' : 'required', Rule::in([User::ROLE_ADMIN, User::ROLE_BHC, User::ROLE_RHU])],
             'status' => ['sometimes', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
             'staff_role' => ['nullable', Rule::in(StaffRoles::keys())],
+            'specialization' => $isDoctor
+                ? ['nullable', 'string', 'max:255']
+                : ['prohibited'],
             'permissions' => [$isUpdate ? 'sometimes' : 'present', 'array'],
             'permissions.*' => ['string', 'distinct', Rule::in(ActionPermissions::ALL)],
             'facility_assignments' => ['prohibited'],

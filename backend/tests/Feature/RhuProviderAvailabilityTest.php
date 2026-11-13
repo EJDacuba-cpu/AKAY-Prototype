@@ -65,7 +65,6 @@ class RhuProviderAvailabilityTest extends TestCase
         $this->actingAs($this->rhuStaffA, 'sanctum')
             ->postJson('/api/rhu-providers', [
                 'name' => 'Dr. Covering',
-                'specialization' => 'General Practitioner',
                 'remarks' => 'Covering provider',
             ])
             ->assertUnprocessable()
@@ -248,13 +247,18 @@ class RhuProviderAvailabilityTest extends TestCase
         );
 
         $this->actingAs($this->rhuStaffA, 'sanctum')
-            ->patchJson("/api/rhu-providers/{$provider->id}", ['specialization' => 'Pediatrics'])
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['remarks' => 'Covering until Friday'])
             ->assertOk();
 
         $this->assertTrue(
             AuditLog::where('action', 'provider_updated')->exists(),
             'A non-availability edit must audit as provider_updated.'
         );
+
+        $this->actingAs($this->rhuStaffA, 'sanctum')
+            ->patchJson("/api/rhu-providers/{$provider->id}", ['specialization' => 'Pediatrics'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('specialization');
     }
 
     /** Manual Available/Unavailable persists across refreshes and drives the BHC gate. */

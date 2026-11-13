@@ -66,6 +66,7 @@ class UserController extends Controller
         $data['status'] ??= User::STATUS_ACTIVE;
 
         unset($data['facility_assignments'], $data['permissions_confirmed'], $data['password_confirmation']);
+        $this->forgetSpecializationUnlessDoctor($data);
         // Nobody knows this password; the person sets their own through the invite link.
         $data['password'] = Str::random(64);
         $user = DB::transaction(function () use ($data, $request, $auditLogger, $roster): User {
@@ -106,6 +107,7 @@ class UserController extends Controller
 
         $previousPermissions = $user->permissions ?? [];
         unset($data['permissions_confirmed'], $data['facility_assignments'], $data['password'], $data['password_confirmation']);
+        $this->forgetSpecializationUnlessDoctor($data, $user);
         $securityContextChanged = array_key_exists('permissions', $data) || array_key_exists('staff_role', $data);
         foreach (['role', 'status', 'barangay_health_center_id', 'rural_health_unit_id'] as $field) {
             if (array_key_exists($field, $data)
@@ -223,6 +225,26 @@ class UserController extends Controller
             }
             $resetRequest->forceFill($attributes)->save();
         }
+    }
+
+    /**
+     * Specialization belongs only to RHU Doctor accounts. Clear it when the
+     * saved role is anything else so a former doctor does not keep a stale value.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function forgetSpecializationUnlessDoctor(array &$data, ?User $existing = null): void
+    {
+        $role = $data['role'] ?? $existing?->role;
+        $staffRole = array_key_exists('staff_role', $data)
+            ? $data['staff_role']
+            : $existing?->staff_role;
+
+        if ($role === User::ROLE_RHU && $staffRole === 'doctor') {
+            return;
+        }
+
+        $data['specialization'] = null;
     }
 
     /** Audit wording for duties added or removed, and for licensed duties held by a non-licensed role. */
