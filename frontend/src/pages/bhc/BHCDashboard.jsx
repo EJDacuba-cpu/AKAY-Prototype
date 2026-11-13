@@ -184,12 +184,12 @@ export default function BHCDashboard() {
             </div>
           </section>
 
-          <section aria-label="Quick actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+          <section aria-label="Quick actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {QUICK_ACTIONS.map((action) => (
               <ModuleGate
                 key={action.href}
                 module={action.module}
-                className="rounded-card lg:col-span-3"
+                className="min-w-0 rounded-card"
                 placeholder={<QuickActionCard {...action} locked />}
               >
                 <QuickActionCard {...action} />
@@ -363,18 +363,18 @@ function RHUReadinessCard({ availability, loading = false }) {
 
 function QuickActionCard({ title, description, href, icon: Icon, locked = false }) {
   const className = cn(
-    "bhc-quick-action flex h-full flex-col gap-3 rounded-card border border-neutral-200 bg-white p-4 shadow-card",
+    "bhc-quick-action flex h-full min-w-0 items-start gap-3 rounded-card border border-neutral-200 bg-white p-4 shadow-card",
     !locked && "hover:bg-neutral-50",
   );
 
   const body = (
     <>
-      <span className="bhc-quick-icon flex size-9 items-center justify-center rounded-lg bg-neutral-100 text-ink-700">
+      <span className="bhc-quick-icon flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-ink-700">
         <Icon size={16} />
       </span>
-      <div>
-        <p className="bhc-quick-title text-sm font-semibold text-neutral-900">{title}</p>
-        <p className="bhc-quick-description mt-1 text-xs text-neutral-500">{description}</p>
+      <div className="min-w-0">
+        <p className="bhc-quick-title text-sm font-semibold text-balance text-neutral-900">{title}</p>
+        <p className="bhc-quick-description mt-0.5 text-xs text-neutral-500">{description}</p>
       </div>
     </>
   );
