@@ -1,20 +1,17 @@
 import { useState } from "react";
 import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
-import { Pencil, Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { DatePickerField } from "../../common/forms/DatePickerField";
 import { formatLongDate } from "../../../utils/formatters";
 import {
-  EMPTY_LABORATORY_ENTRY,
   EMPTY_PRENATAL_HISTORY,
-  MATERNAL_LAB_TESTS,
   MATERNAL_RISK_GROUPS,
   OB_SCORE_GP_FIELDS,
   OB_SCORE_TPAL_FIELDS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   hasPregnancyBaseline,
   labTestLabel,
-  sanitizeLaboratoryEntries,
 } from "../../../utils/prenatalForm";
 import PatientHistoryPanel from "../patients/history/PatientHistoryPanel";
 import { SMALL_BUTTON_CLASS } from "../patients/history/HistoryFields";
@@ -61,14 +58,9 @@ export default function PrenatalAssessmentForm({
   const hasThisVisitUltrasound = Boolean(
     String(maternalData.ultrasound?.result || "").trim() || maternalData.ultrasound?.dateDone,
   );
-  const [addingLabs, setAddingLabs] = useState(false);
-  const [labDraft, setLabDraft] = useState(EMPTY_LABORATORY_ENTRY);
-  const [editingLabIndex, setEditingLabIndex] = useState(null);
-  const [labFormError, setLabFormError] = useState("");
   const [addingUltrasound, setAddingUltrasound] = useState(false);
   const [startedWithBaseline] = useState(() => hasPregnancyBaseline(maternalData, expectedDeliveryDate));
   const [correctingBaseline, setCorrectingBaseline] = useState(false);
-  const showLabForm = addingLabs || editingLabIndex !== null;
   const showUltrasoundEditor = hasThisVisitUltrasound || addingUltrasound;
   const showBaselineEditor = correctingBaseline || !startedWithBaseline;
 
@@ -223,28 +215,15 @@ export default function PrenatalAssessmentForm({
         </LockedFormContent>
       </FormSection>
 
+      {laboratoryContext === "rhu" && (
       <FormSection
         title="Laboratory Results"
-        subtitle="Previous results stay on their own records. Add only tests taken this visit."
-        action={
-          !locked && laboratoryContext !== "rhu" ? (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingLabIndex(null);
-                setLabDraft(EMPTY_LABORATORY_ENTRY);
-                setLabFormError("");
-                setAddingLabs(true);
-              }}
-              className={LAB_PILL_BUTTON_CLASS}
-            >
-              <Plus size={13} aria-hidden="true" />
-              Add Lab Result
-            </button>
-          ) : null
-        }
+        subtitle="Previous prenatal results stay on their own records. Record new tests in Physical Examination."
       >
-        {laboratoryContext === "rhu" && <div className="mb-3 space-y-2"><p className="text-xs text-neutral-500">Record new tests in Physical Examination → Laboratory &amp; Diagnostic Tests. Previous prenatal results remain below.</p><LaboratoryEvidenceList entries={laboratoryTests} /></div>}
+        <div className="mb-3 space-y-2">
+          <p className="text-xs text-neutral-500">Record new tests in Physical Examination → Laboratory &amp; Diagnostic Tests. Previous prenatal results remain below.</p>
+          <LaboratoryEvidenceList entries={laboratoryTests} />
+        </div>
         {history.labs.length > 0 && (
           <HistoryTable
             caption="Previous Laboratory Results"
@@ -258,136 +237,19 @@ export default function PrenatalAssessmentForm({
         {thisVisitLabs.length > 0 && (
           <HistoryTable
             caption="New Results This Visit"
-            columns={locked || laboratoryContext === "rhu" ? ["Test", "Result", "Date Performed"] : ["Test", "Result", "Date Performed", ""]}
+            columns={["Test", "Result", "Date Performed"]}
             rows={thisVisitLabs.map((entry, index) => ({
               key: `this-visit-${entry.test}-${index}`,
               cells: [
                 labTestLabel(entry.test),
                 entry.result,
                 formatHistoryDate(entry.datePerformed),
-                ...(locked || laboratoryContext === "rhu"
-                  ? []
-                  : [
-                      <span key={`actions-${index}`} className="flex justify-end gap-1">
-                        <button
-                          type="button"
-                          aria-label={`Edit ${labTestLabel(entry.test)} result`}
-                          onClick={() => {
-                            setAddingLabs(false);
-                            setEditingLabIndex(index);
-                            setLabDraft({
-                              test: entry.test,
-                              result: entry.result,
-                              datePerformed: entry.datePerformed || "",
-                            });
-                            setLabFormError("");
-                          }}
-                          className={LAB_ICON_BUTTON_CLASS}
-                        >
-                          <Pencil size={13} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${labTestLabel(entry.test)} result`}
-                          onClick={() => {
-                            onMaternalChange(
-                              "laboratoryEntries",
-                              thisVisitLabs.filter((_, itemIndex) => itemIndex !== index),
-                            );
-                            if (editingLabIndex === index) {
-                              setEditingLabIndex(null);
-                              setLabDraft(EMPTY_LABORATORY_ENTRY);
-                            } else if (editingLabIndex !== null && editingLabIndex > index) {
-                              setEditingLabIndex(editingLabIndex - 1);
-                            }
-                          }}
-                          className={LAB_ICON_BUTTON_CLASS}
-                        >
-                          <X size={13} aria-hidden="true" />
-                        </button>
-                      </span>,
-                    ]),
               ],
             }))}
           />
         )}
-        {showLabForm && !locked && laboratoryContext !== "rhu" && (
-          <div className="rounded-none border border-[#E8ECF0] p-3">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {editingLabIndex !== null ? "Edit lab result" : "Add lab result"}
-            </p>
-            <div className="grid gap-3 @xl:grid-cols-3">
-              <FieldSelect
-                label="Test"
-                value={labDraft.test}
-                onChange={(event) => {
-                  setLabFormError("");
-                  setLabDraft((current) => ({ ...current, test: event.target.value }));
-                }}
-              >
-                <option value="">Select test...</option>
-                {MATERNAL_LAB_TESTS.map((test) => (
-                  <option key={test.key} value={test.key}>
-                    {test.label}
-                  </option>
-                ))}
-              </FieldSelect>
-              <FieldInput
-                label="Result"
-                placeholder="Enter result..."
-                value={labDraft.result}
-                onChange={(event) => {
-                  setLabFormError("");
-                  setLabDraft((current) => ({ ...current, result: event.target.value }));
-                }}
-              />
-              <DatePickerField
-                label="Date Performed"
-                value={labDraft.datePerformed}
-                onChange={(value) => setLabDraft((current) => ({ ...current, datePerformed: value }))}
-              />
-            </div>
-            {labFormError ? (
-              <p role="alert" className="mt-2 text-[11px] font-medium text-[#DC2626]">{labFormError}</p>
-            ) : null}
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAddingLabs(false);
-                  setEditingLabIndex(null);
-                  setLabDraft(EMPTY_LABORATORY_ENTRY);
-                  setLabFormError("");
-                }}
-                className={LAB_PILL_BUTTON_CLASS}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const [entry] = sanitizeLaboratoryEntries([labDraft]);
-                  if (!entry) {
-                    setLabFormError("Choose a test and enter a result.");
-                    return;
-                  }
-                  const next = [...thisVisitLabs];
-                  if (editingLabIndex !== null) next[editingLabIndex] = entry;
-                  else next.push(entry);
-                  onMaternalChange("laboratoryEntries", next);
-                  setLabDraft(EMPTY_LABORATORY_ENTRY);
-                  setLabFormError("");
-                  setEditingLabIndex(null);
-                  setAddingLabs(false);
-                }}
-                className={LAB_PILL_PRIMARY_CLASS}
-              >
-                {editingLabIndex !== null ? "Save result" : "Add result"}
-              </button>
-            </div>
-          </div>
-        )}
       </FormSection>
+      )}
 
       <FormSection
         title="Immunization"
@@ -478,13 +340,6 @@ export default function PrenatalAssessmentForm({
     </div>
   );
 }
-
-const LAB_PILL_BUTTON_CLASS =
-  "inline-flex h-8 items-center gap-1 rounded-full border border-neutral-200 bg-white px-3 text-xs font-medium text-ink-800 hover:bg-neutral-50";
-const LAB_PILL_PRIMARY_CLASS =
-  "inline-flex h-8 items-center gap-1 rounded-full bg-brand-600 px-3 text-xs font-medium text-white hover:bg-brand-700";
-const LAB_ICON_BUTTON_CLASS =
-  "inline-flex size-7 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-ink-800";
 
 function formatHistoryDate(value) {
   if (!value) return "Not recorded";

@@ -42,6 +42,7 @@ class HealthRecordDraftPayloadService
             'id' => self::SCALAR, 'testName' => self::SCALAR,
             'collectionDate' => self::SCALAR, 'examinationDate' => self::SCALAR,
             'resultStatus' => self::SCALAR, 'result' => self::SCALAR,
+            'resultSource' => self::SCALAR, 'remarks' => self::SCALAR,
         ]],
         // Findings pinned on the assessment step's 2D body preview.
         'bodyFindings' => ['*' => [
@@ -727,6 +728,8 @@ class HealthRecordDraftPayloadService
             'payload.laboratoryTests.*.examinationDate' => ['nullable', 'date_format:Y-m-d'],
             'payload.laboratoryTests.*.resultStatus' => ['required', Rule::in(LaboratoryEvidenceService::STATUSES)],
             'payload.laboratoryTests.*.result' => ['nullable', 'string', 'max:10000'],
+            'payload.laboratoryTests.*.resultSource' => ['nullable', 'string', 'max:150'],
+            'payload.laboratoryTests.*.remarks' => ['nullable', 'string', 'max:1000'],
             'payload.diagnoses.*.laboratoryEvidence' => ['nullable', 'array', 'max:50'],
             'payload.diagnoses.*.laboratoryEvidence.*.reference' => ['required', 'string', 'max:80'],
             'payload.diagnoses.*.laboratoryEvidence.*.version' => ['required', 'integer', 'min:0'],

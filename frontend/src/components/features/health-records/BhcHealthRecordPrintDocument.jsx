@@ -425,8 +425,10 @@ export default function BhcHealthRecordPrintDocument({
           <InlineGrid columns={2} items={[
             { label: "Collection date", value: entry.collectionDate },
             { label: "Examination date", value: entry.examinationDate },
+            { label: "Result source", value: entry.resultSource },
           ]} />
           <Narrative label="Result" value={entry.result} />
+          <Narrative label="Remarks" value={entry.remarks} />
           {entry.addenda?.length > 0 && <>
             <Narrative label="Original laboratory entry" value={entry.original ? laboratorySummary(entry.original) : ""} />
             {entry.addenda.map((addendum) => <div key={addendum.id} className="bhc-print-narrative">

@@ -26,6 +26,30 @@ class LaboratoryEvidenceService
         ];
     }
 
+    /**
+     * BHC General Consultation results are already available and name a free-text source.
+     * RHU validation stays on rules().
+     */
+    public static function bhcRules(string $prefix = 'laboratory_tests'): array
+    {
+        return [
+            $prefix => ['nullable', 'array', 'max:50'],
+            "$prefix.*" => ['array:id,testName,collectionDate,examinationDate,resultStatus,result,resultSource,remarks'],
+            "$prefix.*.id" => ['required', 'uuid', 'distinct:ignore_case'],
+            "$prefix.*.testName" => ['required', 'string', 'max:255'],
+            "$prefix.*.collectionDate" => ['nullable', 'date_format:Y-m-d'],
+            "$prefix.*.examinationDate" => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            "$prefix.*.resultStatus" => ['required', Rule::in(['Result Available'])],
+            "$prefix.*.result" => ['required', 'string', 'max:10000'],
+            "$prefix.*.resultSource" => ['required', 'string', 'max:150', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (trim((string) $value) === '') {
+                    $fail('Enter where this result came from.');
+                }
+            }],
+            "$prefix.*.remarks" => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+
     public function authorizeRead(User $user, HealthRecord $record): void
     {
         if (! $user->isAdmin()) {
@@ -35,7 +59,11 @@ class LaboratoryEvidenceService
         $access->ensureValidFacilityAssignment($user);
         // BHC evidence access goes through a specific handoff and its pinned
         // versions, never through the source RHU laboratory listing.
-        abort_if($user->isBhc() && $record->rural_health_unit_id, 403);
+        $ownBhcConsultation = $user->isBhc()
+            && $record->isBhcGeneralV2()
+            && (int) $record->barangay_health_center_id === (int) $user->barangay_health_center_id;
+        // BHC staff read RHU evidence only through a pinned handoff, except their own consultation.
+        abort_if($user->isBhc() && $record->rural_health_unit_id && ! $ownBhcConsultation, 403);
         $access->authorizePatient($user, $record->patient);
         abort_unless($access->scopePatientHealthRecords(HealthRecord::query(), $user)->whereKey($record->id)->exists(), 403);
     }
@@ -43,8 +71,14 @@ class LaboratoryEvidenceService
     public function authorizeAddendum(User $user, HealthRecord $record): void
     {
         ActionPermissions::ensure($user, 'records.correct');
-        abort_unless($user->isRhu() && $record->rural_health_unit_id
-            && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id, 403);
+        if ($user->isBhc()) {
+            abort_unless($record->isBhcGeneralV2()
+                && (int) $record->barangay_health_center_id === (int) $user->barangay_health_center_id, 403);
+        } else {
+            abort_unless($user->isRhu() && $record->rural_health_unit_id
+                && ! $record->isBhcGeneralV2()
+                && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id, 403);
+        }
         $this->authorizeRead($user, $record);
     }
 

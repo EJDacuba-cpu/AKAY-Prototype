@@ -6,7 +6,10 @@ export const getMonitoringLaboratoryEvidence = async (patientId) => unwrapData(a
 export const getLaboratoryHandoffs = async (recordId) => unwrapData(await apiRequest(`/health-records/${recordId}/laboratory-tests/handoffs`));
 
 export function laboratoryEntryPayload(entry) {
-  return Object.fromEntries(["id", "testName", "collectionDate", "examinationDate", "resultStatus", "result"].map(key => [key, entry[key] ?? ""]));
+  const payload = Object.fromEntries(["id", "testName", "collectionDate", "examinationDate", "resultStatus", "result"].map(key => [key, entry[key] ?? ""]));
+  if ("resultSource" in entry) payload.resultSource = entry.resultSource ?? "";
+  if ("remarks" in entry) payload.remarks = entry.remarks ?? "";
+  return payload;
 }
 
 export const saveLaboratoryAddendum = (recordId, entry, reason) => apiRequest(`/health-records/${recordId}/laboratory-tests/${entry.recordId}/addenda`, {

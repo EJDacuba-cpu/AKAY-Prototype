@@ -24,9 +24,11 @@ export function laboratoryErrors(tests = []) {
 export function laboratorySummary(entry, maxResultLength = Infinity) {
   const result = String(entry.result || "");
   const summary = result.length > maxResultLength ? `${result.slice(0, maxResultLength)}…` : result;
-  return [entry.testName || "Unnamed test", entry.resultStatus, summary,
+    return [entry.testName || "Unnamed test", entry.resultStatus, summary,
     entry.collectionDate ? `Collected ${entry.collectionDate}` : "",
-    entry.examinationDate ? `Examined ${entry.examinationDate}` : ""].filter(Boolean).join(" · ");
+    entry.examinationDate ? `Examined ${entry.examinationDate}` : "",
+    entry.resultSource ? `Source ${entry.resultSource}` : "",
+    entry.remarks ? `Remarks ${entry.remarks}` : ""].filter(Boolean).join(" · ");
 }
 
 export function evidenceOptions(current = [], historical = []) {
@@ -84,7 +86,8 @@ export function filterPatientLaboratoryTests(entries = [], { status = "All", sea
   return (entries || []).filter((entry) => {
     if (status !== "All" && String(entry.resultStatus || "") !== status) return false;
     if (!needle) return true;
-    return String(entry.testName || "").toLowerCase().includes(needle);
+    return [entry.testName, entry.resultSource, entry.result, entry.remarks]
+      .some((value) => String(value || "").toLowerCase().includes(needle));
   });
 }
 

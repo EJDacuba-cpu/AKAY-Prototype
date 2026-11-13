@@ -271,7 +271,9 @@ class HealthRecordRequest extends FormRequest
         $rules = [...$rules, ...\App\Services\LaboratoryEvidenceService::rules()];
         $rules = [...$rules, ...TbAssessment::rules()];
         $rules['diagnoses.*.tb_management'] = ['prohibited'];
-        if (! $rhuItr) {
+        if ($this->isBhcGeneralV2()) {
+            $rules = array_merge($rules, \App\Services\LaboratoryEvidenceService::bhcRules());
+        } elseif (! $rhuItr) {
             $rules['laboratory_tests'] = ['prohibited'];
         }
         $rules['diagnoses.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];

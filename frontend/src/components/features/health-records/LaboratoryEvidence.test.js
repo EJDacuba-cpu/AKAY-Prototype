@@ -52,7 +52,9 @@ test("RHU maternal references universal evidence and retains prior prenatal labo
   assert.ok(html.includes("Historical prenatal result")); assert.ok(html.includes("Preserved laboratory result"));
   assert.ok(!html.includes("Add Lab Result")); assert.ok(html.includes("Ultrasound"));
   const bhc = render(Prenatal, { maternalData: EMPTY_MATERNAL_DATA });
-  assert.ok(bhc.includes("Add Lab Result"));
+  assert.ok(!bhc.includes("Add Lab Result"));
+  assert.ok(!bhc.includes("Laboratory Results"));
+  assert.ok(bhc.includes("Ultrasound"));
 });
 
 test("RHU TB references universal and historical labs; BHC DOTS excludes registration controls", () => {

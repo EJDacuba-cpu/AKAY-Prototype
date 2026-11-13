@@ -14,7 +14,9 @@ import {
   laboratorySummary,
   sortPatientLaboratoryTests,
 } from "../../../../utils/laboratoryTests";
+import { bhcLaboratoryErrors } from "../../../../utils/bhcLaboratoryResults";
 import { LaboratoryFields } from "../../health-records/LaboratoryEvidence";
+import BhcLaboratoryFields from "../../health-records/BhcLaboratoryFields";
 import searchIcon from "../../../../assets/figma/search.svg";
 
 const STATUS_FILTERS = ["All", ...LABORATORY_STATUSES];
@@ -26,10 +28,12 @@ function resultPreview(entry, max = 120) {
 }
 
 function sourceLabel(entry) {
+  if (entry.sourceKind === "shared_monitoring") return "RHU (shared evidence)";
+  const typed = String(entry.resultSource || "").trim();
   const facility = String(entry.facilityName || "").trim();
   const visit = entry.visitDate ? formatShortDate(entry.visitDate) : "";
   const service = String(entry.serviceType || "").trim();
-  return [facility, visit, service].filter(Boolean).join(" · ");
+  return [typed ? `Source: ${typed}` : "", facility, visit, service].filter(Boolean).join(" · ");
 }
 
 export default function PatientLaboratorySection({ patientId }) {
@@ -74,7 +78,9 @@ export default function PatientLaboratorySection({ patientId }) {
   }
 
   function openEditor(entry) {
-    setEditing({ ...entry });
+    setEditing(entry.facilityType === "BHC"
+      ? { ...entry, resultSource: entry.resultSource || "", remarks: entry.remarks || "", resultStatus: "Result Available" }
+      : { ...entry });
     setReason("");
     setError("");
     setFieldErrors({});
@@ -86,7 +92,7 @@ export default function PatientLaboratorySection({ patientId }) {
       setError("Enter a reason for this laboratory result update.");
       return;
     }
-    const errors = laboratoryErrors([editing]);
+    const errors = editing.facilityType === "BHC" ? bhcLaboratoryErrors([editing]) : laboratoryErrors([editing]);
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
     const healthRecordId = editing.healthRecordId || editing.health_record_id;
@@ -271,13 +277,23 @@ export default function PatientLaboratorySection({ patientId }) {
             <p className="text-xs text-neutral-500">
               The finalized consultation snapshot stays preserved. This saves an authorized result addendum.
             </p>
-            <LaboratoryFields
-              entry={editing}
-              prefix="laboratoryTests.0"
-              errors={fieldErrors}
-              disabled={busy}
-              onChange={setEditing}
-            />
+            {editing.facilityType === "BHC" ? (
+              <BhcLaboratoryFields
+                entry={editing}
+                prefix="laboratoryTests.0"
+                errors={fieldErrors}
+                disabled={busy}
+                onChange={setEditing}
+              />
+            ) : (
+              <LaboratoryFields
+                entry={editing}
+                prefix="laboratoryTests.0"
+                errors={fieldErrors}
+                disabled={busy}
+                onChange={setEditing}
+              />
+            )}
             <label className="block text-xs font-medium text-neutral-700">
               Reason *
               <textarea

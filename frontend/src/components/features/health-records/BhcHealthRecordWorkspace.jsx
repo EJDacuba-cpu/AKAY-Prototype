@@ -205,6 +205,7 @@ export default function BhcHealthRecordWorkspace({
   parentRecordId = "",
   isUpdating = false,
   bodyFindingsHistory = null,
+  laboratoryEntries = [],
   onBack,
   onPrint,
 }) {
@@ -304,6 +305,23 @@ export default function BhcHealthRecordWorkspace({
               </>
             )}
             {hasBodyFindings ? (bodyFindingsHistory || <BodyFindingHistoryView {...bodyFindings} />) : null}
+          </div>
+        </ProfileSection>
+      )}
+
+      {laboratoryEntries.length > 0 && (
+        <ProfileSection id="laboratory-results" title="Laboratory & diagnostic results">
+          <div className="space-y-4">
+            {laboratoryEntries.map((entry) => (
+              <div key={entry.recordId || entry.id} className="border border-neutral-200 p-3">
+                <p className="text-sm font-semibold text-[#111827]">{entry.testName || "Unnamed test"}</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {[entry.resultStatus, entry.examinationDate, entry.resultSource ? `Source: ${entry.resultSource}` : ""].filter(Boolean).join(" · ")}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-800">{entry.result || "Not recorded"}</p>
+                {entry.remarks ? <p className="mt-2 whitespace-pre-wrap text-xs text-neutral-600">Remarks: {entry.remarks}</p> : null}
+              </div>
+            ))}
           </div>
         </ProfileSection>
       )}

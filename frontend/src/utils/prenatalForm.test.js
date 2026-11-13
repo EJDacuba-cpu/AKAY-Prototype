@@ -301,11 +301,11 @@ test("the Prenatal form keeps this-pregnancy fields and can mount Section V", ()
   assert.match(form, /includeObstetricHistory/);
   assert.match(form, /sections=\{\["obstetric"\]\}/);
   assert.match(form, /summaryWhenRecorded/);
-  assert.match(form, /Add Lab Result/);
+  assert.doesNotMatch(form, /Add Lab Result/);
   assert.match(form, /Correct/);
   assert.match(form, /hasPregnancyBaseline/);
   assert.doesNotMatch(form, /title="Previous FP Method"/);
-  assert.match(form, /New Results This Visit/);
+  assert.match(form, /laboratoryContext === "rhu"/);
   assert.match(form, /Previous Laboratory Results/);
   assert.match(form, /Add Ultrasound/);
   assert.match(panel, /summaryWhenRecorded/);

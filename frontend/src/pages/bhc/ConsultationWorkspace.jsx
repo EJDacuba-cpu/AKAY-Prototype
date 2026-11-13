@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ClipboardList,
   HeartPulse,
-  Loader2,
   ShieldCheck,
   Stethoscope,
   Syringe,
@@ -24,9 +23,11 @@ import {
   ConfirmationModal,
   ConnectionErrorState,
   ConnectionIssueModal,
+  HealthRecordFormSkeleton,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
+import { Skeleton } from "../../components/ui/skeleton";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
@@ -219,6 +220,14 @@ import {
   restoreReportingEntries,
 } from "../../utils/reportingEntries";
 import { BHC_GENERAL_V2, continuedDraftNotes } from "../../utils/consultationWorkflow";
+import BhcLaboratoryResultRecorder from "../../components/features/health-records/BhcLaboratoryResultRecorder";
+import {
+  bhcLaboratoryErrors,
+  bhcLaboratorySummary,
+  bhcResultFromLegacyEntry,
+  legacyMaternalLaboratoryEntries,
+  restoreBhcLaboratoryTests,
+} from "../../utils/bhcLaboratoryResults";
 import { convertLegacyDraft } from "../../utils/draftConversion";
 import {
   droppedContinuedCareNotice,
@@ -856,6 +865,8 @@ export default function ConsultationWorkspace() {
   });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const [laboratoryTests, setLaboratoryTests] = useState([]);
+  const [legacyLabSources, setLegacyLabSources] = useState({});
   const inventoryCalendarDay = useFacilityCalendarDate();
   const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
   const [bhcMedicineInventoryLoading, setBhcMedicineInventoryLoading] =
@@ -924,6 +935,41 @@ export default function ConsultationWorkspace() {
   useEffect(() => {
     if (!entryHandoff) void loadHealthRecordDrafts();
   }, [loadHealthRecordDrafts, entryHandoff]);
+
+  // A profile start leaves a short-lived handoff. A refresh or a direct open
+  // has none, so finish the same check here instead of staying on the loader.
+  useEffect(() => {
+    if (!isDraftRouteEligible || entryHandoff || requestedDraftId || recoveryCheckReady) return undefined;
+    let cancelled = false;
+    setRecoveryCheckError(null);
+    (async () => {
+      try {
+        const found = selectedPatientId
+          ? await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: entryOwner })
+          : null;
+        if (cancelled) return;
+        if (found && opensNewConsultation) {
+          setDraftDecision(found);
+          return;
+        }
+        setRecoveryCheckReady(true);
+      } catch (error) {
+        if (!cancelled) setRecoveryCheckError(error || new Error("Unable to open this consultation."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isDraftRouteEligible,
+    entryHandoff,
+    requestedDraftId,
+    recoveryCheckReady,
+    selectedPatientId,
+    entryOwner,
+    opensNewConsultation,
+    recoveryAttempt,
+  ]);
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -1486,6 +1532,7 @@ export default function ConsultationWorkspace() {
       chiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       // Reporting entries with reportIn (always an array).
@@ -1820,6 +1867,8 @@ export default function ConsultationWorkspace() {
     setChiefComplaint(payload.chiefComplaint || "");
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
+    setLaboratoryTests(restoreBhcLaboratoryTests(payload));
+    setLegacyLabSources({});
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
     setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
     // Reporting entries are the diagnoses that carry reportIn. A legacy draft
@@ -2557,6 +2606,13 @@ export default function ConsultationWorkspace() {
       !String(maternalData.lmp || "").trim()
     ) {
       errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
+    }
+
+    if (finalizing) {
+      Object.assign(errors, bhcLaboratoryErrors(laboratoryTests));
+      if (legacyMaternalLaboratoryEntries(maternalData).length) {
+        errors.legacyLaboratoryEntries = "Review unsaved laboratory results from this draft. Add a result source and move them, or remove them.";
+      }
     }
 
     return errors;
@@ -3373,6 +3429,7 @@ export default function ConsultationWorkspace() {
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       // Reporting entries only; v2 sends no plain-text `diagnosis`.
@@ -3880,10 +3937,15 @@ export default function ConsultationWorkspace() {
     }
     if (stepKey === ASSESSMENT_STEP) {
       const vitalsErrors = vitalSignsErrors(currentVitalSigns());
-      if (Object.keys(vitalsErrors).length > 0) {
+      const labErrors = bhcLaboratoryErrors(laboratoryTests);
+      if (legacyMaternalLaboratoryEntries(maternalData).length) {
+        labErrors.legacyLaboratoryEntries = "Review unsaved laboratory results from this draft. Add a result source and move them, or remove them.";
+      }
+      if (Object.keys(vitalsErrors).length > 0 || Object.keys(labErrors).length > 0) {
         setValidationErrorsAndFocus({
           ...pickErrorsForStep(validationErrors, ASSESSMENT_STEP, BHC_STEP_OPTIONS),
           ...vitalsErrors,
+          ...labErrors,
         });
         return false;
       }
@@ -4502,6 +4564,7 @@ export default function ConsultationWorkspace() {
       rows: [
         { label: "Vital Signs", value: vitalsSummary || EMPTY_VITALS_REMINDER },
         { label: "General Examination Findings", value: physicalExam },
+        ...laboratoryTests.map((entry, index) => ({ label: `Laboratory result ${index + 1}`, value: bhcLaboratorySummary(entry) })),
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
         { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
@@ -4619,7 +4682,7 @@ export default function ConsultationWorkspace() {
             }}
           />
         ) : (
-          <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>
+          <HealthRecordFormSkeleton message="Loading consultation details..." />
         )}
       </DashboardLayout>
     );
@@ -4692,10 +4755,15 @@ export default function ConsultationWorkspace() {
       )}
       <fieldset disabled={workspaceLocked} className="min-w-0">
       {continuedCareLoading && !isFirstConsultationStep ? (
-        <p role="status" aria-live="polite" className="ml-0 mr-auto flex w-full max-w-5xl items-center gap-2 border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-6 text-sm text-[#374151]">
-          <Loader2 size={16} className="animate-spin text-[#DC2626]" aria-hidden="true" />
-          Loading monitoring records…
-        </p>
+        <div role="status" aria-live="polite" aria-busy="true" className="ml-0 mr-auto w-full max-w-5xl">
+          <span className="sr-only">Loading monitoring records…</span>
+          <div aria-hidden="true" className="space-y-3 border border-[#E5E7EB] bg-white p-4">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        </div>
       ) : wizardPhase === WIZARD_NEXT ? (
         <NextActionStep
           visitDate={wizardVisitDate}
@@ -5070,6 +5138,50 @@ export default function ConsultationWorkspace() {
                     rows={4}
                   />
                 </div>
+                <BhcLaboratoryResultRecorder
+                  tests={laboratoryTests}
+                  errors={validationErrors}
+                  readOnly={workspaceLocked}
+                  suggestedDate={dateOfVisit}
+                  legacyEntries={legacyMaternalLaboratoryEntries(maternalData)}
+                  legacySources={legacyLabSources}
+                  onLegacySourceChange={(index, value) => setLegacyLabSources((current) => ({ ...current, [index]: value }))}
+                  onTransferLegacy={(entry) => {
+                    const resultSource = String(legacyLabSources[entry.index] || "");
+                    if (!resultSource.trim()) {
+                      setValidationErrors((current) => ({
+                        ...current,
+                        legacyLaboratoryEntries: "Enter the result source before moving this laboratory result.",
+                      }));
+                      return;
+                    }
+                    clearErrorsStartingWith(["laboratoryTests", "laboratory_tests", "legacyLaboratoryEntries"]);
+                    setLaboratoryTests((current) => [
+                      ...current,
+                      bhcResultFromLegacyEntry(entry, { resultSource, examinationDate: dateOfVisit }),
+                    ]);
+                    setMaternalData((current) => ({
+                      ...current,
+                      laboratoryEntries: (Array.isArray(current.laboratoryEntries) ? current.laboratoryEntries : []).filter((_, index) => index !== entry.index),
+                    }));
+                    setLegacyLabSources((current) => {
+                      const next = { ...current };
+                      delete next[entry.index];
+                      return next;
+                    });
+                  }}
+                  onRemoveLegacy={(index) => {
+                    clearErrorsStartingWith(["legacyLaboratoryEntries"]);
+                    setMaternalData((current) => ({
+                      ...current,
+                      laboratoryEntries: (Array.isArray(current.laboratoryEntries) ? current.laboratoryEntries : []).filter((_, itemIndex) => itemIndex !== index),
+                    }));
+                  }}
+                  onChange={(next) => {
+                    clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
+                    setLaboratoryTests(next);
+                  }}
+                />
                 <div className="mt-6 border-t border-[#E5E7EB] pt-4">
                   <BodyFindingsList
                     findings={bodyFindings}

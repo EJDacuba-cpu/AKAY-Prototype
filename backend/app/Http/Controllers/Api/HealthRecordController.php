@@ -419,7 +419,7 @@ class HealthRecordController extends Controller
                         PatientBackground::visitIncludesMaternal($data)
                     ),
                 ]);
-                if ($rhuItr) {
+                if ($rhuItr || $v2) {
                     app(\App\Services\LaboratoryEvidenceService::class)->finalize($request, $record, $data['laboratory_tests'] ?? []);
                 }
                 // Discontinue first: a legacy row being discontinued must not be

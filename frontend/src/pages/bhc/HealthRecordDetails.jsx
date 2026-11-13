@@ -8,6 +8,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 
 import { getPatientById } from "../../services/patientService";
 import { getHealthRecordById } from "../../services/healthRecordService";
+import { getLaboratoryTests } from "../../services/laboratoryService";
 import {
   getReferralByHealthRecordId,
   getReferralByTrackingId,
@@ -96,14 +97,21 @@ export default function HealthRecordDetails() {
       requestError?.status !== 404 && failureCount < 2,
   });
 
+  const laboratoryQuery = useQuery({
+    queryKey: ["record-laboratory-tests", String(recordId)],
+    queryFn: () => getLaboratoryTests(recordId),
+    enabled: Boolean(recordId),
+  });
+  const laboratoryEntries = laboratoryQuery.data?.data || [];
+
   const record = details?.record || (details?.id ? details : null);
   const patient = details?.patient || record?.patient || null;
   const linkedReferral = details?.linkedReferral || null;
   const handlePrint = usePrintDocument("#health-record-print", {
     title: `AKAY Health Record #${recordId}`,
-    loading: isLoading || isFetching,
-    error: error || details?.printError,
-    onRetry: () => refetch(),
+    loading: isLoading || isFetching || laboratoryQuery.isPending || laboratoryQuery.isFetching,
+    error: error || details?.printError || laboratoryQuery.error,
+    onRetry: () => Promise.all([refetch(), laboratoryQuery.refetch()]),
   });
 
   function returnToProfile() {
@@ -120,7 +128,7 @@ export default function HealthRecordDetails() {
   }, [recordId]);
 
   useEffect(() => {
-    if (!shouldAutoPrint || !record || isFetching || hasAutoPrintedRef.current) return;
+    if (!shouldAutoPrint || !record || isFetching || laboratoryQuery.isPending || laboratoryQuery.isFetching || hasAutoPrintedRef.current) return;
     hasAutoPrintedRef.current = true;
     void handlePrint().then(() => {
       setSearchParams(
@@ -132,7 +140,7 @@ export default function HealthRecordDetails() {
         { replace: true, state: location.state },
       );
     });
-  }, [shouldAutoPrint, record, isFetching, handlePrint, setSearchParams, location.state]);
+  }, [shouldAutoPrint, record, isFetching, handlePrint, setSearchParams, location.state, laboratoryQuery.isPending, laboratoryQuery.isFetching]);
 
   const loading = Boolean(recordId) && !details && (isLoading || isFetching);
   const detailsUpdating = isFetching && !loading && Boolean(details);
@@ -240,6 +248,7 @@ export default function HealthRecordDetails() {
             referralStatus={linkedReferral?.status}
             isUpdating={detailsUpdating}
             bodyFindingsHistory={<BodyFindingRecordHistory record={record} />}
+            laboratoryEntries={laboratoryEntries}
             onBack={returnToProfile}
             onPrint={handlePrint}
           />
@@ -248,7 +257,8 @@ export default function HealthRecordDetails() {
         <div className="hidden print:block">
           <BhcHealthRecordPrintDocument
             documentRole="bhc"
-            printState={isFetching ? "loading" : error || details?.printError ? "error" : "ready"}
+            printState={isFetching || laboratoryQuery.isPending || laboratoryQuery.isFetching ? "loading" : error || details?.printError || laboratoryQuery.error ? "error" : "ready"}
+            laboratoryEntries={laboratoryEntries}
             record={record}
             patient={patient}
             linkedReferral={linkedReferral}
