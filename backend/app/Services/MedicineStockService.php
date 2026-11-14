@@ -281,6 +281,54 @@ class MedicineStockService
         }
     }
 
+    /**
+     * Deduct RHU stock for a service-usage reconciliation without creating
+     * health_record_medicines (prescription dispense path stays unchanged).
+     *
+     * @param  array{medicine_id:int,quantity:int,unit?:?string,allocations?:array,override_reason?:?string,remarks?:?string}  $requestedItem
+     * @return array{transaction_id:int,medicine_id:int,quantity_before:int,quantity_after:int,quantity_delta:int,discrepancy?:int,transaction_type?:?string}
+     */
+    public function reconcileServiceUsage(
+        Request $request,
+        HealthRecord $record,
+        int $usageId,
+        array $requestedItem
+    ): array {
+        ActionPermissions::ensure($request->user(), 'items.dispense');
+        abort_if($usageId < 1, 422, 'Invalid service usage.');
+
+        $user = $request->user();
+        $context = $this->facilityContext($user);
+        abort_unless(
+            $context['type'] === 'rhu'
+            && (int) $record->rural_health_unit_id === $context['id']
+            && $record->isRhuItrV1(),
+            403,
+            'This resource is outside your assigned facility.'
+        );
+
+        $normalized = $this->normalize([$requestedItem]);
+        abort_unless(count($normalized) === 1, 422, 'Confirm exactly one inventory item for this usage.');
+
+        $operationKey = "service-usage:{$usageId}:reconcile";
+        $results = DB::getDriverName() === 'pgsql'
+            ? $this->postgresDispense($user, $record, $context, $normalized, $operationKey)
+            : $this->sqliteDispense($user, $record, $context, $normalized, $operationKey);
+
+        $result = $results[0] ?? null;
+        abort_unless(is_array($result) && isset($result['transaction_id']), 500, 'Inventory reconciliation could not be finalized.');
+
+        $this->auditResult(
+            $request,
+            'service_usage_stock_reconciled',
+            $context,
+            $result,
+            $record->id
+        );
+
+        return $result;
+    }
+
     private function executeSingle(
         string $operation, User $user, Medicine $medicine, array $context,
         int $quantity, ?string $reason, ?string $direction, string $operationKey,

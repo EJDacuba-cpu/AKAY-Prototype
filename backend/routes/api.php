@@ -208,6 +208,10 @@ Route::middleware(['sensitive.no-store', 'auth:sanctum', 'auth.access-token', 'a
 
         Route::middleware('role:rhu')->group(function () {
             Route::get('/rhu/to-dispense', [RhuToDispenseController::class, 'index']);
+            Route::post('/rhu/service-usages/{usage}/confirm', [RhuToDispenseController::class, 'confirmUsage'])
+                ->whereNumber('usage');
+            Route::post('/rhu/service-usages/{usage}/needs-review', [RhuToDispenseController::class, 'markUsageNeedsReview'])
+                ->whereNumber('usage');
             Route::get('/incoming-referrals', [IncomingReferralController::class, 'index']);
             Route::get('/rhu/catchment-bhcs', [MonitoringHandoffController::class, 'catchmentBhcs']);
             Route::get('/rhu-visits', [RhuVisitController::class, 'index']);

@@ -11,19 +11,31 @@ import {
   CARE_PLAN_SERVICE_LABELS,
   SERVICE_NEXT_ACTIONS,
   adoptOrphanServiceSchedules,
+  applyServiceHandoff,
   applyServiceNextAction,
   applyServiceReferral,
   carePlanServiceLabel,
   defaultServicePurpose,
+  pruneServiceHandoffs,
   pruneServiceReferrals,
   pruneServiceSchedules,
   restoreSelectedServiceSchedules,
+  restoreServiceHandoffs,
   restoreServiceReferrals,
+  restoreServiceSupportingLabs,
+  applyServiceSupportingLabs,
+  pruneServiceSupportingLabs,
+  serviceSupportingLabsFor,
+  serviceSupportingLabsForSave,
   isScheduledServiceFollowUp,
   selectedCarePlanServices,
+  serviceHandoff,
+  serviceHandoffErrors,
+  serviceHandoffsForSave,
   serviceNextAction,
   servicePurposeKey,
   serviceSchedule,
+  updateServiceHandoff,
   suggestionsForProgram,
 } from "./serviceNextActions.js";
 
@@ -178,6 +190,124 @@ test("switching a service from schedule to refer drops that return only", () => 
   const next = applyServiceNextAction("Maternal", "refer_to_rhu", mixed);
   assert.equal(next.some((row) => row.purposeKey === prenatalKey), false);
   assert.equal(next.some((row) => row.purposeKey === fpKey), true);
+});
+
+test("Manage to BHC label is exact and independent per selected service", () => {
+  assert.equal(SERVICE_NEXT_ACTIONS.manage_to_bhc, "Manage to BHC");
+  const programs = ["Maternal", "EPI", "Family Planning", "Nutrition"];
+  let handoffs = [];
+  let schedules = [];
+  for (const program of programs) {
+    schedules = applyServiceNextAction(program, "manage_to_bhc", schedules);
+    handoffs = applyServiceHandoff(program, "manage_to_bhc", handoffs);
+    assert.equal(serviceNextAction(program, { schedules, serviceHandoffs: handoffs }), "manage_to_bhc");
+    assert.equal(serviceSchedule(program, schedules), null);
+  }
+  assert.equal(handoffs.length, 4);
+  assert.equal(serviceHandoff("Nutrition", handoffs).program, "Nutrition");
+});
+
+test("switching away from Manage to BHC clears that service handoff only", () => {
+  let handoffs = applyServiceHandoff("Maternal", "manage_to_bhc", []);
+  handoffs = updateServiceHandoff("Maternal", {
+    receivingBhcId: "9",
+    monitoringRecommendation: "Weekly prenatal BP",
+  }, handoffs);
+  handoffs = applyServiceHandoff("EPI", "manage_to_bhc", handoffs);
+  handoffs = applyServiceHandoff("Maternal", "schedule", handoffs);
+  assert.equal(serviceHandoff("Maternal", handoffs), null);
+  assert.equal(serviceHandoff("EPI", handoffs).program, "EPI");
+  const schedules = applyServiceNextAction("Maternal", "schedule", []);
+  assert.equal(serviceNextAction("Maternal", { schedules, serviceHandoffs: handoffs }), "schedule");
+});
+
+test("deselecting a service drops only that service Manage to BHC handoff", () => {
+  const handoffs = [
+    { program: "Maternal", receivingBhcId: "1", monitoringRecommendation: "A" },
+    { program: "EPI", receivingBhcId: "2", monitoringRecommendation: "B" },
+  ];
+  assert.deepEqual(pruneServiceHandoffs(handoffs, ["EPI"]).map((row) => row.program), ["EPI"]);
+});
+
+test("legacy drafts without serviceHandoffs restore as no handoffs", () => {
+  assert.deepEqual(restoreServiceHandoffs({}, ["Maternal", "EPI"]), []);
+  assert.deepEqual(restoreServiceHandoffs(null, ["Maternal"]), []);
+  const restored = restoreServiceHandoffs({
+    serviceHandoffs: [
+      { program: "Maternal", receivingBhcId: "3", monitoringRecommendation: "BP" },
+      { program: "EPI", receiving_bhc_id: "4", monitoring_recommendation: "Dose" },
+    ],
+  }, ["Maternal"]);
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].program, "Maternal");
+  assert.equal(restored[0].receivingBhcId, "3");
+});
+
+test("service supporting labs are independent per program and prune on deselect", () => {
+  let rows = applyServiceSupportingLabs("Maternal", [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }], []);
+  rows = applyServiceSupportingLabs("EPI", [{ reference: "record:9" }], rows);
+  assert.deepEqual(serviceSupportingLabsFor("Maternal", rows), [
+    { reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" },
+  ]);
+  assert.deepEqual(pruneServiceSupportingLabs(rows, ["EPI"]).map((row) => row.program), ["EPI"]);
+  assert.deepEqual(restoreServiceSupportingLabs({}, ["Maternal"]), []);
+  assert.deepEqual(serviceSupportingLabsForSave(rows, ["Maternal", "EPI"]), [
+    {
+      program: "Maternal",
+      supporting_laboratory_tests: [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }],
+    },
+    {
+      program: "EPI",
+      supporting_laboratory_tests: [{ reference: "record:9" }],
+    },
+  ]);
+  rows = applyServiceSupportingLabs("Maternal", [], rows);
+  assert.equal(serviceSupportingLabsFor("Maternal", rows).length, 0);
+});
+
+test("Manage to BHC requires receiving BHC and recommendation before save", () => {
+  const incomplete = [{ program: "Maternal", receivingBhcId: "", monitoringRecommendation: "" }];
+  const errors = serviceHandoffErrors(incomplete, { selectedPrograms: ["Maternal"] });
+  assert.equal(errors["serviceHandoffs.Maternal.receivingBhcId"], "Choose a receiving Barangay Health Center.");
+  assert.equal(errors["serviceHandoffs.Maternal.monitoringRecommendation"], "Enter a monitoring recommendation.");
+  const complete = updateServiceHandoff("Maternal", {
+    receivingBhcId: "7",
+    monitoringRecommendation: "Continue prenatal visits at BHC",
+  }, incomplete);
+  assert.deepEqual(serviceHandoffErrors(complete, { selectedPrograms: ["Maternal"] }), {});
+  assert.deepEqual(serviceHandoffsForSave(complete, ["Maternal"]), [{
+    program: "Maternal",
+    receiving_bhc_id: 7,
+    monitoring_recommendation: "Continue prenatal visits at BHC",
+    laboratoryEvidence: [],
+    laboratoryEvidenceConfirmed: false,
+  }]);
+});
+
+test("service Manage to BHC laboratory evidence requires confirm and saves with handoff", () => {
+  let handoffs = applyServiceHandoff("EPI", "manage_to_bhc", []);
+  handoffs = updateServiceHandoff("EPI", {
+    receivingBhcId: "5",
+    monitoringRecommendation: "Continue EPI follow-up at BHC",
+    laboratoryEvidence: [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", version: 0 }],
+    laboratoryEvidenceConfirmed: false,
+  }, handoffs);
+  const errors = serviceHandoffErrors(handoffs, { selectedPrograms: ["EPI"] });
+  assert.equal(
+    errors["serviceHandoffs.EPI.laboratoryEvidenceConfirmed"],
+    "Confirm the selected laboratory evidence before sharing.",
+  );
+  handoffs = updateServiceHandoff("EPI", { laboratoryEvidenceConfirmed: true }, handoffs);
+  assert.deepEqual(serviceHandoffErrors(handoffs, { selectedPrograms: ["EPI"] }), {});
+  assert.deepEqual(serviceHandoffsForSave(handoffs, ["EPI"]), [{
+    program: "EPI",
+    receiving_bhc_id: 5,
+    monitoring_recommendation: "Continue EPI follow-up at BHC",
+    laboratoryEvidence: [{ reference: "current:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", version: 0 }],
+    laboratoryEvidenceConfirmed: true,
+  }]);
+  handoffs = updateServiceHandoff("EPI", { receivingBhcId: "6" }, handoffs);
+  assert.equal(handoffs[0].laboratoryEvidenceConfirmed, false);
 });
 
 test("scheduled service follow-ups are identified from saved metadata, not purpose text", () => {

@@ -1,9 +1,11 @@
 /**
  * Visit-level structured prescriptions for an RHU ITR
  * (`monitoring_data.prescriptions`). One medicine shared by two diagnoses is
- * one order with two `diagnosisIds`. Quantity is recorded only when the
- * physician enters it — dose, frequency, duration, and instructions are never
- * parsed into an authorized total.
+ * one order with two `diagnosisIds`. Service-linked orders use `serviceKeys`
+ * (Maternal / EPI / Family Planning / Nutrition) from Selected Health Services.
+ * An order needs at least one diagnosis or service link. Quantity is recorded
+ * only when the physician enters it — dose, frequency, duration, and
+ * instructions are never parsed into an authorized total.
  *
  * Field errors use `prescriptions.{id}.{field}`. Missing `source` defaults to `itr`;
  * an explicit source outside that set is kept. A present invalid
@@ -13,6 +15,19 @@
  */
 
 const PRESCRIPTION_SOURCES = new Set(["itr", "tb_form4b_ref"]);
+
+/** Care-plan program keys allowed on `serviceKeys`. */
+export const PRESCRIPTION_SERVICE_KEYS = Object.freeze([
+  "Maternal",
+  "EPI",
+  "Family Planning",
+  "Nutrition",
+]);
+
+const KNOWN_SERVICE_KEYS = new Set(PRESCRIPTION_SERVICE_KEYS);
+
+/** Shared editor owner id for the Selected Health Services prescriptions block. */
+export const SERVICES_PRESCRIPTION_OWNER_ID = "services";
 
 const LIMITS = {
   count: 50,
@@ -26,6 +41,7 @@ const LIMITS = {
   instructions: 2000,
   authorizedUnit: 50,
   tbCaseId: 64,
+  serviceKeys: 20,
 };
 
 const REQUIRED_FIELDS = [
@@ -65,6 +81,20 @@ function diagnosisIdsOf(value) {
   return ids;
 }
 
+function serviceKeysOf(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const keys = [];
+  for (const item of value) {
+    const key = clip(item, LIMITS.id);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+    if (keys.length >= LIMITS.serviceKeys) break;
+  }
+  return keys;
+}
+
 /**
  * An authorized quantity counts only when this field itself is a whole number
  * of at least 1 (or a digit string from the form). Anything else was not
@@ -93,6 +123,7 @@ function canonical(item) {
   return {
     id: clip(item?.id, LIMITS.id) || createPrescriptionId(),
     diagnosisIds: diagnosisIdsOf(item?.diagnosisIds),
+    serviceKeys: serviceKeysOf(item?.serviceKeys),
     medicineName: clip(item?.medicineName, LIMITS.medicineName),
     strength: clip(item?.strength, LIMITS.strength),
     dose: clip(item?.dose, LIMITS.dose),
@@ -151,6 +182,8 @@ export function prescriptionsForSave(list) {
       instructions: rx.instructions,
       source: rx.source,
     };
+    const knownServiceKeys = rx.serviceKeys.filter((key) => KNOWN_SERVICE_KEYS.has(key));
+    if (knownServiceKeys.length) saved.serviceKeys = knownServiceKeys;
     if (rx.tbCaseId || rx.source === "tb_form4b_ref") saved.tbCaseId = rx.tbCaseId;
     const quantity = quantityState(rx.authorizedQuantity);
     if (quantity.valid) {
@@ -179,10 +212,15 @@ export function prescriptionErrors(list, diagnoses) {
     if (!id) errors[`${key}.id`] = "Prescription id is required.";
 
     const diagnosisIds = diagnosisIdsOf(item.diagnosisIds);
-    if (diagnosisIds.length === 0) {
-      errors[`${key}.diagnosisIds`] = "Link this prescription to at least one diagnosis.";
+    const serviceKeys = serviceKeysOf(item.serviceKeys);
+    const knownServiceKeys = serviceKeys.filter((serviceKey) => KNOWN_SERVICE_KEYS.has(serviceKey));
+    if (diagnosisIds.length === 0 && knownServiceKeys.length === 0) {
+      errors[`${key}.diagnosisIds`] = "Link this prescription to a diagnosis or a selected health service.";
     } else if (diagnosisIds.some((diagnosisId) => !known.has(diagnosisId))) {
       errors[`${key}.diagnosisIds`] = "Link this prescription only to diagnoses on this visit.";
+    }
+    if (serviceKeys.some((serviceKey) => !KNOWN_SERVICE_KEYS.has(serviceKey))) {
+      errors[`${key}.serviceKeys`] = "Link this prescription only to Maternal, EPI, Family Planning, or Nutrition.";
     }
 
     for (const [field, message] of REQUIRED_FIELDS) {
@@ -268,7 +306,13 @@ export function prescriptionsForDiagnosis(list, diagnosisId) {
   return normalizePrescriptions(list).filter((rx) => rx.diagnosisIds.includes(id));
 }
 
-/** One shared order is listed under every linked diagnosis. Unlinked orders stay visible. */
+/** Orders linked to Selected Health Services (any known serviceKeys). */
+export function prescriptionsForServices(list) {
+  return normalizePrescriptions(list).filter((rx) =>
+    rx.serviceKeys.some((key) => KNOWN_SERVICE_KEYS.has(key)));
+}
+
+/** One shared order is listed under every linked diagnosis. Service-only and other unmatched orders stay visible. */
 export function prescriptionReviewGroups(prescriptions, diagnoses = []) {
   const list = normalizePrescriptions(prescriptions);
   const named = Array.isArray(diagnoses) ? diagnoses : [];
@@ -282,6 +326,12 @@ export function prescriptionReviewGroups(prescriptions, diagnoses = []) {
       label: `${text(entry?.name) || "Diagnosis"} — Prescription`,
       orders,
     });
+  }
+  const serviceOnly = list.filter((rx) =>
+    !matched.has(rx.id) && rx.serviceKeys.some((key) => KNOWN_SERVICE_KEYS.has(key)));
+  if (serviceOnly.length) {
+    for (const rx of serviceOnly) matched.add(rx.id);
+    groups.push({ label: "Selected Health Services — Prescription", orders: serviceOnly });
   }
   const unmatched = list.filter((rx) => !matched.has(rx.id));
   if (unmatched.length) groups.push({ label: "Prescription", orders: unmatched });

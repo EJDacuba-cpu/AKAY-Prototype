@@ -284,6 +284,16 @@ test("startRoute carries followUpIds", () => {
     startRoute({ patientId: 17, followUpIds: [31, 32], monitoringIds: [4] }),
     "/bhc/health-records/add?patientId=17&mode=continue&followUpIds=31%2C32&monitoringIds=4",
   );
+});
+
+test("startRoute carries service handoff selectedPrograms and handoffId", () => {
+  assert.equal(
+    startRoute({ patientId: 9, selectedPrograms: ["Maternal"], handoffId: 44 }),
+    "/bhc/health-records/add?patientId=9&mode=continue&selectedPrograms=Maternal&handoffId=44",
+  );
+});
+
+test("startRoute with empty follow-ups is a normal consultation", () => {
   assert.equal(startRoute({ patientId: 17, followUpIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
   assert.equal(startRoute({ patientId: 17, followUpIds: [] }).includes("followUpIds"), false);
 });

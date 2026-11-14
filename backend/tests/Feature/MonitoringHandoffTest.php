@@ -36,6 +36,8 @@ class MonitoringHandoffTest extends TestCase
         $this->rhu = RuralHealthUnit::create(['name' => 'Handoff RHU', 'status' => 'active']);
         $this->bhc = BarangayHealthCenter::create(['name' => 'Handoff BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
         $this->otherBhc = BarangayHealthCenter::create(['name' => 'Other Catchment BHC', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id]);
+        // Default receiving BHC must have an available account for Manage to BHC.
+        $this->bhcUser($this->bhc);
     }
 
     private function rhuClinician(): User
@@ -542,7 +544,7 @@ class MonitoringHandoffTest extends TestCase
         $this->assertSame(1, ConditionMonitoring::count());
     }
 
-    public function test_decline_keeps_receiving_bhc_and_does_not_create_redirect_copy(): void
+    public function test_decline_is_disabled_for_all_monitoring_requests(): void
     {
         $patient = $this->rhuPatient();
         $this->finalizeManage($this->rhuClinician(), $patient);
@@ -551,16 +553,209 @@ class MonitoringHandoffTest extends TestCase
 
         $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/decline", [
             'reason' => 'Unable to take this monitoring request.',
-            'redirected_to_bhc_id' => $this->otherBhc->id,
-        ])->assertOk()
-            ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_DECLINED)
-            ->assertJsonPath('data.receiving_bhc.id', $this->bhc->id)
-            ->assertJsonPath('data.redirected_to_bhc', null);
+        ])->assertStatus(410);
 
-        $this->assertSame(1, MonitoringHandoffRequest::count());
-        $this->assertSame($this->bhc->id, $handoff->fresh()->receiving_barangay_health_center_id);
-        $this->assertNull($handoff->fresh()->redirected_to_bhc_id);
+        $this->assertNotSame(MonitoringHandoffRequest::STATUS_DECLINED, $handoff->fresh()->status);
         $this->assertDatabaseCount('condition_monitorings', 0);
+    }
+
+    public function test_catchment_bhcs_list_only_includes_facilities_with_available_accounts(): void
+    {
+        $clinician = $this->rhuClinician();
+
+        $this->as($clinician)->getJson('/api/rhu/catchment-bhcs')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $this->bhc->id);
+
+        $ids = collect($this->as($clinician)->getJson('/api/rhu/catchment-bhcs')->json('data'))
+            ->pluck('id')
+            ->all();
+        $this->assertNotContains($this->otherBhc->id, $ids);
+
+        $this->bhcUser($this->otherBhc);
+        $ids = collect($this->as($clinician)->getJson('/api/rhu/catchment-bhcs')->json('data'))
+            ->pluck('id')
+            ->all();
+        $this->assertContains($this->bhc->id, $ids);
+        $this->assertContains($this->otherBhc->id, $ids);
+    }
+
+    public function test_service_manage_to_bhc_rejects_unstaffed_catchment_bhc(): void
+    {
+        $patient = $this->rhuPatient(['barangay_health_center_id' => $this->bhc->id]);
+        $clinician = $this->rhuClinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->start($clinician, $visit);
+
+        $this->as($clinician)
+            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $uuid,
+                'rhu_visit_id' => $visit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'EPI follow-up',
+                'care_plan' => [
+                    'service_handoffs' => [[
+                        'program' => 'EPI',
+                        'receiving_bhc_id' => $this->otherBhc->id,
+                        'monitoring_recommendation' => 'Continue EPI doses at BHC.',
+                    ]],
+                ],
+                'diagnoses' => [],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['care_plan.service_handoffs.0']);
+
+        $this->assertDatabaseCount('monitoring_handoff_requests', 0);
+    }
+
+    public function test_service_manage_to_bhc_creates_service_handoff_without_patient_condition(): void
+    {
+        $patient = $this->rhuPatient(['barangay_health_center_id' => $this->bhc->id]);
+        $clinician = $this->rhuClinician();
+        $visit = $this->visit($patient);
+        $uuid = $this->start($clinician, $visit);
+
+        $this->as($clinician)
+            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $uuid,
+                'rhu_visit_id' => $visit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'Prenatal follow-up',
+                'care_plan' => [
+                    'service_handoffs' => [[
+                        'program' => 'Maternal',
+                        'receiving_bhc_id' => $this->bhc->id,
+                        'monitoring_recommendation' => 'Continue prenatal BP and weight at BHC.',
+                    ]],
+                ],
+                'diagnoses' => [],
+            ])
+            ->assertCreated();
+
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $this->assertSame(MonitoringHandoffRequest::HANDOFF_KIND_SERVICE, $handoff->handoff_kind);
+        $this->assertSame('Maternal', $handoff->service_key);
+        $this->assertNull($handoff->patient_condition_id);
+        $this->assertSame(MonitoringHandoffRequest::STATUS_PENDING_REVIEW, $handoff->status);
+        $this->assertSame(0, PatientCondition::count());
+
+        $bhcStaff = $this->bhcUser($this->bhc);
+        $this->as($bhcStaff)->getJson("/api/monitoring-handoff-requests/{$handoff->id}")
+            ->assertOk()
+            ->assertJsonPath('data.handoff_kind', 'service')
+            ->assertJsonPath('data.service.key', 'Maternal')
+            ->assertJsonPath('data.condition', null);
+
+        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/accept")
+            ->assertOk()
+            ->assertJsonPath('data.status', MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT)
+            ->assertJsonPath('data.can_start_consultation', true);
+
+        app(\App\Services\MonitoringHandoffService::class)
+            ->markServiceMonitoringActive($patient, $bhcStaff, ['Maternal']);
+
+        $this->assertSame(MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE, $handoff->fresh()->status);
+        $this->assertSame(0, PatientCondition::count());
+    }
+
+    public function test_service_manage_to_bhc_shares_laboratory_evidence_without_condition(): void
+    {
+        $patient = $this->rhuPatient(['barangay_health_center_id' => $this->bhc->id]);
+        $clinician = $this->rhuClinician();
+        $clinician->update([
+            'permissions' => array_values(array_unique([
+                ...($clinician->permissions ?? []),
+                'clinical.history',
+            ])),
+        ]);
+        $visit = $this->visit($patient);
+        $uuid = $this->start($clinician, $visit);
+        $labId = (string) Str::uuid();
+
+        $this->as($clinician)
+            ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+            ->postJson('/api/health-records', [
+                'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                'consultation_uuid' => $uuid,
+                'rhu_visit_id' => $visit->id,
+                'patient_id' => $patient->id,
+                'category' => 'General Consultation',
+                'chief_complaint' => 'EPI follow-up',
+                'laboratory_tests' => [[
+                    'id' => $labId,
+                    'testName' => 'CBC',
+                    'collectionDate' => '2026-11-01',
+                    'examinationDate' => null,
+                    'resultStatus' => 'Requested',
+                    'result' => null,
+                ]],
+                'care_plan' => [
+                    'service_handoffs' => [[
+                        'program' => 'EPI',
+                        'receiving_bhc_id' => $this->bhc->id,
+                        'monitoring_recommendation' => 'Continue EPI doses at BHC.',
+                        'laboratoryEvidence' => [
+                            ['reference' => 'current:'.$labId, 'version' => 0],
+                        ],
+                        'laboratoryEvidenceConfirmed' => true,
+                    ]],
+                ],
+                'diagnoses' => [],
+            ])
+            ->assertCreated();
+
+        $handoff = MonitoringHandoffRequest::query()->sole();
+        $this->assertSame(MonitoringHandoffRequest::HANDOFF_KIND_SERVICE, $handoff->handoff_kind);
+        $this->assertSame('EPI', $handoff->service_key);
+        $this->assertNull($handoff->patient_condition_id);
+        $this->assertDatabaseCount('monitoring_laboratory_evidence', 1);
+        $this->assertDatabaseCount('patient_conditions', 0);
+
+        $bhcStaff = $this->bhcUser($this->bhc);
+        $this->as($bhcStaff)->getJson("/api/monitoring-handoff-requests/{$handoff->id}")
+            ->assertOk()
+            ->assertJsonPath('data.handoff_kind', 'service')
+            ->assertJsonPath('data.laboratory_evidence.0.testName', 'CBC')
+            ->assertJsonPath('data.laboratory_evidence.0.serviceName', 'Immunization')
+            ->assertJsonPath('data.laboratory_evidence.0.serviceKey', 'EPI')
+            ->assertJsonPath('data.laboratory_evidence.0.conditionName', null);
+    }
+
+    public function test_service_manage_to_bhc_is_idempotent_per_program(): void
+    {
+        $patient = $this->rhuPatient(['barangay_health_center_id' => $this->bhc->id]);
+        $clinician = $this->rhuClinician();
+        foreach (range(1, 2) as $_) {
+            $visit = $this->visit($patient);
+            $uuid = $this->start($clinician, $visit);
+            $this->as($clinician)
+                ->withHeaders(['Idempotency-Key' => (string) Str::uuid()])
+                ->postJson('/api/health-records', [
+                    'consultation_workflow' => HealthRecord::WORKFLOW_RHU_ITR_V1,
+                    'consultation_uuid' => $uuid,
+                    'rhu_visit_id' => $visit->id,
+                    'patient_id' => $patient->id,
+                    'category' => 'General Consultation',
+                    'chief_complaint' => 'EPI follow-up',
+                    'care_plan' => [
+                        'service_handoffs' => [[
+                            'program' => 'EPI',
+                            'receiving_bhc_id' => $this->bhc->id,
+                            'monitoring_recommendation' => 'Complete remaining doses at BHC.',
+                        ]],
+                    ],
+                    'diagnoses' => [],
+                ])
+                ->assertCreated();
+        }
+        $this->assertSame(1, MonitoringHandoffRequest::query()->where('service_key', 'EPI')->count());
     }
 
     public function test_handoff_finalize_is_idempotent_for_same_condition(): void
@@ -708,7 +903,7 @@ class MonitoringHandoffTest extends TestCase
         $this->assertNull($handoff->fresh()->linked_patient_id);
     }
 
-    public function test_declined_cross_record_handoff_does_not_expose_shared_clinical(): void
+    public function test_historical_declined_cross_record_handoff_does_not_expose_shared_clinical(): void
     {
         $source = $this->rhuPatient([
             'barangay_health_center_id' => null,
@@ -732,9 +927,13 @@ class MonitoringHandoffTest extends TestCase
             'identity_confirmed' => true,
             'verification_evidence' => 'Demographics verified against registration.',
         ])->assertOk();
-        $this->as($bhcStaff)->postJson("/api/monitoring-handoff-requests/{$handoff->id}/decline", [
-            'reason' => 'Unable to monitor after verification.',
-        ])->assertOk();
+        // Decline API is retired; seed a historical declined row.
+        $handoff->fresh()->update([
+            'status' => MonitoringHandoffRequest::STATUS_DECLINED,
+            'decline_reason' => 'Unable to monitor after verification.',
+            'reviewed_by' => $bhcStaff->id,
+            'reviewed_at' => now(),
+        ]);
 
         $this->as($bhcStaff)->getJson("/api/patients/{$destination->id}/rhu-shared-clinical")
             ->assertOk()

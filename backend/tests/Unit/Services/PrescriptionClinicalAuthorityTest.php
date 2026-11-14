@@ -302,6 +302,29 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         $this->assertDatabaseCount('health_records', 0);
     }
 
+    public function test_service_linked_prescriptions_finalize_without_diagnosis_ids(): void
+    {
+        $doctor = $this->makeUser('doctor', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($doctor, $visit);
+
+        $id = $this->postRecord($doctor, $patient, $visit, $uuid, [
+            'diagnoses' => [['id' => 'diag-htn', 'name' => 'Hypertension', 'nextAction' => 'none']],
+            'monitoring_data' => ['prescriptions' => [$this->prescription([
+                'diagnosisIds' => [],
+                'serviceKeys' => ['Maternal', 'EPI', 'Family Planning'],
+                'medicineName' => 'Ferrous Sulfate',
+            ])]],
+        ])->assertCreated()->json('data.id');
+
+        $stored = HealthRecord::findOrFail($id)->monitoring_data['prescriptions'][0];
+        $this->assertSame([], $stored['diagnosisIds']);
+        $this->assertSame(['Maternal', 'EPI', 'Family Planning'], $stored['serviceKeys']);
+        $this->assertSame('Ferrous Sulfate', $stored['medicineName']);
+        $this->assertArrayHasKey('authorization', $stored);
+    }
+
     public function test_authorized_quantity_without_unit_is_rejected(): void
     {
         $doctor = $this->makeUser('doctor', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);

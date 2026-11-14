@@ -1232,6 +1232,30 @@ export async function getRhuToDispense() {
   return unwrapList(response);
 }
 
+export async function confirmRhuServiceUsage(usageId, item) {
+  if (!usageId || !item) return null;
+  const response = await apiRequest(`/rhu/service-usages/${usageId}/confirm`, {
+    method: "POST",
+    body: {
+      ...allocationIntent(item),
+      medicine_id: item.medicineId || item.medicine_id,
+      quantity: item.quantity,
+      unit: item.unit || null,
+      remarks: item.remarks || null,
+    },
+  });
+  return unwrapData(response);
+}
+
+export async function markRhuServiceUsageNeedsReview(usageId, note = "") {
+  if (!usageId) return null;
+  const response = await apiRequest(`/rhu/service-usages/${usageId}/needs-review`, {
+    method: "POST",
+    body: note ? { note } : {},
+  });
+  return unwrapData(response);
+}
+
 export default {
   getBhcHealthRecords,
   getRhuHealthRecords,
@@ -1248,5 +1272,7 @@ export default {
   updateHealthRecord,
   dispenseHealthRecordMedicines,
   getRhuToDispense,
+  confirmRhuServiceUsage,
+  markRhuServiceUsageNeedsReview,
   deleteHealthRecord,
 };

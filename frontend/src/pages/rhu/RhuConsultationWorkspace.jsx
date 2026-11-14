@@ -40,10 +40,10 @@ import { PreviousBodyFindings } from "../../components/features/health-records/B
 import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import {
   PROGRAM_CLASSIFICATIONS,
+  classificationForPrimaryProgram,
   getConsultationPrograms,
   lockProgramsWhilePatientLoads,
   programEnrollLabel,
-  restoredClassification,
   toggleConsultationProgram,
 } from "../../utils/consultationPrograms";
 import {
@@ -118,6 +118,12 @@ import {
   restorePrescriptions,
 } from "../../utils/rhuPrescriptions";
 import {
+  legacyServiceOnlyPrescriptions,
+  normalizeServiceUsages,
+  serviceUsageErrors,
+  serviceUsagesForSave,
+} from "../../utils/serviceUsages";
+import {
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
   rhuTbAssessmentErrors,
@@ -129,7 +135,20 @@ import {
 } from "../../utils/establishedTbDisease";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
-import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
+import {
+  applyServiceHandoff,
+  applyServiceNextAction,
+  applyServiceSupportingLabs,
+  pruneServiceHandoffs,
+  pruneServiceSchedules,
+  pruneServiceSupportingLabs,
+  restoreServiceHandoffs,
+  restoreServiceSupportingLabs,
+  serviceHandoffErrors,
+  serviceHandoffsForSave,
+  serviceSupportingLabsForSave,
+  updateServiceHandoff,
+} from "../../utils/serviceNextActions";
 import { getPatientConditions } from "../../services/patientConditionService";
 import { defaultInformant } from "../../utils/patientHistory";
 import {
@@ -282,9 +301,13 @@ export default function RhuConsultationWorkspace() {
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
   const [prescriptions, setPrescriptions] = useState([]);
+  const [serviceUsages, setServiceUsages] = useState([]);
+  const [legacyServicePrescriptionReviewed, setLegacyServicePrescriptionReviewed] = useState(false);
   const [prescriptionText, setPrescriptionText] = useState("");
   const [treatmentNotes, setTreatmentNotes] = useState("");
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
+  const [serviceHandoffs, setServiceHandoffs] = useState([]);
+  const [serviceSupportingLabs, setServiceSupportingLabs] = useState([]);
   const [catchmentBhcs, setCatchmentBhcs] = useState([]);
   const [openConditions, setOpenConditions] = useState([]);
   const [linkedFollowUpTaskIds, setLinkedFollowUpTaskIds] = useState(() =>
@@ -624,6 +647,8 @@ export default function RhuConsultationWorkspace() {
       consultationNotes: immunizationRemarks,
       diagnoses,
       prescriptions,
+      serviceUsages,
+      legacyServicePrescriptionReviewed,
       prescriptionText,
       medication: treatmentNotes,
       followUpSchedules,
@@ -636,6 +661,8 @@ export default function RhuConsultationWorkspace() {
       rhuVisitId: visit?.id,
       carePlan: {
         continuedFollowUpTaskIds: linkedFollowUpTaskIds,
+        serviceHandoffs: pruneServiceHandoffs(serviceHandoffs, selectedPrograms),
+        serviceSupportingLabs: pruneServiceSupportingLabs(serviceSupportingLabs, selectedPrograms),
       },
     }),
     [
@@ -664,6 +691,8 @@ export default function RhuConsultationWorkspace() {
       bodyFindingReassessments,
       selectedPrograms,
       primaryProgram,
+      serviceHandoffs,
+      serviceSupportingLabs,
       includeTb,
       tbData,
       nextScreen,
@@ -680,6 +709,8 @@ export default function RhuConsultationWorkspace() {
       maternalTtTdEvidence,
       diagnoses,
       prescriptions,
+      serviceUsages,
+      legacyServicePrescriptionReviewed,
       prescriptionText,
       treatmentNotes,
       followUpSchedules,
@@ -695,7 +726,8 @@ export default function RhuConsultationWorkspace() {
   const autosave = useDraftAutosave({
     enabled: canSaveCurrentDraft && !saveSuccess,
     patientId,
-    classification: restoredClassification("General Consultation", primaryProgram),
+    // Must match finalize `category` for every service (EPI→Immunization, Maternal, FP, Nutrition).
+    classification: classificationForPrimaryProgram(primaryProgram),
     payload: draftPayload,
     draft: activeDraft,
     sectionKey: currentStepKey,
@@ -806,10 +838,20 @@ export default function RhuConsultationWorkspace() {
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
     setPrescriptions(restorePrescriptions(payload));
+    setServiceUsages(normalizeServiceUsages(payload.serviceUsages));
+    setLegacyServicePrescriptionReviewed(payload.legacyServicePrescriptionReviewed === true);
     setPrescriptionText(restorePrescriptionText(payload));
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
     setFollowUpSchedules(restoredSchedules.length ? restoredSchedules : restoreRhuFollowUpSchedules(payload, restoredDiagnoses));
+    setServiceHandoffs(restoreServiceHandoffs(
+      payload.carePlan || payload.care_plan || {},
+      getConsultationPrograms(payload),
+    ));
+    setServiceSupportingLabs(restoreServiceSupportingLabs(
+      payload.carePlan || payload.care_plan || {},
+      getConsultationPrograms(payload),
+    ));
     const restoredFollowUpIds = payload.carePlan?.continuedFollowUpTaskIds || payload.carePlan?.continued_follow_up_task_ids;
     if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
       setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
@@ -893,8 +935,13 @@ export default function RhuConsultationWorkspace() {
         isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }));
+      Object.assign(errors, serviceHandoffErrors(serviceHandoffs, {
+        selectedPrograms,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+      }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
       Object.assign(errors, structuredPrescriptionErrors());
+      Object.assign(errors, serviceUsageAndLegacyErrors());
     }
     setValidationErrors(errors);
     return errors;
@@ -1073,9 +1120,25 @@ export default function RhuConsultationWorkspace() {
     return prescriptionErrors(prescriptions, diagnoses);
   }
 
+  function serviceUsageAndLegacyErrors() {
+    const errors = {
+      ...serviceUsageErrors(serviceUsages, selectedPrograms),
+    };
+    if (legacyServiceOnlyPrescriptions(prescriptions).length > 0 && !legacyServicePrescriptionReviewed) {
+      errors.legacyServicePrescriptionReviewed =
+        "Review legacy service-linked prescriptions before completing this consultation.";
+    }
+    return errors;
+  }
+
   function handlePrescriptionsChange(next) {
     setPrescriptions(normalizePrescriptions(next));
     clearErrorsStartingWith(["prescriptions"]);
+  }
+
+  function handleServiceUsagesChange(next) {
+    setServiceUsages(normalizeServiceUsages(next));
+    clearErrorsStartingWith(["serviceUsages"]);
   }
 
   function handleDiagnosisChange(next) {
@@ -1125,6 +1188,7 @@ export default function RhuConsultationWorkspace() {
 
   function handleServiceNextAction(program, action) {
     setFollowUpSchedules((current) => pruneServiceSchedules(applyServiceNextAction(program, action, current), selectedPrograms));
+    setServiceHandoffs((current) => pruneServiceHandoffs(applyServiceHandoff(program, action, current), selectedPrograms));
   }
 
   function handleServiceFollowUp(program, next) {
@@ -1137,11 +1201,31 @@ export default function RhuConsultationWorkspace() {
     )));
   }
 
+  function handleServiceHandoffChange(program, patch) {
+    setServiceHandoffs((current) => pruneServiceHandoffs(
+      updateServiceHandoff(program, patch, applyServiceHandoff(program, "manage_to_bhc", current)),
+      selectedPrograms,
+    ));
+  }
+
+  function handleServiceSupportingLabsChange(program, selected) {
+    setServiceSupportingLabs((current) => pruneServiceSupportingLabs(
+      applyServiceSupportingLabs(program, selected, current),
+      selectedPrograms,
+    ));
+  }
+
   function handleProgramSelect(key) {
     if (key === "Maternal" && (!patient || isPatientMale(patient))) return;
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
+    setFollowUpSchedules((current) => pruneServiceSchedules(current, next.selectedPrograms));
+    setServiceHandoffs((current) => pruneServiceHandoffs(current, next.selectedPrograms));
+    setServiceSupportingLabs((current) => pruneServiceSupportingLabs(current, next.selectedPrograms));
+    setServiceUsages((current) =>
+      normalizeServiceUsages(current).filter((row) => next.selectedPrograms.includes(row.serviceProgram)),
+    );
     if (key === "Maternal" && next.selectedPrograms.includes("Maternal")) {
       applyPrenatalPrefill();
     }
@@ -1211,8 +1295,13 @@ export default function RhuConsultationWorkspace() {
         isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }),
+      ...serviceHandoffErrors(serviceHandoffs, {
+        selectedPrograms,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+      }),
       ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
       ...structuredPrescriptionErrors(),
+      ...serviceUsageAndLegacyErrors(),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
@@ -1268,7 +1357,7 @@ export default function RhuConsultationWorkspace() {
       const recordInput = {
           patientId: Number(patientId),
           consultationWorkflow: "rhu_itr_v1",
-          category: primaryProgram ? PROGRAM_CLASSIFICATIONS[primaryProgram] : "General Consultation",
+          category: classificationForPrimaryProgram(primaryProgram),
           rhuVisitId: visit.id,
           chiefComplaint,
           summaryOfPresentIllness,
@@ -1276,6 +1365,9 @@ export default function RhuConsultationWorkspace() {
             additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
             ...(nutritionIntent ? { nutritionIntent } : {}),
             prescriptions: prescriptionsForSave(prescriptions),
+            ...(serviceUsagesForSave(serviceUsages).length
+              ? { serviceUsages: serviceUsagesForSave(serviceUsages) }
+              : {}),
           },
           physicalExam,
           laboratoryTests,
@@ -1330,6 +1422,8 @@ export default function RhuConsultationWorkspace() {
             rhu_follow_up: Boolean(hasRhuFollowUp),
             manage_to_bhc: savedDiagnoses.some((entry) => entry.nextAction === "manage_to_bhc"),
             continued_follow_up_task_ids: linkedFollowUpTaskIds,
+            service_handoffs: serviceHandoffsForSave(serviceHandoffs, selectedPrograms),
+            service_supporting_labs: serviceSupportingLabsForSave(serviceSupportingLabs, selectedPrograms),
           },
           backgroundUpdate: canViewBackground
             ? toRecordBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))
@@ -1821,6 +1915,18 @@ export default function RhuConsultationWorkspace() {
                           laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                           supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                         })));
+                        setServiceHandoffs(current => current.map(entry => ({
+                          ...entry,
+                          laboratoryEvidenceConfirmed: false,
+                          laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
+                        })));
+                        setServiceSupportingLabs(current => pruneServiceSupportingLabs(
+                          current.map(entry => ({
+                            ...entry,
+                            supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference?.startsWith("current:") || available.has(item.reference)),
+                          })),
+                          selectedPrograms,
+                        ));
                       }}
                       disabled={assessmentLocked || saving}
                       errors={validationErrors}
@@ -2021,12 +2127,21 @@ export default function RhuConsultationWorkspace() {
                     catchmentBhcs={catchmentBhcs}
                     isReferralVisit={isReferredRhuVisit(visit)}
                     selectedPrograms={selectedPrograms}
+                    serviceHandoffs={serviceHandoffs}
+                    serviceSupportingLabs={serviceSupportingLabs}
                     onServiceNextAction={handleServiceNextAction}
                     onServiceFollowUp={handleServiceFollowUp}
+                    onServiceHandoffChange={handleServiceHandoffChange}
+                    onServiceSupportingLabsChange={handleServiceSupportingLabsChange}
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
                     prescriptions={prescriptions}
                     onPrescriptionsChange={handlePrescriptionsChange}
+                    vaccineEntries={immunizationEntries}
+                    serviceUsages={serviceUsages}
+                    onServiceUsagesChange={handleServiceUsagesChange}
+                    legacyServicePrescriptionReviewed={legacyServicePrescriptionReviewed}
+                    onLegacyServicePrescriptionReviewedChange={setLegacyServicePrescriptionReviewed}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}

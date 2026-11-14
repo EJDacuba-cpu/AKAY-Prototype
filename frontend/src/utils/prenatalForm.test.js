@@ -244,8 +244,8 @@ test("legacy 280-day EDC is refreshed to Naegele when LMP is still present", () 
   assert.equal(refreshed.aog, "14 weeks");
 });
 
-test("a documented EDC is kept when it is not the auto value", () => {
-  const kept = applyPregnancyDating({
+test("legacy clinical EDC/AOG are adapted back to auto values from LMP", () => {
+  const adapted = applyPregnancyDating({
     lmp: "2026-07-09",
     edc: "2027-04-17",
     aog: "16 weeks",
@@ -253,8 +253,8 @@ test("a documented EDC is kept when it is not the auto value", () => {
     previousAutoEdd: "2027-04-16",
     previousAutoAog: "15 weeks 6 days",
   });
-  assert.equal(kept.edc, "2027-04-17");
-  assert.equal(kept.aog, "16 weeks");
+  assert.equal(adapted.edc, "2027-04-16");
+  assert.equal(adapted.aog, computeAogFromLmp("2026-07-09", "2026-10-29"));
 
   const auto = applyPregnancyDating({
     lmp: "2026-07-09",
@@ -282,7 +282,8 @@ test("a documented EDC is kept when it is not the auto value", () => {
     previousAutoEdd: "2027-04-16",
     previousAutoAog: "16 weeks",
   });
-  assert.equal(visitChange.edc, "2027-04-17");
+  assert.equal(visitChange.edc, "2027-04-16");
+  assert.equal(visitChange.aog, computeAogFromLmp("2026-07-09", "2026-11-01"));
 });
 
 test("untracked remount rebuilds EDC/AOG from LMP instead of freezing stale values", () => {
@@ -380,7 +381,7 @@ test("resumed draft with stale auto AOG refreshes for BHC and RHU visit days", (
   }
 });
 
-test("clinical EDC and AOG stay sticky after resume seeding", () => {
+test("draft resume with clinical EDC/AOG adapts to auto LMP dating", () => {
   const trackers = seedPregnancyDatingTrackers({
     lmp: "2026-07-09",
     edc: "2027-04-17",
@@ -395,8 +396,8 @@ test("clinical EDC and AOG stay sticky after resume seeding", () => {
     previousAutoEdd: trackers.autoEdd,
     previousAutoAog: trackers.autoAog,
   });
-  assert.equal(resumed.edc, "2027-04-17");
-  assert.equal(resumed.aog, "16 weeks");
+  assert.equal(resumed.edc, "2027-04-16");
+  assert.equal(resumed.aog, computeAogFromLmp("2026-07-09", "2026-11-20"));
 });
 
 test("BHC and RHU workspaces seed pregnancy dating trackers on draft restore", () => {
@@ -521,8 +522,8 @@ test("the Prenatal form keeps this-pregnancy fields and can mount Section V", ()
   assert.match(form, /Correct/);
   assert.match(form, /hasPregnancyBaseline/);
   assert.doesNotMatch(form, /title="Previous FP Method"/);
-  assert.match(form, /laboratoryContext === "rhu"/);
-  assert.match(form, /Previous Laboratory Results/);
+  assert.doesNotMatch(form, /Previous Laboratory Results/);
+  assert.doesNotMatch(form, /title="Laboratory Results"/);
   assert.match(form, /Add Ultrasound/);
   assert.match(panel, /summaryWhenRecorded/);
   assert.match(workspace, /shouldPrefillPrenatalBaseline/);

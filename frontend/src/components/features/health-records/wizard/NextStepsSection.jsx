@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement } from "react";
 import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
-import { FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
+import { FieldError, FieldInput, FieldTextarea, RadioChoiceGroup } from "../fields/ClinicalFields";
 import { ATTENTION_LEVELS, DEFAULT_ATTENTION } from "../../../../utils/referralAttention";
 import { formatDate } from "../../../../utils/formatters";
 import { conditionStatusLabel } from "../../../../utils/medicalConditions";
@@ -9,12 +9,19 @@ import {
   CARE_PLAN_SERVICE_LABELS,
   SERVICE_NEXT_ACTIONS,
   defaultServicePurpose,
+  selectedCarePlanServices,
+  serviceHandoff,
   serviceNextAction,
   serviceSchedule,
+  serviceSupportingLabsFor,
   suggestionsForProgram,
 } from "../../../../utils/serviceNextActions";
 import { followUpDateWarnings } from "../../../../utils/nextActions";
 import { servicePurposeKey } from "../../../../utils/followUpSchedules";
+import { LaboratoryEvidencePicker, SupportingLaboratoryTestsPicker } from "../LaboratoryEvidence";
+import LegacyServicePrescriptionsReview from "./LegacyServicePrescriptionsReview";
+import ServiceItemsUsedSection from "./ServiceItemsUsedSection";
+import { legacyServiceOnlyPrescriptions } from "../../../../utils/serviceUsages";
 
 const MONITORING_DECISIONS = [
   { value: "continue", label: "Continue Monitoring" },
@@ -23,6 +30,14 @@ const MONITORING_DECISIONS = [
 ];
 
 const SERVICE_NEXT_ACTION_OPTIONS = Object.entries(SERVICE_NEXT_ACTIONS).map(([value, label]) => ({ value, label }));
+
+function serviceNextActionOptions({ hideReferToRhu = false, showManageToBhc = false } = {}) {
+  return SERVICE_NEXT_ACTION_OPTIONS.filter((option) => {
+    if (option.value === "refer_to_rhu") return !hideReferToRhu;
+    if (option.value === "manage_to_bhc") return showManageToBhc;
+    return true;
+  });
+}
 
 const SECTION_HEADING_CLASS = "text-sm font-bold text-[#111827]";
 
@@ -230,11 +245,91 @@ function referralDecisionHint({ conditionReferred, monitoringReferred, serviceRe
   return "One referral for this consultation.";
 }
 
-function serviceNextActionHint(action) {
+function serviceNextActionHint(action, { showManageToBhc = false } = {}) {
   if (action === "none") return "No additional return or referral is required for this service.";
   if (action === "schedule") return "Schedule a BHC return for this service only.";
   if (action === "refer_to_rhu") return "Include this service in the RHU referral for this consultation.";
-  return "Choose no additional action, a BHC return, or referral for this service.";
+  if (action === "manage_to_bhc") {
+    return showManageToBhc
+      ? "Sends a monitoring request to the receiving BHC. Monitoring does not start until that BHC accepts and begins a consultation."
+      : "Manage to BHC is available on RHU consultations only.";
+  }
+  return showManageToBhc
+    ? "Choose no additional action, a BHC return, or Manage to BHC for this service."
+    : "Choose no additional action, a BHC return, or referral for this service.";
+}
+
+function ServiceManageToBhcFields({
+  program,
+  handoff,
+  catchmentBhcs = [],
+  errors = {},
+  disabled = false,
+  isReferralVisit = false,
+  onChange,
+  laboratoryOptions = [],
+  laboratoryLoading = false,
+  laboratoryError = false,
+  onRefreshLaboratory,
+}) {
+  const key = `serviceHandoffs.${program}`;
+  return (
+    <fieldset disabled={disabled} className="min-w-0 space-y-3 pt-2">
+      <p className="text-xs text-[#545F73]">
+        {isReferralVisit
+          ? "Sends a monitoring request to the receiving BHC and closes this referral so the BHC gets the update."
+          : "Sends a monitoring request to the receiving BHC. Monitoring does not start until that BHC accepts and begins a consultation."}
+      </p>
+      <div>
+        <label htmlFor={`${program}-service-bhc`} className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+          Receiving Barangay Health Center <span className="text-red-500">*</span>
+        </label>
+        <select
+          id={`${program}-service-bhc`}
+          name={`${key}.receivingBhcId`}
+          value={handoff?.receivingBhcId || ""}
+          onChange={(event) => onChange?.({ receivingBhcId: event.target.value })}
+          aria-invalid={Boolean(errors[`${key}.receivingBhcId`])}
+          className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3.5 text-sm text-[#1F2937] outline-none"
+        >
+          <option value="">Select a catchment BHC</option>
+          {(catchmentBhcs || []).map((bhc) => (
+            <option key={bhc.id} value={String(bhc.id)}>{bhc.name}</option>
+          ))}
+        </select>
+        {(catchmentBhcs || []).length === 0 && (
+          <p className="mt-1 text-xs text-[#6B7280]">No catchment BHC with an available account.</p>
+        )}
+        <FieldError error={errors[`${key}.receivingBhcId`]} />
+      </div>
+      <FieldTextarea
+        label="Monitoring recommendation"
+        required
+        maxLength={2000}
+        name={`${key}.monitoringRecommendation`}
+        value={handoff?.monitoringRecommendation || ""}
+        error={errors[`${key}.monitoringRecommendation`]}
+        rows={3}
+        placeholder="What should the BHC monitor for this service, and why?"
+        onChange={(event) => onChange?.({ monitoringRecommendation: event.target.value })}
+      />
+      <LaboratoryEvidencePicker
+        options={laboratoryOptions}
+        loading={laboratoryLoading}
+        loadError={laboratoryError}
+        onRefresh={onRefreshLaboratory}
+        selected={handoff?.laboratoryEvidence || []}
+        confirmed={handoff?.laboratoryEvidenceConfirmed === true}
+        disabled={disabled}
+        description="Only selected evidence will be shared with this BHC for this health service."
+        error={errors[`${key}.laboratoryEvidence`] || errors[`${key}.laboratoryEvidenceConfirmed`] || errors.laboratoryEvidence || errors.laboratoryEvidenceConfirmed}
+        onChange={(laboratoryEvidence, laboratoryEvidenceConfirmed) => onChange?.({
+          laboratoryEvidence,
+          laboratoryEvidenceConfirmed,
+        })}
+      />
+    </fieldset>
+  );
 }
 
 function ServiceFollowUp({ program, schedule, errors, disabled, suggestions, onFollowUpChange }) {
@@ -288,8 +383,32 @@ export default function NextStepsSection({
   treatmentSlot = null, reportingSlot = null, earlierDraftNotes = "", earlierDraftContinued = "",
   conditionReferred = false,
   selectedPrograms = [], followUpSchedules = [], serviceReferrals = [],
-  onServiceNextAction, onServiceFollowUp,
+  serviceHandoffs = [],
+  serviceSupportingLabs = [],
+  catchmentBhcs = [],
+  isReferralVisit = false,
+  onServiceNextAction, onServiceFollowUp, onServiceHandoffChange,
+  onServiceSupportingLabsChange,
   hideReferToRhu = false,
+  showManageToBhc = false,
+  showServiceSupportingLabs = false,
+  laboratoryOptions = [],
+  laboratoryLoading = false,
+  laboratoryError = false,
+  onRefreshLaboratory,
+  onUpdateCurrentLaboratoryTest,
+  canUpdateHistoricalLaboratory = false,
+  diagnoses = [],
+  prescriptions = [],
+  onPrescriptionsChange,
+  prescriptionEditor = null,
+  onPrescriptionEditorChange,
+  showServicePrescriptions = false,
+  vaccineEntries = [],
+  serviceUsages = [],
+  onServiceUsagesChange,
+  legacyServicePrescriptionReviewed = false,
+  onLegacyServicePrescriptionReviewedChange,
 }) {
   const hasMonitoring = continuedMonitorings.length > 0 || startingConditions.length > 0;
   const referredIds = new Set(referrals.map(Number));
@@ -297,9 +416,17 @@ export default function NextStepsSection({
     (monitoring) => referredIds.has(Number(monitoring.id)) && !Object.hasOwn(stops, monitoring.id),
   );
   const namedServiceReferrals = serviceReferrals || [];
+  const namedServiceHandoffs = serviceHandoffs || [];
   const serviceReferred = namedServiceReferrals.length > 0;
   const referOn = nextActions.referToRhu === true || serviceReferred;
   const hasReferralDecision = conditionReferred || monitoringReferred || serviceReferred || nextActions.referToRhu === true;
+  const carePlanServices = selectedCarePlanServices(selectedPrograms);
+  // New service-level Prescriptions block is retired; keep prop for callers but
+  // only surface legacy serviceKeys-only rows via LegacyServicePrescriptionsReview.
+  void showServicePrescriptions;
+  void carePlanServices;
+  const hasLegacyServiceRx = legacyServiceOnlyPrescriptions(prescriptions).length > 0;
+  const nextActionOptions = serviceNextActionOptions({ hideReferToRhu, showManageToBhc });
 
   return (
     <div className="divide-y divide-[#E5E7EB] [&>section]:py-5 [&>section:first-child]:pt-0 [&>section:last-child]:pb-0">
@@ -310,9 +437,18 @@ export default function NextStepsSection({
         ) : (
           <ul className="mt-2 divide-y divide-[#E5E7EB]">
             {selectedPrograms.map((program) => {
-              const action = serviceNextAction(program, { schedules: followUpSchedules, serviceReferrals: namedServiceReferrals });
+              const action = serviceNextAction(program, {
+                schedules: followUpSchedules,
+                serviceReferrals: namedServiceReferrals,
+                serviceHandoffs: namedServiceHandoffs,
+              });
               const schedule = serviceSchedule(program, followUpSchedules);
+              const handoff = serviceHandoff(program, namedServiceHandoffs);
               const programSuggestions = suggestionsForProgram(program, suggestions);
+              const displayAction = (!showManageToBhc && action === "manage_to_bhc")
+                || (hideReferToRhu && action === "refer_to_rhu")
+                ? "none"
+                : action;
               return (
                 <li key={program} className="py-3 first:pt-2">
                   <fieldset disabled={disabled} className="min-w-0 space-y-2">
@@ -321,14 +457,12 @@ export default function NextStepsSection({
                       label="Next action"
                       name={`serviceNextAction.${program}`}
                       inline
-                      options={hideReferToRhu
-                        ? SERVICE_NEXT_ACTION_OPTIONS.filter((option) => option.value !== "refer_to_rhu")
-                        : SERVICE_NEXT_ACTION_OPTIONS}
-                      value={hideReferToRhu && action === "refer_to_rhu" ? "none" : action}
+                      options={nextActionOptions}
+                      value={displayAction}
                       onChange={(value) => onServiceNextAction?.(program, value)}
                     />
-                    <p className="text-xs text-[#6B7280]">{serviceNextActionHint(action)}</p>
-                    {action === "schedule" && (
+                    <p className="text-xs text-[#6B7280]">{serviceNextActionHint(displayAction, { showManageToBhc })}</p>
+                    {displayAction === "schedule" && (
                       <ServiceFollowUp
                         program={program}
                         schedule={schedule}
@@ -338,12 +472,63 @@ export default function NextStepsSection({
                         onFollowUpChange={(next) => onServiceFollowUp?.(program, next)}
                       />
                     )}
+                    {displayAction === "manage_to_bhc" && showManageToBhc && (
+                      <ServiceManageToBhcFields
+                        program={program}
+                        handoff={handoff}
+                        catchmentBhcs={catchmentBhcs}
+                        errors={errors}
+                        disabled={disabled}
+                        isReferralVisit={isReferralVisit}
+                        onChange={(patch) => onServiceHandoffChange?.(program, patch)}
+                        laboratoryOptions={laboratoryOptions}
+                        laboratoryLoading={laboratoryLoading}
+                        laboratoryError={laboratoryError}
+                        onRefreshLaboratory={onRefreshLaboratory}
+                      />
+                    )}
+                    {showServiceSupportingLabs ? (
+                      <SupportingLaboratoryTestsPicker
+                        options={laboratoryOptions}
+                        loading={laboratoryLoading}
+                        loadError={laboratoryError}
+                        onRefresh={onRefreshLaboratory}
+                        onUpdateCurrentTest={onUpdateCurrentLaboratoryTest}
+                        canUpdateHistorical={canUpdateHistoricalLaboratory}
+                        selected={serviceSupportingLabsFor(program, serviceSupportingLabs)}
+                        disabled={disabled}
+                        description="Optional. Select existing tests that support this health service. Linking does not mark a result available or share with a BHC."
+                        onChange={(selected) => onServiceSupportingLabsChange?.(program, selected)}
+                      />
+                    ) : null}
                   </fieldset>
                 </li>
               );
             })}
           </ul>
         )}
+        <ServiceItemsUsedSection
+          selectedPrograms={selectedPrograms}
+          vaccineEntries={vaccineEntries}
+          serviceUsages={serviceUsages}
+          onServiceUsagesChange={onServiceUsagesChange}
+          errors={errors}
+          disabled={disabled}
+        />
+        {hasLegacyServiceRx ? (
+          <LegacyServicePrescriptionsReview
+            selectedPrograms={selectedPrograms}
+            diagnoses={diagnoses}
+            prescriptions={prescriptions}
+            onPrescriptionsChange={onPrescriptionsChange}
+            prescriptionEditor={prescriptionEditor}
+            onPrescriptionEditorChange={onPrescriptionEditorChange}
+            reviewed={legacyServicePrescriptionReviewed}
+            onReviewedChange={onLegacyServicePrescriptionReviewedChange}
+            errors={errors}
+            disabled={disabled}
+          />
+        ) : null}
       </section>
       {hasMonitoring && (
         <section aria-labelledby="next-steps-monitoring">

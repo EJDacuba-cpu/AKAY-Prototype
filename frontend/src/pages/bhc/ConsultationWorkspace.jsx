@@ -736,11 +736,12 @@ export default function ConsultationWorkspace() {
   // The wizard is a single ordered phase rather than a set of booleans so that
   // "which screen am I on" has exactly one answer. Every entry opens on the form.
   const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
-  const [consultationMode, setConsultationMode] = useState(
-    opensNewConsultation ? "general" : null,
-  );
-  const [selectedPrograms, setSelectedPrograms] = useState([]);
-  const [primaryProgram, setPrimaryProgram] = useState("");
+  const [consultationMode, setConsultationMode] = useState(() => {
+    if (!opensNewConsultation) return null;
+    return (routeContinuedIds.selectedPrograms || []).length ? "program" : "general";
+  });
+  const [selectedPrograms, setSelectedPrograms] = useState(() => routeContinuedIds.selectedPrograms || []);
+  const [primaryProgram, setPrimaryProgram] = useState(() => (routeContinuedIds.selectedPrograms || [])[0] || "");
   // Draft resume keeps the saved enroll/continue until care-overview or records settle.
   const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical

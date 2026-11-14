@@ -531,9 +531,11 @@ function isAutoEddValue(lmp, edc) {
 }
 
 /**
- * Keep a typed EDC/AOG when it is a clinical correction; otherwise follow
- * auto dating. `previousAutoEdd` / `previousAutoAog` are the last auto values
- * assigned for the prior inputs.
+ * Always derive EDC/AOG from LMP (Naegele + visit-day AOG). Manual clinical
+ * edits are no longer sticky — drafts that stored a corrected EDC/AOG are
+ * adapted back to auto values on resume so UI and save stay consistent.
+ * `previousAutoEdd` / `previousAutoAog` remain accepted for call-site
+ * compatibility but are unused.
  */
 export function applyPregnancyDating({
   lmp,
@@ -543,61 +545,49 @@ export function applyPregnancyDating({
   previousAutoEdd = "",
   previousAutoAog = "",
 } = {}) {
+  void edc;
+  void aog;
+  void previousAutoEdd;
+  void previousAutoAog;
   const resolvedVisit = resolvePregnancyVisitDate(visitDate);
   const computedEdd = computeEddFromLmp(lmp);
-  const autoEdd = computedEdd === "Invalid Date" ? "" : computedEdd;
-  let nextEdd;
-  if (!lmp || computedEdd === "Invalid Date") {
-    nextEdd = edc && edc !== previousAutoEdd && edc !== "Invalid Date" ? edc : "";
-  } else if (!edc || edc === previousAutoEdd || isAutoEddValue(lmp, edc) || !previousAutoEdd) {
-    // Untracked state (!previousAutoEdd) rebuilds from LMP so a remount cannot
-    // freeze a stale EDC as a fake clinical correction.
-    nextEdd = autoEdd;
-  } else {
-    nextEdd = edc;
-  }
-  const edcIsClinical = Boolean(nextEdd && nextEdd !== autoEdd);
-  const autoAog = computeAogFromDating({
-    lmp,
-    edc: nextEdd,
-    visitDate: resolvedVisit,
-    preferEdd: edcIsClinical || !lmp,
-  });
-  // Refresh when AOG still equals the tracked auto, already matches the new
-  // auto, or trackers were never seeded. Sticky only for true clinical edits.
-  const nextAog = !aog || aog === previousAutoAog || aog === autoAog || !previousAutoAog
-    ? autoAog
-    : aog;
-  return { edc: nextEdd, aog: nextAog, autoEdd, autoAog };
+  const autoEdd = !lmp || computedEdd === "Invalid Date" ? "" : computedEdd;
+  const autoAog = lmp
+    ? computeAogFromDating({
+      lmp,
+      edc: autoEdd,
+      visitDate: resolvedVisit,
+      preferEdd: false,
+    })
+    : "";
+  return { edc: autoEdd, aog: autoAog, autoEdd, autoAog };
 }
 
 /**
- * Seed the pregnancy-dating autos after draft restore / prefill so a saved AOG
- * that still matches auto dating stays tracked (and updates when LMP/visit
- * changes), while a clinical correction stays sticky.
+ * Seed pregnancy-dating autos after draft restore / prefill. Always LMP-based
+ * so a legacy clinical EDC/AOG in the draft is not treated as authoritative.
  */
 export function pregnancyDatingAutos({ lmp, edc = "", visitDate } = {}) {
+  void edc;
   const resolvedVisit = resolvePregnancyVisitDate(visitDate);
   const computedEdd = computeEddFromLmp(lmp);
-  const autoEdd = computedEdd === "Invalid Date" ? "" : computedEdd;
-  const datingEdd = isAutoEddValue(lmp, edc) ? autoEdd : (edc || autoEdd);
-  const edcIsClinical = Boolean(datingEdd && datingEdd !== autoEdd);
+  const autoEdd = !lmp || computedEdd === "Invalid Date" ? "" : computedEdd;
   return {
     autoEdd,
-    autoAog: computeAogFromDating({
-      lmp,
-      edc: datingEdd,
-      visitDate: resolvedVisit,
-      preferEdd: edcIsClinical || !lmp,
-    }),
+    autoAog: lmp
+      ? computeAogFromDating({
+        lmp,
+        edc: autoEdd,
+        visitDate: resolvedVisit,
+        preferEdd: false,
+      })
+      : "",
   };
 }
 
 /**
- * Draft/prefill tracker seed: when EDC is still auto-dated, treat the saved
- * AOG as the previous auto value so resume refreshes AOG to the current visit
- * day instead of freezing a stale "auto" as a clinical correction. Clinical
- * EDC keeps the computed baseline so a differing AOG stays sticky.
+ * Draft/prefill tracker seed: always the current auto values from LMP so
+ * resume refreshes AOG to today's visit and overwrites legacy clinical EDC.
  */
 export function seedPregnancyDatingTrackers({
   lmp,
@@ -605,13 +595,9 @@ export function seedPregnancyDatingTrackers({
   aog = "",
   visitDate,
 } = {}) {
-  const autos = pregnancyDatingAutos({ lmp, edc, visitDate });
-  const edcIsAuto = !edc || isAutoEddValue(lmp, edc);
-  const savedAog = String(aog || "").trim();
-  return {
-    autoEdd: autos.autoEdd,
-    autoAog: edcIsAuto && savedAog ? savedAog : autos.autoAog,
-  };
+  void edc;
+  void aog;
+  return pregnancyDatingAutos({ lmp, visitDate });
 }
 
 export function hasPregnancyBaseline(maternal = {}, expectedDeliveryDate = "") {

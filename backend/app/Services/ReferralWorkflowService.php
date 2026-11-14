@@ -106,14 +106,17 @@ class ReferralWorkflowService
      * Close a Received referral from the RHU ITR care plan.
      * Manage to BHC already creates a monitoring request; No further follow-up
      * requires notes so the BHC learns why the case ends without monitoring.
+     * Service handoffs (Selected Health Services) also close the referral.
      *
      * @param  array<int, array<string, mixed>>  $diagnoses
+     * @param  array<int, array<string, mixed>>  $serviceHandoffs
      */
     public function completeFromRhuCarePlan(
         Request $request,
         int $referralId,
         array $diagnoses,
-        ?User $practitioner = null
+        ?User $practitioner = null,
+        array $serviceHandoffs = [],
     ): ?Feedback {
         $closing = [];
         foreach ($diagnoses as $index => $entry) {
@@ -129,6 +132,16 @@ class ReferralWorkflowService
                 $closing[] = ['kind' => 'none', 'entry' => $entry, 'index' => $index];
             }
         }
+        foreach ($serviceHandoffs as $index => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $program = trim((string) ($entry['program'] ?? ''));
+            if ($program === '') {
+                continue;
+            }
+            $closing[] = ['kind' => 'service_manage_to_bhc', 'entry' => $entry, 'index' => $index];
+        }
 
         if ($closing === []) {
             return null;
@@ -140,6 +153,18 @@ class ReferralWorkflowService
         $remarks = [];
         foreach ($closing as $item) {
             $entry = $item['entry'];
+            if ($item['kind'] === 'service_manage_to_bhc') {
+                $program = trim((string) ($entry['program'] ?? ''));
+                $label = $program !== '' ? $program : 'Selected health service';
+                $names[] = $label;
+                $actions[] = "Manage to BHC: {$label}";
+                $recommendation = trim((string) ($entry['monitoring_recommendation'] ?? $entry['monitoringRecommendation'] ?? ''));
+                if ($recommendation !== '') {
+                    $recommendations[] = "{$label}: {$recommendation}";
+                }
+
+                continue;
+            }
             $name = trim((string) ($entry['name'] ?? ''));
             if ($name !== '') {
                 $names[] = $name;

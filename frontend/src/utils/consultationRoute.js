@@ -5,6 +5,14 @@ function idList(value) {
     .filter((id) => Number.isInteger(id) && id > 0);
 }
 
+function programList(value) {
+  const allowed = new Set(["Maternal", "EPI", "Family Planning", "Nutrition"]);
+  return [...new Set(String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((key) => allowed.has(key)))];
+}
+
 /**
  * Which consultation the workspace opens. "continue" is a new step-flow
  * consultation that continues follow-ups / monitoring (and starts monitoring of confirmed conditions) picked in the Start
@@ -35,12 +43,22 @@ export function resolveBhcConsultationRoute(search = "") {
           followUpIds: idList(params.get("followUpIds")),
           monitoringIds: idList(params.get("monitoringIds")),
           startConditionIds: idList(params.get("startConditionIds")),
+          selectedPrograms: programList(params.get("selectedPrograms")),
+          handoffId: Number(params.get("handoffId") || 0) || null,
         }
       : { kind: "redirect", reason: "missing-patient" };
   }
   if (mode === "followup") {
     if (followUpId && patientId) {
-      return { kind: "continue", patientId, followUpIds: idList(followUpId), monitoringIds: [], startConditionIds: [] };
+      return {
+        kind: "continue",
+        patientId,
+        followUpIds: idList(followUpId),
+        monitoringIds: [],
+        startConditionIds: [],
+        selectedPrograms: [],
+        handoffId: null,
+      };
     }
     return patientId
       ? { kind: "new", patientId }
@@ -56,12 +74,20 @@ export function resolveBhcConsultationRoute(search = "") {
  */
 export function continuedRouteIds(routeContext = {}) {
   if (routeContext?.kind !== "continue") {
-    return { followUpIds: [], monitoringIds: [], startConditionIds: [] };
+    return {
+      followUpIds: [],
+      monitoringIds: [],
+      startConditionIds: [],
+      selectedPrograms: [],
+      handoffId: null,
+    };
   }
   return {
     followUpIds: Array.isArray(routeContext.followUpIds) ? routeContext.followUpIds : [],
     monitoringIds: Array.isArray(routeContext.monitoringIds) ? routeContext.monitoringIds : [],
     startConditionIds: Array.isArray(routeContext.startConditionIds) ? routeContext.startConditionIds : [],
+    selectedPrograms: Array.isArray(routeContext.selectedPrograms) ? routeContext.selectedPrograms : [],
+    handoffId: routeContext.handoffId || null,
   };
 }
 

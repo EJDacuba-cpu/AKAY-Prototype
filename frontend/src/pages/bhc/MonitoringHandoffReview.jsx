@@ -11,7 +11,6 @@ import { Button } from "../../components/ui/button";
 import {
   acceptMonitoringHandoffRequest,
   correctMonitoringHandoffIdentityLink,
-  declineMonitoringHandoffRequest,
   flagMonitoringHandoffIdentityReview,
   getMonitoringHandoffRequest,
   linkMonitoringHandoffRequest,
@@ -59,7 +58,6 @@ export default function MonitoringHandoffReview() {
   const [searching, setSearching] = useState(false);
   const [searchState, setSearchState] = useState("idle"); // idle | success | error
   const [searchError, setSearchError] = useState("");
-  const [reason, setReason] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const [verificationEvidence, setVerificationEvidence] = useState("");
@@ -196,12 +194,21 @@ export default function MonitoringHandoffReview() {
   const sourceName = formatPatientName(source) || "Patient";
   const linkedPatient = request.linked_patient;
   const linkedId = linkedPatient?.id;
-  const startPath = linkedId && request.condition?.id
-    ? startRoute({ patientId: linkedId, startConditionIds: [request.condition.id] })
-    : linkedId
-      ? startRoute({ patientId: linkedId })
-      : null;
-  const showActions = canAct && ["pending_review", "linkage_needed", "accepted_awaiting_first_visit"].includes(request.status);
+  const serviceKey = request.service_key || request.service?.key || "";
+  const startPath = linkedId && request.handoff_kind === "service" && serviceKey
+    ? startRoute({
+      patientId: linkedId,
+      selectedPrograms: [serviceKey],
+      handoffId: request.id,
+    })
+    : linkedId && request.condition?.id
+      ? startRoute({ patientId: linkedId, startConditionIds: [request.condition.id] })
+      : linkedId
+        ? startRoute({ patientId: linkedId })
+        : null;
+  const canAccept = canAct && request.status === "pending_review";
+  const canStart = Boolean(request.can_start_consultation && startPath);
+  const showActions = canAccept || canStart;
 
   return (
     <DashboardLayout role="bhc" title="Monitoring Request">
@@ -234,7 +241,12 @@ export default function MonitoringHandoffReview() {
               <Detail label="Birthdate" value={source.birthdate} />
               <Detail label="Sex" value={source.sex} />
               <Detail label="Source" value={identitySourceLabel(request.identity_source)} />
-              <Detail label="RHU condition" value={request.condition?.name} />
+              <Detail
+                label={request.handoff_kind === "service" ? "Health service" : "RHU condition"}
+                value={request.handoff_kind === "service"
+                  ? (request.service?.label || serviceKey || "—")
+                  : request.condition?.name}
+              />
               <Detail label="Sending RHU" value={request.sending_rhu?.name} />
               <Detail label="Receiving BHC" value={request.receiving_bhc?.name} />
             </dl>
@@ -572,8 +584,17 @@ export default function MonitoringHandoffReview() {
               <h2 className="text-sm font-semibold text-ink-900">Monitoring recommendation</h2>
               <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-700">{request.recommendation || "—"}</p>
               <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Detail label="Condition" value={request.condition?.name} />
-                <Detail label="Status" value={formatDisplayValue(request.condition?.status)} />
+                {request.handoff_kind === "service" ? (
+                  <Detail
+                    label="Health service"
+                    value={request.service?.label || serviceKey || "—"}
+                  />
+                ) : (
+                  <>
+                    <Detail label="Condition" value={request.condition?.name} />
+                    <Detail label="Status" value={formatDisplayValue(request.condition?.status)} />
+                  </>
+                )}
               </dl>
             </section>
           )}
@@ -618,7 +639,7 @@ export default function MonitoringHandoffReview() {
             <section className="space-y-3 p-4 sm:p-5">
               <h2 className="text-[17px] font-bold text-ink-900">Monitoring Request Actions</h2>
               <div className="flex flex-wrap gap-2">
-                {request.status === "pending_review" && (
+                {canAccept && (
                   <Button
                     type="button"
                     variant="brand"
@@ -632,34 +653,12 @@ export default function MonitoringHandoffReview() {
                     Accept Monitoring
                   </Button>
                 )}
-                {request.can_start_consultation && startPath && (
+                {canStart && (
                   <Button asChild variant="brand">
                     <Link to={startPath}>Start Consultation</Link>
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy === "decline" || !reason.trim()}
-                  onClick={() => run(
-                    "decline",
-                    () => declineMonitoringHandoffRequest(request.id, { reason: reason.trim() }),
-                    "Request declined.",
-                  )}
-                >
-                  Decline
-                </Button>
               </div>
-              <label className="block text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                Decline reason
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  rows={2}
-                  className={`mt-1 ${controlClass} h-auto py-2`}
-                  disabled={Boolean(busy)}
-                />
-              </label>
             </section>
           )}
         </article>

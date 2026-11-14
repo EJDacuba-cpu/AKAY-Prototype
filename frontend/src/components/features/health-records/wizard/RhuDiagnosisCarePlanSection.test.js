@@ -351,6 +351,57 @@ async function mountCarePlan(props) {
   };
 }
 
+test("Selected Health Services shows service items used, not a new prescriptions block", async () => {
+  const app = await mountCarePlan({
+    diagnoses: [htn],
+    prescriptions: [],
+    selectedPrograms: ["Maternal", "EPI", "Family Planning"],
+    vaccineEntries: [{ vaccineName: "PENTA", dose: "2", dateGiven: "2026-11-14" }],
+  });
+  try {
+    const section = app.container.querySelector("#selected-health-services-title")?.closest("section");
+    assert.ok(section);
+    assert.match(section.textContent, /Service items used/i);
+    assert.match(section.textContent, /PENTA 2/);
+    assert.match(section.textContent, /Inventory reconciliation: Not yet recorded/);
+    assert.doesNotMatch(section.textContent, /Record the medicines for selected health services/);
+    assert.equal(buttonsNamed(section, "Add Prescription").length, 0);
+    assert.match(section.textContent, /Add service usage/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("legacy service-linked prescriptions remain visible for review under Selected Health Services", async () => {
+  const app = await mountCarePlan({
+    diagnoses: [htn],
+    prescriptions: [{
+      id: "rx-legacy",
+      diagnosisIds: [],
+      serviceKeys: ["Maternal"],
+      medicineName: "Ferrous Sulfate",
+      strength: "325 mg",
+      dose: "1 tablet",
+      route: "PO",
+      frequency: "Once daily",
+      duration: "30 days",
+      authorizedQuantity: 30,
+      authorizedUnit: "tablet",
+      source: "itr",
+    }],
+    selectedPrograms: ["Maternal"],
+  });
+  try {
+    const section = app.container.querySelector("#selected-health-services-title")?.closest("section");
+    assert.ok(section);
+    assert.match(section.textContent, /Review legacy service prescriptions/);
+    assert.match(section.textContent, /Ferrous Sulfate 325 mg/);
+    assert.match(section.textContent, /Keep them as prescriptions/);
+  } finally {
+    await app.close();
+  }
+});
+
 test("Add Prescription saves one visit-level order and keeps field errors beside the form", async () => {
   const app = await mountCarePlan({ diagnoses: [htn, dm], prescriptions: [] });
   try {

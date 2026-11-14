@@ -36,13 +36,17 @@ export function monitoringInboxStatusTone(status) {
 
 export function handoffInboxRow(request) {
   const status = request?.status || "";
+  const serviceLabel = request.service?.label || request.service_key || "";
+  const isService = request.handoff_kind === "service" || Boolean(serviceLabel && !request.condition?.name);
   return {
     key: `${KIND_MONITORING_HANDOFF}:${request.id}`,
     kind: KIND_MONITORING_HANDOFF,
     id: request.id,
     patient: request.source_patient,
-    conditionLabel: request.condition?.name || "Condition",
-    typeLabel: "Monitoring handoff",
+    conditionLabel: isService
+      ? (serviceLabel || "Health service")
+      : (request.condition?.name || "Condition"),
+    typeLabel: isService ? "Service monitoring handoff" : "Monitoring handoff",
     sendingRhu: request.sending_rhu?.name || "RHU",
     status,
     statusLabel:

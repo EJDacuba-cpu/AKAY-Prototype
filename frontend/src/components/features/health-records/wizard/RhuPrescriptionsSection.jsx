@@ -5,6 +5,8 @@ import {
   normalizePrescriptions,
   prescriptionErrors,
   prescriptionsForDiagnosis,
+  prescriptionsForServices,
+  SERVICES_PRESCRIPTION_OWNER_ID,
 } from "../../../../utils/rhuPrescriptions";
 
 const MAX_PRESCRIPTIONS = 50;
@@ -52,8 +54,10 @@ function PrescriptionEditor({
       className="rhu-prescription-editor grid min-w-0 gap-2 border border-neutral-200 bg-white p-3 sm:grid-cols-2"
       data-field={`${key}.medicineName`}
     >
-      {errorFor("diagnosisIds") ? (
-        <p role="alert" className="text-xs text-red-700 sm:col-span-2">{errorFor("diagnosisIds")}</p>
+      {errorFor("diagnosisIds") || errorFor("serviceKeys") ? (
+        <p role="alert" className="text-xs text-red-700 sm:col-span-2">
+          {errorFor("diagnosisIds") || errorFor("serviceKeys")}
+        </p>
       ) : null}
       {TEXT_FIELDS.map(([field, label, maxLength]) => (
         <RxField key={field} label={label} required error={errorFor(field)}>
@@ -132,6 +136,8 @@ export function commitPrescriptionDraft(prescriptions, draft, mode) {
 
 export default function RhuPrescriptionsSection({
   diagnosisId,
+  serviceMode = false,
+  selectedServiceKeys = [],
   diagnoses = [],
   prescriptions = [],
   onPrescriptionsChange,
@@ -140,11 +146,20 @@ export default function RhuPrescriptionsSection({
   editor = null,
   onEditorChange,
 }) {
-  const ownsEditor = editor?.ownerDiagnosisId === diagnosisId && Boolean(editor?.draft);
+  const ownerId = serviceMode ? SERVICES_PRESCRIPTION_OWNER_ID : diagnosisId;
+  const ownsEditor = editor?.ownerDiagnosisId === ownerId && Boolean(editor?.draft);
   const draft = ownsEditor ? editor.draft : null;
-  const linked = prescriptionsForDiagnosis(prescriptions, diagnosisId);
+  const linked = serviceMode
+    ? prescriptionsForServices(prescriptions)
+    : prescriptionsForDiagnosis(prescriptions, diagnosisId);
   const shownErrors = ownsEditor ? { ...errors, ...(editor.localErrors || {}) } : errors;
   const atCap = prescriptions.length >= MAX_PRESCRIPTIONS;
+  const helperText = serviceMode
+    ? "Record the medicines for selected health services."
+    : "Record the medicines for this diagnosis.";
+  const emptyText = serviceMode
+    ? "No prescriptions for selected health services."
+    : "No prescriptions for this diagnosis.";
 
   function updateList(next) {
     onPrescriptionsChange?.(normalizePrescriptions(next));
@@ -157,9 +172,12 @@ export default function RhuPrescriptionsSection({
   function startAdd() {
     if (disabled || ownsEditor || atCap) return;
     openEditor({
-      draft: emptyPrescription({ diagnosisIds: diagnosisId ? [diagnosisId] : [] }),
+      draft: emptyPrescription({
+        diagnosisIds: !serviceMode && diagnosisId ? [diagnosisId] : [],
+        serviceKeys: serviceMode ? selectedServiceKeys : [],
+      }),
       mode: "add",
-      ownerDiagnosisId: diagnosisId,
+      ownerDiagnosisId: ownerId,
       localErrors: {},
     });
   }
@@ -169,13 +187,13 @@ export default function RhuPrescriptionsSection({
     openEditor({
       draft: emptyPrescription(rx),
       mode: "edit",
-      ownerDiagnosisId: diagnosisId,
+      ownerDiagnosisId: ownerId,
       localErrors: {},
     });
   }
 
   function cancel() {
-    if (editor?.ownerDiagnosisId === diagnosisId) onEditorChange?.(null);
+    if (editor?.ownerDiagnosisId === ownerId) onEditorChange?.(null);
   }
 
   function save() {
@@ -185,7 +203,10 @@ export default function RhuPrescriptionsSection({
       // Keep automatic link to this diagnosis card; preserve any historical multi-links.
       diagnosisIds: Array.isArray(draft.diagnosisIds) && draft.diagnosisIds.length
         ? draft.diagnosisIds
-        : (diagnosisId ? [diagnosisId] : []),
+        : (!serviceMode && diagnosisId ? [diagnosisId] : []),
+      serviceKeys: Array.isArray(draft.serviceKeys) && draft.serviceKeys.length
+        ? draft.serviceKeys
+        : (serviceMode ? selectedServiceKeys : []),
     });
     const found = prescriptionErrors([next], diagnoses);
     const own = Object.fromEntries(
@@ -229,13 +250,13 @@ export default function RhuPrescriptionsSection({
     >
       <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Prescriptions</legend>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-[#545F73]">Record the medicines for this diagnosis.</p>
+        <p className="text-xs text-[#545F73]">{helperText}</p>
         <Button type="button" variant="secondary" size="compact" disabled={disabled || ownsEditor || atCap} className="rounded-none" onClick={startAdd}>
           Add Prescription
         </Button>
       </div>
       {errors.prescriptions ? <p role="alert" className="text-xs text-red-700">{errors.prescriptions}</p> : null}
-      {!linked.length && !draft ? <p className="text-xs text-[#545F73]">No prescriptions for this diagnosis.</p> : null}
+      {!linked.length && !draft ? <p className="text-xs text-[#545F73]">{emptyText}</p> : null}
       <ul className="space-y-1">
         {linked.map((rx) => (
           rx.id === draft?.id ? (

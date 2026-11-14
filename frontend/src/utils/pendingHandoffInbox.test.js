@@ -44,6 +44,25 @@ test("mergeMonitoringInbox combines handoffs and TB endorsements with type label
   assert.equal(rows[1].conditionLabel, "Hypertension");
 });
 
+test("service handoffs show health service label in the unified inbox", () => {
+  const rows = mergeMonitoringInbox({
+    handoffs: [{
+      id: 3,
+      handoff_kind: "service",
+      status: "pending_review",
+      created_at: "2026-11-14T01:00:00.000Z",
+      service: { key: "Maternal", label: "Maternal Care" },
+      service_key: "Maternal",
+      condition: null,
+      source_patient: { first_name: "Maya", last_name: "Cruz" },
+      sending_rhu: { name: "Central RHU" },
+    }],
+    includeTb: false,
+  });
+  assert.equal(rows[0].conditionLabel, "Maternal Care");
+  assert.equal(rows[0].typeLabel, "Service monitoring handoff");
+});
+
 test("mergeMonitoringInbox omits TB rows when includeTb is false", () => {
   const rows = mergeMonitoringInbox({
     handoffs: [{ id: 1, status: "declined", created_at: "2026-11-01T00:00:00.000Z" }],

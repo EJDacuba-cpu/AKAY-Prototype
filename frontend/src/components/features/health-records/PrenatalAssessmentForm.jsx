@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { LaboratoryEvidenceList } from "./LaboratoryEvidence";
 import { Plus } from "lucide-react";
 
 import { DatePickerField } from "../../common/forms/DatePickerField";
@@ -54,7 +53,9 @@ export default function PrenatalAssessmentForm({
     && typeof onBackgroundUpdateChange === "function"
     && sectionVisibility(patient).obstetric !== "hidden";
   const history = prenatalHistory || EMPTY_PRENATAL_HISTORY;
-  const thisVisitLabs = Array.isArray(maternalData.laboratoryEntries) ? maternalData.laboratoryEntries : [];
+  // RHU laboratory linking moved to Selected Health Services; keep props for callers.
+  void laboratoryContext;
+  void laboratoryTests;
   const hasThisVisitUltrasound = Boolean(
     String(maternalData.ultrasound?.result || "").trim() || maternalData.ultrasound?.dateDone,
   );
@@ -141,8 +142,12 @@ export default function PrenatalAssessmentForm({
                     label="EDC (Expected Date of Confinement)"
                     value={expectedDeliveryDate}
                     onChange={onExpectedDeliveryDateChange}
+                    disabled
                   />
                 </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  EDC is auto-calculated from LMP (LMP − 3 months + 7 days) and cannot be edited.
+                </p>
               </div>
 
               <div className="grid gap-4 @xl:grid-cols-2">
@@ -187,10 +192,12 @@ export default function PrenatalAssessmentForm({
                   label="AOG (Age of Gestation)"
                   placeholder="e.g. 28 weeks"
                   value={aog}
+                  readOnly
+                  disabled
                   onChange={(event) => onAogChange(event.target.value)}
                 />
                 <p className="mt-1 text-xs text-neutral-500">
-                  Auto-calculated from LMP to the visit date. EDC uses LMP − 3 months + 7 days. Edit only for a clinical correction.
+                  Auto-calculated from LMP to the visit date. EDC and AOG are read-only.
                 </p>
               </div>
               <FieldInput
@@ -228,42 +235,6 @@ export default function PrenatalAssessmentForm({
           </div>
         </LockedFormContent>
       </FormSection>
-
-      {laboratoryContext === "rhu" && (
-      <FormSection
-        title="Laboratory Results"
-        subtitle="Previous prenatal results stay on their own records. Record new tests in Physical Examination."
-      >
-        <div className="mb-3 space-y-2">
-          <p className="text-xs text-neutral-500">Record new tests in Physical Examination → Laboratory &amp; Diagnostic Tests. Previous prenatal results remain below.</p>
-          <LaboratoryEvidenceList entries={laboratoryTests} />
-        </div>
-        {history.labs.length > 0 && (
-          <HistoryTable
-            caption="Previous Laboratory Results"
-            columns={["Test", "Result", "Date Performed", "Visit Date"]}
-            rows={history.labs.map((item, index) => ({
-              key: `${item.recordId}-${item.key}-${index}`,
-              cells: [item.label, item.result, formatHistoryDate(item.date), formatHistoryDate(item.visitDate)],
-            }))}
-          />
-        )}
-        {thisVisitLabs.length > 0 && (
-          <HistoryTable
-            caption="New Results This Visit"
-            columns={["Test", "Result", "Date Performed"]}
-            rows={thisVisitLabs.map((entry, index) => ({
-              key: `this-visit-${entry.test}-${index}`,
-              cells: [
-                labTestLabel(entry.test),
-                entry.result,
-                formatHistoryDate(entry.datePerformed),
-              ],
-            }))}
-          />
-        )}
-      </FormSection>
-      )}
 
       <FormSection
         title="Immunization"

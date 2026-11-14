@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { LaboratoryEvidencePicker, SupportingLaboratoryTestsPicker } from "../LaboratoryEvidence";
 import RhuPrescriptionsSection from "./RhuPrescriptionsSection";
+import { SERVICES_PRESCRIPTION_OWNER_ID } from "../../../../utils/rhuPrescriptions";
 
 import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
@@ -517,6 +518,9 @@ function DiagnosisCard({
                     <option key={bhc.id} value={String(bhc.id)}>{bhc.name}</option>
                   ))}
                 </select>
+                {(catchmentBhcs || []).length === 0 && (
+                  <p className="mt-1 text-xs text-[#6B7280]">No catchment BHC with an available account.</p>
+                )}
                 <FieldError error={errors[`${key}.receivingBhcId`]} />
               </div>
               <FieldTextarea
@@ -566,12 +570,21 @@ export default function RhuDiagnosisCarePlanSection({
   catchmentBhcs = [],
   isReferralVisit = false,
   selectedPrograms = [],
+  serviceHandoffs = [],
+  serviceSupportingLabs = [],
   onServiceNextAction,
   onServiceFollowUp,
+  onServiceHandoffChange,
+  onServiceSupportingLabsChange,
   treatmentNotes = "",
   onTreatmentNotesChange,
   prescriptions = [],
   onPrescriptionsChange,
+  vaccineEntries = [],
+  serviceUsages = [],
+  onServiceUsagesChange,
+  legacyServicePrescriptionReviewed = false,
+  onLegacyServicePrescriptionReviewedChange,
   registry = {},
   existingTbCase = null,
   canConfirmTb = false,
@@ -586,7 +599,8 @@ export default function RhuDiagnosisCarePlanSection({
   useEffect(() => {
     setPrescriptionEditor((current) => {
       if (!current) return current;
-      const ownerExists = diagnoses.some((entry) => entry.id === current.ownerDiagnosisId);
+      const ownerExists = current.ownerDiagnosisId === SERVICES_PRESCRIPTION_OWNER_ID
+        || diagnoses.some((entry) => entry.id === current.ownerDiagnosisId);
       const orderExists = current.mode !== "edit" || prescriptions.some((item) => item.id === current.draft?.id);
       return ownerExists && orderExists ? current : null;
     });
@@ -705,10 +719,34 @@ export default function RhuDiagnosisCarePlanSection({
       </section>
       <NextStepsSection
         hideReferToRhu
+        showManageToBhc
+        showServiceSupportingLabs
         selectedPrograms={selectedPrograms}
         followUpSchedules={schedules}
+        serviceHandoffs={serviceHandoffs}
+        serviceSupportingLabs={serviceSupportingLabs}
+        catchmentBhcs={catchmentBhcs}
+        isReferralVisit={isReferralVisit}
         onServiceNextAction={onServiceNextAction}
         onServiceFollowUp={onServiceFollowUp}
+        onServiceHandoffChange={onServiceHandoffChange}
+        onServiceSupportingLabsChange={onServiceSupportingLabsChange}
+        laboratoryOptions={laboratoryOptions}
+        laboratoryLoading={laboratoryLoading}
+        laboratoryError={laboratoryError}
+        onRefreshLaboratory={onRefreshLaboratory}
+        onUpdateCurrentLaboratoryTest={onUpdateCurrentLaboratoryTest}
+        canUpdateHistoricalLaboratory={canUpdateHistoricalLaboratory}
+        diagnoses={diagnoses}
+        prescriptions={prescriptions}
+        onPrescriptionsChange={onPrescriptionsChange}
+        prescriptionEditor={prescriptionEditor}
+        onPrescriptionEditorChange={setPrescriptionEditor}
+        vaccineEntries={vaccineEntries}
+        serviceUsages={serviceUsages}
+        onServiceUsagesChange={onServiceUsagesChange}
+        legacyServicePrescriptionReviewed={legacyServicePrescriptionReviewed}
+        onLegacyServicePrescriptionReviewedChange={onLegacyServicePrescriptionReviewedChange}
         errors={errors}
         disabled={disabled}
         treatmentSlot={(
