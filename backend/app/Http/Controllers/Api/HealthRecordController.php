@@ -78,7 +78,7 @@ class HealthRecordController extends Controller
         } else {
             $query = $this->facilityAccess->scopeHealthRecords(HealthRecord::query(), $request->user());
         }
-        $query->with(['patient', 'creator:id,name', ...HealthRecord::OUTCOME_RELATIONS]);
+        $query->with(['patient', 'creator:id,name,staff_role,specialization', ...HealthRecord::OUTCOME_RELATIONS]);
 
         if ($request->query('patient_id')) {
             $query->where('patient_id', $request->query('patient_id'))
@@ -705,7 +705,7 @@ class HealthRecordController extends Controller
 
         $data = $healthRecord->load([
             'patient',
-            'creator:id,name',
+            'creator:id,name,staff_role,specialization',
             'dispensedMedicines',
             ...HealthRecord::OUTCOME_RELATIONS,
             'referrals' => fn ($query) => $this->facilityAccess
@@ -1208,7 +1208,7 @@ class HealthRecordController extends Controller
         return response()->json([
             'data' => $record->load([
                 'patient',
-                'creator:id,name',
+                'creator:id,name,staff_role,specialization',
                 'dispensedMedicines',
                 'referrals',
                 ...HealthRecord::OUTCOME_RELATIONS,

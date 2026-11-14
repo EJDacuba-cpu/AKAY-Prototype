@@ -15,6 +15,7 @@ import {
   earlierDraftNotes,
   showsDiagnosisRow,
 } from "../../../utils/consultationWorkflow";
+import { visitHistoryInformantLine } from "../../../utils/visitHistorySnapshot";
 import { isTbRecord } from "../../../utils/tbRecords";
 import {
   formatDisplayValue,
@@ -73,7 +74,7 @@ import {
 export const BHC_HEALTH_RECORD_PRINT_PAGE_STYLES = `
   @page {
     size: A4;
-    margin: 12mm 12mm 14mm 12mm;
+    margin: 18mm;
   }
   @media print {
     html, body, #root {
@@ -226,6 +227,290 @@ function Section({ title, children, avoidBreak = false }) {
   );
 }
 
+function isGeneralConsultationService(serviceType, record) {
+  const label = String(
+    serviceType || record?.patientClassification || record?.category || "",
+  ).trim();
+  return label === "General Consultation";
+}
+
+/** Plain GC print only — program records keep the legacy multi-section layout. */
+function usesGeneralConsultationPrintLayout({
+  serviceType,
+  record,
+  tbRecord,
+  immunization,
+  maternal,
+  postpartumOnly,
+  familyPlanning,
+}) {
+  if (!isGeneralConsultationService(serviceType, record)) return false;
+  if (tbRecord || immunization || maternal || postpartumOnly || familyPlanning) {
+    return false;
+  }
+  return true;
+}
+
+function blankText(value) {
+  const text = String(value ?? "").trim();
+  if (
+    !text ||
+    text.toLowerCase() === "not recorded" ||
+    text.toLowerCase() === "facility not recorded" ||
+    text === "—"
+  ) {
+    return "";
+  }
+  return text;
+}
+
+/** Strip unit suffixes when the vitals table header already names the unit. */
+function vitalDisplayValue(value) {
+  return blankText(value)
+    .replace(/\s*mmHg\s*$/i, "")
+    .replace(/\s*bpm\s*$/i, "")
+    .replace(/\s*°\s*C\s*$/i, "")
+    .replace(/\s*%\s*$/i, "")
+    .replace(/\s*cm\s*$/i, "")
+    .replace(/\s*kg\s*$/i, "")
+    .trim();
+}
+
+function vitalCellMap(record, patient) {
+  // Same sources as record details: getVitalSignItems + Pulse/SpO₂ via recordedVitalItems.
+  const byLabel = Object.fromEntries(
+    recordedVitalItems(record, patient).map((item) => [item.label, item.value]),
+  );
+  return {
+    BP: vitalDisplayValue(byLabel.BP),
+    Pulse: vitalDisplayValue(byLabel.Pulse),
+    Temperature: vitalDisplayValue(byLabel.Temperature),
+    SpO2: vitalDisplayValue(byLabel["SpO₂"]),
+    Height: vitalDisplayValue(byLabel.Height),
+    Weight: vitalDisplayValue(byLabel.Weight),
+    BMI: blankText(byLabel.BMI),
+  };
+}
+
+/** Label + value in a fixed label column. Empty → writing line when allowBlankLine. */
+function GcField({ label, value, allowBlankLine = false }) {
+  const text = blankText(value);
+  if (!text && !allowBlankLine) return null;
+  return (
+    <div className="gc-print-field-row">
+      <p className="gc-print-field-label">{label}</p>
+      {text ? (
+        <p className="gc-print-prose">{text}</p>
+      ) : (
+        <span className="gc-print-writing-line" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+function gcMedicationLines(record) {
+  const medicines = getDispensedMedicines(record);
+  if (!medicines.length) return { prescribed: "", instructions: "" };
+  const prescribed = medicines
+    .map((medicine) => {
+      const name =
+        medicine.medicineName ||
+        medicine.medicine_name_snapshot ||
+        medicine.medicine_name ||
+        "";
+      const qty = [medicine.quantity, medicine.unit].filter(Boolean).join(" ");
+      return [blankText(name), blankText(qty)].filter(Boolean).join(" · ");
+    })
+    .filter(Boolean)
+    .join("; ");
+  const instructions = medicines
+    .map((medicine) => blankText(medicine.remarks))
+    .filter(Boolean)
+    .join("; ");
+  return { prescribed, instructions };
+}
+
+function GeneralConsultationPrintDocument({
+  record,
+  patient,
+  title,
+  recordId,
+  patientName,
+  displayDate,
+  displayTime,
+  practitioner,
+  sourceRole,
+  facility,
+  printState = "ready",
+}) {
+  const isRhu = sourceRole === "rhu";
+  const hasAge = patient?.age !== undefined && patient?.age !== null && String(patient.age).trim() !== "";
+  const patientCode =
+    patient?.patientId ||
+    patient?.patient_id ||
+    patient?.patientCode ||
+    patient?.patient_code ||
+    "";
+  // Reference sample: "20 / Male" (no "yrs").
+  const ageSex = [hasAge ? String(patient.age) : "", patient?.sex]
+    .filter(Boolean)
+    .join(" / ");
+  const visitWhen = [blankText(displayDate), blankText(displayTime)]
+    .filter(Boolean)
+    .join(" · ");
+  const vitals = vitalCellMap(record, patient);
+  const facilityName = blankText(facility);
+  const isFollowUpVisit = getRecordVisitTypeValue(record) === "follow_up_visit";
+  // Same helpers as health record details / RHU consultation HPI field.
+  const chiefComplaint = getRecordChiefComplaint(record, "");
+  const historyOfPresentIllness = getRecordSummary(record, "");
+  // RHU rarely has assessment_notes; print physical findings here instead
+  // (same field as consultation "Physical Findings" / getRecordPhysicalExam).
+  const generalExamFindings = blankText(getRecordPhysicalExam(record, ""));
+  const diagnosis = getRecordDiagnosis(record, "");
+  const showDiagnosisRow = showsDiagnosisRow(record, diagnosis);
+  const hpiFieldLabel = isFollowUpVisit
+    ? "Changes since last visit"
+    : "Present illness";
+  // Diagnosis: RHU when details would show the row; BHC when a value exists.
+  const diagnosisText = blankText(diagnosis);
+  const printDiagnosis = Boolean(diagnosisText) || (isRhu && showDiagnosisRow);
+  const { prescribed, instructions } = gcMedicationLines(record);
+  const hasChiefComplaintSection = Boolean(
+    blankText(chiefComplaint) || blankText(visitHistoryInformantLine(record)),
+  );
+  const hasHpiSection = Boolean(blankText(historyOfPresentIllness));
+  const recordedByName = blankText(practitioner);
+  // Diagnosis row: show text or a writing line for RHU; BHC only when value exists.
+  const showDiagnosisField = printDiagnosis || Boolean(diagnosisText);
+
+  return (
+    <article
+      id="health-record-print"
+      data-print-key={recordId}
+      data-print-state={printState}
+      data-print-layout="general-consultation"
+      className="gc-record-print"
+    >
+      <style>{generalConsultationPrintStyles}</style>
+
+      <div className="gc-print-body">
+        <header className="gc-print-header">
+          <p className="gc-print-brand">AKAY</p>
+          <div className="gc-print-docmeta">
+            <p className="gc-print-doctype">
+              {title || "General Consultation Record"}
+            </p>
+            {/* INSERT: facility name from record */}
+            {facilityName ? <p>{facilityName}</p> : <p>&nbsp;</p>}
+            {/* INSERT: record number */}
+            <p>Record #{recordId}</p>
+          </div>
+        </header>
+
+        <div className="gc-print-patient-row">
+          <div className="gc-print-patient-field">
+            <span className="gc-print-k">Patient:</span>{" "}
+            <span className="gc-print-v">{blankText(patientName)}</span>
+          </div>
+          <div className="gc-print-patient-field">
+            <span className="gc-print-k">Patient ID:</span>{" "}
+            <span className="gc-print-v">{blankText(patientCode)}</span>
+          </div>
+          <div className="gc-print-patient-field">
+            <span className="gc-print-k">Age / Sex:</span>{" "}
+            <span className="gc-print-v">{ageSex}</span>
+          </div>
+          <div className="gc-print-patient-field">
+            <span className="gc-print-k">Date / Time:</span>{" "}
+            <span className="gc-print-v">{visitWhen}</span>
+          </div>
+        </div>
+
+        {hasChiefComplaintSection ? (
+          <section className="gc-print-section">
+            <h2>Chief Complaint</h2>
+            <GcField label="Complaint" value={chiefComplaint} />
+            <GcField label="Informant" value={visitHistoryInformantLine(record)} />
+          </section>
+        ) : null}
+
+        {hasHpiSection ? (
+          <section className="gc-print-section">
+            <h2>History of Present Illness</h2>
+            <GcField label={hpiFieldLabel} value={historyOfPresentIllness} />
+          </section>
+        ) : null}
+
+        <section className="gc-print-section">
+          <h2>Vital Signs</h2>
+          <table className="gc-print-vitals">
+            <thead>
+              <tr>
+                <th>BP (mmHg)</th>
+                <th>Pulse (bpm)</th>
+                <th>Temp (°C)</th>
+                <th>SpO₂ (%)</th>
+                <th>Height (cm)</th>
+                <th>Weight (kg)</th>
+                <th>BMI</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{vitals.BP}</td>
+                <td>{vitals.Pulse}</td>
+                <td>{vitals.Temperature}</td>
+                <td>{vitals.SpO2}</td>
+                <td>{vitals.Height}</td>
+                <td>{vitals.Weight}</td>
+                <td>{vitals.BMI}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section className="gc-print-section">
+          <h2>Assessment</h2>
+          <GcField
+            label="General exam findings"
+            value={generalExamFindings}
+            allowBlankLine
+          />
+          {showDiagnosisField || isRhu ? (
+            <GcField
+              label="Diagnosis"
+              value={diagnosisText}
+              allowBlankLine={isRhu}
+            />
+          ) : null}
+        </section>
+
+        <section className="gc-print-section">
+          <h2>Medications</h2>
+          <GcField label="Prescribed" value={prescribed} allowBlankLine />
+          <GcField label="Instructions" value={instructions} allowBlankLine />
+        </section>
+      </div>
+
+      <footer className="gc-print-signatures">
+        <div className="gc-print-sig">
+          <div className="gc-print-sig-line">
+            {recordedByName ? (
+              <p className="gc-print-sig-line-name">{recordedByName}</p>
+            ) : null}
+          </div>
+          <p className="gc-print-sig-caption">Recorded by</p>
+        </div>
+        <div className="gc-print-sig">
+          <div className="gc-print-sig-line" />
+          <p className="gc-print-sig-caption">Attending Physician / Signature</p>
+        </div>
+      </footer>
+    </article>
+  );
+}
+
 export default function BhcHealthRecordPrintDocument({
   record,
   patient,
@@ -268,6 +553,36 @@ export default function BhcHealthRecordPrintDocument({
     serviceType === "Family Planning" ||
     categories.includes("Family Planning") ||
     programs.includes("Family Planning");
+  const facility = facilityLabel(record, patient);
+
+  if (
+    usesGeneralConsultationPrintLayout({
+      serviceType,
+      record,
+      tbRecord,
+      immunization,
+      maternal,
+      postpartumOnly,
+      familyPlanning,
+    })
+  ) {
+    return (
+      <GeneralConsultationPrintDocument
+        record={record}
+        patient={patient}
+        title={title}
+        recordId={recordId}
+        patientName={patientName}
+        displayDate={displayDate}
+        displayTime={displayTime}
+        practitioner={practitioner}
+        sourceRole={sourceRole}
+        facility={facility}
+        printState={printState}
+      />
+    );
+  }
+
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
@@ -295,7 +610,6 @@ export default function BhcHealthRecordPrintDocument({
   const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
-  const facility = facilityLabel(record, patient);
   const patientCode =
     patient?.patientId ||
     patient?.patient_id ||
@@ -1103,6 +1417,168 @@ function TbPrintSection({ record }) {
     </Section>
   );
 }
+
+const generalConsultationPrintStyles = `
+  .gc-record-print,
+  .gc-record-print * {
+    color: #000 !important;
+  }
+  .gc-record-print a,
+  .gc-record-print a:link,
+  .gc-record-print a:visited {
+    color: #000 !important;
+    text-decoration: none;
+  }
+  .gc-record-print {
+    display: flex;
+    flex-direction: column;
+    min-height: 261mm;
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .gc-print-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 14px;
+  }
+  .gc-print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #000;
+    break-after: avoid;
+  }
+  .gc-print-brand {
+    margin: 0;
+    font-size: 18pt;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .gc-print-docmeta { text-align: right; }
+  .gc-print-docmeta p { margin: 0; }
+  .gc-print-doctype { font-weight: 700; }
+  .gc-print-patient-row {
+    display: grid;
+    grid-template-columns: 1.5fr 0.8fr 0.9fr 1.2fr;
+    gap: 10px 16px;
+    padding: 10px 0 12px;
+    border-bottom: 1px solid #000;
+    break-inside: avoid;
+  }
+  .gc-print-patient-field { min-width: 0; margin: 0; }
+  .gc-print-k { font-size: 9.5pt; font-weight: 700; }
+  .gc-print-v { font-weight: 600; }
+  .gc-print-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .gc-print-section h2 {
+    margin: 0 0 10px;
+    padding: 0 0 4px;
+    border-bottom: 1px solid #000;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .gc-print-field-row {
+    display: grid;
+    grid-template-columns: 35mm 1fr;
+    gap: 8px 12px;
+    align-items: start;
+    margin: 0 0 10px;
+    min-height: 18px;
+  }
+  .gc-print-field-row:last-child { margin-bottom: 0; }
+  .gc-print-field-label {
+    margin: 0;
+    font-size: 9.5pt;
+    font-weight: 700;
+  }
+  .gc-print-prose {
+    margin: 0;
+    font-weight: 600;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .gc-print-writing-line {
+    display: block;
+    min-height: 18px;
+    border-bottom: 1px solid #000;
+  }
+  .gc-print-vitals {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .gc-print-vitals th,
+  .gc-print-vitals td {
+    border: 1px solid #000;
+    padding: 10px 8px;
+    text-align: center;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+  }
+  .gc-print-vitals th {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .gc-print-vitals td {
+    font-weight: 600;
+    min-height: 1.6em;
+  }
+  .gc-print-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .gc-print-sig {
+    display: flex;
+    flex-direction: column;
+    min-height: 72px;
+  }
+  .gc-print-sig-line {
+    position: relative;
+    min-height: 28px;
+    border-bottom: 1px solid #000;
+  }
+  .gc-print-sig-line-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 4px;
+    margin: 0;
+    font-size: 10.5pt;
+    font-weight: 600;
+  }
+  .gc-print-sig-caption {
+    margin: 6px 0 0;
+    font-size: 9pt;
+    font-weight: 700;
+  }
+  @media print {
+    .gc-record-print { min-height: 261mm; }
+    .gc-print-section { break-inside: avoid; page-break-inside: avoid; }
+    .gc-print-header { break-after: avoid; }
+  }
+`;
 
 const documentStyles = `
   .bhc-record-print {

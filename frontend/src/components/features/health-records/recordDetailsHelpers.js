@@ -509,15 +509,43 @@ export function getRecordInitialActions(record = {}, fallback = "Not recorded") 
   );
 }
 
-export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
-  const creatorName = formatUserName(
+function getRecordCreator(record = {}) {
+  return (
     record.creator ||
-      record.createdByUser ||
-      record.created_by_user ||
-      (typeof record.createdBy === "object" ? record.createdBy : null) ||
-      record.user,
-    "",
+    record.createdByUser ||
+    record.created_by_user ||
+    (typeof record.createdBy === "object" ? record.createdBy : null) ||
+    record.user ||
+    null
   );
+}
+
+const STAFF_ROLE_PRINT_LABELS = {
+  midwife: "Midwife",
+  nurse: "Nurse",
+  doctor: "Doctor",
+  bhw: "BHW",
+  encoder: "Encoder",
+};
+
+/**
+ * Small role line under Recorded by on GC print.
+ * Doctor → specialization when set, else "Doctor". Midwife/Nurse → that label only.
+ */
+export function getRecordedByRoleLabel(record = {}) {
+  const creator = getRecordCreator(record);
+  const staffRole = String(creator?.staff_role || creator?.staffRole || "")
+    .trim()
+    .toLowerCase();
+  const specialization = String(creator?.specialization || "").trim();
+  if (staffRole === "doctor") return specialization || "Doctor";
+  if (STAFF_ROLE_PRINT_LABELS[staffRole]) return STAFF_ROLE_PRINT_LABELS[staffRole];
+  if (!staffRole) return "";
+  return staffRole.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export function getRecordPractitioner(record = {}, fallback = "Not recorded") {
+  const creatorName = formatUserName(getRecordCreator(record), "");
 
   if (creatorName) return creatorName;
 
