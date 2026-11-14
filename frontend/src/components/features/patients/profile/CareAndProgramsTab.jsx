@@ -1,3 +1,4 @@
+import "./care-tracking.css";
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
@@ -13,7 +14,6 @@ import PatientLaboratorySection from "./PatientLaboratorySection";
 import { EmptyNote, FieldList } from "./ProfileSection";
 import { Button } from "../../../ui/button";
 import { Card } from "../../../ui/card";
-import { Input } from "../../../ui/input";
 import { getCareOverview } from "../../../../services/careOverviewService";
 import { closeNutritionCare } from "../../../../services/nutritionCareService";
 import { getCurrentUser } from "../../../../utils/auth";
@@ -22,7 +22,6 @@ import { NUTRITION_STATUS_ACTIVE, NUTRITION_STATUS_CLOSED } from "../../../../ut
 import { buildDispensedMedicineRows, buildMaternalTracking } from "../../../../utils/patientTrackingView";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import { queryKeys } from "../../../../utils/queryKeys";
-import searchIcon from "../../../../assets/figma/search.svg";
 
 /**
  * Patient care tracking derived from finalized consultations and health records.
@@ -30,6 +29,19 @@ import searchIcon from "../../../../assets/figma/search.svg";
  * This view is read-only except for closing an active Nutrition Care episode
  * and authorized laboratory result addenda.
  */
+
+function CareTrackingSkeleton() {
+  return (
+    <div role="status" aria-label="Loading care tracking" className="care-tracking-grid">
+      <span className="sr-only">Loading care tracking...</span>
+      {[0, 1, 2].map((key) => (
+        <div key={key} className="care-tracking-skeleton" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((line) => <span key={line} className="care-tracking-skeleton__line" />)}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function profileRole(basePath) {
   return String(basePath || "").includes("/rhu") ? "rhu" : "bhc";
@@ -77,9 +89,6 @@ export default function CareAndProgramsTab({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedKey, setSelectedKey] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All");
-  const [layout, setLayout] = useState("Grid");
-  const [cardSearch, setCardSearch] = useState("");
   const [closeOpen, setCloseOpen] = useState(false);
   const detailRef = useRef(null);
   const permissions = getCurrentUser()?.permissions || [];
@@ -106,12 +115,7 @@ export default function CareAndProgramsTab({
     [careTracking],
   );
   const medicineRows = useMemo(() => buildDispensedMedicineRows(records), [records]);
-  const visibleTracking = careTracking.filter((entry) => {
-    const isDisease = isDiseaseTrackingKey(entry.key);
-    return (typeFilter === "All" || (typeFilter === "Disease" ? isDisease : !isDisease)) &&
-      entry.label.toLowerCase().includes(cardSearch.trim().toLowerCase());
-  });
-  const selectedEntry = visibleTracking.find((entry) => entry.key === selectedKey) || null;
+  const selectedEntry = careTracking.find((entry) => entry.key === selectedKey) || null;
   const nutritionEntryRaw = careTracking.find((entry) => entry.key === "nutrition") || null;
   const nutritionEntry = nutritionEntryRaw && !canCloseNutrition
     ? { ...nutritionEntryRaw, action: null }
@@ -162,26 +166,10 @@ export default function CareAndProgramsTab({
       <section aria-labelledby="care-tracking-title">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 id="care-tracking-title" className="text-lg font-semibold text-[#111827]">Care Tracking</h2>
+            <h2 id="care-tracking-title" className="text-[17px] font-bold text-ink-800">Care Tracking</h2>
             <p className="mt-0.5 text-xs text-neutral-500">From finalized consultations and existing health records</p>
           </div>
-          <div role="group" aria-label="Tracking card layout" className="flex gap-1">
-            {["Grid", "List"].map((option) => (
-              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={layout === option} onClick={() => setLayout(option)} className={`h-8 rounded-lg border px-3 text-xs ${layout === option ? "border-neutral-500 bg-neutral-50" : "border-neutral-200 bg-white"}`}>{option}</Button>
-            ))}
-          </div>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label="Filter active tracking" className="flex flex-wrap gap-1.5">
-            {["All", "Program", "Disease"].map((option) => (
-              <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={typeFilter === option} onClick={() => setTypeFilter(option)} className={`h-8 rounded-lg border px-3 text-xs ${typeFilter === option ? "border-neutral-500 bg-neutral-50" : "border-neutral-200 bg-white"}`}>{option}</Button>
-            ))}
-          </div>
-          <label className="relative block w-full max-w-64">
-            <span className="sr-only">Search care tracking</span>
-            <img src={searchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <Input value={cardSearch} onChange={(event) => setCardSearch(event.target.value)} placeholder="Search care tracking" className="h-8 rounded-lg border-neutral-200 pl-9 text-xs shadow-none" />
-          </label>
+
         </div>
         {canReadCareOverview && careOverviewQuery.isError ? (
           <Card role="alert" className="mb-4 flex min-h-56 flex-col rounded-xl border-neutral-200 p-4 shadow-card">
@@ -207,13 +195,14 @@ export default function CareAndProgramsTab({
         {isError ? (
           <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 p-5 text-sm text-alert-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
         ) : trackingLoading ? (
-          <p role="status" className="border border-neutral-200 bg-white p-5 text-sm text-neutral-500">Loading care tracking...</p>
-        ) : visibleTracking.length === 0 ? (
-          <Card className="rounded-lg border-neutral-200 p-5"><EmptyNote>{careTracking.length === 0 ? "No care tracking from finalized consultations yet." : "No care tracking matches this filter."}</EmptyNote></Card>
+          <CareTrackingSkeleton />
+        ) : careTracking.length === 0 ? (
+          <Card className="care-tracking-empty care-tracking-reveal flex items-center justify-center rounded-xl border-neutral-200 p-5 text-center"><EmptyNote>No care tracking from finalized consultations yet.</EmptyNote></Card>
         ) : (
-          <div className={`grid gap-3 ${layout === "Grid" ? "@md:grid-cols-2 @2xl:grid-cols-3" : "grid-cols-1"}`}>
-            {visibleTracking.map((entry) => (
+          <div className="care-tracking-grid care-tracking-reveal">
+            {careTracking.map((entry) => (
               <CareTrackingCard
+                fixedHeight
                 key={entry.key}
                 entry={entry.key === "maternal" ? { ...entry, facts: [
                   ...(maternalSummary.gp ? [{ label: "G/P", value: maternalSummary.gp, type: "text" }] : []),

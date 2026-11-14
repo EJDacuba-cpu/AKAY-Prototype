@@ -29,7 +29,7 @@ import { getBhcPatientProfileQueries } from "../../services/patientProfileQuerie
 import { updatePatient } from "../../services/patientService";
 import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
 import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
-import { getCareTracking } from "../../utils/careTracking";
+import { getCareTracking, isActiveCareTrackingEntry } from "../../utils/careTracking";
 import { isInfantAt } from "../../utils/infantVisibility";
 import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
@@ -215,7 +215,7 @@ function LivePatientDetails() {
           {
             key: "programs",
             label: "Care & Programs",
-            count: careTracking.length || null,
+            count: careTracking.filter(isActiveCareTrackingEntry).length,
           },
           { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
           { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },

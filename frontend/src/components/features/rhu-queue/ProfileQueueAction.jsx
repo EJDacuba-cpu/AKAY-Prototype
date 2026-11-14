@@ -56,18 +56,18 @@ export default function ProfileQueueAction({ patientId, patientName }) {
         <p className="font-medium text-neutral-800">
           In today&apos;s queue <span aria-hidden="true">·</span> <span className="text-neutral-600">{state.label}</span>
         </p>
-        <button type="button" disabled={saving || startOpen} aria-busy={entryChecking || undefined} onClick={() => { setEntryChecking(true); setStartOpen(true); }} className={BUTTON_CLASS}>
-          {entryChecking ? <><ButtonSpinner />Checking...</> : saving ? (
-            <>
-              <ButtonSpinner />
-              Opening consultation...
-            </>
-          ) : starting ? (
-            "Start Consultation"
-          ) : (
-            "Open Consultation"
-          )}
-        </button>
+<button type="button" disabled={saving || startOpen} aria-busy={entryChecking || undefined} onClick={() => { setEntryChecking(true); setStartOpen(true); }} className="inline-flex h-10 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-400/50 focus-visible:ring-offset-2 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 disabled:shadow-none bg-brand-700 text-white hover:bg-brand-800 active:bg-brand-900">
+  {entryChecking ? <><ButtonSpinner />Checking...</> : saving ? (
+    <>
+      <ButtonSpinner />
+      Opening consultation...
+    </>
+  ) : starting ? (
+    "Start Consultation"
+  ) : (
+    "Open Consultation"
+  )}
+</button>
         {startOpen && (
           <RhuStartConsultationModal
             patientId={patientId}

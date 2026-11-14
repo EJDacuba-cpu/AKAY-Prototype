@@ -104,16 +104,6 @@ function getRegisteredDate(patient) {
   );
 }
 
-/** Registration is either "child" or "general"; the backend defaults to general. */
-function getRegistrationType(patient) {
-  const value = String(
-    patient.registrationType || patient.registration_type || patient.patientType || "",
-  )
-    .trim()
-    .toLowerCase();
-  return value === "child" ? "Child" : "General";
-}
-
 function getPatientDisplayId(patient) {
   return formatDisplayValue(patient.patientId || patient.id, "Not recorded");
 }
@@ -189,7 +179,6 @@ export default function PatientDirectoryCard({
   const contact = getPatientContact(patient);
   const location = getPatientLocation(patient);
   const occupation = formatDisplayValue(patient.occupation, "Not recorded");
-  const registrationType = getRegistrationType(patient);
   const birthDate = formatDate(getBirthDate(patient));
   const registeredDate = formatDate(getRegisteredDate(patient));
 
@@ -215,6 +204,10 @@ export default function PatientDirectoryCard({
 
   return (
     <article className="clinical-patient" {...selectProps}>
+      <header className="clinical-patient__identity">
+        <h3 className="clinical-patient__name">{patientName}</h3>
+        <p className="clinical-patient__id">Patient ID #{displayId}</p>
+      </header>
       <div className="clinical-patient__top">
         <span className="clinical-patient__barangay">
           <MapPin size={12} aria-hidden="true" />
@@ -223,17 +216,7 @@ export default function PatientDirectoryCard({
             {formatDisplayValue(location, "Barangay not recorded")}
           </span>
         </span>
-        <span
-          className="clinical-patient__badge"
-          data-type={registrationType.toLowerCase()}
-        >
-          {registrationType}
-        </span>
       </div>
-      <header className="clinical-patient__identity">
-        <h3 className="clinical-patient__name">{patientName}</h3>
-        <p className="clinical-patient__id">Patient ID #{displayId}</p>
-      </header>
       <dl className="clinical-patient__fields">
         {[
           ["Age", formatDisplayValue(age, "Not recorded")],
