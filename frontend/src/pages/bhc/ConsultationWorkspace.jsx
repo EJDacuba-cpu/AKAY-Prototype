@@ -86,7 +86,8 @@ import {
   applyRiskFactorChange,
   collectPrenatalHistory,
   applyPregnancyDating,
-  pregnancyDatingAutos,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   continueBhcPrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
@@ -1927,12 +1928,13 @@ export default function ConsultationWorkspace() {
     setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
     setAog(payload.aog || "");
     setMaternalData(mergeMaternalData(payload.maternalData));
-    // Re-seed auto EDC/AOG trackers from the restored LMP so draft AOG that
-    // still matches dating stays auto-updating after resume.
-    pregnancyDatingRef.current = pregnancyDatingAutos({
+    // Re-seed trackers so a saved auto AOG refreshes to the resume visit day
+    // instead of freezing as a clinical correction.
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
       lmp: payload.maternalData?.lmp || "",
       edc: payload.expectedDeliveryDate || "",
-      visitDate: payload.dateOfVisit || toDateInputValue(),
+      aog: payload.aog || "",
+      visitDate: resolvePregnancyVisitDate(payload.dateOfVisit, toDateInputValue()),
     });
     setImmunizationData({
       ...EMPTY_IMMUNIZATION_DATA,
@@ -2665,7 +2667,7 @@ export default function ConsultationWorkspace() {
       lmp: maternalData.lmp,
       edc: expectedDeliveryDate,
       aog,
-      visitDate: dateOfVisit,
+      visitDate: resolvePregnancyVisitDate(dateOfVisit),
       previousAutoEdd: pregnancyDatingRef.current.autoEdd,
       previousAutoAog: pregnancyDatingRef.current.autoAog,
     });
@@ -4197,10 +4199,11 @@ export default function ConsultationWorkspace() {
     setMaternalData((current) => (current.lmp ? current : prefill));
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
     if (prefill.aog) setAog(prefill.aog);
-    pregnancyDatingRef.current = pregnancyDatingAutos({
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
       lmp: prefill.lmp || "",
       edc: prefill.expectedDeliveryDate || "",
-      visitDate: dateOfVisit,
+      aog: prefill.aog || "",
+      visitDate: resolvePregnancyVisitDate(dateOfVisit),
     });
   }
 

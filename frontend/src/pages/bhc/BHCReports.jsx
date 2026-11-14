@@ -14,6 +14,7 @@ import BhcReportPeriodFilter from "../../components/features/reports/BhcReportPe
 import ChildCareTclSection from "../../components/features/reports/ChildCareTclSection";
 import FamilyPlanningTclSection from "../../components/features/reports/FamilyPlanningTclSection";
 import MaternalCareTclSection from "../../components/features/reports/MaternalCareTclSection";
+import NutritionTclSection from "../../components/features/reports/NutritionTclSection";
 import { prepareBhcReportPeriod } from "../../utils/bhcReportPeriodFilter";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -301,6 +302,16 @@ export default function BHCReports() {
               records={Array.isArray(records) ? records : []}
               patients={Array.isArray(patients) ? patients : []}
               period={period}
+            />
+          ) : null}
+
+          {category === "nutrition" ? (
+            <NutritionTclSection
+              role="bhc"
+              records={Array.isArray(records) ? records : []}
+              patients={Array.isArray(patients) ? patients : []}
+              period={period}
+              ageGroup={ageGroup}
             />
           ) : null}
 

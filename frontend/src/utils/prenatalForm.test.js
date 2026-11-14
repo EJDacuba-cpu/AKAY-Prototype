@@ -13,6 +13,8 @@ import {
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyPregnancyDating,
   pregnancyDatingAutos,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   applyRiskFactorChange,
   collectPrenatalHistory,
   computeAogFromDating,
@@ -294,6 +296,119 @@ test("untracked remount rebuilds EDC/AOG from LMP instead of freezing stale valu
   });
   assert.equal(next.edc, "2027-01-08");
   assert.equal(next.aog, computeAogFromLmp("2026-04-01", "2026-11-13"));
+});
+
+test("resolvePregnancyVisitDate keeps civil YMD and maps UTC evenings via Asia/Manila", () => {
+  assert.equal(resolvePregnancyVisitDate("2026-11-14"), "2026-11-14");
+  // 18:00 UTC is already 02:00 next day in Manila.
+  assert.equal(resolvePregnancyVisitDate("2026-11-13T18:00:00.000Z"), "2026-11-14");
+  assert.equal(
+    resolvePregnancyVisitDate(null, undefined, "2026-11-13T18:00:00.000Z"),
+    "2026-11-14",
+  );
+  assert.deepEqual(parseCivilDate("2026-11-13T18:00:00.000Z"), parseCivilDate("2026-11-14"));
+});
+
+test("same-day LMP and visit is 0 weeks AOG", () => {
+  assert.equal(computeAogFromLmp("2026-11-14", "2026-11-14"), "0 weeks");
+  const dated = applyPregnancyDating({
+    lmp: "2026-11-14",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(dated.aog, "0 weeks");
+  assert.equal(dated.edc, computeEddFromLmp("2026-11-14"));
+});
+
+test("future LMP relative to visit yields invalid AOG and no auto EDC wipe of clinical EDC incorrectly", () => {
+  assert.equal(
+    computeAogFromLmp("2026-12-01", "2026-11-14"),
+    "Invalid (LMP is ahead of visit)",
+  );
+  const next = applyPregnancyDating({
+    lmp: "2026-12-01",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(next.edc, computeEddFromLmp("2026-12-01"));
+  assert.equal(next.aog, "Invalid (LMP is ahead of visit)");
+});
+
+test("invalid LMP calendar date does not publish Invalid Date as EDC", () => {
+  const next = applyPregnancyDating({
+    lmp: "2026-02-31",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(next.edc, "");
+  assert.equal(next.autoEdd, "");
+});
+
+test("resumed draft with stale auto AOG refreshes for BHC and RHU visit days", () => {
+  const lmp = "2026-03-01";
+  const edc = "2026-12-08";
+  const savedAog = "14 weeks";
+
+  for (const visitDate of ["2026-11-14", "2026-11-13T18:00:00.000Z"]) {
+    const trackers = seedPregnancyDatingTrackers({
+      lmp,
+      edc,
+      aog: savedAog,
+      visitDate,
+    });
+    const resumed = applyPregnancyDating({
+      lmp,
+      edc,
+      aog: savedAog,
+      visitDate,
+      previousAutoEdd: trackers.autoEdd,
+      previousAutoAog: trackers.autoAog,
+    });
+    const expectedVisit = resolvePregnancyVisitDate(visitDate);
+    assert.equal(resumed.edc, edc);
+    assert.equal(resumed.aog, computeAogFromLmp(lmp, expectedVisit));
+    assert.notEqual(resumed.aog, savedAog);
+  }
+});
+
+test("clinical EDC and AOG stay sticky after resume seeding", () => {
+  const trackers = seedPregnancyDatingTrackers({
+    lmp: "2026-07-09",
+    edc: "2027-04-17",
+    aog: "16 weeks",
+    visitDate: "2026-11-14",
+  });
+  const resumed = applyPregnancyDating({
+    lmp: "2026-07-09",
+    edc: "2027-04-17",
+    aog: "16 weeks",
+    visitDate: "2026-11-20",
+    previousAutoEdd: trackers.autoEdd,
+    previousAutoAog: trackers.autoAog,
+  });
+  assert.equal(resumed.edc, "2027-04-17");
+  assert.equal(resumed.aog, "16 weeks");
+});
+
+test("BHC and RHU workspaces seed pregnancy dating trackers on draft restore", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const relative of [
+    "../pages/bhc/ConsultationWorkspace.jsx",
+    "../pages/rhu/RhuConsultationWorkspace.jsx",
+  ]) {
+    const source = readFileSync(join(here, relative), "utf8");
+    assert.match(source, /seedPregnancyDatingTrackers/);
+    assert.match(source, /resolvePregnancyVisitDate/);
+  }
 });
 
 test("hasPregnancyBaseline follows this visit's LMP, EDC, or G/P", () => {

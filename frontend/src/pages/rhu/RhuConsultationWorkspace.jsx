@@ -51,7 +51,8 @@ import {
   applyRiskFactorChange,
   collectPrenatalHistory,
   applyPregnancyDating,
-  pregnancyDatingAutos,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
@@ -438,15 +439,19 @@ export default function RhuConsultationWorkspace() {
     setInformant(defaultInformant(patient, new Date()));
   }, [patient, informant]);
 
-  // Prefer the visit's calendar day; fall back to today's local YMD string so
-  // the dependency stays stable across renders (never `new Date()` inline).
-  const rhuVisitDate = visit?.consultationDate || visit?.date || visit?.created_at || "";
+  // Facility civil day (Asia/Manila). Prefer consultation/date; map created_at
+  // through Manila so UTC evenings do not shift AOG by a day.
+  const rhuVisitDate = resolvePregnancyVisitDate(
+    visit?.consultationDate,
+    visit?.date,
+    visit?.created_at,
+  );
   useEffect(() => {
     const next = applyPregnancyDating({
       lmp: maternalData.lmp,
       edc: expectedDeliveryDate,
       aog,
-      visitDate: rhuVisitDate || new Date(),
+      visitDate: rhuVisitDate,
       previousAutoEdd: pregnancyDatingRef.current.autoEdd,
       previousAutoAog: pregnancyDatingRef.current.autoAog,
     });
@@ -772,10 +777,15 @@ export default function RhuConsultationWorkspace() {
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.aog) setAog(payload.aog);
-    pregnancyDatingRef.current = pregnancyDatingAutos({
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
       lmp: payload.maternalData?.lmp || "",
       edc: payload.expectedDeliveryDate || "",
-      visitDate: visit?.consultationDate || visit?.date || visit?.created_at || new Date(),
+      aog: payload.aog || "",
+      visitDate: resolvePregnancyVisitDate(
+        visit?.consultationDate,
+        visit?.date,
+        visit?.created_at,
+      ),
     });
     if (payload.familyPlanningData) setFamilyPlanningData((current) => ({ ...current, ...payload.familyPlanningData }));
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
@@ -1050,10 +1060,11 @@ export default function RhuConsultationWorkspace() {
     setExpectedDeliveryDate((current) => current || prefill.expectedDeliveryDate || "");
     setAog((current) => current || prefill.aog || "");
     if (!pregnancyDatingRef.current.autoEdd && !pregnancyDatingRef.current.autoAog) {
-      pregnancyDatingRef.current = pregnancyDatingAutos({
+      pregnancyDatingRef.current = seedPregnancyDatingTrackers({
         lmp: prefill.lmp || "",
         edc: prefill.expectedDeliveryDate || "",
-        visitDate: rhuVisitDate || new Date(),
+        aog: prefill.aog || "",
+        visitDate: rhuVisitDate,
       });
     }
   }
@@ -1637,7 +1648,7 @@ export default function RhuConsultationWorkspace() {
         {wizardPhase === WIZARD_REVIEW ? (
           <div className="min-w-0 space-y-4">
             <ConsultationReviewStep
-              visitDate={new Date().toLocaleDateString()}
+              visitDate={rhuVisitDate}
               visitTime={new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               sections={reviewSections}
               errors={Object.values(validationErrors).filter(Boolean)}
@@ -1845,7 +1856,7 @@ export default function RhuConsultationWorkspace() {
                   <ImmunizationVisitFields
                     vaccineOptions={CHILD_VACCINE_OPTIONS}
                     birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth}
-                    visitDate={visit?.consultationDate || visit?.date || visit?.created_at || new Date()}
+                    visitDate={rhuVisitDate}
                     entries={immunizationEntries}
                     temperature={temp}
                     pulse={pulse}

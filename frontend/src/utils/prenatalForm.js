@@ -5,6 +5,8 @@
  * Risk Code flags and where this visit's TT/Td dose is filed - are testable.
  */
 
+import { getFacilityCalendarDate, toFacilityCalendarDate } from "./medicineInventoryStatus.js";
+
 /**
  * The obstetric risk factors the midwife ticks by hand.
  *
@@ -377,30 +379,61 @@ export function formatCivilDate({ y, m, d }) {
   return `${String(y).padStart(4, "0")}-${padCivil(m)}-${padCivil(d)}`;
 }
 
-/** Parse a calendar date without timezone shift. Date objects use local Y-M-D. */
+/**
+ * Parse a calendar date without timezone shift.
+ * - `YYYY-MM-DD` stays the written civil day.
+ * - Date objects and datetimes use Asia/Manila (facility calendar), so an
+ *   evening UTC instant does not land on the previous Manila day.
+ */
 export function parseCivilDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const facility = toFacilityCalendarDate(value);
+    if (facility) {
+      const match = CIVIL_DATE.exec(facility);
+      if (match) {
+        return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+      }
+    }
     return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
   }
-  const raw = String(value || "").trim().slice(0, 10);
-  const match = CIVIL_DATE.exec(raw);
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (CIVIL_DATE.test(raw.slice(0, 10)) && raw.length === 10) {
+    const match = CIVIL_DATE.exec(raw);
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    const utc = new Date(Date.UTC(y, m - 1, d));
+    if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) return null;
+    return { y, m, d };
+  }
+  // Datetimes / locale strings: facility calendar, never UTC-slice.
+  const facility = toFacilityCalendarDate(raw);
+  if (!facility) return null;
+  const match = CIVIL_DATE.exec(facility);
   if (!match) return null;
-  const y = Number(match[1]);
-  const m = Number(match[2]);
-  const d = Number(match[3]);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) return null;
-  return { y, m, d };
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
 }
 
 export function civilDateFromValue(value) {
   const parsed = parseCivilDate(value);
   if (parsed) return formatCivilDate(parsed);
-  if (!value) {
-    const now = new Date();
-    return formatCivilDate({ y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() });
-  }
+  if (!value) return getFacilityCalendarDate();
   return "";
+}
+
+/**
+ * Stable YYYY-MM-DD visit day for AOG. Prefers consultation/date-of-visit
+ * civil strings; maps created_at / Date through Asia/Manila; never returns a
+ * locale display string like `11/14/2026`.
+ */
+export function resolvePregnancyVisitDate(...candidates) {
+  for (const value of candidates) {
+    if (value === undefined || value === null || value === "") continue;
+    const civil = civilDateFromValue(value);
+    if (civil) return civil;
+  }
+  return getFacilityCalendarDate();
 }
 
 export function addCivilDays(value, days) {
@@ -510,10 +543,12 @@ export function applyPregnancyDating({
   previousAutoEdd = "",
   previousAutoAog = "",
 } = {}) {
-  const autoEdd = computeEddFromLmp(lmp);
+  const resolvedVisit = resolvePregnancyVisitDate(visitDate);
+  const computedEdd = computeEddFromLmp(lmp);
+  const autoEdd = computedEdd === "Invalid Date" ? "" : computedEdd;
   let nextEdd;
-  if (!lmp) {
-    nextEdd = edc && edc !== previousAutoEdd ? edc : "";
+  if (!lmp || computedEdd === "Invalid Date") {
+    nextEdd = edc && edc !== previousAutoEdd && edc !== "Invalid Date" ? edc : "";
   } else if (!edc || edc === previousAutoEdd || isAutoEddValue(lmp, edc) || !previousAutoEdd) {
     // Untracked state (!previousAutoEdd) rebuilds from LMP so a remount cannot
     // freeze a stale EDC as a fake clinical correction.
@@ -525,10 +560,14 @@ export function applyPregnancyDating({
   const autoAog = computeAogFromDating({
     lmp,
     edc: nextEdd,
-    visitDate,
+    visitDate: resolvedVisit,
     preferEdd: edcIsClinical || !lmp,
   });
-  const nextAog = !aog || aog === previousAutoAog || !previousAutoAog ? autoAog : aog;
+  // Refresh when AOG still equals the tracked auto, already matches the new
+  // auto, or trackers were never seeded. Sticky only for true clinical edits.
+  const nextAog = !aog || aog === previousAutoAog || aog === autoAog || !previousAutoAog
+    ? autoAog
+    : aog;
   return { edc: nextEdd, aog: nextAog, autoEdd, autoAog };
 }
 
@@ -538,7 +577,9 @@ export function applyPregnancyDating({
  * changes), while a clinical correction stays sticky.
  */
 export function pregnancyDatingAutos({ lmp, edc = "", visitDate } = {}) {
-  const autoEdd = computeEddFromLmp(lmp);
+  const resolvedVisit = resolvePregnancyVisitDate(visitDate);
+  const computedEdd = computeEddFromLmp(lmp);
+  const autoEdd = computedEdd === "Invalid Date" ? "" : computedEdd;
   const datingEdd = isAutoEddValue(lmp, edc) ? autoEdd : (edc || autoEdd);
   const edcIsClinical = Boolean(datingEdd && datingEdd !== autoEdd);
   return {
@@ -546,9 +587,30 @@ export function pregnancyDatingAutos({ lmp, edc = "", visitDate } = {}) {
     autoAog: computeAogFromDating({
       lmp,
       edc: datingEdd,
-      visitDate,
+      visitDate: resolvedVisit,
       preferEdd: edcIsClinical || !lmp,
     }),
+  };
+}
+
+/**
+ * Draft/prefill tracker seed: when EDC is still auto-dated, treat the saved
+ * AOG as the previous auto value so resume refreshes AOG to the current visit
+ * day instead of freezing a stale "auto" as a clinical correction. Clinical
+ * EDC keeps the computed baseline so a differing AOG stays sticky.
+ */
+export function seedPregnancyDatingTrackers({
+  lmp,
+  edc = "",
+  aog = "",
+  visitDate,
+} = {}) {
+  const autos = pregnancyDatingAutos({ lmp, edc, visitDate });
+  const edcIsAuto = !edc || isAutoEddValue(lmp, edc);
+  const savedAog = String(aog || "").trim();
+  return {
+    autoEdd: autos.autoEdd,
+    autoAog: edcIsAuto && savedAog ? savedAog : autos.autoAog,
   };
 }
 
