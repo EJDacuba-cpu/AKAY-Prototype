@@ -87,7 +87,7 @@ test("saved higher-level referral plan reads back in the clinical record and pri
   }
 });
 
-test("details reader uses stored follow-up dates and explicit related IDs without mutating records", () => {
+test("details reader uses stored follow-up dates without mutating records", () => {
   const record = {
     id: 11, parent_health_record_id: 10,
     followUpDate: "2020-01-01", followUpStatus: "Follow-up Required",
@@ -100,7 +100,7 @@ test("details reader uses stored follow-up dates and explicit related IDs withou
   const before = JSON.stringify(record);
   const details = recordDetailsPresentation(record);
   assert.equal(details.nextAction, "No active follow-up task");
-  assert.deepEqual(details.related.map((row) => row.id), [10, 11]);
+  assert.equal(details.related, undefined);
   assert.equal(details.schedules.length, 1);
   assert.equal(details.schedules[0].date, "2020-01-01");
   assert.equal(details.schedules[0].sourceEntryId, null);
@@ -203,7 +203,7 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
     assert.match(html, /Managed at BHC/);
     assert.match(html, /Morbidity/);
     assert.match(html, /Surveillance/);
-    assert.match(html, /Related consultation history/);
+    assert.doesNotMatch(html, /Related consultation history/);
     assert.doesNotMatch(html, /Follow-up &amp; referral/);
   });
 
@@ -519,8 +519,8 @@ test("BHC print document uses A4 ledger layout and the same saved record values"
   assert.match(html, /Clinical assessment/);
   assert.match(html, /Health concerns/);
   assert.doesNotMatch(html, /Follow-up &amp; referral/);
-  assert.match(html, /Related consultation history/);
-  assert.match(html, /Record #10/);
+  assert.doesNotMatch(html, /Related consultation history/);
+  assert.doesNotMatch(html, /Record #10/);
   assert.doesNotMatch(html, />Back</);
   assert.doesNotMatch(html, />Print</);
   assert.doesNotMatch(html, /View Referral Details/);

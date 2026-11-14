@@ -1,4 +1,4 @@
-import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
+import { HealthConcernsAndCareOutcomes } from "./RecordDetailsSections";
 import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
 import VisitHistorySnapshot from "./VisitHistorySnapshot";
@@ -535,7 +535,6 @@ export default function BhcHealthRecordPrintDocument({
         {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
         {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
       </Section>}
-      <RelatedPrintSection record={record} linkedReferral={linkedReferral} />
 
       <footer className="bhc-print-footer">
         Printed on {printedOn}. This copy reflects the saved health record and
@@ -1103,14 +1102,6 @@ function TbPrintSection({ record }) {
       )}
     </Section>
   );
-}
-
-function RelatedPrintSection({ record, linkedReferral }) {
-  const { related } = recordDetailsPresentation(record, linkedReferral);
-  if (!related.length) return null;
-  return <Section title="Related consultation history">
-    <RelatedConsultationHistory record={record} linkedReferral={linkedReferral} print />
-  </Section>;
 }
 
 const documentStyles = `

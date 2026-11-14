@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { formatLongDate } from "../../../utils/formatters";
-import { formatDisplayTime, getRecordDateValue, getRecordVisitTypeValue } from "./recordDetailsHelpers";
-import { recordDetailsPresentation, relatedVisitSummary } from "./recordDetailsPresentation";
+import { formatDisplayTime } from "./recordDetailsHelpers";
+import { recordDetailsPresentation } from "./recordDetailsPresentation";
 
 export function ReportingCategories({ groups, print = false }) {
   const items = groups || [];
@@ -155,17 +155,4 @@ export function HealthConcernsAndCareOutcomes({
     </section>}
     <ModuleLinks referralHref={referralHref} print={print} />
   </div>;
-}
-
-export function RelatedConsultationHistory({ record, linkedReferral, print = false }) {
-  const { related } = recordDetailsPresentation(record, linkedReferral);
-  if (!related.length) return null;
-  return <ol className={print ? "bhc-print-list" : "divide-y divide-neutral-100 text-sm"}>
-    {related.map((row) => <li key={row.id} className={print ? undefined : "py-2"}>
-      {print ? `Record #${row.id}` : <Link className="font-medium text-neutral-900 underline underline-offset-4 focus-visible:outline-2" to={`/bhc/health-records/${row.id}`}>Record #{row.id}</Link>}
-      {" · "}{row.relationshipOnly ? "Related consultation" : getRecordVisitTypeValue(row) === "follow_up_visit" ? "Follow-up Visit" : "Initial Consultation"}
-      {" · "}{formatLongDate(getRecordDateValue(row), "Date not recorded")}
-      {relatedVisitSummary(row) ? ` · ${relatedVisitSummary(row)}` : ""}
-    </li>)}
-  </ol>;
 }
