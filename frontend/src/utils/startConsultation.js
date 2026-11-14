@@ -136,13 +136,15 @@ export function startConsultationAction(consultation) {
  * monitoring (read back by utils/consultationRoute as kind "continue").
  */
 export function selectionToRoute(
-  { patientId, followUpIds = [], monitoringIds = [], startConditionIds = [] },
+  { patientId, followUpIds = [], monitoringIds = [], startConditionIds = [], selectedPrograms = [], handoffId = null },
   basePath = "/bhc",
 ) {
   const params = new URLSearchParams({ patientId: String(patientId), mode: "continue" });
   if (followUpIds.length) params.set("followUpIds", followUpIds.join(","));
   if (monitoringIds.length) params.set("monitoringIds", monitoringIds.join(","));
   if (startConditionIds.length) params.set("startConditionIds", startConditionIds.join(","));
+  if (selectedPrograms.length) params.set("selectedPrograms", selectedPrograms.join(","));
+  if (handoffId) params.set("handoffId", String(handoffId));
   return `${basePath}/health-records/add?${params.toString()}`;
 }
 
@@ -151,13 +153,21 @@ export function selectionToRoute(
  * modal: nothing ticked is a normal consultation, otherwise the same
  * consultation carries the chosen monitoring, scheduled follow-ups and the
  * confirmed conditions to start monitoring (no separate record).
+ * Service handoffs may pass selectedPrograms / handoffId without condition ids.
  */
 export function startRoute(
-  { patientId, monitoringIds = [], startConditionIds = [], followUpIds = [] },
+  { patientId, monitoringIds = [], startConditionIds = [], followUpIds = [], selectedPrograms = [], handoffId = null },
   basePath = "/bhc",
 ) {
-  return monitoringIds.length || startConditionIds.length || followUpIds.length
-    ? selectionToRoute({ patientId, monitoringIds, startConditionIds, followUpIds }, basePath)
+  return monitoringIds.length || startConditionIds.length || followUpIds.length || selectedPrograms.length || handoffId
+    ? selectionToRoute({
+      patientId,
+      monitoringIds,
+      startConditionIds,
+      followUpIds,
+      selectedPrograms,
+      handoffId,
+    }, basePath)
     : buildPatientConsultationPath(patientId, basePath);
 }
 

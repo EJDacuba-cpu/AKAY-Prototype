@@ -29,6 +29,7 @@ use App\Services\PatientConditions;
 use App\Services\ReferralCreationService;
 use App\Services\ReferralHoldService;
 use App\Services\ReferralRoutingService;
+use App\Services\ReferralWorkflowService;
 use App\Services\ReportingEntries;
 use App\Services\RhuVisitQueueService;
 use App\Support\StoredFunction;
@@ -168,6 +169,9 @@ class HealthRecordController extends Controller
                 'rhuFollowUp' => $rhuFollowUp,
                 'manageToBhc' => (bool) (($data['care_plan']['manage_to_bhc'] ?? false)),
                 'followUpSchedules' => \App\Services\FollowUpSchedules::storedList($schedules),
+                'serviceSupportingLabs' => \App\Services\LaboratoryEvidenceService::normalizeServiceSupportingLabs(
+                    $data['care_plan']['service_supporting_labs'] ?? []
+                ),
             ];
             if ($rhuFollowUp) {
                 $data['monitoring_data']['followUpStatus'] = 'Follow-up Required';
@@ -419,7 +423,7 @@ class HealthRecordController extends Controller
                         PatientBackground::visitIncludesMaternal($data)
                     ),
                 ]);
-                if ($rhuItr) {
+                if ($rhuItr || $v2) {
                     app(\App\Services\LaboratoryEvidenceService::class)->finalize($request, $record, $data['laboratory_tests'] ?? []);
                 }
                 // Discontinue first: a legacy row being discontinued must not be
@@ -447,7 +451,8 @@ class HealthRecordController extends Controller
                     );
                 }
                 if ($rhuItr) {
-                    app(\App\Services\MonitoringHandoffService::class)->createFromFinalize(
+                    $handoffs = app(\App\Services\MonitoringHandoffService::class);
+                    $handoffs->createFromFinalize(
                         $request,
                         $patient,
                         $record,
@@ -455,6 +460,24 @@ class HealthRecordController extends Controller
                         $confirmedConditions,
                         $visit
                     );
+                    $handoffs->createServiceHandoffsFromFinalize(
+                        $request,
+                        $patient,
+                        $record,
+                        $carePlan['service_handoffs'] ?? [],
+                        $visit
+                    );
+                    // Referral visits: Manage to BHC / No further follow-up close the
+                    // referral so the BHC gets monitoring request or closure notes.
+                    if ($visit?->referral_id) {
+                        app(ReferralWorkflowService::class)->completeFromRhuCarePlan(
+                            $request,
+                            (int) $visit->referral_id,
+                            $data['diagnoses'] ?? [],
+                            $request->user(),
+                            $carePlan['service_handoffs'] ?? []
+                        );
+                    }
                 }
                 $monitoredNow = $monitoring->apply(
                     $patient,
@@ -465,6 +488,18 @@ class HealthRecordController extends Controller
                     $request->user(),
                     $carePlan['monitoring_referrals'] ?? []
                 );
+                if ($request->user()?->isBhc()) {
+                    $selectedPrograms = $data['monitoring_data']['selectedPrograms']
+                        ?? $data['monitoring_data']['selected_programs']
+                        ?? [];
+                    if (is_array($selectedPrograms) && $selectedPrograms !== []) {
+                        app(\App\Services\MonitoringHandoffService::class)->markServiceMonitoringActive(
+                            $patient,
+                            $request->user(),
+                            $selectedPrograms
+                        );
+                    }
+                }
                 $confirmedItems = array_values(array_filter($dispensedMedicines, fn ($item) => ($item['confirmed_given'] ?? false) === true));
                 foreach ($data['immunization_data']['vaccineEntries'] ?? [] as $entry) {
                     if (($entry['confirmedGiven'] ?? false) === true) {
@@ -473,6 +508,10 @@ class HealthRecordController extends Controller
                 }
                 if ($confirmedItems !== []) {
                     $this->medicineStock->dispense($request, $record, $confirmedItems);
+                }
+                // Pending inventory reconciliation only — no stock deduction here.
+                if ($rhuItr) {
+                    app(\App\Services\RhuServiceUsageService::class)->syncPendingFromRecord($record);
                 }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);

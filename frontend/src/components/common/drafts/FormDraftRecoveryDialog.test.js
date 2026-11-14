@@ -63,6 +63,9 @@ test("recovery offers Resume and Discard with an accessible close, never a fresh
   assert.ok(button(html, "Discard"));
   assert.match(html, /aria-label="Close modal"/);
   assert.match(html, /<time[^>]*dateTime="2026-11-07T04:00:00Z"/);
+  // Decision phase uses plain chrome — not the brand-red danger header.
+  assert.match(html, /border-b border-gray-200 bg-white/);
+  assert.doesNotMatch(html, /bg-\[#B91C1C\]/);
   assert.doesNotMatch(html, />Cancel<|>Continue<|>Start new</i);
   assert.equal(render({ open: false }), "");
 });
@@ -105,7 +108,9 @@ test("discard requires confirmation in the same dialog and dismissal returns to 
   assert.doesNotMatch(button(html, "Discard").attributes, /data-modal-primary|autofocus/i);
   assert.equal(button(html, "Resume"), undefined);
   assert.match(html, /Selected patient/);
-  assert.match(html, /role="alert"[^>]*>Discard could not be completed/);
+  // Discard confirm keeps brand-red header; errors stay inline alert tint.
+  assert.match(html, /bg-\[#B91C1C\]/);
+  assert.match(html, /role="alert"[^>]*bg-alert-50[^>]*>Discard could not be completed/);
   assert.equal(transition(phase, { type: "keep-draft" }), "decision");
   assert.equal(transition(phase, { type: "close" }), "decision");
   assert.equal(transition(phase, { type: "unknown" }), phase);

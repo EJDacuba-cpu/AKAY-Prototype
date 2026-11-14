@@ -1,14 +1,33 @@
 /**
+ * Local calendar day for age / infant checks. YYYY-MM-DD stays as written;
+ * ISO datetimes use the viewer's local date (not the UTC prefix).
+ * @param {string|Date|null|undefined} value
+ * @returns {Date|null} local midnight, or null when unusable
+ */
+export function parseCalendarDate(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const text = String(value).trim();
+  const ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) {
+    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+/**
  * Calculates age based on date of birth.
  * @param {string} birthDate - ISO date string
  * @returns {number|string} Age in years or empty string
  */
 export const calculateAge = (birthDate) => {
-  if (!birthDate) return "";
-
-  const today = new Date();
-  const dob = new Date(birthDate);
-  if (Number.isNaN(dob.getTime()) || dob > today) return "";
+  const dob = parseCalendarDate(birthDate);
+  const today = parseCalendarDate(new Date());
+  if (!dob || !today || dob > today) return "";
 
   let age = today.getFullYear() - dob.getFullYear();
   const monthDifference = today.getMonth() - dob.getMonth();
@@ -24,20 +43,19 @@ export const calculateAge = (birthDate) => {
 /**
  * Calculates full months elapsed from date of birth.
  * @param {string} birthDate - ISO date string
- * @param {Date} [today] - reference date, defaults to now
+ * @param {Date|string} [today] - reference date, defaults to now
  * @returns {number|string} Age in months or empty string
  */
 export const calculateAgeInMonths = (birthDate, today = new Date()) => {
-  if (!birthDate) return "";
-
-  const dob = new Date(birthDate);
-  if (Number.isNaN(dob.getTime()) || dob > today) return "";
+  const dob = parseCalendarDate(birthDate);
+  const on = parseCalendarDate(today);
+  if (!dob || !on || dob > on) return "";
 
   let months =
-    (today.getFullYear() - dob.getFullYear()) * 12 +
-    (today.getMonth() - dob.getMonth());
+    (on.getFullYear() - dob.getFullYear()) * 12 +
+    (on.getMonth() - dob.getMonth());
 
-  if (today.getDate() < dob.getDate()) {
+  if (on.getDate() < dob.getDate()) {
     months -= 1;
   }
 

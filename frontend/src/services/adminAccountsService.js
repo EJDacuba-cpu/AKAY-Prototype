@@ -109,7 +109,7 @@ export async function getAdminAccount(id) {
   return normalizeAccount(unwrapData(await apiRequest(`/users/${id}`)));
 }
 
-/** Saves the edited name and/or contact number (only the fields passed), and refreshes the cached copy. */
+/** Saves the edited profile fields that were passed, and refreshes the cached copy. */
 export async function updateAdminAccountProfile(id, changes) {
   const response = await apiRequest(`/users/${id}`, { method: "PATCH", body: changes });
   void notifyNotificationChange();

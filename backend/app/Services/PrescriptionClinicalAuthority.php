@@ -106,6 +106,7 @@ final class PrescriptionClinicalAuthority
     private static function persistedClinical(array $item): array
     {
         $diagnosisIds = is_array($item['diagnosisIds'] ?? null) ? $item['diagnosisIds'] : [];
+        $serviceKeys = is_array($item['serviceKeys'] ?? null) ? $item['serviceKeys'] : [];
         $saved = [
             'id' => (string) ($item['id'] ?? ''),
             'diagnosisIds' => array_values(array_map(static fn ($id) => (string) $id, $diagnosisIds)),
@@ -117,6 +118,9 @@ final class PrescriptionClinicalAuthority
             'duration' => (string) ($item['duration'] ?? ''),
             'instructions' => (string) ($item['instructions'] ?? ''),
         ];
+        if ($serviceKeys !== []) {
+            $saved['serviceKeys'] = array_values(array_map(static fn ($key) => (string) $key, $serviceKeys));
+        }
 
         $quantity = $item['authorizedQuantity'] ?? null;
         if ($quantity !== null && $quantity !== '') {
@@ -152,10 +156,12 @@ final class PrescriptionClinicalAuthority
                 $quantity = (int) $quantity;
             }
             $diagnosisIds = is_array($item['diagnosisIds'] ?? null) ? $item['diagnosisIds'] : [];
+            $serviceKeys = is_array($item['serviceKeys'] ?? null) ? $item['serviceKeys'] : [];
 
             $rows[] = [
                 (string) ($item['id'] ?? ''),
                 array_values(array_map(fn ($id) => (string) $id, $diagnosisIds)),
+                array_values(array_map(fn ($key) => (string) $key, $serviceKeys)),
                 (string) ($item['medicineName'] ?? ''),
                 (string) ($item['strength'] ?? ''),
                 (string) ($item['dose'] ?? ''),

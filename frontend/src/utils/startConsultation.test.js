@@ -239,6 +239,10 @@ test("RHU Start Consultation keeps cached overview when a refetch fails", () => 
   assert.match(modal, /if \(overviewUnavailable\) return <EntryErrorDialog/);
   assert.doesNotMatch(modal, /if \(overviewQuery\.isError\) return <EntryErrorDialog/);
   assert.match(modal, /overviewQuery\.isPending && !overview/);
+  // Visit must stay available during background refetch so draft Resume does not reset.
+  assert.match(modal, /visit = visitQuery\.data \?\? null/);
+  assert.doesNotMatch(modal, /visitQuery\.isFetching \? null/);
+  assert.match(modal, /mode: "resume"/);
 });
 
 test("Start Consultation shows the API error instead of a generic patient-load message", () => {
@@ -280,6 +284,16 @@ test("startRoute carries followUpIds", () => {
     startRoute({ patientId: 17, followUpIds: [31, 32], monitoringIds: [4] }),
     "/bhc/health-records/add?patientId=17&mode=continue&followUpIds=31%2C32&monitoringIds=4",
   );
+});
+
+test("startRoute carries service handoff selectedPrograms and handoffId", () => {
+  assert.equal(
+    startRoute({ patientId: 9, selectedPrograms: ["Maternal"], handoffId: 44 }),
+    "/bhc/health-records/add?patientId=9&mode=continue&selectedPrograms=Maternal&handoffId=44",
+  );
+});
+
+test("startRoute with empty follow-ups is a normal consultation", () => {
   assert.equal(startRoute({ patientId: 17, followUpIds: [] }), "/bhc/health-records/add?patientId=17&mode=new");
   assert.equal(startRoute({ patientId: 17, followUpIds: [] }).includes("followUpIds"), false);
 });

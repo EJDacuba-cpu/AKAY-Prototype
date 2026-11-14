@@ -171,7 +171,7 @@ class HealthRecordRequest extends FormRequest
             $rules['monitoring_data.followUpSchedules.*.sourceEntryId'] = ['nullable', 'string', 'max:64'];
             $rules['care_plan.refer_to_rhu'] = ['nullable', 'boolean'];
             $rules['care_plan.referral_multiple_issues'] = ['nullable', 'boolean'];
-            $rules['care_plan.service_referrals'] = ['nullable', 'array', 'max:3'];
+            $rules['care_plan.service_referrals'] = ['nullable', 'array', 'max:'.count(\App\Services\ConsultationPrograms::CLASSIFICATIONS)];
             $rules['care_plan.service_referrals.*'] = ['string', Rule::in(array_keys(\App\Services\ConsultationPrograms::CLASSIFICATIONS))];
             $rules['care_plan.condition_cards'] = ['nullable', 'boolean'];
             $rules['care_plan.shared_condition_referral'] = ['nullable', 'boolean', Rule::prohibitedIf(! $this->boolean('care_plan.condition_cards'))];
@@ -214,6 +214,7 @@ class HealthRecordRequest extends FormRequest
             $rules['diagnoses.*.nextAction'] = ['nullable', Rule::in(['none', 'rhu_follow_up', 'manage_to_bhc', 'refer_higher_level'])];
             $rules['diagnoses.*.receivingBhcId'] = ['nullable', 'integer', 'exists:barangay_health_centers,id'];
             $rules['diagnoses.*.monitoringRecommendation'] = ['nullable', 'string', 'max:2000'];
+            $rules['diagnoses.*.noFurtherFollowUpReason'] = ['nullable', 'string', 'max:2000'];
             $rules['diagnoses.*.higherLevelReferralPlan'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'array:reason,intendedFacility,clinicalPlan'];
             $rules['diagnoses.*.higherLevelReferralPlan.reason'] = ['required_if:diagnoses.*.nextAction,refer_higher_level', 'nullable', 'string', 'max:2000'];
             $rules['diagnoses.*.higherLevelReferralPlan.intendedFacility'] = ['nullable', 'string', 'max:255'];
@@ -232,14 +233,32 @@ class HealthRecordRequest extends FormRequest
             $rules['care_plan.referral_multiple_issues'] = ['prohibited'];
             $rules['care_plan.rhu_follow_up'] = ['nullable', 'boolean'];
             $rules['care_plan.manage_to_bhc'] = ['nullable', 'boolean'];
+            $rules['care_plan.service_handoffs'] = ['nullable', 'array', 'max:'.count(\App\Services\ConsultationPrograms::CLASSIFICATIONS)];
+            $rules['care_plan.service_handoffs.*'] = ['array'];
+            $rules['care_plan.service_handoffs.*.program'] = ['required', 'string', 'distinct', Rule::in(array_keys(\App\Services\ConsultationPrograms::CLASSIFICATIONS))];
+            $rules['care_plan.service_handoffs.*.receiving_bhc_id'] = ['required', 'integer', 'exists:barangay_health_centers,id'];
+            $rules['care_plan.service_handoffs.*.monitoring_recommendation'] = ['required', 'string', 'max:2000'];
+            $rules['care_plan.service_handoffs.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];
+            $rules['care_plan.service_handoffs.*.laboratoryEvidence.*'] = ['array:reference,version'];
+            $rules['care_plan.service_handoffs.*.laboratoryEvidence.*.reference'] = ['required', 'string', 'max:80'];
+            $rules['care_plan.service_handoffs.*.laboratoryEvidence.*.version'] = ['required', 'integer', 'min:0'];
+            $rules['care_plan.service_handoffs.*.laboratoryEvidenceConfirmed'] = ['nullable', 'boolean'];
+            $rules['care_plan.service_supporting_labs'] = ['nullable', 'array', 'max:'.count(\App\Services\ConsultationPrograms::CLASSIFICATIONS)];
+            $rules['care_plan.service_supporting_labs.*'] = ['array'];
+            $rules['care_plan.service_supporting_labs.*.program'] = ['required', 'string', 'distinct', Rule::in(array_keys(\App\Services\ConsultationPrograms::CLASSIFICATIONS))];
+            $rules['care_plan.service_supporting_labs.*.supporting_laboratory_tests'] = ['nullable', 'array', 'max:50'];
+            $rules['care_plan.service_supporting_labs.*.supporting_laboratory_tests.*'] = ['array:reference'];
+            $rules['care_plan.service_supporting_labs.*.supporting_laboratory_tests.*.reference'] = ['required', 'string', 'max:80'];
             $rules['rhu_visit_id'] = ['required', 'integer', 'exists:rhu_visit_queue_entries,id'];
             $rules['consultation_uuid'] = ['required', 'uuid'];
             $rules['prescription_text'] = ['nullable', 'string', 'max:5000'];
             $rules['monitoring_data.prescriptions'] = ['nullable', 'array', 'max:50'];
             $rules['monitoring_data.prescriptions.*'] = ['array'];
             $rules['monitoring_data.prescriptions.*.id'] = ['required', 'string', 'max:64', 'distinct'];
-            $rules['monitoring_data.prescriptions.*.diagnosisIds'] = ['required', 'array', 'min:1', 'max:20'];
+            $rules['monitoring_data.prescriptions.*.diagnosisIds'] = ['nullable', 'array', 'max:20'];
             $rules['monitoring_data.prescriptions.*.diagnosisIds.*'] = ['required', 'string', 'max:64'];
+            $rules['monitoring_data.prescriptions.*.serviceKeys'] = ['nullable', 'array', 'max:20'];
+            $rules['monitoring_data.prescriptions.*.serviceKeys.*'] = ['required', 'string', 'max:64', Rule::in(['Maternal', 'EPI', 'Family Planning', 'Nutrition'])];
             $rules['monitoring_data.prescriptions.*.medicineName'] = ['required', 'string', 'max:255'];
             $rules['monitoring_data.prescriptions.*.strength'] = ['required', 'string', 'max:100'];
             $rules['monitoring_data.prescriptions.*.dose'] = ['required', 'string', 'max:100'];
@@ -252,6 +271,20 @@ class HealthRecordRequest extends FormRequest
             $rules['monitoring_data.prescriptions.*.source'] = ['required', Rule::in(['itr', 'tb_form4b_ref'])];
             $rules['monitoring_data.prescriptions.*.tbCaseId'] = ['nullable', 'string', 'max:64'];
             $rules['monitoring_data.prescriptions.*.authorization'] = ['prohibited'];
+            $rules['monitoring_data.serviceUsages'] = ['nullable', 'array', 'max:50'];
+            $rules['monitoring_data.serviceUsages.*'] = ['array'];
+            $rules['monitoring_data.serviceUsages.*.id'] = ['required', 'string', 'max:64', 'distinct'];
+            $rules['monitoring_data.serviceUsages.*.serviceProgram'] = ['required', 'string', Rule::in(['Maternal', 'Family Planning', 'Nutrition'])];
+            $rules['monitoring_data.serviceUsages.*.itemDescription'] = ['required', 'string', 'max:255'];
+            $rules['monitoring_data.serviceUsages.*.quantity'] = ['required', 'integer', 'min:1', 'max:2147483647'];
+            $rules['monitoring_data.serviceUsages.*.unit'] = ['required', 'string', 'max:50'];
+            $rules['monitoring_data.serviceUsages.*.usedAt'] = ['nullable', 'date'];
+            $rules['monitoring_data.serviceUsages.*.note'] = ['nullable', 'string', 'max:2000'];
+            $rules['monitoring_data.serviceUsages.*.inventoryMedicineId'] = ['prohibited'];
+            $rules['monitoring_data.serviceUsages.*.inventory_medicine_id'] = ['prohibited'];
+            $rules['monitoring_data.serviceUsages.*.inventoryTransactionId'] = ['prohibited'];
+            $rules['monitoring_data.serviceUsages.*.reconciliationStatus'] = ['prohibited'];
+            $rules['monitoring_data.serviceUsages.*.confirmedBy'] = ['prohibited'];
             $rules['prescribed_medicines'] = ['prohibited'];
             $rules['referral'] = ['prohibited'];
             $rules['dispensed_medicines'] = ['prohibited'];
@@ -271,7 +304,9 @@ class HealthRecordRequest extends FormRequest
         $rules = [...$rules, ...\App\Services\LaboratoryEvidenceService::rules()];
         $rules = [...$rules, ...TbAssessment::rules()];
         $rules['diagnoses.*.tb_management'] = ['prohibited'];
-        if (! $rhuItr) {
+        if ($this->isBhcGeneralV2()) {
+            $rules = array_merge($rules, \App\Services\LaboratoryEvidenceService::bhcRules());
+        } elseif (! $rhuItr) {
             $rules['laboratory_tests'] = ['prohibited'];
         }
         $rules['diagnoses.*.laboratoryEvidence'] = ['nullable', 'array', 'max:50'];
@@ -748,6 +783,7 @@ class HealthRecordRequest extends FormRequest
             TbAssessment::validate($validator, $this->diagnosesInput(), $patient);
             $this->validateSupportingLaboratoryTests($validator);
             $this->validateStructuredPrescriptions($validator);
+            $this->validateServiceUsages($validator);
             $monitoringData = $this->input('monitoring_data', []);
             ConsultationPrograms::validateSelection(
                 $validator,
@@ -1127,27 +1163,92 @@ class HealthRecordRequest extends FormRequest
                 continue;
             }
             foreach ($entry['supportingLaboratoryTests'] as $selectionIndex => $selection) {
-                if (! is_array($selection)) {
-                    continue;
-                }
-                $reference = trim((string) ($selection['reference'] ?? ''));
-                $path = "diagnoses.$index.supportingLaboratoryTests.$selectionIndex.reference";
-                if (str_starts_with($reference, 'current:')) {
-                    $clientId = strtolower(substr($reference, 8));
-                    if ($clientId === '' || ! isset($currentSet[$clientId])) {
-                        $validator->errors()->add($path, 'Select a laboratory test from this consultation or the patient laboratory history.');
-                    }
-                    continue;
-                }
-                if (! preg_match('/^record:(\d+)$/', $reference, $match)) {
-                    $validator->errors()->add($path, 'Select a valid laboratory record reference.');
-                    continue;
-                }
-                $test = \App\Models\LaboratoryTest::query()->with('healthRecord:id,rural_health_unit_id')->find((int) $match[1]);
-                if (! $test
-                    || (int) $test->patient_id !== $patientId
-                    || (int) ($test->healthRecord?->rural_health_unit_id ?? 0) !== $rhuId) {
-                    $validator->errors()->add($path, 'Select laboratory records belonging to this patient and RHU.');
+                $this->assertSupportingLaboratoryReference(
+                    $validator,
+                    $selection,
+                    "diagnoses.$index.supportingLaboratoryTests.$selectionIndex.reference",
+                    $currentSet,
+                    $patientId,
+                    $rhuId,
+                );
+            }
+        }
+
+        foreach ($this->input('care_plan.service_supporting_labs', []) ?: [] as $index => $entry) {
+            if (! is_array($entry) || ! is_array($entry['supporting_laboratory_tests'] ?? null)) {
+                continue;
+            }
+            foreach ($entry['supporting_laboratory_tests'] as $selectionIndex => $selection) {
+                $this->assertSupportingLaboratoryReference(
+                    $validator,
+                    $selection,
+                    "care_plan.service_supporting_labs.$index.supporting_laboratory_tests.$selectionIndex.reference",
+                    $currentSet,
+                    $patientId,
+                    $rhuId,
+                );
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, true>  $currentSet
+     */
+    private function assertSupportingLaboratoryReference(
+        $validator,
+        mixed $selection,
+        string $path,
+        array $currentSet,
+        int $patientId,
+        int $rhuId,
+    ): void {
+        if (! is_array($selection)) {
+            return;
+        }
+        $reference = trim((string) ($selection['reference'] ?? ''));
+        if (str_starts_with($reference, 'current:')) {
+            $clientId = strtolower(substr($reference, 8));
+            if ($clientId === '' || ! isset($currentSet[$clientId])) {
+                $validator->errors()->add($path, 'Select a laboratory test from this consultation or the patient laboratory history.');
+            }
+
+            return;
+        }
+        if (! preg_match('/^record:(\d+)$/', $reference, $match)) {
+            $validator->errors()->add($path, 'Select a valid laboratory record reference.');
+
+            return;
+        }
+        $test = \App\Models\LaboratoryTest::query()->with('healthRecord:id,rural_health_unit_id')->find((int) $match[1]);
+        if (! $test
+            || (int) $test->patient_id !== $patientId
+            || (int) ($test->healthRecord?->rural_health_unit_id ?? 0) !== $rhuId) {
+            $validator->errors()->add($path, 'Select laboratory records belonging to this patient and RHU.');
+        }
+    }
+
+    private function validateServiceUsages($validator): void
+    {
+        if (! $this->isRhuItrV1() || ! $this->isMethod('post')) {
+            return;
+        }
+        $selected = $this->input('selected_programs')
+            ?? $this->input('selectedPrograms')
+            ?? $this->input('monitoring_data.selectedPrograms')
+            ?? $this->input('monitoring_data.selected_programs')
+            ?? [];
+        if (! is_array($selected)) {
+            $selected = [];
+        }
+        try {
+            app(\App\Services\RhuServiceUsageService::class)->assertValidFinalizePayload(
+                $this->input('monitoring_data.serviceUsages'),
+                $selected
+            );
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            foreach ($exception->errors() as $key => $messages) {
+                foreach ($messages as $message) {
+                    $validator->errors()->add($key, $message);
                 }
             }
         }
@@ -1192,12 +1293,15 @@ class HealthRecordRequest extends FormRequest
                 }
             }
             $diagnosisIds = $prescription['diagnosisIds'] ?? null;
-            if (! is_array($diagnosisIds) || $diagnosisIds === []) {
+            $serviceKeys = $prescription['serviceKeys'] ?? null;
+            $hasDiagnosisLink = is_array($diagnosisIds) && $diagnosisIds !== [];
+            $hasServiceLink = is_array($serviceKeys) && $serviceKeys !== [];
+            if (! $hasDiagnosisLink && ! $hasServiceLink) {
                 $validator->errors()->add(
                     "monitoring_data.prescriptions.$index.diagnosisIds",
-                    'Link this prescription to at least one diagnosis.'
+                    'Link this prescription to a diagnosis or a selected health service.'
                 );
-            } else {
+            } elseif ($hasDiagnosisLink) {
                 foreach ($diagnosisIds as $diagnosisId) {
                     if (! isset($known[trim((string) $diagnosisId)])) {
                         $validator->errors()->add(

@@ -54,9 +54,27 @@ class MonitoringHandoffRequest extends Model
 
     public const IDENTITY_RESOLUTION_NEEDS_REVIEW = 'needs_review';
 
+    public const HANDOFF_KIND_CONDITION = 'condition';
+
+    public const HANDOFF_KIND_SERVICE = 'service';
+
+    public const HANDOFF_KINDS = [
+        self::HANDOFF_KIND_CONDITION,
+        self::HANDOFF_KIND_SERVICE,
+    ];
+
+    public const SERVICE_KEYS = [
+        'Maternal',
+        'EPI',
+        'Family Planning',
+        'Nutrition',
+    ];
+
     protected $fillable = [
         'patient_id',
         'linked_patient_id',
+        'handoff_kind',
+        'service_key',
         'patient_condition_id',
         'health_record_id',
         'sending_rural_health_unit_id',
@@ -72,6 +90,11 @@ class MonitoringHandoffRequest extends Model
         'reviewed_by',
         'reviewed_at',
     ];
+
+    public function isServiceHandoff(): bool
+    {
+        return ($this->handoff_kind ?: self::HANDOFF_KIND_CONDITION) === self::HANDOFF_KIND_SERVICE;
+    }
 
     protected $casts = [
         'reviewed_at' => 'datetime',

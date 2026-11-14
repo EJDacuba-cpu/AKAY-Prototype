@@ -51,11 +51,11 @@ function formatFactValue(fact) {
  * TB), built from `getCareTracking` entries in utils/careTracking.js. Purely
  * presentational - all status logic already happened upstream.
  */
-export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpen, selected = false }) {
+export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpen, selected = false, fixedHeight = false }) {
   const hasRecords = entry.records.length > 0;
 
   return (
-    <Card className={`flex h-full min-w-0 flex-col rounded-xl p-4 shadow-card ${selected ? "border-ink-300 ring-1 ring-ink-200" : "border-neutral-200/80"}`}>
+    <Card className={`flex h-full min-w-0 flex-col rounded-xl p-4 shadow-card ${fixedHeight ? "care-tracking-card" : ""} ${selected ? "border-ink-300 ring-1 ring-ink-200" : "border-neutral-200/80"}`}>
       <div className="mb-2 flex items-start justify-between gap-2">
         <div>
           <span className="text-xs font-medium text-neutral-500">{isDiseaseTrackingKey(entry.key) ? "Disease" : "Program"}</span>
@@ -67,6 +67,7 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
         />
       </div>
 
+      <div className={fixedHeight ? "care-tracking-card__body" : "contents"} tabIndex={fixedHeight ? 0 : undefined} aria-label={fixedHeight ? `${entry.label} details` : undefined} role={fixedHeight ? "region" : undefined}>
       {entry.facts.length > 0 && (
         <dl className="mb-2 space-y-1 text-xs text-neutral-600">
           {entry.facts.map((fact) => (
@@ -105,7 +106,8 @@ export default function CareTrackingCard({ entry, onViewRecords, onAction, onOpe
         </div>
       )}
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+      </div>
+      <div className="mt-auto flex shrink-0 flex-wrap items-center justify-between gap-2 pt-2">
         {entry.action ? (
           <Button
             type="button"

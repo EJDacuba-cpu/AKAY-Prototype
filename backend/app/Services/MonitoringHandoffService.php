@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BarangayHealthCenter;
+use App\Models\FacilityAssignment;
 use App\Models\HealthRecord;
 use App\Models\Household;
 use App\Models\MonitoringHandoffRequest;
@@ -10,6 +11,7 @@ use App\Models\Patient;
 use App\Models\PatientCondition;
 use App\Models\RhuVisitQueueEntry;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -98,6 +100,8 @@ class MonitoringHandoffService
             $handoff = MonitoringHandoffRequest::create([
                 'patient_id' => $patient->id,
                 'linked_patient_id' => $sameIdentity ? $patient->id : null,
+                'handoff_kind' => MonitoringHandoffRequest::HANDOFF_KIND_CONDITION,
+                'service_key' => null,
                 'patient_condition_id' => $condition->id,
                 'health_record_id' => $record->id,
                 'sending_rural_health_unit_id' => $rhuId,
@@ -126,15 +130,149 @@ class MonitoringHandoffService
     }
 
     /**
+     * Service Manage to BHC: creates Monitoring Requests without PatientConditions.
+     *
+     * @param  array<int, array<string, mixed>>  $serviceHandoffs
+     */
+    public function createServiceHandoffsFromFinalize(
+        Request $request,
+        Patient $patient,
+        HealthRecord $record,
+        array $serviceHandoffs,
+        ?RhuVisitQueueEntry $visit,
+    ): void {
+        $user = $request->user();
+        $rhuId = (int) $user->rural_health_unit_id;
+        foreach ($serviceHandoffs as $index => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $program = trim((string) ($entry['program'] ?? ''));
+            if (! in_array($program, MonitoringHandoffRequest::SERVICE_KEYS, true)) {
+                throw ValidationException::withMessages([
+                    "care_plan.service_handoffs.{$index}.program" => ['Choose a valid health service for Manage to BHC.'],
+                ]);
+            }
+            $recommendation = trim((string) ($entry['monitoring_recommendation'] ?? $entry['monitoringRecommendation'] ?? ''));
+            $receivingBhcId = (int) ($entry['receiving_bhc_id'] ?? $entry['receivingBhcId'] ?? 0);
+            $bhc = $this->catchmentBhc($rhuId, $receivingBhcId);
+            if ($bhc === null || $recommendation === '') {
+                throw ValidationException::withMessages([
+                    "care_plan.service_handoffs.{$index}" => ['Manage to BHC needs a catchment Barangay Health Center and a monitoring recommendation.'],
+                ]);
+            }
+            $existing = MonitoringHandoffRequest::query()
+                ->where('patient_id', $patient->id)
+                ->where('handoff_kind', MonitoringHandoffRequest::HANDOFF_KIND_SERVICE)
+                ->where('service_key', $program)
+                ->where('receiving_barangay_health_center_id', $bhc->id)
+                ->whereIn('status', [
+                    MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED,
+                    MonitoringHandoffRequest::STATUS_PENDING_REVIEW,
+                    MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT,
+                    MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE,
+                ])
+                ->orderByDesc('id')
+                ->first();
+            if ($existing) {
+                app(HandoffLaboratoryEvidence::class)->share(
+                    $request,
+                    $existing,
+                    $entry['laboratoryEvidence'] ?? $entry['laboratory_evidence'] ?? [],
+                    ($entry['laboratoryEvidenceConfirmed'] ?? $entry['laboratory_evidence_confirmed'] ?? false) === true,
+                );
+
+                continue;
+            }
+            $sameIdentity = $this->facilityAccess->sameAssignedId(
+                $patient->barangay_health_center_id,
+                $bhc->id
+            );
+            $identitySource = $sameIdentity
+                ? MonitoringHandoffRequest::IDENTITY_SOURCE_BHC_REFERRAL_RETURN
+                : MonitoringHandoffRequest::IDENTITY_SOURCE_RHU_WALK_IN;
+            $handoff = MonitoringHandoffRequest::create([
+                'patient_id' => $patient->id,
+                'linked_patient_id' => $sameIdentity ? $patient->id : null,
+                'handoff_kind' => MonitoringHandoffRequest::HANDOFF_KIND_SERVICE,
+                'service_key' => $program,
+                'patient_condition_id' => null,
+                'health_record_id' => $record->id,
+                'sending_rural_health_unit_id' => $rhuId,
+                'receiving_barangay_health_center_id' => $bhc->id,
+                'recommendation' => $recommendation,
+                'status' => $sameIdentity
+                    ? MonitoringHandoffRequest::STATUS_PENDING_REVIEW
+                    : MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED,
+                'identity_source' => $identitySource,
+                'identity_resolution' => $sameIdentity
+                    ? MonitoringHandoffRequest::IDENTITY_RESOLUTION_SAME_IDENTITY_AUTO
+                    : null,
+                'created_by' => $user->id,
+            ]);
+            app(HandoffLaboratoryEvidence::class)->share(
+                $request,
+                $handoff,
+                $entry['laboratoryEvidence'] ?? $entry['laboratory_evidence'] ?? [],
+                ($entry['laboratoryEvidenceConfirmed'] ?? $entry['laboratory_evidence_confirmed'] ?? false) === true,
+            );
+            $this->auditLogger->log(
+                $request,
+                'created',
+                'monitoring_handoff_requests',
+                "Created service monitoring handoff {$handoff->id} for {$program}."
+            );
+        }
+    }
+
+    /**
+     * Mark accepted service handoffs active when BHC records a matching program visit.
+     *
+     * @param  list<string>  $selectedPrograms
+     */
+    public function markServiceMonitoringActive(Patient $patient, User $user, array $selectedPrograms): void
+    {
+        if (! $user->isBhc() || ! $user->barangay_health_center_id || $selectedPrograms === []) {
+            return;
+        }
+        $programs = array_values(array_intersect(
+            MonitoringHandoffRequest::SERVICE_KEYS,
+            array_map('strval', $selectedPrograms)
+        ));
+        if ($programs === []) {
+            return;
+        }
+        MonitoringHandoffRequest::query()
+            ->where('receiving_barangay_health_center_id', $user->barangay_health_center_id)
+            ->where('handoff_kind', MonitoringHandoffRequest::HANDOFF_KIND_SERVICE)
+            ->whereIn('service_key', $programs)
+            ->where('linked_patient_id', $patient->id)
+            ->where('status', MonitoringHandoffRequest::STATUS_ACCEPTED_AWAITING_FIRST_VISIT)
+            ->each(function (MonitoringHandoffRequest $handoff): void {
+                $handoff->update(['status' => MonitoringHandoffRequest::STATUS_MONITORING_ACTIVE]);
+            });
+    }
+
+    /**
+     * Active catchment BHCs that have at least one available account
+     * (active home user or current facility assignment). Used by diagnosis and
+     * service Manage to BHC receiving-BHC selectors.
+     *
      * @return list<BarangayHealthCenter>
      */
     public function catchmentBhcs(User $user): array
     {
         abort_unless($user->isRhu() && $this->facilityAccess->hasValidFacilityAssignment($user), 403, FacilityAccessService::DENIED_MESSAGE);
 
+        $staffedIds = $this->staffedCatchmentBhcIds();
+        if ($staffedIds === []) {
+            return [];
+        }
+
         return BarangayHealthCenter::query()
             ->where('rural_health_unit_id', $user->rural_health_unit_id)
             ->where('status', 'active')
+            ->whereIn('id', $staffedIds)
             ->orderBy('name')
             ->get()
             ->all();
@@ -807,11 +945,44 @@ class MonitoringHandoffService
             return null;
         }
 
+        $staffedIds = $this->staffedCatchmentBhcIds();
+        if (! in_array($bhcId, $staffedIds, true)) {
+            return null;
+        }
+
         return BarangayHealthCenter::query()
             ->whereKey($bhcId)
             ->where('rural_health_unit_id', $rhuId)
             ->where('status', 'active')
             ->first();
+    }
+
+    /**
+     * Same staffing rule as AdminDashboardService attention: active home BHC
+     * users plus current (non-revoked, in-window) facility assignments.
+     *
+     * @return list<int>
+     */
+    private function staffedCatchmentBhcIds(): array
+    {
+        $today = now()->toDateString();
+        $home = User::query()
+            ->where('status', User::STATUS_ACTIVE)
+            ->whereNotNull('barangay_health_center_id')
+            ->distinct()
+            ->pluck('barangay_health_center_id');
+
+        $assigned = FacilityAssignment::query()
+            ->whereNull('revoked_at')
+            ->whereNotNull('barangay_health_center_id')
+            ->whereNotNull('starts_on')
+            ->whereDate('starts_on', '<=', $today)
+            ->where(fn (Builder $q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $today))
+            ->whereHas('user', fn (Builder $user) => $user->where('status', User::STATUS_ACTIVE))
+            ->distinct()
+            ->pluck('barangay_health_center_id');
+
+        return $home->merge($assigned)->unique()->map(fn ($id) => (int) $id)->values()->all();
     }
 
     private function hasSufficientIdentity(Patient $patient): bool

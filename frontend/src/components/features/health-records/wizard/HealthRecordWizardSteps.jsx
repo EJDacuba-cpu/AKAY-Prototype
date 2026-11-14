@@ -229,14 +229,15 @@ export function ConsultationReviewStep({
   helper = "",
   indicator = null,
   notice = null,
+  hideHeading = false,
 }) {
   return (
     <WizardCard
       className="ehr-consult__review"
       unboxed
-      title={indicator ? "" : "Review & Confirm"}
+      title={indicator || hideHeading ? "" : "Review & Confirm"}
       subtitle={
-        indicator ? "" : "Confirm the consultation details below before saving."
+        indicator || hideHeading ? "" : "Confirm the consultation details below before saving."
       }
       visitDate={visitDate}
       visitTime={visitTime}
@@ -282,10 +283,11 @@ export function ConsultationReviewStep({
               )}
             </div>
             {section.rows.length > 0 && (
-            <dl className="divide-y divide-[#E5E7EB]">
-              {section.rows.map(({ label, value }) => (
+            <dl className="ehr-consult__review-fields">
+              {section.rows.map(({ label, value }, index) => (
                 <div
-                  key={label}
+                  key={`${label}-${index}`}
+                  data-wide={String(value ?? "").length > 100 || String(value ?? "").includes("\n") || undefined}
                   className="ehr-consult__review-row grid gap-1 px-5 py-2.5 sm:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)] sm:gap-3"
                 >
                   <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#6B7280]">

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\HealthRecord;
 use App\Models\Patient;
+use App\Models\Referral;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
@@ -27,9 +28,24 @@ class BodyFindingReassessments
         if ($decisions === []) {
             return [];
         }
-        $records = app(FacilityAccessService::class)
+        $facility = app(FacilityAccessService::class);
+        $owned = $facility
             ->scopePatientHealthRecords(HealthRecord::query(), $user)
-            ->where('patient_id', $patient->id)->orderBy('id')->get();
+            ->where('patient_id', $patient->id)
+            ->get();
+        // Referred BHC visits are not RHU ledger rows, but their body findings may be
+        // reassessed from the referral slip during an RHU consultation.
+        $referred = $user->isRhu() && $user->rural_health_unit_id
+            ? HealthRecord::query()
+                ->where('patient_id', $patient->id)
+                ->whereIn('id', Referral::query()
+                    ->select('health_record_id')
+                    ->where('rural_health_unit_id', $user->rural_health_unit_id)
+                    ->where('patient_id', $patient->id)
+                    ->whereNotNull('health_record_id'))
+                ->get()
+            : collect();
+        $records = $owned->concat($referred)->unique('id')->sortBy('id')->values();
         $sources = $records->keyBy('id');
         $latest = [];
         foreach ($records as $record) {

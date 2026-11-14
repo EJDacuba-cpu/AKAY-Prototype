@@ -10,6 +10,7 @@ import {
   reconcilePrescriptionsForDiagnosisRemoval,
   formatPrescriptionLine,
   prescriptionsForDiagnosis,
+  prescriptionsForServices,
   restorePrescriptions,
   visitPrescriptionStatus,
 } from "./rhuPrescriptions.js";
@@ -130,6 +131,34 @@ test("prescriptionErrors reports required fields by prescription id", () => {
     diagnoses,
   );
   assert.deepEqual(ready, {});
+});
+
+test("serviceKeys link satisfies the diagnosis-or-service rule and drafts keep them", () => {
+  const id = "rx-service";
+  const serviceOnly = emptyPrescription(complete({
+    id,
+    diagnosisIds: [],
+    serviceKeys: ["Maternal", "EPI", "Family Planning"],
+  }));
+  assert.deepEqual(serviceOnly.serviceKeys, ["Maternal", "EPI", "Family Planning"]);
+  assert.deepEqual(prescriptionErrors([serviceOnly], diagnoses), {});
+  const saved = prescriptionsForSave([serviceOnly]);
+  assert.deepEqual(saved[0].diagnosisIds, []);
+  assert.deepEqual(saved[0].serviceKeys, ["Maternal", "EPI", "Family Planning"]);
+  assert.equal(prescriptionsForServices([serviceOnly]).length, 1);
+  assert.equal(prescriptionsForDiagnosis([serviceOnly], d1).length, 0);
+
+  const invalid = prescriptionErrors(
+    [emptyPrescription(complete({ id: "rx-bad-service", diagnosisIds: [], serviceKeys: ["Unknown"] }))],
+    diagnoses,
+  );
+  assert.equal(typeof invalid["prescriptions.rx-bad-service.diagnosisIds"], "string");
+  assert.equal(typeof invalid["prescriptions.rx-bad-service.serviceKeys"], "string");
+
+  const groups = prescriptionReviewGroups([serviceOnly], diagnoses);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].label, "Selected Health Services — Prescription");
+  assert.equal(groups[0].orders[0].id, id);
 });
 
 test("authorized quantity and unit are a pair and are never parsed from instructions", () => {

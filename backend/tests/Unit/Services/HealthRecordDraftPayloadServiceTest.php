@@ -60,6 +60,34 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertSame('legacy line', $sanitized['prescriptionText']);
     }
 
+    public function test_structured_prescriptions_keep_service_keys_in_drafts(): void
+    {
+        $payload = [
+            'consultationWorkflow' => 'rhu_itr_v1',
+            'prescriptions' => [[
+                'id' => 'rx-service',
+                'diagnosisIds' => [],
+                'serviceKeys' => ['Maternal', 'EPI', 'Family Planning'],
+                'medicineName' => 'Ferrous Sulfate',
+                'strength' => '325mg',
+                'dose' => '1 tablet',
+                'route' => 'PO',
+                'frequency' => 'Once daily',
+                'duration' => '30 days',
+                'instructions' => '',
+                'authorizedQuantity' => 30,
+                'authorizedUnit' => 'tablet',
+                'source' => 'itr',
+                'tbCaseId' => '',
+            ]],
+        ];
+        $service = new HealthRecordDraftPayloadService();
+        $sanitized = $service->sanitize($payload);
+        $this->assertSame($payload, $sanitized);
+        $this->assertSame(['Maternal', 'EPI', 'Family Planning'], $sanitized['prescriptions'][0]['serviceKeys']);
+        $this->assertSame([], $sanitized['prescriptions'][0]['diagnosisIds']);
+    }
+
     public function test_rhu_diagnosis_care_plan_survives_draft_flush_before_finalization(): void
     {
         $payload = [
@@ -267,6 +295,10 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $payload['carePlan']['referToRhu'] = false;
         $payload['carePlan']['referralMultipleIssues'] = true;
         $payload['carePlan']['serviceReferrals'] = ['Maternal', 'EPI'];
+        $payload['carePlan']['serviceSupportingLabs'] = [[
+            'program' => 'Maternal',
+            'supportingLaboratoryTests' => [['reference' => 'current:lab-1']],
+        ]];
 
         $sanitized = $service->sanitize($payload);
 
@@ -276,6 +308,12 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
         $this->assertFalse($sanitized['carePlan']['referToRhu']);
         $this->assertTrue($sanitized['carePlan']['referralMultipleIssues']);
         $this->assertSame(['Maternal', 'EPI'], $sanitized['carePlan']['serviceReferrals']);
+        $this->assertSame([
+            [
+                'program' => 'Maternal',
+                'supportingLaboratoryTests' => [['reference' => 'current:lab-1']],
+            ],
+        ], $sanitized['carePlan']['serviceSupportingLabs']);
         $payload['noInterventionPerformed'] = true;
         $payload['noInterventionReason'] = 'Patient declined treatment';
         $noIntervention = $service->sanitize($payload);
@@ -539,6 +577,19 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'month4' => '',
                     'month5' => '',
                     'month6' => '',
+                ],
+                'cpabAssessment' => [
+                    'status' => 'not_assessed',
+                    'notes' => '',
+                ],
+                'maternalTtTdEvidence' => [
+                    [
+                        'id' => 'cpab-1',
+                        'vaccineType' => 'TT',
+                        'dose' => '2',
+                        'dateAdministered' => '2025-12-01',
+                        'evidenceSource' => 'maternal_card',
+                    ],
                 ],
             ],
             'familyPlanningData' => [

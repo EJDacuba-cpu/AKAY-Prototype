@@ -12,6 +12,9 @@ import {
   MATERNAL_RISK_PARENTS,
   PRENATAL_IMMUNIZATION_OPTIONS,
   applyPregnancyDating,
+  pregnancyDatingAutos,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   applyRiskFactorChange,
   collectPrenatalHistory,
   computeAogFromDating,
@@ -21,6 +24,7 @@ import {
   continueBhcPrenatalPrefill,
   continuePrenatalPrefill,
   hasPregnancyBaseline,
+  maternalDataForWrite,
   maternalReviewFields,
   mergeMaternalData,
   readLaboratoryEntries,
@@ -168,36 +172,89 @@ test("filing the dose keeps earlier doses on the record", () => {
   assert.deepEqual(merged, { tt1: "2026-05-01", tt2: "2026-09-22", tt3: "" });
 });
 
-test("EDC is LMP plus 280 calendar days, without timezone shift", () => {
+test("EDC follows Naegele's rule without timezone shift", () => {
   assert.deepEqual(parseCivilDate("2026-07-09"), { y: 2026, m: 7, d: 9 });
   assert.equal(parseCivilDate("2026-02-31"), null);
-  assert.equal(computeEddFromLmp("2026-03-01"), "2026-12-06");
-  assert.equal(computeEddFromLmp("2026-07-09"), "2027-04-15");
+  // LMP − 3 months + 7 days + 1 year
+  assert.equal(computeEddFromLmp("2026-03-01"), "2026-12-08");
+  assert.equal(computeEddFromLmp("2026-07-09"), "2027-04-16");
   assert.equal(computeEddFromLmp("2026-01-31"), "2026-11-07");
+  assert.equal(computeEddFromLmp("2021-04-05"), "2022-01-12");
   assert.equal(computeEddFromLmp(""), "");
   assert.equal(computeEddFromLmp("2026-02-31"), "Invalid Date");
 });
 
-test("AOG is counted from established dating to the visit date", () => {
+test("AOG is counted from LMP to the visit date", () => {
   assert.equal(computeAogFromLmp("2026-03-01", "2026-06-07"), "14 weeks");
+  // With LMP present, AOG follows LMP even when a legacy/auto EDC is also set.
   assert.equal(computeAogFromDating({
     lmp: "2026-03-01",
+    edc: "2026-12-08",
+    visitDate: "2026-06-07",
+  }), "14 weeks");
+  assert.equal(computeAogFromDating({
+    lmp: "2026-03-01",
+    edc: "2026-12-08",
+    visitDate: "2026-06-08",
+  }), "14 weeks 1 day");
+});
+
+test("AOG follows a clinical EDC when preferEdd is set or LMP is missing", () => {
+  assert.equal(computeAogFromDating({
+    lmp: "2026-03-01",
+    edc: "2026-12-01",
+    visitDate: "2026-06-07",
+    preferEdd: true,
+  }), "14 weeks 5 days");
+  assert.equal(computeAogFromDating({
     edc: "2026-12-06",
     visitDate: "2026-06-07",
   }), "14 weeks");
 });
 
-test("a documented EDC is kept when it is not the auto value", () => {
-  const kept = applyPregnancyDating({
+test("pregnancyDatingAutos seeds trackers so restored AOG stays auto when it matches", () => {
+  const autos = pregnancyDatingAutos({
+    lmp: "2026-03-01",
+    edc: "2026-12-08",
+    visitDate: "2026-06-07",
+  });
+  assert.equal(autos.autoEdd, "2026-12-08");
+  assert.equal(autos.autoAog, "14 weeks");
+  const tracked = applyPregnancyDating({
+    lmp: "2026-03-01",
+    edc: "2026-12-08",
+    aog: "14 weeks",
+    visitDate: "2026-06-14",
+    previousAutoEdd: autos.autoEdd,
+    previousAutoAog: autos.autoAog,
+  });
+  assert.equal(tracked.aog, "15 weeks");
+});
+
+test("legacy 280-day EDC is refreshed to Naegele when LMP is still present", () => {
+  const refreshed = applyPregnancyDating({
+    lmp: "2026-03-01",
+    edc: "2026-12-06", // prior auto (LMP + 280)
+    aog: "14 weeks",
+    visitDate: "2026-06-07",
+    previousAutoEdd: "2026-12-06",
+    previousAutoAog: "14 weeks",
+  });
+  assert.equal(refreshed.edc, "2026-12-08");
+  assert.equal(refreshed.aog, "14 weeks");
+});
+
+test("legacy clinical EDC/AOG are adapted back to auto values from LMP", () => {
+  const adapted = applyPregnancyDating({
     lmp: "2026-07-09",
-    edc: "2027-04-16",
+    edc: "2027-04-17",
     aog: "16 weeks",
     visitDate: "2026-10-29",
-    previousAutoEdd: "2027-04-15",
-    previousAutoAog: "15 weeks",
+    previousAutoEdd: "2027-04-16",
+    previousAutoAog: "15 weeks 6 days",
   });
-  assert.equal(kept.edc, "2027-04-16");
-  assert.equal(kept.aog, "16 weeks");
+  assert.equal(adapted.edc, "2027-04-16");
+  assert.equal(adapted.aog, computeAogFromLmp("2026-07-09", "2026-10-29"));
 
   const auto = applyPregnancyDating({
     lmp: "2026-07-09",
@@ -206,26 +263,153 @@ test("a documented EDC is kept when it is not the auto value", () => {
     previousAutoEdd: "",
     previousAutoAog: "",
   });
-  assert.equal(auto.edc, "2027-04-15");
+  assert.equal(auto.edc, "2027-04-16");
 
   const lmpChange = applyPregnancyDating({
     lmp: "2026-07-10",
-    edc: "2027-04-15",
+    edc: "2027-04-16",
     visitDate: "2026-10-29",
-    previousAutoEdd: "2027-04-15",
+    previousAutoEdd: "2027-04-16",
     previousAutoAog: "",
   });
-  assert.equal(lmpChange.edc, "2027-04-16");
+  assert.equal(lmpChange.edc, "2027-04-17");
 
   const visitChange = applyPregnancyDating({
     lmp: "2026-07-09",
-    edc: "2027-04-16",
+    edc: "2027-04-17",
     aog: "16 weeks",
     visitDate: "2026-11-01",
-    previousAutoEdd: "2027-04-15",
+    previousAutoEdd: "2027-04-16",
     previousAutoAog: "16 weeks",
   });
   assert.equal(visitChange.edc, "2027-04-16");
+  assert.equal(visitChange.aog, computeAogFromLmp("2026-07-09", "2026-11-01"));
+});
+
+test("untracked remount rebuilds EDC/AOG from LMP instead of freezing stale values", () => {
+  const next = applyPregnancyDating({
+    lmp: "2026-04-01",
+    edc: "2026-12-06",
+    aog: "36 weeks 5 days",
+    visitDate: "2026-11-13",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(next.edc, "2027-01-08");
+  assert.equal(next.aog, computeAogFromLmp("2026-04-01", "2026-11-13"));
+});
+
+test("resolvePregnancyVisitDate keeps civil YMD and maps UTC evenings via Asia/Manila", () => {
+  assert.equal(resolvePregnancyVisitDate("2026-11-14"), "2026-11-14");
+  // 18:00 UTC is already 02:00 next day in Manila.
+  assert.equal(resolvePregnancyVisitDate("2026-11-13T18:00:00.000Z"), "2026-11-14");
+  assert.equal(
+    resolvePregnancyVisitDate(null, undefined, "2026-11-13T18:00:00.000Z"),
+    "2026-11-14",
+  );
+  assert.deepEqual(parseCivilDate("2026-11-13T18:00:00.000Z"), parseCivilDate("2026-11-14"));
+});
+
+test("same-day LMP and visit is 0 weeks AOG", () => {
+  assert.equal(computeAogFromLmp("2026-11-14", "2026-11-14"), "0 weeks");
+  const dated = applyPregnancyDating({
+    lmp: "2026-11-14",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(dated.aog, "0 weeks");
+  assert.equal(dated.edc, computeEddFromLmp("2026-11-14"));
+});
+
+test("future LMP relative to visit yields invalid AOG and no auto EDC wipe of clinical EDC incorrectly", () => {
+  assert.equal(
+    computeAogFromLmp("2026-12-01", "2026-11-14"),
+    "Invalid (LMP is ahead of visit)",
+  );
+  const next = applyPregnancyDating({
+    lmp: "2026-12-01",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(next.edc, computeEddFromLmp("2026-12-01"));
+  assert.equal(next.aog, "Invalid (LMP is ahead of visit)");
+});
+
+test("invalid LMP calendar date does not publish Invalid Date as EDC", () => {
+  const next = applyPregnancyDating({
+    lmp: "2026-02-31",
+    edc: "",
+    aog: "",
+    visitDate: "2026-11-14",
+    previousAutoEdd: "",
+    previousAutoAog: "",
+  });
+  assert.equal(next.edc, "");
+  assert.equal(next.autoEdd, "");
+});
+
+test("resumed draft with stale auto AOG refreshes for BHC and RHU visit days", () => {
+  const lmp = "2026-03-01";
+  const edc = "2026-12-08";
+  const savedAog = "14 weeks";
+
+  for (const visitDate of ["2026-11-14", "2026-11-13T18:00:00.000Z"]) {
+    const trackers = seedPregnancyDatingTrackers({
+      lmp,
+      edc,
+      aog: savedAog,
+      visitDate,
+    });
+    const resumed = applyPregnancyDating({
+      lmp,
+      edc,
+      aog: savedAog,
+      visitDate,
+      previousAutoEdd: trackers.autoEdd,
+      previousAutoAog: trackers.autoAog,
+    });
+    const expectedVisit = resolvePregnancyVisitDate(visitDate);
+    assert.equal(resumed.edc, edc);
+    assert.equal(resumed.aog, computeAogFromLmp(lmp, expectedVisit));
+    assert.notEqual(resumed.aog, savedAog);
+  }
+});
+
+test("draft resume with clinical EDC/AOG adapts to auto LMP dating", () => {
+  const trackers = seedPregnancyDatingTrackers({
+    lmp: "2026-07-09",
+    edc: "2027-04-17",
+    aog: "16 weeks",
+    visitDate: "2026-11-14",
+  });
+  const resumed = applyPregnancyDating({
+    lmp: "2026-07-09",
+    edc: "2027-04-17",
+    aog: "16 weeks",
+    visitDate: "2026-11-20",
+    previousAutoEdd: trackers.autoEdd,
+    previousAutoAog: trackers.autoAog,
+  });
+  assert.equal(resumed.edc, "2027-04-16");
+  assert.equal(resumed.aog, computeAogFromLmp("2026-07-09", "2026-11-20"));
+});
+
+test("BHC and RHU workspaces seed pregnancy dating trackers on draft restore", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const relative of [
+    "../pages/bhc/ConsultationWorkspace.jsx",
+    "../pages/rhu/RhuConsultationWorkspace.jsx",
+  ]) {
+    const source = readFileSync(join(here, relative), "utf8");
+    assert.match(source, /seedPregnancyDatingTrackers/);
+    assert.match(source, /resolvePregnancyVisitDate/);
+  }
 });
 
 test("hasPregnancyBaseline follows this visit's LMP, EDC, or G/P", () => {
@@ -233,6 +417,39 @@ test("hasPregnancyBaseline follows this visit's LMP, EDC, or G/P", () => {
   assert.equal(hasPregnancyBaseline({ lmp: "2026-07-09" }), true);
   assert.equal(hasPregnancyBaseline({}, "2027-04-15"), true);
   assert.equal(hasPregnancyBaseline({ gravida: "2" }), true);
+});
+
+test("maternalDataForWrite keeps nested RHU LMP when top-level lmp is absent", () => {
+  const nested = maternalDataForWrite({
+    maternalData: {
+      lmp: "2026-03-01",
+      gravida: "1",
+      aog: "36w 2d",
+      expectedDeliveryDate: "2026-12-06",
+    },
+    aog: "36w 2d",
+    expectedDeliveryDate: "2026-12-06",
+  });
+  assert.equal(nested.lmp, "2026-03-01");
+  assert.equal(nested.aog, "36w 2d");
+  assert.equal(nested.expectedDeliveryDate, "2026-12-06");
+  assert.equal(nested.gravida, "1");
+});
+
+test("maternalDataForWrite prefers top-level BHC pregnancy fields over nested stale values", () => {
+  const merged = maternalDataForWrite({
+    lmp: "2026-04-10",
+    aog: "30w 0d",
+    expectedDeliveryDate: "2027-01-15",
+    maternalData: {
+      lmp: "2026-03-01",
+      aog: "stale",
+      expectedDeliveryDate: "stale",
+    },
+  });
+  assert.equal(merged.lmp, "2026-04-10");
+  assert.equal(merged.aog, "30w 0d");
+  assert.equal(merged.expectedDeliveryDate, "2027-01-15");
 });
 
 test("continue prefill keeps pregnancy facts and clears this-visit findings", () => {
@@ -301,12 +518,12 @@ test("the Prenatal form keeps this-pregnancy fields and can mount Section V", ()
   assert.match(form, /includeObstetricHistory/);
   assert.match(form, /sections=\{\["obstetric"\]\}/);
   assert.match(form, /summaryWhenRecorded/);
-  assert.match(form, /Add Lab Result/);
+  assert.doesNotMatch(form, /Add Lab Result/);
   assert.match(form, /Correct/);
   assert.match(form, /hasPregnancyBaseline/);
   assert.doesNotMatch(form, /title="Previous FP Method"/);
-  assert.match(form, /New Results This Visit/);
-  assert.match(form, /Previous Laboratory Results/);
+  assert.doesNotMatch(form, /Previous Laboratory Results/);
+  assert.doesNotMatch(form, /title="Laboratory Results"/);
   assert.match(form, /Add Ultrasound/);
   assert.match(panel, /summaryWhenRecorded/);
   assert.match(workspace, /shouldPrefillPrenatalBaseline/);

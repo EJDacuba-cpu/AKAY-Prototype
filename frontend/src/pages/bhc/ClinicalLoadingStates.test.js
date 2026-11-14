@@ -47,9 +47,25 @@ test('initial monitoring request connection error provides recovery instead of n
   assert.doesNotMatch(html, /This request does not exist or belongs to another facility/);
 });
 
+const emptyDirectoryFilters = {
+  search: '',
+  sex: 'All',
+  barangay: 'All Barangays',
+  ageGroup: 'All Age Groups',
+  civilStatus: 'All Civil Status',
+  dateRegistered: '',
+};
+
+const emptyDirectoryKey = [...queryKeys.patients('bhc'), 'directory', emptyDirectoryFilters];
+
+const emptyDirectoryPage = {
+  pages: [{ items: [], meta: { current_page: 1, last_page: 1, per_page: 50, total: 0 }, filterOptions: { barangays: [], civilStatuses: [] } }],
+  pageParams: [1],
+};
+
 test('monitoring directory uses its own pending request rather than the unrelated patient cache', () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity } } });
-  client.setQueryData(queryKeys.patients('bhc'), []);
+  client.setQueryData(emptyDirectoryKey, emptyDirectoryPage);
   const html = renderDirectory(client, '/bhc/patients?view=monitoring-requests');
   client.clear();
   assert.match(html, /Loading monitoring requests/);
@@ -58,8 +74,8 @@ test('monitoring directory uses its own pending request rather than the unrelate
 
 test('successful empty patient directory is preserved on a background refresh failure', () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity } } });
-  client.setQueryData(queryKeys.patients('bhc'), []);
-  client.getQueryCache().find({ queryKey: queryKeys.patients('bhc') }).setState({ status: 'error', error: new Error('Offline'), fetchStatus: 'idle' });
+  client.setQueryData(emptyDirectoryKey, emptyDirectoryPage);
+  client.getQueryCache().find({ queryKey: emptyDirectoryKey }).setState({ status: 'error', error: new Error('Offline'), fetchStatus: 'idle' });
   const html = renderDirectory(client, '/bhc/patients');
   client.clear();
   assert.match(html, /No patients yet\./);

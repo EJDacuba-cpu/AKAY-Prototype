@@ -61,6 +61,7 @@ export async function acceptMonitoringHandoffRequest(id) {
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/accept`, { method: "POST" }));
 }
 
+/** @deprecated Decline is disabled; BHC Accept-only. Kept for older callers — API returns 410. */
 export async function declineMonitoringHandoffRequest(id, { reason } = {}) {
   return unwrapData(await apiRequest(`/monitoring-handoff-requests/${id}/decline`, {
     method: "POST",

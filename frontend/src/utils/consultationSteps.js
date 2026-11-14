@@ -376,7 +376,7 @@ function carePlanOwnerStep(options = {}) {
 
 export function getErrorOwnerStepKey(errorKey, options = {}) {
   const raw = String(errorKey || "");
-  if (raw.startsWith("laboratoryTests") || raw.startsWith("laboratory_tests")) return ASSESSMENT_STEP;
+  if (raw === "legacyLaboratoryEntries" || raw.startsWith("laboratoryTests") || raw.startsWith("laboratory_tests")) return ASSESSMENT_STEP;
   if (raw.startsWith("monitoring_data.bodyFindingReassessments")) return ASSESSMENT_STEP;
   const { includeHistory = true, workflow } = options;
   const key = raw.startsWith("payload.backgroundUpdate")

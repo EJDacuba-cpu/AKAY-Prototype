@@ -133,6 +133,25 @@ class HealthRecord extends Model
         return ($this->monitoring_data['consultationWorkflow'] ?? null) === self::WORKFLOW_RHU_ITR_V1;
     }
 
+    /**
+     * Fields an RHU may see on a referral slip for a linked BHC visit.
+     * Full Clinic Ledger details stay owned by the recording facility.
+     *
+     * @return array<string, mixed>
+     */
+    public function toReferralSlipClinicalArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'chief_complaint' => $this->chief_complaint,
+            'history_of_present_illness' => $this->history_of_present_illness,
+            'physical_exam' => $this->physical_exam,
+            'body_findings' => $this->body_findings,
+            'vital_signs' => $this->vital_signs,
+            'treatment_notes' => $this->treatment_notes,
+        ];
+    }
+
     public function prescriptionDisplayText(): string
     {
         $structured = $this->structuredPrescriptionSummaries();

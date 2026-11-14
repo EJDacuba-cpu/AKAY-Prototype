@@ -5,7 +5,7 @@ import Input from "../../common/atoms/Input";
 import Field from "../access/FieldError";
 import useEmailAvailability from "../../../hooks/useEmailAvailability";
 import { getAdminAccount, updateAdminAccountProfile } from "../../../services/adminAccountsService";
-import { profileChanges, validateAccountProfile } from "../../../utils/accountForm";
+import { isDoctorAccount, profileChanges, validateAccountProfile } from "../../../utils/accountForm";
 import { fieldState } from "../../../utils/fieldState";
 import { queryKeys } from "../../../utils/queryKeys";
 
@@ -13,8 +13,9 @@ const EMAIL_TAKEN = "Email is already taken.";
 const FORM_ID = "edit-account-form";
 
 /**
- * Users ⋯ > Edit: three text boxes (name, email, contact number) saved with PATCH /users/{id}. Role, facility and
- * status change access or routing, so they are not editable here. `account` is the row from the Users table.
+ * Users ⋯ > Edit: name, email, contact number, and (for Doctor accounts) specialization,
+ * saved with PATCH /users/{id}. Role, facility and status change access or routing, so they
+ * are not editable here. `account` is the row from the Users table.
  */
 export default function EditAccountModal({ accountId, account, onClose }) {
   const queryClient = useQueryClient();
@@ -25,11 +26,13 @@ export default function EditAccountModal({ accountId, account, onClose }) {
     retry: false,
   });
   const current = data || account;
+  const doctor = isDoctorAccount(current);
 
   const [form, setForm] = useState(() => ({
     name: account.name || "",
     email: account.email || "",
     contact_number: account.contact_number || "",
+    specialization: account.specialization || "",
   }));
   const [touched, setTouched] = useState({});
   const [saving, setSaving] = useState(false);
@@ -44,6 +47,7 @@ export default function EditAccountModal({ accountId, account, onClose }) {
     name: serverErrors.name || validation.name,
     email: serverErrors.email || validation.email || (emailTaken ? EMAIL_TAKEN : undefined),
     contact_number: serverErrors.contact_number || validation.contact_number,
+    specialization: serverErrors.specialization || validation.specialization,
   };
   const changes = profileChanges(current, form);
   const canSave = Object.keys(changes).length > 0 && !saving && !(changes.email && emailTaken);
@@ -59,7 +63,7 @@ export default function EditAccountModal({ accountId, account, onClose }) {
 
   async function save(event) {
     event.preventDefault();
-    setTouched({ name: true, email: true, contact_number: true });
+    setTouched({ name: true, email: true, contact_number: true, specialization: true });
     if (Object.keys(validateAccountProfile(form, current)).length || !canSave) return;
 
     setSaving(true);
@@ -80,10 +84,11 @@ export default function EditAccountModal({ accountId, account, onClose }) {
         name: failure.errors?.name?.[0],
         email: failure.errors?.email?.[0],
         contact_number: failure.errors?.contact_number?.[0],
+        specialization: failure.errors?.specialization?.[0],
       };
       setServerErrors(fieldErrors);
-      setTouched({ name: true, email: true, contact_number: true });
-      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number) {
+      setTouched({ name: true, email: true, contact_number: true, specialization: true });
+      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number && !fieldErrors.specialization) {
         setFormError(failure.message || "The changes could not be saved.");
       }
     } finally {
@@ -110,7 +115,9 @@ export default function EditAccountModal({ accountId, account, onClose }) {
     >
       <form id={FORM_ID} onSubmit={save} noValidate>
         <p className="mb-4 text-[13px] leading-5 text-neutral-600">
-          This form updates name, email, and contact number. Role, home facility, and status are not changed here because they control access and routing.
+          {doctor
+            ? "This form updates name, email, contact number, and specialization. Role, home facility, and status are not changed here because they control access and routing."
+            : "This form updates name, email, and contact number. Role, home facility, and status are not changed here because they control access and routing."}
         </p>
         <Field label="Name" error={touched.name ? errors.name : ""}>
           <Input value={form.name} onChange={(event) => setField("name", event.target.value)} onBlur={() => touch("name")} />
@@ -142,6 +149,17 @@ export default function EditAccountModal({ accountId, account, onClose }) {
             onBlur={() => touch("contact_number")}
           />
         </Field>
+        {doctor && (
+          <Field label="Specialization" error={touched.specialization ? errors.specialization : ""}>
+            <Input
+              value={form.specialization}
+              onChange={(event) => setField("specialization", event.target.value)}
+              onBlur={() => touch("specialization")}
+              placeholder="e.g. Pediatrics"
+              maxLength={255}
+            />
+          </Field>
+        )}
         {formError && <p role="alert" className="text-xs text-red-600">{formError}</p>}
       </form>
     </ModalShell>

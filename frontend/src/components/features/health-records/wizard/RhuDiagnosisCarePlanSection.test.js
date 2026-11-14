@@ -203,27 +203,28 @@ test("higher-level plan shows inline errors and saved details only when selected
   }
 });
 
-test("referral visits hide empty Next Action but surface restored walk-in actions", () => {
+test("referral visits show Next Action and BHC closure notes for no further follow-up", () => {
   const emptyReferral = render(
     { id: "tb", name: "TB", nextAction: "", tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" } },
     { isReferralVisit: true },
   );
-  assert.doesNotMatch(emptyReferral, /name="diagnoses.tb.nextAction"/);
-  assert.doesNotMatch(emptyReferral, /data-field="diagnoses.tb.nextAction"/);
-  const legacy = render(
+  assert.match(emptyReferral, /name="diagnoses.tb.nextAction"/);
+  const none = render(
     {
       id: "tb",
       name: "TB",
-      nextAction: "rhu_follow_up",
+      nextAction: "none",
+      noFurtherFollowUpReason: "",
       tbManagement: { diagnosisType: "tb_disease", drugResistance: "drug_susceptible" },
     },
     {
       isReferralVisit: true,
-      errors: { "diagnoses.tb.nextAction": "Referral visits keep follow-up and monitoring on the Return Slip." },
+      errors: { "diagnoses.tb.noFurtherFollowUpReason": "Tell the BHC why no further follow-up is needed." },
     },
   );
-  assert.match(legacy, /name="diagnoses.tb.nextAction"/);
-  assert.match(legacy, /Return Slip/);
+  assert.match(none, /name="diagnoses.tb.noFurtherFollowUpReason"/);
+  assert.match(none, /closes this referral/i);
+  assert.match(none, /Tell the BHC why no further follow-up is needed/);
 });
 
 const htn = { id: "htn", name: "Hypertension", nextAction: "none" };
@@ -349,6 +350,57 @@ async function mountCarePlan(props) {
     },
   };
 }
+
+test("Selected Health Services shows service items used, not a new prescriptions block", async () => {
+  const app = await mountCarePlan({
+    diagnoses: [htn],
+    prescriptions: [],
+    selectedPrograms: ["Maternal", "EPI", "Family Planning"],
+    vaccineEntries: [{ vaccineName: "PENTA", dose: "2", dateGiven: "2026-11-14" }],
+  });
+  try {
+    const section = app.container.querySelector("#selected-health-services-title")?.closest("section");
+    assert.ok(section);
+    assert.match(section.textContent, /Service items used/i);
+    assert.match(section.textContent, /PENTA 2/);
+    assert.match(section.textContent, /Inventory reconciliation: Not yet recorded/);
+    assert.doesNotMatch(section.textContent, /Record the medicines for selected health services/);
+    assert.equal(buttonsNamed(section, "Add Prescription").length, 0);
+    assert.match(section.textContent, /Add service usage/);
+  } finally {
+    await app.close();
+  }
+});
+
+test("legacy service-linked prescriptions remain visible for review under Selected Health Services", async () => {
+  const app = await mountCarePlan({
+    diagnoses: [htn],
+    prescriptions: [{
+      id: "rx-legacy",
+      diagnosisIds: [],
+      serviceKeys: ["Maternal"],
+      medicineName: "Ferrous Sulfate",
+      strength: "325 mg",
+      dose: "1 tablet",
+      route: "PO",
+      frequency: "Once daily",
+      duration: "30 days",
+      authorizedQuantity: 30,
+      authorizedUnit: "tablet",
+      source: "itr",
+    }],
+    selectedPrograms: ["Maternal"],
+  });
+  try {
+    const section = app.container.querySelector("#selected-health-services-title")?.closest("section");
+    assert.ok(section);
+    assert.match(section.textContent, /Review legacy service prescriptions/);
+    assert.match(section.textContent, /Ferrous Sulfate 325 mg/);
+    assert.match(section.textContent, /Keep them as prescriptions/);
+  } finally {
+    await app.close();
+  }
+});
 
 test("Add Prescription saves one visit-level order and keeps field errors beside the form", async () => {
   const app = await mountCarePlan({ diagnoses: [htn, dm], prescriptions: [] });

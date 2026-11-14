@@ -180,6 +180,85 @@ class UniversalLaboratoryTest extends TestCase
         ]);
     }
 
+    public function test_service_supporting_labs_remap_current_references_into_monitoring_data(): void
+    {
+        $first = $this->laboratoryEntry(['testName' => 'CBC', 'resultStatus' => 'Awaiting Result']);
+        $second = $this->laboratoryEntry(['testName' => 'Urinalysis']);
+        $this->finalize([$first, $second], [
+            'care_plan' => [
+                'service_supporting_labs' => [
+                    [
+                        'program' => 'Family Planning',
+                        'supporting_laboratory_tests' => [
+                            ['reference' => 'current:'.$first['id']],
+                            ['reference' => 'current:'.$second['id']],
+                        ],
+                    ],
+                    [
+                        'program' => 'EPI',
+                        'supporting_laboratory_tests' => [
+                            ['reference' => 'current:'.$first['id']],
+                        ],
+                    ],
+                ],
+            ],
+            'diagnoses' => [$this->diagnosis([
+                'nextAction' => 'none',
+                'receivingBhcId' => null,
+                'monitoringRecommendation' => null,
+                'supportingLaboratoryTests' => [['reference' => 'current:'.$first['id']]],
+            ])],
+        ])->assertCreated();
+
+        $record = HealthRecord::sole();
+        $firstId = LaboratoryTest::query()->where('client_id', strtolower($first['id']))->value('id');
+        $secondId = LaboratoryTest::query()->where('client_id', strtolower($second['id']))->value('id');
+        $this->assertSame([
+            [
+                'program' => 'Family Planning',
+                'supportingLaboratoryTests' => [
+                    ['reference' => 'record:'.$firstId],
+                    ['reference' => 'record:'.$secondId],
+                ],
+            ],
+            [
+                'program' => 'EPI',
+                'supportingLaboratoryTests' => [
+                    ['reference' => 'record:'.$firstId],
+                ],
+            ],
+        ], $record->monitoring_data['serviceSupportingLabs']);
+        $this->assertSame([['reference' => 'record:'.$firstId]], $record->diagnoses[0]['supportingLaboratoryTests']);
+        $this->assertDatabaseCount('laboratory_tests', 2);
+        $this->assertDatabaseCount('monitoring_laboratory_evidence', 0);
+    }
+
+    public function test_draft_allows_service_supporting_labs_under_care_plan(): void
+    {
+        $entry = $this->laboratoryEntry();
+        $payload = [
+            'laboratoryTests' => [$entry],
+            'carePlan' => [
+                'serviceSupportingLabs' => [
+                    [
+                        'program' => 'Maternal',
+                        'supportingLaboratoryTests' => [['reference' => 'current:'.$entry['id']]],
+                    ],
+                ],
+            ],
+        ];
+        $created = $this->postJson('/api/health-record-drafts', $this->draftInput($payload))->assertCreated();
+        $labs = $this->getJson('/api/health-record-drafts/'.$created->json('data.id'))
+            ->assertOk()
+            ->json('data.payload.carePlan.serviceSupportingLabs');
+        $this->assertIsArray($labs);
+        $this->assertSame('Maternal', $labs[0]['program'] ?? null);
+        $this->assertSame(
+            'current:'.$entry['id'],
+            $labs[0]['supportingLaboratoryTests'][0]['reference'] ?? null
+        );
+    }
+
     public function test_draft_edit_remove_resume_conflict_and_finalize_use_existing_pipeline(): void
     {
         $first = $this->laboratoryEntry();

@@ -24,13 +24,24 @@ export function toggleConsultationProgram(programs, primary, key) {
 }
 
 /**
+ * Official draft / health-record classification for the visit's primary
+ * program. Must stay in sync: draft autosave and finalize both use this so
+ * EPI → Immunization, Maternal, Family Planning, and Nutrition match.
+ */
+export function classificationForPrimaryProgram(primaryProgram) {
+  return primaryProgram && PROGRAM_CLASSIFICATIONS[primaryProgram]
+    ? PROGRAM_CLASSIFICATIONS[primaryProgram]
+    : "General Consultation";
+}
+
+/**
  * The classification to resume a saved draft with. A classification that no
  * longer belongs to any program (the removed Hypertension / Diabetic
  * Monitoring) follows the restored primary program instead.
  */
 export function restoredClassification(classification, primaryProgram) {
   const known = classification === "General Consultation" || Object.values(PROGRAM_CLASSIFICATIONS).includes(classification);
-  return known ? classification : PROGRAM_CLASSIFICATIONS[primaryProgram] || "General Consultation";
+  return known ? classification : classificationForPrimaryProgram(primaryProgram);
 }
 
 export const PATIENT_LOADING_REASON = "Loading patient details...";

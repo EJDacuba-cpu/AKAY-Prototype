@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -15,7 +15,9 @@ import { rhuVisitLoadError, visitUnavailableError } from "../../utils/rhuVisitLo
 import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
 import { referralSlipModel } from "../../utils/referralSlipView";
 import { errorStateVariant } from "../../utils/errorStateVariant";
-import { ConnectionErrorState, SuccessModal } from "../../components/common";
+import { ConnectionErrorState, NoticeModal, SuccessModal } from "../../components/common";
+import { locationToPath } from "../../utils/profileNavigation";
+import { saveDraftBeforeNavigation } from "../../utils/backgroundNavigation";
 import PatientHistoryPanel from "../../components/features/patients/history/PatientHistoryPanel";
 import InterviewVisitQuestions from "../../components/features/health-records/wizard/InterviewVisitQuestions";
 import BodyPreviewPanel, { BodyFindingsList } from "../../components/features/health-records/wizard/BodyPreviewPanel";
@@ -35,13 +37,21 @@ import TbTreatmentCardForm, {
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
 import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
-import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
+import { compactReviewSections, patientReviewRow } from "../../utils/consultationReview";
+import {
+  clinicalReviewRows,
+  rhuBackgroundReviewRows,
+  rhuDiagnosisReviewRows,
+  rhuProgramReviewRows,
+  rhuServiceReviewRows,
+  rhuVitalReviewRows,
+} from "../../utils/rhuConsultationReview";
 import {
   PROGRAM_CLASSIFICATIONS,
+  classificationForPrimaryProgram,
   getConsultationPrograms,
   lockProgramsWhilePatientLoads,
   programEnrollLabel,
-  restoredClassification,
   toggleConsultationProgram,
 } from "../../utils/consultationPrograms";
 import {
@@ -49,10 +59,11 @@ import {
   applyRiskFactorChange,
   collectPrenatalHistory,
   applyPregnancyDating,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
-  maternalReviewFields,
   withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
@@ -114,6 +125,12 @@ import {
   restorePrescriptions,
 } from "../../utils/rhuPrescriptions";
 import {
+  legacyServiceOnlyPrescriptions,
+  normalizeServiceUsages,
+  serviceUsageErrors,
+  serviceUsagesForSave,
+} from "../../utils/serviceUsages";
+import {
   existingRegisteredTbCase,
   isRecognizedTbDiagnosis,
   rhuTbAssessmentErrors,
@@ -125,7 +142,20 @@ import {
 } from "../../utils/establishedTbDisease";
 import { focusedRhuFollowUps } from "../../utils/rhuFollowUpFocus";
 import { selectedRhuFollowUpIds } from "../../utils/rhuVisitRoutes";
-import { applyServiceNextAction, pruneServiceSchedules } from "../../utils/serviceNextActions";
+import {
+  applyServiceHandoff,
+  applyServiceNextAction,
+  applyServiceSupportingLabs,
+  pruneServiceHandoffs,
+  pruneServiceSchedules,
+  pruneServiceSupportingLabs,
+  restoreServiceHandoffs,
+  restoreServiceSupportingLabs,
+  serviceHandoffErrors,
+  serviceHandoffsForSave,
+  serviceSupportingLabsForSave,
+  updateServiceHandoff,
+} from "../../utils/serviceNextActions";
 import { getPatientConditions } from "../../services/patientConditionService";
 import { defaultInformant } from "../../utils/patientHistory";
 import {
@@ -265,17 +295,26 @@ export default function RhuConsultationWorkspace() {
   const [tbData, setTbData] = useState(EMPTY_TB_DATA);
   const [conditionReferences, setConditionReferences] = useState([]);
   const followUpFocusApplied = useRef(false);
+  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState("");
   const [aog, setAog] = useState("");
   const [familyPlanningData, setFamilyPlanningData] = useState({ clientType: "", methodUsed: "", actionTaken: "" });
   const [immunizationEntries, setImmunizationEntries] = useState([]);
+  const [cpabAssessment, setCpabAssessment] = useState({ status: "not_assessed", notes: "" });
+  const [maternalTtTdEvidence, setMaternalTtTdEvidence] = useState([]);
+  const [immunizationBreastfeeding, setImmunizationBreastfeeding] = useState({});
+  const [immunizationRemarks, setImmunizationRemarks] = useState("");
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
   const [prescriptions, setPrescriptions] = useState([]);
+  const [serviceUsages, setServiceUsages] = useState([]);
+  const [legacyServicePrescriptionReviewed, setLegacyServicePrescriptionReviewed] = useState(false);
   const [prescriptionText, setPrescriptionText] = useState("");
   const [treatmentNotes, setTreatmentNotes] = useState("");
   const [followUpSchedules, setFollowUpSchedules] = useState([]);
+  const [serviceHandoffs, setServiceHandoffs] = useState([]);
+  const [serviceSupportingLabs, setServiceSupportingLabs] = useState([]);
   const [catchmentBhcs, setCatchmentBhcs] = useState([]);
   const [openConditions, setOpenConditions] = useState([]);
   const [linkedFollowUpTaskIds, setLinkedFollowUpTaskIds] = useState(() =>
@@ -309,7 +348,14 @@ export default function RhuConsultationWorkspace() {
     staleTime: 30_000,
   });
   const patientRecords = recordsQuery.data ?? EMPTY_HEALTH_RECORDS;
-  const previousBodyFindings = useMemo(() => summarizeBodyFindings(patientRecords, "ongoing").findings, [patientRecords]);
+  const previousBodyFindings = useMemo(() => {
+    const sources = Array.isArray(patientRecords) ? [...patientRecords] : [];
+    const slipRecord = referralData?.record;
+    if (slipRecord?.id && !sources.some((record) => String(record.id) === String(slipRecord.id))) {
+      sources.push(slipRecord);
+    }
+    return summarizeBodyFindings(sources, "ongoing").findings;
+  }, [patientRecords, referralData?.record]);
   function changeBodyReassessments(next) {
     setBodyFindingReassessments(next);
     setValidationErrors((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("monitoring_data.bodyFindingReassessments"))));
@@ -423,20 +469,26 @@ export default function RhuConsultationWorkspace() {
     setInformant(defaultInformant(patient, new Date()));
   }, [patient, informant]);
 
-  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
+  // Facility civil day (Asia/Manila). Prefer consultation/date; map created_at
+  // through Manila so UTC evenings do not shift AOG by a day.
+  const rhuVisitDate = resolvePregnancyVisitDate(
+    visit?.consultationDate,
+    visit?.date,
+    visit?.created_at,
+  );
   useEffect(() => {
     const next = applyPregnancyDating({
       lmp: maternalData.lmp,
       edc: expectedDeliveryDate,
       aog,
-      visitDate: new Date(),
+      visitDate: rhuVisitDate,
       previousAutoEdd: pregnancyDatingRef.current.autoEdd,
       previousAutoAog: pregnancyDatingRef.current.autoAog,
     });
     pregnancyDatingRef.current = { autoEdd: next.autoEdd, autoAog: next.autoAog };
     if (next.edc !== expectedDeliveryDate) setExpectedDeliveryDate(next.edc);
     if (next.aog !== aog) setAog(next.aog);
-  }, [maternalData.lmp, expectedDeliveryDate, aog]);
+  }, [maternalData.lmp, expectedDeliveryDate, aog, rhuVisitDate]);
 
   useEffect(() => {
     if (selectedPrograms.includes("Maternal")) applyPrenatalPrefill();
@@ -593,9 +645,17 @@ export default function RhuConsultationWorkspace() {
       prenatalIntent,
       nutritionIntent,
       familyPlanningData,
-      immunizationData: { vaccineEntries: immunizationEntries },
+      immunizationData: {
+        vaccineEntries: immunizationEntries,
+        breastfeedingMonitoring: immunizationBreastfeeding,
+        cpabAssessment,
+        maternalTtTdEvidence,
+      },
+      consultationNotes: immunizationRemarks,
       diagnoses,
       prescriptions,
+      serviceUsages,
+      legacyServicePrescriptionReviewed,
       prescriptionText,
       medication: treatmentNotes,
       followUpSchedules,
@@ -608,6 +668,8 @@ export default function RhuConsultationWorkspace() {
       rhuVisitId: visit?.id,
       carePlan: {
         continuedFollowUpTaskIds: linkedFollowUpTaskIds,
+        serviceHandoffs: pruneServiceHandoffs(serviceHandoffs, selectedPrograms),
+        serviceSupportingLabs: pruneServiceSupportingLabs(serviceSupportingLabs, selectedPrograms),
       },
     }),
     [
@@ -636,6 +698,8 @@ export default function RhuConsultationWorkspace() {
       bodyFindingReassessments,
       selectedPrograms,
       primaryProgram,
+      serviceHandoffs,
+      serviceSupportingLabs,
       includeTb,
       tbData,
       nextScreen,
@@ -646,8 +710,14 @@ export default function RhuConsultationWorkspace() {
       nutritionIntent,
       familyPlanningData,
       immunizationEntries,
+      immunizationBreastfeeding,
+      immunizationRemarks,
+      cpabAssessment,
+      maternalTtTdEvidence,
       diagnoses,
       prescriptions,
+      serviceUsages,
+      legacyServicePrescriptionReviewed,
       prescriptionText,
       treatmentNotes,
       followUpSchedules,
@@ -656,10 +726,15 @@ export default function RhuConsultationWorkspace() {
     ],
   );
 
+  const canSaveCurrentDraft = RHU_DRAFTS_ENABLED
+    && recoveryReady
+    && Boolean(patientId && consultationUuid && visit?.id)
+    && (canEncode || canFinalize);
   const autosave = useDraftAutosave({
-    enabled: RHU_DRAFTS_ENABLED && recoveryReady && !saveSuccess && Boolean(patientId && consultationUuid && visit?.id) && (canEncode || canFinalize),
+    enabled: canSaveCurrentDraft && !saveSuccess,
     patientId,
-    classification: restoredClassification("General Consultation", primaryProgram),
+    // Must match finalize `category` for every service (EPI→Immunization, Maternal, FP, Nutrition).
+    classification: classificationForPrimaryProgram(primaryProgram),
     payload: draftPayload,
     draft: activeDraft,
     sectionKey: currentStepKey,
@@ -667,6 +742,44 @@ export default function RhuConsultationWorkspace() {
     rhuVisitId: visit?.id,
     onDraftSaved: (saved) => { setActiveDraft((current) => ({ ...current, ...saved })); },
   });
+
+  // Leaving mid-consultation (Back to Queue, sidebar, browser Back) asks first,
+  // then saves the draft — same Leave Consultation pattern as BHC.
+  const pageLocation = useLocation();
+  const bypassLeaveGuardRef = useRef(false);
+  const leaveBlocker = useBlocker(
+    ({ nextLocation }) =>
+      !bypassLeaveGuardRef.current
+      && canSaveCurrentDraft
+      && !saveSuccess
+      && locationToPath(nextLocation) !== locationToPath(pageLocation),
+  );
+  const leaveBlockerRef = useRef(leaveBlocker);
+  useEffect(() => {
+    leaveBlockerRef.current = leaveBlocker;
+  });
+  const [leavingConsultation, setLeavingConsultation] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+  async function leaveAndResumeLater() {
+    if (leavingConsultation || saving) return;
+    setLeavingConsultation(true);
+    setLeaveError("");
+    try {
+      const error = await saveDraftBeforeNavigation({
+        flush: () => autosave.flushBeforeLeave(),
+        protectLocal: async () => false,
+        notifyLocal: () => {},
+        requireServer: true,
+      });
+      if (error) {
+        setLeaveError(error);
+        return;
+      }
+      leaveBlockerRef.current.proceed?.();
+    } finally {
+      setLeavingConsultation(false);
+    }
+  }
 
   function restoreDraft(draft) {
     const payload = draft.payload || {};
@@ -703,15 +816,49 @@ export default function RhuConsultationWorkspace() {
     if (payload.maternalData) setMaternalData((current) => mergeMaternalData(payload.maternalData, current));
     if (payload.expectedDeliveryDate) setExpectedDeliveryDate(payload.expectedDeliveryDate);
     if (payload.aog) setAog(payload.aog);
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
+      lmp: payload.maternalData?.lmp || "",
+      edc: payload.expectedDeliveryDate || "",
+      aog: payload.aog || "",
+      visitDate: resolvePregnancyVisitDate(
+        visit?.consultationDate,
+        visit?.date,
+        visit?.created_at,
+      ),
+    });
     if (payload.familyPlanningData) setFamilyPlanningData((current) => ({ ...current, ...payload.familyPlanningData }));
     if (payload.immunizationData?.vaccineEntries) setImmunizationEntries(payload.immunizationData.vaccineEntries);
+    if (payload.immunizationData?.breastfeedingMonitoring) {
+      setImmunizationBreastfeeding(payload.immunizationData.breastfeedingMonitoring);
+    }
+    if (payload.consultationNotes != null) setImmunizationRemarks(payload.consultationNotes || "");
+    if (payload.immunizationData?.cpabAssessment) {
+      setCpabAssessment({
+        status: "not_assessed",
+        notes: "",
+        ...payload.immunizationData.cpabAssessment,
+      });
+    }
+    if (Array.isArray(payload.immunizationData?.maternalTtTdEvidence)) {
+      setMaternalTtTdEvidence(payload.immunizationData.maternalTtTdEvidence);
+    }
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
     setPrescriptions(restorePrescriptions(payload));
+    setServiceUsages(normalizeServiceUsages(payload.serviceUsages));
+    setLegacyServicePrescriptionReviewed(payload.legacyServicePrescriptionReviewed === true);
     setPrescriptionText(restorePrescriptionText(payload));
     setTreatmentNotes(payload.medication || "");
     const restoredSchedules = restoreFollowUpSchedules(payload.followUpSchedules);
     setFollowUpSchedules(restoredSchedules.length ? restoredSchedules : restoreRhuFollowUpSchedules(payload, restoredDiagnoses));
+    setServiceHandoffs(restoreServiceHandoffs(
+      payload.carePlan || payload.care_plan || {},
+      getConsultationPrograms(payload),
+    ));
+    setServiceSupportingLabs(restoreServiceSupportingLabs(
+      payload.carePlan || payload.care_plan || {},
+      getConsultationPrograms(payload),
+    ));
     const restoredFollowUpIds = payload.carePlan?.continuedFollowUpTaskIds || payload.carePlan?.continued_follow_up_task_ids;
     if (Array.isArray(restoredFollowUpIds) && restoredFollowUpIds.length) {
       setLinkedFollowUpTaskIds((current) => (current.length ? current : selectedRhuFollowUpIds({ queryIds: restoredFollowUpIds, visit: null })));
@@ -795,8 +942,13 @@ export default function RhuConsultationWorkspace() {
         isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }));
+      Object.assign(errors, serviceHandoffErrors(serviceHandoffs, {
+        selectedPrograms,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+      }));
       Object.assign(errors, followUpScheduleErrors({ extraSchedules: followUpSchedules }));
       Object.assign(errors, structuredPrescriptionErrors());
+      Object.assign(errors, serviceUsageAndLegacyErrors());
     }
     setValidationErrors(errors);
     return errors;
@@ -861,6 +1013,8 @@ export default function RhuConsultationWorkspace() {
   }
 
   async function handlePrevious() {
+    // Clear step errors so returning to a screen does not keep a stale banner.
+    setValidationErrors({});
     if (wizardPhase === WIZARD_REVIEW) {
       setWizardPhase(WIZARD_NEXT);
       setNextScreen(includeTb ? TB_INTAKE_STEP : NEXT_STEP);
@@ -871,17 +1025,16 @@ export default function RhuConsultationWorkspace() {
         setNextScreen(NEXT_STEP);
         return;
       }
-      const previous = getPreviousStepKey(formSequence, formSequence[formSequence.length - 1]);
+      // Return to the last form screen (BHC parity). Using getPreviousStepKey on
+      // the last item skipped that screen and jumped one step too far back.
+      const lastFormStep = formSequence[formSequence.length - 1] || INTERVIEW_STEP;
       setWizardPhase(WIZARD_FORM);
-      setFormStep(previous === EXIT_STEP ? INTERVIEW_STEP : previous);
+      setFormStep(lastFormStep);
       return;
     }
     const previous = getPreviousStepKey(formSequence, activeFormStep);
     if (previous === EXIT_STEP) {
-      if (RHU_DRAFTS_ENABLED && !(await autosave.flushBeforeLeave())) {
-        toast.error("Your changes couldn't be saved. Please try again before leaving.");
-        return;
-      }
+      // Navigate; useBlocker opens Leave Consultation when a draft can still save.
       navigate("/rhu/patients");
       return;
     }
@@ -954,19 +1107,45 @@ export default function RhuConsultationWorkspace() {
 
   function applyPrenatalPrefill() {
     if (!prenatalEnrollment.enrolled || !prenatalEnrollment.prefill) return;
-    setMaternalData((current) => (current.lmp ? current : prenatalEnrollment.prefill));
     const prefill = prenatalEnrollment.prefill;
-    if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
-    if (prefill.aog) setAog(prefill.aog);
+    setMaternalData((current) => (current.lmp ? current : prefill));
+    // Seed identity dates once; applyPregnancyDating refreshes auto EDC/AOG
+    // (including legacy 280-day EDC → Naegele) without freezing stale values.
+    setExpectedDeliveryDate((current) => current || prefill.expectedDeliveryDate || "");
+    setAog((current) => current || prefill.aog || "");
+    if (!pregnancyDatingRef.current.autoEdd && !pregnancyDatingRef.current.autoAog) {
+      pregnancyDatingRef.current = seedPregnancyDatingTrackers({
+        lmp: prefill.lmp || "",
+        edc: prefill.expectedDeliveryDate || "",
+        aog: prefill.aog || "",
+        visitDate: rhuVisitDate,
+      });
+    }
   }
 
   function structuredPrescriptionErrors() {
     return prescriptionErrors(prescriptions, diagnoses);
   }
 
+  function serviceUsageAndLegacyErrors() {
+    const errors = {
+      ...serviceUsageErrors(serviceUsages, selectedPrograms),
+    };
+    if (legacyServiceOnlyPrescriptions(prescriptions).length > 0 && !legacyServicePrescriptionReviewed) {
+      errors.legacyServicePrescriptionReviewed =
+        "Review legacy service-linked prescriptions before completing this consultation.";
+    }
+    return errors;
+  }
+
   function handlePrescriptionsChange(next) {
     setPrescriptions(normalizePrescriptions(next));
     clearErrorsStartingWith(["prescriptions"]);
+  }
+
+  function handleServiceUsagesChange(next) {
+    setServiceUsages(normalizeServiceUsages(next));
+    clearErrorsStartingWith(["serviceUsages"]);
   }
 
   function handleDiagnosisChange(next) {
@@ -1016,6 +1195,7 @@ export default function RhuConsultationWorkspace() {
 
   function handleServiceNextAction(program, action) {
     setFollowUpSchedules((current) => pruneServiceSchedules(applyServiceNextAction(program, action, current), selectedPrograms));
+    setServiceHandoffs((current) => pruneServiceHandoffs(applyServiceHandoff(program, action, current), selectedPrograms));
   }
 
   function handleServiceFollowUp(program, next) {
@@ -1028,11 +1208,31 @@ export default function RhuConsultationWorkspace() {
     )));
   }
 
+  function handleServiceHandoffChange(program, patch) {
+    setServiceHandoffs((current) => pruneServiceHandoffs(
+      updateServiceHandoff(program, patch, applyServiceHandoff(program, "manage_to_bhc", current)),
+      selectedPrograms,
+    ));
+  }
+
+  function handleServiceSupportingLabsChange(program, selected) {
+    setServiceSupportingLabs((current) => pruneServiceSupportingLabs(
+      applyServiceSupportingLabs(program, selected, current),
+      selectedPrograms,
+    ));
+  }
+
   function handleProgramSelect(key) {
     if (key === "Maternal" && (!patient || isPatientMale(patient))) return;
     const next = toggleConsultationProgram(selectedPrograms, primaryProgram, key);
     setSelectedPrograms(next.selectedPrograms);
     setPrimaryProgram(next.primaryProgram);
+    setFollowUpSchedules((current) => pruneServiceSchedules(current, next.selectedPrograms));
+    setServiceHandoffs((current) => pruneServiceHandoffs(current, next.selectedPrograms));
+    setServiceSupportingLabs((current) => pruneServiceSupportingLabs(current, next.selectedPrograms));
+    setServiceUsages((current) =>
+      normalizeServiceUsages(current).filter((row) => next.selectedPrograms.includes(row.serviceProgram)),
+    );
     if (key === "Maternal" && next.selectedPrograms.includes("Maternal")) {
       applyPrenatalPrefill();
     }
@@ -1102,8 +1302,13 @@ export default function RhuConsultationWorkspace() {
         isReferralVisit: isReferredRhuVisit(visit),
         conditions: openConditions,
       }),
+      ...serviceHandoffErrors(serviceHandoffs, {
+        selectedPrograms,
+        catchmentBhcIds: catchmentBhcs.map((bhc) => bhc.id),
+      }),
       ...followUpScheduleErrors({ extraSchedules: followUpSchedules }),
       ...structuredPrescriptionErrors(),
+      ...serviceUsageAndLegacyErrors(),
     };
     if (Object.keys(errors).length) {
       const first = findFirstErrorStepKey(errors, stepOrder, stepOptions);
@@ -1159,7 +1364,7 @@ export default function RhuConsultationWorkspace() {
       const recordInput = {
           patientId: Number(patientId),
           consultationWorkflow: "rhu_itr_v1",
-          category: primaryProgram ? PROGRAM_CLASSIFICATIONS[primaryProgram] : "General Consultation",
+          category: classificationForPrimaryProgram(primaryProgram),
           rhuVisitId: visit.id,
           chiefComplaint,
           summaryOfPresentIllness,
@@ -1167,6 +1372,9 @@ export default function RhuConsultationWorkspace() {
             additionalConcern: additionalConcernPayload({ show: isReferred && showAdditionalConcern, chiefComplaint: additionalChiefComplaint, historyOfPresentIllness: additionalHistoryOfPresentIllness }),
             ...(nutritionIntent ? { nutritionIntent } : {}),
             prescriptions: prescriptionsForSave(prescriptions),
+            ...(serviceUsagesForSave(serviceUsages).length
+              ? { serviceUsages: serviceUsagesForSave(serviceUsages) }
+              : {}),
           },
           physicalExam,
           laboratoryTests,
@@ -1186,6 +1394,8 @@ export default function RhuConsultationWorkspace() {
           prescriptionText,
           tbData: includeTb ? tbData : null,
           maternalData: selectedPrograms.includes("Maternal") ? buildRhuMaternalPayload() : null,
+          // Top-level mirrors keep toPayload from dropping nested pregnancy fields.
+          lmp: selectedPrograms.includes("Maternal") ? (maternalData.lmp || null) : undefined,
           expectedDeliveryDate: selectedPrograms.includes("Maternal") ? expectedDeliveryDate : undefined,
           aog: selectedPrograms.includes("Maternal") ? aog : undefined,
           prenatalIntent: selectedPrograms.includes("Maternal") ? prenatalIntent : undefined,
@@ -1196,7 +1406,15 @@ export default function RhuConsultationWorkspace() {
                 previous_method: historicalFpMethod.label || familyPlanningData.previousMethod || "",
               }
             : null,
-          immunizationData: selectedPrograms.includes("EPI") ? { vaccineEntries: immunizationEntries } : null,
+          immunizationData: selectedPrograms.includes("EPI")
+            ? {
+                vaccineEntries: immunizationEntries,
+                breastfeedingMonitoring: immunizationBreastfeeding,
+                cpabAssessment,
+                maternalTtTdEvidence,
+              }
+            : null,
+          consultationNotes: selectedPrograms.includes("EPI") ? immunizationRemarks : undefined,
           selectedPrograms,
           primaryProgram,
           followUpSchedules: scheduledReturns,
@@ -1211,6 +1429,8 @@ export default function RhuConsultationWorkspace() {
             rhu_follow_up: Boolean(hasRhuFollowUp),
             manage_to_bhc: savedDiagnoses.some((entry) => entry.nextAction === "manage_to_bhc"),
             continued_follow_up_task_ids: linkedFollowUpTaskIds,
+            service_handoffs: serviceHandoffsForSave(serviceHandoffs, selectedPrograms),
+            service_supporting_labs: serviceSupportingLabsForSave(serviceSupportingLabs, selectedPrograms),
           },
           backgroundUpdate: canViewBackground
             ? toRecordBackgroundUpdate(omitHiddenSocialFromUpdate(backgroundUpdate, patient, new Date(), { includeBhcProfileFields: false }))
@@ -1314,7 +1534,7 @@ export default function RhuConsultationWorkspace() {
       [ASSESSMENT_STEP]: "Record the vital signs and examination findings for this visit.",
       [TB_INTAKE_STEP]: "Nurse TB intake fields for this visit.",
       [NEXT_STEP]: isReferredRhuVisit(visit)
-        ? "Named diagnoses, treatment, and prescription. Referral follow-up stays on the Return Slip."
+        ? "Named diagnoses, treatment, and prescription. Manage to BHC sends a monitoring request; No further follow-up closes the referral with notes for the BHC."
         : "Named diagnoses, treatment, and prescription. Staff confirm given medicines on Health Commodities.",
       [REVIEW_STEP]: "Confirm the consultation before saving the record.",
     },
@@ -1330,13 +1550,18 @@ export default function RhuConsultationWorkspace() {
       stepKey: INTERVIEW_STEP,
       rows: [
         patientReviewRow({ name: formatPatientName(patient) || "Patient", id: patientId }),
+        { label: "Selected health services", value: selectedPrograms.map((program) => program === "Maternal" ? "Maternal Care" : program === "EPI" ? "Immunization (EPI)" : program).join(", ") },
+        { label: "Primary service", value: classificationForPrimaryProgram(primaryProgram) },
+        { label: "Prenatal enrollment", value: selectedPrograms.includes("Maternal") ? (prenatalIntent === "enroll" ? "Enroll" : "Continue") : "" },
+        { label: "Nutrition enrollment", value: selectedPrograms.includes("Nutrition") ? (nutritionIntent === "enroll" ? "Enroll" : "Continue") : "" },
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
         ...(isReferred && showAdditionalConcern ? [
           { label: "Additional Chief Complaint", value: additionalChiefComplaint },
           { label: "Additional History of Present Illness", value: additionalHistoryOfPresentIllness },
         ] : []),
-        ...visitAnswerRows({ informant, similarIllness }),
+        ...(canViewBackground ? visitAnswerRows({ informant, similarIllness }) : []),
+        ...(canViewBackground ? rhuBackgroundReviewRows(historyUpdateForSave()) : []),
       ],
     },
     {
@@ -1344,44 +1569,53 @@ export default function RhuConsultationWorkspace() {
       title: "Physical Examination",
       stepKey: ASSESSMENT_STEP,
       rows: [
-        { label: "BP", value: systolicBp || diastolicBp ? `${systolicBp || "?"}/${diastolicBp || "?"} mmHg` : "" },
+        ...rhuVitalReviewRows({ systolicBp, diastolicBp, temp, pulse, spo2, weight, height, fbs, showBmi: shouldShowBmiDisplay(patient, rhuVisitDate) }),
         { label: "Physical Findings", value: physicalExam },
         ...laboratoryTests.map((entry, index) => ({ label: `Laboratory test ${index + 1}`, value: laboratorySummary(entry) })),
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-        { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
+        ...bodyFindingReassessments.map((item) => {
+          const finding = previousBodyFindings.find((previous) => String(previous.sourceRecordId) === String(item.sourceRecordId) && previous.sourceFindingIndex === item.sourceFindingIndex);
+          return {
+            label: "Body finding reassessment",
+            value: [finding ? formatBodyFindings([finding]) : `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}`, BODY_FINDING_STATUS_LABELS[item.status]].filter(Boolean).join(" — "),
+          };
+        }),
       ],
     },
     ...programFormSteps.map((step) => ({
       key: step.key,
       title: step.label,
       stepKey: step.key,
-      rows: programReviewRows({
-        Maternal: maternalReviewFields({ ...maternalData, expectedDeliveryDate, aog }),
-        "Family Planning": familyPlanningData,
-        Immunization: { vaccineEntries: immunizationEntries },
-      }[step.classification]),
+      rows: rhuProgramReviewRows(step.classification, {
+        maternalData: step.classification === "Maternal" ? buildRhuMaternalPayload() : undefined,
+        familyPlanningData,
+        previousMethod: historicalFpMethod.label,
+        immunizationEntries,
+        cpabAssessment,
+        maternalTtTdEvidence,
+        immunizationBreastfeeding,
+        immunizationRemarks,
+      }),
     })),
-    includeTb ? { key: TB_INTAKE_STEP, title: "TB", stepKey: TB_INTAKE_STEP, rows: programReviewRows(tbData) } : null,
+    includeTb ? { key: TB_INTAKE_STEP, title: "TB", stepKey: TB_INTAKE_STEP, rows: clinicalReviewRows(tbData) } : null,
     {
       key: NEXT_STEP,
       title: "Diagnosis & Care Plan",
       stepKey: NEXT_STEP,
       rows: [
-        ...diagnoses.map((entry) => ({
-          label: entry.name,
-          value: [
-            entry.activate ? "Active condition" : "",
-            diagnosisNextAction(entry) === "none" ? "No Further Follow-up Scheduled" : "",
-            diagnosisNextAction(entry) === "rhu_follow_up" ? "Schedule RHU follow-up" : "",
-            diagnosisNextAction(entry) === "manage_to_bhc" ? "Manage to BHC" : "",
-            diagnosisNextAction(entry) === "refer_higher_level" ? "Refer to Higher-Level Facility" : "",
-          ].filter(Boolean).join(" · "),
-        })),
-        ...diagnoses.filter((entry) => diagnosisNextAction(entry) === "refer_higher_level").flatMap((entry) => [
-          { label: `${entry.name} — Referral reason`, value: entry.higherLevelReferralPlan?.reason },
-          { label: `${entry.name} — Intended facility`, value: entry.higherLevelReferralPlan?.intendedFacility },
-          { label: `${entry.name} — Clinical plan`, value: entry.higherLevelReferralPlan?.clinicalPlan },
-        ]),
+        ...rhuDiagnosisReviewRows(diagnoses, {
+          catchmentBhcs,
+          laboratoryOptions: evidenceOptions(laboratoryTests, laboratoryHistory.data || []),
+        }),
+        ...rhuServiceReviewRows({
+          selectedPrograms,
+          schedules: followUpSchedules,
+          serviceHandoffs,
+          serviceSupportingLabs,
+          serviceUsages,
+          catchmentBhcs,
+          laboratoryOptions: evidenceOptions(laboratoryTests, laboratoryHistory.data || []),
+        }),
         { label: "Actions taken", value: treatmentNotes },
         ...(() => {
           const structuredPrescriptionRows = prescriptionReviewGroups(prescriptions, diagnoses).map((group) => ({
@@ -1529,7 +1763,8 @@ export default function RhuConsultationWorkspace() {
         {wizardPhase === WIZARD_REVIEW ? (
           <div className="min-w-0 space-y-4">
             <ConsultationReviewStep
-              visitDate={new Date().toLocaleDateString()}
+              hideHeading
+              visitDate={rhuVisitDate}
               visitTime={new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               sections={reviewSections}
               errors={Object.values(validationErrors).filter(Boolean)}
@@ -1702,6 +1937,18 @@ export default function RhuConsultationWorkspace() {
                           laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                           supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
                         })));
+                        setServiceHandoffs(current => current.map(entry => ({
+                          ...entry,
+                          laboratoryEvidenceConfirmed: false,
+                          laboratoryEvidence: (entry.laboratoryEvidence || []).filter(item => !item.reference.startsWith("current:") || available.has(item.reference)),
+                        })));
+                        setServiceSupportingLabs(current => pruneServiceSupportingLabs(
+                          current.map(entry => ({
+                            ...entry,
+                            supportingLaboratoryTests: (entry.supportingLaboratoryTests || []).filter(item => !item.reference?.startsWith("current:") || available.has(item.reference)),
+                          })),
+                          selectedPrograms,
+                        ));
                       }}
                       disabled={assessmentLocked || saving}
                       errors={validationErrors}
@@ -1737,19 +1984,27 @@ export default function RhuConsultationWorkspace() {
                   <ImmunizationVisitFields
                     vaccineOptions={CHILD_VACCINE_OPTIONS}
                     birthDate={patient?.birthdate || patient?.birthDate || patient?.dateOfBirth}
-                    visitDate={visit?.consultationDate || visit?.date || visit?.created_at || new Date()}
+                    visitDate={rhuVisitDate}
                     entries={immunizationEntries}
                     temperature={temp}
                     pulse={pulse}
                     spo2={spo2}
                     weight={weight}
                     height={height}
+                    breastfeedingMonitoring={immunizationBreastfeeding}
+                    consultationNotes={immunizationRemarks}
                     errors={validationErrors}
                     onTemperatureChange={setTemp}
                     onPulseChange={setPulse}
                     onSpo2Change={setSpo2}
                     onWeightChange={setWeight}
                     onHeightChange={setHeight}
+                    onBreastfeedingChange={(monthKey, checked) => {
+                      setImmunizationBreastfeeding((current) => ({
+                        ...current,
+                        [monthKey]: checked,
+                      }));
+                    }}
                     onToggleVaccine={(name, checked) => {
                       const visitDay = String(
                         visit?.consultationDate || visit?.date || "",
@@ -1767,13 +2022,31 @@ export default function RhuConsultationWorkspace() {
                           : current.filter((entry) => entry.vaccineName !== name),
                       );
                     }}
-                    onVaccineFieldChange={(name, field, value) => {
+                    onAddVaccineEntry={(entry) => {
+                      setImmunizationEntries((current) => [...current, entry]);
+                    }}
+                    onRemoveVaccineEntry={(entry, index) => {
                       setImmunizationEntries((current) =>
-                        current.map((entry) =>
-                          entry.vaccineName === name ? { ...entry, [field]: value } : entry,
-                        ),
+                        current.filter((row, rowIndex) => (
+                          Number.isInteger(index) ? rowIndex !== index : row.vaccineName !== entry?.vaccineName
+                        )),
                       );
                     }}
+                    onVaccineFieldChange={(name, field, value, index) => {
+                      setImmunizationEntries((current) =>
+                        current.map((entry, rowIndex) => {
+                          if (Number.isInteger(index)) {
+                            return rowIndex === index ? { ...entry, [field]: value } : entry;
+                          }
+                          return entry.vaccineName === name ? { ...entry, [field]: value } : entry;
+                        }),
+                      );
+                    }}
+                    cpabAssessment={cpabAssessment}
+                    maternalTtTdEvidence={maternalTtTdEvidence}
+                    onCpabAssessmentChange={setCpabAssessment}
+                    onMaternalEvidenceChange={setMaternalTtTdEvidence}
+                    onNotesChange={setImmunizationRemarks}
                     hideBasicMonitoring
                     medicinesSlot={null}
                   />
@@ -1876,12 +2149,21 @@ export default function RhuConsultationWorkspace() {
                     catchmentBhcs={catchmentBhcs}
                     isReferralVisit={isReferredRhuVisit(visit)}
                     selectedPrograms={selectedPrograms}
+                    serviceHandoffs={serviceHandoffs}
+                    serviceSupportingLabs={serviceSupportingLabs}
                     onServiceNextAction={handleServiceNextAction}
                     onServiceFollowUp={handleServiceFollowUp}
+                    onServiceHandoffChange={handleServiceHandoffChange}
+                    onServiceSupportingLabsChange={handleServiceSupportingLabsChange}
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
                     prescriptions={prescriptions}
                     onPrescriptionsChange={handlePrescriptionsChange}
+                    vaccineEntries={immunizationEntries}
+                    serviceUsages={serviceUsages}
+                    onServiceUsagesChange={handleServiceUsagesChange}
+                    legacyServicePrescriptionReviewed={legacyServicePrescriptionReviewed}
+                    onLegacyServicePrescriptionReviewedChange={setLegacyServicePrescriptionReviewed}
                     registry={registry}
                     existingTbCase={existingTbCase}
                     canConfirmTb={canConfirmTb}
@@ -1948,14 +2230,47 @@ export default function RhuConsultationWorkspace() {
         open={Boolean(saveSuccess)}
         title="Health Record Saved"
         description="The visit is closed as completed. The record is on this patient's profile."
-        onClose={() => navigate("/rhu/patients")}
+        onClose={() => {
+          bypassLeaveGuardRef.current = true;
+          navigate("/rhu/patients");
+        }}
         actions={[
           {
             label: "View Health Record",
             variant: "primary",
-            onClick: () => navigate(`/rhu/health-records/${saveSuccess.recordId}`),
+            onClick: () => {
+              bypassLeaveGuardRef.current = true;
+              navigate(`/rhu/health-records/${saveSuccess.recordId}`);
+            },
           },
-          { label: "Back to Queue", onClick: () => navigate("/rhu/patients") },
+          {
+            label: "Back to Queue",
+            onClick: () => {
+              bypassLeaveGuardRef.current = true;
+              navigate("/rhu/patients");
+            },
+          },
+        ]}
+      />
+      <NoticeModal
+        open={leaveBlocker.state === "blocked"}
+        title="Leave Consultation?"
+        message={leaveError || "Your progress is saved automatically and can be resumed later."}
+        closeDisabled={leavingConsultation || saving}
+        onClose={() => {}}
+        dismissOnBackdrop={false}
+        actions={[
+          {
+            label: "Continue Consultation",
+            variant: "secondary",
+            disabled: leavingConsultation || saving,
+            onClick: () => { setLeaveError(""); leaveBlocker.reset?.(); },
+          },
+          {
+            label: leavingConsultation ? "Saving..." : "Leave & Resume Later",
+            disabled: leavingConsultation || saving,
+            onClick: leaveAndResumeLater,
+          },
         ]}
       />
       </div>

@@ -10,7 +10,7 @@ use App\Models\User;
  */
 class StaffRoles
 {
-    private const MIDWIFE_DEFAULTS = ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'items.dispense', 'reports.view'];
+    private const MIDWIFE_DEFAULTS = ['patients.register', 'consultations.encode', 'consultations.finalize', 'clinical.history', 'records.correct', 'followups.manage', 'referrals.submit', 'inventory.view', 'inventory.manage', 'items.dispense', 'reports.view'];
 
     private const RHU_DEFAULTS = ['patients.register', 'clinical.history', 'rhu.manage', 'rhu.providers.manage', 'conditions.confirm', 'inventory.view', 'reports.view'];
 

@@ -1,89 +1,53 @@
-import { useMemo, useState } from "react";
-
 import { Button } from "../../../ui/button";
-import { Input } from "../../../ui/input";
-import FixedTable from "../../../common/tables/FixedTable";
+import ProfileCardsSkeleton from "./ProfileCardsSkeleton";
 import { formatShortDate } from "../../../../utils/patientProfile";
-import searchIcon from "../../../../assets/figma/search.svg";
-
-const FILTERS = ["All", "Maternal Care", "Family Planning"];
 
 export default function DispensedMedicinesSection({ rows = [], isLoading = false, isError = false, onRetry, onViewRecord }) {
-  const [filter, setFilter] = useState("All");
-  const [search, setSearch] = useState("");
-  const visibleRows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return rows.filter((row) =>
-      (filter === "All" || row.programs.includes(filter)) &&
-      (!needle || [row.name, row.quantity, row.dispensedBy, ...row.programs].join(" ").toLowerCase().includes(needle)),
-    );
-  }, [rows, filter, search]);
-
   return (
     <section aria-labelledby="dispensed-medicines-title" className="mt-6">
       <div className="mb-3">
-        <h3 id="dispensed-medicines-title" className="text-base font-bold text-[#111827]">Medicines Dispensed</h3>
+        <h3 id="dispensed-medicines-title" className="text-[17px] font-bold text-ink-800">Medicines Dispensed</h3>
         <p className="mt-1 text-xs text-neutral-500">Items actually dispensed during this patient&apos;s consultations</p>
       </div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Filter dispensed medicines" className="flex flex-wrap gap-1.5">
-          {FILTERS.map((option) => (
-            <Button key={option} type="button" variant="ghost" size="sm" aria-pressed={filter === option} onClick={() => setFilter(option)} className={`h-8 rounded-lg border px-2 text-xs ${filter === option ? "border-neutral-500 bg-neutral-50 text-[#111827]" : "border-neutral-200 bg-white text-neutral-500"}`}>
-              {option}{option === "All" ? ` (${rows.length})` : ""}
-            </Button>
-          ))}
-        </div>
-        <label className="relative block w-full max-w-64">
-          <span className="sr-only">Search dispensed medicines</span>
-          <img src={searchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search medicines or programs" className="h-8 rounded-lg border-neutral-200 pl-9 text-xs shadow-none" />
-        </label>
-      </div>
-
       {isError ? (
-        <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 px-4 py-6 text-sm text-alert-700">Could not load dispensed medicines. <Button type="button" variant="link" size="sm" onClick={() => onRetry?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
+        <div role="alert" className="care-tracking-empty flex flex-col items-center justify-center gap-3 rounded-xl border border-alert-100 bg-alert-50 p-5 text-center text-sm text-alert-700">
+          <p>Could not load dispensed medicines.</p>
+          <Button type="button" variant="secondary" size="compact" onClick={() => onRetry?.()}>Retry</Button>
+        </div>
       ) : isLoading ? (
-        <p role="status" className="border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">Loading dispensed medicines...</p>
-      ) : visibleRows.length === 0 ? (
-        <p className="border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">
-          {rows.length === 0 ? "No medicines dispensed for this patient." : "No dispensed medicines match this filter."}
+        <ProfileCardsSkeleton label="Loading dispensed medicines" />
+      ) : rows.length === 0 ? (
+        <p className="care-tracking-empty care-tracking-reveal flex items-center justify-center rounded-xl border border-neutral-200 bg-white p-5 text-center text-sm text-neutral-500">
+          No medicines dispensed for this patient.
         </p>
       ) : (
-        <div className="overflow-hidden border border-neutral-200 bg-white">
-          <FixedTable minWidth="min-w-[680px]" lockHeight={false}>
-            <thead className="h-11 bg-neutral-100 text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-              <tr>
-                <th scope="col" className="px-4">Date</th>
-                <th scope="col" className="px-3">Medicine / Formulation</th>
-                <th scope="col" className="px-3">Quantity</th>
-                <th scope="col" className="px-3">Program</th>
-                <th scope="col" className="px-3">Dispensed By</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {visibleRows.map((row) => {
-                const programs = row.programs.join(", ");
-                return (
-                  <tr key={row.id} className="h-14 transition-colors hover:bg-neutral-50">
-                    <td className="px-4 text-[13px] text-neutral-600">{formatShortDate(row.date)}</td>
-                    <td className="px-3 text-[13px] font-semibold text-ink-800">
-                      {onViewRecord && row.recordId ? (
-                        <button type="button" onClick={() => onViewRecord(row.recordId)} className="truncate text-left hover:text-ink-700 hover:underline" title={row.name}>
-                          {row.name}
-                        </button>
-                      ) : (
-                        <span title={row.name}>{row.name}</span>
-                      )}
-                    </td>
-                    <td className="px-3 text-[13px] text-ink-800">{row.quantity || "—"}</td>
-                    <td className="max-w-[180px] px-3 text-[13px] text-neutral-600" title={programs}>{programs}</td>
-                    <td className="px-3 text-[13px] text-neutral-600">{row.dispensedBy || "Not recorded"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </FixedTable>
-        </div>
+        <ul className="care-tracking-grid care-tracking-reveal">
+          {rows.map((row) => (
+            <li key={row.id} className="profile-record-card">
+              <div className="profile-record-card__body" tabIndex={0} role="region" aria-label={`${row.name} dispensing details`}>
+                <h4 className="text-sm font-semibold text-ink-800">{row.name}</h4>
+                <p className="mt-1 text-xs tabular-nums text-neutral-500">{formatShortDate(row.date)}</p>
+                <dl className="mt-4 space-y-3 text-xs">
+                  {[
+                    ["Quantity", row.quantity || "Not recorded"],
+                    ["Program", row.programs?.join(", ") || "Not recorded"],
+                    ["Dispensed by", row.dispensedBy || "Not recorded"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-3">
+                      <dt className="text-neutral-500">{label}</dt>
+                      <dd className="text-ink-800">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              {onViewRecord && row.recordId ? (
+                <div className="profile-record-card__footer">
+                  <Button type="button" variant="secondary" size="compact" onClick={() => onViewRecord(row.recordId)}>View Record</Button>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

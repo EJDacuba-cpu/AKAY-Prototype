@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ClipboardList,
   HeartPulse,
-  Loader2,
   ShieldCheck,
   Stethoscope,
   Syringe,
@@ -24,9 +23,11 @@ import {
   ConfirmationModal,
   ConnectionErrorState,
   ConnectionIssueModal,
+  HealthRecordFormSkeleton,
   NoticeModal,
   SuccessModal,
 } from "../../components/common";
+import { Skeleton } from "../../components/ui/skeleton";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 import DispensedMedicinesSection from "../../components/features/medicine/DispensedMedicinesSection";
 import healthRecordService, {
@@ -85,6 +86,8 @@ import {
   applyRiskFactorChange,
   collectPrenatalHistory,
   applyPregnancyDating,
+  resolvePregnancyVisitDate,
+  seedPregnancyDatingTrackers,
   continueBhcPrenatalPrefill,
   mergeMaternalData,
   sanitizeRiskAssessment,
@@ -219,6 +222,14 @@ import {
   restoreReportingEntries,
 } from "../../utils/reportingEntries";
 import { BHC_GENERAL_V2, continuedDraftNotes } from "../../utils/consultationWorkflow";
+import BhcLaboratoryResultRecorder from "../../components/features/health-records/BhcLaboratoryResultRecorder";
+import {
+  bhcLaboratoryErrors,
+  bhcLaboratorySummary,
+  bhcResultFromLegacyEntry,
+  legacyMaternalLaboratoryEntries,
+  restoreBhcLaboratoryTests,
+} from "../../utils/bhcLaboratoryResults";
 import { convertLegacyDraft } from "../../utils/draftConversion";
 import {
   droppedContinuedCareNotice,
@@ -463,6 +474,11 @@ const EMPTY_IMMUNIZATION_DATA = {
     month5: "",
     month6: "",
   },
+  cpabAssessment: {
+    status: "not_assessed",
+    notes: "",
+  },
+  maternalTtTdEvidence: [],
 };
 
 const ADULT_IMMUNIZATION_MIN_AGE_YEARS = 18;
@@ -720,11 +736,12 @@ export default function ConsultationWorkspace() {
   // The wizard is a single ordered phase rather than a set of booleans so that
   // "which screen am I on" has exactly one answer. Every entry opens on the form.
   const [wizardPhase, setWizardPhase] = useState(WIZARD_FORM);
-  const [consultationMode, setConsultationMode] = useState(
-    opensNewConsultation ? "general" : null,
-  );
-  const [selectedPrograms, setSelectedPrograms] = useState([]);
-  const [primaryProgram, setPrimaryProgram] = useState("");
+  const [consultationMode, setConsultationMode] = useState(() => {
+    if (!opensNewConsultation) return null;
+    return (routeContinuedIds.selectedPrograms || []).length ? "program" : "general";
+  });
+  const [selectedPrograms, setSelectedPrograms] = useState(() => routeContinuedIds.selectedPrograms || []);
+  const [primaryProgram, setPrimaryProgram] = useState(() => (routeContinuedIds.selectedPrograms || [])[0] || "");
   // Draft resume keeps the saved enroll/continue until care-overview or records settle.
   const [restoredNutritionIntent, setRestoredNutritionIntent] = useState("");
   // Which screen of the form phase is showing (a program form, Clinical
@@ -856,6 +873,8 @@ export default function ConsultationWorkspace() {
   });
 
   const [maternalData, setMaternalData] = useState(EMPTY_MATERNAL_DATA);
+  const [laboratoryTests, setLaboratoryTests] = useState([]);
+  const [legacyLabSources, setLegacyLabSources] = useState({});
   const inventoryCalendarDay = useFacilityCalendarDate();
   const [bhcMedicineInventory, setBhcMedicineInventory] = useState([]);
   const [bhcMedicineInventoryLoading, setBhcMedicineInventoryLoading] =
@@ -893,6 +912,7 @@ export default function ConsultationWorkspace() {
   // Encrypted on-device consultations belonging to this user are still loaded
   // for route-scoped recovery after a refresh, close, or restart.
   const recoveryActionGate = useRef(false);
+  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
   const [recoveryCheckReady, setRecoveryCheckReady] = useState(!isDraftRouteEligible);
   const [recoveryCheckError, setRecoveryCheckError] = useState(null);
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
@@ -924,6 +944,41 @@ export default function ConsultationWorkspace() {
   useEffect(() => {
     if (!entryHandoff) void loadHealthRecordDrafts();
   }, [loadHealthRecordDrafts, entryHandoff]);
+
+  // A profile start leaves a short-lived handoff. A refresh or a direct open
+  // has none, so finish the same check here instead of staying on the loader.
+  useEffect(() => {
+    if (!isDraftRouteEligible || entryHandoff || requestedDraftId || recoveryCheckReady) return undefined;
+    let cancelled = false;
+    setRecoveryCheckError(null);
+    (async () => {
+      try {
+        const found = selectedPatientId
+          ? await lookupHealthRecordDraft({ patientId: selectedPatientId, draftOwnerContext: entryOwner })
+          : null;
+        if (cancelled) return;
+        if (found && opensNewConsultation) {
+          setDraftDecision(found);
+          return;
+        }
+        setRecoveryCheckReady(true);
+      } catch (error) {
+        if (!cancelled) setRecoveryCheckError(error || new Error("Unable to open this consultation."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isDraftRouteEligible,
+    entryHandoff,
+    requestedDraftId,
+    recoveryCheckReady,
+    selectedPatientId,
+    entryOwner,
+    opensNewConsultation,
+    recoveryAttempt,
+  ]);
 
   useEffect(() => {
     function clearInMemorySubmissionState() {
@@ -1486,6 +1541,7 @@ export default function ConsultationWorkspace() {
       chiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       // Reporting entries with reportIn (always an array).
@@ -1603,6 +1659,19 @@ export default function ConsultationWorkspace() {
           immunizationData.breastfeedingMonitoring,
           ["month1", "month2", "month3", "month4", "month5", "month6"],
         ),
+        cpabAssessment: pickDraftFields(immunizationData.cpabAssessment || {}, [
+          "status",
+          "notes",
+        ]),
+        maternalTtTdEvidence: Array.isArray(immunizationData.maternalTtTdEvidence)
+          ? immunizationData.maternalTtTdEvidence.map((row) => pickDraftFields(row, [
+            "id",
+            "vaccineType",
+            "dose",
+            "dateAdministered",
+            "evidenceSource",
+          ]))
+          : [],
       },
       familyPlanningData: pickDraftFields(familyPlanningData, [
         "clientType",
@@ -1820,6 +1889,8 @@ export default function ConsultationWorkspace() {
     setChiefComplaint(payload.chiefComplaint || "");
     setSummaryOfPresentIllness(payload.summaryOfPresentIllness || "");
     setPhysicalExam(payload.physicalExam || "");
+    setLaboratoryTests(restoreBhcLaboratoryTests(payload));
+    setLegacyLabSources({});
     setBodyFindings(normalizeBodyFindings(payload.bodyFindings));
     setBodyFindingReassessments(Array.isArray(payload.bodyFindingReassessments) ? payload.bodyFindingReassessments : []);
     // Reporting entries are the diagnoses that carry reportIn. A legacy draft
@@ -1858,6 +1929,14 @@ export default function ConsultationWorkspace() {
     setExpectedDeliveryDate(payload.expectedDeliveryDate || "");
     setAog(payload.aog || "");
     setMaternalData(mergeMaternalData(payload.maternalData));
+    // Re-seed trackers so a saved auto AOG refreshes to the resume visit day
+    // instead of freezing as a clinical correction.
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
+      lmp: payload.maternalData?.lmp || "",
+      edc: payload.expectedDeliveryDate || "",
+      aog: payload.aog || "",
+      visitDate: resolvePregnancyVisitDate(payload.dateOfVisit, toDateInputValue()),
+    });
     setImmunizationData({
       ...EMPTY_IMMUNIZATION_DATA,
       ...(payload.immunizationData || {}),
@@ -1867,6 +1946,14 @@ export default function ConsultationWorkspace() {
         ...EMPTY_IMMUNIZATION_DATA.breastfeedingMonitoring,
         ...(payload.immunizationData?.breastfeedingMonitoring || {}),
       },
+      cpabAssessment: {
+        status: "not_assessed",
+        notes: "",
+        ...(payload.immunizationData?.cpabAssessment || {}),
+      },
+      maternalTtTdEvidence: Array.isArray(payload.immunizationData?.maternalTtTdEvidence)
+        ? payload.immunizationData.maternalTtTdEvidence
+        : [],
     });
     setFamilyPlanningData({
       ...EMPTY_FAMILY_PLANNING_DATA,
@@ -2559,6 +2646,13 @@ export default function ConsultationWorkspace() {
       errors["maternalData.lmp"] = "Record the last menstrual period to enroll in Maternal Care.";
     }
 
+    if (finalizing) {
+      Object.assign(errors, bhcLaboratoryErrors(laboratoryTests));
+      if (legacyMaternalLaboratoryEntries(maternalData).length) {
+        errors.legacyLaboratoryEntries = "Review unsaved laboratory results from this draft. Add a result source and move them, or remove them.";
+      }
+    }
+
     return errors;
   }
 
@@ -2569,13 +2663,12 @@ export default function ConsultationWorkspace() {
     setReferralForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  const pregnancyDatingRef = useRef({ autoEdd: "", autoAog: "" });
   useEffect(() => {
     const next = applyPregnancyDating({
       lmp: maternalData.lmp,
       edc: expectedDeliveryDate,
       aog,
-      visitDate: dateOfVisit,
+      visitDate: resolvePregnancyVisitDate(dateOfVisit),
       previousAutoEdd: pregnancyDatingRef.current.autoEdd,
       previousAutoAog: pregnancyDatingRef.current.autoAog,
     });
@@ -2647,18 +2740,77 @@ export default function ConsultationWorkspace() {
     });
   }
 
-  function handleVaccineFieldChange(vaccineName, field, value) {
+  function handleAddVaccineEntry(entry) {
+    const vaccineCode = getEpiCode(entry?.vaccineName);
+    if (vaccineCode && epiCompletion.alreadyGivenCodes.has(vaccineCode)) return;
     clearValidationError("vaccineEntries");
     setImmunizationData((prev) => {
-      const entries = getVaccineEntries(prev).map((entry) =>
-        entry.vaccineName === vaccineName ? { ...entry, [field]: value } : entry,
-      );
+      const existingEntries = getVaccineEntries(prev);
+      const entries = [
+        ...existingEntries,
+        {
+          ...EMPTY_VACCINE_ENTRY,
+          ...entry,
+          dateGiven: entry.dateGiven || dateOfVisit,
+          timeGiven: entry.timeGiven || "",
+        },
+      ];
       return {
         ...prev,
         vaccineEntries: entries,
         vaccinesGiven: entries,
       };
     });
+  }
+
+  function handleRemoveVaccineEntry(entry, index) {
+    clearValidationError("vaccineEntries");
+    setImmunizationData((prev) => {
+      const existingEntries = getVaccineEntries(prev);
+      const entries = existingEntries.filter((row, rowIndex) => {
+        if (Number.isInteger(index)) return rowIndex !== index;
+        return row.vaccineName !== entry?.vaccineName;
+      });
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleVaccineFieldChange(vaccineName, field, value, index) {
+    clearValidationError("vaccineEntries");
+    setImmunizationData((prev) => {
+      const entries = getVaccineEntries(prev).map((entry, rowIndex) => {
+        if (Number.isInteger(index)) {
+          return rowIndex === index ? { ...entry, [field]: value } : entry;
+        }
+        return entry.vaccineName === vaccineName ? { ...entry, [field]: value } : entry;
+      });
+      return {
+        ...prev,
+        vaccineEntries: entries,
+        vaccinesGiven: entries,
+      };
+    });
+  }
+
+  function handleCpabAssessmentChange(next) {
+    setImmunizationData((prev) => ({
+      ...prev,
+      cpabAssessment: {
+        status: next?.status || "not_assessed",
+        notes: next?.notes || "",
+      },
+    }));
+  }
+
+  function handleMaternalEvidenceChange(rows) {
+    setImmunizationData((prev) => ({
+      ...prev,
+      maternalTtTdEvidence: Array.isArray(rows) ? rows : [],
+    }));
   }
 
   function handleMaternalChange(field, value) {
@@ -3373,6 +3525,7 @@ export default function ConsultationWorkspace() {
       chiefComplaint: finalChiefComplaint,
       summaryOfPresentIllness,
       physicalExam,
+      laboratoryTests,
       bodyFindings,
       bodyFindingReassessments,
       // Reporting entries only; v2 sends no plain-text `diagnosis`.
@@ -3880,10 +4033,15 @@ export default function ConsultationWorkspace() {
     }
     if (stepKey === ASSESSMENT_STEP) {
       const vitalsErrors = vitalSignsErrors(currentVitalSigns());
-      if (Object.keys(vitalsErrors).length > 0) {
+      const labErrors = bhcLaboratoryErrors(laboratoryTests);
+      if (legacyMaternalLaboratoryEntries(maternalData).length) {
+        labErrors.legacyLaboratoryEntries = "Review unsaved laboratory results from this draft. Add a result source and move them, or remove them.";
+      }
+      if (Object.keys(vitalsErrors).length > 0 || Object.keys(labErrors).length > 0) {
         setValidationErrorsAndFocus({
           ...pickErrorsForStep(validationErrors, ASSESSMENT_STEP, BHC_STEP_OPTIONS),
           ...vitalsErrors,
+          ...labErrors,
         });
         return false;
       }
@@ -4042,6 +4200,12 @@ export default function ConsultationWorkspace() {
     setMaternalData((current) => (current.lmp ? current : prefill));
     if (prefill.expectedDeliveryDate) setExpectedDeliveryDate(prefill.expectedDeliveryDate);
     if (prefill.aog) setAog(prefill.aog);
+    pregnancyDatingRef.current = seedPregnancyDatingTrackers({
+      lmp: prefill.lmp || "",
+      edc: prefill.expectedDeliveryDate || "",
+      aog: prefill.aog || "",
+      visitDate: resolvePregnancyVisitDate(dateOfVisit),
+    });
   }
 
   function applyProgramSelect(option) {
@@ -4502,6 +4666,7 @@ export default function ConsultationWorkspace() {
       rows: [
         { label: "Vital Signs", value: vitalsSummary || EMPTY_VITALS_REMINDER },
         { label: "General Examination Findings", value: physicalExam },
+        ...laboratoryTests.map((entry, index) => ({ label: `Laboratory result ${index + 1}`, value: bhcLaboratorySummary(entry) })),
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
         { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
       ],
@@ -4619,7 +4784,7 @@ export default function ConsultationWorkspace() {
             }}
           />
         ) : (
-          <p role="status" className="py-6 text-sm text-neutral-600">Loading consultation details...</p>
+          <HealthRecordFormSkeleton message="Loading consultation details..." />
         )}
       </DashboardLayout>
     );
@@ -4692,10 +4857,15 @@ export default function ConsultationWorkspace() {
       )}
       <fieldset disabled={workspaceLocked} className="min-w-0">
       {continuedCareLoading && !isFirstConsultationStep ? (
-        <p role="status" aria-live="polite" className="ml-0 mr-auto flex w-full max-w-5xl items-center gap-2 border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-6 text-sm text-[#374151]">
-          <Loader2 size={16} className="animate-spin text-[#DC2626]" aria-hidden="true" />
-          Loading monitoring records…
-        </p>
+        <div role="status" aria-live="polite" aria-busy="true" className="ml-0 mr-auto w-full max-w-5xl">
+          <span className="sr-only">Loading monitoring records…</span>
+          <div aria-hidden="true" className="space-y-3 border border-[#E5E7EB] bg-white p-4">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        </div>
       ) : wizardPhase === WIZARD_NEXT ? (
         <NextActionStep
           visitDate={wizardVisitDate}
@@ -4815,15 +4985,26 @@ export default function ConsultationWorkspace() {
         {/* Each EPI section owns its card, matching the other consultation steps. */}
         {!patientGateLocked && isImmunization && showProgramBlock("Immunization") && (
           <div className="anim-fade-up space-y-4" style={stagger(2)}>
-            {immunizationVaccineEntries.length > 0 && (
+            {(() => {
+              // BHC-only stock deduction: NBS/CPAB stay on the tracking list,
+              // inventory rows are for actual vaccine doses only. RHU EPI has
+              // no inventory block here (prescriptions are separate).
+              const inventoryEntries = immunizationVaccineEntries
+                .map((entry, index) => ({ entry, index }))
+                .filter(({ entry }) => {
+                  const name = String(entry?.vaccineName || "").trim().toLowerCase();
+                  return name && name !== "newborn screening" && name !== "cpab";
+                });
+              if (inventoryEntries.length === 0) return null;
+              return (
               <ClinicalSectionCard
                 title="Vaccine Administration — Inventory"
-                subtitle="Select the matching inventory item and its stock-unit quantity. Do not repeat it in Medicines / Supplies."
+                subtitle="Match each dose to a stock item and quantity. Keep these out of Medicines / Supplies."
               >
                 <div className="space-y-3">
-                  {immunizationVaccineEntries.map((entry, index) => (
+                  {inventoryEntries.map(({ entry, index }) => (
                     <fieldset
-                      key={entry.vaccineName}
+                      key={`${entry.vaccineName}-${index}`}
                       disabled={!(currentUser?.permissions || []).includes("items.dispense")}
                       className="grid gap-2 border-t border-gray-100 pt-3 @xl:grid-cols-3"
                     >
@@ -4873,7 +5054,8 @@ export default function ConsultationWorkspace() {
                   ))}
                 </div>
               </ClinicalSectionCard>
-            )}
+              );
+            })()}
             <ImmunizationVisitFields
               vaccineOptions={epiVaccineOptions}
               birthDate={patientBirthDate}
@@ -4900,7 +5082,13 @@ export default function ConsultationWorkspace() {
               onHeightChange={setHeight}
               onBreastfeedingChange={handleBreastfeedingChange}
               onToggleVaccine={handleVaccineToggle}
+              onAddVaccineEntry={handleAddVaccineEntry}
+              onRemoveVaccineEntry={handleRemoveVaccineEntry}
               onVaccineFieldChange={handleVaccineFieldChange}
+              cpabAssessment={immunizationData.cpabAssessment || { status: "not_assessed", notes: "" }}
+              maternalTtTdEvidence={immunizationData.maternalTtTdEvidence || []}
+              onCpabAssessmentChange={handleCpabAssessmentChange}
+              onMaternalEvidenceChange={handleMaternalEvidenceChange}
               onNotesChange={setConsultationNotes}
               medicinesSlot={null}
             />
@@ -5070,6 +5258,50 @@ export default function ConsultationWorkspace() {
                     rows={4}
                   />
                 </div>
+                <BhcLaboratoryResultRecorder
+                  tests={laboratoryTests}
+                  errors={validationErrors}
+                  readOnly={workspaceLocked}
+                  suggestedDate={dateOfVisit}
+                  legacyEntries={legacyMaternalLaboratoryEntries(maternalData)}
+                  legacySources={legacyLabSources}
+                  onLegacySourceChange={(index, value) => setLegacyLabSources((current) => ({ ...current, [index]: value }))}
+                  onTransferLegacy={(entry) => {
+                    const resultSource = String(legacyLabSources[entry.index] || "");
+                    if (!resultSource.trim()) {
+                      setValidationErrors((current) => ({
+                        ...current,
+                        legacyLaboratoryEntries: "Enter the result source before moving this laboratory result.",
+                      }));
+                      return;
+                    }
+                    clearErrorsStartingWith(["laboratoryTests", "laboratory_tests", "legacyLaboratoryEntries"]);
+                    setLaboratoryTests((current) => [
+                      ...current,
+                      bhcResultFromLegacyEntry(entry, { resultSource, examinationDate: dateOfVisit }),
+                    ]);
+                    setMaternalData((current) => ({
+                      ...current,
+                      laboratoryEntries: (Array.isArray(current.laboratoryEntries) ? current.laboratoryEntries : []).filter((_, index) => index !== entry.index),
+                    }));
+                    setLegacyLabSources((current) => {
+                      const next = { ...current };
+                      delete next[entry.index];
+                      return next;
+                    });
+                  }}
+                  onRemoveLegacy={(index) => {
+                    clearErrorsStartingWith(["legacyLaboratoryEntries"]);
+                    setMaternalData((current) => ({
+                      ...current,
+                      laboratoryEntries: (Array.isArray(current.laboratoryEntries) ? current.laboratoryEntries : []).filter((_, itemIndex) => itemIndex !== index),
+                    }));
+                  }}
+                  onChange={(next) => {
+                    clearErrorsStartingWith(["laboratoryTests", "laboratory_tests"]);
+                    setLaboratoryTests(next);
+                  }}
+                />
                 <div className="mt-6 border-t border-[#E5E7EB] pt-4">
                   <BodyFindingsList
                     findings={bodyFindings}
@@ -5127,6 +5359,7 @@ export default function ConsultationWorkspace() {
           onDialogChange={setBodyFindingDialog}
           sex={selectedPatient?.sex}
           birthDate={getEffectivePatientBirthdate(selectedPatient)}
+          asOfDate={dateOfVisit || new Date()}
           side={bodyPreviewSide}
           onSideChange={setBodyPreviewSide}
         />
@@ -5339,7 +5572,7 @@ function LockedFormContent({ locked, children }) {
 
   return (
     <fieldset disabled className="space-y-4">
-      <div className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+      <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold text-ink-700">
         Select a patient first to continue.
       </div>
       <div className="pointer-events-none opacity-60">{children}</div>
@@ -5352,8 +5585,8 @@ function LockedFormContent({ locked, children }) {
 
 function MaternalClassificationWarning() {
   return (
-    <div className="mt-4 flex items-start gap-3 rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+    <div className="mt-4 flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-ink-700">
+      <AlertCircle size={16} className="mt-0.5 shrink-0 text-ink-500" />
       <p className="text-xs leading-relaxed">
         Please verify the selected patient before creating a maternal record.
       </p>

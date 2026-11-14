@@ -54,9 +54,12 @@ export default function RhuStartConsultationModal({
     },
     staleTime: 0, retry: false, refetchOnMount: "always", refetchOnWindowFocus: false,
   });
-  const visit = visitQuery.isFetching ? null : visitQuery.data;
+  // Keep the last loaded visit during background refetches. Nulling it on every
+  // isFetching reset recovery mid-Resume and made unfinished drafts look broken.
+  const visit = visitQuery.data ?? null;
+  const visitLoading = visitQuery.isPending || (visitQuery.isFetching && !visit);
   function enter(readyVisit, draft = null) {
-    if (closed.current || owner !== String(formDraftOwnerContext(getCurrentUser() || {}))) return;
+    if (!readyVisit || closed.current || owner !== String(formDraftOwnerContext(getCurrentUser() || {}))) return;
     client.setQueryData(rhuEntryKey(owner, visitId, patientId), {
       owner, draft, consultationUuid: readyVisit.consultation_uuid || readyVisit.consultationUuid, createdAt: Date.now(),
     });
@@ -65,7 +68,30 @@ export default function RhuStartConsultationModal({
   const recovery = useRhuConsultationRecovery({
     visit, patientId, owner, currentUserId: user.id,
     enabled: RHU_DRAFTS_ENABLED && !selecting,
-    onRestore: (draft) => enter(visit, draft),
+    onRestore: async (draft) => {
+      const latest = visitQuery.data || visit;
+      if (!latest) return;
+      try {
+        if (latest.status === "in_consultation") {
+          const { visit: readyVisit } = await startOrResumeRhuConsultation({
+            mode: "resume", visitId, patientId,
+          });
+          enter(readyVisit || latest, draft);
+          return;
+        }
+        const { visit: readyVisit } = await startOrResumeRhuConsultation({
+          mode: "start", visitId, patientId,
+          entryConsultationUuid: latest.consultation_uuid || latest.consultationUuid,
+        });
+        enter(readyVisit, draft);
+      } catch (error) {
+        if (latest.status === "in_consultation") {
+          enter(latest, draft);
+          return;
+        }
+        toast.error(error?.message || "Unable to reopen this consultation.");
+      }
+    },
     onDiscarded: () => { setSelecting(true); void visitQuery.refetch(); },
   });
   const showSelection = selecting || recovery.ready;
@@ -80,7 +106,7 @@ export default function RhuStartConsultationModal({
   });
   const overview = overviewQuery.data || null;
   const overviewUnavailable = overviewQuery.isError && !overview;
-  const checking = !visitQuery.isError && !entryError && !overviewUnavailable && (visitQuery.isFetching || (!showSelection && recovery.checking) || (showSelection && overviewQuery.isPending));
+  const checking = !visitQuery.isError && !entryError && !overviewUnavailable && (visitLoading || (!showSelection && recovery.checking) || (showSelection && overviewQuery.isPending && !overview));
   useEffect(() => { onCheckingChange?.(checking); }, [checking, onCheckingChange]);
   useEffect(() => () => onCheckingChange?.(false), [onCheckingChange]);
 

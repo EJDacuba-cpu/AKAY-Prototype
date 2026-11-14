@@ -27,8 +27,8 @@ const LABEL_CLASS = "pointer-events-none absolute top-[18%] -translate-y-1/2 sel
  * aspect ratio, so the caller sizes it with `className` (width or height).
  * Front view: the PATIENT's right is on the viewer's left. Back view: swapped.
  */
-export default function AnatomyFigure({ sex, birthDate, side, onToggleSide, flipHint = false, flipCorner = "right", className = "", label, children }) {
-  const figure = getFigureKey(sex, birthDate);
+export default function AnatomyFigure({ sex, birthDate, asOfDate, side, onToggleSide, flipHint = false, flipCorner = "right", className = "", label, children }) {
+  const figure = getFigureKey(sex, birthDate, asOfDate || new Date());
   const [leftLabel, rightLabel] = side === "front" ? ["R", "L"] : ["L", "R"];
   const flipLabel = side === "front" ? "Show back" : "Show front";
 

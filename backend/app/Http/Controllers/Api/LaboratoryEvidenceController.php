@@ -26,10 +26,17 @@ class LaboratoryEvidenceController extends Controller
     {
         $this->evidence->authorizeRead($request->user(), $healthRecord);
 
+        $user = $request->user();
+        $canCorrect = ActionPermissions::allows($user, 'records.correct');
+        $canAddendum = $canCorrect && (
+            ($user->isRhu() && ! $healthRecord->isBhcGeneralV2()
+                && (int) $healthRecord->rural_health_unit_id === (int) $user->rural_health_unit_id)
+            || ($user->isBhc() && $healthRecord->isBhcGeneralV2()
+                && (int) $healthRecord->barangay_health_center_id === (int) $user->barangay_health_center_id)
+        );
+
         return response()->json(['data' => $this->evidence->present($healthRecord),
-            'can_addendum' => $request->user()->isRhu()
-                && (int) $healthRecord->rural_health_unit_id === (int) $request->user()->rural_health_unit_id
-                && ActionPermissions::allows($request->user(), 'records.correct')]);
+            'can_addendum' => $canAddendum]);
     }
 
     public function patient(Request $request, Patient $patient)
@@ -53,14 +60,21 @@ class LaboratoryEvidenceController extends Controller
             ->orderByDesc('date_recorded')
             ->orderByDesc('id');
         if ($user->isRhu()) {
-            $query->where('rural_health_unit_id', $user->rural_health_unit_id);
+            $query->where('rural_health_unit_id', $user->rural_health_unit_id)
+                ->where(function ($records) {
+                    $records->where('monitoring_data->consultationWorkflow', '!=', HealthRecord::WORKFLOW_BHC_GENERAL_V2)
+                        ->orWhereNull('monitoring_data->consultationWorkflow');
+                });
         } else {
-            // BHC may not read RHU laboratory source rows directly; shared evidence is appended below.
-            $query->whereNull('rural_health_unit_id')
-                ->where('barangay_health_center_id', $user->barangay_health_center_id);
+            // BHC reads its own consultation results plus, below, explicitly shared RHU evidence.
+            $query->where('barangay_health_center_id', $user->barangay_health_center_id)
+                ->where(function ($records) {
+                    $records->where('monitoring_data->consultationWorkflow', HealthRecord::WORKFLOW_BHC_GENERAL_V2)
+                        ->orWhereNull('rural_health_unit_id');
+                });
         }
 
-        $records = $query->get(['id', 'patient_id', 'date_recorded', 'rural_health_unit_id', 'barangay_health_center_id', 'category']);
+        $records = $query->get(['id', 'patient_id', 'date_recorded', 'rural_health_unit_id', 'barangay_health_center_id', 'category', 'monitoring_data']);
         $rhuNames = RuralHealthUnit::query()
             ->whereIn('id', $records->pluck('rural_health_unit_id')->filter()->unique()->all())
             ->pluck('name', 'id');
@@ -70,13 +84,15 @@ class LaboratoryEvidenceController extends Controller
         $canCorrect = ActionPermissions::allows($user, 'records.correct');
 
         $entries = $records->flatMap(function (HealthRecord $record) use ($user, $rhuNames, $bhcNames, $canCorrect) {
-            $facilityName = $record->rural_health_unit_id
-                ? (string) ($rhuNames[$record->rural_health_unit_id] ?? 'RHU')
-                : (string) ($bhcNames[$record->barangay_health_center_id] ?? 'BHC');
-            $source = $record->rural_health_unit_id ? 'RHU' : 'BHC';
-            $canAddendum = $user->isRhu()
-                && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id
-                && $canCorrect;
+            $bhcAuthored = $record->isBhcGeneralV2();
+            $facilityName = $bhcAuthored || ! $record->rural_health_unit_id
+                ? (string) ($bhcNames[$record->barangay_health_center_id] ?? 'BHC')
+                : (string) ($rhuNames[$record->rural_health_unit_id] ?? 'RHU');
+            $source = $bhcAuthored || ! $record->rural_health_unit_id ? 'BHC' : 'RHU';
+            $canAddendum = $canCorrect && (
+                ($user->isRhu() && ! $bhcAuthored && (int) $record->rural_health_unit_id === (int) $user->rural_health_unit_id)
+                || ($user->isBhc() && $bhcAuthored && (int) $record->barangay_health_center_id === (int) $user->barangay_health_center_id)
+            );
 
             return collect($this->evidence->present($record))->map(fn (array $entry) => [
                 ...$entry,
@@ -177,7 +193,9 @@ class LaboratoryEvidenceController extends Controller
         $this->evidence->authorizeAddendum($request->user(), $healthRecord);
         abort_unless((int) $laboratoryTest->health_record_id === (int) $healthRecord->id, 404);
         $data = $request->validate([
-            ...LaboratoryEvidenceService::rules('tests'),
+            ...($request->user()->isBhc()
+                ? LaboratoryEvidenceService::bhcRules('tests')
+                : LaboratoryEvidenceService::rules('tests')),
             'tests' => ['required', 'array', 'size:1'],
             'reason' => ['required', 'string', 'max:2000'],
             'version' => ['required', 'integer', 'min:0'],

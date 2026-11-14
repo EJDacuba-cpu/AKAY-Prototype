@@ -102,6 +102,106 @@ class ReferralWorkflowService
         return $result;
     }
 
+    /**
+     * Close a Received referral from the RHU ITR care plan.
+     * Manage to BHC already creates a monitoring request; No further follow-up
+     * requires notes so the BHC learns why the case ends without monitoring.
+     * Service handoffs (Selected Health Services) also close the referral.
+     *
+     * @param  array<int, array<string, mixed>>  $diagnoses
+     * @param  array<int, array<string, mixed>>  $serviceHandoffs
+     */
+    public function completeFromRhuCarePlan(
+        Request $request,
+        int $referralId,
+        array $diagnoses,
+        ?User $practitioner = null,
+        array $serviceHandoffs = [],
+    ): ?Feedback {
+        $closing = [];
+        foreach ($diagnoses as $index => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $action = (string) ($entry['nextAction'] ?? $entry['next_action'] ?? '');
+            $manage = $action === 'manage_to_bhc'
+                || filter_var($entry['manageToBhc'] ?? $entry['manage_to_bhc'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if ($manage) {
+                $closing[] = ['kind' => 'manage_to_bhc', 'entry' => $entry, 'index' => $index];
+            } elseif ($action === 'none') {
+                $closing[] = ['kind' => 'none', 'entry' => $entry, 'index' => $index];
+            }
+        }
+        foreach ($serviceHandoffs as $index => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $program = trim((string) ($entry['program'] ?? ''));
+            if ($program === '') {
+                continue;
+            }
+            $closing[] = ['kind' => 'service_manage_to_bhc', 'entry' => $entry, 'index' => $index];
+        }
+
+        if ($closing === []) {
+            return null;
+        }
+
+        $names = [];
+        $actions = [];
+        $recommendations = [];
+        $remarks = [];
+        foreach ($closing as $item) {
+            $entry = $item['entry'];
+            if ($item['kind'] === 'service_manage_to_bhc') {
+                $program = trim((string) ($entry['program'] ?? ''));
+                $label = $program !== '' ? $program : 'Selected health service';
+                $names[] = $label;
+                $actions[] = "Manage to BHC: {$label}";
+                $recommendation = trim((string) ($entry['monitoring_recommendation'] ?? $entry['monitoringRecommendation'] ?? ''));
+                if ($recommendation !== '') {
+                    $recommendations[] = "{$label}: {$recommendation}";
+                }
+
+                continue;
+            }
+            $name = trim((string) ($entry['name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+            if ($item['kind'] === 'manage_to_bhc') {
+                $actions[] = $name !== '' ? "Manage to BHC: {$name}" : 'Manage to BHC';
+                $recommendation = trim((string) ($entry['monitoringRecommendation'] ?? $entry['monitoring_recommendation'] ?? ''));
+                if ($recommendation !== '') {
+                    $recommendations[] = $name !== '' ? "{$name}: {$recommendation}" : $recommendation;
+                }
+            } else {
+                $actions[] = $name !== '' ? "No further follow-up: {$name}" : 'No further follow-up';
+                $reason = trim((string) ($entry['noFurtherFollowUpReason'] ?? $entry['no_further_follow_up_reason'] ?? ''));
+                if ($reason === '') {
+                    $field = isset($entry['id']) && is_string($entry['id']) && $entry['id'] !== ''
+                        ? "diagnoses.{$entry['id']}.noFurtherFollowUpReason"
+                        : "diagnoses.{$item['index']}.noFurtherFollowUpReason";
+                    throw ValidationException::withMessages([
+                        $field => 'Tell the BHC why no further follow-up is needed.',
+                    ]);
+                }
+                $remarks[] = $name !== '' ? "{$name}: {$reason}" : $reason;
+            }
+        }
+
+        $diagnosisText = $names !== [] ? implode('; ', array_unique($names)) : 'RHU consultation completed';
+
+        return $this->completeWithFeedback($request, $referralId, [
+            'rhu_diagnosis' => $diagnosisText,
+            'action_taken' => implode("\n", $actions),
+            'recommendation' => $recommendations !== [] ? implode("\n", $recommendations) : null,
+            'remarks' => $remarks !== [] ? implode("\n", $remarks) : null,
+            'receiving_practitioner' => $practitioner?->name ?? $request->user()?->name,
+            'treatment_notes' => null,
+        ]);
+    }
+
     public function completeWithFeedback(
         Request $request,
         int $referralId,

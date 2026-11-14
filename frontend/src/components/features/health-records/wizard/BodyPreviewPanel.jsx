@@ -103,9 +103,9 @@ function BodyDot({ region, label, position, count, active, hovered, readOnly, on
  * goes through onOpen regardless of hover state. Counts and previews cover
  * only the side shown.
  */
-function BodyFigure({ findings, sex, birthDate, side, onToggleSide, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
+function BodyFigure({ findings, sex, birthDate, asOfDate, side, onToggleSide, countByRegion, activeRegion, readOnly, isDesktop, onOpen }) {
   const [hoveredRegion, setHoveredRegion] = useState(null);
-  const figure = getFigureKey(sex, birthDate);
+  const figure = getFigureKey(sex, birthDate, asOfDate || new Date());
 
   function hoverStart(region) {
     if (!isDesktop || activeRegion) return;
@@ -135,6 +135,7 @@ function BodyFigure({ findings, sex, birthDate, side, onToggleSide, countByRegio
     <AnatomyFigure
       sex={sex}
       birthDate={birthDate}
+      asOfDate={asOfDate}
       side={side}
       onToggleSide={onToggleSide}
       label={side === "front" ? "Front-facing body figure" : "Back-facing body figure"}
@@ -514,6 +515,7 @@ export function getBodyRegionAnchor(region) {
  * @param sex            the patient's sex; picks the male or female figure
  * @param birthDate      the patient's date of birth; through 12 completed months
  *                       it picks the infant figure instead, whatever the sex
+ * @param asOfDate       consultation visit date for the 0–12 month infant cutoff
  * @param side           "front" | "back" - the figure side shown, owned by the page
  * @param onSideChange   receives the next side when the flip button is used
  * @param sticky         pin the panel in the consultation column; off in document views
@@ -530,6 +532,7 @@ export default function BodyPreviewPanel({
   onDialogChange,
   sex,
   birthDate,
+  asOfDate,
   side = "front",
   onSideChange,
   sticky = true,
@@ -587,6 +590,7 @@ export default function BodyPreviewPanel({
           findings={displayedFindings}
           sex={sex}
           birthDate={birthDate}
+          asOfDate={asOfDate}
           side={side}
           onToggleSide={dialog ? undefined : toggleSide}
           countByRegion={countByRegion}

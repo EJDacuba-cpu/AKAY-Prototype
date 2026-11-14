@@ -30,7 +30,7 @@ function Narrative({ label, value, empty }) {
 
 function missingClinical(slip, empty) {
   return slip.missingLinkedRecord
-    ? "Unavailable without the linked BHC health record. This can still exist even when RHU Health Records is empty."
+    ? "Unavailable without the referral slip clinical summary from BHC."
     : empty;
 }
 
@@ -113,7 +113,7 @@ function BhcExaminationPanel({ slip, record, patient }) {
         <h2 className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Examination findings</h2>
         {!record ? (
           <p className="mt-3 text-[13px] text-neutral-500">
-            Body findings are unavailable without the linked BHC health record. RHU Health Records may still be empty.
+            Body findings are unavailable without the referral slip clinical summary from BHC.
           </p>
         ) : (
           <div className="mt-3">
@@ -142,7 +142,7 @@ function BhcExaminationPanel({ slip, record, patient }) {
         <h2 className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Vital signs</h2>
         {!record ? (
           <p className="mt-3 text-[13px] text-neutral-500">
-            Vital signs are unavailable without the linked BHC health record.
+            Vital signs are unavailable without the referral slip clinical summary from BHC.
           </p>
         ) : (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">

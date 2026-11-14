@@ -76,6 +76,59 @@ test("CPAB stays Not assessed without verified maternal TT2+/Td2+ evidence", () 
   assert.match(assessed.evidenceLabel, /without verified maternal doses/i);
 });
 
+test("CPAB Protected can come from child EPI manual evidence without a mother link", () => {
+  const assessed = assessChildCpab({
+    child: { id: "c-manual", birthdate: "2026-08-01", motherName: "Ana Only" },
+    mother: null,
+    motherRecords: [],
+    childEpiHistory: new Map(),
+    childEpiRecords: [
+      {
+        selectedPrograms: ["EPI"],
+        dateOfVisit: "2026-09-01",
+        immunization_data: {
+          cpabAssessment: { status: "protected", notes: "Card reviewed" },
+          maternalTtTdEvidence: [
+            {
+              vaccineType: "TT",
+              dose: "2",
+              dateAdministered: "2026-06-01",
+              evidenceSource: "maternal_card",
+            },
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(assessed.status, "protected");
+  assert.equal(assessed.label, "Protected");
+  assert.match(assessed.evidenceLabel, /TT2/);
+});
+
+test("CPAB stays Not assessed when only mother-reported evidence supports Protected", () => {
+  const assessed = assessChildCpab({
+    child: { id: "c-reported", birthdate: "2026-08-01" },
+    childEpiRecords: [
+      {
+        selectedPrograms: ["EPI"],
+        immunization_data: {
+          cpabAssessment: { status: "protected" },
+          maternalTtTdEvidence: [
+            {
+              vaccineType: "Td",
+              dose: "2",
+              dateAdministered: "2026-05-01",
+              evidenceSource: "mother_reported",
+            },
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(assessed.status, "not_assessed");
+  assert.match(assessed.evidenceLabel, /reported/i);
+});
+
 test("CPAB Protected requires linked mother and dated TT2+ on or before DOB", () => {
   const patients = [
     {

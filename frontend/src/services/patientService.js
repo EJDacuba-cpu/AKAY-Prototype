@@ -21,7 +21,21 @@ function fullName(patient = {}) {
 
 function normalizeDate(value) {
   if (!value) return "";
-  return String(value).split("T")[0];
+  const text = String(value).trim();
+  // Already a calendar date from the API cast (date:Y-m-d).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  // ISO datetimes must use the viewer's local calendar day. Taking the
+  // leading YYYY-MM-DD from "...T16:00:00Z" (Asia/Manila midnight) shifts
+  // infant DOBs one day early and can drop 0–12 month hide/anatomy rules.
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
 }
 
 /**
@@ -165,12 +179,60 @@ export function normalizePatient(patient = {}) {
 }
 
 
-async function listPatients(params = {}) {
-  const query = new URLSearchParams(
-    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+const PATIENT_DIRECTORY_MAX_PER_PAGE = 100;
+
+function patientListQuery(params = {}) {
+  return new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   );
+}
+
+async function listPatients(params = {}) {
+  const query = patientListQuery(params);
   const response = await apiRequest(`/patients${query.size ? `?${query}` : ""}`);
   return unwrapList(response).map(normalizePatient);
+}
+
+/**
+ * One directory page with Laravel paginator meta. Used by Patient Directory
+ * Load More so later pages come from the API instead of client-only slicing.
+ */
+export async function listPatientsPage(params = {}) {
+  const page = Math.max(1, Number(params.page) || 1);
+  const perPage = Math.max(
+    1,
+    Math.min(PATIENT_DIRECTORY_MAX_PER_PAGE, Number(params.per_page) || 25),
+  );
+  const includeFilterOptions = Boolean(params.include_filter_options);
+  const query = patientListQuery({
+    ...params,
+    page,
+    per_page: perPage,
+    include_filter_options: includeFilterOptions ? 1 : undefined,
+  });
+  const response = await apiRequest(`/patients${query.size ? `?${query}` : ""}`);
+  const paginator = unwrapData(response) || {};
+  const items = unwrapList(response).map(normalizePatient);
+  const rawOptions = response?.filter_options || {};
+  return {
+    items,
+    meta: {
+      current_page: Number(paginator.current_page) || page,
+      last_page: Math.max(1, Number(paginator.last_page) || 1),
+      per_page: Number(paginator.per_page) || perPage,
+      total: Number(paginator.total) || items.length,
+    },
+    filterOptions: includeFilterOptions
+      ? {
+          barangays: Array.isArray(rawOptions.barangays)
+            ? rawOptions.barangays.map(String).filter(Boolean)
+            : [],
+          civilStatuses: Array.isArray(rawOptions.civil_statuses)
+            ? rawOptions.civil_statuses.map(String).filter(Boolean)
+            : [],
+        }
+      : undefined,
+  };
 }
 
 /**

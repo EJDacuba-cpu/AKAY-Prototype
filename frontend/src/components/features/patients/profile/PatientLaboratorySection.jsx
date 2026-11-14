@@ -3,21 +3,20 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import ModalShell from "../../../common/modals/ModalShell";
 import { Button } from "../../../ui/button";
-import { Input } from "../../../ui/input";
+import PlainStatusStamp from "../../../common/badges/PlainStatusStamp";
+import ProfileCardsSkeleton from "./ProfileCardsSkeleton";
 import useAccess from "../../../../hooks/useAccess";
 import { getPatientLaboratoryTests, saveLaboratoryAddendum } from "../../../../services/laboratoryService";
 import { formatShortDate } from "../../../../utils/patientProfile";
 import {
-  LABORATORY_STATUSES,
-  filterPatientLaboratoryTests,
   laboratoryErrors,
   laboratorySummary,
   sortPatientLaboratoryTests,
 } from "../../../../utils/laboratoryTests";
+import { bhcLaboratoryErrors } from "../../../../utils/bhcLaboratoryResults";
 import { LaboratoryFields } from "../../health-records/LaboratoryEvidence";
-import searchIcon from "../../../../assets/figma/search.svg";
+import BhcLaboratoryFields from "../../health-records/BhcLaboratoryFields";
 
-const STATUS_FILTERS = ["All", ...LABORATORY_STATUSES];
 
 function resultPreview(entry, max = 120) {
   const text = String(entry?.result || "").trim();
@@ -26,10 +25,12 @@ function resultPreview(entry, max = 120) {
 }
 
 function sourceLabel(entry) {
+  if (entry.sourceKind === "shared_monitoring") return "RHU (shared evidence)";
+  const typed = String(entry.resultSource || "").trim();
   const facility = String(entry.facilityName || "").trim();
   const visit = entry.visitDate ? formatShortDate(entry.visitDate) : "";
   const service = String(entry.serviceType || "").trim();
-  return [facility, visit, service].filter(Boolean).join(" · ");
+  return [typed ? `Source: ${typed}` : "", facility, visit, service].filter(Boolean).join(" · ");
 }
 
 export default function PatientLaboratorySection({ patientId }) {
@@ -43,9 +44,6 @@ export default function PatientLaboratorySection({ patientId }) {
     staleTime: 0,
   });
 
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [reason, setReason] = useState("");
@@ -56,10 +54,6 @@ export default function PatientLaboratorySection({ patientId }) {
   const entries = useMemo(
     () => sortPatientLaboratoryTests(Array.isArray(query.data) ? query.data : []),
     [query.data],
-  );
-  const visible = useMemo(
-    () => filterPatientLaboratoryTests(entries, { status: statusFilter, search }),
-    [entries, statusFilter, search],
   );
 
   async function refresh() {
@@ -74,7 +68,9 @@ export default function PatientLaboratorySection({ patientId }) {
   }
 
   function openEditor(entry) {
-    setEditing({ ...entry });
+    setEditing(entry.facilityType === "BHC"
+      ? { ...entry, resultSource: entry.resultSource || "", remarks: entry.remarks || "", resultStatus: "Result Available" }
+      : { ...entry });
     setReason("");
     setError("");
     setFieldErrors({});
@@ -86,7 +82,7 @@ export default function PatientLaboratorySection({ patientId }) {
       setError("Enter a reason for this laboratory result update.");
       return;
     }
-    const errors = laboratoryErrors([editing]);
+    const errors = editing.facilityType === "BHC" ? bhcLaboratoryErrors([editing]) : laboratoryErrors([editing]);
     setFieldErrors(errors);
     if (Object.keys(errors).length) return;
     const healthRecordId = editing.healthRecordId || editing.health_record_id;
@@ -113,7 +109,7 @@ export default function PatientLaboratorySection({ patientId }) {
   return (
     <section aria-labelledby="patient-laboratory-title" className="mt-6">
       <div className="mb-3">
-        <h3 id="patient-laboratory-title" className="text-base font-bold text-[#111827]">
+        <h3 id="patient-laboratory-title" className="text-[17px] font-bold text-ink-800">
           Laboratory &amp; Diagnostic Tests
         </h3>
         <p className="mt-1 text-xs text-neutral-500">
@@ -121,113 +117,42 @@ export default function PatientLaboratorySection({ patientId }) {
         </p>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Filter laboratory status" className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((option) => (
-            <Button
-              key={option}
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-pressed={statusFilter === option}
-              onClick={() => setStatusFilter(option)}
-              className={`h-8 rounded-lg border px-2 text-xs ${statusFilter === option ? "border-neutral-500 bg-neutral-50 text-[#111827]" : "border-neutral-200 bg-white text-neutral-500"}`}
-            >
-              {option}{option === "All" ? ` (${entries.length})` : ""}
-            </Button>
-          ))}
-        </div>
-        <label className="relative block w-full max-w-64">
-          <span className="sr-only">Search laboratory tests</span>
-          <img src={searchIcon} alt="" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search laboratory tests"
-            className="h-8 rounded-lg border-neutral-200 pl-9 text-xs shadow-none"
-          />
-        </label>
-      </div>
-
       {query.isError ? (
-        <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 px-4 py-6 text-sm text-alert-700">
-          Could not load laboratory tests.{" "}
-          <Button type="button" variant="link" size="sm" onClick={() => query.refetch()} className="h-auto p-0 text-alert-700 underline">
-            Retry
-          </Button>
-        </p>
+        <div role="alert" className="care-tracking-empty flex flex-col items-center justify-center gap-3 rounded-xl border border-alert-100 bg-alert-50 p-5 text-center text-sm text-alert-700">
+          <p>Could not load laboratory tests.</p>
+          <Button type="button" variant="secondary" size="compact" onClick={() => query.refetch()}>Retry</Button>
+        </div>
       ) : query.isPending ? (
-        <p role="status" className="border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">
-          Loading laboratory tests...
-        </p>
-      ) : visible.length === 0 ? (
-        <p className="border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">
-          {entries.length === 0
-            ? "No laboratory or diagnostic tests recorded for this patient."
-            : "No laboratory tests match this search or filter."}
+        <ProfileCardsSkeleton label="Loading laboratory tests" />
+      ) : entries.length === 0 ? (
+        <p className="care-tracking-empty care-tracking-reveal flex items-center justify-center rounded-xl border border-neutral-200 bg-white p-5 text-center text-sm text-neutral-500">
+          No laboratory or diagnostic tests recorded for this patient.
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-100 overflow-hidden border border-neutral-200 bg-white">
-          {visible.map((entry) => {
+        <ul className="care-tracking-grid care-tracking-reveal">
+          {entries.map((entry) => {
             const key = String(entry.recordId || entry.id);
-            const open = expandedId === key;
             const clinicalDate = entry.examinationDate || entry.collectionDate || "";
             const preview = resultPreview(entry);
             return (
-              <li key={key} className="px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 text-left"
-                    aria-expanded={open}
-                    onClick={() => setExpandedId(open ? null : key)}
-                  >
-                    <p className="text-[13px] font-semibold text-ink-800">{entry.testName || "Unnamed test"}</p>
-                    <p className="mt-0.5 text-xs text-neutral-500">
-                      {entry.resultStatus || "Requested"}
-                      {clinicalDate ? ` · ${formatShortDate(clinicalDate)}` : ""}
-                      {sourceLabel(entry) ? ` · ${sourceLabel(entry)}` : ""}
-                    </p>
-                    {preview ? (
-                      <p className="mt-1 line-clamp-2 text-xs text-neutral-600 whitespace-pre-wrap break-words">{preview}</p>
-                    ) : null}
-                  </button>
-                  <div className="flex shrink-0 flex-wrap gap-1.5">
-                    <Button type="button" variant="secondary" size="compact" className="rounded-none" onClick={() => openView(entry)}>
-                      View Result
-                    </Button>
-                    {entry.canAddendum ? (
-                      <Button type="button" variant="secondary" size="compact" className="rounded-none" onClick={() => openEditor(entry)}>
-                        {entry.resultStatus === "Result Available" ? "Add Addendum" : "Add Result / Addendum"}
-                      </Button>
-                    ) : null}
+              <li key={key} className="profile-record-card">
+                <div className="profile-record-card__body" tabIndex={0} role="region" aria-label={(entry.testName || "Laboratory test") + " details"}>
+                  <h4 className="text-sm font-semibold text-ink-800">{entry.testName || "Unnamed test"}</h4>
+                  <div className="mt-2">
+                    <PlainStatusStamp label={entry.resultStatus || "Requested"} tone={entry.resultStatus === "Result Available" ? "success" : entry.resultStatus === "Awaiting Result" ? "warning" : "info"} />
                   </div>
+                  {clinicalDate ? <p className="mt-3 text-xs tabular-nums text-neutral-600">{formatShortDate(clinicalDate)}</p> : null}
+                  {sourceLabel(entry) ? <p className="mt-2 text-xs leading-relaxed text-neutral-500">{sourceLabel(entry)}</p> : null}
+                  {preview ? <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-neutral-700">{preview}</p> : null}
                 </div>
-                {open ? (
-                  <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3 text-xs text-neutral-600">
-                    <p className="whitespace-pre-wrap break-words">{laboratorySummary(entry)}</p>
-                    {entry.addenda?.length > 0 ? (
-                      <details>
-                        <summary className="cursor-pointer font-medium">
-                          Original result and {entry.addenda.length} addendum(s)
-                        </summary>
-                        <p className="mt-2 whitespace-pre-wrap break-words">
-                          Original: {laboratorySummary(entry.original || {})}
-                        </p>
-                        {entry.addenda.map((item) => (
-                          <div key={item.id} className="mt-2 border-l-2 border-neutral-200 pl-3">
-                            <p>
-                              {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
-                              {item.createdBy ? ` · Staff #${item.createdBy}` : ""}
-                              {item.reason ? ` · ${item.reason}` : ""}
-                            </p>
-                            <p className="whitespace-pre-wrap break-words">{laboratorySummary(item.data || {})}</p>
-                          </div>
-                        ))}
-                      </details>
-                    ) : null}
-                  </div>
-                ) : null}
+                <div className="profile-record-card__footer">
+                  <Button type="button" variant="secondary" size="compact" onClick={() => openView(entry)}>View Result</Button>
+                  {entry.canAddendum ? (
+                    <Button type="button" variant="secondary" size="compact" onClick={() => openEditor(entry)}>
+                      {entry.resultStatus === "Result Available" ? "Add Addendum" : "Add Result / Addendum"}
+                    </Button>
+                  ) : null}
+                </div>
               </li>
             );
           })}
@@ -251,6 +176,7 @@ export default function PatientLaboratorySection({ patientId }) {
                   <div key={item.id} className="mt-2 border-l-2 border-neutral-200 pl-3">
                     <p>
                       {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
+                      {item.createdBy ? " ? Staff #" + item.createdBy : ""}
                       {item.reason ? ` · ${item.reason}` : ""}
                     </p>
                     <p className="whitespace-pre-wrap break-words">{laboratorySummary(item.data || {})}</p>
@@ -271,13 +197,23 @@ export default function PatientLaboratorySection({ patientId }) {
             <p className="text-xs text-neutral-500">
               The finalized consultation snapshot stays preserved. This saves an authorized result addendum.
             </p>
-            <LaboratoryFields
-              entry={editing}
-              prefix="laboratoryTests.0"
-              errors={fieldErrors}
-              disabled={busy}
-              onChange={setEditing}
-            />
+            {editing.facilityType === "BHC" ? (
+              <BhcLaboratoryFields
+                entry={editing}
+                prefix="laboratoryTests.0"
+                errors={fieldErrors}
+                disabled={busy}
+                onChange={setEditing}
+              />
+            ) : (
+              <LaboratoryFields
+                entry={editing}
+                prefix="laboratoryTests.0"
+                errors={fieldErrors}
+                disabled={busy}
+                onChange={setEditing}
+              />
+            )}
             <label className="block text-xs font-medium text-neutral-700">
               Reason *
               <textarea

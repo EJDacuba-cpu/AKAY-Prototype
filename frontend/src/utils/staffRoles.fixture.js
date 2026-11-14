@@ -1,5 +1,5 @@
 /** Shape of GET /staff-roles, mirroring backend StaffRoles, for unit tests only. */
-const midwife = ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "items.dispense", "reports.view"];
+const midwife = ["patients.register", "consultations.encode", "consultations.finalize", "clinical.history", "records.correct", "followups.manage", "referrals.submit", "inventory.view", "inventory.manage", "items.dispense", "reports.view"];
 const rhu = ["patients.register", "clinical.history", "rhu.manage", "rhu.providers.manage", "conditions.confirm", "inventory.view", "reports.view"];
 const encoder = ["patients.register", "consultations.encode", "inventory.view"];
 export const rolesData = {

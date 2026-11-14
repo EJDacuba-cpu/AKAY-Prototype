@@ -25,23 +25,34 @@ export function validateAccountStep(step, form, { hasFacility, confirmed }) {
   if (step === STEPS.access) {
     if (!form.staff_role) errors.staff_role = "Choose a role.";
     if (!form.permissions.length) errors.permissions = "Select at least one duty.";
+    if (form.staff_role === "doctor" && String(form.specialization || "").trim().length > 255) {
+      errors.specialization = "Enter at most 255 characters.";
+    }
   }
   if (step === STEPS.review && !confirmed) errors.confirmed = "Tick the confirmation before saving.";
   return errors;
 }
 
+export function isDoctorAccount(account = {}) {
+  return String(account.staff_role || "") === "doctor"
+    && (account.backendRole === "rhu" || account.accountRole === "rhu" || account.role === "RHU" || account.role === "rhu");
+}
+
 /**
  * Name, email and contact number as edited from Account details (the Personal Details rules). An account that has
  * no contact number on file (the admin account, older accounts) may leave it empty; once there is a number it cannot
- * be cleared, and a typed number must be valid.
+ * be cleared, and a typed number must be valid. Doctor accounts may also edit specialization.
  */
-export function validateAccountProfile({ name, contact_number, email }, account = {}) {
+export function validateAccountProfile({ name, contact_number, email, specialization }, account = {}) {
   const errors = {};
   if (!String(name || "").trim()) errors.name = "Enter the full name.";
   if (!isValidEmail(String(email || "").trim())) errors.email = "Enter a valid email address.";
   const hadNumber = Boolean(normalizeContactNumber(account.contact_number));
   const typedNumber = Boolean(normalizeContactNumber(contact_number));
   if ((hadNumber || typedNumber) && !isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
+  if (isDoctorAccount(account) && String(specialization || "").trim().length > 255) {
+    errors.specialization = "Enter at most 255 characters.";
+  }
   return errors;
 }
 
@@ -54,6 +65,11 @@ export function profileChanges(account, form) {
   if (name !== String(account.name || "").trim()) changes.name = name;
   if (email.toLowerCase() !== String(account.email || "").trim().toLowerCase()) changes.email = email;
   if (contact !== normalizeContactNumber(account.contact_number)) changes.contact_number = contact;
+  if (isDoctorAccount(account)) {
+    const specialization = String(form.specialization || "").trim();
+    const current = String(account.specialization || "").trim();
+    if (specialization !== current) changes.specialization = specialization || null;
+  }
   return changes;
 }
 
@@ -66,6 +82,7 @@ const SERVER_FIELDS = {
   barangay_health_center_id: ["facility", STEPS.facility],
   rural_health_unit_id: ["facility", STEPS.facility],
   staff_role: ["staff_role", STEPS.access],
+  specialization: ["specialization", STEPS.access],
   permissions: ["permissions", STEPS.access],
 };
 const ORDER = [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];

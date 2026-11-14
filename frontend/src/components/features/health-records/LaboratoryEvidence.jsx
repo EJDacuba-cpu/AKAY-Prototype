@@ -38,7 +38,8 @@ export function LaboratoryEvidenceList({ entries = [], emptyMessage = "No labora
       <p className="text-xs text-neutral-500">Collection: {entry.collectionDate || "Not recorded"} · Examination: {entry.examinationDate || "Not recorded"}</p>
       {entry.result && <p className="whitespace-pre-wrap break-words text-sm text-neutral-700">{entry.result}</p>}
       {entry.sharedAt && <p className="text-xs text-neutral-500">Shared {new Date(entry.sharedAt).toLocaleString()}. Later addenda require a sharing update.</p>}
-      {entry.conditionName && <p className="text-xs text-neutral-500">For monitoring: {entry.conditionName}</p>}
+      {entry.serviceName && <p className="text-xs text-neutral-500">For health service: {entry.serviceName}</p>}
+      {!entry.serviceName && entry.conditionName && <p className="text-xs text-neutral-500">For monitoring: {entry.conditionName}</p>}
     </li>)}
   </ul>;
 }
@@ -67,10 +68,22 @@ export function LaboratoryTestsEditor({ tests, onChange, errors = {}, disabled =
   </section>;
 }
 
-export function LaboratoryEvidencePicker({ options = [], selected = [], confirmed = false, onChange, disabled = false, error, loading = false, loadError = false, onRefresh }) {
+export function LaboratoryEvidencePicker({
+  options = [],
+  selected = [],
+  confirmed = false,
+  onChange,
+  disabled = false,
+  error,
+  loading = false,
+  loadError = false,
+  onRefresh,
+  legend = "Relevant Laboratory Evidence",
+  description = "Only selected evidence will be shared with this BHC for this condition.",
+}) {
   return <fieldset disabled={disabled} className="min-w-0 space-y-2 border-t border-neutral-200 pt-3">
-    <legend className="pt-3 text-xs font-semibold text-ink-900">Relevant Laboratory Evidence</legend>
-    <p className="text-xs text-neutral-500">Only selected evidence will be shared with this BHC for this condition.</p>
+    <legend className="pt-3 text-xs font-semibold text-ink-900">{legend}</legend>
+    <p className="text-xs text-neutral-500">{description}</p>
     {loading && <p role="status" className="text-xs text-neutral-500">Loading laboratory history…</p>}
     {loadError && <p role="alert" className="text-xs text-red-700">Unable to load laboratory history.</p>}
     {onRefresh && <Button type="button" variant="secondary" size="compact" disabled={disabled || loading} onClick={onRefresh}>Refresh Evidence</Button>}
@@ -100,6 +113,8 @@ export function SupportingLaboratoryTestsPicker({
   onRefresh,
   onUpdateCurrentTest,
   canUpdateHistorical = false,
+  legend = "Supporting Laboratory Tests",
+  description = "Optional. Select existing tests that support this diagnosis. Linking does not mark a result available or share with a BHC.",
 }) {
   const [editing, setEditing] = useState(null);
   const [reason, setReason] = useState("");
@@ -162,10 +177,8 @@ export function SupportingLaboratoryTestsPicker({
 
   return (
     <fieldset className="min-w-0 space-y-2 border-t border-[#E5EEFF] pt-3">
-      <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Supporting Laboratory Tests</legend>
-      <p className="text-xs text-[#545F73]">
-        Optional. Select existing tests that support this diagnosis. Linking does not mark a result available or share with a BHC.
-      </p>
+      <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">{legend}</legend>
+      <p className="text-xs text-[#545F73]">{description}</p>
       {loading && <p role="status" className="text-xs text-[#545F73]">Loading laboratory history…</p>}
       {loadError && <p role="alert" className="text-xs text-red-700">Unable to load laboratory history.</p>}
       {onRefresh && (

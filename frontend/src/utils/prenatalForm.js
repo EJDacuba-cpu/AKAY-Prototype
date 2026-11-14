@@ -5,6 +5,8 @@
  * Risk Code flags and where this visit's TT/Td dose is filed - are testable.
  */
 
+import { getFacilityCalendarDate, toFacilityCalendarDate } from "./medicineInventoryStatus.js";
+
 /**
  * The obstetric risk factors the midwife ticks by hand.
  *
@@ -377,30 +379,61 @@ export function formatCivilDate({ y, m, d }) {
   return `${String(y).padStart(4, "0")}-${padCivil(m)}-${padCivil(d)}`;
 }
 
-/** Parse a calendar date without timezone shift. Date objects use local Y-M-D. */
+/**
+ * Parse a calendar date without timezone shift.
+ * - `YYYY-MM-DD` stays the written civil day.
+ * - Date objects and datetimes use Asia/Manila (facility calendar), so an
+ *   evening UTC instant does not land on the previous Manila day.
+ */
 export function parseCivilDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const facility = toFacilityCalendarDate(value);
+    if (facility) {
+      const match = CIVIL_DATE.exec(facility);
+      if (match) {
+        return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+      }
+    }
     return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
   }
-  const raw = String(value || "").trim().slice(0, 10);
-  const match = CIVIL_DATE.exec(raw);
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (CIVIL_DATE.test(raw.slice(0, 10)) && raw.length === 10) {
+    const match = CIVIL_DATE.exec(raw);
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    const utc = new Date(Date.UTC(y, m - 1, d));
+    if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) return null;
+    return { y, m, d };
+  }
+  // Datetimes / locale strings: facility calendar, never UTC-slice.
+  const facility = toFacilityCalendarDate(raw);
+  if (!facility) return null;
+  const match = CIVIL_DATE.exec(facility);
   if (!match) return null;
-  const y = Number(match[1]);
-  const m = Number(match[2]);
-  const d = Number(match[3]);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) return null;
-  return { y, m, d };
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
 }
 
 export function civilDateFromValue(value) {
   const parsed = parseCivilDate(value);
   if (parsed) return formatCivilDate(parsed);
-  if (!value) {
-    const now = new Date();
-    return formatCivilDate({ y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() });
-  }
+  if (!value) return getFacilityCalendarDate();
   return "";
+}
+
+/**
+ * Stable YYYY-MM-DD visit day for AOG. Prefers consultation/date-of-visit
+ * civil strings; maps created_at / Date through Asia/Manila; never returns a
+ * locale display string like `11/14/2026`.
+ */
+export function resolvePregnancyVisitDate(...candidates) {
+  for (const value of candidates) {
+    if (value === undefined || value === null || value === "") continue;
+    const civil = civilDateFromValue(value);
+    if (civil) return civil;
+  }
+  return getFacilityCalendarDate();
 }
 
 export function addCivilDays(value, days) {
@@ -430,14 +463,41 @@ function formatAogFromDays(totalDays) {
   const days = totalDays % 7;
   if (weeks > 42) return "Post-term (>42 Weeks)";
   const weekStr = `${weeks} week${weeks !== 1 ? "s" : ""}`;
-  const dayStr = days > 0 ? ` and ${days} day${days > 1 ? "s" : ""}` : "";
+  // Match maternal-care copy: "16 weeks 2 days" (no "and").
+  const dayStr = days > 0 ? ` ${days} day${days > 1 ? "s" : ""}` : "";
   return `${weekStr}${dayStr}`;
 }
 
-/** Auto EDC is LMP + 280 calendar days. */
-export function computeEddFromLmp(lmp) {
+/**
+ * Legacy auto EDC used LMP + 280 calendar days. Kept so continue visits can
+ * recognize an older auto value and refresh it to Naegele without treating it
+ * as a clinical correction.
+ */
+export function computeLegacyEddFromLmp(lmp) {
   if (!lmp) return "";
-  return addCivilDays(lmp, PREGNANCY_DAYS) || "Invalid Date";
+  return addCivilDays(lmp, PREGNANCY_DAYS) || "";
+}
+
+/**
+ * Auto EDC via Naegele's rule (DOH / midwifery): LMP month − 3, day + 7,
+ * year + 1. Day overflow uses the civil calendar (e.g. Jan 31 → Nov 7).
+ */
+export function computeEddFromLmp(lmp) {
+  const parsed = parseCivilDate(lmp);
+  if (!parsed) return lmp ? "Invalid Date" : "";
+  let y = parsed.y + 1;
+  let m = parsed.m - 3;
+  let d = parsed.d + 7;
+  if (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  const next = new Date(Date.UTC(y, m - 1, d));
+  return formatCivilDate({
+    y: next.getUTCFullYear(),
+    m: next.getUTCMonth() + 1,
+    d: next.getUTCDate(),
+  });
 }
 
 export function computeAogFromLmp(lmp, visitDate = new Date()) {
@@ -447,10 +507,14 @@ export function computeAogFromLmp(lmp, visitDate = new Date()) {
   return formatAogFromDays(days);
 }
 
-/** AOG from documented EDC when present, otherwise from LMP, to the visit date. */
-export function computeAogFromDating({ lmp, edc, visitDate } = {}) {
+/**
+ * AOG from LMP when present (primary dating). Prefer a documented/clinical EDC
+ * only when asked (`preferEdd`) or when LMP is missing.
+ */
+export function computeAogFromDating({ lmp, edc, visitDate, preferEdd = false } = {}) {
   const visit = civilDateFromValue(visitDate);
-  if (edc) {
+  const useEdd = Boolean(edc) && (preferEdd || !lmp);
+  if (useEdd) {
     const remaining = civilDayDiff(visit, edc);
     if (remaining === null) return "";
     return formatAogFromDays(PREGNANCY_DAYS - remaining);
@@ -458,10 +522,20 @@ export function computeAogFromDating({ lmp, edc, visitDate } = {}) {
   return computeAogFromLmp(lmp, visit);
 }
 
+function isAutoEddValue(lmp, edc) {
+  if (!edc) return true;
+  const autoEdd = computeEddFromLmp(lmp);
+  if (edc === autoEdd) return true;
+  const legacyEdd = computeLegacyEddFromLmp(lmp);
+  return Boolean(legacyEdd) && edc === legacyEdd;
+}
+
 /**
- * Keep a typed EDC/AOG when it is a clinical correction; otherwise follow
- * auto dating. `previousAutoEdd` / `previousAutoAog` are the last auto values
- * assigned for the prior inputs.
+ * Always derive EDC/AOG from LMP (Naegele + visit-day AOG). Manual clinical
+ * edits are no longer sticky — drafts that stored a corrected EDC/AOG are
+ * adapted back to auto values on resume so UI and save stay consistent.
+ * `previousAutoEdd` / `previousAutoAog` remain accepted for call-site
+ * compatibility but are unused.
  */
 export function applyPregnancyDating({
   lmp,
@@ -471,13 +545,59 @@ export function applyPregnancyDating({
   previousAutoEdd = "",
   previousAutoAog = "",
 } = {}) {
-  const autoEdd = computeEddFromLmp(lmp);
-  const nextEdd = !lmp
-    ? (edc && edc !== previousAutoEdd ? edc : "")
-    : (!edc || edc === previousAutoEdd ? autoEdd : edc);
-  const autoAog = computeAogFromDating({ lmp, edc: nextEdd, visitDate });
-  const nextAog = !aog || aog === previousAutoAog ? autoAog : aog;
-  return { edc: nextEdd, aog: nextAog, autoEdd, autoAog };
+  void edc;
+  void aog;
+  void previousAutoEdd;
+  void previousAutoAog;
+  const resolvedVisit = resolvePregnancyVisitDate(visitDate);
+  const computedEdd = computeEddFromLmp(lmp);
+  const autoEdd = !lmp || computedEdd === "Invalid Date" ? "" : computedEdd;
+  const autoAog = lmp
+    ? computeAogFromDating({
+      lmp,
+      edc: autoEdd,
+      visitDate: resolvedVisit,
+      preferEdd: false,
+    })
+    : "";
+  return { edc: autoEdd, aog: autoAog, autoEdd, autoAog };
+}
+
+/**
+ * Seed pregnancy-dating autos after draft restore / prefill. Always LMP-based
+ * so a legacy clinical EDC/AOG in the draft is not treated as authoritative.
+ */
+export function pregnancyDatingAutos({ lmp, edc = "", visitDate } = {}) {
+  void edc;
+  const resolvedVisit = resolvePregnancyVisitDate(visitDate);
+  const computedEdd = computeEddFromLmp(lmp);
+  const autoEdd = !lmp || computedEdd === "Invalid Date" ? "" : computedEdd;
+  return {
+    autoEdd,
+    autoAog: lmp
+      ? computeAogFromDating({
+        lmp,
+        edc: autoEdd,
+        visitDate: resolvedVisit,
+        preferEdd: false,
+      })
+      : "",
+  };
+}
+
+/**
+ * Draft/prefill tracker seed: always the current auto values from LMP so
+ * resume refreshes AOG to today's visit and overwrites legacy clinical EDC.
+ */
+export function seedPregnancyDatingTrackers({
+  lmp,
+  edc = "",
+  aog = "",
+  visitDate,
+} = {}) {
+  void edc;
+  void aog;
+  return pregnancyDatingAutos({ lmp, visitDate });
 }
 
 export function hasPregnancyBaseline(maternal = {}, expectedDeliveryDate = "") {
@@ -487,6 +607,31 @@ export function hasPregnancyBaseline(maternal = {}, expectedDeliveryDate = "") {
     || String(maternal.gravida || "").trim()
     || String(maternal.para || "").trim(),
   );
+}
+
+/**
+ * Merge pregnancy fields for a health-record write. Prefer top-level values when
+ * the workspace sends them (BHC), but keep nested maternalData when top-level
+ * fields are absent (RHU ITR) so enroll LMP is not wiped to null.
+ */
+export function maternalDataForWrite(record = {}) {
+  const sourceMaternal = record.maternalData || record.maternal_data || {};
+  return {
+    ...sourceMaternal,
+    lmp: record.lmp || record.LMP || sourceMaternal.lmp || null,
+    pmp: record.pmp || sourceMaternal.pmp || null,
+    cycleDuration: record.cycleDuration || sourceMaternal.cycleDuration || null,
+    gravida: record.gravida || sourceMaternal.gravida || null,
+    para: record.para || sourceMaternal.para || null,
+    term: record.term || sourceMaternal.term || null,
+    preterm: record.preterm || sourceMaternal.preterm || null,
+    abortion: record.abortion || sourceMaternal.abortion || null,
+    living: record.living || sourceMaternal.living || null,
+    tpal: record.tpal || sourceMaternal.tpal || null,
+    expectedDeliveryDate:
+      record.expectedDeliveryDate || sourceMaternal.expectedDeliveryDate || null,
+    aog: record.aog || sourceMaternal.aog || null,
+  };
 }
 
 /**

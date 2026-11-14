@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { LaboratoryEvidencePicker, SupportingLaboratoryTestsPicker } from "../LaboratoryEvidence";
 import RhuPrescriptionsSection from "./RhuPrescriptionsSection";
+import { SERVICES_PRESCRIPTION_OWNER_ID } from "../../../../utils/rhuPrescriptions";
 
 import { DatePickerField, TimePickerField } from "../../../common/forms/DatePickerField";
 import { Button } from "../../../ui/button";
@@ -288,9 +289,9 @@ function DiagnosisCard({
   const key = `diagnoses.${entry.id}`;
   // Referral hides walk-in Next Action by default. Show it only when a restored
   // draft still carries a walk-in action the clinician must change (not auto-cleared).
-  const legacyReferralWalkInAction = isReferralVisit
-    && (action === "rhu_follow_up" || action === "manage_to_bhc" || action === "refer_higher_level");
-  const showWalkInActions = !isReferralVisit || legacyReferralWalkInAction;
+  // Referral visits use the same care-plan next actions: Manage to BHC creates a
+  // monitoring request; No further follow-up closes the referral with BHC notes.
+  const showWalkInActions = true;
   const presumptive = isPresumptiveTb(entry);
   const blockPresumptiveManage = presumptive && !existing;
   const nextActionOptions = RHU_NEXT_ACTION_OPTIONS.map((option) => (
@@ -422,7 +423,26 @@ function DiagnosisCard({
             <p className="text-xs text-[#545F73]">{PRESUMPTIVE_TB_MANAGE_TO_BHC_ERROR}</p>
           ) : null}
           {action === "none" && (
-            <p className="text-xs text-[#545F73]">No additional return is scheduled. An Active condition stays Active.</p>
+            <div className="space-y-3 pt-1">
+              <p className="text-xs text-[#545F73]">
+                {isReferralVisit
+                  ? "Closes this referral and notifies the BHC that no further follow-up is needed."
+                  : "No additional return is scheduled. An Active condition stays Active."}
+              </p>
+              {isReferralVisit ? (
+                <FieldTextarea
+                  label="Reason for BHC"
+                  required
+                  maxLength={2000}
+                  name={`${key}.noFurtherFollowUpReason`}
+                  value={entry.noFurtherFollowUpReason || ""}
+                  error={errors[`${key}.noFurtherFollowUpReason`]}
+                  rows={3}
+                  placeholder="Why is no further follow-up needed? The BHC will see this."
+                  onChange={(event) => onChange({ ...entry, noFurtherFollowUpReason: event.target.value })}
+                />
+              ) : null}
+            </div>
           )}
           {action === "rhu_follow_up" && (
             <DiagnosisFollowUp
@@ -476,7 +496,9 @@ function DiagnosisCard({
           {action === "manage_to_bhc" && !presumptiveManageToBhcBlocked(entry, conditions) && (
             <fieldset disabled={disabled} className="min-w-0 space-y-3 pt-2">
               <p className="text-xs text-[#545F73]">
-                Sends a monitoring request to the receiving BHC. Monitoring does not start until that BHC accepts and begins a consultation.
+                {isReferralVisit
+                  ? "Sends a monitoring request to the receiving BHC and closes this referral so the BHC gets the update."
+                  : "Sends a monitoring request to the receiving BHC. Monitoring does not start until that BHC accepts and begins a consultation."}
                 {confirmed ? "" : " This condition must already be Active or Controlled, or Active must be chosen on this card."}
               </p>
               <div>
@@ -496,6 +518,9 @@ function DiagnosisCard({
                     <option key={bhc.id} value={String(bhc.id)}>{bhc.name}</option>
                   ))}
                 </select>
+                {(catchmentBhcs || []).length === 0 && (
+                  <p className="mt-1 text-xs text-[#6B7280]">No catchment BHC with an available account.</p>
+                )}
                 <FieldError error={errors[`${key}.receivingBhcId`]} />
               </div>
               <FieldTextarea
@@ -523,9 +548,7 @@ function DiagnosisCard({
             </fieldset>
           )}
         </>
-      ) : (
-        <p className="text-sm text-neutral-600">This visit came from a referral. Completing the Return Slip is a separate step and is not done here.</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -547,12 +570,21 @@ export default function RhuDiagnosisCarePlanSection({
   catchmentBhcs = [],
   isReferralVisit = false,
   selectedPrograms = [],
+  serviceHandoffs = [],
+  serviceSupportingLabs = [],
   onServiceNextAction,
   onServiceFollowUp,
+  onServiceHandoffChange,
+  onServiceSupportingLabsChange,
   treatmentNotes = "",
   onTreatmentNotesChange,
   prescriptions = [],
   onPrescriptionsChange,
+  vaccineEntries = [],
+  serviceUsages = [],
+  onServiceUsagesChange,
+  legacyServicePrescriptionReviewed = false,
+  onLegacyServicePrescriptionReviewedChange,
   registry = {},
   existingTbCase = null,
   canConfirmTb = false,
@@ -567,7 +599,8 @@ export default function RhuDiagnosisCarePlanSection({
   useEffect(() => {
     setPrescriptionEditor((current) => {
       if (!current) return current;
-      const ownerExists = diagnoses.some((entry) => entry.id === current.ownerDiagnosisId);
+      const ownerExists = current.ownerDiagnosisId === SERVICES_PRESCRIPTION_OWNER_ID
+        || diagnoses.some((entry) => entry.id === current.ownerDiagnosisId);
       const orderExists = current.mode !== "edit" || prescriptions.some((item) => item.id === current.draft?.id);
       return ownerExists && orderExists ? current : null;
     });
@@ -686,10 +719,34 @@ export default function RhuDiagnosisCarePlanSection({
       </section>
       <NextStepsSection
         hideReferToRhu
+        showManageToBhc
+        showServiceSupportingLabs
         selectedPrograms={selectedPrograms}
         followUpSchedules={schedules}
+        serviceHandoffs={serviceHandoffs}
+        serviceSupportingLabs={serviceSupportingLabs}
+        catchmentBhcs={catchmentBhcs}
+        isReferralVisit={isReferralVisit}
         onServiceNextAction={onServiceNextAction}
         onServiceFollowUp={onServiceFollowUp}
+        onServiceHandoffChange={onServiceHandoffChange}
+        onServiceSupportingLabsChange={onServiceSupportingLabsChange}
+        laboratoryOptions={laboratoryOptions}
+        laboratoryLoading={laboratoryLoading}
+        laboratoryError={laboratoryError}
+        onRefreshLaboratory={onRefreshLaboratory}
+        onUpdateCurrentLaboratoryTest={onUpdateCurrentLaboratoryTest}
+        canUpdateHistoricalLaboratory={canUpdateHistoricalLaboratory}
+        diagnoses={diagnoses}
+        prescriptions={prescriptions}
+        onPrescriptionsChange={onPrescriptionsChange}
+        prescriptionEditor={prescriptionEditor}
+        onPrescriptionEditorChange={setPrescriptionEditor}
+        vaccineEntries={vaccineEntries}
+        serviceUsages={serviceUsages}
+        onServiceUsagesChange={onServiceUsagesChange}
+        legacyServicePrescriptionReviewed={legacyServicePrescriptionReviewed}
+        onLegacyServicePrescriptionReviewedChange={onLegacyServicePrescriptionReviewedChange}
         errors={errors}
         disabled={disabled}
         treatmentSlot={(

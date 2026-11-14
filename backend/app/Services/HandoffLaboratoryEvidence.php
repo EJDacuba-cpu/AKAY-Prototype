@@ -31,9 +31,15 @@ class HandoffLaboratoryEvidence
     {
         ActionPermissions::ensure($user, 'consultations.finalize');
         app(LaboratoryEvidenceService::class)->authorizeRead($user, $handoff->healthRecord);
-        abort_unless($user->isRhu()
+        $senderOk = $user->isRhu()
             && (int) $handoff->sending_rural_health_unit_id === (int) $user->rural_health_unit_id
-            && in_array($handoff->status, [...self::VISIBLE_STATUSES, 'linkage_needed'], true)
+            && in_array($handoff->status, [...self::VISIBLE_STATUSES, 'linkage_needed'], true);
+        if ($handoff->isServiceHandoff()) {
+            abort_unless($senderOk && is_string($handoff->service_key) && $handoff->service_key !== '', 403);
+
+            return;
+        }
+        abort_unless($senderOk
             && in_array($handoff->patientCondition?->status, PatientCondition::MONITORABLE_STATUSES, true), 403);
     }
 
@@ -95,6 +101,10 @@ class HandoffLaboratoryEvidence
                     ->where('laboratory_test_id', $test->id)->findOrFail($share->laboratory_addendum_id) : null;
 
                 // Option A: preserve stored attachment_ids in DB but never load or return files/metadata.
+                $serviceName = $handoff->isServiceHandoff()
+                    ? (ConsultationPrograms::CLASSIFICATIONS[$handoff->service_key] ?? $handoff->service_key)
+                    : null;
+
                 return [
                     ...($version?->data ?? $test->data), 'recordId' => $test->id,
                     'healthRecordId' => $test->health_record_id, 'version' => $version?->id ?? 0,
@@ -102,6 +112,8 @@ class HandoffLaboratoryEvidence
                     'handoffId' => $handoff->id,
                     'conditionId' => $handoff->patient_condition_id,
                     'conditionName' => $handoff->patientCondition?->condition_name,
+                    'serviceKey' => $handoff->isServiceHandoff() ? $handoff->service_key : null,
+                    'serviceName' => $serviceName,
                 ];
             })->all();
     }

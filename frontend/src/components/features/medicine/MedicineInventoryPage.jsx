@@ -85,7 +85,7 @@ function MedicineInventoryWorkspace({ role }) {
                   />
                 }
               />
-              <Button variant="brand" size="sm" disabled={!canManage} title={!canManage ? "Inventory management permission required" : undefined} onClick={() => setDialog({ mode: "add" })}>
+              <Button variant="brand" size="sm" disabled={!canManage} title={!canManage ? "Stock Management permission required to add inventory items." : undefined} onClick={() => setDialog({ mode: "add" })}>
                 <PackagePlus size={14} />Add Medicine
               </Button>
             </div>

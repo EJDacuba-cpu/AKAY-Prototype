@@ -128,15 +128,8 @@ class MonitoringHandoffController extends Controller
 
     public function decline(Request $request, int $id)
     {
-        $data = $request->validate([
-            'reason' => ['required', 'string', 'max:1000'],
-        ]);
-        $handoff = $this->handoffs->findForBhc($request->user(), $id);
-        $handoff = $this->handoffs->decline($request, $handoff, $data['reason']);
-
-        return response()->json(['data' => $this->present($handoff->load([
-            'patient', 'linkedPatient', 'patientCondition', 'sendingRuralHealthUnit', 'receivingBarangayHealthCenter', 'redirectedToBhc', 'healthRecord',
-        ]), true)]);
+        // BHC cannot decline Monitoring Requests; Accept-only workflow.
+        abort(410, 'Monitoring requests can no longer be declined.');
     }
 
     /**
@@ -174,11 +167,27 @@ class MonitoringHandoffController extends Controller
                 'id' => $handoff->receiving_barangay_health_center_id,
                 'name' => $handoff->receivingBarangayHealthCenter?->name,
             ],
-            'condition' => [
-                'id' => $handoff->patient_condition_id,
-                'name' => $handoff->patientCondition?->condition_name,
-                'status' => $identityVerified ? $handoff->patientCondition?->status : null,
-            ],
+            'handoff_kind' => $handoff->handoff_kind ?: MonitoringHandoffRequest::HANDOFF_KIND_CONDITION,
+            'service_key' => $handoff->service_key,
+            'service' => $handoff->isServiceHandoff() && $handoff->service_key
+                ? [
+                    'key' => $handoff->service_key,
+                    'label' => match ($handoff->service_key) {
+                        'Maternal' => 'Maternal Care',
+                        'EPI' => 'EPI',
+                        'Family Planning' => 'Family Planning',
+                        'Nutrition' => 'Nutrition',
+                        default => $handoff->service_key,
+                    },
+                ]
+                : null,
+            'condition' => $handoff->isServiceHandoff()
+                ? null
+                : [
+                    'id' => $handoff->patient_condition_id,
+                    'name' => $handoff->patientCondition?->condition_name,
+                    'status' => $identityVerified ? $handoff->patientCondition?->status : null,
+                ],
             'source_patient' => $source ? $this->identityPreview($source) : null,
             'linked_patient' => $linked ? PatientIdentity::response($linked, false) : null,
             'registration_status' => $handoff->status === MonitoringHandoffRequest::STATUS_LINKAGE_NEEDED

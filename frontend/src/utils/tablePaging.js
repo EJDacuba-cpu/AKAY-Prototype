@@ -13,8 +13,9 @@ export function fixedTableVars(pageSize = TABLE_PAGE_SIZE) {
   };
 }
 
-// Card lists load more instead of paging: Patients is 2 columns x 5 rows, Facilities fills 1, 2 or 3 columns.
-export const PATIENTS_LOAD_BATCH = 10;
+// Patient Directory requests one API page per Load More (within /patients max 100).
+export const PATIENTS_LOAD_BATCH = 50;
+// Facilities still client-slices a full admin list into visual batches.
 export const FACILITIES_LOAD_BATCH = 12;
 
 // A reset key built from values, for screens whose filter object can be shared between tabs (equal objects must

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
+import { PATIENT_LOADING_REASON, PROGRAM_CLASSIFICATIONS, classificationForPrimaryProgram, lockProgramsWhilePatientLoads, programEnrollLabel, restoredClassification, getConsultationPrograms, getPrimaryProgram, toggleConsultationProgram } from "./consultationPrograms.js";
 import { getSpecializedRecordPrograms, getServiceTypeLabel, isNutritionRecord } from "./healthRecordPrograms.js";
 import { visibleConsultationPrograms } from "./infantVisibility.js";
 
@@ -55,6 +55,14 @@ test("a restored draft with a removed classification follows its remaining prima
   assert.equal(restoredClassification("Hypertension / Diabetic Monitoring", ""), "General Consultation");
   assert.equal(restoredClassification("TB DOTS / TB Monitoring", ""), "General Consultation");
   assert.equal(restoredClassification("General Consultation", ""), "General Consultation");
+});
+
+test("draft and finalize classification follow the primary service for every program", () => {
+  assert.equal(classificationForPrimaryProgram(""), "General Consultation");
+  assert.equal(classificationForPrimaryProgram("EPI"), "Immunization");
+  assert.equal(classificationForPrimaryProgram("Maternal"), "Maternal");
+  assert.equal(classificationForPrimaryProgram("Family Planning"), "Family Planning");
+  assert.equal(classificationForPrimaryProgram("Nutrition"), "Nutrition");
 });
 
 test("TB is no longer a consultation program", () => {

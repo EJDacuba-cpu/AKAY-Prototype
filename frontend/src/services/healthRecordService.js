@@ -14,6 +14,7 @@ import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
 import { normalizeAttention } from "../utils/referralAttention";
 import { getSurveillanceTags } from "../utils/surveillance";
+import { maternalDataForWrite } from "../utils/prenatalForm";
 import { fetchAllReportPages } from "./reportingLists";
 
 /**
@@ -493,7 +494,8 @@ function isMaternalCategory(value = "") {
   );
 }
 
-function toPayload(record = {}, { partial = false } = {}) {
+/** Builds the API write body for create/update. Exported for unit tests. */
+export function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
   const programs = getConsultationPrograms(record);
@@ -525,21 +527,9 @@ function toPayload(record = {}, { partial = false } = {}) {
     surveillanceCategory === "other"
       ? getOtherSurveillanceCategory(record, sourceMonitoringData)
       : "";
-  const maternalData = {
-    ...(record.maternalData || record.maternal_data || {}),
-    lmp: record.lmp || record.LMP || null,
-    pmp: record.pmp || null,
-    cycleDuration: record.cycleDuration || null,
-    gravida: record.gravida || null,
-    para: record.para || null,
-    term: record.term || null,
-    preterm: record.preterm || null,
-    abortion: record.abortion || null,
-    living: record.living || null,
-    tpal: record.tpal || null,
-    expectedDeliveryDate: record.expectedDeliveryDate || null,
-    aog: record.aog || null,
-  };
+  // Prefer top-level pregnancy fields when the workspace sends them (BHC), but
+  // never wipe values that only live inside maternalData (RHU ITR).
+  const maternalData = maternalDataForWrite(record);
   const tetanusToxoidStatus = {
     ...(maternalData.tetanus_toxoid_status || {}),
     ...(maternalData.tetanusToxoidStatus || {}),
@@ -839,7 +829,9 @@ function toPayload(record = {}, { partial = false } = {}) {
     ...(record.consultationWorkflow ? { consultation_workflow: record.consultationWorkflow } : {}),
     chief_complaint: record.chiefComplaint || null,
     physical_exam: record.physicalExam || null,
-    ...(record.consultationWorkflow === "rhu_itr_v1" ? { laboratory_tests: record.laboratoryTests || [] } : {}),
+    ...(record.consultationWorkflow === "rhu_itr_v1" || record.consultationWorkflow === "bhc_general_v2"
+      ? { laboratory_tests: record.laboratoryTests || [] }
+      : {}),
     body_findings: serializeBodyFindings(record.bodyFindings),
     history_of_present_illness: record.summaryOfPresentIllness || null,
     diagnosis: record.diagnosis || null,
@@ -1240,6 +1232,30 @@ export async function getRhuToDispense() {
   return unwrapList(response);
 }
 
+export async function confirmRhuServiceUsage(usageId, item) {
+  if (!usageId || !item) return null;
+  const response = await apiRequest(`/rhu/service-usages/${usageId}/confirm`, {
+    method: "POST",
+    body: {
+      ...allocationIntent(item),
+      medicine_id: item.medicineId || item.medicine_id,
+      quantity: item.quantity,
+      unit: item.unit || null,
+      remarks: item.remarks || null,
+    },
+  });
+  return unwrapData(response);
+}
+
+export async function markRhuServiceUsageNeedsReview(usageId, note = "") {
+  if (!usageId) return null;
+  const response = await apiRequest(`/rhu/service-usages/${usageId}/needs-review`, {
+    method: "POST",
+    body: note ? { note } : {},
+  });
+  return unwrapData(response);
+}
+
 export default {
   getBhcHealthRecords,
   getRhuHealthRecords,
@@ -1256,5 +1272,7 @@ export default {
   updateHealthRecord,
   dispenseHealthRecordMedicines,
   getRhuToDispense,
+  confirmRhuServiceUsage,
+  markRhuServiceUsageNeedsReview,
   deleteHealthRecord,
 };

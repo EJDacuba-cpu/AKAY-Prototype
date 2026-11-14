@@ -31,6 +31,7 @@ export default function NoticeModal({
       title={title}
       subtitle={subtitle}
       icon={icon}
+      appearance="plain"
       size={size}
       onClose={onClose}
       closeDisabled={closeDisabled}
