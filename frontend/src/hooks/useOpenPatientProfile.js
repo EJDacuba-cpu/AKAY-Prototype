@@ -84,7 +84,13 @@ export default function useOpenPatientProfile(role) {
           return false;
         }
         navigate(to);
-        // Keep the lock until location.key changes so conflicting buttons stay disabled.
+        // Release here: directory cards often unmount before their location.key
+        // effect can clear, which left Opening... stuck after leaving the profile.
+        endProfileOpen(token);
+        if (openTokenRef.current === token) {
+          openTokenRef.current = null;
+          openPatientRef.current = null;
+        }
         return true;
       } catch (caught) {
         endProfileOpen(token);

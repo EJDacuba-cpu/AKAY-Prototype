@@ -48,6 +48,7 @@ import {
   SENSITIVE_SESSION_CLEARED_EVENT,
   subscribeToCrossTabSessionClear,
 } from "./utils/sessionPrivacy";
+import { clearProfileOpen } from "./utils/patientProfileOpenGate";
 
 // BHC Pages
 import BHCDashboard from "./pages/bhc/BHCDashboard";
@@ -306,6 +307,14 @@ function SessionRestoreUnavailable({ onRetry }) {
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  // Directory Open Profile cards unmount on navigation; clear the shared gate
+  // here so Opening... cannot stick after leaving a patient profile.
+  const profileOpenLocationKeyRef = useRef(location.key);
+  useEffect(() => {
+    if (profileOpenLocationKeyRef.current === location.key) return;
+    profileOpenLocationKeyRef.current = location.key;
+    clearProfileOpen();
+  }, [location.key]);
   const [, setSessionEpoch] = useState(0);
   const [isRevalidatingBfcache, setIsRevalidatingBfcache] = useState(false);
   const [restoreRetryKey, setRestoreRetryKey] = useState(0);
