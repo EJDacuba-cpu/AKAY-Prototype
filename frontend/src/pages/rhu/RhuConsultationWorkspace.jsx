@@ -11,7 +11,11 @@ import BhcReferralSlip from "../../components/features/patients/profile/BhcRefer
 import RhuBhcReferralReference from "../../components/features/health-records/wizard/RhuBhcReferralReference";
 import RhuPreviousVitalsReference from "../../components/features/health-records/wizard/RhuPreviousVitalsReference";
 import { Button } from "../../components/ui/button";
-import { rhuVisitLoadError, visitUnavailableError } from "../../utils/rhuVisitLoadError";
+import {
+  isCompletedRhuConsultationVisit,
+  rhuVisitLoadError,
+  visitUnavailableError,
+} from "../../utils/rhuVisitLoadError";
 import useRhuReferralSlipData from "../../hooks/useRhuReferralSlipData";
 import { referralSlipModel } from "../../utils/referralSlipView";
 import { errorStateVariant } from "../../utils/errorStateVariant";
@@ -417,6 +421,16 @@ export default function RhuConsultationWorkspace() {
         );
       }
       if (generation !== visitLoadGeneration.current) return;
+      // Post-finalize Back remounts this URL with a closed visit — leave quietly.
+      // Visit is never set, so the leave blocker (needs an open draft visit) stays off.
+      if (
+        match
+        && String(match.patient?.id || match.patient_id) === String(patientId)
+        && isCompletedRhuConsultationVisit(match)
+      ) {
+        navigate("/rhu/patients", { replace: true });
+        return;
+      }
       if (!match || match.status !== "in_consultation" || String(match.patient?.id || match.patient_id) !== patientId) {
         throw visitUnavailableError("Start this consultation from Today's Queue.");
       }
@@ -440,7 +454,7 @@ export default function RhuConsultationWorkspace() {
         setVisitRetrying(false);
       }
     }
-  }, [visitId, patientId, entryHandoff, recoveryOwner, followUpIdsFromQuery, followUpTaskId]);
+  }, [visitId, patientId, entryHandoff, recoveryOwner, followUpIdsFromQuery, followUpTaskId, navigate]);
 
   useEffect(() => {
     void loadVisit();
@@ -2232,7 +2246,8 @@ export default function RhuConsultationWorkspace() {
         description="The visit is closed as completed. The record is on this patient's profile."
         onClose={() => {
           bypassLeaveGuardRef.current = true;
-          navigate("/rhu/patients");
+          // replace: drop the finalized consultation URL so Back cannot reopen it.
+          navigate("/rhu/patients", { replace: true });
         }}
         actions={[
           {
@@ -2240,14 +2255,14 @@ export default function RhuConsultationWorkspace() {
             variant: "primary",
             onClick: () => {
               bypassLeaveGuardRef.current = true;
-              navigate(`/rhu/health-records/${saveSuccess.recordId}`);
+              navigate(`/rhu/health-records/${saveSuccess.recordId}`, { replace: true });
             },
           },
           {
             label: "Back to Queue",
             onClick: () => {
               bypassLeaveGuardRef.current = true;
-              navigate("/rhu/patients");
+              navigate("/rhu/patients", { replace: true });
             },
           },
         ]}

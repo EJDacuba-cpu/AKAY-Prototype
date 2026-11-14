@@ -119,6 +119,15 @@ test("RHU ITR loads the started visit by id with retryable load recovery", () =>
   assert.doesNotMatch(workspace, /Consultation not open/);
 });
 
+test("finalized consultations leave quietly and replace history on success exits", () => {
+  assert.match(workspace, /isCompletedRhuConsultationVisit/);
+  assert.match(workspace, /navigate\("\/rhu\/patients", \{ replace: true \}\)/);
+  assert.match(
+    workspace,
+    /navigate\(`\/rhu\/health-records\/\$\{saveSuccess\.recordId\}`, \{ replace: true \}\)/,
+  );
+});
+
 test("Nutrition service sets panel copy and nutritionIntent without a form step", () => {
   const bhc = readFileSync(join(here, "../bhc/ConsultationWorkspace.jsx"), "utf8");
   for (const source of [workspace, bhc]) {
