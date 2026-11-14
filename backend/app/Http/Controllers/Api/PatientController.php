@@ -26,9 +26,10 @@ class PatientController extends Controller
 
     public function index(Request $request)
     {
+        $perPage = max(1, min(100, $request->integer('per_page', 25)));
+        $page = max(1, $request->integer('page', 1));
+
         if (StoredFunction::available() && $request->user()->isAdmin()) {
-            $perPage = $request->integer('per_page', 25);
-            $page = max(1, $request->integer('page', 1));
             $rows = StoredFunction::select(
                 'SELECT * FROM akay_patient_list(?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
@@ -91,12 +92,105 @@ class PatientController extends Controller
             }
         }
 
-        $results = $query->latest()->paginate($request->integer('per_page', 25));
+        $sex = trim((string) $request->query('sex', ''));
+        if (in_array($sex, ['Male', 'Female', 'Other'], true)) {
+            $query->where('sex', $sex);
+        }
+
+        $civilStatus = trim((string) $request->query('civil_status', ''));
+        if ($civilStatus !== '') {
+            $query->where('civil_status', $civilStatus);
+        }
+
+        $dateRegistered = trim((string) $request->query('date_registered', ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateRegistered)) {
+            $query->whereDate('created_at', $dateRegistered);
+        }
+
+        $this->applyAgeGroupFilter($query, trim((string) $request->query('age_group', '')));
+
+        $results = $query->latest('id')->paginate($perPage, ['*'], 'page', $page);
         if (! $user->isAdmin() && ! ActionPermissions::allows($user, 'clinical.history')) {
             $results->through(fn (Patient $patient) => PatientIdentity::response($patient));
         }
 
-        return response()->json(['data' => $results]);
+        $payload = ['data' => $results];
+        // Opt-in so report crawls (multi-page /patients) do not pay for facet queries.
+        if ($request->boolean('include_filter_options')) {
+            $payload['filter_options'] = $this->directoryFilterOptions($user);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Distinct barangay / civil_status values for the caller's facility scope.
+     * Independent of the current search/filters so dropdowns stay complete
+     * even when only the first directory page is loaded.
+     */
+    private function directoryFilterOptions($user): array
+    {
+        $base = $this->facilityAccess->scopePatients(Patient::query(), $user);
+
+        $barangays = (clone $base)
+            ->whereNotNull('barangay')
+            ->where('barangay', '!=', '')
+            ->distinct()
+            ->orderBy('barangay')
+            ->limit(500)
+            ->pluck('barangay')
+            ->values()
+            ->all();
+
+        $civilStatuses = (clone $base)
+            ->whereNotNull('civil_status')
+            ->where('civil_status', '!=', '')
+            ->distinct()
+            ->orderBy('civil_status')
+            ->limit(50)
+            ->pluck('civil_status')
+            ->values()
+            ->all();
+
+        return [
+            'barangays' => $barangays,
+            'civil_statuses' => $civilStatuses,
+        ];
+    }
+
+    /**
+     * Directory age buckets match the Patient Directory filter labels.
+     * Birthdate-null rows are excluded from age-filtered result sets.
+     */
+    private function applyAgeGroupFilter($query, string $ageGroup): void
+    {
+        if ($ageGroup === '' || $ageGroup === 'All Age Groups') {
+            return;
+        }
+
+        $today = now()->startOfDay();
+        $query->whereNotNull('birthdate');
+
+        if ($ageGroup === 'Child') {
+            // Age <= 17 completed years.
+            $query->whereDate('birthdate', '>', $today->copy()->subYears(18)->toDateString());
+
+            return;
+        }
+
+        if ($ageGroup === 'Adult') {
+            // Age 18–59 completed years.
+            $query
+                ->whereDate('birthdate', '<=', $today->copy()->subYears(18)->toDateString())
+                ->whereDate('birthdate', '>', $today->copy()->subYears(60)->toDateString());
+
+            return;
+        }
+
+        if ($ageGroup === 'Senior') {
+            // Age >= 60 completed years.
+            $query->whereDate('birthdate', '<=', $today->copy()->subYears(60)->toDateString());
+        }
     }
 
     /**

@@ -17,6 +17,7 @@ export {
   getRhuPatientById,
   getRhuPatients,
   linkReferralPatientToRhu,
+  listPatientsPage,
   savePatient,
   saveBhcPatients,
   saveRhuPatients,

@@ -179,12 +179,60 @@ export function normalizePatient(patient = {}) {
 }
 
 
-async function listPatients(params = {}) {
-  const query = new URLSearchParams(
-    Object.entries(params).filter(([, value]) => value !== undefined && value !== ""),
+const PATIENT_DIRECTORY_MAX_PER_PAGE = 100;
+
+function patientListQuery(params = {}) {
+  return new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   );
+}
+
+async function listPatients(params = {}) {
+  const query = patientListQuery(params);
   const response = await apiRequest(`/patients${query.size ? `?${query}` : ""}`);
   return unwrapList(response).map(normalizePatient);
+}
+
+/**
+ * One directory page with Laravel paginator meta. Used by Patient Directory
+ * Load More so later pages come from the API instead of client-only slicing.
+ */
+export async function listPatientsPage(params = {}) {
+  const page = Math.max(1, Number(params.page) || 1);
+  const perPage = Math.max(
+    1,
+    Math.min(PATIENT_DIRECTORY_MAX_PER_PAGE, Number(params.per_page) || 25),
+  );
+  const includeFilterOptions = Boolean(params.include_filter_options);
+  const query = patientListQuery({
+    ...params,
+    page,
+    per_page: perPage,
+    include_filter_options: includeFilterOptions ? 1 : undefined,
+  });
+  const response = await apiRequest(`/patients${query.size ? `?${query}` : ""}`);
+  const paginator = unwrapData(response) || {};
+  const items = unwrapList(response).map(normalizePatient);
+  const rawOptions = response?.filter_options || {};
+  return {
+    items,
+    meta: {
+      current_page: Number(paginator.current_page) || page,
+      last_page: Math.max(1, Number(paginator.last_page) || 1),
+      per_page: Number(paginator.per_page) || perPage,
+      total: Number(paginator.total) || items.length,
+    },
+    filterOptions: includeFilterOptions
+      ? {
+          barangays: Array.isArray(rawOptions.barangays)
+            ? rawOptions.barangays.map(String).filter(Boolean)
+            : [],
+          civilStatuses: Array.isArray(rawOptions.civil_statuses)
+            ? rawOptions.civil_statuses.map(String).filter(Boolean)
+            : [],
+        }
+      : undefined,
+  };
 }
 
 /**

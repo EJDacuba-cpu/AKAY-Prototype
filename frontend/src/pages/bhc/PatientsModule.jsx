@@ -23,8 +23,6 @@ import PatientDirectoryCard from "../../components/features/patients/PatientDire
 import PatientSummaryPanel from "../../components/features/patients/PatientSummaryPanel";
 import usePatients from "../../hooks/usePatients";
 import useAccess from "../../hooks/useAccess";
-import useLoadMore from "../../hooks/useLoadMore";
-import { PATIENTS_LOAD_BATCH } from "../../utils/tablePaging";
 import useMediaQuery from "../../hooks/useMediaQuery";
 import {
   getPatientKey,
@@ -63,15 +61,6 @@ const DEFAULT_FILTERS = {
 // replaces the toolbar one and the summary opens in a Drawer. Keep in sync with
 // clinical-directory.css.
 const DESKTOP_QUERY = "(min-width: 1024px)";
-function uniqueOptions(items, selectors, fallback) {
-  const values = items
-    .flatMap((item) => selectors.map((selector) => selector(item)))
-    .map((value) => formatDisplayValue(value, ""))
-    .filter(Boolean);
-
-  return [fallback, ...new Set(values)];
-}
-
 // `embedded` lets a parent page (the RHU workspace) own the layout and the page title.
 function Shell({ embedded, children, ...layoutProps }) {
   return embedded ? <>{children}</> : <DashboardLayout {...layoutProps}>{children}</DashboardLayout>;
@@ -122,12 +111,17 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
     patients,
     hasData: hasPatientData,
     filteredPatients,
+    total: patientTotal,
+    hasMore: hasMorePatients,
+    loadMore: loadMorePatients,
+    loadingMore,
     loading,
     filters,
     setFilters,
     queryError,
     refetchPatients,
     isRefreshing,
+    filterOptions,
   } = usePatients(role);
   const resultsRef = useRef(null);
   // The details panel starts collapsed; a card click selects a patient and opens it.
@@ -135,17 +129,22 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   const { selectedId: selectedPatientId, open: panelOpen } = panel;
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
-  const barangayOptions = uniqueOptions(
-    patients,
-    [(patient) => patient.barangay],
+  // Prefer facility-wide facets from the API; fall back to loaded rows if absent.
+  const barangayOptions = [
     "All Barangays",
-  );
+    ...new Set([
+      ...(filterOptions?.barangays || []),
+      ...patients.map((patient) => formatDisplayValue(patient.barangay, "")).filter(Boolean),
+    ]),
+  ];
 
-  const civilStatusOptions = uniqueOptions(
-    patients,
-    [(patient) => patient.civilStatus],
+  const civilStatusOptions = [
     "All Civil Status",
-  );
+    ...new Set([
+      ...(filterOptions?.civilStatuses || []),
+      ...patients.map((patient) => formatDisplayValue(patient.civilStatus, "")).filter(Boolean),
+    ]),
+  ];
 
   const dropdownFilters = [
     {
@@ -205,14 +204,14 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
   ).length;
   const hasAnyFilter = activeFilters.length > 0;
   const isNarrowed = hasAnyFilter || Boolean(filters.search);
-  const patientCountLabel = isNarrowed
-    ? `${filteredPatients.length} of ${patients.length} patients`
-    : `${patients.length} registered patient${patients.length === 1 ? "" : "s"}`;
-  const {
-    visibleItems: visiblePatients,
-    hasMore: hasMorePatients,
-    loadMore: loadMorePatients,
-  } = useLoadMore(filteredPatients, PATIENTS_LOAD_BATCH, filters);
+  const totalCount = Number(patientTotal) || filteredPatients.length;
+  const patientCountLabel =
+    filteredPatients.length < totalCount
+      ? `Showing ${filteredPatients.length} of ${totalCount} patients`
+      : isNarrowed
+        ? `${totalCount} matching patient${totalCount === 1 ? "" : "s"}`
+        : `${totalCount} registered patient${totalCount === 1 ? "" : "s"}`;
+  const visiblePatients = filteredPatients;
   const inboxHandoffsReady = Array.isArray(handoffsQuery.data);
   const inboxTbReady = !canTbEndorsements || Boolean(tbInboxQuery.data) || Boolean(tbInboxQuery.error);
   const hasData = showUnifiedInbox
@@ -452,6 +451,7 @@ export default function PatientsModule({ role = "bhc", basePath = "/bhc", embedd
                   canRegister={canRegister}
                   hasAnyFilter={hasAnyFilter}
                   hasMorePatients={hasMorePatients}
+                  loadingMore={loadingMore}
                   onLoadMore={loadMorePatients}
                   selectedPatientId={selectedPatientId}
                   onSelectPatient={selectPatient}
@@ -597,6 +597,7 @@ function PatientDirectory({
   canRegister,
   hasAnyFilter,
   hasMorePatients,
+  loadingMore = false,
   onLoadMore,
   selectedPatientId,
   onSelectPatient,
@@ -657,7 +658,11 @@ function PatientDirectory({
 
             {hasMorePatients && (
               <div className="flex justify-center py-3">
-                <LoadMoreButton label="Load more patients" onClick={onLoadMore} />
+                <LoadMoreButton
+                  label={loadingMore ? "Loading patients..." : "Load more patients"}
+                  onClick={onLoadMore}
+                  disabled={loadingMore}
+                />
               </div>
             )}
           </>

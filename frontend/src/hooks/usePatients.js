@@ -1,149 +1,121 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useDeferredValue, useMemo, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { getPatients } from "../services/patients";
-import { getPatientSex } from "../utils/patientUtils";
+import { listPatientsPage } from "../services/patientService";
 import { queryKeys } from "../utils/queryKeys";
+import { PATIENTS_LOAD_BATCH } from "../utils/tablePaging";
+
+const DEFAULT_FILTERS = {
+  search: "",
+  sex: "All",
+  barangay: "All Barangays",
+  ageGroup: "All Age Groups",
+  civilStatus: "All Civil Status",
+  dateRegistered: "",
+};
+
+function directoryParams(filters, page) {
+  return {
+    page,
+    per_page: PATIENTS_LOAD_BATCH,
+    // Facets only on page 1 so Load More / report-style crawls stay cheap.
+    include_filter_options: page === 1 ? 1 : undefined,
+    search: String(filters.search || "").trim() || undefined,
+    sex: filters.sex !== "All" ? filters.sex : undefined,
+    barangay: filters.barangay !== "All Barangays" ? filters.barangay : undefined,
+    civil_status: filters.civilStatus !== "All Civil Status" ? filters.civilStatus : undefined,
+    age_group:
+      filters.ageGroup && filters.ageGroup !== "All Age Groups"
+        ? filters.ageGroup
+        : undefined,
+    date_registered: filters.dateRegistered || undefined,
+  };
+}
+
+function dedupePatients(pages = []) {
+  const byId = new Map();
+  for (const page of pages) {
+    for (const patient of page.items || []) {
+      const id = String(patient.id || patient.patientId || patient.patient_id || "");
+      if (!id) continue;
+      byId.set(id, patient);
+    }
+  }
+  return [...byId.values()];
+}
 
 export default function usePatients(role = "bhc") {
-  /* ─────────────────────────────────────────────
-   * State
-   * ───────────────────────────────────────────── */
-  const [filters, setFilters] = useState({
-    search: "",
-    sex: "All",
-    barangay: "All Barangays",
-    ageGroup: "All Age Groups",
-    civilStatus: "All Civil Status",
-    dateRegistered: "",
-  });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  // Keep typing snappy; the directory query follows the deferred search value.
+  const deferredSearch = useDeferredValue(filters.search);
+  const queryFilters = useMemo(
+    () => ({ ...filters, search: deferredSearch }),
+    [filters, deferredSearch],
+  );
 
-  function getPatientAge(patient) {
-    if (typeof patient.age === "number") return patient.age;
-
-    const rawAge =
-      patient.age ||
-      String(patient.ageSex || "")
-        .split("/")
-        .at(0);
-    const parsed = parseInt(rawAge, 10);
-
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-
-  function matchesAgeGroup(patient, ageGroup) {
-    if (ageGroup === "All Age Groups") return true;
-
-    const age = getPatientAge(patient);
-    if (age === null) return false;
-
-    if (ageGroup === "Child") return age <= 17;
-    if (ageGroup === "Adult") return age >= 18 && age <= 59;
-    if (ageGroup === "Senior") return age >= 60;
-
-    return true;
-  }
-
-  function getDateValue(value) {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-    return date.toISOString().slice(0, 10);
-  }
-
-  /* ─────────────────────────────────────────────
-   * Fetch Patients
-   * ───────────────────────────────────────────── */
   const {
-    data: patientsData,
-    isPending: isLoading,
+    data,
+    isPending,
     isFetching,
+    isFetchingNextPage,
     error: queryError,
     refetch,
-  } = useQuery({
-    queryKey: queryKeys.patients(role),
-    queryFn: getPatients,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: [...queryKeys.patients(role), "directory", queryFilters],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => listPatientsPage(directoryParams(queryFilters, pageParam)),
+    getNextPageParam: (lastPage) => {
+      const current = Number(lastPage?.meta?.current_page) || 1;
+      const last = Number(lastPage?.meta?.last_page) || 1;
+      return current < last ? current + 1 : undefined;
+    },
     retry: false,
   });
 
-  const patients = useMemo(
-    () => (Array.isArray(patientsData) ? patientsData : []),
-    [patientsData],
-  );
-  const loading = isLoading && patients.length === 0;
+  const patients = useMemo(() => dedupePatients(data?.pages || []), [data]);
+  const total = useMemo(() => {
+    const pages = data?.pages || [];
+    if (!pages.length) return 0;
+    return Number(pages[pages.length - 1]?.meta?.total) || patients.length;
+  }, [data, patients.length]);
+
+  const filterOptions = useMemo(() => {
+    const pages = data?.pages || [];
+    for (const page of pages) {
+      if (page?.filterOptions) return page.filterOptions;
+    }
+    return { barangays: [], civilStatuses: [] };
+  }, [data]);
+
+  const loading = isPending && patients.length === 0;
   const error = queryError ? "Unable to load patients" : "";
 
-  /* ─────────────────────────────────────────────
-   * Filter Logic
-   * ───────────────────────────────────────────── */
-  const filteredPatients = useMemo(() => {
-    return patients.filter((patient) => {
-      const query = filters.search.toLowerCase();
-      const searchable = [
-        patient.name,
-        patient.id,
-        patient.patientId,
-        patient.patient_id,
-        patient.barangay,
-        patient.assignedBhc,
-        patient.assignedBHC,
-        patient.contact,
-        patient.contactNumber,
-        patient.philHealthNumber,
-        patient.philhealthNumber,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+  // Server already applied search/filters; keep the name for PatientsModule.
+  const filteredPatients = patients;
 
-      const matchesSearch = !query || searchable.includes(query);
+  async function loadMore() {
+    if (!hasNextPage || isFetchingNextPage) return;
+    await fetchNextPage();
+  }
 
-      const matchesSex =
-        filters.sex === "All" || getPatientSex(patient) === filters.sex;
-
-      const matchesBarangay =
-        filters.barangay === "All Barangays" ||
-        patient.barangay === filters.barangay ||
-        patient.assignedBhc === filters.barangay ||
-        patient.assignedBHC === filters.barangay;
-
-      const matchesAge = matchesAgeGroup(patient, filters.ageGroup);
-
-      const matchesCivilStatus =
-        filters.civilStatus === "All Civil Status" ||
-        patient.civilStatus === filters.civilStatus;
-
-      const registeredDate = getDateValue(
-        patient.dateRegistered || patient.createdAt || patient.registeredAt,
-      );
-      const matchesDate =
-        !filters.dateRegistered || registeredDate === filters.dateRegistered;
-
-      return (
-        matchesSearch &&
-        matchesSex &&
-        matchesBarangay &&
-        matchesAge &&
-        matchesCivilStatus &&
-        matchesDate
-      );
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patients, filters]);
-
-  /* ─────────────────────────────────────────────
-   * Return
-   * ───────────────────────────────────────────── */
   return {
     patients,
-    hasData: Array.isArray(patientsData),
+    // Empty first page still counts as loaded (show "No patients yet", not the skeleton).
+    hasData: data != null,
     filteredPatients,
+    total,
+    hasMore: Boolean(hasNextPage),
+    loadMore,
+    loadingMore: isFetchingNextPage,
+    filterOptions,
 
     loading,
     error,
     queryError,
     refetchPatients: refetch,
-    isRefreshing: isFetching && !loading,
+    isRefreshing: isFetching && !loading && !isFetchingNextPage,
 
     filters,
     setFilters,
