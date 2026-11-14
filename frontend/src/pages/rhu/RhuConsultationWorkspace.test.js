@@ -143,7 +143,9 @@ test("workspace draft, review, and finalize keep structured prescriptions off pr
   const payloadStart = workspace.indexOf("const draftPayload = useMemo");
   const payloadEnd = workspace.indexOf("const autosave = useDraftAutosave");
   const payload = workspace.slice(payloadStart, payloadEnd);
-  assert.match(payload, /diagnoses,\s*prescriptions,\s*prescriptionText,/);
+  for (const field of ["diagnoses", "prescriptions", "prescriptionText"]) {
+    assert.match(payload, new RegExp(`\\b${field},`));
+  }
 
   const restoreStart = workspace.indexOf("function restoreDraft");
   const restoreEnd = workspace.indexOf("const monitoredNames");
@@ -207,5 +209,18 @@ test("toPayload keeps nested maternal LMP/AOG/EDC when top-level fields are abse
   assert.match(service, /maternalDataForWrite/);
   assert.match(service, /const maternalData = maternalDataForWrite\(record\)/);
   assert.doesNotMatch(service, /lmp: record\.lmp \|\| record\.LMP \|\| null,/);
+});
+
+test("RHU review receives every clinical form and service input, without repeating its page heading", () => {
+  const review = workspace.slice(workspace.indexOf("const reviewSections ="), workspace.indexOf("if (visitError)"));
+  for (const field of ["systolicBp", "diastolicBp", "temp", "pulse", "spo2", "weight", "height", "fbs", "backgroundUpdate", "familyPlanningData", "immunizationEntries", "cpabAssessment", "maternalTtTdEvidence", "immunizationBreastfeeding", "immunizationRemarks", "serviceHandoffs", "serviceSupportingLabs", "serviceUsages", "nutritionIntent", "prenatalIntent"]) {
+    assert.ok(review.includes(field) || (field === "backgroundUpdate" && review.includes("historyUpdateForSave()")), field);
+  }
+  assert.match(review, /rhuProgramReviewRows/);
+  assert.match(review, /buildRhuMaternalPayload\(\)/);
+  assert.match(review, /rhuDiagnosisReviewRows\(diagnoses/);
+  assert.match(review, /followUpSchedules\.filter/);
+  assert.match(review, /previousBodyFindings\.find/);
+  assert.match(workspace, /<ConsultationReviewStep\s+hideHeading/);
 });
 

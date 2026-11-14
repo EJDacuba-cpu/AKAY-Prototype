@@ -4,9 +4,37 @@
   gap: 12px;
 }
 .care-tracking-grid .care-tracking-card,
+.profile-record-card,
 .care-tracking-skeleton,
 .care-tracking-empty {
   height: 304px;
+}
+.profile-record-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+.profile-record-card__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.profile-record-card__footer {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
 }
 .care-tracking-card > :first-child { flex-shrink: 0; }
 .care-tracking-card__body {

@@ -37,7 +37,15 @@ import TbTreatmentCardForm, {
 import { formatBodyFindings, normalizeBodyFindings } from "../../utils/bodyFindings";
 import { summarizeBodyFindings, BODY_FINDING_STATUS_LABELS } from "../../utils/bodyFindingsSummary";
 import { PreviousBodyFindings } from "../../components/features/health-records/BodyFindingReassessment";
-import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
+import { compactReviewSections, patientReviewRow } from "../../utils/consultationReview";
+import {
+  clinicalReviewRows,
+  rhuBackgroundReviewRows,
+  rhuDiagnosisReviewRows,
+  rhuProgramReviewRows,
+  rhuServiceReviewRows,
+  rhuVitalReviewRows,
+} from "../../utils/rhuConsultationReview";
 import {
   PROGRAM_CLASSIFICATIONS,
   classificationForPrimaryProgram,
@@ -56,7 +64,6 @@ import {
   mergeMaternalData,
   sanitizeRiskAssessment,
   thisVisitDoseEntry,
-  maternalReviewFields,
   withLaboratoryEntries,
 } from "../../utils/prenatalForm";
 import {
@@ -1543,13 +1550,18 @@ export default function RhuConsultationWorkspace() {
       stepKey: INTERVIEW_STEP,
       rows: [
         patientReviewRow({ name: formatPatientName(patient) || "Patient", id: patientId }),
+        { label: "Selected health services", value: selectedPrograms.map((program) => program === "Maternal" ? "Maternal Care" : program === "EPI" ? "Immunization (EPI)" : program).join(", ") },
+        { label: "Primary service", value: classificationForPrimaryProgram(primaryProgram) },
+        { label: "Prenatal enrollment", value: selectedPrograms.includes("Maternal") ? (prenatalIntent === "enroll" ? "Enroll" : "Continue") : "" },
+        { label: "Nutrition enrollment", value: selectedPrograms.includes("Nutrition") ? (nutritionIntent === "enroll" ? "Enroll" : "Continue") : "" },
         { label: "Chief Complaint", value: chiefComplaint },
         { label: "History of Present Illness", value: summaryOfPresentIllness },
         ...(isReferred && showAdditionalConcern ? [
           { label: "Additional Chief Complaint", value: additionalChiefComplaint },
           { label: "Additional History of Present Illness", value: additionalHistoryOfPresentIllness },
         ] : []),
-        ...visitAnswerRows({ informant, similarIllness }),
+        ...(canViewBackground ? visitAnswerRows({ informant, similarIllness }) : []),
+        ...(canViewBackground ? rhuBackgroundReviewRows(historyUpdateForSave()) : []),
       ],
     },
     {
@@ -1557,44 +1569,53 @@ export default function RhuConsultationWorkspace() {
       title: "Physical Examination",
       stepKey: ASSESSMENT_STEP,
       rows: [
-        { label: "BP", value: systolicBp || diastolicBp ? `${systolicBp || "?"}/${diastolicBp || "?"} mmHg` : "" },
+        ...rhuVitalReviewRows({ systolicBp, diastolicBp, temp, pulse, spo2, weight, height, fbs, showBmi: shouldShowBmiDisplay(patient, rhuVisitDate) }),
         { label: "Physical Findings", value: physicalExam },
         ...laboratoryTests.map((entry, index) => ({ label: `Laboratory test ${index + 1}`, value: laboratorySummary(entry) })),
         { label: "Body Findings", value: formatBodyFindings(bodyFindings) },
-        { label: "Body Finding Reassessment", value: bodyFindingReassessments.map((item) => `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}: ${BODY_FINDING_STATUS_LABELS[item.status]}`).join("; ") },
+        ...bodyFindingReassessments.map((item) => {
+          const finding = previousBodyFindings.find((previous) => String(previous.sourceRecordId) === String(item.sourceRecordId) && previous.sourceFindingIndex === item.sourceFindingIndex);
+          return {
+            label: "Body finding reassessment",
+            value: [finding ? formatBodyFindings([finding]) : `Record #${item.sourceRecordId}, finding ${item.sourceFindingIndex + 1}`, BODY_FINDING_STATUS_LABELS[item.status]].filter(Boolean).join(" — "),
+          };
+        }),
       ],
     },
     ...programFormSteps.map((step) => ({
       key: step.key,
       title: step.label,
       stepKey: step.key,
-      rows: programReviewRows({
-        Maternal: maternalReviewFields({ ...maternalData, expectedDeliveryDate, aog }),
-        "Family Planning": familyPlanningData,
-        Immunization: { vaccineEntries: immunizationEntries },
-      }[step.classification]),
+      rows: rhuProgramReviewRows(step.classification, {
+        maternalData: step.classification === "Maternal" ? buildRhuMaternalPayload() : undefined,
+        familyPlanningData,
+        previousMethod: historicalFpMethod.label,
+        immunizationEntries,
+        cpabAssessment,
+        maternalTtTdEvidence,
+        immunizationBreastfeeding,
+        immunizationRemarks,
+      }),
     })),
-    includeTb ? { key: TB_INTAKE_STEP, title: "TB", stepKey: TB_INTAKE_STEP, rows: programReviewRows(tbData) } : null,
+    includeTb ? { key: TB_INTAKE_STEP, title: "TB", stepKey: TB_INTAKE_STEP, rows: clinicalReviewRows(tbData) } : null,
     {
       key: NEXT_STEP,
       title: "Diagnosis & Care Plan",
       stepKey: NEXT_STEP,
       rows: [
-        ...diagnoses.map((entry) => ({
-          label: entry.name,
-          value: [
-            entry.activate ? "Active condition" : "",
-            diagnosisNextAction(entry) === "none" ? "No Further Follow-up Scheduled" : "",
-            diagnosisNextAction(entry) === "rhu_follow_up" ? "Schedule RHU follow-up" : "",
-            diagnosisNextAction(entry) === "manage_to_bhc" ? "Manage to BHC" : "",
-            diagnosisNextAction(entry) === "refer_higher_level" ? "Refer to Higher-Level Facility" : "",
-          ].filter(Boolean).join(" · "),
-        })),
-        ...diagnoses.filter((entry) => diagnosisNextAction(entry) === "refer_higher_level").flatMap((entry) => [
-          { label: `${entry.name} — Referral reason`, value: entry.higherLevelReferralPlan?.reason },
-          { label: `${entry.name} — Intended facility`, value: entry.higherLevelReferralPlan?.intendedFacility },
-          { label: `${entry.name} — Clinical plan`, value: entry.higherLevelReferralPlan?.clinicalPlan },
-        ]),
+        ...rhuDiagnosisReviewRows(diagnoses, {
+          catchmentBhcs,
+          laboratoryOptions: evidenceOptions(laboratoryTests, laboratoryHistory.data || []),
+        }),
+        ...rhuServiceReviewRows({
+          selectedPrograms,
+          schedules: followUpSchedules,
+          serviceHandoffs,
+          serviceSupportingLabs,
+          serviceUsages,
+          catchmentBhcs,
+          laboratoryOptions: evidenceOptions(laboratoryTests, laboratoryHistory.data || []),
+        }),
         { label: "Actions taken", value: treatmentNotes },
         ...(() => {
           const structuredPrescriptionRows = prescriptionReviewGroups(prescriptions, diagnoses).map((group) => ({
@@ -1742,6 +1763,7 @@ export default function RhuConsultationWorkspace() {
         {wizardPhase === WIZARD_REVIEW ? (
           <div className="min-w-0 space-y-4">
             <ConsultationReviewStep
+              hideHeading
               visitDate={rhuVisitDate}
               visitTime={new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
               sections={reviewSections}

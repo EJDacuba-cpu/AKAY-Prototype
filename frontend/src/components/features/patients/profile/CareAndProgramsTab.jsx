@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 
 import CareTrackingCard from "./CareTrackingCard";
+import ProfileCardsSkeleton from "./ProfileCardsSkeleton";
 import ClinicalTrackingPanel from "./ClinicalTrackingPanel";
 import CloseNutritionCareModal from "./CloseNutritionCareModal";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
@@ -29,19 +30,6 @@ import { queryKeys } from "../../../../utils/queryKeys";
  * This view is read-only except for closing an active Nutrition Care episode
  * and authorized laboratory result addenda.
  */
-
-function CareTrackingSkeleton() {
-  return (
-    <div role="status" aria-label="Loading care tracking" className="care-tracking-grid">
-      <span className="sr-only">Loading care tracking...</span>
-      {[0, 1, 2].map((key) => (
-        <div key={key} className="care-tracking-skeleton" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((line) => <span key={line} className="care-tracking-skeleton__line" />)}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function profileRole(basePath) {
   return String(basePath || "").includes("/rhu") ? "rhu" : "bhc";
@@ -195,7 +183,7 @@ export default function CareAndProgramsTab({
         {isError ? (
           <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 p-5 text-sm text-alert-700">Could not load care tracking. <Button type="button" variant="link" size="sm" onClick={() => onRetryRecords?.()} className="h-auto p-0 text-alert-700 underline">Retry</Button></p>
         ) : trackingLoading ? (
-          <CareTrackingSkeleton />
+          <ProfileCardsSkeleton />
         ) : careTracking.length === 0 ? (
           <Card className="care-tracking-empty care-tracking-reveal flex items-center justify-center rounded-xl border-neutral-200 p-5 text-center"><EmptyNote>No care tracking from finalized consultations yet.</EmptyNote></Card>
         ) : (
