@@ -316,6 +316,18 @@ class HealthRecordDraftPayloadService
                 'month5' => self::SCALAR,
                 'month6' => self::SCALAR,
             ],
+            // Child CPAB classification + maternal TT/Td evidence rows (EPI form).
+            'cpabAssessment' => [
+                'status' => self::SCALAR,
+                'notes' => self::SCALAR,
+            ],
+            'maternalTtTdEvidence' => ['*' => [
+                'id' => self::SCALAR,
+                'vaccineType' => self::SCALAR,
+                'dose' => self::SCALAR,
+                'dateAdministered' => self::SCALAR,
+                'evidenceSource' => self::SCALAR,
+            ]],
         ],
         'familyPlanningData' => [
             'clientType' => self::SCALAR,
@@ -879,6 +891,23 @@ class HealthRecordDraftPayloadService
             'payload.immunizationData.vaccineEntries.*.nextScheduleDate' => [
                 'nullable',
                 'date_format:Y-m-d',
+            ],
+            'payload.immunizationData.cpabAssessment.status' => [
+                'nullable',
+                'in:not_assessed,protected,not_protected',
+            ],
+            'payload.immunizationData.maternalTtTdEvidence' => ['nullable', 'array', 'max:30'],
+            'payload.immunizationData.maternalTtTdEvidence.*.dateAdministered' => [
+                'nullable',
+                'date_format:Y-m-d',
+            ],
+            'payload.immunizationData.maternalTtTdEvidence.*.vaccineType' => [
+                'nullable',
+                'in:TT,Td',
+            ],
+            'payload.immunizationData.maternalTtTdEvidence.*.evidenceSource' => [
+                'nullable',
+                'in:maternal_card,facility_record,mother_reported,unknown',
             ],
             'payload.tbData.regimen.rows' => ['nullable', 'array', 'max:10'],
             'payload.tbData.adverseEvents' => ['nullable', 'array', 'max:30'],

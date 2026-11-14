@@ -155,10 +155,13 @@ export default function StartConsultationModal({ overview, onStart, onCancel, va
     }
   }
 
+  // Plain header: start is a task dialog, not a danger confirm. Failures stay
+  // inline (alert tint) so validation never looks like a second red confirmation.
   return (
     <ModalShell
       open
       title="Start Consultation"
+      appearance="plain"
       size="lg"
       onClose={onCancel}
       closeDisabled={starting}

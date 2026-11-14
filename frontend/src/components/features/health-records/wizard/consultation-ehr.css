@@ -84,6 +84,41 @@
   max-width: min(100%, 22rem);
 }
 
+/* Mobile: keep the sticky action bar from covering the last fields, and let
+   the heading + draft status stack cleanly under 640px. */
+@media (max-width: 1023px) {
+  .ehr-consult--rhu > .ehr-consult__stage {
+    padding-bottom: 5.5rem;
+  }
+  .ehr-consult--rhu .ehr-consult__actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    margin-top: 0;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+  .ehr-consult--rhu .ehr-consult__heading-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ehr-consult--rhu .ehr-consult__heading-copy {
+    flex-basis: auto;
+  }
+  .ehr-consult--rhu .ehr-consult__draft-status {
+    max-width: 100%;
+  }
+  .ehr-consult--rhu .ehr-consult__grid--panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .ehr-consult--rhu .ehr-consult__grid > [data-body-preview] {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
 .ehr-consult .rounded {
   border-radius: var(--radius-input);
 }

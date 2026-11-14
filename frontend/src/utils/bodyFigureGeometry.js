@@ -26,6 +26,8 @@ const INFANT_MAX_MONTHS = 12;
  * Infant from birth through 12 completed months (by date of birth, whatever
  * the sex); otherwise "Female" (trimmed, any case) -> female, anything else
  * -> male. A missing, invalid or future birth date falls back to sex.
+ * Pass the consultation visit date as `today` so the figure matches infant
+ * field-hiding on that visit (not only wall-clock today).
  */
 export function getFigureKey(sex, birthDate, today = new Date()) {
   const months = calculateAgeInMonths(birthDate, today);

@@ -540,6 +540,19 @@ class HealthRecordDraftPayloadServiceTest extends TestCase
                     'month5' => '',
                     'month6' => '',
                 ],
+                'cpabAssessment' => [
+                    'status' => 'not_assessed',
+                    'notes' => '',
+                ],
+                'maternalTtTdEvidence' => [
+                    [
+                        'id' => 'cpab-1',
+                        'vaccineType' => 'TT',
+                        'dose' => '2',
+                        'dateAdministered' => '2025-12-01',
+                        'evidenceSource' => 'maternal_card',
+                    ],
+                ],
             ],
             'familyPlanningData' => [
                 'clientType' => 'New Acceptor',

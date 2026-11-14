@@ -37,10 +37,13 @@ export function FormDraftRecoveryDialogView({
   const defaultDescription = onResume
     ? "Continue where you left off?"
     : (problem && onRetry ? "We couldn't check for unfinished work. Please try again." : "");
+  // Decision / check: plain chrome (not brand-red). Discard confirm: brand-red
+  // header so destruction reads as deliberate. Errors stay inline alert, never amber.
   return (
     <ModalShell
       open={open}
       title={confirming ? "Discard unfinished work?" : resolvedTitle}
+      appearance={confirming ? "default" : "plain"}
       size="sm"
       onClose={confirming ? onKeepDraft : onClose}
       closeDisabled={busy}
@@ -95,7 +98,11 @@ export function FormDraftRecoveryDialogView({
             )}
           </>
         )}
-        {problem && <p role="alert" className="text-xs text-alert-700">{problem}</p>}
+        {problem ? (
+          <p role="alert" className="rounded-lg border border-alert-100 bg-alert-50 px-3 py-2 text-xs text-alert-700">
+            {problem}
+          </p>
+        ) : null}
       </div>
     </ModalShell>
   );

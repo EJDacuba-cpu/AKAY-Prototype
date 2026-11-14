@@ -23,12 +23,16 @@ test("referred interview has separate RHU fields, optional concern, and draft re
   assert.doesNotMatch(workspace, /setChiefComplaint\([^\n]*(?:referral|slip)/i);
 });
 
-test("Back to Queue flushes pending drafts and keeps the form when save fails", () => {
+test("Back to Queue and route leaves use the Leave Consultation modal like BHC", () => {
+  assert.match(workspace, /useBlocker/);
+  assert.match(workspace, /Leave Consultation\?/);
+  assert.match(workspace, /Leave & Resume Later/);
+  assert.match(workspace, /Continue Consultation/);
+  assert.match(workspace, /leaveAndResumeLater/);
+  assert.match(workspace, /saveDraftBeforeNavigation/);
   const leave = workspace.match(/if \(previous === EXIT_STEP\) \{[\s\S]*?navigate\("\/rhu\/patients"\)/);
   assert.ok(leave, "expected Back to Queue leave path");
-  assert.match(leave[0], /flushBeforeLeave/);
-  assert.match(leave[0], /toast\.error/);
-  assert.match(leave[0], /couldn't be saved|try again before leaving/i);
+  assert.doesNotMatch(leave[0], /flushBeforeLeave/);
 });
 
 test("RHU autosave status shows error and conflict even when shared form drafts are disabled", () => {
@@ -39,7 +43,8 @@ test("RHU autosave status shows error and conflict even when shared form drafts 
 
 test("Resume gates editing and autosave until the visit draft is hydrated", () => {
   assert.match(workspace, /recoveryReady = recovery.ready/);
-  assert.match(workspace, /enabled:\s*RHU_DRAFTS_ENABLED && recoveryReady/);
+  assert.match(workspace, /canSaveCurrentDraft = RHU_DRAFTS_ENABLED/);
+  assert.match(workspace, /enabled:\s*canSaveCurrentDraft && !saveSuccess/);
   assert.match(workspace, /assessmentLocked = encodeLocked \|\| !recoveryReady/);
   assert.doesNotMatch(workspace, /useState\(!FORM_DRAFTS_ENABLED \|\| !RHU_DRAFTS_ENABLED\)/);
 });
@@ -182,3 +187,25 @@ test("Next on Diagnosis & Care Plan surfaces validation errors instead of failin
   assert.match(source, /pickErrorsForStep\(validationErrors, currentStepKey, stepOptions\)/);
   assert.match(source, /isReferralVisit:\s*isReferredRhuVisit\(visit\)/);
 });
+
+test("Previous from Care Plan returns to the last form screen, not one step before it", () => {
+  const previous = workspace.match(/async function handlePrevious\(\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(previous, "expected handlePrevious");
+  assert.match(previous[0], /formSequence\[formSequence\.length - 1\]/);
+  assert.doesNotMatch(
+    previous[0],
+    /getPreviousStepKey\(formSequence,\s*formSequence\[formSequence\.length - 1\]\)/,
+  );
+  assert.match(previous[0], /setValidationErrors\(\{\}\)/);
+});
+
+test("RHU finalize payload mirrors nested maternal LMP at the top level", () => {
+  assert.match(workspace, /lmp:\s*selectedPrograms\.includes\("Maternal"\) \? \(maternalData\.lmp \|\| null\) : undefined/);
+});
+
+test("toPayload keeps nested maternal LMP/AOG/EDC when top-level fields are absent", () => {
+  assert.match(service, /maternalDataForWrite/);
+  assert.match(service, /const maternalData = maternalDataForWrite\(record\)/);
+  assert.doesNotMatch(service, /lmp: record\.lmp \|\| record\.LMP \|\| null,/);
+});
+

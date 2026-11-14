@@ -1,36 +1,52 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   ClinicalCheckbox,
   ClinicalSectionCard as ClinicalSection,
   FieldEyebrow,
   FieldInput,
   FieldTextarea,
+  FieldError,
 } from "./fields/ClinicalFields";
 import { formatEpiDate, getEpiCode } from "../../../utils/epiTracking";
 import { visibleEpiVaccineOptions } from "../../../utils/epiApplicability";
 import { normalizeVaccineName } from "../../../utils/healthRecordPrograms";
+import {
+  buildVaccineDoseCatalog,
+  CPAB_EVIDENCE_SOURCES,
+  CPAB_STATUS_OPTIONS,
+  emptyMaternalEvidenceRow,
+  findDoseOption,
+  needsBirthDoseTime,
+  vaccineEntryConflicts,
+} from "../../../utils/epiVaccineCatalog";
 
 const TIMED_NEWBORN_VACCINES = new Set(["BCG", "HEPA B"]);
 
 function needsTimeGiven(vaccineName) {
-  return TIMED_NEWBORN_VACCINES.has(normalizeVaccineName(vaccineName));
+  return TIMED_NEWBORN_VACCINES.has(normalizeVaccineName(vaccineName))
+    || needsBirthDoseTime(vaccineName);
+}
+
+/** Date inputs need YYYY-MM-DD; callers may pass Date or ISO datetime. */
+function toDateInputValue(value) {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
 }
 
 /**
  * Services recorded on the EPI form that are screenings rather than vaccines.
- *
- * These stay inside the same `vaccineEntries` data model. Splitting them out of
- * the vaccine grid is presentation, never a change to what is stored. Infant
- * completion counts the age-applicable EPI_INFANT_SCHEDULE doses, not NBS/CPAB/HPV.
+ * These stay inside the same `vaccineEntries` data model.
  */
 export const ESSENTIAL_SERVICE_LABELS = ["Newborn Screening"];
 
-/**
- * Wording shown to the user for items whose STORED name is shorter.
- *
- * The key is the stored vaccine name and must not change - it is what
- * getEpiCode maps and what previous records already hold. Only the right-hand
- * side is display text.
- */
 const DISPLAY_LABELS = {
   "Newborn Screening": "Newborn Screening (NBS) Done",
 };
@@ -54,23 +70,13 @@ function isEssentialService(label) {
   );
 }
 
+function isCpabLabel(label) {
+  return normalizeVaccineName(label) === "CPAB";
+}
+
 /**
- * The EPI visit form, in the order the clinical flow reads:
- * measurements -> screening -> vaccines -> breastfeeding -> supplies -> remarks.
- *
- * Each section owns its consultation card, so callers place this in the form
- * stack rather than wrapping it in another card.
- *
- * Shared by the BHC and RHU record pages, which pass DIFFERENT `vaccineOptions`
- * on purpose. The two facilities record different vaccine label sets ("HEPA B"
- * vs "Hepatitis B", RHU additionally records MMR / Vitamin A / Other) and those
- * labels are the stored value, mapped by getEpiCode. Unifying the lists here
- * would silently rewrite what each facility records, so the component owns the
- * layout and each page owns its list.
- *
- * EPI-history props are optional. When `epiHistoryByCode` is omitted the grid
- * renders unlocked with no completion panel, which is the RHU page's existing
- * behaviour - it does not compile a patient's prior EPI history.
+ * Compact EPI visit form: Vaccine → Dose → Date → Add tracking list,
+ * plus maternal TT/Td CPAB evidence for this child.
  */
 export default function ImmunizationVisitFields({
   vaccineOptions = [],
@@ -91,12 +97,12 @@ export default function ImmunizationVisitFields({
   consultationNotes,
   errors = {},
   ageWarning = null,
-  // The step-based consultation records weight, height, temperature, pulse and
-  // SpO2 once, on its Vital Signs step, so its EPI step leaves them out.
   hideBasicMonitoring = false,
   otherVaccineSlot = null,
   medicinesSlot = null,
   emptySelectionHint = null,
+  cpabAssessment = null,
+  maternalTtTdEvidence = [],
   onTemperatureChange,
   onPulseChange,
   onSpo2Change,
@@ -105,15 +111,20 @@ export default function ImmunizationVisitFields({
   onBreastfeedingChange,
   onToggleVaccine,
   onVaccineFieldChange,
+  onAddVaccineEntry,
+  onRemoveVaccineEntry,
+  onCpabAssessmentChange,
+  onMaternalEvidenceChange,
   onNotesChange,
 }) {
   const selectedVaccines = new Set(entries.map((entry) => entry.vaccineName));
   const historyByCode = epiHistoryByCode || new Map();
   const tracksHistory = Boolean(epiHistoryByCode);
+  const visitDay = toDateInputValue(visitDate);
   const visibleOptions = birthDate
     ? visibleEpiVaccineOptions(vaccineOptions, {
         birthDate,
-        visitDate,
+        visitDate: visitDay || visitDate,
         historyLabels: [
           ...vaccineOptions.filter((label) => historyByCode.has(getEpiCode(label))),
           ...entries.map((entry) => entry.vaccineName),
@@ -123,11 +134,103 @@ export default function ImmunizationVisitFields({
 
   const essentialOptions = visibleOptions.filter(isEssentialService);
   const vaccineOnlyOptions = visibleOptions.filter(
-    (option) => !isEssentialService(option),
+    (option) => !isEssentialService(option) && !isCpabLabel(option),
   );
-  const timedEntries = entries.filter((entry) => needsTimeGiven(entry.vaccineName));
+  const catalogKey = vaccineOnlyOptions.join("|");
+  const catalog = useMemo(
+    () => buildVaccineDoseCatalog(vaccineOnlyOptions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by stable join of option labels
+    [catalogKey],
+  );
 
-  function renderOption(storedName) {
+  const [draftFamily, setDraftFamily] = useState("");
+  const [draftDose, setDraftDose] = useState("");
+  const [draftDate, setDraftDate] = useState(() => visitDay);
+  const [draftTime, setDraftTime] = useState("");
+  const [draftError, setDraftError] = useState("");
+
+  useEffect(() => {
+    if (!draftDate && visitDay) setDraftDate(visitDay);
+  }, [visitDay, draftDate]);
+
+  const selectedFamily = catalog.find((item) => item.key === draftFamily) || null;
+  const selectedDose = selectedFamily
+    ? findDoseOption(catalog, draftFamily, draftDose)
+    : null;
+  const showTime = selectedDose ? needsBirthDoseTime(selectedDose.storedLabel) : false;
+
+  const assessment = cpabAssessment || { status: "not_assessed", notes: "" };
+  const evidenceRows = Array.isArray(maternalTtTdEvidence) ? maternalTtTdEvidence : [];
+
+  function resetDraft() {
+    setDraftFamily("");
+    setDraftDose("");
+    setDraftDate(visitDay || "");
+    setDraftTime("");
+    setDraftError("");
+  }
+
+  function handleAddVaccine() {
+    if (!selectedDose) {
+      setDraftError("Choose a vaccine and dose.");
+      return;
+    }
+    const storedLabel = selectedDose.storedLabel;
+    const dateGiven = toDateInputValue(draftDate) || visitDay;
+    const conflict = vaccineEntryConflicts({
+      storedLabel,
+      dateGiven,
+      entries,
+      historyByCode: tracksHistory ? historyByCode : null,
+    });
+    if (conflict) {
+      setDraftError(conflict);
+      return;
+    }
+
+    const entry = {
+      vaccineName: storedLabel,
+      dose: selectedDose.value === "birth" ? "Birth dose" : String(selectedDose.value),
+      dateGiven,
+      timeGiven: showTime ? draftTime : "",
+    };
+
+    if (typeof onAddVaccineEntry === "function") {
+      onAddVaccineEntry(entry);
+    } else if (typeof onToggleVaccine === "function") {
+      onToggleVaccine(storedLabel, true);
+      if (dateGiven && onVaccineFieldChange) {
+        onVaccineFieldChange(storedLabel, "dateGiven", dateGiven);
+      }
+      if (showTime && draftTime && onVaccineFieldChange) {
+        onVaccineFieldChange(storedLabel, "timeGiven", draftTime);
+      }
+    }
+    resetDraft();
+  }
+
+  function handleRemove(entry, index) {
+    if (typeof onRemoveVaccineEntry === "function") {
+      onRemoveVaccineEntry(entry, index);
+      return;
+    }
+    if (typeof onToggleVaccine === "function") {
+      onToggleVaccine(entry.vaccineName, false);
+    }
+  }
+
+  function updateEntryField(entry, index, field, value) {
+    if (typeof onVaccineFieldChange === "function") {
+      // Prefer index-aware callers; fall back to name-keyed legacy API.
+      if (onVaccineFieldChange.length >= 4) {
+        onVaccineFieldChange(entry.vaccineName, field, value, index);
+      } else {
+        onVaccineFieldChange(entry.vaccineName, field, value);
+      }
+    }
+  }
+
+  function renderEssentialOption(storedName) {
     const lockedEntry = tracksHistory
       ? historyByCode.get(getEpiCode(storedName))
       : null;
@@ -141,9 +244,24 @@ export default function ImmunizationVisitFields({
         checked={selectedVaccines.has(storedName)}
         locked={locked}
         lockedNote={`Already given${givenDate ? ` on ${givenDate}` : ""}`}
-        onChange={(checked) => onToggleVaccine(storedName, checked)}
+        onChange={(checked) => onToggleVaccine?.(storedName, checked)}
       />
     );
+  }
+
+  function addEvidenceRow() {
+    onMaternalEvidenceChange?.([...evidenceRows, emptyMaternalEvidenceRow()]);
+  }
+
+  function updateEvidenceRow(index, field, value) {
+    const next = evidenceRows.map((row, i) => (
+      i === index ? { ...row, [field]: value } : row
+    ));
+    onMaternalEvidenceChange?.(next);
+  }
+
+  function removeEvidenceRow(index) {
+    onMaternalEvidenceChange?.(evidenceRows.filter((_, i) => i !== index));
   }
 
   return (
@@ -209,14 +327,14 @@ export default function ImmunizationVisitFields({
         >
           <FieldEyebrow>Newborn Services</FieldEyebrow>
           <div className="flex flex-col gap-2.5">
-            {essentialOptions.map(renderOption)}
+            {essentialOptions.map(renderEssentialOption)}
           </div>
         </ClinicalSection>
       )}
 
       <ClinicalSection
-        title="EPI Vaccines Given"
-        subtitle="Select the EPI vaccines given during this visit."
+        title="EPI Vaccine Tracking"
+        subtitle="Vaccines given this visit or previously recorded for this child."
       >
         {errors.vaccineEntries && (
           <p
@@ -238,46 +356,143 @@ export default function ImmunizationVisitFields({
           </p>
         )}
 
-        <FieldEyebrow>Vaccines Given This Visit</FieldEyebrow>
-        <div className="flex flex-wrap gap-x-5 gap-y-3">
-          {vaccineOnlyOptions.map(renderOption)}
-        </div>
-
-        {timedEntries.length > 0 && onVaccineFieldChange ? (
-          <div className="mt-4 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50/70 p-3">
-            <p className="text-[12px] text-neutral-600">
-              Optional Time Given is the actual BCG / Hepatitis B administration time.
-              It is never taken from consultation finalization or inventory confirmation.
-            </p>
-            {timedEntries.map((entry) => (
-              <div
-                key={entry.vaccineName}
-                className="grid gap-3 sm:grid-cols-2"
-              >
-                <FieldInput
-                  label={`${displayLabel(entry.vaccineName)} · Date Given`}
-                  type="date"
-                  value={entry.dateGiven || visitDate || ""}
-                  onChange={(event) =>
-                    onVaccineFieldChange(entry.vaccineName, "dateGiven", event.target.value)
-                  }
-                />
-                <FieldInput
-                  label={`${displayLabel(entry.vaccineName)} · Time Given`}
-                  type="time"
-                  value={entry.timeGiven || entry.time_given || ""}
-                  onChange={(event) =>
-                    onVaccineFieldChange(entry.vaccineName, "timeGiven", event.target.value)
-                  }
-                />
-              </div>
-            ))}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Vaccine
+            </label>
+            <select
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#1F2937]"
+              value={draftFamily}
+              onChange={(event) => {
+                setDraftFamily(event.target.value);
+                setDraftDose("");
+                setDraftError("");
+              }}
+            >
+              <option value="">Select vaccine</option>
+              {catalog.map((family) => (
+                <option key={family.key} value={family.key}>{family.label}</option>
+              ))}
+            </select>
           </div>
-        ) : null}
+          <div>
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              Dose
+            </label>
+            <select
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#1F2937]"
+              value={draftDose}
+              disabled={!selectedFamily}
+              onChange={(event) => {
+                setDraftDose(event.target.value);
+                setDraftError("");
+              }}
+            >
+              <option value="">Select dose</option>
+              {(selectedFamily?.doses || []).map((dose) => (
+                <option key={dose.value} value={dose.value}>{dose.label}</option>
+              ))}
+            </select>
+          </div>
+          <FieldInput
+            label="Date given"
+            type="date"
+            value={draftDate}
+            onChange={(event) => {
+              setDraftDate(event.target.value);
+              setDraftError("");
+            }}
+          />
+          {showTime ? (
+            <FieldInput
+              label="Time given (optional)"
+              type="time"
+              value={draftTime}
+              onChange={(event) => setDraftTime(event.target.value)}
+            />
+          ) : (
+            <div className="hidden lg:block" aria-hidden="true" />
+          )}
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            className="h-10 rounded-lg bg-[#0B1C30] px-4 text-sm font-semibold text-white disabled:opacity-50"
+            onClick={handleAddVaccine}
+          >
+            Add
+          </button>
+        </div>
+        {draftError ? <FieldError error={draftError} /> : null}
+        <p className="mt-2 text-[11px] text-neutral-500">
+          Use the date the dose was actually given.
+        </p>
+
+        {entries.filter((entry) => !isEssentialService(entry.vaccineName) && !isCpabLabel(entry.vaccineName)).length > 0 ? (
+          <div className="mt-4 overflow-x-auto rounded-xl border border-neutral-200">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-neutral-50 text-[10px] uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Vaccine</th>
+                  <th className="px-3 py-2 font-semibold">Dose</th>
+                  <th className="px-3 py-2 font-semibold">Date</th>
+                  <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold" />
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry, index) => {
+                  if (isEssentialService(entry.vaccineName) || isCpabLabel(entry.vaccineName)) {
+                    return null;
+                  }
+                  const timed = needsTimeGiven(entry.vaccineName);
+                  return (
+                    <tr key={`${entry.vaccineName}-${index}`} className="border-t border-neutral-100">
+                      <td className="px-3 py-2 font-medium text-ink-900">{entry.vaccineName}</td>
+                      <td className="px-3 py-2 text-neutral-700">{entry.dose || "—"}</td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="date"
+                          className="h-9 rounded-md border border-neutral-200 px-2 text-sm"
+                          value={entry.dateGiven || ""}
+                          onChange={(event) => updateEntryField(entry, index, "dateGiven", event.target.value)}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        {timed ? (
+                          <input
+                            type="time"
+                            className="h-9 rounded-md border border-neutral-200 px-2 text-sm"
+                            value={entry.timeGiven || entry.time_given || ""}
+                            onChange={(event) => updateEntryField(entry, index, "timeGiven", event.target.value)}
+                          />
+                        ) : (
+                          <span className="text-neutral-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-red-700"
+                          onClick={() => handleRemove(entry, index)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          emptySelectionHint || (
+            <p className="mt-3 text-sm text-neutral-500">No vaccine doses on this visit list yet.</p>
+          )
+        )}
 
         {otherVaccineSlot}
-
-        {entries.length === 0 && emptySelectionHint}
 
         {epiCompletion && (
           <div className="mt-5 rounded-lg bg-[#F1F5F9] px-4 py-3">
@@ -303,8 +518,107 @@ export default function ImmunizationVisitFields({
       </ClinicalSection>
 
       <ClinicalSection
+        title="CPAB — Maternal TT/Td Evidence"
+        subtitle="Maternal tetanus protection for this child. Leave as Not assessed when evidence is incomplete."
+      >
+        {errors.cpabAssessment && (
+          <p className="mb-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-[#B91C1C]">
+            {errors.cpabAssessment}
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+              CPAB classification
+            </label>
+            <select
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm"
+              value={assessment.status || "not_assessed"}
+              onChange={(event) => onCpabAssessmentChange?.({
+                ...assessment,
+                status: event.target.value,
+              })}
+            >
+              {CPAB_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <FieldTextarea
+            label="Assessment notes"
+            rows={2}
+            value={assessment.notes || ""}
+            onChange={(event) => onCpabAssessmentChange?.({
+              ...assessment,
+              notes: event.target.value,
+            })}
+            placeholder="Optional clinical notes for this CPAB decision"
+          />
+        </div>
+
+        <div className="mt-4">
+          <FieldEyebrow>Documented maternal TT / Td doses</FieldEyebrow>
+        </div>
+        <div className="space-y-3">
+          {evidenceRows.map((row, index) => (
+            <div key={row.id || index} className="grid gap-2 rounded-xl border border-neutral-200 p-3 sm:grid-cols-5">
+              <select
+                className="h-10 rounded-lg border border-neutral-200 px-2 text-sm"
+                value={row.vaccineType || "TT"}
+                onChange={(event) => updateEvidenceRow(index, "vaccineType", event.target.value)}
+              >
+                <option value="TT">TT</option>
+                <option value="Td">Td</option>
+              </select>
+              <select
+                className="h-10 rounded-lg border border-neutral-200 px-2 text-sm"
+                value={String(row.dose || "1")}
+                onChange={(event) => updateEvidenceRow(index, "dose", event.target.value)}
+              >
+                {[1, 2, 3, 4, 5].map((dose) => (
+                  <option key={dose} value={String(dose)}>{dose}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                className="h-10 rounded-lg border border-neutral-200 px-2 text-sm"
+                value={row.dateAdministered || ""}
+                onChange={(event) => updateEvidenceRow(index, "dateAdministered", event.target.value)}
+              />
+              <select
+                className="h-10 rounded-lg border border-neutral-200 px-2 text-sm"
+                value={row.evidenceSource || "unknown"}
+                onChange={(event) => updateEvidenceRow(index, "evidenceSource", event.target.value)}
+              >
+                {CPAB_EVIDENCE_SOURCES.map((source) => (
+                  <option key={source.value} value={source.value}>{source.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="h-10 text-xs font-semibold text-red-700"
+                onClick={() => removeEvidenceRow(index)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="mt-3 rounded-lg border border-neutral-300 px-3 py-2 text-sm font-semibold text-ink-800"
+          onClick={addEvidenceRow}
+        >
+          Add TT/Td evidence
+        </button>
+        <p className="mt-2 text-[11px] text-neutral-500">
+          Mother/guardian report alone is not verified proof.
+        </p>
+      </ClinicalSection>
+
+      <ClinicalSection
         title="Exclusive Breastfeeding Monitoring"
-        subtitle="Check the months exclusive breastfeeding was maintained."
+        subtitle="Months exclusive breastfeeding was maintained."
       >
         <FieldEyebrow>Months</FieldEyebrow>
         <div className="flex flex-col gap-2.5">
@@ -316,7 +630,7 @@ export default function ImmunizationVisitFields({
                 breastfeedingMonitoring?.[month.key] === true ||
                 breastfeedingMonitoring?.[month.key] === "yes"
               }
-              onChange={(checked) => onBreastfeedingChange(month.key, checked)}
+              onChange={(checked) => onBreastfeedingChange?.(month.key, checked)}
             />
           ))}
         </div>
@@ -326,12 +640,12 @@ export default function ImmunizationVisitFields({
 
       <ClinicalSection
         title="Remarks"
-        subtitle="Document clinical notes for this immunization visit."
+        subtitle="Optional notes for this immunization visit."
       >
         <FieldTextarea
           label="Remarks"
           value={consultationNotes}
-          onChange={(event) => onNotesChange(event.target.value)}
+          onChange={(event) => onNotesChange?.(event.target.value)}
           placeholder="Enter clinical notes..."
           rows={3}
         />

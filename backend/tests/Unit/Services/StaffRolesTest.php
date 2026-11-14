@@ -50,7 +50,8 @@ class StaffRolesTest extends TestCase
         $this->assertSame(['midwife', 'bhw', 'encoder', 'nurse', 'doctor', 'intake_staff'], array_column($api['roles'], 'key'));
         $midwife = $api['roles'][0];
         $this->assertSame(['key' => 'midwife', 'label' => 'Midwife', 'tier' => 'bhc', 'licensed' => true], array_intersect_key($midwife, array_flip(['key', 'label', 'tier', 'licensed'])));
-        $this->assertCount(10, $midwife['defaults']);
+        $this->assertCount(11, $midwife['defaults']);
+        $this->assertContains('inventory.manage', $midwife['defaults']);
         $this->assertSame(['bhc', 'rhu'], array_keys($api['available']));
     }
 

@@ -382,7 +382,7 @@ export default function DispensedMedicinesSection({
           type="button"
           onClick={addMedicine}
           disabled={disabled}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand-600 px-4 text-xs font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="relative z-10 inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-brand-600 px-4 text-xs font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Package size={14} />
           Confirm Dispensed/Given

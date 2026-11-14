@@ -129,11 +129,59 @@ function highestCompletedDose(doses, prefix, onOrBefore) {
   return null;
 }
 
+export const CHILD_CARE_CPAB_NOT_PROTECTED = "Not protected";
+
+function latestChildCpabAssessment(childEpiRecords = []) {
+  let latest = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  for (const record of childEpiRecords || []) {
+    const data = asObject(record.immunizationData || record.immunization_data);
+    const assessment = asObject(data.cpabAssessment || data.cpab_assessment);
+    const status = String(assessment.status || "").trim().toLowerCase();
+    if (!status || status === "not_assessed") continue;
+    const stamp = getRecordTime(
+      assessment.assessedAt
+        || assessment.assessed_at
+        || record.dateOfVisit
+        || record.date_of_visit
+        || record.dateRecorded
+        || record.created_at,
+    );
+    if (stamp >= latestTime) {
+      latestTime = stamp;
+      latest = { assessment, data, record };
+    }
+  }
+  return latest;
+}
+
+function formatManualEvidence(rows = [], childDob = "") {
+  const labels = [];
+  for (const row of rows || []) {
+    if (!row || typeof row !== "object") continue;
+    const type = String(row.vaccineType || row.vaccine_type || "").toUpperCase();
+    const dose = String(row.dose || "").trim();
+    const date = normalizeDateValue(row.dateAdministered || row.date_administered);
+    const source = String(row.evidenceSource || row.evidence_source || "");
+    if (!type || !dose) continue;
+    if (childDob && date && date > childDob) continue;
+    const sourceNote = source === "mother_reported" ? " (reported)" : "";
+    labels.push(`${type}${dose}${date ? ` ${date}` : ""}${sourceNote}`);
+  }
+  return labels;
+}
+
+function getRecordTime(value = "") {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? Number.NEGATIVE_INFINITY : date.getTime();
+}
+
 /**
  * Conservative CPAB assessment.
- * Official FHSIS CPAB pregnancy-episode matching is not fully encoded in AKAY.
- * Protected only when a verified mother link exists in the authorized patient set
- * and dated TT2+/Td2+ evidence is on or before the child's DOB.
+ * Prefer finalized child EPI manual CPAB assessment + maternal TT/Td evidence
+ * recorded on the child form (no mother-patient link required).
+ * Legacy fallback: linked mother maternal TT2+/Td2+ dated on/before DOB.
+ * Official FHSIS pregnancy-episode matching is not fully encoded in AKAY.
  * A CPAB vaccine checkbox alone never proves protection.
  */
 export function assessChildCpab({
@@ -141,47 +189,80 @@ export function assessChildCpab({
   mother = null,
   motherRecords = [],
   childEpiHistory = new Map(),
+  childEpiRecords = [],
 } = {}) {
   const dob = normalizeDateValue(patientBirthDate(child));
   const hasCpabCheckbox = childEpiHistory.has("CPAB");
+  const manual = latestChildCpabAssessment(childEpiRecords);
+
+  if (manual) {
+    const status = String(manual.assessment.status || "").trim().toLowerCase();
+    const evidenceRows = manual.data.maternalTtTdEvidence
+      || manual.data.maternal_tt_td_evidence
+      || [];
+    const evidence = formatManualEvidence(evidenceRows, dob || "");
+    const notes = String(manual.assessment.notes || "").trim();
+    if (status === "protected") {
+      const verified = evidence.some((label) => !label.includes("(reported)"));
+      if (!verified && evidence.length === 0) {
+        return {
+          status: "not_assessed",
+          label: CHILD_CARE_CPAB_NOT_ASSESSED,
+          evidenceLabel: notes || "Protected selected without documented TT/Td evidence",
+        };
+      }
+      // Reported-only evidence must not alone prove protection.
+      if (!evidence.some((label) => !label.includes("(reported)"))) {
+        return {
+          status: "not_assessed",
+          label: CHILD_CARE_CPAB_NOT_ASSESSED,
+          evidenceLabel: "Only mother/guardian-reported evidence; keep Not assessed",
+        };
+      }
+      return {
+        status: "protected",
+        label: CHILD_CARE_CPAB_PROTECTED,
+        evidenceLabel: [...evidence, notes].filter(Boolean).join(" · "),
+      };
+    }
+    if (status === "not_protected") {
+      return {
+        status: "not_protected",
+        label: CHILD_CARE_CPAB_NOT_PROTECTED,
+        evidenceLabel: [...evidence, notes].filter(Boolean).join(" · "),
+      };
+    }
+  }
+
+  // Legacy path for historical records that relied on a linked mother.
   const evidence = [];
+  if (mother && getPatientId(mother)) {
+    const { tt, td } = collectDatedTetanusDoses(motherRecords);
+    const ttDose = highestCompletedDose(tt, "tt", dob || undefined);
+    const tdDose = highestCompletedDose(td, "td", dob || undefined);
 
-  if (!mother || !getPatientId(mother)) {
+    if (ttDose && ["TT2", "TT3", "TT4", "TT5"].includes(ttDose.key)) {
+      evidence.push(`${ttDose.key} ${ttDose.date}`);
+    }
+    if (tdDose && ["TD2", "TD3", "TD4", "TD5"].includes(tdDose.key)) {
+      evidence.push(`${tdDose.key} ${tdDose.date}`);
+    }
+  }
+
+  if (evidence.length > 0) {
     return {
-      status: "not_assessed",
-      label: CHILD_CARE_CPAB_NOT_ASSESSED,
-      evidenceLabel: hasCpabCheckbox
-        ? "CPAB marked without verified maternal doses"
-        : "",
-    };
-  }
-
-  const { tt, td } = collectDatedTetanusDoses(motherRecords);
-  const ttDose = highestCompletedDose(tt, "tt", dob || undefined);
-  const tdDose = highestCompletedDose(td, "td", dob || undefined);
-
-  if (ttDose && ["TT2", "TT3", "TT4", "TT5"].includes(ttDose.key)) {
-    evidence.push(`${ttDose.key} ${ttDose.date}`);
-  }
-  if (tdDose && ["TD2", "TD3", "TD4", "TD5"].includes(tdDose.key)) {
-    evidence.push(`${tdDose.key} ${tdDose.date}`);
-  }
-
-  const protectedByDoses = evidence.length > 0;
-  if (!protectedByDoses) {
-    return {
-      status: "not_assessed",
-      label: CHILD_CARE_CPAB_NOT_ASSESSED,
-      evidenceLabel: hasCpabCheckbox
-        ? "CPAB marked without verified maternal doses"
-        : "",
+      status: "protected",
+      label: CHILD_CARE_CPAB_PROTECTED,
+      evidenceLabel: evidence.join(" · "),
     };
   }
 
   return {
-    status: "protected",
-    label: CHILD_CARE_CPAB_PROTECTED,
-    evidenceLabel: evidence.join(" · "),
+    status: "not_assessed",
+    label: CHILD_CARE_CPAB_NOT_ASSESSED,
+    evidenceLabel: hasCpabCheckbox
+      ? "CPAB marked without verified maternal doses"
+      : "",
   };
 }
 
@@ -297,6 +378,7 @@ export function buildChildCareTclRows({
       mother,
       motherRecords,
       childEpiHistory: historyByCode,
+      childEpiRecords: epiRecords,
     });
 
     const dob = normalizeDateValue(patientBirthDate(patient)) || "";

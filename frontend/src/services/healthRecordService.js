@@ -14,6 +14,7 @@ import { normalizePatient } from "./patientService";
 import { createIdempotencyKey } from "../utils/idempotency";
 import { normalizeAttention } from "../utils/referralAttention";
 import { getSurveillanceTags } from "../utils/surveillance";
+import { maternalDataForWrite } from "../utils/prenatalForm";
 import { fetchAllReportPages } from "./reportingLists";
 
 /**
@@ -493,7 +494,8 @@ function isMaternalCategory(value = "") {
   );
 }
 
-function toPayload(record = {}, { partial = false } = {}) {
+/** Builds the API write body for create/update. Exported for unit tests. */
+export function toPayload(record = {}, { partial = false } = {}) {
   const category = record.category || record.recordType || record.patientClassification || null;
   const recordTypeKey = String(category || "").toLowerCase();
   const programs = getConsultationPrograms(record);
@@ -525,21 +527,9 @@ function toPayload(record = {}, { partial = false } = {}) {
     surveillanceCategory === "other"
       ? getOtherSurveillanceCategory(record, sourceMonitoringData)
       : "";
-  const maternalData = {
-    ...(record.maternalData || record.maternal_data || {}),
-    lmp: record.lmp || record.LMP || null,
-    pmp: record.pmp || null,
-    cycleDuration: record.cycleDuration || null,
-    gravida: record.gravida || null,
-    para: record.para || null,
-    term: record.term || null,
-    preterm: record.preterm || null,
-    abortion: record.abortion || null,
-    living: record.living || null,
-    tpal: record.tpal || null,
-    expectedDeliveryDate: record.expectedDeliveryDate || null,
-    aog: record.aog || null,
-  };
+  // Prefer top-level pregnancy fields when the workspace sends them (BHC), but
+  // never wipe values that only live inside maternalData (RHU ITR).
+  const maternalData = maternalDataForWrite(record);
   const tetanusToxoidStatus = {
     ...(maternalData.tetanus_toxoid_status || {}),
     ...(maternalData.tetanusToxoidStatus || {}),

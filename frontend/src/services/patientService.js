@@ -21,7 +21,21 @@ function fullName(patient = {}) {
 
 function normalizeDate(value) {
   if (!value) return "";
-  return String(value).split("T")[0];
+  const text = String(value).trim();
+  // Already a calendar date from the API cast (date:Y-m-d).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  // ISO datetimes must use the viewer's local calendar day. Taking the
+  // leading YYYY-MM-DD from "...T16:00:00Z" (Asia/Manila midnight) shifts
+  // infant DOBs one day early and can drop 0–12 month hide/anatomy rules.
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
 }
 
 /**

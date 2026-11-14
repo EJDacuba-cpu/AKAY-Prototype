@@ -62,7 +62,13 @@ export default function PrenatalAssessmentForm({
   const [startedWithBaseline] = useState(() => hasPregnancyBaseline(maternalData, expectedDeliveryDate));
   const [correctingBaseline, setCorrectingBaseline] = useState(false);
   const showUltrasoundEditor = hasThisVisitUltrasound || addingUltrasound;
-  const showBaselineEditor = correctingBaseline || !startedWithBaseline;
+  const lmpError = errors.lmp || errors["maternalData.lmp"] || errors["maternal_data.lmp"];
+  // Keep the LMP editor open when enroll validation points here, or when the
+  // summary would hide an empty required LMP behind Gravida/EDC-only baseline.
+  const showBaselineEditor = correctingBaseline
+    || !startedWithBaseline
+    || Boolean(lmpError)
+    || (startedWithBaseline && !String(maternalData.lmp || "").trim());
 
   return (
     <div className="space-y-4">
@@ -123,13 +129,16 @@ export default function PrenatalAssessmentForm({
                 <p className={MATERNAL_EYEBROW_CLASS}>Pregnancy Information</p>
                 <div className="grid gap-4 @xl:grid-cols-2">
                   <DatePickerField
-                    label="LMP"
+                    name="maternalData.lmp"
+                    label="LMP (Last Menstrual Period)"
                     value={maternalData.lmp}
                     onChange={(value) => onMaternalChange("lmp", value)}
-                    error={errors.lmp || errors["maternalData.lmp"] || errors["maternal_data.lmp"]}
+                    error={lmpError}
+                    disableFuture
                   />
                   <DatePickerField
-                    label="EDC"
+                    name="expectedDeliveryDate"
+                    label="EDC (Expected Date of Confinement)"
                     value={expectedDeliveryDate}
                     onChange={onExpectedDeliveryDateChange}
                   />
@@ -173,12 +182,17 @@ export default function PrenatalAssessmentForm({
           <p className={MATERNAL_EYEBROW_CLASS}>Current Prenatal Information</p>
           <LockedFormContent locked={locked}>
             <div className="grid gap-4 @xl:grid-cols-2">
-              <FieldInput
-                label="AOG (Age of Gestation)"
-                placeholder="e.g. 28 weeks"
-                value={aog}
-                onChange={(event) => onAogChange(event.target.value)}
-              />
+              <div>
+                <FieldInput
+                  label="AOG (Age of Gestation)"
+                  placeholder="e.g. 28 weeks"
+                  value={aog}
+                  onChange={(event) => onAogChange(event.target.value)}
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  Auto-calculated from LMP to the visit date. EDC uses LMP − 3 months + 7 days. Edit only for a clinical correction.
+                </p>
+              </div>
               <FieldInput
                 label="FHT (Fetal Heart Tone)"
                 placeholder="e.g. 140 bpm"

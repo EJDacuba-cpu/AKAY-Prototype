@@ -1,4 +1,4 @@
-import { isInfantPatient } from "./patientUtils.js";
+import { isInfantPatient, parseCalendarDate } from "./patientUtils.js";
 
 /** Personal & Social keys that an infant consultation must not show or submit. */
 export const INFANT_HIDDEN_SOCIAL_KEYS = ["smoking", "alcohol", "diet", "sexual"];
@@ -13,7 +13,7 @@ const EMPTY_VITAL = new Set(["", "—", "-", "–"]);
 
 function asDate(value) {
   if (value === undefined || value === null || value === "") return new Date();
-  return value instanceof Date ? value : new Date(value);
+  return parseCalendarDate(value) || new Date();
 }
 
 export function patientBirthDate(patient = {}) {
