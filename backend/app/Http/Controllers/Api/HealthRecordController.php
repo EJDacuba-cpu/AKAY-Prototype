@@ -315,7 +315,11 @@ class HealthRecordController extends Controller
         $data['idempotency_key'] = $idempotencyKey;
         $data['idempotency_hash'] = $idempotencyHash;
         $data['barangay_health_center_id'] = $patient->barangay_health_center_id;
-        if (! $rhuItr) {
+        if ($request->user()->isBhc()) {
+            // Ownership rule: an RHU id marks a record as RHU-owned, so a BHC
+            // visit never carries one, even for a patient who also has an RHU.
+            $data['rural_health_unit_id'] = null;
+        } elseif (! $rhuItr) {
             $data['rural_health_unit_id'] = $patient->rural_health_unit_id;
         }
         $data['date_recorded'] ??= now();

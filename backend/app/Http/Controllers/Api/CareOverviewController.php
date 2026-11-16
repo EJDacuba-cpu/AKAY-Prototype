@@ -36,6 +36,8 @@ class CareOverviewController extends Controller
         $tasks = FollowUpTask::query()
             ->with(['healthRecord:id,date_recorded,category,monitoring_data,chief_complaint,assessment_notes,physical_exam,diagnosis', 'conditionMonitorings' => fn ($q) => $q->with('patientCondition:id,status')->where('status', ConditionMonitoring::STATUS_ACTIVE)])
             ->where('patient_id', $patient->id)
+            // RHU-scheduled follow-ups belong to the RHU, not the BHC's queue.
+            ->when($user->isBhc(), fn ($query) => $query->whereNull('rural_health_unit_id'))
             ->whereIn('state', FollowUpTask::ACTIVE_STATES)
             ->whereNull('fulfilled_at')
             ->whereNull('rescheduled_to_id')
