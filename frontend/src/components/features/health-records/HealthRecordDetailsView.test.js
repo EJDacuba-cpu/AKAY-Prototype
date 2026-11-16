@@ -69,25 +69,23 @@ const wrap = (node) => renderToStaticMarkup(createElement(MemoryRouter, null, no
 const { recordDetailsPresentation, recordedVitalItems } = await server.ssrLoadModule(
   "/src/components/features/health-records/recordDetailsPresentation.js",
 );
-const { getRecordPractitioner } = await server.ssrLoadModule(
+const { getRecordPractitioner, getRecordedByRoleLabel } = await server.ssrLoadModule(
   "/src/components/features/health-records/recordDetailsHelpers.js",
 );
 
-test("saved higher-level referral plan reads back in the clinical record and print without issued-referral controls", () => {
+test("saved higher-level referral plan reads back in the clinical record without issued-referral controls", () => {
   const record = { id: 77, category: "General Consultation", monitoringData: { consultationWorkflow: "rhu_itr_v1" }, diagnoses: [{
     id: "a", name: "Asthma", nextAction: "refer_higher_level",
     higherLevelReferralPlan: { reason: "Specialist assessment", intendedFacility: "Provincial hospital", clinicalPlan: "Review available investigations" },
   }] };
-  for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-    const html = wrap(createElement(View, { record, serviceType: "General Consultation" }));
-    for (const value of ["Higher-Level Referral Plan", "Specialist assessment", "Provincial hospital", "Review available investigations"]) {
-      assert.ok(html.includes(value), value);
-    }
-    assert.doesNotMatch(html, /View in Referrals|Tracking reference|Referral issued/);
+  const html = wrap(createElement(BhcHealthRecordWorkspace, { record, serviceType: "General Consultation" }));
+  for (const value of ["Higher-Level Referral Plan", "Specialist assessment", "Provincial hospital", "Review available investigations"]) {
+    assert.ok(html.includes(value), value);
   }
+  assert.doesNotMatch(html, /View in Referrals|Tracking reference|Referral issued/);
 });
 
-test("details reader uses stored follow-up dates and explicit related IDs without mutating records", () => {
+test("details reader uses stored follow-up dates without mutating records", () => {
   const record = {
     id: 11, parent_health_record_id: 10,
     followUpDate: "2020-01-01", followUpStatus: "Follow-up Required",
@@ -100,7 +98,7 @@ test("details reader uses stored follow-up dates and explicit related IDs withou
   const before = JSON.stringify(record);
   const details = recordDetailsPresentation(record);
   assert.equal(details.nextAction, "No active follow-up task");
-  assert.deepEqual(details.related.map((row) => row.id), [10, 11]);
+  assert.equal(details.related, undefined);
   assert.equal(details.schedules.length, 1);
   assert.equal(details.schedules[0].date, "2020-01-01");
   assert.equal(details.schedules[0].sourceEntryId, null);
@@ -130,6 +128,10 @@ test("recorded vitals keep units and attribution never invents credentials", () 
   assert.equal(getRecordPractitioner({ creator: { name: "Ana Cruz", role: "doctor" }, attendingStaff: "Other staff" }), "Ana Cruz");
   assert.equal(getRecordPractitioner({ recordedBy: "Saved Encoder", attendingStaff: "Old Practitioner" }), "Saved Encoder");
   assert.equal(getRecordPractitioner({ practitioner: { name: "Other Practitioner" }, recordedBy: "Saved Encoder" }), "Saved Encoder");
+  assert.equal(getRecordedByRoleLabel({ creator: { staff_role: "midwife" } }), "Midwife");
+  assert.equal(getRecordedByRoleLabel({ creator: { staff_role: "nurse" } }), "Nurse");
+  assert.equal(getRecordedByRoleLabel({ creator: { staff_role: "doctor", specialization: "Family Medicine" } }), "Family Medicine");
+  assert.equal(getRecordedByRoleLabel({ creator: { staff_role: "doctor" } }), "Doctor");
 });
 
 test("older care plans retain historical fields without becoming current clinical outcomes", () => {
@@ -183,73 +185,73 @@ test("legacy visit-level reporting stays unmapped when concerns have no reportIn
   assert.ok(details.unmappedReporting.some((group) => group.label === "Surveillance" && group.names.includes("Hand, Foot and Mouth Disease")));
 });
 
+test("BhcHealthRecordWorkspace: separates historical fields from authoritative schedules", () => {
+  const record = {
+    id: 10, patientCondition: "Improving historically", followUpStatus: "Follow-up Required",
+    followUpDate: "2020-01-01", followUpReason: "Old return reason",
+    monitoringData: { consultationWorkflow: "bhc_general_v2", followUpSchedules: [] },
+    diagnoses: [{ id: "a", name: "Recorded concern", reportIn: ["morbidity", "surveillance"], clinicalOutcome: "managed_at_bhc" }],
+    followUpEpisode: { ...episode, tasks: [{ id: 44, healthRecordId: 10, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
+  };
+  const html = wrap(createElement(BhcHealthRecordWorkspace, { record, serviceType: "General Consultation", practitioner: "Ana Santos" }));
+  assert.match(html, /Recorded By/);
+  assert.doesNotMatch(html, /Record status|Current condition|Visit chain|Morbidity \/ notifiable reports/);
+  assert.doesNotMatch(html, /November 15, 2026|Rescheduled|Updated return reason/);
+  assert.doesNotMatch(html, /January 1, 2020|Old return reason|Improving historically|Legacy Recorded Information/);
+  assert.doesNotMatch(html, /Visit type|Current next action/);
+  assert.doesNotMatch(html, /No entries recorded/);
+  assert.match(html, /Health concerns/);
+  assert.match(html, /Managed at BHC/);
+  assert.match(html, /Morbidity/);
+  assert.match(html, /Surveillance/);
+  assert.doesNotMatch(html, /Related consultation history/);
+  assert.doesNotMatch(html, /Follow-up &amp; referral/);
+});
+
+test("BhcHealthRecordWorkspace: legacy values are historical only and empty vitals are omitted", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 3, patientCondition: "Historical stable", followUpStatus: "Follow-up Required", temperature: "0", weight: "0", followUpDate: "2020-01-01" },
+    serviceType: "General Consultation",
+  }));
+  assert.match(html, /Legacy Recorded Information/);
+  assert.match(html, /Historical stable/);
+  assert.match(html, /Follow-up Required/);
+  assert.doesNotMatch(html, /Record status|Current condition|Related Visits/);
+  assert.doesNotMatch(html, />0(?:\s|<)/);
+  assert.doesNotMatch(html, /Visit type|Current next action/);
+  assert.match(html, /No vital measurements recorded/);
+});
+
+test("BhcHealthRecordWorkspace: retains saved referral facts when a linked referral is unavailable", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 4, referral_status: "Pending", referral_reason: "Saved referral reason", needs_referral: true },
+    serviceType: "General Consultation",
+  }));
+  assert.match(html, /Saved referral reason/);
+  assert.doesNotMatch(html, /Pending|Received|Completed/);
+  const partial = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 4, referral_reason: "Saved fallback reason", linkedTrackingId: "TRACK-SAVED" },
+    linkedReferral: { status: "Pending" }, serviceType: "General Consultation",
+  }));
+  assert.match(partial, /Saved fallback reason/);
+  assert.match(partial, /TRACK-SAVED/);
+  assert.doesNotMatch(partial, /Pending|Received|Completed/);
+});
+
+test("BhcHealthRecordWorkspace: keeps distinct condition referral facts outside reporting", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: { id: 5, diagnoses: [
+      { id: "a", name: "First saved concern", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "First condition reason" } },
+      { id: "b", name: "Second saved concern", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Routine", reasonForReferral: "Second condition reason" } },
+    ] },
+    serviceType: "General Consultation",
+  }));
+  assert.match(html, /First condition reason/);
+  assert.match(html, /Second condition reason/);
+  assert.equal((html.match(/First condition reason/g) || []).length, 1);
+});
+
 for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-  test(`${View.name}: separates historical fields from authoritative schedules`, () => {
-    const record = {
-      id: 10, patientCondition: "Improving historically", followUpStatus: "Follow-up Required",
-      followUpDate: "2020-01-01", followUpReason: "Old return reason",
-      monitoringData: { consultationWorkflow: "bhc_general_v2", followUpSchedules: [] },
-      diagnoses: [{ id: "a", name: "Recorded concern", reportIn: ["morbidity", "surveillance"], clinicalOutcome: "managed_at_bhc" }],
-      followUpEpisode: { ...episode, tasks: [{ id: 44, healthRecordId: 10, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
-    };
-    const html = wrap(createElement(View, { record, serviceType: "General Consultation", practitioner: "Ana Santos" }));
-    assert.match(html, /Recorded By/);
-    assert.doesNotMatch(html, /Record status|Current condition|Visit chain|Morbidity \/ notifiable reports/);
-    assert.doesNotMatch(html, /November 15, 2026|Rescheduled|Updated return reason/);
-    assert.doesNotMatch(html, /January 1, 2020|Old return reason|Improving historically|Legacy Recorded Information/);
-    assert.doesNotMatch(html, /Visit type|Current next action/);
-    assert.doesNotMatch(html, /No entries recorded/);
-    assert.match(html, /Health concerns/);
-    assert.match(html, /Managed at BHC/);
-    assert.match(html, /Morbidity/);
-    assert.match(html, /Surveillance/);
-    assert.match(html, /Related consultation history/);
-    assert.doesNotMatch(html, /Follow-up &amp; referral/);
-  });
-
-  test(`${View.name}: legacy values are historical only and empty vitals are omitted`, () => {
-    const html = wrap(createElement(View, {
-      record: { id: 3, patientCondition: "Historical stable", followUpStatus: "Follow-up Required", temperature: "0", weight: "0", followUpDate: "2020-01-01" },
-      serviceType: "General Consultation",
-    }));
-    assert.match(html, /Legacy Recorded Information/);
-    assert.match(html, /Historical stable/);
-    assert.match(html, /Follow-up Required/);
-    assert.doesNotMatch(html, /Record status|Current condition|Related Visits/);
-    assert.doesNotMatch(html, />0(?:\s|<)/);
-    assert.doesNotMatch(html, /Visit type|Current next action/);
-    assert.match(html, /No vital measurements recorded/);
-  });
-
-  test(`${View.name}: retains saved referral facts when a linked referral is unavailable`, () => {
-    const html = wrap(createElement(View, {
-      record: { id: 4, referral_status: "Pending", referral_reason: "Saved referral reason", needs_referral: true },
-      serviceType: "General Consultation",
-    }));
-    assert.match(html, /Saved referral reason/);
-    assert.doesNotMatch(html, /Pending|Received|Completed/);
-    const partial = wrap(createElement(View, {
-      record: { id: 4, referral_reason: "Saved fallback reason", linkedTrackingId: "TRACK-SAVED" },
-      linkedReferral: { status: "Pending" }, serviceType: "General Consultation",
-    }));
-    assert.match(partial, /Saved fallback reason/);
-    assert.match(partial, /TRACK-SAVED/);
-    assert.doesNotMatch(partial, /Pending|Received|Completed/);
-  });
-
-  test(`${View.name}: keeps distinct condition referral facts outside reporting`, () => {
-    const html = wrap(createElement(View, {
-      record: { id: 5, diagnoses: [
-        { id: "a", name: "First saved concern", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "First condition reason" } },
-        { id: "b", name: "Second saved concern", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Routine", reasonForReferral: "Second condition reason" } },
-      ] },
-      serviceType: "General Consultation",
-    }));
-    assert.match(html, /First condition reason/);
-    assert.match(html, /Second condition reason/);
-    assert.equal((html.match(/First condition reason/g) || []).length, 1);
-  });
-
   test(`${View.name}: postpartum vitals appear once in Vital signs`, () => {
     const html = wrap(createElement(View, {
       record: { id: 6, pulse: "80", spo2: "98", monitoringData: { visitPurpose: { services: ["Postpartum"] } } },
@@ -486,10 +488,14 @@ test("print keeps laboratory results and addendum provenance without inventing m
   assert.doesNotMatch(html, /<button/);
 });
 
-test("BHC print document uses A4 ledger layout and the same saved record values", () => {
+test("General Consultation print uses the B&W A4 layout without dense clinical extras", () => {
   const html = wrap(
     createElement(BhcHealthRecordPrintDocument, {
-      record: printRecord,
+      record: {
+        ...printRecord,
+        creator: { id: 3, name: "Midwife Santos", staff_role: "midwife" },
+      },
+      patient: { patientId: "P-2026-0142", age: 28, sex: "Female" },
       linkedReferral: printReferral,
       title: "General Consultation Record",
       recordId: "77",
@@ -498,35 +504,110 @@ test("BHC print document uses A4 ledger layout and the same saved record values"
       displayDate: "October 8, 2026",
       displayTime: "9:00 AM",
       practitioner: "Midwife Santos",
+      documentRole: "bhc",
       nextActionLabel: "Referral",
     }),
   );
 
   assert.match(BHC_HEALTH_RECORD_PRINT_PAGE_STYLES, /size:\s*A4/);
-  assert.match(html, /bhc-print-grid-3/);
+  assert.match(BHC_HEALTH_RECORD_PRINT_PAGE_STYLES, /margin:\s*18mm/);
+  assert.match(html, /data-print-layout="general-consultation"/);
+  assert.match(html, /gc-print-vitals/);
   assert.match(html, /AKAY/);
-  assert.match(html, /Medical EHR and Referral System/);
-  assert.match(html, /BHC Health Record/);
+  assert.doesNotMatch(html, /Medical EHR and Referral System/);
+  assert.doesNotMatch(html, /BHC Health Record/);
+  assert.match(html, /General Consultation Record/);
   assert.match(html, /Ana Cruz/);
+  assert.match(html, /P-2026-0142/);
+  assert.match(html, /28 \/ Female/);
+  assert.match(html, /October 8, 2026/);
   assert.match(html, /Fever for two days/);
   assert.match(html, /Onset after rainfall/);
+  assert.match(html, /Vital Signs/);
+  assert.match(html, /Chief Complaint/);
+  assert.match(html, /Complaint/);
+  assert.match(html, /History of Present Illness/);
+  assert.match(html, /Present illness/);
+  assert.match(html, /Assessment/);
+  assert.match(html, /General exam findings/);
   assert.match(html, /Warm to touch/);
-  assert.match(html, /Gave paracetamol/);
+  assert.match(html, /Diagnosis/);
+  assert.match(html, /Acute febrile illness/);
+  assert.match(html, /Medications/);
+  assert.match(html, /Prescribed/);
   assert.match(html, /Paracetamol/);
-  assert.match(html, /Needs physician review/);
-  assert.match(html, /Rural Health Unit Bulakan/);
-  assert.match(html, /Vital signs/);
-  assert.match(html, /Clinical assessment/);
-  assert.match(html, /Health concerns/);
+  assert.match(html, /Instructions/);
+  assert.match(html, /Every 6 hours/);
+  assert.match(html, /BP \(mmHg\)/);
+  assert.match(html, /Recorded by/);
+  assert.match(html, /Midwife Santos/);
+  assert.match(html, /Attending Physician \/ Signature/);
+  assert.match(html, /gc-print-sig-line-name/);
+  assert.match(html, /gc-print-writing-line|General exam findings/);
+  assert.doesNotMatch(html, /gc-print-sig-role/);
+  assert.doesNotMatch(html, /General Practitioner/);
+  assert.doesNotMatch(html, /gc-print-line|Interview/);
+  assert.doesNotMatch(html, /Needs physician review/);
+  assert.doesNotMatch(html, /Health concerns/);
+  assert.doesNotMatch(html, /Clinical assessment/);
+  assert.doesNotMatch(html, /Not recorded/);
   assert.doesNotMatch(html, /Follow-up &amp; referral/);
-  assert.match(html, /Related consultation history/);
-  assert.match(html, /Record #10/);
+  assert.doesNotMatch(html, /Related consultation history/);
   assert.doesNotMatch(html, />Back</);
   assert.doesNotMatch(html, />Print</);
-  assert.doesNotMatch(html, /View Referral Details/);
-  assert.doesNotMatch(html, /View record/);
-  assert.doesNotMatch(html, /Create Referral/);
-  assert.equal((html.match(/Vital signs/g) || []).length, 1);
+});
+
+test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
+  const shared = {
+    title: "General Consultation Record",
+    recordId: "77",
+    patientName: "Ana Cruz",
+    serviceType: "General Consultation",
+    displayDate: "October 8, 2026",
+    displayTime: "9:00 AM",
+    practitioner: "Midwife Santos",
+  };
+  const rhu = wrap(createElement(BhcHealthRecordPrintDocument, {
+    ...shared,
+    record: {
+      ...printRecord,
+      diagnosis: "Acute febrile illness",
+      rural_health_unit_id: 1,
+      rural_health_unit: { name: "Rural Health Unit Bulakan" },
+    },
+    documentRole: "rhu",
+  }));
+  const bhcWithDiagnosis = wrap(createElement(BhcHealthRecordPrintDocument, {
+    ...shared,
+    record: {
+      ...printRecord,
+      diagnosis: "Acute febrile illness",
+      barangay_health_center_id: 11,
+      barangay_health_center: { name: "Barangay Health Center San Francisco" },
+    },
+    documentRole: "bhc",
+  }));
+  const bhcV2Blank = wrap(createElement(BhcHealthRecordPrintDocument, {
+    ...shared,
+    record: {
+      id: 78,
+      patientClassification: "General Consultation",
+      chiefComplaint: "Fever for two days",
+      diagnosis: "",
+      monitoringData: { consultationWorkflow: "bhc_general_v2" },
+      barangay_health_center_id: 11,
+      barangay_health_center: { name: "Barangay Health Center San Francisco" },
+    },
+    documentRole: "bhc",
+  }));
+  assert.match(rhu, /Rural Health Unit Bulakan/);
+  assert.match(rhu, /Diagnosis/);
+  assert.match(rhu, /Acute febrile illness/);
+  assert.match(bhcWithDiagnosis, /Barangay Health Center San Francisco/);
+  assert.match(bhcWithDiagnosis, /Diagnosis/);
+  assert.match(bhcWithDiagnosis, /Acute febrile illness/);
+  assert.match(bhcV2Blank, /Chief Complaint/);
+  assert.doesNotMatch(bhcV2Blank, />Diagnosis</);
 });
 
 test("BHC print document groups program sections and keeps shared treatment once", () => {
@@ -604,66 +685,64 @@ test("BHC TB print layout keeps recorded TB fields without form controls", () =>
   assert.doesNotMatch(html, /<button/);
 });
 
-for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-  test(`${View.name}: mixed concerns show outcome and reporting together without a separate reporting block`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 21,
-        diagnoses: [
-          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
-          { id: "b", name: "Fever", reportIn: ["notifiable", "surveillance"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever" } },
-        ],
-        followUpEpisode: { tasks: [{ id: 9, healthRecordId: 21, dueDate: "2026-11-01", state: "pending", purpose: "Wound check" }] },
-      },
-      serviceType: "General Consultation",
-      practitioner: "Ana Santos",
-    }));
-    assert.match(html, /Health concerns/);
-    assert.match(html, /Cough/);
-    assert.match(html, /Managed at BHC/);
-    assert.match(html, /Fever/);
-    assert.match(html, /Refer to RHU/);
-    assert.match(html, /High fever/);
-    assert.match(html, /Morbidity/);
-    assert.match(html, /Notifiable/);
-    assert.match(html, /Surveillance/);
-    assert.doesNotMatch(html, /Recorded reporting/);
-    assert.doesNotMatch(html, /Wound check/);
-    assert.doesNotMatch(html, /Pending|Received|Completed/);
-  });
+test("BhcHealthRecordWorkspace: mixed concerns show outcome and reporting together without a separate reporting block", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 21,
+      diagnoses: [
+        { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+        { id: "b", name: "Fever", reportIn: ["notifiable", "surveillance"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever" } },
+      ],
+      followUpEpisode: { tasks: [{ id: 9, healthRecordId: 21, dueDate: "2026-11-01", state: "pending", purpose: "Wound check" }] },
+    },
+    serviceType: "General Consultation",
+    practitioner: "Ana Santos",
+  }));
+  assert.match(html, /Health concerns/);
+  assert.match(html, /Cough/);
+  assert.match(html, /Managed at BHC/);
+  assert.match(html, /Fever/);
+  assert.match(html, /Refer to RHU/);
+  assert.match(html, /High fever/);
+  assert.match(html, /Morbidity/);
+  assert.match(html, /Notifiable/);
+  assert.match(html, /Surveillance/);
+  assert.doesNotMatch(html, /Recorded reporting/);
+  assert.doesNotMatch(html, /Wound check/);
+  assert.doesNotMatch(html, /Pending|Received|Completed/);
+});
 
-  test(`${View.name}: unmapped legacy reporting stays at record level`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 22,
-        diagnosis: "Asthma",
-        morbidityReportingStatus: "morbidity",
-        diagnoses: [{ id: "c", name: "Cough", clinicalOutcome: "managed_at_bhc" }],
-      },
-      serviceType: "General Consultation",
-    }));
-    assert.match(html, /Cough/);
-    assert.match(html, /Managed at BHC/);
-    assert.match(html, /Recorded reporting/);
-    assert.match(html, /Asthma/);
-    assert.doesNotMatch(html, /Cough[^<]*Morbidity|Cough[^<]*Asthma/);
-  });
+test("BhcHealthRecordWorkspace: unmapped legacy reporting stays at record level", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 22,
+      diagnosis: "Asthma",
+      morbidityReportingStatus: "morbidity",
+      diagnoses: [{ id: "c", name: "Cough", clinicalOutcome: "managed_at_bhc" }],
+    },
+    serviceType: "General Consultation",
+  }));
+  assert.match(html, /Cough/);
+  assert.match(html, /Managed at BHC/);
+  assert.match(html, /Recorded reporting/);
+  assert.match(html, /Asthma/);
+  assert.doesNotMatch(html, /Cough[^<]*Morbidity|Cough[^<]*Asthma/);
+});
 
-  test(`${View.name}: body findings stay in clinical assessment and print`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 23,
-        chiefComplaint: "Chest pain",
-        bodyFindings: [{ region: "chest", finding: "Tenderness", location: "Upper chest" }],
-      },
-      serviceType: "General Consultation",
-    }));
-    assert.match(html, /Clinical assessment/);
-    assert.match(html, /Body findings and reassessment history/);
-    assert.match(html, /Tenderness/);
-    assert.match(html, /Chest/);
-  });
-}
+test("BhcHealthRecordWorkspace: body findings stay in clinical assessment", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 23,
+      chiefComplaint: "Chest pain",
+      bodyFindings: [{ region: "chest", finding: "Tenderness", location: "Upper chest" }],
+    },
+    serviceType: "General Consultation",
+  }));
+  assert.match(html, /Clinical assessment/);
+  assert.match(html, /Body findings and reassessment history/);
+  assert.match(html, /Tenderness/);
+  assert.match(html, /Chest/);
+});
 
 test("BHC workspace omits live referral statuses from the historical record", () => {
   const pending = wrap(createElement(BhcHealthRecordWorkspace, {
@@ -758,131 +837,129 @@ test("does not attach a visit schedule to a concern by purpose name", () => {
   assert.equal(details.visitFollowUps[0].date, "2026-10-22");
 });
 
-for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-  test(`${View.name}: mixed referral and follow-up stay under related concerns`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 31,
-        diagnoses: [
-          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
-          { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever", receivingRhuId: "9" } },
-        ],
-        monitoringData: {
-          consultationWorkflow: "bhc_general_v2",
-          followUpSchedules: [
-            { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Cough review", date: "2026-10-22", time: "08:00" },
-          ],
-        },
-      },
-      linkedReferral: {
-        status: "Pending",
-        trackingId: "TRK-MIX",
-        urgencyLevel: "Urgent",
-        receivingFacility: "RHU Bulakan",
-        ruralHealthUnitId: "9",
-        reasonForReferral: "High fever",
-      },
-      serviceType: "General Consultation",
-      practitioner: "Ana Santos",
-      title: "General Consultation Record",
-      recordId: "31",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assert.match(html, /Cough review/);
-    assert.match(html, /October 22, 2026/);
-    assert.match(html, /High fever/);
-    assert.match(html, /RHU Bulakan/);
-    assert.match(html, /TRK-MIX/);
-    assert.doesNotMatch(html, /Visit-level follow-up/);
-    assert.doesNotMatch(html, /Pending|Received|Completed/);
-    assert.doesNotMatch(html, /Follow-up &amp; referral/);
-  });
-
-  test(`${View.name}: keeps the original consultation date after a follow-up is rescheduled`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 32,
-        diagnoses: [{ id: "a", name: "Wound", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
-        monitoringData: {
-          consultationWorkflow: "bhc_general_v2",
-          followUpSchedules: [
-            { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Wound reassessment", date: "2026-10-20", time: "08:00" },
-          ],
-        },
-        followUpEpisode: { tasks: [{ id: 44, healthRecordId: 32, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
-      },
-      serviceType: "General Consultation",
-      practitioner: "Ana Santos",
-      title: "General Consultation Record",
-      recordId: "32",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assert.match(html, /October 20, 2026/);
-    assert.match(html, /Wound reassessment/);
-    assert.doesNotMatch(html, /November 15, 2026/);
-    assert.doesNotMatch(html, /Rescheduled|Updated return reason/);
-  });
-
-  test(`${View.name}: labels unassociated follow-up as visit-level`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 33,
-        diagnoses: [{ id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
-        monitoringData: {
-          consultationWorkflow: "bhc_general_v2",
-          followUpSchedules: [
-            { purposeKey: "visit", purpose: "Return for review", date: "2026-10-25", time: "09:00" },
-          ],
-        },
-      },
-      serviceType: "General Consultation",
-      practitioner: "Ana Santos",
-      title: "General Consultation Record",
-      recordId: "33",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assert.match(html, /Visit-level follow-up/);
-    assert.match(html, /October 25, 2026/);
-    assert.match(html, /Return for review/);
-  });
-
-  test(`${View.name}: shared referral stays visit-level when concerns have no referral object`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 34,
-        diagnoses: [
-          { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu" },
-          { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu" },
+test("BhcHealthRecordWorkspace: mixed referral and follow-up stay under related concerns", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 31,
+      diagnoses: [
+        { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" },
+        { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu", referral: { urgencyLevel: "Urgent", reasonForReferral: "High fever", receivingRhuId: "9" } },
+      ],
+      monitoringData: {
+        consultationWorkflow: "bhc_general_v2",
+        followUpSchedules: [
+          { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Cough review", date: "2026-10-22", time: "08:00" },
         ],
       },
-      linkedReferral: {
-        status: "Received",
-        trackingId: "TRK-SHARE",
-        urgencyLevel: "Routine",
-        receivingFacility: "RHU Bulakan",
-        reasonForReferral: "Shared referral reason",
+    },
+    linkedReferral: {
+      status: "Pending",
+      trackingId: "TRK-MIX",
+      urgencyLevel: "Urgent",
+      receivingFacility: "RHU Bulakan",
+      ruralHealthUnitId: "9",
+      reasonForReferral: "High fever",
+    },
+    serviceType: "General Consultation",
+    practitioner: "Ana Santos",
+    title: "General Consultation Record",
+    recordId: "31",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /Cough review/);
+  assert.match(html, /October 22, 2026/);
+  assert.match(html, /High fever/);
+  assert.match(html, /RHU Bulakan/);
+  assert.match(html, /TRK-MIX/);
+  assert.doesNotMatch(html, /Visit-level follow-up/);
+  assert.doesNotMatch(html, /Pending|Received|Completed/);
+  assert.doesNotMatch(html, /Follow-up &amp; referral/);
+});
+
+test("BhcHealthRecordWorkspace: keeps the original consultation date after a follow-up is rescheduled", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 32,
+      diagnoses: [{ id: "a", name: "Wound", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+      monitoringData: {
+        consultationWorkflow: "bhc_general_v2",
+        followUpSchedules: [
+          { purposeKey: "entry:a", sourceEntryId: "a", purpose: "Wound reassessment", date: "2026-10-20", time: "08:00" },
+        ],
       },
-      serviceType: "General Consultation",
-      practitioner: "Ana Santos",
-      title: "General Consultation Record",
-      recordId: "34",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assert.match(html, /Visit-level referral/);
-    assert.match(html, /Shared referral reason/);
-    assert.match(html, /TRK-SHARE/);
-    assert.equal((html.match(/Shared referral reason/g) || []).length, 1);
-    assert.doesNotMatch(html, /Received|Pending|Completed/);
-  });
-}
+      followUpEpisode: { tasks: [{ id: 44, healthRecordId: 32, dueDate: "2026-11-15", state: "rescheduled", purpose: "Updated return reason" }] },
+    },
+    serviceType: "General Consultation",
+    practitioner: "Ana Santos",
+    title: "General Consultation Record",
+    recordId: "32",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /October 20, 2026/);
+  assert.match(html, /Wound reassessment/);
+  assert.doesNotMatch(html, /November 15, 2026/);
+  assert.doesNotMatch(html, /Rescheduled|Updated return reason/);
+});
+
+test("BhcHealthRecordWorkspace: labels unassociated follow-up as visit-level", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 33,
+      diagnoses: [{ id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "managed_at_bhc" }],
+      monitoringData: {
+        consultationWorkflow: "bhc_general_v2",
+        followUpSchedules: [
+          { purposeKey: "visit", purpose: "Return for review", date: "2026-10-25", time: "09:00" },
+        ],
+      },
+    },
+    serviceType: "General Consultation",
+    practitioner: "Ana Santos",
+    title: "General Consultation Record",
+    recordId: "33",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /Visit-level follow-up/);
+  assert.match(html, /October 25, 2026/);
+  assert.match(html, /Return for review/);
+});
+
+test("BhcHealthRecordWorkspace: shared referral stays visit-level when concerns have no referral object", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 34,
+      diagnoses: [
+        { id: "a", name: "Cough", reportIn: ["morbidity"], clinicalOutcome: "refer_to_rhu" },
+        { id: "b", name: "Fever", reportIn: ["notifiable"], clinicalOutcome: "refer_to_rhu" },
+      ],
+    },
+    linkedReferral: {
+      status: "Received",
+      trackingId: "TRK-SHARE",
+      urgencyLevel: "Routine",
+      receivingFacility: "RHU Bulakan",
+      reasonForReferral: "Shared referral reason",
+    },
+    serviceType: "General Consultation",
+    practitioner: "Ana Santos",
+    title: "General Consultation Record",
+    recordId: "34",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /Visit-level referral/);
+  assert.match(html, /Shared referral reason/);
+  assert.match(html, /TRK-SHARE/);
+  assert.equal((html.match(/Shared referral reason/g) || []).length, 1);
+  assert.doesNotMatch(html, /Received|Pending|Completed/);
+});
 
 test("BHC workspace links to referral module without follow-up navigation", () => {
   const html = wrap(createElement(BhcHealthRecordWorkspace, {
@@ -921,8 +998,8 @@ test("BHC workspace links to referral module without follow-up navigation", () =
     patientName: "Ana Cruz",
   }));
   assert.doesNotMatch(printed, /View in Referrals|View in Follow-ups/);
-  assert.match(printed, /TRK-35/);
-  assert.match(printed, /Needs review/);
+  assert.match(printed, /data-print-layout="general-consultation"/);
+  assert.doesNotMatch(printed, /TRK-35|Needs review|Health concerns/);
 });
 
 const liveBackground = {
@@ -1002,51 +1079,70 @@ test("clinical details hide visit history without the clinical.history permissio
   assert.doesNotMatch(html, /Patient History at This Visit/);
 });
 
-for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-  test(`${View.name}: shows the frozen visit history including unchanged sections`, () => {
-    const html = wrap(createElement(View, {
-      record: historyRecord(),
-      patient: { medicalBackground: liveBackground },
-      serviceType: "General Consultation",
-      title: "General Consultation Record",
-      recordId: "90",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assertFrozenHistory(html);
-  });
+test("BhcHealthRecordWorkspace: shows the frozen visit history including unchanged sections", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: historyRecord(),
+    patient: { medicalBackground: liveBackground },
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "90",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assertFrozenHistory(html);
+});
 
-  test(`${View.name}: follow-up shows this visit's values without previous-to-updated comparisons`, () => {
-    const html = wrap(createElement(View, {
-      record: historyRecord({
-        historySnapshot: {
-          ...generalHistorySnapshot,
-          sections: {
-            ...generalHistorySnapshot.sections,
-            medical: {
-              ...generalHistorySnapshot.sections.medical,
-              allergies: { items: [{ allergen: "Penicillin" }] },
-            },
+test("General Consultation print keeps informant and omits family history sections", () => {
+  const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: historyRecord(),
+    patient: { medicalBackground: liveBackground },
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "90",
+    patientName: "Ana Cruz",
+  }));
+  assert.match(html, /Chief Complaint/);
+  assert.match(html, /Informant/);
+  assert.match(html, /Mother · Ana Cruz/);
+  assert.match(html, /Complaint/);
+  assert.match(html, /Cough/);
+  assert.doesNotMatch(html, /Patient History at This Visit/);
+  assert.doesNotMatch(html, /Family History|Family Conditions|Past Medical History/);
+  assert.doesNotMatch(html, /Not recorded|gc-print-line/);
+});
+
+test("BhcHealthRecordWorkspace: follow-up shows this visit's values without previous-to-updated comparisons", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: historyRecord({
+      historySnapshot: {
+        ...generalHistorySnapshot,
+        sections: {
+          ...generalHistorySnapshot.sections,
+          medical: {
+            ...generalHistorySnapshot.sections.medical,
+            allergies: { items: [{ allergen: "Penicillin" }] },
           },
-          changes: [{
-            section: "medical",
-            before: { allergies: { items: [{ allergen: "Dust" }] } },
-            after: { allergies: { items: [{ allergen: "Penicillin" }] } },
-          }],
         },
-      }),
-      serviceType: "General Consultation",
-      title: "General Consultation Record",
-      recordId: "91",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assertFrozenHistory(html, { allergy: "Penicillin" });
-    assert.doesNotMatch(html, /Dust/);
-  });
+        changes: [{
+          section: "medical",
+          before: { allergies: { items: [{ allergen: "Dust" }] } },
+          after: { allergies: { items: [{ allergen: "Penicillin" }] } },
+        }],
+      },
+    }),
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "91",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assertFrozenHistory(html, { allergy: "Penicillin" });
+  assert.doesNotMatch(html, /Dust/);
+});
 
+for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
   test(`${View.name}: includes obstetric history only when the snapshot has it`, () => {
     const html = wrap(createElement(View, {
       record: historyRecord({
@@ -1068,27 +1164,27 @@ for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
     }));
     assertFrozenHistory(html, { obstetric: true });
   });
-
-  test(`${View.name}: legacy records say history is unavailable instead of using live background`, () => {
-    const html = wrap(createElement(View, {
-      record: {
-        id: 93,
-        chiefComplaint: "Cough",
-        informant: { relation: "Patient" },
-        similarIllness: { answer: "No" },
-        medicalBackground: liveBackground,
-      },
-      patient: { medicalBackground: liveBackground },
-      serviceType: "General Consultation",
-      title: "General Consultation Record",
-      recordId: "93",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assert.match(html, /Historical patient history is unavailable for this record/);
-    assert.match(html, /Similar illness in the family/);
-    assert.match(html, />No</);
-    assert.doesNotMatch(html, /LIVE-SHOULD-NOT-SHOW|Live Diabetes|Family Conditions|Never smoked/);
-  });
 }
+
+test("BhcHealthRecordWorkspace: legacy records say history is unavailable instead of using live background", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: {
+      id: 93,
+      chiefComplaint: "Cough",
+      informant: { relation: "Patient" },
+      similarIllness: { answer: "No" },
+      medicalBackground: liveBackground,
+    },
+    patient: { medicalBackground: liveBackground },
+    serviceType: "General Consultation",
+    title: "General Consultation Record",
+    recordId: "93",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assert.match(html, /Historical patient history is unavailable for this record/);
+  assert.match(html, /Similar illness in the family/);
+  assert.match(html, />No</);
+  assert.doesNotMatch(html, /LIVE-SHOULD-NOT-SHOW|Live Diabetes|Family Conditions|Never smoked/);
+});

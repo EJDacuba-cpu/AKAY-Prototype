@@ -47,6 +47,14 @@ test('closing / navigation clears the gate so another profile can open', () => {
   assert.ok(tryBeginProfileOpen('402'));
 });
 
+test('successful open releases the gate so remounted directory cards are idle', () => {
+  const token = tryBeginProfileOpen('601');
+  // Mirrors useOpenPatientProfile after navigate(to).
+  endProfileOpen(token);
+  assert.equal(getProfileOpenPatientId(), null);
+  assert.ok(tryBeginProfileOpen('601'));
+});
+
 test('reopening after close uses a fresh generation', () => {
   const first = tryBeginProfileOpen('501');
   clearProfileOpen();

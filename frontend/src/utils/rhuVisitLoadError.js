@@ -9,6 +9,18 @@ export function visitUnavailableError(message) {
 }
 
 /**
+ * Finalized RHU visits stay fetchable by id but must not reopen the workspace.
+ * Browser Back after "View Health Record" remounts /health-records/add with the
+ * same visitId; treat completed visits as a quiet exit instead of unavailable UI.
+ */
+export function isCompletedRhuConsultationVisit(visit) {
+  if (!visit) return false;
+  const status = String(visit.status || "").toLowerCase();
+  const reason = String(visit.close_reason || visit.closeReason || "").toLowerCase();
+  return status === "closed" && reason === "consultation_completed";
+}
+
+/**
  * Map a failed RHU visit fetch/validation into UI copy.
  * Timeout/network stay retryable; closed/mismatched visits and auth failures do not.
  */

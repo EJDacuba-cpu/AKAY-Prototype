@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rhuVisitLoadError, visitUnavailableError } from "./rhuVisitLoadError.js";
+import {
+  isCompletedRhuConsultationVisit,
+  rhuVisitLoadError,
+  visitUnavailableError,
+} from "./rhuVisitLoadError.js";
 
 test("timeout and network failures stay retryable with load copy", () => {
   const timeout = rhuVisitLoadError({ isTimeout: true, code: "TIMEOUT", message: "The server is taking too long to respond. Please try again in a moment." });
@@ -20,6 +24,35 @@ test("invalid or closed visit states are not retryable", () => {
   assert.equal(unavailable.kind, "unavailable");
   assert.equal(unavailable.title, "Consultation not available");
   assert.equal(unavailable.retryable, false);
+});
+
+test("only consultation_completed closed visits count as finished consultations", () => {
+  assert.equal(
+    isCompletedRhuConsultationVisit({
+      status: "closed",
+      close_reason: "consultation_completed",
+    }),
+    true,
+  );
+  assert.equal(
+    isCompletedRhuConsultationVisit({
+      status: "closed",
+      closeReason: "consultation_completed",
+    }),
+    true,
+  );
+  assert.equal(
+    isCompletedRhuConsultationVisit({
+      status: "closed",
+      close_reason: "left_before_consultation",
+    }),
+    false,
+  );
+  assert.equal(
+    isCompletedRhuConsultationVisit({ status: "in_consultation" }),
+    false,
+  );
+  assert.equal(isCompletedRhuConsultationVisit(null), false);
 });
 
 test("unauthorized visit loads do not offer retry", () => {

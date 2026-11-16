@@ -1,4 +1,4 @@
-import { HealthConcernsAndCareOutcomes, RelatedConsultationHistory } from "./RecordDetailsSections";
+import { HealthConcernsAndCareOutcomes } from "./RecordDetailsSections";
 import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
 import VisitHistorySnapshot from "./VisitHistorySnapshot";
@@ -424,7 +424,6 @@ export default function BhcHealthRecordWorkspace({
         {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
         {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
       </ProfileSection>}
-      <RelatedConsultationSection record={record} linkedReferral={linkedReferral} />
     </div>
   );
 }
@@ -849,14 +848,6 @@ function MedicinesTable({ medicines = [] }) {
       }))}
     />
   );
-}
-
-function RelatedConsultationSection({ record, linkedReferral }) {
-  const { related } = recordDetailsPresentation(record, linkedReferral);
-  if (!related.length) return null;
-  return <ProfileSection id="related-consultation-history" title="Related consultation history">
-    <RelatedConsultationHistory record={record} linkedReferral={linkedReferral} />
-  </ProfileSection>;
 }
 
 function fpDetail(details = [], label) {

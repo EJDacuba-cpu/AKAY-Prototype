@@ -4,7 +4,7 @@ import { entryDestinations, formatEntryDestinations } from "../../../utils/repor
 import { isBhcGeneralV2 } from "../../../utils/consultationWorkflow";
 import { diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
 import { restoreFollowUpSchedules, entryPurposeKey, VISIT_PURPOSE_KEY } from "../../../utils/followUpSchedules";
-import { getParentHealthRecordId, getRecordDateValue, getRecordChiefComplaint, getRecordDiagnosis, getVitalSignItems, formatMeasurement } from "./recordDetailsHelpers";
+import { getVitalSignItems, formatMeasurement } from "./recordDetailsHelpers";
 
 const text = (value) => String(value ?? "").trim();
 const list = (value) => Array.isArray(value) ? value : [];
@@ -222,14 +222,6 @@ export function recordDetailsPresentation(record = {}, linkedReferral = null) {
       : getSurveillanceDiagnoses(record).map((entry) => entry.name)) },
   ];
   const unmappedReporting = mapsReportingToConcerns ? [] : reporting.filter((group) => group.names.length);
-  const parentId = getParentHealthRecordId(record);
-  const relatedMap = new Map(list(episode.records).filter((row) => row?.id).map((row) => [String(row.id), row]));
-  const original = episode.originalRecord || episode.original_record;
-  if (original?.id) relatedMap.set(String(original.id), { ...original, ...relatedMap.get(String(original.id)) });
-  if (parentId && !relatedMap.has(String(parentId))) relatedMap.set(String(parentId), { id: parentId, relationshipOnly: true });
-  const hasRelated = parentId || [...relatedMap.keys()].some((key) => key !== String(id));
-  if (hasRelated && id) relatedMap.set(String(id), { ...record, ...relatedMap.get(String(id)) });
-  const related = hasRelated ? [...relatedMap.values()].sort((a, b) => text(getRecordDateValue(a)).localeCompare(text(getRecordDateValue(b))) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true })) : [];
   return {
     schedules,
     visitFollowUps,
@@ -242,11 +234,6 @@ export function recordDetailsPresentation(record = {}, linkedReferral = null) {
     legacy,
     nextAction,
     reporting,
-    related,
     showReferralBadge: false,
   };
-}
-
-export function relatedVisitSummary(record) {
-  return getRecordChiefComplaint(record, "") || getRecordDiagnosis(record, "");
 }

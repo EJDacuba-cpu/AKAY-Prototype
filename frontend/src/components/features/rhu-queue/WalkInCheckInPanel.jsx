@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 
 import { ConnectionErrorState, SearchField } from "../../common";
 import { Button } from "../../ui/button";
+import { Skeleton } from "../../ui/skeleton";
 import useAccess from "../../../hooks/useAccess";
 import { errorStateVariant } from "../../../utils/errorStateVariant";
 import { getRhuPatientById } from "../../../services/patientService";
@@ -360,7 +361,7 @@ export default function WalkInCheckInPanel({
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3 sm:px-4" aria-live="polite">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-2.5 sm:px-4" aria-live="polite">
           <PatientListBody
             searching={searching}
             status={status}
@@ -456,6 +457,25 @@ export default function WalkInCheckInPanel({
   );
 }
 
+function CheckInListSkeleton({ label }) {
+  return (
+    <div className="flex flex-col gap-2" role="status" aria-label={`Loading ${label}`}>
+      <p className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500">{label}</p>
+      <ul className="anim-stagger flex flex-col gap-1.5">
+        {[0, 1, 2, 3].map((row) => (
+          <li
+            key={row}
+            className="overflow-hidden rounded-xl border border-neutral-200 bg-white px-3 py-3 sm:px-3.5"
+          >
+            <Skeleton className="h-3.5 w-[42%] rounded" />
+            <Skeleton className="mt-2 h-3 w-[28%] rounded" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function PatientListBody({
   searching,
   status,
@@ -479,7 +499,7 @@ function PatientListBody({
       );
     }
     if (status.loading) {
-      return <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Searching...</p>;
+      return <CheckInListSkeleton label={listLabel} />;
     }
     if (listRows.length === 0) {
       return (
@@ -500,7 +520,7 @@ function PatientListBody({
       );
     }
     if (recentStatus.loading) {
-      return <p role="status" className="py-5 text-center text-[13px] text-neutral-500">Loading recent patients...</p>;
+      return <CheckInListSkeleton label={listLabel} />;
     }
     if (listRows.length === 0) {
       return (
@@ -512,22 +532,30 @@ function PatientListBody({
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">{listLabel}</p>
-      <ul className="overflow-hidden rounded-lg border border-neutral-200" role="listbox" aria-label={listLabel}>
+    <div className="flex flex-col gap-2">
+      <p className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+        {listLabel}
+      </p>
+      <ul className="flex flex-col gap-1.5" role="listbox" aria-label={listLabel}>
         {listRows.map((patient) => {
           const isSelected = samePatient(selectedId, patient.id);
           const secondary = [formatAgeSex(patient), patient.barangay].filter(Boolean).join(" · ");
           return (
-            <li key={patient.id} role="option" aria-selected={isSelected} className="border-b border-neutral-100 last:border-b-0">
+            <li
+              key={patient.id}
+              role="option"
+              aria-selected={isSelected}
+              className={[
+                "overflow-hidden rounded-xl border bg-white",
+                isSelected ? "border-brand-200 bg-brand-50" : "border-neutral-200",
+              ].join(" ")}
+            >
               <button
                 type="button"
                 onClick={() => onSelect(patient)}
                 className={[
-                  "flex w-full min-h-14 items-center gap-3 px-3 py-2 text-left transition-colors sm:px-3.5",
-                  isSelected
-                    ? "bg-brand-50 ring-1 ring-inset ring-brand-600/25"
-                    : "hover:bg-neutral-50",
+                  "flex w-full min-h-[52px] items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors sm:px-3.5",
+                  isSelected ? "bg-brand-50" : "hover:bg-neutral-50",
                 ].join(" ")}
               >
                 <div className="min-w-0 flex-1 leading-tight">
