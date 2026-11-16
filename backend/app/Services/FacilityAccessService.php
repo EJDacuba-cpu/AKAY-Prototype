@@ -123,8 +123,12 @@ class FacilityAccessService
         }
 
         if ($user->isBhc()) {
+            // Ownership rule: a record with an RHU is RHU-owned. RHU ITR visits
+            // also carry the patient's BHC id, but reach the BHC only through the
+            // referral's RHU Return Slip, never in the BHC's own records.
             return $query
                 ->where('barangay_health_center_id', $user->barangay_health_center_id)
+                ->whereNull('rural_health_unit_id')
                 ->whereHas('patient', fn (Builder $patients) => $patients
                     ->where('barangay_health_center_id', $user->barangay_health_center_id));
         }
@@ -208,12 +212,15 @@ class FacilityAccessService
             return $query->whereRaw('1 = 0');
         }
 
+        // RHU-scheduled follow-ups stay with the RHU (see scopeHealthRecords).
         return $query
             ->where('barangay_health_center_id', $user->barangay_health_center_id)
+            ->whereNull('rural_health_unit_id')
             ->whereHas('patient', fn (Builder $patients) => $patients
                 ->where('barangay_health_center_id', $user->barangay_health_center_id))
             ->whereHas('healthRecord', fn (Builder $records) => $records
                 ->where('barangay_health_center_id', $user->barangay_health_center_id)
+                ->whereNull('rural_health_unit_id')
                 ->whereColumn('health_records.patient_id', 'follow_up_tasks.patient_id'));
     }
 
@@ -362,7 +369,7 @@ class FacilityAccessService
         $record->loadMissing('patient');
         $allowed = $record->patient !== null
                 && $this->hasValidFacilityAssignment($user)
-                && (($user->isBhc() && $this->sameAssignedId(
+                && (($user->isBhc() && $record->rural_health_unit_id === null && $this->sameAssignedId(
                     $record->barangay_health_center_id,
                     $user->barangay_health_center_id
                 ) && $this->sameAssignedId(
@@ -447,6 +454,8 @@ class FacilityAccessService
             && (int) $task->patient_id === (int) $task->healthRecord->patient_id;
         $allowed = $this->hasValidFacilityAssignment($user) && $samePatient && (
             ($user->isBhc()
+                && $task->rural_health_unit_id === null
+                && $task->healthRecord->rural_health_unit_id === null
                 && $this->sameAssignedId($task->barangay_health_center_id, $user->barangay_health_center_id)
                 && $this->sameAssignedId($task->patient->barangay_health_center_id, $user->barangay_health_center_id)
                 && $this->sameAssignedId($task->healthRecord->barangay_health_center_id, $user->barangay_health_center_id))

@@ -44,7 +44,8 @@ class FollowUpNotificationService
         if ($dryRun) {
             return [
                 'transitioned' => (clone $overdueQuery)->count(),
-                'notified' => (clone $overdueQuery)->count() + (clone $dueTodayQuery)->count(),
+                'notified' => (clone $overdueQuery)->whereNull('rural_health_unit_id')->count()
+                    + (clone $dueTodayQuery)->whereNull('rural_health_unit_id')->count(),
             ];
         }
 
@@ -70,6 +71,12 @@ class FollowUpNotificationService
                 'no_show_at' => now(),
             ]);
 
+            // RHU-owned follow-ups are not on the BHC Follow-ups page; do not
+            // send BHWs a link they cannot open.
+            if ($task->rural_health_unit_id !== null) {
+                continue;
+            }
+
             $this->notifications->notifyUsersOnce(
                 $bhwsFor((int) $task->barangay_health_center_id),
                 'No-Show',
@@ -83,7 +90,7 @@ class FollowUpNotificationService
             $notified++;
         }
 
-        $dueTodayQuery->with('patient')->get()->each(function (FollowUpTask $task) use (&$notified, $bhwsFor, $today): void {
+        $dueTodayQuery->whereNull('rural_health_unit_id')->with('patient')->get()->each(function (FollowUpTask $task) use (&$notified, $bhwsFor, $today): void {
             $patientName = $task->patient?->full_name ?: 'The patient';
 
             $this->notifications->notifyUsersOnce(
