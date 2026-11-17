@@ -24,10 +24,16 @@ function joinName(parts) {
   return parts.map(cleanText).filter(Boolean).join(" ");
 }
 
-export function formatPatientName(patient, fallback = "Not recorded") {
+export function formatPatientName(patient, fallback = "Not recorded", { middleInitial = false } = {}) {
   if (!patient) return fallback;
 
   if (!isObject(patient)) return cleanText(patient) || fallback;
+
+  if (middleInitial && (patient.firstName || patient.first_name || patient.lastName || patient.last_name)) {
+    const middle = cleanText(patient.middleName ?? patient.middle_name);
+    const initial = middle.match(/\p{L}/u)?.[0];
+    return joinName([patient.firstName || patient.first_name, initial ? `${initial.toUpperCase()}.` : '', patient.lastName || patient.last_name, patient.suffix]) || fallback;
+  }
 
   const direct = firstText([
     patient.fullName,
@@ -43,6 +49,7 @@ export function formatPatientName(patient, fallback = "Not recorded") {
     patient.firstName || patient.first_name,
     patient.middleName || patient.middle_name,
     patient.lastName || patient.last_name,
+    patient.suffix,
   ]);
 
   if (composed) return composed;

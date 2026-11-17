@@ -28,6 +28,7 @@
     "test:consultation-identity": "node --test src/utils/consultationIdentity.test.js",
     "test:prenatal-form": "node --test src/utils/prenatalForm.test.js src/utils/prenatalEnrollment.test.js src/utils/maternalRisk.test.js src/utils/familyPlanning.test.js",
     "test:breadcrumbs": "node --test src/utils/breadcrumbs.test.js",
+    "test:patient-registration": "node --test src/utils/patientRegistrationIdentity.test.js src/utils/patientRegistrationDraft.test.js src/utils/patientRegistrationPayload.test.js src/utils/patientProfile.test.js src/utils/formatters.test.js src/utils/patientUtils.test.js src/utils/patientRegistrationEntry.test.js src/utils/formDraftRequest.test.js src/services/formDraftCoordinator.test.js src/services/formDraftSession.test.js src/pages/bhc/RegistrationRegression.test.js src/components/features/patients/profile/RegistrationSections.test.js src/pages/rhu/RHUPatientDetails.test.js",
     "test:patient-profile": "node --test src/utils/patientProfile.test.js src/utils/currentPatientVitals.test.js src/utils/carePath.test.js src/utils/bodyMeasures.test.js src/utils/arcPlacement.test.js src/utils/medicalConditions.test.js src/utils/backgroundConditions.test.js",
     "test:current-conditions": "node --test src/utils/currentConditions.test.js",
     "test:diagnosis-reporting": "node --test src/utils/diagnoses.test.js src/utils/diagnosisReporting.test.js src/utils/reportingEntries.test.js src/utils/consultationWorkflow.test.js src/utils/surveillance.test.js",

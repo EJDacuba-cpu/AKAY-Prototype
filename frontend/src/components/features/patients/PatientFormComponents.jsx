@@ -1,6 +1,6 @@
 // CORRECTED IMPORTS: Import specific files directly instead of the directory
 import FormInput from "../../common/forms/FormInput";
-import { getPhilippineLocalNumber } from "../../../utils/patientUtils";
+
 
 // --- THEME CONSTANTS ---
 export const THEME = {
@@ -26,74 +26,10 @@ export const SectionHeader = ({ icon: Icon, title, description }) => (
   </div>
 );
 
-// --- PHILIPPINE CONTACT INPUT ---
-function PhilippinesFlag() {
-  return (
-    <span className="relative inline-block h-3 w-5 shrink-0 overflow-hidden rounded-sm ">
-      <span className="absolute inset-x-0 top-0 h-1/2 bg-[#0038A8]" />
-      <span className="absolute inset-x-0 bottom-0 h-1/2 bg-[#CE1126]" />
-      <span
-        className="absolute left-0 top-0 h-full w-[58%] bg-white"
-        style={{ clipPath: "polygon(0 0, 100% 50%, 0 100%)" }}
-      />
-      <span className="absolute left-[3px] top-1/2 h-1 w-1 -translate-y-1/2 rounded-full bg-[#FCD116]" />
-    </span>
-  );
-}
-
-export const PhilippineContactInput = ({
-  label,
-  name,
-  value,
-  onChange,
-  required = false,
-  disabled = false,
-  helperText,
-  error,
-}) => {
-  return (
-    <div className="min-w-0">
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-        {label}
-        {required && <span className="ml-1 text-red-500">*</span>}
-      </label>
-      <div
-        className={`group relative flex h-10 min-w-0 overflow-hidden rounded-none border bg-white transition-all duration-200 focus-within:border-red-600 focus-within:ring-2 focus-within:ring-red-600/10 ${
-          error
-            ? "border-red-600 ring-2 ring-red-600/10"
-            : "border-[#E5E7EB] hover:border-[#D1D5DB]"
-        } ${disabled ? "bg-[#F9FAFB] opacity-75" : ""}`}
-      >
-        <div className="flex shrink-0 items-center gap-2 border-r border-[#E5E7EB] bg-[#F9FAFB] px-3 text-sm font-medium text-[#6B7280]">
-          <PhilippinesFlag />
-          <span>+63</span>
-        </div>
-        <input
-          type="tel"
-          name={name}
-          value={getPhilippineLocalNumber(value)}
-          onChange={onChange}
-          inputMode="numeric"
-          maxLength={10}
-          placeholder="912 345 6789"
-          required={required}
-          disabled={disabled}
-          className="min-w-0 flex-1 bg-transparent px-3.5 text-sm text-[#1F2937] outline-none placeholder:text-[#9CA3AF] disabled:cursor-not-allowed disabled:text-gray-500"
-        />
-      </div>
-      {error && (
-        <p className="mt-1 text-[11px] font-medium leading-relaxed text-red-600">
-          {error}
-        </p>
-      )}
-      {helperText && (
-        <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
-          {helperText}
-        </p>
-      )}
-    </div>
-  );
-};
+// Shared plain local contact field; input handling and final validation live in registration helpers.
+export const PhilippineContactInput = (props) => (
+  <FormInput {...props} type="text" inputMode="numeric" maxLength={11} placeholder="09XXXXXXXXX" />
+);
 
 // --- TPAL HISTORY GRID (Maternal Specific) ---
 export const TpalHistoryGrid = ({ form, onChange }) => {

@@ -105,3 +105,22 @@ test('blank reported names remain blank when a parent link exists and historical
     assert.match(html, /Guardian Information/);
   }
 });
+
+test('profile demographics offer suffix options and preserve custom input beside the full middle name', () => {
+  const html = render({ editingSection: 'demographics', form: { firstName:'Juan', middleName:'Reyes', lastName:'Cruz', suffix:'__other__', customSuffix:'VI' } });
+  assert.match(html, /name="middleName"[^>]*value="Reyes"/);
+  assert.match(html, /name="suffix"/);
+  assert.match(html, /Other \(Specify\)/);
+  assert.match(html, /name="customSuffix"[^>]*value="VI"/);
+  assert.match(render({patient:{suffix:'Jr.'}}), /Jr\./);
+});
+test('profile contact editor uses plain numeric text fields with the shared validation messages', () => {
+  const html = render({ editingSection:'contact', form:{contactNumber:'09123',guardianContactNumber:'09123456'}, fieldErrors:{contactNumber:'Contact number must contain exactly 11 digits.',guardianContactNumber:'Other contact number must contain exactly 11 digits.'} });
+  for (const name of ['contactNumber','guardianContactNumber']) {
+    const input = [...html.matchAll(/<input\b[^>]*>/g)].map(match => match[0]).find(value => value.includes(`name="${name}"`));
+    assert.match(input, /type="text"/); assert.match(input, /inputMode="numeric"/); assert.match(input, /maxLength="11"/);
+  }
+  assert.match(html, /Contact number must contain exactly 11 digits/);
+  assert.match(html, /Other contact number must contain exactly 11 digits/);
+  assert.doesNotMatch(html, /\+63/);
+});

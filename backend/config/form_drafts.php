@@ -4,12 +4,12 @@
 $fields = static fn (string $names): array => array_fill_keys(explode(' ', $names), true);
 $address = $fields('streetAddress purokArea barangay municipality');
 $registration = [
-    ...$fields('first_name middle_name last_name sex birthdate contact_number street_address barangay municipality purok_area civil_status occupation education_level education_completed philhealth_status spouse_name spouse_occupation registration_type mother_patient_id father_patient_id mother_name mother_birth_date father_name father_birth_date guardian_name guardian_relationship guardian_contact_number family_serial_number birth_place birth_time birth_weight birth_height nhts_status philhealth_number philhealth_category patient_category status barangay_health_center_id rural_health_unit_id'),
+    ...$fields('first_name middle_name last_name suffix sex birthdate contact_number street_address barangay municipality purok_area civil_status occupation education_level education_completed philhealth_status spouse_name spouse_occupation registration_type mother_patient_id father_patient_id mother_name mother_birth_date father_name father_birth_date guardian_name guardian_relationship guardian_contact_number family_serial_number birth_place birth_time birth_weight birth_height nhts_status philhealth_number philhealth_category patient_category status barangay_health_center_id rural_health_unit_id'),
     'household' => [...$fields('kind household_id relationship version serial_mode serial_number'), 'address' => $address, 'relationship_link' => $fields('type')],
     'head_replacement' => [...$fields('household_id head_patient_id version'), 'relationships' => ['*' => true]],
 ];
 $registration['registration'] = [
-    'form' => $fields('firstName middleName lastName birthDate age sex civilStatus occupation educationLevel educationCompleted spouseName spouseOccupation contactNumber philHealthStatus philHealthNumber purokArea streetAddress barangay municipality motherName motherBirthDate fatherName fatherBirthDate guardianName guardianRelationship guardianContactNumber familySerialNumber nhtsStatus patientClassification motherPatientId fatherPatientId'),
+    'form' => $fields('firstName middleName lastName suffix customSuffix birthDate age sex civilStatus occupation educationLevel educationCompleted spouseName spouseOccupation contactNumber philHealthStatus philHealthNumber purokArea streetAddress barangay municipality motherName motherBirthDate fatherName fatherBirthDate guardianName guardianRelationship guardianContactNumber familySerialNumber nhtsStatus patientClassification motherPatientId fatherPatientId'),
     'connection' => [...$fields('kind householdId relationship headPatientId'),
         'household' => [...$fields('serialMode serialNumber'), 'address' => $address], 'relationshipLink' => $fields('type')],
     'headReplacement' => [...$fields('householdId headPatientId version'), 'relationships' => ['*' => true]],
