@@ -2,7 +2,10 @@ import usePrintDocument from "../../hooks/usePrintDocument";
 import { getLaboratoryTests } from "../../services/laboratoryService";
 import { useLocation, useParams, useNavigate, useSearchParams } from "react-router";
 import { getPatientRecordReturn } from "../../utils/profileNavigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import PrescriptionPreviewModal from "../../components/features/health-records/PrescriptionPreviewModal";
+import { prescriptionPrintData, savedPrescriptionRows } from "../../utils/prescriptionPrint";
 import { useQuery } from "@tanstack/react-query";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -48,6 +51,21 @@ export default function RHURecordDetails() {
   const { recordId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [prescriptionPreview, setPrescriptionPreview] = useState(null);
+  const [loadingPrescription, setLoadingPrescription] = useState(false);
+  const openPrescription = async () => {
+    if (loadingPrescription) return;
+    setLoadingPrescription(true);
+    const notice = toast.loading("Loading saved prescription…");
+    try {
+      setPrescriptionPreview(prescriptionPrintData(await getHealthRecordById(recordId)));
+    } catch (failure) {
+      toast.error(failure.message || "Unable to load the saved prescription. Please try again.");
+    } finally {
+      toast.dismiss(notice);
+      setLoadingPrescription(false);
+    }
+  };
 
   const [searchParams, setSearchParams] = useSearchParams();
   const shouldAutoPrint = searchParams.get("print") === "1";
@@ -236,6 +254,11 @@ export default function RHURecordDetails() {
       <style data-print-shell-style>{BHC_HEALTH_RECORD_PRINT_PAGE_STYLES}</style>
       <div className="min-h-[520px]">
         <div className="print:hidden">
+          {savedPrescriptionRows(record).length > 0 && (
+            <div className="mb-3 flex justify-end">
+              <Button variant="secondary" disabled={loadingPrescription} onClick={openPrescription}>Print Prescription</Button>
+            </div>
+          )}
           <BhcHealthRecordWorkspace
             record={record}
             patient={patient}
@@ -282,6 +305,9 @@ export default function RHURecordDetails() {
           />
         </div>
       </div>
+      {prescriptionPreview && String(prescriptionPreview.recordId) === String(recordId) && (
+        <PrescriptionPreviewModal prescription={prescriptionPreview} onClose={() => setPrescriptionPreview(null)} />
+      )}
     </DashboardLayout>
   );
 }

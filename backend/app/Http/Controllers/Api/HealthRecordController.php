@@ -703,6 +703,7 @@ class HealthRecordController extends Controller
 
             $data['dispensed_medicines'] = $healthRecord->dispensedMedicines()->latest()->get();
             $data['follow_up_episode'] = $episode;
+            $data['prescription_prescriber'] = app(\App\Services\PrescriptionClinicalAuthority::class)->printPrescriber($healthRecord);
 
             return response()->json(['data' => $data]);
         }
@@ -716,6 +717,7 @@ class HealthRecordController extends Controller
                 ->scopeReferrals($query, $request->user()),
         ])->toArray();
         $data['follow_up_episode'] = $episode;
+        $data['prescription_prescriber'] = app(\App\Services\PrescriptionClinicalAuthority::class)->printPrescriber($healthRecord);
 
         return response()->json(['data' => $data]);
     }

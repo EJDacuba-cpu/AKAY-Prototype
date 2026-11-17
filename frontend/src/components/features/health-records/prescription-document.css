@@ -1,0 +1,9 @@
+.prescription-document { background: white; overflow-wrap: anywhere; min-height: 265mm; display: flex; flex-direction: column; }
+.prescription-document footer { margin-top: auto; padding-top: 8mm; }
+.prescription-document p { white-space: pre-wrap; }
+.prescription-medicine, .prescription-signature { break-inside: avoid; page-break-inside: avoid; }
+.prescription-signature-line { height: 22mm; min-width: 60mm; max-width: 100%; }
+@media print {
+  @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
+  [data-akay-print-document].prescription-document { display: flex !important; }
+}

@@ -42,6 +42,24 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         PrescriptionClinicalAuthority::ensureCanAuthorize($doctor);
     }
 
+    public function test_print_prescriber_uses_snapshot_and_legacy_lookup_without_writing(): void
+    {
+        $doctor = $this->makeUser('doctor', ['conditions.confirm']);
+        $doctor->update(['prc_license_number' => '001234']);
+        $service = new PrescriptionClinicalAuthority;
+        $stamp = $service->attestation($doctor, [$this->prescription()]);
+        $this->assertSame('001234', $stamp['prcLicenseNumber']);
+        $record = new HealthRecord(['finalized_at' => now(), 'monitoring_data' => ['prescriptionAuthorization' => $stamp]]);
+        $doctor->update(['name' => 'Changed name', 'prc_license_number' => '999999']);
+        $this->assertSame('001234', $service->printPrescriber($record)['prcLicenseNumber']);
+        $this->assertSame($stamp['physicianName'], $service->printPrescriber($record)['name']);
+        unset($stamp['prcLicenseNumber']);
+        $record->monitoring_data = ['prescriptionAuthorization' => $stamp];
+        $this->assertSame('999999', $service->printPrescriber($record)['prcLicenseNumber']);
+        $record->finalized_at = null;
+        $this->assertNull($service->printPrescriber($record));
+    }
+
     public function test_nurse_and_finalize_only_users_cannot_authorize(): void
     {
         $nurse = $this->makeUser('nurse', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);
@@ -154,6 +172,11 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         $this->assertNotSame(999, $stored['authorization']['physicianId']);
         $this->assertSame(14, $stored['authorizedQuantity']);
         $this->assertSame('tablets', $stored['authorizedUnit']);
+        $before = $record->getRawOriginal();
+        $this->getJson("/api/health-records/{$id}")->assertOk()
+            ->assertJsonPath('data.prescription_prescriber.id', $doctor->id)
+            ->assertJsonPath('data.prescription_prescriber.name', $doctor->name);
+        $this->assertSame($before, $record->fresh()->getRawOriginal());
     }
 
     public function test_finalize_persists_only_hashed_clinical_fields(): void

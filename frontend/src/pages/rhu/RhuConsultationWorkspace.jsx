@@ -197,7 +197,9 @@ import useDraftAutosave from "../../hooks/useDraftAutosave";
 import useClinicalRegistry from "../../hooks/useClinicalRegistry";
 import { getConsultationPatientQuery } from "../../services/consultationPatientQuery";
 import { rhuEntryKey, rhuRecoveryMatches } from "../../utils/rhuDraftResume";
-import { createRhuHealthRecord, getHealthRecordsByPatient } from "../../services/healthRecordService";
+import { createRhuHealthRecord, getHealthRecordById, getHealthRecordsByPatient } from "../../services/healthRecordService";
+import PrescriptionPreviewModal from "../../components/features/health-records/PrescriptionPreviewModal";
+import { prescriptionPrintData, savedPrescriptionRows } from "../../utils/prescriptionPrint";
 import { getFollowUpTask, getFollowUpTasks } from "../../services/followUpTaskService";
 import { getRhuVisit, listCatchmentBhcs, listRhuVisits } from "../../services/rhuVisitService";
 import useAccess from "../../hooks/useAccess";
@@ -331,6 +333,22 @@ export default function RhuConsultationWorkspace() {
   const [validationErrors, setValidationErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
+  const [prescriptionPreview, setPrescriptionPreview] = useState(null);
+  const [loadingPrescription, setLoadingPrescription] = useState(false);
+  const openPrescriptionPreview = async () => {
+    if (loadingPrescription || !saveSuccess?.recordId) return;
+    setLoadingPrescription(true);
+    const notice = toast.loading("Loading saved prescription…");
+    try {
+      const saved = await getHealthRecordById(saveSuccess.recordId);
+      setPrescriptionPreview(prescriptionPrintData(saved));
+    } catch (error) {
+      toast.error(error.message || "Unable to load the saved prescription. Please try again.");
+    } finally {
+      toast.dismiss(notice);
+      setLoadingPrescription(false);
+    }
+  };
   const [activeDraft, setActiveDraft] = useState(null);
   const officialSubmission = useRef(null);
   const [bodyDialog, setBodyDialog] = useState(null);
@@ -1470,7 +1488,7 @@ export default function RhuConsultationWorkspace() {
       );
       try { await autosave.completeConsultation(); }
       catch { /* Finalized record is saved; draft cleanup can retry later. */ }
-      setSaveSuccess({ recordId: record.id });
+      setSaveSuccess({ recordId: record.id, hasPrescription: savedPrescriptionRows(record).length > 0 });
       queryClient.invalidateQueries({ queryKey: ["rhu-consultation-records", patientId] });
       queryClient.invalidateQueries({ queryKey: ["body-finding-history", String(patientId)] });
       queryClient.invalidateQueries({ queryKey: ["patient-records-height"] });
@@ -2248,7 +2266,8 @@ export default function RhuConsultationWorkspace() {
         </ModalShell>
       )}
       <SuccessModal
-        open={Boolean(saveSuccess)}
+        open={Boolean(saveSuccess) && !prescriptionPreview}
+        inlineActions
         title="Health Record Saved"
         description="The visit is closed as completed. The record is on this patient's profile."
         onClose={() => {
@@ -2272,8 +2291,14 @@ export default function RhuConsultationWorkspace() {
               navigate("/rhu/patients", { replace: true });
             },
           },
+          ...(saveSuccess?.hasPrescription ? [{
+            label: "Print Prescription",
+            disabled: loadingPrescription,
+            onClick: openPrescriptionPreview,
+          }] : []),
         ]}
       />
+      {prescriptionPreview && <PrescriptionPreviewModal prescription={prescriptionPreview} onClose={() => setPrescriptionPreview(null)} />}
       <NoticeModal
         open={leaveBlocker.state === "blocked"}
         title="Leave Consultation?"

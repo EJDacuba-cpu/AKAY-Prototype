@@ -7,6 +7,26 @@ use App\Models\User;
 /** Structured prescription authority is narrower than consultations.finalize. */
 final class PrescriptionClinicalAuthority
 {
+    /** Read-only resolution for older prescriptions that predate license snapshots. */
+    public function printPrescriber(\App\Models\HealthRecord $record): ?array
+    {
+        if (! $record->finalized_at) {
+            return null;
+        }
+        $stamp = $record->monitoring_data['prescriptionAuthorization'] ?? [];
+        $id = $stamp['physicianId'] ?? null;
+        if (! $id) {
+            return null;
+        }
+        $doctor = User::find($id);
+
+        return [
+            'id' => $id,
+            'name' => $stamp['physicianName'] ?? $doctor?->name,
+            'prcLicenseNumber' => $stamp['prcLicenseNumber'] ?? $doctor?->prc_license_number,
+        ];
+    }
+
     public static function canAuthorize(?User $user): bool
     {
         return $user !== null
