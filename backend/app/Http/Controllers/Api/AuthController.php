@@ -17,6 +17,7 @@ use App\Services\TurnstileVerifier;
 use App\Services\UserSessionRevocationService;
 use App\Services\WorkingFacilityService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
@@ -84,8 +85,12 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $session = $sessions->issuePersistentSession($user);
-        $auditLogger->log($request, 'login', 'auth', 'User logged in.');
+        $session = DB::transaction(function () use ($request, $sessions, $user, $auditLogger) {
+            $session = $sessions->issuePersistentSession($user);
+            $auditLogger->log($request, 'login', 'auth', 'User successfully signed in to AKAY.', $user);
+
+            return $session;
+        });
 
         return $this->sessionResponse($user, $session)
             ->withCookie($this->refreshCookie(
@@ -125,12 +130,12 @@ class AuthController extends Controller
         AuditLogger $auditLogger,
         UserSessionRevocationService $sessions
     ) {
-        $auditLogger->log($request, 'logout', 'auth', 'User logged out.');
-        $sessions->revokePresentedRefreshToken(
-            $request->user(),
-            $request->cookie(config('auth_persistence.cookie.name'))
-        );
-        $sessions->revokeCurrentToken($request->user());
+        DB::transaction(function () use ($request, $auditLogger, $sessions) {
+            $actor = $request->user();
+            $sessions->revokePresentedRefreshToken($actor, $request->cookie(config('auth_persistence.cookie.name')));
+            $sessions->revokeCurrentToken($actor);
+            $auditLogger->log($request, 'logout', 'auth', 'User signed out of AKAY.', $actor);
+        });
 
         return response()->json(['message' => 'Logged out.'])
             ->withCookie($this->expiredRefreshCookie());
@@ -166,16 +171,18 @@ class AuthController extends Controller
 
         // Every session opened before the change (including any opened with the temporary password) ends.
         // A voluntary change by a user who had no temporary password completes nothing.
-        $passwords->set(
-            $user,
-            $validated['password'],
-            $wasTemporary ? PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD : null,
-            'password-changed'
-        );
+        $session = DB::transaction(function () use ($passwords, $user, $validated, $wasTemporary, $sessions, $auditLogger, $request) {
+            $passwords->set(
+                $user,
+                $validated['password'],
+                $wasTemporary ? PasswordSetRecorder::ROUTE_TEMPORARY_PASSWORD : null,
+                'password-changed'
+            );
+            $session = $sessions->issuePersistentSession($user);
+            $auditLogger->log($request, 'password changed', 'auth', 'User changed their password.', $user);
 
-        $session = $sessions->issuePersistentSession($user);
-
-        $auditLogger->log($request, 'password changed', 'auth', 'User changed their password.');
+            return $session;
+        });
 
         return $this->sessionResponse($user->fresh(), $session, ['message' => 'Password changed.'])
             ->withCookie($this->refreshCookie(

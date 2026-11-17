@@ -15,6 +15,7 @@ use App\Support\MaskedEmail;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -59,18 +60,18 @@ class AccountInviteController extends Controller
             return response()->json(['message' => self::INVALID_MESSAGE], 422);
         }
 
-        $accepted = $activation->acceptInvite($found, $validated['token'], $validated['password']);
+        $accepted = DB::transaction(function () use ($activation, $found, $validated, $auditLogger, $request) {
+            $accepted = $activation->acceptInvite($found, $validated['token'], $validated['password']);
+            if ($accepted) {
+                $auditLogger->log($request, 'account invite completed', 'auth',
+                    'Account invite completed for '.MaskedEmail::mask($found->user->email).'.', $found->user);
+            }
 
+            return $accepted;
+        });
         if (! $accepted) {
             return response()->json(['message' => self::INVALID_MESSAGE], 422);
         }
-
-        $auditLogger->log(
-            $request,
-            'account invite completed',
-            'auth',
-            'Account invite completed for '.MaskedEmail::mask($found->user->email).'.'
-        );
 
         return response()->json(['message' => 'Your password is set. Sign in to continue.']);
     }

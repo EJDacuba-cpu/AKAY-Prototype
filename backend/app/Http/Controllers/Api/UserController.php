@@ -144,7 +144,10 @@ class UserController extends Controller
                 app(AdminAccessNotificationService::class)->accountReactivated($user);
             }
 
-            $auditLogger->log($request, 'updated', 'users', "Updated user {$user->email}.".$this->accessAudit($user, $previousPermissions));
+            $activity = $previousStatus !== $user->status
+                ? ($user->status === User::STATUS_ACTIVE ? 'Activated account' : 'Deactivated account')
+                : 'Updated user';
+            $auditLogger->log($request, 'updated', 'users', "{$activity} {$user->email}.".$this->accessAudit($user, $previousPermissions));
         });
 
         $this->followEmailChange($user, $invites, $activation, $previousEmail, $request->user());

@@ -11,6 +11,7 @@ use App\Services\AuditLogger;
 use App\Services\HealthRecordDraftService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -44,10 +45,14 @@ class HealthRecordDraftController extends Controller
             $request,
             'create',
             'Unable to save this draft safely. Please try again.',
-            fn () => $this->drafts->create($request->user(), $request->validated())
+            fn () => DB::transaction(function () use ($request, $auditLogger) {
+                $record = $this->drafts->create($request->user(), $request->validated());
+                $this->audit($auditLogger, $request, 'draft_created', $record);
+
+                return $record;
+            })
         );
         $draft->load('patient');
-        $this->audit($auditLogger, $request, 'draft_created', $draft);
 
         return response()->json(['data' => $this->drafts->metadata($draft)], 201);
     }
@@ -98,9 +103,13 @@ class HealthRecordDraftController extends Controller
             $request,
             'update',
             'Unable to update this draft safely. Please try again.',
-            fn () => $this->drafts->update($request->user(), $draft, $request->validated())
+            fn () => DB::transaction(function () use ($request, $auditLogger, $draft) {
+                $record = $this->drafts->update($request->user(), $draft, $request->validated());
+                $this->audit($auditLogger, $request, 'draft_updated', $record);
+
+                return $record;
+            })
         );
-        $this->audit($auditLogger, $request, 'draft_updated', $record);
 
         return response()->json(['data' => $this->drafts->metadata($record)]);
     }
@@ -112,17 +121,30 @@ class HealthRecordDraftController extends Controller
             $request,
             'discard',
             'Unable to discard this draft safely. Please try again.',
-            fn () => $this->drafts->discard($request->user(), $draft, isset($data['version']) ? (int) $data['version'] : null)
+            fn () => DB::transaction(function () use ($request, $auditLogger, $draft, $data) {
+                $record = $this->drafts->discard($request->user(), $draft, isset($data['version']) ? (int) $data['version'] : null);
+                $this->audit($auditLogger, $request, 'draft_discarded', $record);
+
+                return $record;
+            })
         );
-        $this->audit($auditLogger, $request, 'draft_discarded', $record);
 
         return response()->json(status: 204);
     }
 
-    public function transition(Request $request, string $draft)
+    public function transition(Request $request, string $draft, AuditLogger $auditLogger)
     {
         $data = $request->validate(['action' => ['required', 'in:claim,takeover,submit,return'], 'version' => ['required', 'integer', 'min:1'], 'note' => ['nullable', 'string', 'max:2000']]);
-        $record = $this->drafts->transition($request->user(), $draft, $data['action'], $data['version'], $data['note'] ?? null);
+        $record = DB::transaction(function () use ($request, $draft, $data, $auditLogger) {
+            $record = $this->drafts->transition($request->user(), $draft, $data['action'], $data['version'], $data['note'] ?? null);
+            $action = match ($data['action']) {
+                'claim' => 'draft_claimed', 'takeover' => 'draft_taken_over',
+                'submit' => 'draft_submitted', 'return' => 'draft_returned',
+            };
+            $this->audit($auditLogger, $request, $action, $record);
+
+            return $record;
+        });
 
         return response()->json(['data' => $this->drafts->metadata($record)]);
     }

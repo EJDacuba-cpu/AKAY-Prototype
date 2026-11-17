@@ -145,6 +145,7 @@ class TemporaryPasswordSignInTest extends TestCase
 
         $audit = AuditLog::where('action', 'password changed')->first();
         $this->assertNotNull($audit);
+        $this->assertSame($this->user->id, $audit->user_id);
         $this->assertStringNotContainsString('Brandnew123', json_encode($audit->toArray()));
         $this->assertStringNotContainsString($this->temporary, json_encode($audit->toArray()));
 

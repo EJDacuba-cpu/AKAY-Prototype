@@ -518,6 +518,9 @@ class HealthRecordController extends Controller
                     app(\App\Services\RhuServiceUsageService::class)->syncPendingFromRecord($record);
                 }
                 $followUpTasks->syncRecord($record, $request->user(), $lockedFollowUpTask);
+                foreach (\App\Models\FollowUpTask::where('health_record_id', $record->id)->get(['id']) as $scheduledTask) {
+                    $auditLogger->log($request, 'follow_up_scheduled', 'follow_up_tasks', "Scheduled follow-up task {$scheduledTask->id} for health record {$record->id}.");
+                }
                 $followUpTasks->fulfillParentTask($record, $request->user(), $lockedFollowUpTask);
                 $followUpTasks->fulfillTasks($additionalTasks, $record, $request->user());
                 $monitoring->linkFollowUpTask($record, $monitoredNow);

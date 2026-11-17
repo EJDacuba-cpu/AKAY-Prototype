@@ -193,6 +193,12 @@ class StaffRoleAccountTest extends TestCase
 
         $this->patchJson("/api/users/{$legacy->id}", ['status' => 'inactive'])->assertOk();
         $this->assertSame('inactive', $legacy->fresh()->status);
+        $this->getJson('/api/audit-logs?search=Account%20Deactivated')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.action', 'updated')
+            ->assertJsonPath('data.0.action_label', 'Account Deactivated');
+        $this->patchJson("/api/users/{$legacy->id}", ['status' => 'active'])->assertOk();
+        $this->getJson('/api/audit-logs?search=Account%20Activated')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.action_label', 'Account Activated');
     }
 
     public function test_edit_keeps_the_password(): void

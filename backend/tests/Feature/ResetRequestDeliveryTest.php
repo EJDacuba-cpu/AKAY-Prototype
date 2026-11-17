@@ -206,6 +206,7 @@ class ResetRequestDeliveryTest extends TestCase
             ->assertJsonPath('message', 'This password reset link is invalid or expired.');
 
         $audit = AuditLog::where('action', 'password reset completed')->firstOrFail();
+        $this->assertSame($request->user_id, $audit->user_id);
         $this->assertStringNotContainsString('both@example.test', $audit->description);
     }
 

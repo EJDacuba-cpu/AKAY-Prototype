@@ -101,7 +101,7 @@ class PasswordResetRequestController extends Controller
             // request for the user, and ends every session.
             $passwords->set($resetRequest->user, $validated['password'], PasswordSetRecorder::ROUTE_RESET, 'password-reset');
 
-            $auditLogger->log($request, 'password reset completed', 'auth', 'Password reset completed for '.MaskedEmail::mask($resetRequest->email).'.');
+            $auditLogger->log($request, 'password reset completed', 'auth', 'Password reset completed for '.MaskedEmail::mask($resetRequest->email).'.', $resetRequest->user);
 
             return response()->json(['message' => 'Password changed successfully. You may now sign in.']);
         });

@@ -69,6 +69,7 @@ class FollowUpTaskSchedulingTest extends TestCase
             'due_time' => '11:30',
             'state' => FollowUpTask::STATE_PENDING,
         ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'follow_up_scheduled', 'module' => 'follow_up_tasks', 'user_id' => $this->bhw->id]);
         $monitoringData = HealthRecord::findOrFail(
             $response->json('data.id')
         )->monitoring_data;
