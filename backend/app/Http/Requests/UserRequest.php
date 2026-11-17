@@ -19,17 +19,19 @@ class UserRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! $this->exists('specialization')) {
-            return;
+        foreach (['specialization', 'prc_license_number'] as $field) {
+            if ($this->exists($field) && is_string($this->input($field))) {
+                $trimmed = $field === 'prc_license_number'
+                    ? preg_replace('/^\s+|\s+$/u', '', $this->input($field))
+                    : trim($this->input($field));
+                $this->merge([$field => $trimmed === '' ? null : $trimmed]);
+            }
         }
+    }
 
-        $value = $this->input('specialization');
-        if (! is_string($value)) {
-            return;
-        }
-
-        $trimmed = trim($value);
-        $this->merge(['specialization' => $trimmed === '' ? null : $trimmed]);
+    public function messages(): array
+    {
+        return ['prc_license_number.required' => 'PRC License No. is required for Doctor accounts.'];
     }
 
     public function rules(): array
@@ -40,6 +42,10 @@ class UserRequest extends FormRequest
         $role = $this->input('role', $existingUser?->role);
         $staffRole = $this->input('staff_role', $existingUser?->staff_role);
         $isDoctor = $role === User::ROLE_RHU && $staffRole === 'doctor';
+
+        $updatesProfile = $this->hasAny(['name', 'email', 'contact_number', 'specialization', 'prc_license_number', 'role', 'staff_role']);
+        $requiresLicense = ! $isUpdate || $this->exists('prc_license_number')
+            || ($updatesProfile && trim((string) $existingUser?->prc_license_number) === '');
 
         return [
             'name' => [$isUpdate ? 'sometimes' : 'required', 'string', 'max:255'],
@@ -66,6 +72,9 @@ class UserRequest extends FormRequest
             'staff_role' => ['nullable', Rule::in(StaffRoles::keys())],
             'specialization' => $isDoctor
                 ? ['nullable', 'string', 'max:255']
+                : ['prohibited'],
+            'prc_license_number' => $isDoctor
+                ? [Rule::requiredIf($requiresLicense), 'nullable', 'string', 'max:255']
                 : ['prohibited'],
             'permissions' => [$isUpdate ? 'sometimes' : 'present', 'array'],
             'permissions.*' => ['string', 'distinct', Rule::in(ActionPermissions::ALL)],

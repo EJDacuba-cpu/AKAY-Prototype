@@ -42,7 +42,49 @@ class StaffRoleAccountTest extends TestCase
     private function rhuPayload(string $staffRole, array $overrides = []): array
     {
         return $this->payload(['role' => 'rhu', 'staff_role' => $staffRole, 'barangay_health_center_id' => null,
-            'rural_health_unit_id' => $this->rhu->id, 'permissions' => StaffRoles::defaults('nurse'), ...$overrides]);
+            'rural_health_unit_id' => $this->rhu->id, 'permissions' => StaffRoles::defaults('nurse'),
+            ...($staffRole === 'doctor' ? ['prc_license_number' => '0012345'] : []), ...$overrides]);
+    }
+
+    public function test_doctor_license_is_required_and_retains_leading_zeros(): void
+    {
+        foreach ([null, '', '   ', "\u{00A0}", 12345, ['00123'], str_repeat('1', 256)] as $invalid) {
+            $this->postJson('/api/users', $this->rhuPayload('doctor', ['prc_license_number' => $invalid]))
+                ->assertUnprocessable()->assertJsonValidationErrors('prc_license_number');
+        }
+        $missing = $this->rhuPayload('doctor');
+        unset($missing['prc_license_number']);
+        $this->postJson('/api/users', $missing)->assertUnprocessable()
+            ->assertJsonPath('errors.prc_license_number.0', 'PRC License No. is required for Doctor accounts.');
+        $id = $this->postJson('/api/users', $this->rhuPayload('doctor', ['prc_license_number' => ' 0012345 ']))
+            ->assertCreated()->assertJsonPath('data.prc_license_number', '0012345')->json('data.id');
+        $this->assertSame('0012345', User::findOrFail($id)->prc_license_number);
+        $this->patchJson("/api/users/$id", ['specialization' => 'Family Medicine'])->assertOk()
+            ->assertJsonPath('data.prc_license_number', '0012345');
+        $this->patchJson("/api/users/$id", ['prc_license_number' => '0012346'])->assertOk()
+            ->assertJsonPath('data.prc_license_number', '0012346');
+        $this->patchJson("/api/users/$id", ['prc_license_number' => ' '])->assertUnprocessable();
+    }
+
+    public function test_legacy_doctor_remains_readable_but_profile_update_requires_license(): void
+    {
+        $doctor = User::create([
+            'name' => 'Legacy Doctor', 'email' => 'legacy@example.test', 'password' => 'password123',
+            'role' => 'rhu', 'staff_role' => 'doctor', 'status' => 'active', 'rural_health_unit_id' => $this->rhu->id,
+        ]);
+        $this->getJson("/api/users/{$doctor->id}")->assertOk()->assertJsonPath('data.prc_license_number', null);
+        $this->patchJson("/api/users/{$doctor->id}", ['name' => 'Updated Doctor'])->assertUnprocessable()
+            ->assertJsonValidationErrors('prc_license_number');
+        $this->patchJson("/api/users/{$doctor->id}", ['name' => 'Updated Doctor', 'prc_license_number' => '0012345'])->assertOk();
+        Sanctum::actingAs($doctor, ['*']);
+        $this->patchJson("/api/users/{$doctor->id}", ['prc_license_number' => '999'])->assertForbidden();
+    }
+
+    public function test_non_doctor_license_field_is_prohibited(): void
+    {
+        $this->postJson('/api/users', $this->rhuPayload('nurse', ['prc_license_number' => '0012345']))
+            ->assertUnprocessable()->assertJsonValidationErrors('prc_license_number');
+        $this->postJson('/api/users', $this->rhuPayload('intake_staff', ['permissions' => StaffRoles::defaults('intake_staff')]))->assertCreated();
     }
 
     private function latestAudit(): string

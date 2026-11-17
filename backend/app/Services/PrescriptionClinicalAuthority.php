@@ -42,6 +42,7 @@ final class PrescriptionClinicalAuthority
         return [
             'physicianId' => $user->id,
             'physicianName' => $user->name,
+            'prcLicenseNumber' => $user->prc_license_number,
             'ruralHealthUnitId' => $user->rural_health_unit_id,
             'authorizedAt' => now()->toISOString(),
             'prescriptionHash' => hash('sha256', json_encode(self::clinicalRows($prescriptions), JSON_THROW_ON_ERROR)),
@@ -124,7 +125,7 @@ final class PrescriptionClinicalAuthority
 
         $quantity = $item['authorizedQuantity'] ?? null;
         if ($quantity !== null && $quantity !== '') {
-            $saved['authorizedQuantity'] = is_numeric($quantity) ? (int) $quantity : $quantity;
+            $saved['authorizedQuantity'] = is_numeric($quantity) ? $quantity + 0 : $quantity;
         }
         $unit = (string) ($item['authorizedUnit'] ?? '');
         if ($unit !== '') {
@@ -153,7 +154,7 @@ final class PrescriptionClinicalAuthority
             if ($quantity === null || $quantity === '') {
                 $quantity = null;
             } elseif (is_numeric($quantity)) {
-                $quantity = (int) $quantity;
+                $quantity = $quantity + 0;
             }
             $diagnosisIds = is_array($item['diagnosisIds'] ?? null) ? $item['diagnosisIds'] : [];
             $serviceKeys = is_array($item['serviceKeys'] ?? null) ? $item['serviceKeys'] : [];

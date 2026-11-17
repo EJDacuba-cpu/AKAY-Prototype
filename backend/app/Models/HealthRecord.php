@@ -218,7 +218,7 @@ class HealthRecord extends Model
             $authorizedQuantity = $order['authorizedQuantity'] ?? null;
             $authorizedUnit = trim((string) ($order['authorizedUnit'] ?? ''));
             $qtyParts = [];
-            if (is_int($authorizedQuantity) || (is_string($authorizedQuantity) && ctype_digit($authorizedQuantity))) {
+            if (is_numeric($authorizedQuantity)) {
                 $qtyParts[] = (string) $authorizedQuantity;
             }
             if ($authorizedUnit !== '') {
@@ -244,7 +244,7 @@ class HealthRecord extends Model
                 'frequency' => $frequency,
                 'duration' => $duration,
                 'instructions' => $instructions,
-                'authorizedQuantity' => is_numeric($authorizedQuantity) ? (int) $authorizedQuantity : null,
+                'authorizedQuantity' => is_numeric($authorizedQuantity) ? $authorizedQuantity + 0 : null,
                 'authorizedUnit' => $authorizedUnit,
                 'line' => $line,
             ];

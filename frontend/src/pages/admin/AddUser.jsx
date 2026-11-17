@@ -22,7 +22,7 @@ import { errorStateVariant } from "../../utils/errorStateVariant";
 import { reviewPermissions, setPermission, withRequirements } from "../../utils/accessPolicy";
 import { TIERS, applyFacilityChange, availableDuties, defaultRoleKey, normalizeContactNumber, needsReplaceConfirm, roleDefaults, roleFor, rolesForTier } from "../../utils/staffRoles";
 
-const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", specialization: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
+const empty = { name: "", email: "", contact_number: "", role: "", staff_role: "", specialization: "", prc_license_number: "", permissions: [], barangay_health_center_id: null, rural_health_unit_id: null };
 const FACILITY_TYPES = [
   { tier: TIERS.bhc, label: "Barangay Health Center", icon: House, description: "Barangay-level staff who register patients, record consultations and refer to the RHU." },
   { tier: TIERS.rhu, label: "Rural Health Unit", icon: Hospital, description: "Municipal clinic staff who receive referrals, confirm conditions and manage doctor availability." },
@@ -98,7 +98,7 @@ export default function AddUser() {
         const u = unwrapData(response);
         // Accounts saved before roles existed hold no role; Role & Access asks for one before saving.
         const permissions = withRequirements(u.permissions ?? roleDefaults(roles, u.staff_role));
-        setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", specialization: u.specialization || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
+        setForm({ ...empty, name: u.name, email: u.email, contact_number: u.contact_number || "", role: u.role, staff_role: u.staff_role || "", specialization: u.specialization || "", prc_license_number: u.prc_license_number || "", permissions, barangay_health_center_id: u.barangay_health_center_id, rural_health_unit_id: u.rural_health_unit_id });
         setOriginalTier(u.role);
       } else {
         setForm(empty);
@@ -161,6 +161,10 @@ export default function AddUser() {
     for (const key of Object.keys(touched)) if (found[key]) liveErrors[key] = found[key];
     if (touched.email && !found.email && takenEmails[form.email.toLowerCase()]) liveErrors.email = EMAIL_TAKEN;
   }
+  if (current === STEPS.access) {
+    const found = validateAccountStep(STEPS.access, form, { hasFacility: Boolean(home), confirmed });
+    for (const key of Object.keys(touched)) if (found[key]) liveErrors[key] = found[key];
+  }
   const fieldError = key => errors[key] ?? liveErrors[key];
   // The icon on a Personal Details field; the email is only valid once the server has said it is free.
   const stateOf = key => fieldState({
@@ -173,7 +177,20 @@ export default function AddUser() {
     setErrors(e => ({ ...e, [key]: undefined }));
   }
 
-  function goTo(index) { setStep(index); setErrors({}); }
+  function goTo(index) {
+    const accessIndex = keys.indexOf(STEPS.access);
+    if (accessIndex >= 0 && index > accessIndex) {
+      const found = validateAccountStep(STEPS.access, form, { hasFacility: Boolean(home), confirmed });
+      if (Object.keys(found).length) {
+        setStep(accessIndex);
+        setErrors(found);
+        setTouched(t => ({ ...t, ...Object.fromEntries(Object.keys(found).map(key => [key, true])) }));
+        return;
+      }
+    }
+    setStep(index);
+    setErrors({});
+  }
 
   // Changing the facility type invalidates the role, its duties and the steps built on them.
   function commitFacility(tier, facility) {
@@ -199,10 +216,11 @@ export default function AddUser() {
         ...f,
         staff_role: key,
         specialization: key === "doctor" ? f.specialization : "",
+        prc_license_number: key === "doctor" ? f.prc_license_number : "",
         permissions: roleDefaults(rolesData, key),
       }));
       setConfirmed(false);
-      setErrors(e => ({ ...e, staff_role: undefined, permissions: undefined, specialization: undefined }));
+      setErrors(e => ({ ...e, staff_role: undefined, permissions: undefined, specialization: undefined, prc_license_number: undefined }));
     };
     if (needsReplaceConfirm(rolesData, form.staff_role, form.permissions)) {
       setPending({ title: "Replace access?", description: `Replace current access with ${roleFor(rolesData, key).label} defaults?`, confirmText: "Replace", apply });
@@ -236,6 +254,7 @@ export default function AddUser() {
       if (taken) found.email = EMAIL_TAKEN;
     }
     setErrors(found);
+    setTouched(t => ({ ...t, ...Object.fromEntries(Object.keys(found).map(key => [key, true])) }));
     if (Object.keys(found).length) return;
     if (!last) { setReached(r => Math.max(r, step + 1)); goTo(step + 1); return; }
     const invalid = firstInvalid();
@@ -250,7 +269,7 @@ export default function AddUser() {
       staff_role: admin ? null : form.staff_role, permissions: admin ? [] : form.permissions, permissions_confirmed: true,
       barangay_health_center_id: form.barangay_health_center_id, rural_health_unit_id: form.rural_health_unit_id,
       ...(form.staff_role === "doctor"
-        ? { specialization: String(form.specialization || "").trim() || null }
+        ? { specialization: String(form.specialization || "").trim() || null, prc_license_number: form.prc_license_number.trim() }
         : {}),
     };
     try {
@@ -288,7 +307,7 @@ export default function AddUser() {
     ["Name", form.name], ["Email", form.email], ["Contact number", normalizeContactNumber(form.contact_number)],
     ["Role", admin ? "Municipal Health Officer" : role?.label],
     ...(form.staff_role === "doctor"
-      ? [["Specialization", String(form.specialization || "").trim() || "Not recorded"]]
+      ? [["Specialization", String(form.specialization || "").trim() || "Not recorded"], ["PRC License No.", form.prc_license_number.trim()]]
       : []),
     ...(id ? [] : [["Sign-in", "Emailed invitation; setup stays pending until they set a password"]]),
   ];
@@ -324,6 +343,13 @@ export default function AddUser() {
             placeholder="e.g. Pediatrics"
             maxLength={255}
           />
+        </Field>
+      )}
+      {form.staff_role === "doctor" && (
+        <Field label="PRC License No. *" error={fieldError("prc_license_number")} state={stateOf("prc_license_number")}>
+          <Input type="text" required value={form.prc_license_number}
+            onChange={e => change("prc_license_number", e.target.value)} onBlur={() => blur("prc_license_number")}
+            placeholder="Enter doctor's PRC license number" maxLength={255} />
         </Field>
       )}
       {form.staff_role

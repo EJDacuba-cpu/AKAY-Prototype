@@ -23,6 +23,7 @@ export default function SuccessModal({
   onClose,
   secondaryButtonText,
   onSecondaryAction,
+  inlineActions = false,
 }) {
   const descriptionId = useId();
   if (!open) return null;
@@ -65,7 +66,7 @@ export default function SuccessModal({
   // buttons wrapping mid-row is the "competing actions" problem itself — so at
   // 3+ they stay stacked at every breakpoint, giving one unambiguous scan order
   // that ends on the filled primary. Two or fewer return to an inline row at sm.
-  const stackAlways = orderedActions.length > 2;
+  const stackAlways = orderedActions.length > 2 && !inlineActions;
   const widthClass = stackAlways ? "w-full" : "w-full sm:w-auto";
 
   const footer = hasCustomActions ? (
@@ -106,7 +107,7 @@ export default function SuccessModal({
       title={title}
       // md, not sm: at max-w-sm even two buttons of ordinary label length wrap
       // onto separate rows, which reads as a layout bug rather than hierarchy.
-      size="md"
+      size={inlineActions && orderedActions.length > 2 ? "xl" : "md"}
       onClose={onClose}
       ariaDescribedBy={description ? descriptionId : undefined}
       footer={footer}

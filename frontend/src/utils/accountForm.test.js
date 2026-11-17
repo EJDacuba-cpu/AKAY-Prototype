@@ -101,12 +101,14 @@ test("doctor profile edits include specialization changes", () => {
     staff_role: "doctor",
     backendRole: "rhu",
     specialization: "Pediatrics",
+    prc_license_number: "0012345",
   };
   const same = {
     name: "Dr. Reyes",
     contact_number: "09171234567",
     email: "reyes@example.test",
     specialization: " Pediatrics ",
+    prc_license_number: "0012345",
   };
   assert.equal(isDoctorAccount(doctor), true);
   assert.deepEqual(profileChanges(doctor, same), {});
@@ -124,6 +126,7 @@ test("doctor profile edits include specialization changes", () => {
     ...form,
     role: "rhu",
     staff_role: "doctor",
+    prc_license_number: "0012345",
     permissions: ["rhu.providers.manage"],
     specialization: "x".repeat(256),
   }, create), { specialization: "Enter at most 255 characters." });
@@ -141,4 +144,21 @@ test("a number that was set cannot be cleared, and a typed number must still be 
   assert.deepEqual(validateAccountProfile({ ...withNumber, contact_number: "" }, withNumber), { contact_number: "Enter mobile number." });
   const noNumber = { ...withNumber, contact_number: null };
   assert.deepEqual(validateAccountProfile({ ...withNumber, contact_number: "123" }, noNumber), { contact_number: "Enter mobile number." });
+});
+
+
+test("Doctor PRC number blocks Next and profile save while other roles stay unchanged", () => {
+  const doctor = { ...form, role: "rhu", staff_role: "doctor" };
+  for (const value of [undefined, "", "   ", 12345]) {
+    assert.equal(validateAccountStep(STEPS.access, { ...doctor, prc_license_number: value }, create).prc_license_number,
+      "PRC License No. is required for Doctor accounts.");
+  }
+  assert.equal(validateAccountStep(STEPS.access, { ...doctor, prc_license_number: " 0012345 " }, create).prc_license_number, undefined);
+  assert.equal(validateAccountStep(STEPS.access, { ...doctor, prc_license_number: "x".repeat(256) }, create).prc_license_number, "Enter at most 255 characters.");
+  for (const role of ["nurse", "intake_staff"]) {
+    assert.equal(validateAccountStep(STEPS.access, { ...doctor, staff_role: role }, create).prc_license_number, undefined);
+  }
+  assert.ok(validateAccountProfile(doctor, doctor).prc_license_number);
+  assert.deepEqual(profileChanges({ ...doctor, prc_license_number: "0012345" }, { ...doctor, prc_license_number: " 0012346 " }), { prc_license_number: "0012346" });
+  assert.equal(routeServerErrors({ prc_license_number: ["Required"] }).step, STEPS.access);
 });

@@ -1,3 +1,4 @@
+import { prescriptionEditorForDraft } from "../../utils/prescriptionFields";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -312,6 +313,7 @@ export default function RhuConsultationWorkspace() {
   const [diagnoses, setDiagnoses] = useState([]);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
   const [prescriptions, setPrescriptions] = useState([]);
+  const [prescriptionEditor, setPrescriptionEditor] = useState(null);
   const [serviceUsages, setServiceUsages] = useState([]);
   const [legacyServicePrescriptionReviewed, setLegacyServicePrescriptionReviewed] = useState(false);
   const [prescriptionText, setPrescriptionText] = useState("");
@@ -668,6 +670,7 @@ export default function RhuConsultationWorkspace() {
       consultationNotes: immunizationRemarks,
       diagnoses,
       prescriptions,
+      prescriptionEditor: prescriptionEditorForDraft(prescriptionEditor),
       serviceUsages,
       legacyServicePrescriptionReviewed,
       prescriptionText,
@@ -730,6 +733,7 @@ export default function RhuConsultationWorkspace() {
       maternalTtTdEvidence,
       diagnoses,
       prescriptions,
+      prescriptionEditor,
       serviceUsages,
       legacyServicePrescriptionReviewed,
       prescriptionText,
@@ -859,6 +863,7 @@ export default function RhuConsultationWorkspace() {
     const restoredDiagnoses = restoreRhuDiagnoses(payload);
     setDiagnoses(restoredDiagnoses);
     setPrescriptions(restorePrescriptions(payload));
+    setPrescriptionEditor(payload.prescriptionEditor?.draft ? payload.prescriptionEditor : null);
     setServiceUsages(normalizeServiceUsages(payload.serviceUsages));
     setLegacyServicePrescriptionReviewed(payload.legacyServicePrescriptionReviewed === true);
     setPrescriptionText(restorePrescriptionText(payload));
@@ -1138,7 +1143,7 @@ export default function RhuConsultationWorkspace() {
   }
 
   function structuredPrescriptionErrors() {
-    return prescriptionErrors(prescriptions, diagnoses);
+    return { ...prescriptionErrors(prescriptions, diagnoses), ...(prescriptionEditor?.draft ? { prescriptions: "Save or cancel the open prescription before completing the consultation." } : {}) };
   }
 
   function serviceUsageAndLegacyErrors() {
@@ -2172,6 +2177,8 @@ export default function RhuConsultationWorkspace() {
                     treatmentNotes={treatmentNotes}
                     onTreatmentNotesChange={setTreatmentNotes}
                     prescriptions={prescriptions}
+                    prescriptionEditor={prescriptionEditor}
+                    onPrescriptionEditorChange={setPrescriptionEditor}
                     onPrescriptionsChange={handlePrescriptionsChange}
                     vaccineEntries={immunizationEntries}
                     serviceUsages={serviceUsages}

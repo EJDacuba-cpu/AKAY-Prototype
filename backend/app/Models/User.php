@@ -23,6 +23,7 @@ use Laravel\Sanctum\HasApiTokens;
     'created_by',
     'staff_role',
     'specialization',
+    'prc_license_number',
     'contact_number',
     'permissions',
 ])]

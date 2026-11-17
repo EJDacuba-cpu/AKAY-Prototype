@@ -59,6 +59,7 @@ export default function AccountDetailsModal({ accountId, account, rolesData, onC
             {doctor && (
               <Row label="Specialization">{current.specialization || "Not recorded"}</Row>
             )}
+            {doctor && <Row label="PRC License No.">{current.prc_license_number || "Not recorded"}</Row>}
             <Row label="Account type">{accountTypeLabel(current) || "Not recorded"}</Row>
             <Row label="Home facility">{homeFacilityLabel(current)}</Row>
             <Row label="Status"><AccountStatusBadge status={current.status} /></Row>

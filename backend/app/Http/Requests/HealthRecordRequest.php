@@ -266,8 +266,8 @@ class HealthRecordRequest extends FormRequest
             $rules['monitoring_data.prescriptions.*.frequency'] = ['required', 'string', 'max:100'];
             $rules['monitoring_data.prescriptions.*.duration'] = ['required', 'string', 'max:100'];
             $rules['monitoring_data.prescriptions.*.instructions'] = ['nullable', 'string', 'max:2000'];
-            $rules['monitoring_data.prescriptions.*.authorizedQuantity'] = ['nullable', 'integer', 'min:1'];
-            $rules['monitoring_data.prescriptions.*.authorizedUnit'] = ['nullable', 'string', 'max:50'];
+            $rules['monitoring_data.prescriptions.*.authorizedQuantity'] = ['required', 'numeric', 'gt:0'];
+            $rules['monitoring_data.prescriptions.*.authorizedUnit'] = ['required', 'string', 'max:50'];
             $rules['monitoring_data.prescriptions.*.source'] = ['required', Rule::in(['itr', 'tb_form4b_ref'])];
             $rules['monitoring_data.prescriptions.*.tbCaseId'] = ['nullable', 'string', 'max:64'];
             $rules['monitoring_data.prescriptions.*.authorization'] = ['prohibited'];
@@ -1314,6 +1314,26 @@ class HealthRecordRequest extends FormRequest
             }
             $quantity = $prescription['authorizedQuantity'] ?? null;
             $quantityPresent = $quantity !== null && $quantity !== '';
+            $unit = trim((string) ($prescription['authorizedUnit'] ?? ''));
+            if (is_numeric($quantity) && preg_match('/^(tablets?|capsules?|bottles?|vials?|ampoules?|sachets?)$/i', $unit)
+                && floor((float) $quantity) != (float) $quantity) {
+                $validator->errors()->add("monitoring_data.prescriptions.$index.authorizedQuantity", 'Use a whole number for countable items.');
+            }
+            $duration = trim((string) ($prescription['duration'] ?? ''));
+            if (! preg_match('/^(\d+(?:\.\d+)?)\s+(.+)$/', $duration, $parts) || (float) $parts[1] <= 0 || $parts[2] === '__other__') {
+                $validator->errors()->add("monitoring_data.prescriptions.$index.duration", 'Enter a duration greater than zero and specify its unit.');
+            }
+            foreach (['route', 'frequency', 'authorizedUnit'] as $field) {
+                if (trim((string) ($prescription[$field] ?? '')) === '__other__') {
+                    $validator->errors()->add("monitoring_data.prescriptions.$index.$field", 'Specify the custom value.');
+                }
+            }
+            foreach (['strength', 'dose'] as $field) {
+                if (! preg_match('/\d.*[\p{L}%]/u', (string) ($prescription[$field] ?? ''))) {
+                    $validator->errors()->add("monitoring_data.prescriptions.$index.$field", "Enter the $field with an amount and unit.");
+                }
+            }
+
             if ($quantityPresent && trim((string) ($prescription['authorizedUnit'] ?? '')) === '') {
                 $validator->errors()->add(
                     "monitoring_data.prescriptions.$index.authorizedUnit",

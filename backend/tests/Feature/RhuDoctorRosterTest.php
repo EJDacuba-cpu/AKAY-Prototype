@@ -405,6 +405,7 @@ class RhuDoctorRosterTest extends TestCase
         Sanctum::actingAs($this->admin, ['*']);
         $this->patchJson("/api/users/{$userId}", [
             'staff_role' => 'doctor',
+            'prc_license_number' => '0012345',
             'permissions' => StaffRoles::defaults('doctor'),
             'permissions_confirmed' => true,
         ])->assertOk();
@@ -483,6 +484,7 @@ class RhuDoctorRosterTest extends TestCase
 
         $this->patchJson("/api/users/{$nurseId}", [
             'staff_role' => 'doctor',
+            'prc_license_number' => '0012345',
             'permissions' => StaffRoles::defaults('doctor'),
             'permissions_confirmed' => true,
         ])->assertOk();
@@ -505,7 +507,7 @@ class RhuDoctorRosterTest extends TestCase
             'permissions' => StaffRoles::defaults('doctor'),
         ]);
 
-        $this->patchJson("/api/users/{$legacy->id}", ['contact_number' => '09170001122'])->assertOk();
+        $this->patchJson("/api/users/{$legacy->id}", ['contact_number' => '09170001122', 'prc_license_number' => '0012345'])->assertOk();
 
         $this->assertDatabaseHas('rhu_providers', [
             'user_id' => $legacy->id,
@@ -596,6 +598,7 @@ class RhuDoctorRosterTest extends TestCase
             'rural_health_unit_id' => $this->rhuA->id,
             'permissions' => StaffRoles::defaults('doctor'),
             'permissions_confirmed' => true,
+            ...(($overrides['staff_role'] ?? 'doctor') === 'doctor' ? ['prc_license_number' => '0012345'] : []),
             ...$overrides,
         ];
     }
