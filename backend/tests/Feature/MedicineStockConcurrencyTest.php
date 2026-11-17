@@ -73,8 +73,7 @@ class MedicineStockConcurrencyTest extends TestCase
 
     public function test_undispensable_medicine_rejects_and_creates_no_official_effects(): void
     {
-        // A shortage no longer blocks finalization (docs/consultation-workflow-revision.md);
-        // an undispensable item still rolls back every official effect.
+        // An ineligible item rolls back every official effect.
         $medicine = $this->medicine('Amoxicillin', 5, ['expiration_date' => now()->subDay()->toDateString()]);
 
         $this->postRecord($this->payload([
@@ -122,9 +121,9 @@ class MedicineStockConcurrencyTest extends TestCase
             ->assertJsonPath('idempotent_replay', true)
             ->assertJsonPath('result.health_record_id', $recordId);
 
-        // A new key uses current stock: the shortage posts and flags reconciliation.
-        $this->postRecord($payload, (string) Str::uuid())->assertCreated();
-        $this->assertTrue($medicine->fresh()->reconciliation_required);
+        // A new key uses current stock and cannot overdraw the remaining balance.
+        $this->postRecord($payload, (string) Str::uuid())->assertConflict()->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+        $this->assertFalse($medicine->fresh()->reconciliation_required);
 
         $this->postRecord([
             ...$payload,
@@ -137,10 +136,10 @@ class MedicineStockConcurrencyTest extends TestCase
             ->assertConflict()
             ->assertJsonPath('code', 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
 
-        $this->assertSame(0, $medicine->fresh()->quantity);
-        $this->assertDatabaseCount('health_records', 2);
-        $this->assertDatabaseCount('health_record_medicines', 2);
-        $this->assertDatabaseCount('medicine_inventory_transactions', 2);
+        $this->assertSame(1, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('health_records', 1);
+        $this->assertDatabaseCount('health_record_medicines', 1);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 1);
     }
 
     public function test_all_rows_are_validated_before_any_multi_item_deduction(): void

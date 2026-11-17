@@ -165,17 +165,19 @@ class MedicineExpiryGroupsTest extends TestCase
         $this->groupAction($id, $group, 'quarantine_disposal', 2)->assertOk();
     }
 
-    public function test_fefo_allocates_only_eligible_available_and_records_unallocated_shortage(): void
+    public function test_fefo_rejects_shortage_then_allocates_only_eligible_stock(): void
     {
         $id = $this->createMedicine(5, '2026-10-28');
         $early = $this->getJson("/api/medicines/$id")->json('data.expiry_groups.0.id');
         $this->postJson("/api/medicines/$id/restock", ['quantity' => 4, 'expiration_date' => '2027-01-01', 'reason' => 'Received'])->assertOk();
         $this->groupAction($id, $early, 'quarantine', 2)->assertOk();
-        $this->dispense($id, 9);
-        $this->getJson("/api/medicines/$id")->assertJsonPath('data.quantity', 2)->assertJsonPath('data.reconciliation_required', true)->assertJsonPath('data.stock_summary.quarantined', 2);
+        $this->rejectDispense($id, 9);
+        $this->assertSame(9, Medicine::findOrFail($id)->quantity);
+        $this->dispense($id, 7);
+        $this->getJson("/api/medicines/$id")->assertJsonPath('data.quantity', 2)->assertJsonPath('data.reconciliation_required', false)->assertJsonPath('data.stock_summary.quarantined', 2);
         $tx = DB::table('medicine_inventory_transactions')->where('transaction_type', 'dispense')->first();
-        $this->assertSame(-2, $tx->discrepancy);
-        $this->assertSame(-9, $tx->quantity_delta);
+        $this->assertSame(0, $tx->discrepancy);
+        $this->assertSame(-7, $tx->quantity_delta);
         $this->assertSame([-3, -4], DB::table('medicine_inventory_allocations')->where('transaction_id', $tx->id)->orderBy('id')->pluck('available_delta')->all());
         $this->assertNull(\App\Models\HealthRecordMedicine::latest('id')->first()->override_reason, 'Automatic shortage must not be mislabeled as a manual override.');
     }
@@ -183,7 +185,9 @@ class MedicineExpiryGroupsTest extends TestCase
     public function test_group_corrections_keep_reconciliation_until_complete_current_snapshot_verified(): void
     {
         $id = $this->createMedicine(5);
-        $this->dispense($id, 7);
+        // Preserve reconciliation flags from historical shortage transactions.
+        $this->dispense($id, 5);
+        Medicine::whereKey($id)->update(['reconciliation_required' => true]);
         $details = $this->getJson("/api/medicines/$id")->json('data');
         $group = $details['expiry_groups'][0]['id'];
         $this->patchJson("/api/medicines/$id", ['quantity' => 10, 'reason' => 'Aggregate unsafe'])->assertUnprocessable();
@@ -244,14 +248,14 @@ class MedicineExpiryGroupsTest extends TestCase
         $id = $this->createMedicine(3, '2026-11-01');
         $this->postJson("/api/medicines/$id/restock", ['quantity' => 4, 'expiration_date' => '2027-01-01', 'reason' => 'Received'])->assertOk();
         $groups = $this->getJson("/api/medicines/$id")->json('data.expiry_groups');
-        $this->dispense($id, 3, ['allocations' => [['expiry_group_id' => $groups[1]['id'], 'quantity' => 2]], 'override_reason' => 'Actual package selected']);
+        $this->dispense($id, 2, ['allocations' => [['expiry_group_id' => $groups[1]['id'], 'quantity' => 2]], 'override_reason' => 'Actual package selected']);
         $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[0]['id'], 'available_quantity' => 3]);
         $this->assertDatabaseHas('medicine_expiry_groups', ['id' => $groups[1]['id'], 'available_quantity' => 2]);
-        $this->dispense($id, 2, ['allocations' => [], 'override_reason' => 'Actual given, no verified group']);
+        $this->rejectDispense($id, 2, ['allocations' => [], 'override_reason' => 'Actual given, no verified group'], 422);
         $this->assertSame(5, Medicine::findOrFail($id)->quantity);
         $history = HealthRecordMedicine::latest('id')->first()->toArray();
-        $this->assertSame([], $history['allocations']);
-        $this->assertSame(2, $history['unallocated_shortage']);
+        $this->assertCount(1, $history['allocations']);
+        $this->assertSame(0, $history['unallocated_shortage']);
     }
 
     public function test_expired_and_unassigned_balances_are_not_consumed_when_no_group_is_eligible(): void
@@ -259,9 +263,9 @@ class MedicineExpiryGroupsTest extends TestCase
         $id = $this->createMedicine(3, '2026-10-28');
         Medicine::whereKey($id)->update(['quantity' => 8]); // Explicit preexisting residual scenario.
         $this->travelTo(now()->setDate(2026, 10, 29));
-        $this->dispense($id, 4);
+        $this->rejectDispense($id, 4);
         $this->getJson("/api/medicines/$id")->assertJsonPath('data.stock_summary.recorded', 8)->assertJsonPath('data.stock_summary.expired', 3)->assertJsonPath('data.stock_summary.unassigned', 5)->assertJsonPath('data.stock_summary.available', 0);
-        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $id, 'transaction_type' => 'dispense', 'discrepancy' => -4]);
+        $this->assertDatabaseMissing('medicine_inventory_transactions', ['medicine_id' => $id, 'transaction_type' => 'dispense']);
     }
 
     public function test_group_action_permissions_facility_ownership_and_idempotency(): void
@@ -345,6 +349,87 @@ class MedicineExpiryGroupsTest extends TestCase
         $group = $this->getJson("/api/medicines/$id")->json('data.expiry_groups.0.id');
         $this->postJson("/api/medicines/$id/adjust", ['action' => 'correction', 'expiry_group_id' => $group, 'quantity' => 1, 'direction' => 'in', 'reason' => 'Ambiguous count'])->assertUnprocessable();
         $this->assertSame(2, Medicine::findOrFail($id)->quantity);
+    }
+
+    private function rejectDispense(int $id, int $quantity, array $extra = [], int $status = 409): void
+    {
+        $transactions = DB::table('medicine_inventory_transactions')->count();
+        $history = HealthRecordMedicine::count();
+        try {
+            $this->dispense($id, $quantity, $extra);
+            $this->fail('Invalid dispensing succeeded.');
+        } catch (HttpResponseException $exception) {
+            $this->assertSame($status, $exception->getResponse()->getStatusCode());
+        }
+        $this->assertDatabaseCount('medicine_inventory_transactions', $transactions);
+        $this->assertDatabaseCount('health_record_medicines', $history);
+    }
+
+    public function test_api_rejects_invalid_quantities_without_mutating_stock_and_exact_stock_succeeds(): void
+    {
+        $id = $this->createMedicine(10);
+        Medicine::whereKey($id)->update(['unit' => 'tablets']);
+        $patient = Patient::create(['first_name' => 'Stock', 'last_name' => 'Patient', 'sex' => 'Male', 'barangay_health_center_id' => $this->staff->barangay_health_center_id]);
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'barangay_health_center_id' => $this->staff->barangay_health_center_id, 'created_by' => $this->staff->id, 'category' => 'General']);
+        foreach ([0, -1, 1.5, 11, 15] as $quantity) {
+            $response = $this->postJson("/api/health-records/$record->id/dispensed-medicines", ['dispensed_medicines' => [['medicine_id' => $id, 'quantity' => $quantity]]]);
+            $response->assertStatus($quantity > 10 ? 409 : 422);
+            if ($quantity > 10) $response->assertJsonPath('message', 'Insufficient stock. Only 10 tablets are available. Please enter a quantity within the available stock.');
+            $this->assertSame(10, Medicine::findOrFail($id)->quantity);
+            $this->assertDatabaseCount('health_record_medicines', 0);
+            $this->assertDatabaseCount('medicine_inventory_transactions', 1);
+        }
+        $this->postJson("/api/health-records/$record->id/dispensed-medicines", ['dispensed_medicines' => [['medicine_id' => $id, 'quantity' => 10, 'unit' => 'boxes']]])->assertOk();
+        $this->assertSame(0, Medicine::findOrFail($id)->quantity);
+        $this->assertSame('Unavailable', Medicine::findOrFail($id)->availability_status);
+        $this->assertDatabaseHas('health_record_medicines', ['medicine_id' => $id, 'quantity' => 10, 'unit' => 'tablets']);
+        $this->rejectDispense($id, 1);
+    }
+
+    public function test_standard_options_save_for_both_facilities_and_legacy_metadata_is_preserved(): void
+    {
+        $bhc = $this->staff;
+        $rhu = User::create(['name' => 'RHU Catalog', 'email' => 'catalog@example.test', 'password' => 'password', 'role' => User::ROLE_RHU, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => RuralHealthUnit::first()->id, 'permissions' => ['inventory.view', 'inventory.manage']]);
+        $categories = ['General Medicines', 'TB Medicines', 'Vaccines', 'Vitamins & Supplements', 'Family Planning', 'Maternal Care Supplies', 'Child Care'];
+        $units = ['tablets', 'capsules', 'vials', 'bottles', 'pcs', 'sachets', 'ampoules', 'tube'];
+        $types = ['medicine', 'vaccine', 'health_supply'];
+        foreach ([$bhc, $rhu] as $user) {
+            $this->actingAs($user, 'sanctum');
+            foreach ($units as $index => $unit) {
+                $data = ['name' => 'Catalog '.$index, 'quantity' => 2, 'unit' => $unit, 'category' => $categories[$index % 7], 'item_type' => $types[$index % 3], 'expiration_date' => '2027-01-01'];
+                $id = $this->postJson('/api/medicines', $data)->assertCreated()->json('data.id');
+                foreach (['unit', 'category', 'item_type'] as $field) $this->getJson("/api/medicines/$id")->assertJsonPath('data.'.$field, $data[$field]);
+                $this->patchJson("/api/medicines/$id", ['item_type' => 'vaccine'])->assertOk()->assertJsonPath('data.item_type', 'vaccine');
+                $this->patchJson("/api/medicines/$id", ['unit' => $unit === 'pcs' ? 'tablets' : 'pcs'])->assertUnprocessable();
+                Medicine::whereKey($id)->update(['category' => 'Basic Medicines', 'unit' => 'boxes']);
+                $this->patchJson("/api/medicines/$id", ['name' => 'Legacy '.$index, 'category' => 'Basic Medicines', 'unit' => 'boxes'])->assertOk()->assertJsonPath('data.category', 'Basic Medicines')->assertJsonPath('data.unit', 'boxes');
+            }
+        }
+    }
+
+    public function test_rhu_multi_item_shortage_rolls_back_and_preserves_pending_prescription(): void
+    {
+        $rhuId = RuralHealthUnit::first()->id;
+        $rhu = User::create(['name' => 'RHU Dispenser', 'email' => 'rhu-dispense@example.test', 'password' => 'password', 'role' => User::ROLE_RHU, 'status' => User::STATUS_ACTIVE, 'rural_health_unit_id' => $rhuId, 'permissions' => ['inventory.view', 'inventory.manage', 'items.dispense']]);
+        $this->actingAs($rhu, 'sanctum');
+        $first = $this->createMedicine(10);
+        $second = $this->createMedicine(2);
+        $patient = Patient::create(['first_name' => 'RHU', 'last_name' => 'Patient', 'sex' => 'Male', 'barangay_health_center_id' => $this->staff->barangay_health_center_id]);
+        $monitoring = ['consultationWorkflow' => 'rhu_itr_v1', 'prescriptionText' => 'Doctor-entered medicine, 3 tablets'];
+        $record = HealthRecord::create(['patient_id' => $patient->id, 'rural_health_unit_id' => $rhuId, 'created_by' => $rhu->id, 'category' => 'General', 'monitoring_data' => $monitoring]);
+        $items = [['medicine_id' => $first, 'quantity' => 7], ['medicine_id' => $second, 'quantity' => 3]];
+        $this->postJson("/api/health-records/$record->id/dispensed-medicines", ['dispensed_medicines' => $items])->assertConflict()->assertJsonPath('code', 'INSUFFICIENT_STOCK');
+        $this->assertSame(10, Medicine::findOrFail($first)->quantity);
+        $this->assertSame(2, Medicine::findOrFail($second)->quantity);
+        $this->assertDatabaseCount('health_record_medicines', 0);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 2);
+        $this->assertSame($monitoring, $record->fresh()->monitoring_data);
+        $items[1]['quantity'] = 2;
+        $this->postJson("/api/health-records/$record->id/dispensed-medicines", ['dispensed_medicines' => $items])->assertOk();
+        $this->assertSame(3, Medicine::findOrFail($first)->quantity);
+        $this->assertSame('Low Stock', Medicine::findOrFail($first)->availability_status);
+        $this->assertSame(0, Medicine::findOrFail($second)->quantity);
+        $this->assertSame($monitoring, $record->fresh()->monitoring_data);
     }
 
     private function groupAction(int $id, int $group, string $action, int $quantity)

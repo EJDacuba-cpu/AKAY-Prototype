@@ -1,6 +1,6 @@
 import useFacilityCalendarDate from "../../hooks/useFacilityCalendarDate";
 import MedicineAllocationFields from "../../components/features/medicine/MedicineAllocationFields";
-import { allocationIntent } from "../../utils/medicineExpiryGroups";
+import { allocationIntent, validateDispenseQuantity, validateDispenseItems } from "../../utils/medicineExpiryGroups";
 import { compactReviewSections, patientReviewRow, programReviewRows } from "../../utils/consultationReview";
 import { Button } from "../../components/ui/button";
 import ReferralFacilityField from "../../components/features/health-records/ReferralFacilityField";
@@ -2598,6 +2598,13 @@ export default function ConsultationWorkspace() {
     // Review is asked again - revealErrorStep goes back to step 3.
     Object.assign(errors, getNextStepErrors());
 
+    const stockItems = [
+      ...dispensedMedicines.filter(item => item.confirmedGiven),
+      ...(isImmunization ? immunizationVaccineEntries.filter(entry => entry.confirmedGiven).map(entry => ({ ...entry, quantity: entry.inventoryQuantity })) : []),
+    ];
+    const stockError = validateDispenseItems(stockItems, bhcMedicineInventory);
+    if (stockError) errors.dispensedMedicines = stockError;
+
     if (hasPendingDispensedMedicineDraft) {
       errors.dispensedMedicines =
         'Click "Confirm Dispensed/Given" before saving so this item is included in the visit.';
@@ -5030,10 +5037,14 @@ export default function ConsultationWorkspace() {
                         value={entry.inventoryQuantity || ""}
                         onChange={event => updateVaccineInventory(index, "inventoryQuantity", event.target.value)}
                       />
+                      {entry.medicineId && validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity) && (
+                        <p role="alert" className="text-xs text-alert-700">{validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity)}</p>
+                      )}
                       <label className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
                           checked={entry.confirmedGiven === true}
+                          disabled={!entry.confirmedGiven && Boolean(validateDispenseQuantity(bhcMedicineInventory.find(item => String(item.id) === String(entry.medicineId)), entry.inventoryQuantity))}
                           onChange={event => updateVaccineInventory(index, "confirmedGiven", event.target.checked)}
                         />
                         Confirmed Administered

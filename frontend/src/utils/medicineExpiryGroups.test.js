@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expiryGroups, eligibleGroups, previewFefo, allocationIntent, validateReceiptExpiry, validateManualAllocation, batchIdLabel, matchingRestockBatches, groupLabel } from './medicineExpiryGroups.js';
+import { validateDispenseQuantity, expiryGroups, eligibleGroups, previewFefo, allocationIntent, validateReceiptExpiry, validateManualAllocation, batchIdLabel, matchingRestockBatches, groupLabel } from './medicineExpiryGroups.js';
 
 const medicine = { expiry_groups: [
   { id: 1, expiration_date: '2026-10-27', available_quantity: 50 },
@@ -107,7 +107,7 @@ test('manual allocation validates actual total, stale quantities and mandatory r
   assert.ok(validateManualAllocation(medicine, 2, [{ expiry_group_id: 2, quantity: 3 }], 'Selected group', now));
   assert.ok(validateManualAllocation(medicine, 9, [{ expiry_group_id: 2, quantity: 4 }], 'Selected group', now));
   assert.ok(validateManualAllocation(medicine, 9, [], '', now));
-  assert.equal(validateManualAllocation(medicine, 9, [], 'Actual unrecorded supply', now), '');
+  assert.ok(validateManualAllocation(medicine, 9, [], 'Actual unrecorded supply', now));
 });
 test('matching FEFO allocations do not require a reason', () => {
   const allocations = previewFefo(medicine, 9, now).allocations;
@@ -115,8 +115,8 @@ test('matching FEFO allocations do not require a reason', () => {
   assert.equal(validateManualAllocation(medicine, 9, [...allocations].reverse(), '', now), '');
 });
 test('allocations that differ from FEFO still require a reason', () => {
-  assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 1 }], '', now), 'Enter a reason for this stock choice.');
-  assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 1 }], 'Selected later expiry', now), '');
+  assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 3 }], '', now), 'Enter a reason for this stock choice.');
+  assert.equal(validateManualAllocation(medicine, 3, [{ expiry_group_id: 3, quantity: 3 }], 'Selected later expiry', now), '');
 });
 
 test('batch labels and verified lot matches never invent silent merges', () => {
@@ -130,4 +130,12 @@ test('batch labels and verified lot matches never invent silent merges', () => {
   ]};
   assert.deepEqual(matchingRestockBatches(item, { manufacturerLotNumber: 'LOT-A', expiryDate: '2027-01-01' }).map(g => g.id), [1, 2]);
   assert.deepEqual(matchingRestockBatches(item, { manufacturerLotNumber: '', expiryDate: '2027-01-01' }), []);
+});
+
+test('dispense rejects invalid quantities and counts only eligible batch stock', () => {
+  const item = { ...medicine, unit: 'tablets' };
+  for (const quantity of [0, -1, 1.5, '', 'invalid', Infinity]) assert.ok(validateDispenseQuantity(item, quantity, now));
+  for (const quantity of [5, 9]) assert.equal(validateDispenseQuantity(item, quantity, now), '');
+  assert.equal(validateDispenseQuantity(item, 10, now), 'Insufficient stock. Only 9 tablets are available. Please enter a quantity within the available stock.');
+  assert.ok(validateDispenseQuantity({ unit: 'vials', expiry_groups: [] }, 1, now));
 });

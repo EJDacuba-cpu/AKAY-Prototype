@@ -31,6 +31,7 @@ export { LIST_FILTER_DEFAULTS as MEDICINE_LIST_FILTER_DEFAULTS, FIELDS as MEDICI
 
 export default function MedicineInventoryFilters({
   applied,
+  categories = [],
   activeCount,
   activeFilters = [],
   onApply,
@@ -39,7 +40,7 @@ export default function MedicineInventoryFilters({
 }) {
   return (
     <ListFilterPopover
-      fields={FIELDS}
+      fields={FIELDS.map(field => field.key === "category" ? { ...field, options: [...new Set([...CATEGORY_OPTIONS, ...categories.filter(Boolean)])] } : field)}
       applied={applied}
       activeCount={activeCount}
       activeFilters={activeFilters}

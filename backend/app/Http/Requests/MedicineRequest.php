@@ -50,7 +50,7 @@ class MedicineRequest extends FormRequest
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'unit' => ['nullable', 'string', 'max:50'],
             'availability_status' => ['prohibited'],
-            'item_type' => $isCreate ? ['sometimes', 'in:medicine,health_supply'] : ['prohibited'],
+            'item_type' => ['sometimes', 'in:medicine,vaccine,health_supply'],
             ...($isCreate ? \App\Services\MedicineExpiryStockService::expiryRules($this->input('item_type', 'medicine'), $this->boolean('expiry_not_applicable')) : ['expiration_date' => ['prohibited'], 'expiry_not_applicable' => ['prohibited']]),
             'manufacturer_lot_number' => $isCreate ? ['nullable', 'string', 'max:120'] : ['prohibited'],
             'rural_health_unit_id' => ['prohibited'],

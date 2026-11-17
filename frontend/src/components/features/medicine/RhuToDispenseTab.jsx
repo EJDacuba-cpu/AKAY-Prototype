@@ -1,3 +1,4 @@
+import { validateDispenseItems } from "../../../utils/medicineExpiryGroups";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -47,6 +48,7 @@ export default function RhuToDispenseTab() {
   const [usageReview, setUsageReview] = useState(null);
   const [dispense, setDispense] = useState(null);
   const [draft, setDraft] = useState([]);
+  const [pendingDraft, setPendingDraft] = useState(false);
   const [usageDraft, setUsageDraft] = useState([]);
   const [saving, setSaving] = useState(false);
   const listKey = queryKeys.toDispense("rhu");
@@ -91,12 +93,14 @@ export default function RhuToDispenseTab() {
   const facility = formatFacilityName(user, "Rural Health Unit");
 
   async function confirmGiven() {
-    if (!dispense || saving) return;
+    if (!dispense || saving || pendingDraft) return;
     const confirmed = (Array.isArray(draft) ? draft : []).filter((item) => item.confirmedGiven === true);
     if (confirmed.length === 0) {
       toast.error("Confirm at least one item given.");
       return;
     }
+    const stockError = validateDispenseItems(confirmed, catalog);
+    if (stockError) { toast.error(stockError); return; }
     try {
       setSaving(true);
       await dispenseHealthRecordMedicines(dispense.healthRecordId || dispense.id, confirmed);
@@ -122,6 +126,8 @@ export default function RhuToDispenseTab() {
       toast.error("Select exactly one inventory item to reconcile this usage.");
       return;
     }
+    const stockError = validateDispenseItems(confirmed, catalog);
+    if (stockError) { toast.error(stockError); return; }
     const item = confirmed[0];
     try {
       setSaving(true);
@@ -304,7 +310,7 @@ export default function RhuToDispenseTab() {
               <ModalButton disabled={saving} onClick={() => setDispense(null)}>
                 Cancel
               </ModalButton>
-              <ModalButton variant="primary" disabled={saving} onClick={confirmGiven}>
+              <ModalButton variant="primary" disabled={saving || pendingDraft || !draft.length || Boolean(validateDispenseItems(draft, catalog))} onClick={confirmGiven}>
                 Confirm given
               </ModalButton>
             </ModalFooter>
@@ -314,6 +320,7 @@ export default function RhuToDispenseTab() {
             inventory={catalog}
             value={draft}
             onChange={setDraft}
+            onPendingDraftChange={setPendingDraft}
             disabled={saving}
             loading={catalogQuery.isLoading}
             error={catalogQuery.error?.message || ""}

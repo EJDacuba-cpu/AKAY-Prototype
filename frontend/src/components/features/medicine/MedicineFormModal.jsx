@@ -10,6 +10,7 @@ import { Button } from "../../ui/button";
 import {
   computeMedicineStatus,
   MEDICINE_CATEGORIES,
+  MEDICINE_ITEM_TYPES,
   MEDICINE_UNITS,
 } from "../../../services/medicineService";
 import { createIdempotencyKey } from "../../../utils/idempotency";
@@ -22,7 +23,7 @@ import { createSubmitGate } from "../../../utils/medicineSubmitGate";
 
 const DEFAULT_FORM = {
   name: "",
-  category: "Basic Medicines",
+  category: "General Medicines",
   quantity: "",
   unit: "pcs",
   lowStockThreshold: "10",
@@ -67,7 +68,7 @@ export default function MedicineFormModal({
     if (item) {
       setForm({
         name: item.name || "",
-        category: item.category || "Basic Medicines",
+        category: item.category ?? "",
         quantity: String(item.quantity ?? ""),
         unit: item.unit || "pcs",
         lowStockThreshold: String(item.lowStockThreshold ?? 10),
@@ -113,6 +114,7 @@ export default function MedicineFormModal({
     const payload = {
       name: form.name.trim(),
       category: form.category,
+      itemType: form.itemType,
       unit: form.unit,
       lowStockThreshold: parseInt(form.lowStockThreshold, 10) || 0,
       notes: form.notes.trim(),
@@ -212,19 +214,22 @@ export default function MedicineFormModal({
                 className={inputClass}
                 disabled={submitting}
               >
+                {mode === "edit" && !MEDICINE_CATEGORIES.includes(form.category) && (
+                  <option value={form.category} disabled>{form.category} (legacy)</option>
+                )}
                 {MEDICINE_CATEGORIES.map((category) => (
                   <option key={category}>{category}</option>
                 ))}
               </select>
             </Field>
 
-            {mode === "add" && <>
-              <Field label="Item Type">
+            <Field label="Item Type">
                 <select aria-label="Item Type" value={form.itemType} className={inputClass} disabled={submitting}
                   onChange={e => setForm(current => ({ ...current, itemType: e.target.value, expiryNotApplicable: false }))}>
-                  <option value="medicine">Medicine</option><option value="health_supply">Health supply</option>
+                  {MEDICINE_ITEM_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </Field>
+            {mode === "add" && <>
               <Field label="Manufacturer Lot Number" className="md:col-span-2">
                 <Input
                   value={form.manufacturerLotNumber}
@@ -304,6 +309,9 @@ export default function MedicineFormModal({
                 className={inputClass}
                 disabled={submitting}
               >
+                {mode === "edit" && !MEDICINE_UNITS.includes(form.unit) && (
+                  <option value={form.unit} disabled>{form.unit} (legacy)</option>
+                )}
                 {MEDICINE_UNITS.map((unit) => (
                   <option key={unit}>{unit}</option>
                 ))}

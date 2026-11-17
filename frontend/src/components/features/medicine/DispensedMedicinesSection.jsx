@@ -1,6 +1,6 @@
 import MedicineAllocationFields from "./MedicineAllocationFields";
 import { LedgerStamp } from "./MedicineInventoryTable";
-import { allocationIntent, expiryGroups, groupLabel, validateManualAllocation } from "../../../utils/medicineExpiryGroups";
+import { allocationIntent, expiryGroups, groupLabel, validateDispenseQuantity, validateManualAllocation } from "../../../utils/medicineExpiryGroups";
 import { AlertCircle, LoaderCircle, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { formatMedicineQuantity } from "../../../services/medicineService";
@@ -49,7 +49,7 @@ function itemNotice(item, inventoryItem) {
   const expiryStatus = getMedicineExpiryStatus(inventoryItem);
   const stockStatus = getMedicineStockStatus(inventoryItem);
   if (expiryStatus === EXPIRY_STATUS.EXPIRED) {
-    return { message: "No dated stock is available. Confirming this records a shortage.", critical: true };
+    return { message: "No eligible dated stock is available. Dispensing is blocked.", critical: true };
   }
   if (stockStatus === STOCK_STATUS.OUT_OF_STOCK) {
     return { message: "This item is now out of stock.", critical: true };
@@ -120,6 +120,10 @@ export default function DispensedMedicinesSection({
     [availableInventory],
   );
   const selectedMedicine = inventoryById.get(String(draft.medicineId));
+  const existingQuantity = toNumber(value.find(item => String(item.medicineId) === String(draft.medicineId))?.quantity);
+  const quantityError = selectedMedicine ? (validateDispenseQuantity(selectedMedicine, draft.quantity) || validateDispenseQuantity(selectedMedicine, Number(draft.quantity) + existingQuantity)) : "";
+  const liveAllocationError = selectedMedicine && Array.isArray(draft.allocations)
+    ? validateManualAllocation(selectedMedicine, draft.quantity, draft.allocations, draft.override_reason) : "";
   const selectedStockStatus = getMedicineStockStatus(selectedMedicine || {});
   const selectedExpiryStatus = selectedMedicine
     ? getMedicineExpiryStatus(selectedMedicine)
@@ -163,6 +167,10 @@ export default function DispensedMedicinesSection({
     }
     if (!Number.isInteger(quantity)) {
       setFieldError({ field: "quantity", message: "Enter a whole stock-unit quantity." });
+      return;
+    }
+    if (quantityError) {
+      setFieldError({ field: "quantity", message: quantityError });
       return;
     }
     if (Array.isArray(draft.allocations)) {
@@ -329,9 +337,9 @@ export default function DispensedMedicinesSection({
       {selectedMedicine && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
           <span>
-            Recorded stock:{" "}
+            Available stock:{" "}
             <strong className="font-semibold text-ink-800">
-              {formatMedicineQuantity(selectedMedicine)}
+              {`${selectedMedicine.stockSummary?.available ?? 0} ${selectedMedicine.unit}`}
             </strong>
           </span>
           <LedgerStamp label={selectedStockStatus} tone={stockStatusTone(selectedStockStatus)} appearance="plain" />
@@ -353,14 +361,15 @@ export default function DispensedMedicinesSection({
           <input
             type="number"
             min="1"
+            step="1"
             value={draft.quantity}
             onChange={(event) => updateDraft("quantity", event.target.value)}
             disabled={disabled}
-            aria-invalid={fieldError.field === "quantity" || undefined}
-            className={fieldClass(fieldError.field === "quantity")}
+            aria-invalid={Boolean(quantityError) || fieldError.field === "quantity" || undefined}
+            className={fieldClass(Boolean(quantityError) || fieldError.field === "quantity")}
           />
-          {fieldError.field === "quantity" && (
-            <p role="alert" className="mt-1 text-xs font-medium text-alert-700">{fieldError.message}</p>
+          {(quantityError || fieldError.field === "quantity") && (
+            <p role="alert" className="mt-1 text-xs font-medium text-alert-700">{quantityError || fieldError.message}</p>
           )}
         </div>
 
@@ -381,7 +390,7 @@ export default function DispensedMedicinesSection({
         <button
           type="button"
           onClick={addMedicine}
-          disabled={disabled}
+          disabled={disabled || !selectedMedicine || Boolean(quantityError || liveAllocationError)}
           className="relative z-10 inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-brand-600 px-4 text-xs font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Package size={14} />
@@ -395,7 +404,7 @@ export default function DispensedMedicinesSection({
           quantity={draft.quantity}
           value={draft}
           disabled={disabled}
-          error={allocationError ? fieldError.message : ""}
+          error={liveAllocationError || (allocationError ? fieldError.message : "")}
           onChange={(next) => {
             setDraft(next);
             setFieldError({ field: "", message: "" });

@@ -4,15 +4,15 @@ import { getMedicineExpiryStatus as getFacilityExpiryStatus } from "../utils/med
 import { expiryGroups } from "../utils/medicineExpiryGroups";
 
 export const MEDICINE_CATEGORIES = [
-  "Basic Medicines",
-  "Vaccines",
-  "Medical Supplies",
-  "Maternal Care Supplies",
-  "Child Health Supplies",
-  "Referral-related Resources",
+  "General Medicines", "TB Medicines", "Vaccines", "Vitamins & Supplements",
+  "Family Planning", "Maternal Care Supplies", "Child Care",
 ];
-
-export const MEDICINE_UNITS = ["pcs", "boxes", "bottles", "vials", "packs", "tablets", "capsules"];
+export const MEDICINE_ITEM_TYPES = [
+  { value: "medicine", label: "Medicine" },
+  { value: "vaccine", label: "Vaccine" },
+  { value: "health_supply", label: "Medical Supply" },
+];
+export const MEDICINE_UNITS = ["tablets", "capsules", "vials", "bottles", "pcs", "sachets", "ampoules", "tube"];
 
 const RHU_UPDATE_EVENT = "akay_rhu_medicines_updated";
 const BHC_UPDATE_EVENT = "akay_bhc_medicines_updated";
@@ -98,6 +98,7 @@ function toCreatePayload(item = {}) {
 
 function toMetadataPayload(item = {}) {
   return {
+    ...(item.itemType ? { item_type: item.itemType } : {}),
     name: item.name,
     category: item.category || null,
     description: item.description || item.notes || null,

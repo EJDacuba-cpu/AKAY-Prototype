@@ -110,7 +110,7 @@ export default function MedicineAllocationFields({
         </p>
       ) : preview.shortage > 0 ? (
         <p role="status" className="text-xs font-medium leading-relaxed text-alert-700">
-          Shortage: {preview.shortage} {medicine.unit} cannot come from recorded stock. Confirm only what was actually given. This will be recorded for later verification.
+          Insufficient stock: {preview.shortage} {medicine.unit} cannot be allocated. Enter a quantity within the available stock.
         </p>
       ) : null}
       {error && (

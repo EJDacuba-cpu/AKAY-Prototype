@@ -153,7 +153,7 @@ BEGIN
                 SELECT * INTO g FROM public.medicine_expiry_groups WHERE id = (entry->>'expiry_group_id')::bigint AND medicine_id = p_medicine_id;
                 IF NOT FOUND THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INVENTORY_GROUP_MISMATCH'; END IF;
                 take_quantity := (entry->>'quantity')::integer;
-                IF g.expiration_date < today THEN
+                IF NOT (COALESCE(g.expiration_date >= today, false) OR g.expiry_not_applicable) THEN
                     RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'MEDICINE_NOT_DISPENSABLE';
                 END IF;
                 IF take_quantity > g.available_quantity OR take_quantity > remaining THEN
@@ -170,10 +170,12 @@ BEGIN
                 remaining := remaining-take_quantity;
             END LOOP;
         END IF;
-        discrepancy_value := -remaining;
+        IF remaining > 0 THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'INSUFFICIENT_STOCK';
+        END IF;
+        discrepancy_value := 0;
         delta := -p_quantity;
         g := NULL;
-        IF remaining > 0 THEN p_reason := concat_ws(' ',NULLIF(btrim(p_reason),''),'Reconciliation Required: unallocated actual dispensing.'); END IF;
     ELSE
         IF p_action = 'deduct' THEN type_value := 'adjustment_out'; END IF;
         IF p_action IN ('damaged_disposal','expired_disposal','quarantine_disposal') THEN source_value := 'disposal'; END IF;
@@ -198,7 +200,7 @@ BEGIN
                 new_quarantined := new_quarantined+p_quantity;
                 delta := 0;
             ELSIF p_action = 'release' THEN
-                IF g.expiration_date < today THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'MEDICINE_NOT_DISPENSABLE'; END IF;
+                IF NOT (COALESCE(g.expiration_date >= today, false) OR g.expiry_not_applicable) THEN RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = 'MEDICINE_NOT_DISPENSABLE'; END IF;
                 new_available := new_available+p_quantity;
                 new_quarantined := new_quarantined-p_quantity;
                 delta := 0;

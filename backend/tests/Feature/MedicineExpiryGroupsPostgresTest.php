@@ -132,11 +132,11 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
             $this->assertSame(0, $quarantine['quantity_delta']);
             $operation('release', 1, ['expiry_group_id' => $group]);
             $operation('quarantine_disposal', 2, ['expiry_group_id' => $group]);
-            $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'dispense-test\',?::jsonb)', [json_encode([['medicine_id' => 1, 'quantity' => 20]])]);
+            $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'dispense-test\',?::jsonb)', [json_encode([['medicine_id' => 1, 'quantity' => 12]])]);
             $this->assertSame(8, (int) $db->table('medicines')->value('quantity')); // 7 unassigned + 1 quarantined.
             $ledger = $db->table('medicine_inventory_transactions')->where('transaction_type', 'dispense')->first();
-            $this->assertSame(-20, (int) $ledger->quantity_delta);
-            $this->assertSame(-8, (int) $ledger->discrepancy);
+            $this->assertSame(-12, (int) $ledger->quantity_delta);
+            $this->assertSame(0, (int) $ledger->discrepancy);
             $this->assertSame((int) $ledger->quantity_before + (int) $ledger->quantity_delta, (int) $ledger->quantity_after + (int) $ledger->discrepancy);
             foreach ([
                 "SELECT * FROM akay_inventory_restock(1,1,'bhc',1,1,'test','unsafe')",
@@ -181,9 +181,14 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
             $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'fefo-test\',?::jsonb)', [json_encode([['medicine_id' => 2, 'quantity' => 7]])]);
             $supplyGroups = $db->table('medicine_expiry_groups')->where('medicine_id', 2)->orderBy('id')->get();
             $this->assertSame([3, 0, 5], $supplyGroups->map(fn ($row) => (int) $row->available_quantity)->all());
-            $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'explicit-empty\',?::jsonb)', [json_encode([['medicine_id' => 2, 'quantity' => 4, 'allocations' => [], 'override_reason' => 'Actual unrecorded supply']])]);
+            try {
+                $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'explicit-empty\',?::jsonb)', [json_encode([['medicine_id' => 2, 'quantity' => 4, 'allocations' => [], 'override_reason' => 'Actual unrecorded supply']])]);
+                $this->fail('Empty allocations must not record a successful dispense.');
+            } catch (QueryException $exception) {
+                $this->assertStringContainsString('INSUFFICIENT_STOCK', $exception->getMessage());
+            }
             $this->assertSame(8, (int) $db->table('medicines')->where('id', 2)->value('quantity'));
-            $this->assertSame(-4, (int) $db->table('medicine_inventory_transactions')->where('operation_key', 'explicit-empty')->value('discrepancy'));
+            $this->assertSame(0, $db->table('medicine_inventory_transactions')->where('operation_key', 'explicit-empty')->count());
             try {
                 $db->select('SELECT * FROM akay_inventory_dispense_batch(1,\'bhc\',1,\'health_record\',1,\'overdraw-test\',?::jsonb)', [json_encode([['medicine_id' => 2, 'quantity' => 4, 'allocations' => [['expiry_group_id' => $supplyGroups[0]->id, 'quantity' => 4]], 'override_reason' => 'Overdraw test']])]);
                 $this->fail('Overdrawn manual allocation accepted.');
@@ -209,7 +214,10 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
                     } else {
                         $db->select('SELECT akay_inventory_group_operation(3,1,\'bhc\',1,\'restock\',10,\'Concurrent receipt\',?,?::jsonb)', [$argv[2],json_encode(['expiration_date'=>'2099-01-01'])]);
                     }
-                } catch (Throwable $error) { fwrite(STDERR, 'PostgreSQL worker failed.'); exit(1); }
+                } catch (Throwable $error) {
+                    if (str_contains($error->getMessage(), 'INSUFFICIENT_STOCK')) { fwrite(STDOUT, 'INSUFFICIENT_STOCK'); exit(2); }
+                    fwrite(STDERR, 'PostgreSQL worker failed.'); exit(1);
+                }
                 PHP;
             $workers = [];
             try {
@@ -226,7 +234,7 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
                     $worker->wait();
                     $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput());
                 }
-                $this->assertSame(1, $db->table('medicine_expiry_groups')->where('medicine_id', 3)->count());
+                $this->assertSame(2, $db->table('medicine_expiry_groups')->where('medicine_id', 3)->count());
                 $this->assertSame(20, (int) $db->table('medicines')->where('id', 3)->value('quantity'));
                 try {
                     $operation('restock', 10, ['expiration_date' => '2099-01-01'], 'parallel-a', 3);
@@ -243,36 +251,18 @@ class MedicineExpiryGroupsPostgresTest extends TestCase
                     $workers[] = $worker;
                 }
                 $db->commit();
+                $outcomes = [];
                 foreach (array_slice($workers, 2) as $worker) {
                     $worker->wait();
-                    $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput());
+                    $outcomes[] = $worker->getExitCode();
+                    if ($worker->getExitCode() === 2) $this->assertSame('INSUFFICIENT_STOCK', $worker->getOutput());
                 }
-                $this->assertSame(0, (int) $db->table('medicines')->where('id', 3)->value('quantity'));
-                $this->assertSame(0, (int) $db->table('medicine_expiry_groups')->where('medicine_id', 3)->value('available_quantity'));
-                $this->assertSame(-10, (int) $db->table('medicine_inventory_transactions')->where('medicine_id', 3)->sum('discrepancy'));
-
-                // Each pair has sufficient physical pools in either lock order.
-                // Dispensing may record shortage; quarantined stock is never substituted.
-                foreach (['quarantine', 'quarantine_disposal'] as $disposition) {
-                    $operation('restock', 20, ['expiration_date' => '2099-01-01'], null, 3);
-                    $pair = [];
-                    $db->beginTransaction();
-                    $db->select('SELECT id FROM medicines WHERE id = 3 FOR UPDATE');
-                    foreach (['dispense', $disposition] as $mode) {
-                        $worker = new Process([PHP_BINARY, '-r', $workerCode, $schema, $disposition.'-'.$mode, $mode], base_path(), null, null, 30);
-                        $worker->start();
-                        $pair[] = $worker;
-                        $workers[] = $worker;
-                    }
-                    $db->commit();
-                    foreach ($pair as $worker) {
-                        $worker->wait();
-                        $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput());
-                    }
-                    $physical = $db->table('medicine_expiry_groups')->where('medicine_id', 3)->first();
-                    $this->assertSame((int) $physical->available_quantity + (int) $physical->quarantined_quantity, (int) $db->table('medicines')->where('id', 3)->value('quantity'));
-                    $this->assertSame($disposition === 'quarantine' ? 5 : 0, (int) $physical->quarantined_quantity);
-                }
+                sort($outcomes);
+                $this->assertSame([0, 2], $outcomes, 'Exactly one concurrent dispense must succeed in full.');
+                $this->assertSame(5, (int) $db->table('medicines')->where('id', 3)->value('quantity'));
+                $this->assertSame(5, (int) $db->table('medicine_expiry_groups')->where('medicine_id', 3)->sum('available_quantity'));
+                $this->assertSame(0, (int) $db->table('medicine_inventory_transactions')->where('medicine_id', 3)->sum('discrepancy'));
+                $this->assertSame(1, $db->table('medicine_inventory_transactions')->where('medicine_id', 3)->where('transaction_type', 'dispense')->count());
             } finally {
                 if ($db->transactionLevel() > 0) {
                     $db->rollBack();

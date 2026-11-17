@@ -236,7 +236,7 @@ class MedicineExpiryStockService
             // sortBy preserves IDs; explicit IDs must be both owned and eligible.
             if ($manual) {
                 $group = $groups->get($allocation['expiry_group_id']);
-                if (! $group || $group->is_expired) {
+                if (! $group || ! $group->isEligibleToDispense()) {
                     $this->error('MEDICINE_NOT_DISPENSABLE', 422, 'Select an eligible group from this medicine.');
                 }
                 if ($allocation['quantity'] > $group->available_quantity) {
@@ -247,15 +247,15 @@ class MedicineExpiryStockService
             $remaining -= $amount;
             $changes[] = $this->movement($group, -$amount, 0);
         }
-        $before = (int) $medicine->quantity;
-        $after = $before - ($item['quantity'] - $remaining);
-        $this->updateMedicine($medicine, $user, $after, $medicine->reconciliation_required || $remaining > 0);
-        $reason = $manual ? 'Manual expiry override: '.$item['override_reason'] : null;
-        if ($remaining > 0) {
-            $reason = trim(($reason ?? '').'; Reconciliation Required: unallocated shortage '.$remaining, '; ');
+        if ($remaining !== 0) {
+            $this->error('INSUFFICIENT_STOCK', 409, 'Insufficient eligible stock for this dispensing quantity.');
         }
+        $before = (int) $medicine->quantity;
+        $after = $this->bounded($before - $item['quantity']);
+        $this->updateMedicine($medicine, $user, $after, $medicine->reconciliation_required);
+        $reason = $manual ? 'Manual expiry override: '.$item['override_reason'] : null;
 
-        return $this->post($medicine, $user, 'dispense', $before, $after, -$item['quantity'], -$remaining, $reason, $key, $changes, $recordId);
+        return $this->post($medicine, $user, 'dispense', $before, $after, -$item['quantity'], 0, $reason, $key, $changes, $recordId);
     }
 
     private function movement(MedicineExpiryGroup $group, int $a, int $q): array

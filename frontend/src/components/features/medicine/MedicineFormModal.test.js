@@ -113,15 +113,16 @@ for (const facility of ["Bhc", "Rhu"]) {
   });
 }
 
-test('edit cannot rewrite received expiry dates or item type', () => {
+test('edit restores item type but cannot rewrite received expiry dates', () => {
   const html = render();
-  assert.doesNotMatch(html, /Opening Stock Expiry|aria-label="Item Type"/);
+  assert.doesNotMatch(html, /Opening Stock Expiry/);
+  assert.match(html, /aria-label="Item Type"/);
   assert.match(html, /Expiry dates belong to received stock batches/);
 });
 
 test('manual empty allocation explicitly previews shortage and reason field', () => {
   const html = renderToStaticMarkup(createElement(MedicineAllocationFields, { medicine: item, quantity: 3, value: { allocations: [], override_reason: 'Unrecorded stock' } }));
-  assert.match(html, /Shortage: 3 tablets cannot come from recorded stock/);
+  assert.match(html, /Insufficient stock: 3 tablets cannot be allocated/);
   assert.match(html, /Reason for this stock choice/);
   assert.match(html, /Unrecorded stock/);
 });
@@ -136,7 +137,7 @@ test('inventory response with non-array expiry groups renders the dispensing fie
     assert.deepEqual(medicine.expiry_groups, []);
     const html = renderToStaticMarkup(createElement(MedicineAllocationFields, { medicine, quantity: 3 }));
     assert.match(html, /earliest expiry date first/);
-    assert.match(html, /Shortage: 3 tablets cannot come from recorded stock/);
+    assert.match(html, /Insufficient stock: 3 tablets cannot be allocated/);
   }
 });
 
@@ -182,5 +183,17 @@ for (const [operation, action] of [["restock", "restockMedicine"], ["deduct", "d
     assert.equal(request.method, "POST");
     assert.deepEqual(request.body, { quantity: 2, reason: "Inventory stock action", ...(operation === "restock" ? { expiration_date: "2099-12-31", expiry_not_applicable: false, manufacturer_lot_number: null } : { expiry_group_id: 3 }) });
     assert.equal(request.headers["Idempotency-Key"], "stock-action-key");
+  });
+}
+
+for (const role of ['rhu', 'bhc']) {
+  test(`${role} add uses exactly the standardized dropdown options in order`, () => {
+    const html = render({ role, mode: 'add', item: null });
+    const selects = [...html.matchAll(/<select\b[^>]*>(.*?)<\/select>/g)].map(match => [...match[1].matchAll(/<option\b[^>]*>(.*?)<\/option>/g)].map(option => option[1].replaceAll('&amp;', '&')));
+    assert.deepEqual(selects, [
+      ['General Medicines', 'TB Medicines', 'Vaccines', 'Vitamins & Supplements', 'Family Planning', 'Maternal Care Supplies', 'Child Care'],
+      ['Medicine', 'Vaccine', 'Medical Supply'],
+      ['tablets', 'capsules', 'vials', 'bottles', 'pcs', 'sachets', 'ampoules', 'tube'],
+    ]);
   });
 }
