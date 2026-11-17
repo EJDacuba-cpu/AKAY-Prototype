@@ -1,3 +1,4 @@
+import { registrationFieldChange } from "../../utils/patientRegistrationIdentity";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,7 +34,7 @@ import { getSpecializedRecordPrograms } from "../../utils/healthRecordPrograms";
 import { getCareTracking, isActiveCareTrackingEntry } from "../../utils/careTracking";
 import { getConditionalProgramTabs } from "../../utils/programApplicability";
 import { isInfantAt } from "../../utils/infantVisibility";
-import { calculateAge, normalizePhilippineContact } from "../../utils/patientUtils";
+import { calculateAge } from "../../utils/patientUtils";
 import { queryKeys } from "../../utils/queryKeys";
 import usePatientConditionGroups from "../../hooks/usePatientConditionGroups";
 import { getCurrentUser } from "../../utils/auth";
@@ -267,7 +268,7 @@ function LiveRHUPatientDetails() {
     setForm((current) => {
       const next = {
         ...current,
-        [name]: name === "contactNumber" ? normalizePhilippineContact(value) : value,
+        ...registrationFieldChange(current, name, value),
       };
       if (name === "birthDate") next.age = calculateAge(value);
       if (name === "philHealthStatus" && value !== "With PhilHealth") {

@@ -37,6 +37,14 @@ class PatientRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // Normalize only complete, recognizable Philippine mobile formats.
+        // Unknown legacy values stay intact and fail final validation for review.
+        foreach (['contact_number', 'guardian_contact_number'] as $field) {
+            $value = $this->input($field);
+            if (is_string($value) && preg_match('/^\\+?639[0-9]{9}$/D', $value)) {
+                $this->merge([$field => '0'.preg_replace('/^\\+?63/', '', $value)]);
+            }
+        }
         $aliases = [
             'civilStatus' => 'civil_status',
             'educationLevel' => 'education_level',
@@ -67,6 +75,14 @@ class PatientRequest extends FormRequest
         }
     }
 
+    public function messages(): array
+    {
+        return [
+            'contact_number.regex' => 'Contact number must contain exactly 11 digits.',
+            'guardian_contact_number.regex' => 'Other contact number must contain exactly 11 digits.',
+        ];
+    }
+
     public function rules(): array
     {
         $required = $this->isMethod('post') ? 'required' : 'sometimes';
@@ -95,9 +111,10 @@ class PatientRequest extends FormRequest
             'first_name' => [$required, 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name' => [$required, 'string', 'max:255'],
+            'suffix' => ['nullable', 'string', 'max:50', Rule::notIn(['__other__'])],
             'sex' => [$required, Rule::in(['Male', 'Female', 'Other'])],
             'birthdate' => ['nullable', 'date', 'before_or_equal:today'],
-            'contact_number' => ['nullable', 'string', 'max:50'],
+            'contact_number' => ['nullable', 'string', 'regex:/^[0-9]{11}$/D'],
             'street_address' => ['nullable', 'string', 'max:255'],
             'barangay' => ['nullable', 'string', 'max:255'],
             'municipality' => ['nullable', 'string', 'max:255'],
@@ -126,7 +143,7 @@ class PatientRequest extends FormRequest
             'father_birth_date' => ['nullable', 'date', 'before_or_equal:today'],
             'guardian_name' => ['nullable', 'string', 'max:255'],
             'guardian_relationship' => ['nullable', 'string', 'max:100'],
-            'guardian_contact_number' => ['nullable', 'string', 'max:50'],
+            'guardian_contact_number' => ['nullable', 'string', 'regex:/^[0-9]{11}$/D'],
             'family_serial_number' => ['nullable', 'string', 'max:100'],
             'birth_place' => ['nullable', 'string', 'max:255'],
             'birth_time' => ['nullable', 'date_format:H:i'],

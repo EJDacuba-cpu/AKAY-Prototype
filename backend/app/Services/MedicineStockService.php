@@ -39,7 +39,8 @@ class MedicineStockService
 
         foreach ($items as $item) {
             $medicineId = (int) ($item['medicine_id'] ?? 0);
-            $quantity = (int) ($item['quantity'] ?? 0);
+            $quantity = filter_var($item['quantity'] ?? null, FILTER_VALIDATE_INT);
+            abort_if($quantity === false, 422, 'Enter a whole stock-unit quantity.');
 
             abort_if($medicineId <= 0, 422, 'Please select a medicine.');
             abort_if($quantity <= 0, 422, 'Quantity must be greater than 0.');
@@ -223,6 +224,11 @@ class MedicineStockService
 
     public function dispense(Request $request, HealthRecord $record, array $requestedItems): void
     {
+        DB::transaction(fn () => $this->dispenseLocked($request, $record, $requestedItems));
+    }
+
+    private function dispenseLocked(Request $request, HealthRecord $record, array $requestedItems): void
+    {
         ActionPermissions::ensure($request->user(), 'items.dispense');
         if ($requestedItems === []) {
             return;
@@ -261,7 +267,7 @@ class MedicineStockService
                 'medicine_name_snapshot' => $medicine->name,
                 'category_snapshot' => $medicine->category,
                 'quantity' => $item['quantity'],
-                'unit' => $item['unit'] ?: $medicine->unit,
+                'unit' => $medicine->unit,
                 'remarks' => $item['remarks'],
                 'dispensed_by' => $user->id,
                 'barangay_health_center_id' => $context['type'] === 'bhc' ? $context['id'] : null,
@@ -346,7 +352,8 @@ class MedicineStockService
     ): array {
         $medicines = Medicine::query()
             ->whereIn('id', array_column($items, 'medicine_id'))
-            ->with('expiryGroups')
+            ->orderBy('id')
+            ->lockForUpdate()
             ->get()
             ->keyBy('id');
 
@@ -354,6 +361,7 @@ class MedicineStockService
             $medicine = $medicines->get($item['medicine_id']);
             $this->assertOwnedMedicine($medicine, $context, true);
             $this->assertDispensable($medicine);
+            $this->assertAvailableStock($medicine, $item);
         }
 
         $payload = array_map(function (array $item) use ($medicines): array {
@@ -414,6 +422,7 @@ class MedicineStockService
         foreach ($items as $item) {
             $medicine = $medicines->get($item['medicine_id']);
             $this->assertDispensable($medicine);
+            $this->assertAvailableStock($medicine, $item);
         }
 
         $results = [];
@@ -456,6 +465,39 @@ class MedicineStockService
         }
 
         abort_unless($owned, 403, 'This resource is outside your assigned facility.');
+    }
+
+    private function assertAvailableStock(Medicine $medicine, array $item): void
+    {
+        $groups = $medicine->expiryGroups()->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $medicine->setRelation('expiryGroups', $groups);
+        $eligible = $groups->filter(fn ($group) => $group->isEligibleToDispense());
+        $available = (int) $eligible->sum('available_quantity');
+        if (array_key_exists('allocations', $item)) {
+            $total = 0;
+            foreach ($item['allocations'] as $allocation) {
+                $group = $groups->get($allocation['expiry_group_id']);
+                if (! $group || ! $group->isEligibleToDispense()) {
+                    $this->inventoryError('MEDICINE_NOT_DISPENSABLE', 422, 'Select an eligible batch from this medicine.');
+                }
+                if ($allocation['quantity'] > $group->available_quantity) {
+                    $this->insufficientStock($medicine, (int) $group->available_quantity);
+                }
+                $total += $allocation['quantity'];
+            }
+            if ($total !== $item['quantity']) {
+                $this->inventoryError('INVALID_INVENTORY_OPERATION', 422, 'Batch quantities must equal the dispensing quantity.');
+            }
+        }
+        if ($item['quantity'] > $available) {
+            $this->insufficientStock($medicine, $available);
+        }
+    }
+
+    private function insufficientStock(Medicine $medicine, int $available): never
+    {
+        $this->inventoryError('INSUFFICIENT_STOCK', 409,
+            "Insufficient stock. Only {$available} {$medicine->unit} are available. Please enter a quantity within the available stock.");
     }
 
     private function assertDispensable(Medicine $medicine): void

@@ -580,6 +580,8 @@ export default function RhuDiagnosisCarePlanSection({
   onTreatmentNotesChange,
   prescriptions = [],
   onPrescriptionsChange,
+  prescriptionEditor: controlledPrescriptionEditor,
+  onPrescriptionEditorChange,
   vaccineEntries = [],
   serviceUsages = [],
   onServiceUsagesChange,
@@ -594,7 +596,10 @@ export default function RhuDiagnosisCarePlanSection({
   disabled = false,
 }) {
   const [removalErrors, setRemovalErrors] = useState({});
-  const [prescriptionEditor, setPrescriptionEditor] = useState(null);
+  const [localPrescriptionEditor, setLocalPrescriptionEditor] = useState(null);
+  const prescriptionEditor = controlledPrescriptionEditor === undefined ? localPrescriptionEditor : controlledPrescriptionEditor;
+  const setPrescriptionEditor = onPrescriptionEditorChange || setLocalPrescriptionEditor;
+
 
   useEffect(() => {
     setPrescriptionEditor((current) => {
@@ -604,7 +609,7 @@ export default function RhuDiagnosisCarePlanSection({
       const orderExists = current.mode !== "edit" || prescriptions.some((item) => item.id === current.draft?.id);
       return ownerExists && orderExists ? current : null;
     });
-  }, [diagnoses, prescriptions]);
+  }, [diagnoses, prescriptions, setPrescriptionEditor]);
 
   useEffect(() => {
     setRemovalErrors((current) => {

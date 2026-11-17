@@ -97,6 +97,7 @@ class AccountInviteAcceptTest extends TestCase
         $this->assertSame(0, $this->user->tokens()->count());
 
         $audit = AuditLog::where('action', 'account invite completed')->firstOrFail();
+        $this->assertSame($this->user->id, $audit->user_id);
         $this->assertStringNotContainsString('joshua@example.test', $audit->description);
 
         $this->postJson('/api/auth/login', $this->withTurnstile(['email' => 'joshua@example.test', 'password' => 'PersonalPass42']))

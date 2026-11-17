@@ -6,6 +6,12 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const isValidEmail = value => EMAIL.test(String(value || ""));
 
+export function prcLicenseError(value) {
+  if (typeof value !== "string" || !value.trim()) return "PRC License No. is required for Doctor accounts.";
+  if (value.trim().length > 255) return "Enter at most 255 characters.";
+  return "";
+}
+
 /**
  * Every problem on one step, keyed by field, so the form can mark them all at once.
  * `hasFacility` says a facility of the chosen tier is picked.
@@ -23,6 +29,7 @@ export function validateAccountStep(step, form, { hasFacility, confirmed }) {
     if (!isValidContactNumber(form.contact_number)) errors.contact_number = "Enter mobile number.";
   }
   if (step === STEPS.access) {
+    if (form.staff_role === "doctor" && prcLicenseError(form.prc_license_number)) errors.prc_license_number = prcLicenseError(form.prc_license_number);
     if (!form.staff_role) errors.staff_role = "Choose a role.";
     if (!form.permissions.length) errors.permissions = "Select at least one duty.";
     if (form.staff_role === "doctor" && String(form.specialization || "").trim().length > 255) {
@@ -43,13 +50,14 @@ export function isDoctorAccount(account = {}) {
  * no contact number on file (the admin account, older accounts) may leave it empty; once there is a number it cannot
  * be cleared, and a typed number must be valid. Doctor accounts may also edit specialization.
  */
-export function validateAccountProfile({ name, contact_number, email, specialization }, account = {}) {
+export function validateAccountProfile({ name, contact_number, email, specialization, prc_license_number }, account = {}) {
   const errors = {};
   if (!String(name || "").trim()) errors.name = "Enter the full name.";
   if (!isValidEmail(String(email || "").trim())) errors.email = "Enter a valid email address.";
   const hadNumber = Boolean(normalizeContactNumber(account.contact_number));
   const typedNumber = Boolean(normalizeContactNumber(contact_number));
   if ((hadNumber || typedNumber) && !isValidContactNumber(contact_number)) errors.contact_number = "Enter mobile number.";
+  if (isDoctorAccount(account) && prcLicenseError(prc_license_number)) errors.prc_license_number = prcLicenseError(prc_license_number);
   if (isDoctorAccount(account) && String(specialization || "").trim().length > 255) {
     errors.specialization = "Enter at most 255 characters.";
   }
@@ -66,6 +74,8 @@ export function profileChanges(account, form) {
   if (email.toLowerCase() !== String(account.email || "").trim().toLowerCase()) changes.email = email;
   if (contact !== normalizeContactNumber(account.contact_number)) changes.contact_number = contact;
   if (isDoctorAccount(account)) {
+    const license = String(form.prc_license_number || "").trim();
+    if (license !== String(account.prc_license_number || "").trim()) changes.prc_license_number = license;
     const specialization = String(form.specialization || "").trim();
     const current = String(account.specialization || "").trim();
     if (specialization !== current) changes.specialization = specialization || null;
@@ -83,6 +93,7 @@ const SERVER_FIELDS = {
   rural_health_unit_id: ["facility", STEPS.facility],
   staff_role: ["staff_role", STEPS.access],
   specialization: ["specialization", STEPS.access],
+  prc_license_number: ["prc_license_number", STEPS.access],
   permissions: ["permissions", STEPS.access],
 };
 const ORDER = [STEPS.facility, STEPS.personal, STEPS.access, STEPS.review];

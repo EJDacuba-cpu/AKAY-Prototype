@@ -54,11 +54,12 @@ class PatientCreationPermissionsTest extends TestCase
             $response = $this->postJson('/api/patients', [
                 'first_name' => 'Child', 'last_name' => 'Patient', 'sex' => 'Female',
                 'registration_type' => 'child', 'mother_patient_id' => $mother->id,
-                'family_serial_number' => 'FAMILY-001',
+                'family_serial_number' => $role === 'bhc' ? 'FAMILY-001' : null,
+                'confirm_possible_duplicate' => true,
                 $field => ['allergies' => 'Child history'], ...$facility,
             ])->assertCreated()
                 ->assertJsonPath('data.mother_patient_id', $mother->id)
-                ->assertJsonPath('data.family_serial_number', 'FAMILY-001')
+                ->assertJsonPath('data.family_serial_number', $role === 'bhc' ? 'FAMILY-001' : null)
                 ->assertJsonPath('data.mother.first_name', 'Mother');
 
             $patient = Patient::findOrFail($response->json('data.id'));

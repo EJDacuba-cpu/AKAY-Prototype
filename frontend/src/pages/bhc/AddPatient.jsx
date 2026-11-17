@@ -1,3 +1,4 @@
+import { SUFFIX_OPTIONS, restoreRegistrationIdentity, registrationFieldChange, savedSuffix } from "../../utils/patientRegistrationIdentity";
 import { INITIAL_FORM_STATE } from "../../utils/patientRegistrationDefaults";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -27,7 +28,6 @@ import {
   calculateAge,
   formatAgeDisplay,
   isInfantPatient,
-  normalizePhilippineContact,
   formatFullName,
 } from "../../utils/patientUtils";
 import { validatePatientForm } from "../../utils/patientProfile";
@@ -136,10 +136,10 @@ const EDUCATION_COMPLETED_SELECT_OPTIONS = [
 
 
 function registrationForm(patient) {
-  return {
+  return restoreRegistrationIdentity({
     ...patient,
     ...Object.fromEntries(Object.entries(INITIAL_FORM_STATE).map(([key, initial]) => [key, patient?.[key] ?? initial])),
-  };
+  });
 }
 
 const RhuPatientRegistration = lazy(() => import("../rhu/RhuPatientRegistration"));
@@ -279,8 +279,8 @@ export function RegistrationForm({
 
     setForm((prev) => {
       // Phone Normalization
-      if (name === "contactNumber") {
-        return { ...prev, [name]: normalizePhilippineContact(value) };
+      if (["contactNumber", "guardianContactNumber", "suffix"].includes(name)) {
+        return registrationFieldChange(prev, name, value);
       }
 
       // Age Calculation
@@ -431,7 +431,7 @@ function handleBirthDateChange(valueOrEvent) {
           : null,
       purokArea: form.purokArea || null,
       ...(householdEnabled ? { familySerialNumber: form.familySerialNumber || null } : {}),
-      name: formatFullName(form.firstName, form.middleName, form.lastName),
+      name: formatFullName(form.firstName, form.middleName, form.lastName, savedSuffix(form)),
       ageSex: `${form.age || calculateAge(form.birthDate)} / ${form.sex}`,
     };
   }
@@ -590,6 +590,7 @@ function handleBirthDateChange(valueOrEvent) {
                 description="Personal identity and demographic details."
               >
                 <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid min-w-0 gap-3 sm:col-span-2 xl:col-span-3 sm:grid-cols-2 xl:grid-cols-4">
                   <FormInput
                     label="First Name"
                     name="firstName"
@@ -612,6 +613,12 @@ function handleBirthDateChange(valueOrEvent) {
                     error={fieldErrors.lastName}
                     required
                   />
+
+                  <ModernSelect label="Suffix" name="suffix" value={form.suffix} options={SUFFIX_OPTIONS}
+                    onChange={(name, value) => handleChange({ target: { name, value } })} />
+                  {form.suffix === '__other__' && <FormInput label="Specify Suffix" name="customSuffix" value={form.customSuffix}
+                    onChange={handleChange} error={fieldErrors.customSuffix} maxLength={50} required />}
+                  </div>
 
                   <DatePickerField
                     label="Date of Birth"
@@ -771,13 +778,17 @@ function handleBirthDateChange(valueOrEvent) {
                     name="contactNumber"
                     value={form.contactNumber}
                     onChange={handleChange}
+                    error={fieldErrors.contactNumber}
                   />
 
                   <div className="space-y-1.5">
                     <label htmlFor="other-contact-number" className="text-sm text-neutral-700">Other Contact Number</label>
                     <Input
                       id="other-contact-number"
-                      type="tel"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={11}
+                      placeholder="09XXXXXXXXX"
                       name="guardianContactNumber"
                       value={form.guardianContactNumber}
                       onChange={handleChange}

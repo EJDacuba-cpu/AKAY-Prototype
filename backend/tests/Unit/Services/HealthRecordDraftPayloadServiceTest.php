@@ -20,6 +20,30 @@ use Tests\TestCase;
  */
 class HealthRecordDraftPayloadServiceTest extends TestCase
 {
+    public function test_incomplete_prescription_editor_survives_save_and_recovery(): void
+    {
+        $payload = [
+            'prescriptions' => [
+                ['id' => 'first', 'route' => 'PO', 'duration' => '2 weeks'],
+                ['id' => 'second', 'medicineName' => 'Partial'],
+            ],
+            'prescriptionEditor' => [
+                'mode' => 'edit', 'ownerDiagnosisId' => 'diagnosis',
+                'draft' => [
+                    'id' => 'second', 'medicineName' => 'Partial', 'strength' => '',
+                    'route' => '__other__', 'frequency' => 'At bedtime',
+                    'customFields' => ['route', 'frequency'],
+                    'duration' => '2', 'durationEditor' => ['value' => '2', 'unit' => '', 'legacy' => ''],
+                    'authorizedQuantity' => '2.5', 'authorizedUnit' => '',
+                    'instructions' => 'Keep this text',
+                ],
+            ],
+        ];
+        $service = new HealthRecordDraftPayloadService();
+        $this->assertSame($payload, $service->sanitize($payload));
+        $this->assertSame($payload, $service->sanitizeStored($service->sanitize($payload)));
+    }
+
     public function test_incomplete_higher_level_referral_plan_survives_draft_flush(): void
     {
         $payload = ['consultationWorkflow' => 'rhu_itr_v1', 'diagnoses' => [[

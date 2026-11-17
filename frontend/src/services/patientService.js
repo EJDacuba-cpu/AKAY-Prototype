@@ -12,7 +12,7 @@ function fullName(patient = {}) {
     patient.full_name ||
     patient.fullName ||
     patient.name ||
-    [patient.first_name, patient.middle_name, patient.last_name]
+    [patient.first_name, patient.middle_name, patient.last_name, patient.suffix]
       .filter(Boolean)
       .join(" ")
       .trim()

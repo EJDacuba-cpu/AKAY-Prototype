@@ -76,9 +76,12 @@ class PatientController extends Controller
                 $q->orWhere(function ($nameMatch) use ($tokens): void {
                     foreach ($tokens as $token) {
                         $like = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], mb_strtolower($token)).'%';
-                        $nameMatch->where(function ($fieldMatch) use ($like): void {
-                            foreach (['first_name', 'middle_name', 'last_name', 'philhealth_number', 'contact_number', 'barangay'] as $column) {
+                        $nameMatch->where(function ($fieldMatch) use ($like, $token): void {
+                            foreach (['first_name', 'middle_name', 'last_name', 'suffix', 'philhealth_number', 'contact_number', 'barangay'] as $column) {
                                 $fieldMatch->orWhereRaw("LOWER({$column}) LIKE ? ESCAPE '!'", [$like]);
+                            }
+                            if (preg_match('/^\\p{L}\\.$/u', $token)) {
+                                $fieldMatch->orWhereRaw("LOWER(SUBSTR(TRIM(COALESCE(middle_name, '')), 1, 1)) = ?", [mb_strtolower(mb_substr($token, 0, 1))]);
                             }
                         });
                     }

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AuditLog;
 use App\Models\HealthRecordDraft;
 use Illuminate\Support\Facades\DB;
 
@@ -105,17 +104,12 @@ class HealthRecordDraftPruner
 
     private function audit(string $action, HealthRecordDraft $draft): void
     {
-        AuditLog::create([
-            'user_id' => $draft->owner_user_id,
-            'action' => $action,
-            'module' => 'health_record_drafts',
-            'description' => implode('; ', [
-                "draft_public_id={$draft->public_id}",
-                "owner_user_id={$draft->owner_user_id}",
-                "bhc_id={$draft->barangay_health_center_id}",
-                "classification={$draft->classification}",
-                "version={$draft->version}",
-            ]).'.',
-        ]);
+        app(AuditLogger::class)->log(new \Illuminate\Http\Request, $action, 'health_record_drafts', implode('; ', [
+            "draft_public_id={$draft->public_id}",
+            "owner_user_id={$draft->owner_user_id}",
+            "bhc_id={$draft->barangay_health_center_id}",
+            "classification={$draft->classification}",
+            "version={$draft->version}",
+        ]).'.');
     }
 }

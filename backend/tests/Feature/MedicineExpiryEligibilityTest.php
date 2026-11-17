@@ -55,7 +55,7 @@ class MedicineExpiryEligibilityTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_missing_expiry_remains_unassigned_and_actual_dispense_records_shortage(): void
+    public function test_missing_expiry_remains_unassigned_and_dispense_is_rejected(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-22 00:30:00', 'Asia/Manila'));
         $medicine = $this->medicine(['expiration_date' => null]);
@@ -63,8 +63,7 @@ class MedicineExpiryEligibilityTest extends TestCase
         $this->assertNull($medicine->expirationCalendarDate());
         $this->assertFalse($medicine->isExpiredOnFacilityCalendar());
         $this->assertFalse($medicine->expiresTodayOnFacilityCalendar());
-        $this->assertSame(10, $this->dispense($medicine, 2)->fresh()->quantity);
-        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -2]);
+        $this->rejectDispense($medicine, 2);
     }
 
     public function test_expiry_equal_to_manila_today_is_still_dispensable(): void
@@ -87,10 +86,7 @@ class MedicineExpiryEligibilityTest extends TestCase
         $this->assertSame('2026-10-22', $medicine->expirationCalendarDate());
         $this->assertSame('2026-10-23', Medicine::facilityCalendarDate());
 
-        $this->dispense($medicine, 1);
-        $this->assertSame(10, $medicine->fresh()->quantity);
-        $this->assertDatabaseHas('medicine_inventory_transactions', ['medicine_id' => $medicine->id, 'discrepancy' => -1]);
-        $this->assertDatabaseCount('health_record_medicines', 1);
+        $this->rejectDispense($medicine, 1);
     }
 
     public function test_future_expiry_remains_dispensable(): void
@@ -100,6 +96,19 @@ class MedicineExpiryEligibilityTest extends TestCase
 
         $this->assertFalse($medicine->isExpiredOnFacilityCalendar());
         $this->assertSame(9, $this->dispense($medicine, 1)->fresh()->quantity);
+    }
+
+    private function rejectDispense(Medicine $medicine, int $quantity): void
+    {
+        try {
+            $this->dispense($medicine, $quantity);
+            $this->fail('Ineligible stock was dispensed.');
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+            $this->assertSame(409, $exception->getResponse()->getStatusCode());
+        }
+        $this->assertSame(10, $medicine->fresh()->quantity);
+        $this->assertDatabaseCount('medicine_inventory_transactions', 0);
+        $this->assertDatabaseCount('health_record_medicines', 0);
     }
 
     private function dispense(Medicine $medicine, int $quantity): Medicine

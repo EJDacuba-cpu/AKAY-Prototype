@@ -172,7 +172,7 @@ export default function PatientDirectoryCard({
   selected = false,
 }) {
   const routePatientId = formatDisplayValue(patient.id || patient.patientId, "");
-  const patientName = formatPatientName(patient, "Unnamed Patient");
+  const patientName = formatPatientName(patient, "Unnamed Patient", { middleInitial: true });
   const displayId = getPatientDisplayId(patient);
   const age = getPatientAge(patient);
   const sex = getPatientSex(patient);

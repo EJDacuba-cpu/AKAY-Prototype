@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Exceptions\DraftConsultationExistsException;
 use App\Exceptions\DraftFinalizationConflictException;
 use App\Exceptions\DraftVersionConflictException;
-use App\Models\AuditLog;
 use App\Models\HealthRecordDraft;
 use App\Models\Medicine;
 use App\Models\Patient;
@@ -814,18 +813,13 @@ class HealthRecordDraftService
                         $draft->status = HealthRecordDraft::STATUS_EXPIRED;
                         $this->recoveryKeys->retireClinical($draft);
 
-                        AuditLog::create([
-                            'user_id' => $draft->owner_user_id,
-                            'action' => 'draft_expired',
-                            'module' => 'health_record_drafts',
-                            'description' => implode('; ', [
-                                "draft_public_id={$draft->public_id}",
-                                "owner_user_id={$draft->owner_user_id}",
-                                "bhc_id={$draft->barangay_health_center_id}",
-                                "classification={$draft->classification}",
-                                "version={$draft->version}",
-                            ]).'.',
-                        ]);
+                        app(AuditLogger::class)->log(new \Illuminate\Http\Request, 'draft_expired', 'health_record_drafts', implode('; ', [
+                            "draft_public_id={$draft->public_id}",
+                            "owner_user_id={$draft->owner_user_id}",
+                            "bhc_id={$draft->barangay_health_center_id}",
+                            "classification={$draft->classification}",
+                            "version={$draft->version}",
+                        ]).'.');
                     };
                     if ($draft->consultation_uuid) {
                         $this->recoveryKeys->withClinicalIdentity($draft->consultation_uuid, $expire);

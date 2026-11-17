@@ -2,6 +2,8 @@ export const INITIAL_FORM_STATE = {
   firstName: "",
   middleName: "",
   lastName: "",
+  suffix: "",
+  customSuffix: "",
   birthDate: "",
   age: "",
   sex: "",

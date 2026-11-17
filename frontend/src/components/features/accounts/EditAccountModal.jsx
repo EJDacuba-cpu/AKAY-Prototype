@@ -33,6 +33,7 @@ export default function EditAccountModal({ accountId, account, onClose }) {
     email: account.email || "",
     contact_number: account.contact_number || "",
     specialization: account.specialization || "",
+    prc_license_number: undefined,
   }));
   const [touched, setTouched] = useState({});
   const [saving, setSaving] = useState(false);
@@ -40,7 +41,8 @@ export default function EditAccountModal({ accountId, account, onClose }) {
   const [formError, setFormError] = useState("");
   const emailCheck = useEmailAvailability({ ignoreId: accountId });
 
-  const validation = validateAccountProfile(form, current);
+  const effectiveForm = { ...form, prc_license_number: form.prc_license_number ?? current.prc_license_number ?? "" };
+  const validation = validateAccountProfile(effectiveForm, current);
   const emailTaken = emailCheck.isTaken(form.email);
   // A server message wins until the field is edited again; a cleared server entry must not hide a local error.
   const errors = {
@@ -48,8 +50,9 @@ export default function EditAccountModal({ accountId, account, onClose }) {
     email: serverErrors.email || validation.email || (emailTaken ? EMAIL_TAKEN : undefined),
     contact_number: serverErrors.contact_number || validation.contact_number,
     specialization: serverErrors.specialization || validation.specialization,
+    prc_license_number: serverErrors.prc_license_number || validation.prc_license_number,
   };
-  const changes = profileChanges(current, form);
+  const changes = profileChanges(current, effectiveForm);
   const canSave = Object.keys(changes).length > 0 && !saving && !(changes.email && emailTaken);
 
   function setField(field, value) {
@@ -63,8 +66,8 @@ export default function EditAccountModal({ accountId, account, onClose }) {
 
   async function save(event) {
     event.preventDefault();
-    setTouched({ name: true, email: true, contact_number: true, specialization: true });
-    if (Object.keys(validateAccountProfile(form, current)).length || !canSave) return;
+    setTouched({ name: true, email: true, contact_number: true, specialization: true, prc_license_number: true });
+    if (Object.keys(validateAccountProfile(effectiveForm, current)).length || !canSave) return;
 
     setSaving(true);
     setFormError("");
@@ -85,10 +88,11 @@ export default function EditAccountModal({ accountId, account, onClose }) {
         email: failure.errors?.email?.[0],
         contact_number: failure.errors?.contact_number?.[0],
         specialization: failure.errors?.specialization?.[0],
+        prc_license_number: failure.errors?.prc_license_number?.[0],
       };
       setServerErrors(fieldErrors);
-      setTouched({ name: true, email: true, contact_number: true, specialization: true });
-      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number && !fieldErrors.specialization) {
+      setTouched({ name: true, email: true, contact_number: true, specialization: true, prc_license_number: true });
+      if (!fieldErrors.name && !fieldErrors.email && !fieldErrors.contact_number && !fieldErrors.specialization && !fieldErrors.prc_license_number) {
         setFormError(failure.message || "The changes could not be saved.");
       }
     } finally {
@@ -116,7 +120,7 @@ export default function EditAccountModal({ accountId, account, onClose }) {
       <form id={FORM_ID} onSubmit={save} noValidate>
         <p className="mb-4 text-[13px] leading-5 text-neutral-600">
           {doctor
-            ? "This form updates name, email, contact number, and specialization. Role, home facility, and status are not changed here because they control access and routing."
+            ? "This form updates name, email, contact number, specialization, and PRC License No. Role, home facility, and status are not changed here because they control access and routing."
             : "This form updates name, email, and contact number. Role, home facility, and status are not changed here because they control access and routing."}
         </p>
         <Field label="Name" error={touched.name ? errors.name : ""}>
@@ -158,6 +162,13 @@ export default function EditAccountModal({ accountId, account, onClose }) {
               placeholder="e.g. Pediatrics"
               maxLength={255}
             />
+          </Field>
+        )}
+        {doctor && (
+          <Field label="PRC License No. *" error={touched.prc_license_number ? errors.prc_license_number : ""}>
+            <Input type="text" required value={effectiveForm.prc_license_number}
+              onChange={(event) => setField("prc_license_number", event.target.value)} onBlur={() => touch("prc_license_number")}
+              placeholder="Enter doctor's PRC license number" maxLength={255} />
           </Field>
         )}
         {formError && <p role="alert" className="text-xs text-red-600">{formError}</p>}

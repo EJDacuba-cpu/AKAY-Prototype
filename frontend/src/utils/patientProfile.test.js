@@ -100,7 +100,7 @@ test("saving one section ignores errors that belong to another", () => {
 test("the form reads alias keys and defaults the municipality", () => {
   const form = createPatientForm({ first_name: "Ana", contact: "+639171234567", purok: "3" });
   assert.equal(form.firstName, "Ana");
-  assert.equal(form.contactNumber, "+639171234567");
+  assert.equal(form.contactNumber, "09171234567");
   assert.equal(form.purokArea, "3");
   assert.equal(form.municipality, "Bulakan");
   assert.equal(getPatientValue({}, ["x"]), "Not recorded");

@@ -1,3 +1,4 @@
+import { localContact, suffixFields, contactError } from "./patientRegistrationIdentity.js";
 // Extensions are explicit so this module can be exercised directly by
 // `node --test`, which does not resolve extensionless specifiers.
 import { calculateAge, isInfantPatient } from "./patientUtils.js";
@@ -76,6 +77,7 @@ export function createPatientForm(patient = {}) {
     firstName: read(["firstName", "first_name"]),
     middleName: read(["middleName", "middle_name"]),
     lastName: read(["lastName", "last_name"]),
+    ...suffixFields(patient.suffix),
     birthDate: read(["birthDate", "birthdate", "dateOfBirth", "date_of_birth"]),
     age: getPatientAge(patient),
     sex: read(["sex"]),
@@ -87,7 +89,7 @@ export function createPatientForm(patient = {}) {
     familySerialNumber: read(["familySerialNumber", "family_serial_number"]),
     spouseName: read(["spouseName", "spouse_name"]),
     spouseOccupation: read(["spouseOccupation", "spouse_occupation"]),
-    contactNumber: read(["contact", "contactNumber", "contact_number"]),
+    contactNumber: localContact(read(["contact", "contactNumber", "contact_number"])),
     philHealthStatus: read(["philHealthStatus", "philhealth_status", "philHealthMembership"]),
     philHealthNumber: read(["philHealthNumber", "philhealthNumber", "philhealth_number"]),
     streetAddress: read(["address", "streetAddress", "street_address"]),
@@ -100,7 +102,7 @@ export function createPatientForm(patient = {}) {
     fatherBirthDate: read(["fatherBirthDate", "father_birth_date"]),
     guardianName: read(["guardianName", "guardian_name"]),
     guardianRelationship: read(["guardianRelationship", "guardian_relationship"]),
-    guardianContactNumber: read(["guardianContactNumber", "guardian_contact_number"]),
+    guardianContactNumber: localContact(read(["guardianContactNumber", "guardian_contact_number"])),
     registrationType: read(["registrationType", "registration_type", "patientType"]),
     patientClassification: read(["patientClassification", "patientCategory", "category"]),
   };
@@ -114,7 +116,7 @@ export function createPatientForm(patient = {}) {
  */
 export const REGISTRATION_SECTION_FIELDS = Object.freeze({
   demographics: [
-    "firstName", "middleName", "lastName", "birthDate", "age", "sex",
+    "firstName", "middleName", "lastName", "suffix", "customSuffix", "birthDate", "age", "sex",
     "civilStatus", "occupation", "educationLevel", "educationCompleted", "nhtsStatus",
     "spouseName", "spouseOccupation",
   ],
@@ -131,6 +133,11 @@ export const REGISTRATION_SECTION_FIELDS = Object.freeze({
 /** All registration validation errors for a form, keyed by field name. */
 export function validatePatientForm(form = {}, today = getTodayIsoDate()) {
   const errors = {};
+  if (form.suffix === '__other__' && !String(form.customSuffix || '').trim()) errors.customSuffix = 'Specify the suffix.';
+  for (const field of ['contactNumber', 'guardianContactNumber']) {
+    const error = contactError(form[field], field === 'guardianContactNumber');
+    if (error) errors[field] = error;
+  }
   const hasBirthDate = Boolean(form.birthDate);
   const infant = isInfantPatient(form.birthDate);
 

@@ -1,3 +1,4 @@
+import { SUFFIX_OPTIONS } from "../../../../utils/patientRegistrationIdentity";
 import { formatEducation } from "../../../../utils/backgroundFormat";
 import { formatLongDate } from "../../../../utils/formatters";
 import { parentInformation } from "../../../../utils/parentLinks";
@@ -156,6 +157,10 @@ export default function RegistrationSections({
             <EditField label="First name" name="firstName" value={form.firstName} onChange={onChange} error={fieldErrors.firstName} required />
             <EditField label="Middle name" name="middleName" value={form.middleName} onChange={onChange} />
             <EditField label="Last name" name="lastName" value={form.lastName} onChange={onChange} error={fieldErrors.lastName} required />
+            <EditSelect label="Suffix" name="suffix" value={form.suffix} onChange={onChange}>
+              {SUFFIX_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </EditSelect>
+            {form.suffix === '__other__' && <EditField label="Specify Suffix" name="customSuffix" value={form.customSuffix} onChange={onChange} error={fieldErrors.customSuffix} maxLength={50} required />}
             <DatePickerField
               label="Birthday"
               name="birthDate"
@@ -209,6 +214,7 @@ export default function RegistrationSections({
         ) : (
           <FieldList
             rows={[
+              ["Suffix", read(["suffix"])],
               ["Birthday", [birthday, age !== "" ? `${age} yrs` : ""].filter(Boolean).join(" · ")],
               ["Sex", read(["sex"])],
               ...(!infant ? [
@@ -228,9 +234,9 @@ export default function RegistrationSections({
         {editingSection === "contact" ? (
           <EditGrid>
             <div className="space-y-3">
-              <EditField label="Contact number" name="contactNumber" value={form.contactNumber} onChange={onChange} />
+              <EditField label="Contact number" name="contactNumber" type="text" inputMode="numeric" maxLength={11} placeholder="09XXXXXXXXX" error={fieldErrors.contactNumber} value={form.contactNumber} onChange={onChange} />
               <div className="space-y-1.5">
-                <EditField label="Other Contact Number" name="guardianContactNumber" type="tel" value={form.guardianContactNumber} onChange={onChange} error={fieldErrors.guardianContactNumber} aria-describedby="profile-other-contact-hint" />
+                <EditField label="Other Contact Number" name="guardianContactNumber" type="text" inputMode="numeric" maxLength={11} placeholder="09XXXXXXXXX" value={form.guardianContactNumber} onChange={onChange} error={fieldErrors.guardianContactNumber} aria-describedby="profile-other-contact-hint" />
                 <p id="profile-other-contact-hint" className="text-xs text-neutral-600">Contact number of a mother, father, or guardian.</p>
               </div>
             </div>

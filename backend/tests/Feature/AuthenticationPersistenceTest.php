@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\BarangayHealthCenter;
 use App\Models\RuralHealthUnit;
 use App\Models\User;
@@ -97,6 +98,8 @@ class AuthenticationPersistenceTest extends TestCase
         $newCookie = $this->refreshCookieFrom($response);
         $newRefreshToken = PersonalAccessToken::findToken($newCookie->getValue());
 
+        $this->assertSame(1, AuditLog::where('action', 'login')->where('user_id', $this->user->id)->count());
+        $this->assertSame(1, AuditLog::where('action', 'login')->count());
         $this->assertNull(PersonalAccessToken::find($oldToken->id));
         $this->assertNotSame($oldCookie->getValue(), $newCookie->getValue());
         $this->assertTrue($oldToken->expires_at->equalTo($newRefreshToken->expires_at));
@@ -297,6 +300,7 @@ class AuthenticationPersistenceTest extends TestCase
         $oldAccess = $firstLogin->json('token');
 
         $secondLogin = $this->login($this->user)->assertOk();
+        $this->assertSame(2, AuditLog::where('action', 'login')->where('user_id', $this->user->id)->count());
         $newRefresh = $this->refreshCookieFrom($secondLogin)->getValue();
         $newAccess = $secondLogin->json('token');
 

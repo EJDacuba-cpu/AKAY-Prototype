@@ -1,3 +1,4 @@
+import { OTHER, prescriptionOptions, selectionFor, editorDuration, changePrescriptionField } from "../../../../utils/prescriptionFields";
 import { Button } from "../../../ui/button";
 import {
   emptyPrescription,
@@ -17,9 +18,6 @@ const TEXT_FIELDS = [
   ["medicineName", "Medicine Name", 255],
   ["strength", "Strength", 100],
   ["dose", "Dose", 100],
-  ["route", "Route", 50],
-  ["frequency", "Frequency", 100],
-  ["duration", "Duration", 100],
 ];
 
 function fieldMessages(id, errors) {
@@ -39,6 +37,26 @@ function RxField({ label, required, error, children, className = "" }) {
   );
 }
 
+function ChoiceField({ field, label, value, options, error, disabled, onChange, onSelect, custom = false, maxLength = 100 }) {
+  const selection = custom || value === OTHER ? OTHER : selectionFor(value, options);
+  return (
+    <div className="min-w-0">
+      <RxField label={label} required error={error}>
+        <select name={field} data-field={field} aria-invalid={Boolean(error) || undefined} className={controlClass} disabled={disabled}
+          value={selection} onChange={(event) => onSelect(event.target.value)}>
+          <option value="">Select {label.toLowerCase()}</option>
+          {options.map((option) => <option key={option} value={option}>{option}</option>)}
+          <option value={OTHER}>Other (Specify)</option>
+        </select>
+      </RxField>
+      {selection === OTHER ? <input aria-label={`Specify ${label.toLowerCase()}`} className={controlClass}
+        value={value === OTHER ? "" : value} maxLength={maxLength} disabled={disabled}
+        aria-invalid={Boolean(error) || undefined} placeholder={`Specify ${label.toLowerCase()}`}
+        onChange={(event) => onChange(event.target.value || OTHER)} /> : null}
+    </div>
+  );
+}
+
 function PrescriptionEditor({
   draft,
   errors,
@@ -49,6 +67,7 @@ function PrescriptionEditor({
 }) {
   const key = `prescriptions.${draft.id}`;
   const errorFor = (field) => errors[`${key}.${field}`] || "";
+  const duration = editorDuration(draft);
   return (
     <div
       className="rhu-prescription-editor grid min-w-0 gap-2 border border-neutral-200 bg-white p-3 sm:grid-cols-2"
@@ -65,6 +84,7 @@ function PrescriptionEditor({
             name={`${key}.${field}`}
             data-field={`${key}.${field}`}
             value={draft[field] || ""}
+            placeholder={field === "strength" ? "e.g., 500 mg" : field === "dose" ? "e.g., 1 tablet, 5 mL, or 250 mg" : "Generic medicine name"}
             maxLength={maxLength}
             disabled={disabled}
             aria-invalid={Boolean(errorFor(field)) || undefined}
@@ -73,7 +93,27 @@ function PrescriptionEditor({
           />
         </RxField>
       ))}
-      <RxField label="Instructions" error={errorFor("instructions")} className="sm:col-span-2">
+      {[ ["route", "Route", 50], ["frequency", "Frequency", 100] ].map(([field, label, maxLength]) => (
+        <ChoiceField key={field} field={`${key}.${field}`} label={label} value={draft[field] || ""}
+          options={prescriptionOptions[field]} error={errorFor(field)} disabled={disabled} maxLength={maxLength}
+          custom={draft.customFields?.includes(field)}
+          onSelect={(value) => onChange(`${field}Selection`, value)}
+          onChange={(value) => onChange(`${field}Custom`, value)} />
+      ))}
+      <RxField label="Duration Value" required error={errorFor("duration")}>
+        <input type="number" min="0" step="any" className={controlClass} value={duration.value}
+          disabled={disabled} name={`${key}.duration`} data-field={`${key}.duration`} aria-invalid={Boolean(errorFor("duration")) || undefined}
+          onChange={(event) => onChange("durationValue", event.target.value)} />
+      </RxField>
+      <ChoiceField field={`${key}.durationUnit`} label="Duration Unit" value={duration.unit}
+        options={prescriptionOptions.durationUnit} error={errorFor("duration")} disabled={disabled}
+        maxLength={80} custom={draft.customFields?.includes("durationUnit")}
+        onSelect={(value) => onChange("durationUnitSelection", value)}
+        onChange={(value) => onChange("durationUnitCustom", value)} />
+      {duration.legacy ? <p role="alert" className="text-xs text-amber-800 sm:col-span-2">
+        Saved duration: {duration.legacy}. Please clarify the duration value and unit before saving this prescription.
+      </p> : null}
+      <RxField label="Additional Instructions" error={errorFor("instructions")} className="sm:col-span-2">
         <textarea
           name={`${key}.instructions`}
           data-field={`${key}.instructions`}
@@ -86,11 +126,11 @@ function PrescriptionEditor({
           onChange={(event) => onChange("instructions", event.target.value)}
         />
       </RxField>
-      <RxField label="Authorized Quantity" error={errorFor("authorizedQuantity")}>
+      <RxField label="Quantity to Dispense" required error={errorFor("authorizedQuantity")}>
         <input
           name={`${key}.authorizedQuantity`}
           data-field={`${key}.authorizedQuantity`}
-          inputMode="numeric"
+          type="number" min="0" step="any" inputMode="decimal"
           value={draft.authorizedQuantity ?? ""}
           disabled={disabled}
           aria-invalid={Boolean(errorFor("authorizedQuantity")) || undefined}
@@ -98,18 +138,11 @@ function PrescriptionEditor({
           onChange={(event) => onChange("authorizedQuantity", event.target.value)}
         />
       </RxField>
-      <RxField label="Authorized Unit" error={errorFor("authorizedUnit")}>
-        <input
-          name={`${key}.authorizedUnit`}
-          data-field={`${key}.authorizedUnit`}
-          value={draft.authorizedUnit || ""}
-          maxLength={50}
-          disabled={disabled}
-          aria-invalid={Boolean(errorFor("authorizedUnit")) || undefined}
-          className={controlClass}
-          onChange={(event) => onChange("authorizedUnit", event.target.value)}
-        />
-      </RxField>
+      <ChoiceField field={`${key}.authorizedUnit`} label="Dispensing Unit" value={draft.authorizedUnit || ""}
+        options={prescriptionOptions.authorizedUnit} error={errorFor("authorizedUnit")} disabled={disabled}
+        maxLength={50} custom={draft.customFields?.includes("authorizedUnit")}
+        onSelect={(value) => onChange("authorizedUnitSelection", value)}
+        onChange={(value) => onChange("authorizedUnitCustom", value)} />
       <div className="flex flex-wrap gap-2 sm:col-span-2">
         <Button type="button" variant="secondary" size="compact" disabled={disabled} className="rounded-none" onClick={onSave}>
           Save Prescription
@@ -170,7 +203,7 @@ export default function RhuPrescriptionsSection({
   }
 
   function startAdd() {
-    if (disabled || ownsEditor || atCap) return;
+    if (disabled || Boolean(editor?.draft) || atCap) return;
     openEditor({
       draft: emptyPrescription({
         diagnosisIds: !serviceMode && diagnosisId ? [diagnosisId] : [],
@@ -183,7 +216,7 @@ export default function RhuPrescriptionsSection({
   }
 
   function startEdit(rx) {
-    if (disabled || ownsEditor || rx?.source === "tb_form4b_ref") return;
+    if (disabled || Boolean(editor?.draft) || rx?.source === "tb_form4b_ref") return;
     openEditor({
       draft: emptyPrescription(rx),
       mode: "edit",
@@ -208,12 +241,12 @@ export default function RhuPrescriptionsSection({
         ? draft.serviceKeys
         : (serviceMode ? selectedServiceKeys : []),
     });
-    const found = prescriptionErrors([next], diagnoses);
+    const found = prescriptionErrors([draft], diagnoses);
     const own = Object.fromEntries(
       Object.entries(found).filter(([key]) => key.startsWith(`prescriptions.${next.id}.`)),
     );
     if (Object.keys(own).length) {
-      onEditorChange?.({ ...editor, draft: next, localErrors: own });
+      onEditorChange?.({ ...editor, draft, localErrors: own });
       return;
     }
     const result = commitPrescriptionDraft(prescriptions, next, editor.mode);
@@ -228,7 +261,7 @@ export default function RhuPrescriptionsSection({
 
   function changeDraft(field, value) {
     if (!ownsEditor) return;
-    onEditorChange?.({ ...editor, draft: { ...editor.draft, [field]: value }, localErrors: {} });
+    onEditorChange?.({ ...editor, draft: changePrescriptionField(editor.draft, field, value), localErrors: {} });
   }
 
   const editorNode = draft ? (
@@ -251,7 +284,7 @@ export default function RhuPrescriptionsSection({
       <legend className="pt-1 text-xs font-semibold text-[#0B1C30]">Prescriptions</legend>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#545F73]">{helperText}</p>
-        <Button type="button" variant="secondary" size="compact" disabled={disabled || ownsEditor || atCap} className="rounded-none" onClick={startAdd}>
+        <Button type="button" variant="secondary" size="compact" disabled={disabled || Boolean(editor?.draft) || atCap} className="rounded-none" onClick={startAdd}>
           Add Prescription
         </Button>
       </div>
@@ -269,7 +302,7 @@ export default function RhuPrescriptionsSection({
                 <p className="min-w-0 flex-1 break-words text-xs text-[#0B1C30]">{formatPrescriptionLine(rx)}</p>
                 <div className="flex gap-1">
                   {rx.source !== "tb_form4b_ref" ? (
-                    <Button type="button" variant="ghost" size="compact" disabled={disabled || ownsEditor} className="rounded-none" onClick={() => startEdit(rx)}>
+                    <Button type="button" variant="ghost" size="compact" disabled={disabled || Boolean(editor?.draft)} className="rounded-none" onClick={() => startEdit(rx)}>
                       Edit Prescription
                     </Button>
                   ) : null}

@@ -40,8 +40,10 @@ class PatientRegistrationDraftTest extends TestCase
 
     private function body(): array
     {
-        return ['first_name' => 'Registered', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '1995-01-01',
+        $body = ['first_name' => 'Registered', 'last_name' => 'Patient', 'sex' => 'Female', 'birthdate' => '1995-01-01',
             'household' => ['kind' => 'new', 'serial_mode' => 'auto', 'address' => ['streetAddress' => 'Main street', 'purokArea' => 'Zone 1', 'barangay' => 'Bagumbayan', 'municipality' => 'Bulakan']]];
+        if (auth()->user()?->isRhu()) unset($body['household']);
+        return $body;
     }
 
     public function test_both_roles_commit_registration_once_and_consume_the_parent_draft(): void

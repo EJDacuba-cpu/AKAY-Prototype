@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { validateDispenseItems } from "../../../utils/medicineExpiryGroups";
 import { ModalButton, ModalFooter, ModalShell } from "../../common";
 import DispensedMedicinesSection from "./DispensedMedicinesSection";
 
@@ -19,6 +21,7 @@ export default function RhuServiceUsageReviewModal({
   onConfirm,
   onNeedsReview,
 }) {
+  const [pendingDraft, setPendingDraft] = useState(false);
   if (!row) return null;
 
   const pending = row.status === "pending" || row.status === "needs_review";
@@ -40,7 +43,7 @@ export default function RhuServiceUsageReviewModal({
               <ModalButton disabled={saving} onClick={onNeedsReview}>
                 Mark for review
               </ModalButton>
-              <ModalButton variant="primary" disabled={saving} onClick={onConfirm}>
+              <ModalButton variant="primary" disabled={saving || pendingDraft || draft.length !== 1 || Boolean(validateDispenseItems(draft, catalog))} onClick={onConfirm}>
                 Confirm stock usage
               </ModalButton>
             </>
@@ -101,6 +104,7 @@ export default function RhuServiceUsageReviewModal({
               inventory={catalog}
               value={draft}
               onChange={onDraftChange}
+              onPendingDraftChange={setPendingDraft}
               disabled={saving || !pending}
               loading={catalogLoading}
               error={catalogError}

@@ -67,6 +67,7 @@ function MedicineInventoryWorkspace({ role }) {
                 }
                 filter={
                   <MedicineInventoryFilters
+                    categories={items.map(item => item.category)}
                     applied={filters}
                     activeCount={activeCount}
                     activeFilters={[

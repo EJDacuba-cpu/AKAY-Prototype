@@ -17,6 +17,7 @@ class Patient extends Model
         'first_name',
         'middle_name',
         'last_name',
+        'suffix',
         'sex',
         'birthdate',
         'contact_number',
@@ -148,6 +149,7 @@ class Patient extends Model
             $this->first_name,
             $this->middle_name,
             $this->last_name,
+            $this->suffix,
         ])->filter()->implode(' ')));
     }
 

@@ -92,6 +92,19 @@ class ConsultationWorkflowRevisionTest extends TestCase
         $returned = $this->postJson($path.'/transition', ['action' => 'return', 'version' => $version, 'note' => 'Please verify the TB case number.'])->assertOk()->json('data');
         Sanctum::actingAs($encoder, ['akay:access']);
         $this->postJson($path.'/transition', ['action' => 'claim', 'version' => $returned['version']])->assertOk()->assertJsonPath('data.review_state', 'encoding');
+        $this->assertDatabaseHas('audit_logs', ['action' => 'draft_submitted', 'user_id' => $encoder->id]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'draft_returned', 'user_id' => $this->worker->id]);
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'draft_submitted')->count());
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'draft_returned')->count());
+        $this->assertSame(2, \App\Models\AuditLog::where('action', 'draft_claimed')->count());
+        // A stale retry must not produce an additional event.
+        $this->postJson($path.'/transition', ['action' => 'claim', 'version' => $returned['version']])->assertConflict();
+        $this->assertSame(2, \App\Models\AuditLog::where('action', 'draft_claimed')->count());
+        Sanctum::actingAs($this->worker, ['akay:access']);
+        $this->postJson($path.'/transition', ['action' => 'takeover', 'version' => $returned['version'] + 1, 'note' => 'Review'])->assertOk();
+        $this->assertDatabaseHas('audit_logs', ['action' => 'draft_taken_over', 'user_id' => $this->worker->id]);
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'draft_taken_over')->count());
+
     }
 
     public function test_vaccine_administered_posts_once_and_duplicate_manual_entry_is_rejected(): void

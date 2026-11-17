@@ -1,3 +1,4 @@
+import { localContact, restoreRegistrationIdentity, savedSuffix } from "./patientRegistrationIdentity.js";
 import { isInfantPatient } from "./patientUtils.js";
 
 export function splitName(name = "") {
@@ -16,7 +17,7 @@ export const EDUCATION_COMPLETED_OPTIONS = ['Level', 'Graduate'];
 
 const blank = (value) => (value === null || value === undefined ? '' : String(value));
 
-export const REGISTRATION_DRAFT_FIELDS = "firstName middleName lastName birthDate age sex civilStatus occupation educationLevel educationCompleted spouseName spouseOccupation contactNumber philHealthStatus philHealthNumber purokArea streetAddress barangay municipality motherName motherBirthDate fatherName fatherBirthDate guardianName guardianRelationship guardianContactNumber familySerialNumber nhtsStatus patientClassification motherPatientId fatherPatientId".split(" ");
+export const REGISTRATION_DRAFT_FIELDS = "firstName middleName lastName suffix customSuffix birthDate age sex civilStatus occupation educationLevel educationCompleted spouseName spouseOccupation contactNumber philHealthStatus philHealthNumber purokArea streetAddress barangay municipality motherName motherBirthDate fatherName fatherBirthDate guardianName guardianRelationship guardianContactNumber familySerialNumber nhtsStatus patientClassification motherPatientId fatherPatientId".split(" ");
 const snapshotError = () => Object.assign(new Error("The registration recovery snapshot is invalid. Keep it and retry."), { code: "DRAFT_SNAPSHOT_INVALID" });
 function scalarFields(value, keys) {
   const result = {};
@@ -62,7 +63,7 @@ export function restoreRegistrationDraft(payload, defaults) {
   let saved = payload?.registration;
   if (!saved) {
     const names = {
-      first_name: "firstName", middle_name: "middleName", last_name: "lastName", birthdate: "birthDate", sex: "sex",
+      first_name: "firstName", middle_name: "middleName", last_name: "lastName", suffix: "suffix", birthdate: "birthDate", sex: "sex",
       contact_number: "contactNumber", street_address: "streetAddress", barangay: "barangay", municipality: "municipality", purok_area: "purokArea",
       civil_status: "civilStatus", occupation: "occupation", education_level: "educationLevel", education_completed: "educationCompleted",
       philhealth_status: "philHealthStatus", philhealth_number: "philHealthNumber", spouse_name: "spouseName", spouse_occupation: "spouseOccupation",
@@ -80,7 +81,7 @@ export function restoreRegistrationDraft(payload, defaults) {
   }
   if (!saved.form || typeof saved.form !== "object" || Array.isArray(saved.form)) throw snapshotError();
   return {
-    form: { ...defaults, ...scalarFields(saved.form, REGISTRATION_DRAFT_FIELDS) },
+    form: restoreRegistrationIdentity({ ...defaults, ...scalarFields(saved.form, REGISTRATION_DRAFT_FIELDS) }),
     connection: registrationConnection(saved.connection), headReplacement: registrationReplacement(saved.headReplacement),
     householdVersion: saved.householdVersion ?? null, walkIn: saved.walkIn?.key ? { key: String(saved.walkIn.key) } : null,
   };
@@ -123,7 +124,8 @@ export function toPayload(patient = {}) {
     last_name: read('lastName', 'last_name') ?? (parts.lastName || patient.firstName || 'Patient'),
     sex: patient.sex || ageSexParts[1]?.trim() || "Other",
     birthdate: optional('birthDate', 'birthdate', 'dateOfBirth'),
-    contact_number: optional('contactNumber', 'contact_number', 'contact'),
+    ...(Object.hasOwn(patient, 'suffix') ? { suffix: savedSuffix(patient) || null } : {}),
+    contact_number: localContact(optional('contactNumber', 'contact_number', 'contact')) || null,
     street_address: optional('streetAddress', 'street_address', 'address'),
     barangay: optional('barangay', 'patientBarangay'),
     municipality: optional('municipality'),
@@ -142,7 +144,7 @@ export function toPayload(patient = {}) {
     father_birth_date: optional('fatherBirthDate', 'father_birth_date'),
     guardian_name: optional('guardianName', 'guardian_name'),
     guardian_relationship: optional('guardianRelationship', 'guardian_relationship'),
-    guardian_contact_number: optional('guardianContactNumber', 'guardianContact', 'guardian_contact_number'),
+    guardian_contact_number: localContact(optional('guardianContactNumber', 'guardianContact', 'guardian_contact_number')) || null,
     nhts_status: optional('nhtsStatus', 'nhts_status'),
     philhealth_number: shouldSendPhilHealthNumber
       ? optional('philHealthNumber', 'philhealthNumber', 'philhealth_number')

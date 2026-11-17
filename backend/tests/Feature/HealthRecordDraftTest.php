@@ -148,6 +148,33 @@ class HealthRecordDraftTest extends TestCase
         );
     }
 
+    public function test_failed_audit_write_rolls_back_draft_creation(): void
+    {
+        $this->mock(\App\Services\AuditLogger::class)->shouldReceive('log')->once()
+            ->andThrow(new RuntimeException('Audit storage unavailable'));
+        $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftRequest($this->draftPayload('Private diagnosis')))
+            ->assertStatus(500);
+        $this->assertDatabaseCount('health_record_drafts', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_failed_transition_audit_write_rolls_back_the_transition_and_clinical_event(): void
+    {
+        $draft = $this->actingAs($this->bhwA, 'sanctum')
+            ->postJson('/api/health-record-drafts', $this->draftRequest($this->draftPayload('Private diagnosis')))
+            ->assertCreated()->json('data');
+        $before = DB::table('consultation_events')->count();
+        $this->mock(\App\Services\AuditLogger::class)->shouldReceive('log')->once()
+            ->andThrow(new RuntimeException('Audit storage unavailable'));
+        $this->postJson('/api/health-record-drafts/'.$draft['id'].'/transition', [
+            'action' => 'claim', 'version' => $draft['version'],
+        ])->assertStatus(500);
+        $this->assertSame($draft['version'], HealthRecordDraft::where('public_id', $draft['id'])->value('version'));
+        $this->assertSame($before, DB::table('consultation_events')->count());
+        $this->assertSame(0, AuditLog::where('action', 'draft_claimed')->count());
+    }
+
     public function test_other_facilities_roles_and_invalid_facility_assignments_cannot_access_draft(): void
     {
         $publicId = $this->createDraft();
@@ -284,6 +311,7 @@ class HealthRecordDraftTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'draft_expired',
             'module' => 'health_record_drafts',
+            'user_id' => null,
         ]);
 
         DB::table('health_record_drafts')
@@ -296,6 +324,7 @@ class HealthRecordDraftTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'expired_drafts_pruned',
             'module' => 'health_record_drafts',
+            'user_id' => null,
         ]);
     }
 

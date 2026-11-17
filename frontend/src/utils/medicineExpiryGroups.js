@@ -106,7 +106,37 @@ export function validateReceiptExpiry(form, now = new Date()) {
   return date < getFacilityCalendarDate(now) ? 'Received stock cannot already be expired.' : '';
 }
 
+export function validateDispenseQuantity(item, quantity, now = new Date()) {
+  if (!item) return 'Select a medicine or supply.';
+  const amount = Number(quantity);
+  if (!Number.isInteger(amount) || amount <= 0) return 'Enter a whole stock-unit quantity greater than 0.';
+  const available = eligibleGroups(item, now).reduce((sum, group) => sum + Number(group.available_quantity), 0);
+  if (amount > available) return `Insufficient stock. Only ${available} ${item.unit || 'units'} are available. Please enter a quantity within the available stock.`;
+  return '';
+}
+
+export function validateDispenseItems(items, inventory) {
+  const totals = new Map();
+  for (const item of items) {
+    const id = String(item.medicineId ?? item.medicine_id);
+    const medicine = inventory.find(row => String(row.id) === id);
+    const amount = Number(item.quantity);
+    const error = validateDispenseQuantity(medicine, amount);
+    if (error) return error;
+    totals.set(id, (totals.get(id) || 0) + amount);
+    const combinedError = validateDispenseQuantity(medicine, totals.get(id));
+    if (combinedError) return combinedError;
+    if (Array.isArray(item.allocations)) {
+      const allocationError = validateManualAllocation(medicine, amount, item.allocations, item.override_reason);
+      if (allocationError) return allocationError;
+    }
+  }
+  return '';
+}
+
 export function validateManualAllocation(item, quantity, allocations, reason, now = new Date()) {
+  const quantityError = validateDispenseQuantity(item, quantity, now);
+  if (quantityError) return quantityError;
   const groups = eligibleGroups(item, now);
   const seen = new Set();
   let total = 0;
@@ -115,7 +145,7 @@ export function validateManualAllocation(item, quantity, allocations, reason, no
     if (!group || seen.has(Number(a.expiry_group_id)) || !Number.isInteger(Number(a.quantity)) || Number(a.quantity) <= 0 || Number(a.quantity) > Number(group.available_quantity)) return 'Enter a quantity from available dated stock only.';
     seen.add(Number(a.expiry_group_id)); total += Number(a.quantity);
   }
-  if (total > Number(quantity)) return 'Quantities by expiry date add up to more than the amount given.';
+  if (total !== Number(quantity)) return 'Batch quantities must equal the dispensing quantity.';
   if (allocationsMatch(allocations, previewFefo(item, quantity, now).allocations)) return '';
   return String(reason || '').trim() ? '' : 'Enter a reason for this stock choice.';
 }

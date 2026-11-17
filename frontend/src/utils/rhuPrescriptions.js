@@ -1,3 +1,4 @@
+import { OTHER, durationFields, editorDuration, isCountableUnit } from "./prescriptionFields.js";
 /**
  * Visit-level structured prescriptions for an RHU ITR
  * (`monitoring_data.prescriptions`). One medicine shared by two diagnoses is
@@ -96,18 +97,18 @@ function serviceKeysOf(value) {
 }
 
 /**
- * An authorized quantity counts only when this field itself is a whole number
- * of at least 1 (or a digit string from the form). Anything else was not
- * authorized, including prose such as "30 tablets".
+ * Quantities must be positive numeric values. Completion validation additionally
+ * requires whole numbers for countable units. Never infer quantity from prose
+ * such as "30 tablets".
  */
 function quantityState(value) {
   if (value == null || value === "") return { present: false, valid: false, value: null };
-  if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return { present: true, valid: true, value };
   }
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+  if (typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim())) {
     const parsed = Number(value.trim());
-    if (parsed >= 1) return { present: true, valid: true, value: parsed };
+    if (Number.isFinite(parsed) && parsed > 0) return { present: true, valid: true, value: parsed };
   }
   return { present: true, valid: false, value: null };
 }
@@ -225,7 +226,7 @@ export function prescriptionErrors(list, diagnoses) {
 
     for (const [field, message] of REQUIRED_FIELDS) {
       const value = text(item[field]);
-      if (!value) errors[`${key}.${field}`] = message;
+      if (!value || value === OTHER) errors[`${key}.${field}`] = message;
       else if (value.length > LIMITS[field]) errors[`${key}.${field}`] = `Use up to ${LIMITS[field]} characters.`;
     }
 
@@ -236,15 +237,25 @@ export function prescriptionErrors(list, diagnoses) {
 
     const quantity = quantityState(item.authorizedQuantity);
     const unit = text(item.authorizedUnit);
-    if (quantity.present && !quantity.valid) {
-      errors[`${key}.authorizedQuantity`] = "Authorized quantity must be a whole number of at least 1.";
-    } else if (!quantity.present && unit) {
-      errors[`${key}.authorizedQuantity`] = "Enter an authorized quantity of at least 1, or clear the unit.";
+    if (!quantity.valid) {
+      errors[`${key}.authorizedQuantity`] = "Enter a quantity greater than zero.";
+    } else if (isCountableUnit(unit) && !Number.isInteger(quantity.value)) {
+      errors[`${key}.authorizedQuantity`] = "Use a whole number for countable items.";
     }
-    if (quantity.present && quantity.valid && !unit) {
-      errors[`${key}.authorizedUnit`] = "Enter the unit for the authorized quantity.";
+    if (!unit || unit === OTHER) {
+      errors[`${key}.authorizedUnit`] = "Enter the dispensing unit.";
     } else if (unit.length > LIMITS.authorizedUnit) {
       errors[`${key}.authorizedUnit`] = `Use up to ${LIMITS.authorizedUnit} characters.`;
+    }
+    const duration = item.durationEditor ? editorDuration(item) : durationFields(item.duration);
+    if (duration.legacy || !Number.isFinite(Number(duration.value)) || Number(duration.value) <= 0
+        || !text(duration.unit) || duration.unit === OTHER) {
+      errors[`${key}.duration`] = "Enter a duration greater than zero and specify its unit; clarify any saved duration.";
+    }
+    for (const field of ["strength", "dose"]) {
+      if (text(item[field]) && !/\d.*[\p{L}%]/u.test(text(item[field]))) {
+        errors[`${key}.${field}`] = `Enter the ${field} with an amount and unit.`;
+      }
     }
 
     const rawSource = item.source == null || item.source === "" ? "itr" : item.source;

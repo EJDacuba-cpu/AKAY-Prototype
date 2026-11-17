@@ -1,3 +1,4 @@
+import { prescriptionEditorForDraft } from "../../../../utils/prescriptionFields.js";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -311,9 +312,9 @@ async function clickButton(root, text) {
 
 async function setField(field, value) {
   await act(async () => {
-    const proto = field.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto = Object.getPrototypeOf(field);
     Object.getOwnPropertyDescriptor(proto, "value").set.call(field, value);
-    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event(field.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
   });
 }
 
@@ -321,15 +322,24 @@ async function mountCarePlan(props) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const calls = { removed: [], prescriptions: [] };
+  const calls = { removed: [], prescriptions: [], editors: [] };
   function Host() {
     const [prescriptions, setPrescriptions] = useState(props.prescriptions || []);
     const [diagnoses, setDiagnoses] = useState(props.diagnoses);
+    const [prescriptionEditor, setPrescriptionEditor] = useState(props.prescriptionEditor || null);
     return createElement(CarePlan, {
       canConfirmTb: true,
       ...props,
       diagnoses,
       prescriptions,
+      prescriptionEditor,
+      onPrescriptionEditorChange: (update) => {
+        setPrescriptionEditor((current) => {
+          const next = typeof update === "function" ? update(current) : update;
+          calls.editors.push(next);
+          return next;
+        });
+      },
       onPrescriptionsChange: (next) => {
         calls.prescriptions.push(next);
         setPrescriptions(next);
@@ -410,7 +420,7 @@ test("Add Prescription saves one visit-level order and keeps field errors beside
     assert.doesNotMatch(form.textContent, /Linked Diagnosis/);
     assert.equal(form.querySelectorAll('input[name$=".diagnosisIds"]').length, 0);
     assert.match(form.textContent, /Medicine Name/);
-    assert.match(form.textContent, /Authorized Quantity/);
+    assert.match(form.textContent, /Quantity to Dispense/);
     await clickButton(form, "Save Prescription");
     assert.match(form.textContent, /Enter the medicine name/);
     assert.equal(app.calls.prescriptions.length, 0);
@@ -418,12 +428,14 @@ test("Add Prescription saves one visit-level order and keeps field errors beside
     await setField(form.querySelector('[name$=".medicineName"]'), "Amlodipine");
     await setField(form.querySelector('[name$=".strength"]'), "5 mg");
     await setField(form.querySelector('[name$=".dose"]'), "1 tablet");
-    await setField(form.querySelector('[name$=".route"]'), "PO");
+    await setField(form.querySelector('[name$=".route"]'), "Oral");
     await setField(form.querySelector('[name$=".frequency"]'), "Once daily");
-    await setField(form.querySelector('[name$=".duration"]'), "30 days");
+    await setField(form.querySelector('[name$=".duration"]'), "30"
+    );
+    await setField(form.querySelector('[name$=".durationUnit"]'), "Days");
     await setField(form.querySelector('[name$=".instructions"]'), "With breakfast");
     await setField(form.querySelector('[name$=".authorizedQuantity"]'), "14");
-    await setField(form.querySelector('[name$=".authorizedUnit"]'), "tablet");
+    await setField(form.querySelector('[name$=".authorizedUnit"]'), "Tablets");
     await clickButton(form, "Save Prescription");
 
     assert.equal(app.calls.prescriptions.length, 1);
@@ -431,7 +443,7 @@ test("Add Prescription saves one visit-level order and keeps field errors beside
     assert.equal(saved.medicineName, "Amlodipine");
     assert.deepEqual(saved.diagnosisIds, ["htn"]);
     assert.equal(saved.authorizedQuantity, 14);
-    assert.equal(saved.authorizedUnit, "tablet");
+    assert.equal(saved.authorizedUnit, "Tablets");
     assert.equal(saved.source, "itr");
     assert.match(diagnosisCard(app.container, "Hypertension").textContent, /Amlodipine 5 mg/);
     assert.doesNotMatch(diagnosisCard(app.container, "Diabetes").textContent, /Amlodipine 5 mg/);
@@ -515,24 +527,16 @@ test("only one prescription editor is open for the visit", async () => {
     const diabetes = diagnosisCard(app.container, "Diabetes");
     await clickButton(diabetes, "Edit Prescription");
     assert.equal(buttonsNamed(app.container, "Save Prescription").length, 1);
-    assert.equal(diagnosisCard(app.container, "Hypertension").querySelector('[name$=".strength"]'), null);
-    const strength = diagnosisCard(app.container, "Diabetes").querySelector('[name$=".strength"]');
-    assert.equal(strength?.value, "50 mg");
-
-    await setField(strength, "25 mg");
-    await clickButton(diagnosisCard(app.container, "Diabetes"), "Save Prescription");
-    const saved = app.calls.prescriptions.at(-1);
-    assert.equal(saved.length, 1);
-    assert.equal(saved[0].id, "rx-losartan");
-    assert.equal(saved[0].strength, "25 mg");
-    assert.equal(saved[0].medicineName, "Losartan");
-    assert.equal(app.calls.prescriptions.some((list) => list.some((rx) => rx.strength === "100 mg")), false);
+    assert.equal(diagnosisCard(app.container, "Hypertension").querySelector('[name$=".strength"]').value, "100 mg");
+    assert.equal(Boolean(diagnosisCard(app.container, "Diabetes").querySelector('[name$=".strength"]')), false);
+    await clickButton(hypertension, "Save Prescription");
+    assert.equal(app.calls.prescriptions.at(-1)[0].strength, "100 mg");
   } finally {
     await app.close();
   }
 });
 
-test("Add Prescription on another card closes the open editor", async () => {
+test("Add Prescription on another card preserves the open editor", async () => {
   const app = await mountCarePlan({
     diagnoses: [htn, dm],
     prescriptions: [losartan],
@@ -541,10 +545,8 @@ test("Add Prescription on another card closes the open editor", async () => {
     await clickButton(diagnosisCard(app.container, "Hypertension"), "Edit Prescription");
     await clickButton(diagnosisCard(app.container, "Diabetes"), "Add Prescription");
     assert.equal(buttonsNamed(app.container, "Save Prescription").length, 1);
-    assert.equal(diagnosisCard(app.container, "Hypertension").querySelector('[name$=".medicineName"]'), null);
-    const medicine = diagnosisCard(app.container, "Diabetes").querySelector('[name$=".medicineName"]');
-    assert.equal(medicine?.value, "");
-    assert.match(diagnosisCard(app.container, "Hypertension").textContent, /Losartan 50 mg/);
+    assert.equal(diagnosisCard(app.container, "Hypertension").querySelector('[name$=".medicineName"]').value, "Losartan");
+    assert.equal(Boolean(diagnosisCard(app.container, "Diabetes").querySelector('[name$=".medicineName"]')), false);
   } finally {
     await app.close();
   }
@@ -606,4 +608,65 @@ test("Add Prescription is disabled at 50 visit prescriptions", async () => {
   } finally {
     await app.close();
   }
+});
+
+
+test("custom prescription editor resumes partial fields and saves effective values without changing another order", async () => {
+  let app = await mountCarePlan({ diagnoses: [htn], prescriptions: [{ ...losartan, diagnosisIds: ["htn"] }] });
+  try {
+    await clickButton(app.container, "Add Prescription");
+    await setField(app.container.querySelector('[name$=".medicineName"]'), "  Custom medicine  ");
+    for (const field of ["route", "frequency", "authorizedUnit"]) {
+      await setField(app.container.querySelector(`[name$=".${field}"]`), "__other__");
+    }
+    await setField(app.container.querySelector('[name$=".duration"]'), "2");
+    const payload = JSON.parse(JSON.stringify(prescriptionEditorForDraft(app.calls.editors.at(-1))));
+    assert.equal(Object.hasOwn(payload, "localErrors"), false);
+    await app.close();
+    app = await mountCarePlan({ diagnoses: [htn], prescriptions: [{ ...losartan, diagnosisIds: ["htn"] }], prescriptionEditor: payload });
+    assert.equal(app.container.querySelector('[name$=".medicineName"]').value, "  Custom medicine  ");
+    assert.equal(app.container.querySelector('[name$=".duration"]').value, "2");
+    assert.equal(app.container.querySelector('[aria-label="Specify route"]').value, "");
+    await clickButton(app.container, "Save Prescription");
+    assert.equal(app.calls.prescriptions.length, 0);
+    await setField(app.container.querySelector('[name$=".strength"]'), "100 mg/mL");
+    await setField(app.container.querySelector('[name$=".dose"]'), "2.5 mL");
+    for (const [label, value] of [["route", "Via feeding tube"], ["frequency", "At bedtime"], ["dispensing unit", "Grams"]]) {
+      await setField(app.container.querySelector(`[aria-label="Specify ${label}"]`), value);
+    }
+    await setField(app.container.querySelector('[name$=".durationUnit"]'), "__other__");
+    await setField(app.container.querySelector('[aria-label="Specify duration unit"]'), "cycles");
+    await setField(app.container.querySelector('[name$=".authorizedQuantity"]'), "2.5");
+    await setField(app.container.querySelector('[name$=".instructions"]'), "Keep these instructions");
+    await clickButton(app.container, "Save Prescription");
+    const saved = app.calls.prescriptions.at(-1);
+    assert.equal(saved.length, 2);
+    assert.equal(saved[0].strength, losartan.strength);
+    assert.equal(saved[1].medicineName, "Custom medicine");
+    assert.equal(saved[1].route, "Via feeding tube");
+    assert.equal(saved[1].frequency, "At bedtime");
+    assert.equal(saved[1].duration, "2 cycles");
+    assert.equal(saved[1].authorizedQuantity, 2.5);
+    assert.equal(saved[1].authorizedUnit, "Grams");
+    assert.equal(saved[1].instructions, "Keep these instructions");
+    assert.equal(Object.hasOwn(saved[1], "durationEditor"), false);
+  } finally { await app.close(); }
+});
+
+test("switching custom route to a standard option clears its unused value", async () => {
+  const app = await mountCarePlan({ diagnoses: [htn], prescriptions: [{ ...losartan, diagnosisIds: ["htn"], route: "Via tube", duration: "until review" }] });
+  try {
+    await clickButton(app.container, "Edit Prescription");
+    assert.equal(app.container.querySelector('[aria-label="Specify route"]').value, "Via tube");
+    await setField(app.container.querySelector('[aria-label="Specify route"]'), "Oral");
+    assert.equal(app.container.querySelector('[aria-label="Specify route"]').value, "Oral");
+    await setField(app.container.querySelector('[aria-label="Specify route"]'), " ");
+    assert.equal(app.container.querySelector('[aria-label="Specify route"]').value, " ");
+    assert.match(app.container.textContent, /Saved duration: until review/);
+    await setField(app.container.querySelector('[name$=".route"]'), "Oral");
+    assert.equal(Boolean(app.container.querySelector('[aria-label="Specify route"]')), false);
+    await setField(app.container.querySelector('[name$=".route"]'), "__other__");
+    assert.equal(app.container.querySelector('[aria-label="Specify route"]').value, "");
+    assert.equal(app.calls.editors.at(-1).draft.duration, "until review");
+  } finally { await app.close(); }
 });

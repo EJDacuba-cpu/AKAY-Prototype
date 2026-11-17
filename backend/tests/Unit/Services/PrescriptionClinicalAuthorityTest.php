@@ -42,6 +42,24 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         PrescriptionClinicalAuthority::ensureCanAuthorize($doctor);
     }
 
+    public function test_print_prescriber_uses_snapshot_and_legacy_lookup_without_writing(): void
+    {
+        $doctor = $this->makeUser('doctor', ['conditions.confirm']);
+        $doctor->update(['prc_license_number' => '001234']);
+        $service = new PrescriptionClinicalAuthority;
+        $stamp = $service->attestation($doctor, [$this->prescription()]);
+        $this->assertSame('001234', $stamp['prcLicenseNumber']);
+        $record = new HealthRecord(['finalized_at' => now(), 'monitoring_data' => ['prescriptionAuthorization' => $stamp]]);
+        $doctor->update(['name' => 'Changed name', 'prc_license_number' => '999999']);
+        $this->assertSame('001234', $service->printPrescriber($record)['prcLicenseNumber']);
+        $this->assertSame($stamp['physicianName'], $service->printPrescriber($record)['name']);
+        unset($stamp['prcLicenseNumber']);
+        $record->monitoring_data = ['prescriptionAuthorization' => $stamp];
+        $this->assertSame('999999', $service->printPrescriber($record)['prcLicenseNumber']);
+        $record->finalized_at = null;
+        $this->assertNull($service->printPrescriber($record));
+    }
+
     public function test_nurse_and_finalize_only_users_cannot_authorize(): void
     {
         $nurse = $this->makeUser('nurse', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);
@@ -82,6 +100,8 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         $first = $this->prescription();
         $reordered = [
             'duration' => $first['duration'],
+            'authorizedQuantity' => $first['authorizedQuantity'],
+            'authorizedUnit' => $first['authorizedUnit'],
             'source' => $first['source'],
             'route' => $first['route'],
             'id' => $first['id'],
@@ -152,6 +172,11 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         $this->assertNotSame(999, $stored['authorization']['physicianId']);
         $this->assertSame(14, $stored['authorizedQuantity']);
         $this->assertSame('tablets', $stored['authorizedUnit']);
+        $before = $record->getRawOriginal();
+        $this->getJson("/api/health-records/{$id}")->assertOk()
+            ->assertJsonPath('data.prescription_prescriber.id', $doctor->id)
+            ->assertJsonPath('data.prescription_prescriber.name', $doctor->name);
+        $this->assertSame($before, $record->fresh()->getRawOriginal());
     }
 
     public function test_finalize_persists_only_hashed_clinical_fields(): void
@@ -213,8 +238,8 @@ class PrescriptionClinicalAuthorityTest extends TestCase
         $this->assertSame('case-9', $tb['tbCaseId']);
         $this->assertArrayNotHasKey('medicineId', $tb);
         $this->assertArrayNotHasKey('status', $tb);
-        $this->assertArrayNotHasKey('authorizedQuantity', $tb);
-        $this->assertArrayNotHasKey('authorizedUnit', $tb);
+        $this->assertSame(30, $tb['authorizedQuantity']);
+        $this->assertSame('Tablets', $tb['authorizedUnit']);
     }
 
     public function test_unauthorized_writer_cannot_mint_attestation(): void
@@ -439,6 +464,39 @@ class PrescriptionClinicalAuthorityTest extends TestCase
             ]);
     }
 
+    public function test_decimal_authorization_survives_finalization_and_print_summary(): void
+    {
+        $doctor = $this->makeUser('doctor', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($doctor, $visit);
+        $id = $this->postRecord($doctor, $patient, $visit, $uuid, [
+            'diagnoses' => [['id' => 'diag-htn', 'name' => 'Hypertension', 'nextAction' => 'none']],
+            'monitoring_data' => ['prescriptions' => [$this->prescription(['authorizedQuantity' => 2.5, 'authorizedUnit' => 'Milliliters (mL)'])]],
+        ])->assertCreated()->json('data.id');
+        $record = HealthRecord::findOrFail($id);
+        $this->assertSame(2.5, $record->monitoring_data['prescriptions'][0]['authorizedQuantity']);
+        $this->assertStringContainsString('2.5 Milliliters (mL)', $record->prescriptionDisplayText());
+    }
+
+    public function test_finalization_rejects_incomplete_or_invalid_prescription_fields(): void
+    {
+        $doctor = $this->makeUser('doctor', ['clinical.history', 'consultations.encode', 'consultations.finalize', 'conditions.confirm']);
+        $patient = $this->patient();
+        $visit = $this->visit($patient);
+        $uuid = $this->startVisit($doctor, $visit);
+        foreach ([
+            ['authorizedQuantity', null], ['authorizedQuantity', 0], ['authorizedQuantity', 1.5],
+            ['authorizedUnit', ''], ['duration', '0 days'], ['duration', 'until review'],
+            ['route', '__other__'], ['frequency', '__other__'], ['strength', '500'], ['dose', '1'],
+        ] as [$field, $value]) {
+            $this->postRecord($doctor, $patient, $visit, $uuid, [
+                'diagnoses' => [['id' => 'diag-htn', 'name' => 'Hypertension', 'nextAction' => 'none']],
+                'monitoring_data' => ['prescriptions' => [$this->prescription([$field => $value])]],
+            ])->assertUnprocessable()->assertJsonValidationErrors("monitoring_data.prescriptions.0.$field");
+        }
+    }
+
     private function prescription(array $overrides = []): array
     {
         return [
@@ -451,6 +509,8 @@ class PrescriptionClinicalAuthorityTest extends TestCase
             'frequency' => 'Once daily',
             'duration' => '30 days',
             'instructions' => 'After breakfast',
+            'authorizedQuantity' => 30,
+            'authorizedUnit' => 'Tablets',
             'source' => 'itr',
             ...$overrides,
         ];

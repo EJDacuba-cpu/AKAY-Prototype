@@ -107,3 +107,51 @@ test('existing household lookup and confirmed spouse label reach registration sa
     assert.equal(calls.filter(c => c.options.method === 'POST').length, 1);
   } finally { globalThis.fetch = originalFetch; await app.close(); }
 });
+
+async function changeInput(field, value) {
+  assert.ok(field, 'input exists');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+for (const role of ['bhc', 'rhu']) {
+  test(`${role} registration retains full middle name, restores custom suffix, and validates plain contacts`, async () => {
+    let saved;
+    const existing = { ...patient, middleName: 'Reyes', suffix: 'VI', contactNumber: '+639123456789', guardianContactNumber: '639987654321' };
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+    const router = createMemoryRouter([{ path: '/', element: createElement(RegistrationForm, { role, patientId: '1', registry: { ...registry, patients: [existing] }, householdEnabled: false, savePatient: async data => { saved = data; return existing; } }) }]);
+    const app = await mount(createElement(QueryClientProvider, { client }, createElement(RouterProvider, { router })));
+    try {
+      assert.equal(app.container.querySelector('[name="middleName"]').value, 'Reyes');
+      assert.equal(app.container.querySelector('[name="customSuffix"]').value, 'VI');
+      assert.equal(app.container.querySelector('[name="contactNumber"]').value, '09123456789');
+      assert.equal(app.container.querySelector('[name="guardianContactNumber"]').value, '09987654321');
+      assert.doesNotMatch(app.container.textContent, /\+63/);
+      for (const name of ['contactNumber', 'guardianContactNumber']) {
+        const input = app.container.querySelector(`[name="${name}"]`);
+        assert.equal(input.type, 'text'); assert.equal(input.inputMode, 'numeric'); assert.equal(input.maxLength, 11);
+        await changeInput(input, '09a12-345 678901'); assert.equal(input.value, '09123456789');
+        await changeInput(input, '09123');
+      }
+      await act(async () => app.container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      assert.ok(app.container.textContent.includes('Contact number must contain exactly 11 digits.'));
+      assert.ok(app.container.textContent.includes('Other contact number must contain exactly 11 digits.'));
+      assert.equal(saved, undefined);
+      await click(button(app.container, 'Other (Specify)'));
+      await click([...document.querySelectorAll('[role="option"]')].find(node => node.textContent === 'Jr.'));
+      assert.equal(app.container.querySelector('[name="customSuffix"]'), null);
+      await click(button(app.container, 'Jr.'));
+      await click([...document.querySelectorAll('[role="option"]')].find(node => node.textContent === 'Other (Specify)'));
+      assert.equal(app.container.querySelector('[name="customSuffix"]').value, '');
+      await changeInput(app.container.querySelector('[name="customSuffix"]'), 'VII');
+      await changeInput(app.container.querySelector('[name="contactNumber"]'), '09123456789');
+      await changeInput(app.container.querySelector('[name="guardianContactNumber"]'), '');
+      await act(async () => app.container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      await click([...document.body.querySelectorAll('button')].filter(node => node.textContent === 'Save Patient').at(-1));
+      assert.equal(saved.middleName, 'Reyes'); assert.equal(saved.customSuffix, 'VII');
+      assert.equal(saved.contactNumber, '09123456789'); assert.equal(saved.guardianContactNumber, '');
+      assert.ok(saved.name.endsWith('VII'));
+    } finally { await app.close(); router.dispose(); client.clear(); }
+  });
+}

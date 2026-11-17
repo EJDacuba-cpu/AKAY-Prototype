@@ -85,16 +85,16 @@ class MedicineCreateIdempotencyTest extends TestCase
             ->count());
     }
 
-    public function test_intentional_separate_creates_allow_the_same_medicine_name(): void
+    public function test_separate_keys_do_not_duplicate_the_same_catalog_item(): void
     {
         $payload = $this->createPayload('Shared Name Paracetamol');
 
         $first = $this->createMedicine($this->bhw, $payload, (string) Str::uuid())->assertCreated();
-        $second = $this->createMedicine($this->bhw, $payload, (string) Str::uuid())->assertCreated();
+        $second = $this->createMedicine($this->bhw, $payload, (string) Str::uuid())->assertConflict()->assertJsonPath('code', 'MEDICINE_DUPLICATE_CATALOG');
 
-        $this->assertNotSame($first->json('data.id'), $second->json('data.id'));
-        $this->assertSame(2, Medicine::query()->where('name', 'Shared Name Paracetamol')->count());
-        $this->assertSame(2, MedicineInventoryTransaction::query()
+        $this->assertSame($first->json('data.id'), $second->json('data.id'));
+        $this->assertSame(1, Medicine::query()->where('name', 'Shared Name Paracetamol')->count());
+        $this->assertSame(1, MedicineInventoryTransaction::query()
             ->where('transaction_type', 'opening_balance')
             ->count());
     }

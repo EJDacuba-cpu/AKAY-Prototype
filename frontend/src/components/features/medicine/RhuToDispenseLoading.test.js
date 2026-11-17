@@ -57,7 +57,7 @@ test('successful empty queue renders immediately', () => {
   const value = client();
   value.setQueryData(key, []);
   const html = render(value);
-  assert.match(html, /No prescriptions to dispense/);
+  assert.match(html, /No prescriptions or service usage to review/);
   assert.doesNotMatch(html, /Loading prescriptions to dispense/);
 });
 

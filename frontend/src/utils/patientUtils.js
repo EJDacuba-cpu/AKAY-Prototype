@@ -147,8 +147,8 @@ export const getPhilippineLocalNumber = (value) => {
 /**
  * Formats the full name from form parts.
  */
-export const formatFullName = (firstName, middleName, lastName) => {
-  return `${firstName} ${middleName ? middleName + " " : ""}${lastName}`.trim();
+export const formatFullName = (firstName, middleName, lastName, suffix = "") => {
+  return [firstName, middleName, lastName, suffix].map(value => String(value || "").trim()).filter(Boolean).join(" ");
 };
 
 /**

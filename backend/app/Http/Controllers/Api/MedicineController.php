@@ -216,6 +216,14 @@ class MedicineController extends Controller
             $locked = Medicine::query()->whereKey($medicine->id)->lockForUpdate()->firstOrFail();
             $this->facilityAccess->authorizeMedicine($request->user(), $locked);
 
+            // A metadata edit must never reinterpret batches or historical quantities.
+            abort_if(isset($data['unit']) && $data['unit'] !== $locked->unit
+                && ($locked->quantity > 0 || $locked->expiryGroups()->exists() || $locked->inventoryTransactions()->exists()),
+                422, 'The unit cannot change after stock is recorded. Keep the original unit and use a separate catalog item for a different unit.');
+            abort_if(isset($data['item_type']) && $data['item_type'] !== 'health_supply'
+                && $locked->expiryGroups()->where('expiry_not_applicable', true)->exists(),
+                422, 'This item has supply batches without expiry dates. Keep its Medical Supply item type.');
+
             if ($quantity !== null) {
                 $this->medicineStock->correctRecordedQuantity(
                     $request,

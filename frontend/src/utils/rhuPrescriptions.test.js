@@ -125,9 +125,9 @@ test("prescriptionErrors reports required fields by prescription id", () => {
     assert.equal(typeof errors[`prescriptions.${id}.${field}`], "string", field);
   }
   assert.equal(Object.hasOwn(errors, `prescriptions.${id}.instructions`), false);
-  assert.equal(Object.hasOwn(errors, `prescriptions.${id}.authorizedQuantity`), false);
+  assert.equal(Object.hasOwn(errors, `prescriptions.${id}.authorizedQuantity`), true);
   const ready = prescriptionErrors(
-    [emptyPrescription(complete({ id: "rx-ready" }))],
+    [emptyPrescription(complete({ id: "rx-ready", authorizedQuantity: 30, authorizedUnit: "Tablets" }))],
     diagnoses,
   );
   assert.deepEqual(ready, {});
@@ -139,6 +139,7 @@ test("serviceKeys link satisfies the diagnosis-or-service rule and drafts keep t
     id,
     diagnosisIds: [],
     serviceKeys: ["Maternal", "EPI", "Family Planning"],
+    authorizedQuantity: 30, authorizedUnit: "Tablets",
   }));
   assert.deepEqual(serviceOnly.serviceKeys, ["Maternal", "EPI", "Family Planning"]);
   assert.deepEqual(prescriptionErrors([serviceOnly], diagnoses), {});
@@ -287,17 +288,17 @@ test("normalize keeps incomplete orders and does not invent TB case ids", () => 
   assert.equal(Object.hasOwn(tbNamed[0], "diagnosisName"), false);
 
   const refErrors = prescriptionErrors([
-    emptyPrescription(complete({ id: "rx-ref", source: "tb_form4b_ref", tbCaseId: "" })),
+    emptyPrescription(complete({ id: "rx-ref", authorizedQuantity: 30, authorizedUnit: "Tablets", source: "tb_form4b_ref", tbCaseId: "" })),
   ], diagnoses);
   assert.equal(typeof refErrors["prescriptions.rx-ref.tbCaseId"], "string");
 
   const linked = prescriptionErrors([
-    emptyPrescription(complete({ id: "rx-ref", source: "tb_form4b_ref", tbCaseId: "case-9" })),
+    emptyPrescription(complete({ id: "rx-ref", authorizedQuantity: 30, authorizedUnit: "Tablets", source: "tb_form4b_ref", tbCaseId: "case-9" })),
   ], diagnoses);
   assert.deepEqual(linked, {});
   assert.equal(
     prescriptionsForSave([
-      emptyPrescription(complete({ id: "rx-ref", source: "tb_form4b_ref", tbCaseId: "case-9" })),
+      emptyPrescription(complete({ id: "rx-ref", authorizedQuantity: 30, authorizedUnit: "Tablets", source: "tb_form4b_ref", tbCaseId: "case-9" })),
     ])[0].tbCaseId,
     "case-9",
   );

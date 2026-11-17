@@ -11,6 +11,7 @@ import {
 } from "../../components/common";
 import { Button } from "../../components/ui/button";
 import { apiRequest, unwrapList } from "../../services/apiClient";
+import { auditRow } from "../../utils/auditLogs";
 import { errorStateVariant } from "../../utils/errorStateVariant";
 
 const DEFAULT_FILTERS = {
@@ -24,6 +25,7 @@ const LOGS_PER_PAGE = 10;
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
+  const [filterOptions, setFilterOptions] = useState({ modules: [], types: [], roles: ["Admin", "BHC", "RHU"] });
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -57,30 +59,8 @@ export default function AuditLogs() {
       .then((response) => {
         if (!active) return;
 
-        setLogs(
-          unwrapList(response)
-            .map((log) => {
-              const role =
-                log.user?.role === "bhc"
-                  ? "BHC"
-                  : log.user?.role === "rhu"
-                    ? "RHU"
-                    : "Admin";
-
-              return {
-                id: `LOG-${String(log.id).padStart(3, "0")}`,
-                sortDate: getDateValue(log.created_at),
-                action: log.action || "System activity",
-                module: log.module || "System",
-                performedBy: log.user?.name || "System",
-                role,
-                details: log.description || "",
-                dateTime: formatAuditDateTime(log.created_at),
-                level: getLogType(log),
-              };
-            })
-            .sort((a, b) => b.sortDate - a.sortDate),
-        );
+        setLogs(unwrapList(response).map(auditRow));
+        if (response.filter_options) setFilterOptions(response.filter_options);
         setPagination({
           currentPage: response.current_page || currentPage,
           perPage: response.per_page || LOGS_PER_PAGE,
@@ -105,38 +85,36 @@ export default function AuditLogs() {
     };
   }, [currentPage, filters, reloadKey]);
 
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") setReloadKey((key) => key + 1);
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
+
   const dropdownFilters = useMemo(
     () => [
       {
         key: "module",
         label: "Module",
         value: filters.module,
-        options: buildModuleOptions(logs, filters.module),
+        options: ["All Modules", ...filterOptions.modules],
       },
       {
         key: "role",
         label: "Role",
         value: filters.role,
-        options: ["All Roles", "Admin", "BHC", "RHU"],
+        options: ["All Roles", ...filterOptions.roles],
       },
       {
         key: "type",
         label: "Log Type",
         value: filters.type,
-        options: [
-          "All Types",
-          "Auth",
-          "Account",
-          "Referral",
-          "Status Update",
-          "Feedback",
-          "Inventory",
-          "Security",
-          "System",
-        ],
+        options: ["All Types", ...filterOptions.types],
       },
     ],
-    [filters.module, filters.role, filters.type, logs],
+    [filters.module, filters.role, filters.type, filterOptions],
   );
 
   const activeFilters = [
@@ -252,8 +230,7 @@ export default function AuditLogs() {
                   Activity Logs
                 </h2>
                 <p className="mt-1 text-xs text-[#9CA3AF]">
-                  Records of significant account, referral, and RHU feedback
-                  actions.
+                  Records of significant account, consultation, patient, referral, and inventory activities.
                 </p>
               </div>
               {isRefreshing && <RefreshingIndicator label="Updating logs..." />}
@@ -304,7 +281,7 @@ export default function AuditLogs() {
                           </span>
                         </td>
 
-                        <td className="px-4 text-sm font-semibold text-ink-800">
+                        <td className="px-4 text-sm font-semibold text-ink-800" title={log.rawAction}>
                           {log.action}
                         </td>
 
@@ -317,7 +294,7 @@ export default function AuditLogs() {
                         </td>
 
                         <td className="px-4">
-                          <RoleBadge role={log.role} />
+                          <RoleBadge role={log.role} tier={log.tier} />
                         </td>
 
                         <td className="max-w-[240px] px-4 text-sm text-neutral-600" title={log.details || undefined}>
@@ -351,7 +328,7 @@ export default function AuditLogs() {
   );
 }
 
-function RoleBadge({ role }) {
+function RoleBadge({ role, tier }) {
   const map = {
     Admin: "bg-purple-50 text-purple-700",
     BHC: "bg-red-50 text-red-700",
@@ -361,7 +338,7 @@ function RoleBadge({ role }) {
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-        map[role] || "bg-slate-100 text-slate-600"
+        map[tier] || "bg-slate-100 text-slate-600"
       }`}
     >
       {role}
@@ -371,13 +348,15 @@ function RoleBadge({ role }) {
 
 function TypeBadge({ type }) {
   const map = {
-    Account: "bg-purple-50 text-purple-700",
-    Referral: "bg-red-50 text-red-700",
+    "Account Management": "bg-purple-50 text-purple-700",
+    Referrals: "bg-red-50 text-red-700",
     "Status Update": "bg-amber-50 text-amber-700",
     Feedback: "bg-emerald-50 text-emerald-700",
-    Inventory: "bg-orange-50 text-orange-700",
+    "Medicine and Supply": "bg-orange-50 text-orange-700",
     Security: "bg-red-50 text-red-700",
-    Auth: "bg-slate-100 text-slate-700",
+    Authentication: "bg-slate-100 text-slate-700",
+    Consultations: "bg-slate-100 text-slate-700",
+    "Patient Management": "bg-slate-100 text-slate-700",
     System: "bg-slate-100 text-slate-600",
   };
 
@@ -389,81 +368,5 @@ function TypeBadge({ type }) {
     >
       {type}
     </span>
-  );
-}
-
-function getLogType(log) {
-  const module = String(log.module || "").toLowerCase();
-  const action = String(log.action || "").toLowerCase();
-  const description = String(log.description || "").toLowerCase();
-  const text = `${module} ${action} ${description}`;
-
-  if (text.includes("auth") || text.includes("login") || text.includes("logout")) {
-    return "Auth";
-  }
-
-  if (text.includes("account") || text.includes("user")) {
-    return "Account";
-  }
-
-  if (text.includes("referral")) {
-    return "Referral";
-  }
-
-  if (text.includes("status")) {
-    return "Status Update";
-  }
-
-  if (text.includes("feedback") || text.includes("return")) {
-    return "Feedback";
-  }
-
-  if (text.includes("medicine") || text.includes("inventory")) {
-    return "Inventory";
-  }
-
-  if (text.includes("security")) {
-    return "Security";
-  }
-
-  return log.module || "System";
-}
-
-function getDateValue(value) {
-  const time = new Date(value || "").getTime();
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function formatAuditDateTime(value) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const dateText = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-
-  const timeText = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-
-  return `${dateText} \u2022 ${timeText}`;
-}
-
-function buildModuleOptions(logs, selectedModule) {
-  const modules = logs.map((log) => log.module).filter(Boolean);
-  if (selectedModule !== "All Modules") modules.push(selectedModule);
-
-  return ["All Modules", ...sortUnique(modules)];
-}
-
-function sortUnique(values) {
-  return Array.from(new Set(values)).sort((a, b) =>
-    String(a).localeCompare(String(b)),
   );
 }

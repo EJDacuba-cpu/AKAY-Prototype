@@ -7,6 +7,26 @@ use App\Models\User;
 /** Structured prescription authority is narrower than consultations.finalize. */
 final class PrescriptionClinicalAuthority
 {
+    /** Read-only resolution for older prescriptions that predate license snapshots. */
+    public function printPrescriber(\App\Models\HealthRecord $record): ?array
+    {
+        if (! $record->finalized_at) {
+            return null;
+        }
+        $stamp = $record->monitoring_data['prescriptionAuthorization'] ?? [];
+        $id = $stamp['physicianId'] ?? null;
+        if (! $id) {
+            return null;
+        }
+        $doctor = User::find($id);
+
+        return [
+            'id' => $id,
+            'name' => $stamp['physicianName'] ?? $doctor?->name,
+            'prcLicenseNumber' => $stamp['prcLicenseNumber'] ?? $doctor?->prc_license_number,
+        ];
+    }
+
     public static function canAuthorize(?User $user): bool
     {
         return $user !== null
@@ -42,6 +62,7 @@ final class PrescriptionClinicalAuthority
         return [
             'physicianId' => $user->id,
             'physicianName' => $user->name,
+            'prcLicenseNumber' => $user->prc_license_number,
             'ruralHealthUnitId' => $user->rural_health_unit_id,
             'authorizedAt' => now()->toISOString(),
             'prescriptionHash' => hash('sha256', json_encode(self::clinicalRows($prescriptions), JSON_THROW_ON_ERROR)),
@@ -124,7 +145,7 @@ final class PrescriptionClinicalAuthority
 
         $quantity = $item['authorizedQuantity'] ?? null;
         if ($quantity !== null && $quantity !== '') {
-            $saved['authorizedQuantity'] = is_numeric($quantity) ? (int) $quantity : $quantity;
+            $saved['authorizedQuantity'] = is_numeric($quantity) ? $quantity + 0 : $quantity;
         }
         $unit = (string) ($item['authorizedUnit'] ?? '');
         if ($unit !== '') {
@@ -153,7 +174,7 @@ final class PrescriptionClinicalAuthority
             if ($quantity === null || $quantity === '') {
                 $quantity = null;
             } elseif (is_numeric($quantity)) {
-                $quantity = (int) $quantity;
+                $quantity = $quantity + 0;
             }
             $diagnosisIds = is_array($item['diagnosisIds'] ?? null) ? $item['diagnosisIds'] : [];
             $serviceKeys = is_array($item['serviceKeys'] ?? null) ? $item['serviceKeys'] : [];
