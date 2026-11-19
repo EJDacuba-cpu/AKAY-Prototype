@@ -37,3 +37,19 @@ test("RHU patient details adds a read-only Patient Background tab after Patient 
   assert.ok(info !== -1 && background !== -1 && programs !== -1);
   assert.ok(info < background && background < programs);
 });
+
+test("RHU patient details has no specialized program tabs; Care & Programs owns tracking", () => {
+  assert.match(source, /CareAndProgramsTab/);
+  assert.match(source, /getCareTracking/);
+  assert.match(source, /getSpecializedRecordPrograms/);
+  assert.doesNotMatch(source, /SpecializedRecordsTab/);
+  assert.doesNotMatch(source, /PROFILE_SPECIALIZED_TABS/);
+  assert.doesNotMatch(source, /profileSpecializedTabs/);
+  assert.doesNotMatch(source, /activeSpecializedProgram/);
+  assert.doesNotMatch(source, /specialized:/);
+  const tabs = tabBlock(source);
+  assert.match(tabs, /key: "programs"/);
+  assert.match(tabs, /key: "records"/);
+  assert.match(tabs, /key: "referrals"/);
+  assert.doesNotMatch(tabs, /specialized/);
+});
