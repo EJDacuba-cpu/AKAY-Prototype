@@ -1,5 +1,5 @@
 import { HealthConcernsAndCareOutcomes } from "./RecordDetailsSections";
-import { diagnosisTextDistinctFromConcerns, recordDetailsPresentation, recordedVitalItems } from "./recordDetailsPresentation";
+import { recordedVitalItems } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
 import VisitHistorySnapshot from "./VisitHistorySnapshot";
 import {
@@ -14,7 +14,6 @@ import {
   earlierDraftContinuedNotes,
   earlierDraftNotes,
   isBhcGeneralV2,
-  showsDiagnosisRow,
 } from "../../../utils/consultationWorkflow";
 import { joinDiagnosisNames } from "../../../utils/diagnoses";
 import { savedPrescriptionRows } from "../../../utils/prescriptionPrint";
@@ -238,23 +237,6 @@ function isGeneralConsultationService(serviceType, record) {
   return label === "General Consultation";
 }
 
-/** Plain GC print only — program records keep the legacy multi-section layout. */
-function usesGeneralConsultationPrintLayout({
-  serviceType,
-  record,
-  tbRecord,
-  immunization,
-  maternal,
-  postpartumOnly,
-  familyPlanning,
-}) {
-  if (!isGeneralConsultationService(serviceType, record)) return false;
-  if (tbRecord || immunization || maternal || postpartumOnly || familyPlanning) {
-    return false;
-  }
-  return true;
-}
-
 function blankText(value) {
   const text = String(value ?? "").trim();
   if (
@@ -293,6 +275,7 @@ function vitalCellMap(record, patient) {
     Height: vitalDisplayValue(byLabel.Height),
     Weight: vitalDisplayValue(byLabel.Weight),
     BMI: blankText(byLabel.BMI),
+    FBS: blankText(byLabel.FBS),
   };
 }
 
@@ -348,7 +331,7 @@ function gcMedicationLines(record) {
   return { prescribed, instructions };
 }
 
-function GeneralConsultationPrintDocument({
+function ConsultationPrintDocument({
   record,
   patient,
   title,
@@ -358,10 +341,16 @@ function GeneralConsultationPrintDocument({
   displayTime,
   practitioner,
   sourceRole,
+  documentRole,
   facility,
   printState = "ready",
+  parentRecordId,
+  nutritionSelected,
+  bodyFindings,
+  children,
 }) {
   const isRhu = sourceRole === "rhu";
+  const medications = documentRole === "rhu" ? gcMedicationLines(record) : null;
   const hasAge = patient?.age !== undefined && patient?.age !== null && String(patient.age).trim() !== "";
   const patientCode =
     patient?.patientId ||
@@ -390,7 +379,6 @@ function GeneralConsultationPrintDocument({
   const hpiFieldLabel = isFollowUpVisit
     ? "Changes since last visit"
     : "Present illness";
-  const { prescribed, instructions } = gcMedicationLines(record);
   const hasChiefComplaintSection = Boolean(
     blankText(chiefComplaint) || blankText(visitHistoryInformantLine(record)),
   );
@@ -403,9 +391,9 @@ function GeneralConsultationPrintDocument({
       data-print-key={recordId}
       data-print-state={printState}
       data-print-layout="general-consultation"
-      className="gc-record-print"
+      className={children ? "gc-record-print gc-record-print-with-sections" : "gc-record-print"}
     >
-      <style>{generalConsultationPrintStyles}</style>
+      <style>{generalConsultationPrintStyles + (children ? programSectionPrintStyles : "")}</style>
 
       <div className="gc-print-body">
         <header className="gc-print-header">
@@ -414,10 +402,10 @@ function GeneralConsultationPrintDocument({
             <p className="gc-print-doctype">
               {title || "General Consultation Record"}
             </p>
-            {/* INSERT: facility name from record */}
-            {facilityName ? <p>{facilityName}</p> : <p>&nbsp;</p>}
-            {/* INSERT: record number */}
+            {facilityName ? <p>{facilityName}</p> : children ? <p>Facility not recorded</p> : <p>&nbsp;</p>}
             <p>Record #{recordId}</p>
+            {parentRecordId && <p>Follow-up of record #{parentRecordId}</p>}
+            {nutritionSelected && <p>Nutrition Care</p>}
           </div>
         </header>
 
@@ -481,6 +469,7 @@ function GeneralConsultationPrintDocument({
               </tr>
             </tbody>
           </table>
+          {children && vitals.FBS && <GcField label="FBS" value={vitals.FBS} />}
         </section>
 
         <section className="gc-print-section">
@@ -495,13 +484,17 @@ function GeneralConsultationPrintDocument({
             value={diagnosisText}
             allowBlankLine={isRhu}
           />
+          {bodyFindings && <BodyFindingHistoryView {...bodyFindings} print />}
         </section>
 
-        <section className="gc-print-section">
-          <h2>Medications</h2>
-          <GcField label="Prescribed" value={prescribed} allowBlankLine />
-          <GcField label="Instructions" value={instructions} allowBlankLine />
-        </section>
+        {medications && (
+          <section className="gc-print-section">
+            <h2>Medications</h2>
+            <GcField label="Prescribed" value={medications.prescribed} allowBlankLine />
+            <GcField label="Instructions" value={medications.instructions} allowBlankLine />
+          </section>
+        )}
+        {children}
       </div>
 
       <footer className="gc-print-signatures">
@@ -513,10 +506,12 @@ function GeneralConsultationPrintDocument({
           </div>
           <p className="gc-print-sig-caption">Recorded by</p>
         </div>
-        <div className="gc-print-sig">
-          <div className="gc-print-sig-line" />
-          <p className="gc-print-sig-caption">Physician Signature</p>
-        </div>
+        {documentRole === "rhu" && (
+          <div className="gc-print-sig">
+            <div className="gc-print-sig-line" />
+            <p className="gc-print-sig-caption">Physician Signature</p>
+          </div>
+        )}
       </footer>
     </article>
   );
@@ -542,8 +537,6 @@ export default function BhcHealthRecordPrintDocument({
 
   const sourceRole = record.ruralHealthUnitId || record.rural_health_unit_id
     ? "rhu" : record.barangayHealthCenterId || record.barangay_health_center_id ? "bhc" : documentRole;
-  const hasAge = patient?.age !== undefined && patient?.age !== null && String(patient.age).trim() !== "";
-
   const purpose =
     record?.monitoringData?.visitPurpose ||
     record?.monitoring_data?.visitPurpose;
@@ -566,42 +559,20 @@ export default function BhcHealthRecordPrintDocument({
     programs.includes("Family Planning");
   const facility = facilityLabel(record, patient);
 
-  if (
-    usesGeneralConsultationPrintLayout({
-      serviceType,
-      record,
-      tbRecord,
-      immunization,
-      maternal,
-      postpartumOnly,
-      familyPlanning,
-    })
-  ) {
-    return (
-      <GeneralConsultationPrintDocument
-        record={record}
-        patient={patient}
-        title={title}
-        recordId={recordId}
-        patientName={patientName}
-        displayDate={displayDate}
-        displayTime={displayTime}
-        practitioner={practitioner}
-        sourceRole={sourceRole}
-        facility={facility}
-        printState={printState}
-      />
-    );
-  }
+  const printProps = {
+    record, patient, title: title || (serviceType ? serviceType + " Record" : undefined),
+    recordId, patientName, displayDate, displayTime, practitioner,
+    sourceRole, documentRole, facility, printState,
+  };
+  const includeAdditionalSections = programs.length > 0 || tbRecord || immunization ||
+    maternal || postpartumOnly || familyPlanning || !isGeneralConsultationService(serviceType, record);
+
+  if (!includeAdditionalSections) return <ConsultationPrintDocument {...printProps} />;
 
   const status = normalizeHealthRecordStatus(
     record.followUpStatus || record.status || "Consultation",
   );
-  const vitalItems = recordedVitalItems(record, patient);
   const isFollowUp = getRecordVisitTypeValue(record) === "follow_up_visit";
-  const chiefComplaint = getRecordChiefComplaint(record, "");
-  const diagnosis = getRecordDiagnosis(record, "");
-  const physicalExam = getRecordPhysicalExam(record, "");
   const summary = getRecordSummary(record, "");
   const monitoringNotes = getRecordValue(
     record,
@@ -615,71 +586,18 @@ export default function BhcHealthRecordPrintDocument({
   const treatmentAction = getRecordInitialActions(record, "");
   const treatmentNotes = getRecordTreatmentNotes(record, "");
   const medicines = getDispensedMedicines(record);
-  const { concerns } = recordDetailsPresentation(record, linkedReferral);
   const draftNotes = earlierDraftNotes(record);
   const bodyFindings = thisRecordBodyFindingHistory(record);
   const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
-  const patientCode =
-    patient?.patientId ||
-    patient?.patient_id ||
-    patient?.patientCode ||
-    patient?.patient_code ||
-    "";
-  const printedOn = new Date().toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   return (
-    <article id="health-record-print" data-print-key={recordId} data-print-state={printState} className="bhc-record-print">
-      <style>{documentStyles}</style>
-
-      <header className="bhc-print-letterhead">
-        <div className="bhc-print-brand">
-          <p className="bhc-print-mark">AKAY</p>
-          <p>Medical EHR and Referral System</p>
-          <p>{sourceRole === "rhu" ? "Rural Health Unit" : "Barangay Health Center"}</p>
-          {facility ? <p>{facility}</p> : null}
-        </div>
-        <div className="bhc-print-docmeta">
-          <p className="bhc-print-doctype">{sourceRole === "rhu" ? "RHU" : "BHC"} Health Record</p>
-          <p>{title || "Health Record"}</p>
-          <p>Record #{recordId}</p>
-
-        </div>
-      </header>
-
-      <Section title="Patient & consultation" avoidBreak>
-        <InlineGrid
-          items={[
-            { label: "Patient", value: patientName },
-            ...(patientCode ? [{ label: "Patient ID", value: patientCode }] : []),
-            ...(hasAge || patient?.sex
-              ? [
-                  {
-                    label: "Age / Sex",
-                    value: [hasAge ? `${patient.age} yrs` : "", patient?.sex]
-                      .filter(Boolean)
-                      .join(" / "),
-                  },
-                ]
-              : []),
-            { label: "Service", value: serviceType },
-            { label: "Date of visit", value: displayDate },
-            { label: "Time of visit", value: displayTime },
-            { label: "Recorded By", value: practitioner },
-            ...(parentRecordId
-              ? [{ label: "Parent record", value: `#${parentRecordId}` }]
-              : []),
-          ]}
-        />
-      </Section>
-
+    <ConsultationPrintDocument
+      {...printProps}
+      parentRecordId={parentRecordId}
+      nutritionSelected={programs.includes("Nutrition")}
+      bodyFindings={bodyFindings.originals.length || bodyFindings.events.length ? bodyFindings : null}
+    >
       {purpose && (
         <Section title="Purpose of visit" avoidBreak>
           <p className="bhc-print-prose">
@@ -700,34 +618,6 @@ export default function BhcHealthRecordPrintDocument({
           {purpose.pregnancyConfirmed === "Yes" && (
             <p className="bhc-print-prose">{TEENAGE_PREGNANCY_MESSAGE}</p>
           )}
-        </Section>
-      )}
-
-      <Section title="Vital signs" avoidBreak>
-        <InlineGrid items={vitalItems} />
-        {!vitalItems.length && <p className="bhc-print-muted">No vital measurements recorded.</p>}
-      </Section>
-
-      {(!tbRecord || bodyFindings.originals.length > 0 || bodyFindings.events.length > 0) && (
-        <Section title="Clinical assessment">
-          {!tbRecord && (
-            <>
-              <Narrative label="Chief complaint" value={chiefComplaint} />
-              <Narrative
-                label={
-                  isFollowUp
-                    ? "Follow-up findings / changes since previous visit"
-                    : "History of present illness / signs & symptoms"
-                }
-                value={summary}
-              />
-              <Narrative label="Physical examination" value={physicalExam} />
-              {showsDiagnosisRow(record, diagnosis) && diagnosisTextDistinctFromConcerns(diagnosis, concerns) && (
-                <Narrative label="Assessment" value={diagnosis} />
-              )}
-            </>
-          )}
-          <BodyFindingHistoryView {...bodyFindings} print />
         </Section>
       )}
 
@@ -861,11 +751,7 @@ export default function BhcHealthRecordPrintDocument({
         {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
       </Section>}
 
-      <footer className="bhc-print-footer">
-        Printed on {printedOn}. This copy reflects the saved health record and
-        is not a clinical recommendation.
-      </footer>
-    </article>
+    </ConsultationPrintDocument>
   );
 }
 
@@ -1491,7 +1377,8 @@ const generalConsultationPrintStyles = `
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .gc-print-section h2 {
+  .gc-print-section h2,
+  .bhc-print-section h2 {
     margin: 0 0 10px;
     padding: 0 0 4px;
     border-bottom: 1px solid #000;
@@ -1591,58 +1478,7 @@ const generalConsultationPrintStyles = `
   }
 `;
 
-const documentStyles = `
-  .bhc-record-print {
-    color: var(--color-text);
-    font-family: var(--font-sans);
-    font-size: 10pt;
-    line-height: 1.35;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .bhc-print-letterhead {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    padding-bottom: 8px;
-    margin-bottom: 10px;
-    border-bottom: 1.5px solid var(--color-brand-600);
-  }
-  .bhc-print-mark {
-    color: var(--color-brand-600);
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 0.18em;
-    margin: 0;
-  }
-  .bhc-print-brand p,
-  .bhc-print-docmeta p {
-    margin: 0;
-    color: var(--color-text-secondary);
-  }
-  .bhc-print-doctype {
-    color: var(--color-text) !important;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .bhc-print-docmeta {
-    text-align: right;
-  }
-  .bhc-print-section {
-    margin: 0 0 8px;
-    padding: 0 0 6px;
-    border-bottom: 1px solid var(--color-border);
-  }
-  .bhc-print-section h2 {
-    margin: 0 0 6px;
-    color: var(--color-text);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
+const programSectionPrintStyles = `
   .bhc-print-subh {
     margin: 8px 0 2px;
     color: var(--color-text);
@@ -1696,7 +1532,7 @@ const documentStyles = `
   }
   .bhc-print-table th,
   .bhc-print-table td {
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid #000;
     padding: 4px 6px;
     text-align: left;
     vertical-align: top;
@@ -1709,18 +1545,17 @@ const documentStyles = `
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .bhc-print-footer {
-    margin-top: 6px;
-    break-before: avoid;
-    color: var(--color-text-muted);
-    font-size: 9px;
-  }
   @media print {
-    .bhc-print-keep { break-inside: auto; }
+    .gc-record-print-with-sections,
+    .gc-record-print-with-sections .gc-print-body {
+      display: block;
+    }
+    .gc-record-print-with-sections .gc-print-body > * + * { margin-top: 14px; }
+    .gc-record-print-with-sections .gc-print-signatures { margin-top: 14px; }
+    .bhc-print-keep { break-inside: avoid; }
     .bhc-print-table thead { display: table-header-group; }
     .bhc-print-section h2 { break-after: avoid; }
     .bhc-print-table tr { break-inside: avoid; }
-    .bhc-print-letterhead { break-after: avoid; }
     .bhc-print-narrative, .bhc-print-prose { break-inside: auto; }
   }
 `;

@@ -468,9 +468,9 @@ test("print preserves newborn age zero and the record's original facility across
     patient: { age: 0, sex: "Female", barangayHealthCenterId: 12, barangayHealthCenter: { name: "Transferred BHC" } },
     documentRole: "rhu", recordId: "9002", patientName: "Synthetic Newborn",
   }));
-  assert.match(html, /0 yrs/);
+  assert.match(html, /0 \/ Female/);
   assert.match(html, /Original BHC/);
-  assert.match(html, /BHC Health Record/);
+  assert.match(html, /data-print-layout="general-consultation"/);
   assert.doesNotMatch(html, /Transferred BHC|RHU Health Record/);
 });
 
@@ -533,15 +533,15 @@ test("General Consultation print uses the B&W A4 layout without dense clinical e
   assert.match(html, /Warm to touch/);
   assert.match(html, /Diagnosis/);
   assert.match(html, /Acute febrile illness/);
-  assert.match(html, /Medications/);
-  assert.match(html, /Prescribed/);
-  assert.match(html, /Paracetamol/);
-  assert.match(html, /Instructions/);
-  assert.match(html, /Every 6 hours/);
+  assert.doesNotMatch(html, /Medications/);
+  assert.doesNotMatch(html, /Prescribed/);
+  assert.doesNotMatch(html, /Paracetamol/);
+  assert.doesNotMatch(html, /Instructions/);
+  assert.doesNotMatch(html, /Every 6 hours/);
   assert.match(html, /BP \(mmHg\)/);
   assert.match(html, /Recorded by/);
   assert.match(html, /Midwife Santos/);
-  assert.match(html, /Physician Signature/);
+  assert.doesNotMatch(html, /Physician Signature/);
   assert.match(html, /gc-print-sig-line-name/);
   assert.match(html, /gc-print-writing-line|General exam findings/);
   assert.doesNotMatch(html, /gc-print-sig-role/);
@@ -626,6 +626,9 @@ test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
   assert.match(rhu, /Acute febrile illness; Allergic rhinitis/);
   assert.match(rhu, /Cetirizine 10 mg/);
   assert.match(rhu, /Take at bedtime/);
+  for (const label of ["Medications", "Prescribed", "Instructions", "Physician Signature"]) {
+    assert.ok(rhu.includes(label), label);
+  }
   assert.match(bhcWithDiagnosis, /Barangay Health Center San Francisco/);
   assert.match(bhcWithDiagnosis, /Diagnosis/);
   assert.match(bhcWithDiagnosis, /Acute febrile illness/);
@@ -665,12 +668,40 @@ test("BHC print document groups program sections and keeps shared treatment once
     }),
   );
 
+  assert.match(html, /data-print-layout="general-consultation"/);
   assert.match(html, /Child Health \/ EPI/);
   assert.match(html, /BCG/);
   assert.match(html, /Maternal \/ Prenatal/);
   assert.match(html, /Gravida/);
   assert.equal((html.match(/Dispensed medicines/g) || []).length, 1);
   assert.equal((html.match(/Treatment &amp; dispensed medicines/g) || []).length, 1);
+});
+
+test("BHC and RHU use the shared print layout for Family Planning and Nutrition", () => {
+  for (const documentRole of ["bhc", "rhu"]) {
+    const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+      record: {
+        ...printRecord,
+        selectedPrograms: ["Family Planning", "Nutrition"],
+        familyPlanningData: {
+          previousMethod: "CON — Condom",
+          methodUsed: "MSTR/NSV — Male Sterilization / No-Scalpel Vasectomy",
+        },
+        fbs: 105,
+      },
+      recordId: "77",
+      serviceType: "Family Planning",
+      documentRole,
+    }));
+    assert.match(html, /data-print-layout="general-consultation"/);
+    assert.doesNotMatch(html, /Medical EHR and Referral System/);
+    assert.match(html, /Previous Method/);
+    assert.match(html, /CON — Condom/);
+    assert.match(html, /Method Used \/ Accepted/);
+    assert.match(html, /Nutrition Care/);
+    assert.match(html, />105 mg\/dL</);
+    assert.equal(html.includes("Physician Signature"), documentRole === "rhu");
+  }
 });
 
 test("BHC TB print layout keeps recorded TB fields without form controls", () => {
