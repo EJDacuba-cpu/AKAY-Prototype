@@ -13,6 +13,8 @@ use Throwable;
 
 class Patient extends Model
 {
+    protected $hidden = ['household_rural_health_unit_id'];
+
     protected $fillable = [
         'first_name',
         'middle_name',

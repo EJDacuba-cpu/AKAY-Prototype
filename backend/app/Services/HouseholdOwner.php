@@ -7,7 +7,7 @@ use App\Models\Patient;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
-/** Exclusive BHC or RHU owner of a household, FSN counter, and its members. */
+/** Exclusive BHC or RHU owner of a household and its FSN counter. */
 final class HouseholdOwner
 {
     public const BHC = 'bhc';
@@ -67,7 +67,7 @@ final class HouseholdOwner
     public function scopePatients(Builder $query): Builder
     {
         return $this->isBhc()
-            ? $query->where('barangay_health_center_id', $this->id)->whereNull('rural_health_unit_id')
+            ? $query->where('barangay_health_center_id', $this->id)
             : $query->where('rural_health_unit_id', $this->id)->whereNull('barangay_health_center_id');
     }
 
@@ -81,7 +81,7 @@ final class HouseholdOwner
     public function ownsPatient(Patient $patient): bool
     {
         return $this->isBhc()
-            ? (int) $patient->barangay_health_center_id === $this->id && $patient->rural_health_unit_id === null
+            ? (int) $patient->barangay_health_center_id === $this->id
             : (int) $patient->rural_health_unit_id === $this->id && $patient->barangay_health_center_id === null;
     }
 }

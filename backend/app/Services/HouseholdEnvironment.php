@@ -36,7 +36,8 @@ class HouseholdEnvironment
                 && ($patient->household_id
                     ? $other->household_id === $patient->household_id
                         && $other->barangay_health_center_id === $patient->barangay_health_center_id
-                        && $other->rural_health_unit_id === $patient->rural_health_unit_id
+                        && ($patient->barangay_health_center_id !== null
+                            || $other->rural_health_unit_id === $patient->rural_health_unit_id)
                     : ! $other->household_id && trim((string) $other->family_serial_number) === $serial)
                 && self::environmentOf($other) !== null)
             // Newest social update first; an undated record sorts last, and

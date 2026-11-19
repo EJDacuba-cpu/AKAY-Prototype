@@ -507,9 +507,8 @@ class MonitoringHandoffService
                 return $locked->fresh();
             }
 
-            // patients_household_facility_exclusive: household members must be
-            // exclusively BHC-owned or RHU-owned. Assigning BHC while preserving
-            // rural_health_unit_id requires leaving the RHU household first.
+            // BHC-assigned patients use BHC households. Leave the RHU household
+            // before assigning the BHC and keep the patient's RHU affiliation.
             $householdConflict = $this->detachRhuHouseholdIfNeeded($http, $patient, $user, $locked);
             if ($householdConflict !== null) {
                 $conflictMessages = $householdConflict;

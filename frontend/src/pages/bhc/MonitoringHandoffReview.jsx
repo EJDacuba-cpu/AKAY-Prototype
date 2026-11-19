@@ -103,6 +103,7 @@ export default function MonitoringHandoffReview() {
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.monitoringHandoffs() });
     await queryClient.invalidateQueries({ queryKey: ["patients"] });
+    await queryClient.invalidateQueries({ queryKey: ["bhc-households"] });
     await queryClient.invalidateQueries({ queryKey: ["rhu-shared-clinical"] });
     await detailsQuery.refetch();
   }
