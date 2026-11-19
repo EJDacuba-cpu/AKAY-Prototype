@@ -32,3 +32,9 @@ test("RHU health record details loads the record and patient by id, not the faci
   assert.doesNotMatch(source, /Record Follow-up Visit/);
   assert.doesNotMatch(source, /View Referral/);
 });
+
+test("RHU health record details does not mount live TB case ops write panels", () => {
+  assert.doesNotMatch(source, /TbCaseRegistrationPanel/);
+  assert.doesNotMatch(source, /TbDrReferralPanel/);
+  assert.doesNotMatch(source, /TbMonitoringPanel/);
+});

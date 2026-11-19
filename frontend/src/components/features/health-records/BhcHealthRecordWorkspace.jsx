@@ -7,7 +7,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { Button } from "../../ui/button";
 import { RefreshingIndicator } from "../../common";
 import { ProfileSection } from "../patients/profile/ProfileSection";
-import TbTreatmentCardForm, { normalizeTbData } from "./TbTreatmentCardForm";
+import TbVisitSnapshot from "./TbVisitSnapshot";
 import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
@@ -345,11 +345,7 @@ export default function BhcHealthRecordWorkspace({
       )}
       {tbRecord && (
         <ProfileSection id="tb-program" title="TB DOTS / TB monitoring">
-          <TbTreatmentCardForm
-            value={normalizeTbData(record.tbData || record.tb_data)}
-            readOnly
-            recordId={record.id}
-          />
+          <TbVisitSnapshot record={record} />
         </ProfileSection>
       )}
 

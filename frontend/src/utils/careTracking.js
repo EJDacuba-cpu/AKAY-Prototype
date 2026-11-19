@@ -17,7 +17,6 @@ import {
   POSTPARTUM_WINDOW_DAYS,
   TB_OUTCOME_LABELS,
   TB_POSITIVE_OUTCOMES,
-  TB_ADHERENCE_WARNING_THRESHOLD,
   EPI_INFANT_SCHEDULE,
   EPI_EXTRA_INDICATORS,
   EPI_FIC_AGE_LIMIT_MONTHS,
@@ -410,7 +409,7 @@ function linkedSupportingLabFacts(records = []) {
   return [];
 }
 
-function buildTbEntry(records, today, condition = null) {
+function buildTbEntry(records, today, condition = null, { followUpTasks = [] } = {}) {
   const tbRecords = recordsForProgram(records, "tb");
   const evaluationRecords = (records || []).filter((record) => {
     const diagnoses = Array.isArray(record?.diagnoses) ? record.diagnoses : [];
@@ -421,7 +420,8 @@ function buildTbEntry(records, today, condition = null) {
   });
   if (tbRecords.length === 0 && evaluationRecords.length === 0 && !condition) return null;
 
-  const sorted = sortRecordsByDateAsc(tbRecords.length ? tbRecords : evaluationRecords);
+  const programRecords = tbRecords.length ? tbRecords : evaluationRecords;
+  const sorted = sortRecordsByDateAsc(programRecords);
   const latest = sorted[sorted.length - 1];
   const rawData = latest ? (latest.tbData || latest.tb_data || {}) : {};
   const tb = latest && tbRecords.length ? getTbData(latest) : {};
@@ -449,12 +449,8 @@ function buildTbEntry(records, today, condition = null) {
     }
   }
 
-  if (tb.adherencePercent) {
-    flags.push({
-      label: `Adherence ${tb.adherencePercent}%`,
-      tone: tb.adherencePercent < TB_ADHERENCE_WARNING_THRESHOLD ? "warning" : "neutral",
-    });
-  }
+  // Adherence % from Form 4B dose calendars is not the Care & Programs signal;
+  // dispense-per-visit chart is the progress view instead.
 
   if (condition) facts.push(monitoringFact(condition));
   if (condition?.status === "under_evaluation" || (!tbRecords.length && evaluationRecords.length)) {
@@ -479,16 +475,24 @@ function buildTbEntry(records, today, condition = null) {
     statusTone,
     facts,
     lastVisit: latest ? getRecordDateValue(latest) : "",
-    nextVisit: "",
+    nextVisit: resolveProgramNextVisit({
+      key: "tb",
+      label: "Tuberculosis",
+      followUpTasks,
+      latestRecord: latest,
+    }),
     flags,
     action: null,
-    records: tbRecords.length ? tbRecords : evaluationRecords,
+    records: programRecords,
   };
 }
 
-const NCD_FOLLOW_UP_TERMS = Object.freeze({
+const PROGRAM_FOLLOW_UP_TERMS = Object.freeze({
   hypertension: ["hypertension", "htn", "high blood"],
   diabetes_mellitus: ["diabetes", "dm", "fbs", "blood sugar", "glucose"],
+  epi: ["epi", "immunization", "child health", "service:epi"],
+  tb: ["tb", "dots", "tuberculosis", "service:tb"],
+  nutrition: ["nutrition", "service:nutrition"],
 });
 
 function followUpState(task = {}) {
@@ -505,25 +509,82 @@ export function isOpenFollowUpTask(task = {}) {
   return ["pending", "rescheduled", "no_show", "due_today", "upcoming"].includes(state);
 }
 
-function followUpMatchesNcd(task, { key, label }) {
-  const terms = NCD_FOLLOW_UP_TERMS[key] || [String(label || "").toLowerCase()].filter(Boolean);
+function programFollowUpTerms(key, label) {
+  return PROGRAM_FOLLOW_UP_TERMS[key] || [String(label || "").toLowerCase()].filter(Boolean);
+}
+
+function followUpTextHaystack(values = []) {
+  return values.map((value) => String(value || "").toLowerCase()).join(" ");
+}
+
+function followUpMatchesProgram(task, { key, label }) {
+  const terms = programFollowUpTerms(key, label);
   if (!terms.length) return false;
   // Match only task text — never the card label, or every open task would qualify.
-  const haystack = [task.purpose, task.purposeKey, task.purpose_key, task.reason, task.notes]
-    .map((value) => String(value || "").toLowerCase())
-    .join(" ");
+  const haystack = followUpTextHaystack([
+    task.purpose,
+    task.purposeKey,
+    task.purpose_key,
+    task.reason,
+    task.notes,
+  ]);
   return terms.some((term) => haystack.includes(term));
 }
 
-/** Earliest open/overdue condition-matched due date, else "". */
-export function nextVisitFromFollowUps({ key, label, condition, followUpTasks = [] } = {}) {
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+/** Earliest open/overdue program-matched due date, else "". */
+export function nextVisitFromFollowUps({ key, label, followUpTasks = [] } = {}) {
   const dates = (followUpTasks || [])
     .filter((task) => isOpenFollowUpTask(task))
-    .filter((task) => followUpMatchesNcd(task, { key, label, condition }))
+    .filter((task) => followUpMatchesProgram(task, { key, label }))
     .map((task) => String(task.dueDate || task.due_date || "").slice(0, 10))
-    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .filter(isIsoDate)
     .sort();
   return dates[0] || "";
+}
+
+function followUpSchedulesOf(record = {}) {
+  const monitoring = getMonitoringData(record);
+  const fromMonitoring = monitoring.followUpSchedules || monitoring.follow_up_schedules;
+  if (Array.isArray(fromMonitoring)) return fromMonitoring;
+  const fromRecord = record.followUpSchedules || record.follow_up_schedules;
+  return Array.isArray(fromRecord) ? fromRecord : [];
+}
+
+/** Earliest matching schedule date on the latest program record, else "". */
+export function nextVisitFromRecordSchedules(latestRecord, { key, label } = {}) {
+  if (!latestRecord) return "";
+  const terms = programFollowUpTerms(key, label);
+  if (!terms.length) return "";
+  const dates = followUpSchedulesOf(latestRecord)
+    .filter((schedule) => {
+      const haystack = followUpTextHaystack([
+        schedule?.purpose,
+        schedule?.purposeKey,
+        schedule?.purpose_key,
+      ]);
+      return terms.some((term) => haystack.includes(term));
+    })
+    .map((schedule) => String(schedule?.date || "").slice(0, 10))
+    .filter(isIsoDate)
+    .sort();
+  return dates[0] || "";
+}
+
+/** Open follow-up task first; else matching schedule on the latest program record. */
+export function resolveProgramNextVisit({
+  key,
+  label,
+  followUpTasks = [],
+  latestRecord = null,
+} = {}) {
+  return (
+    nextVisitFromFollowUps({ key, label, followUpTasks })
+    || nextVisitFromRecordSchedules(latestRecord, { key, label })
+  );
 }
 
 function buildNcdEntry({ key, label, condition, records, measurementFact, followUpTasks }) {
@@ -540,7 +601,7 @@ function buildNcdEntry({ key, label, condition, records, measurementFact, follow
     statusTone: past ? "neutral" : "info",
     facts,
     lastVisit: records[0] ? getRecordDateValue(sortRecordsByDateAsc(records).at(-1)) : "",
-    nextVisit: nextVisitFromFollowUps({ key, label, condition, followUpTasks }),
+    nextVisit: nextVisitFromFollowUps({ key, label, followUpTasks }),
     flags: [],
     action: null,
     records,
@@ -551,7 +612,28 @@ function buildNcdEntry({ key, label, condition, records, measurementFact, follow
 // EPI
 // ---------------------------------------------------------------------------
 
-function buildEpiEntry(patient, records) {
+/** Infant-schedule rows: given vs pending for Care & Programs EPI chart. */
+export function epiDoseProgress(records = []) {
+  const givenAt = new Map();
+  for (const record of records || []) {
+    for (const entry of getEpiVaccineEntries(record)) {
+      const normalized = normalizeVaccineName(entry.vaccineName);
+      if (!EPI_INFANT_SCHEDULE.includes(normalized)) continue;
+      const dateGiven = entry.dateGiven || getRecordDateValue(record);
+      const existing = givenAt.get(normalized);
+      if (!existing || (dateGiven && dateGiven < existing)) {
+        givenAt.set(normalized, dateGiven || "");
+      }
+    }
+  }
+  return EPI_INFANT_SCHEDULE.map((name) => ({
+    name,
+    given: givenAt.has(name),
+    dateGiven: givenAt.get(name) || "",
+  }));
+}
+
+function buildEpiEntry(patient, records, { followUpTasks = [] } = {}) {
   const epiRecords = recordsForProgram(records, "epi");
   const applicable = isPediatricApplicable(patient);
   const hasHistory = epiRecords.length > 0;
@@ -563,19 +645,17 @@ function buildEpiEntry(patient, records) {
     EPI_EXTRA_INDICATORS.map((name) => [normalizeVaccineName(name), name]),
   );
 
-  const givenAt = new Map(); // normalized antigen name -> earliest date given
+  const doseRows = epiDoseProgress(epiRecords);
+  const givenAt = new Map(
+    doseRows.filter((row) => row.given).map((row) => [row.name, row.dateGiven]),
+  );
   const extrasGiven = new Set();
 
   for (const record of epiRecords) {
     for (const entry of getEpiVaccineEntries(record)) {
       const normalized = normalizeVaccineName(entry.vaccineName);
-      const dateGiven = entry.dateGiven || getRecordDateValue(record);
-      if (EPI_INFANT_SCHEDULE.includes(normalized)) {
-        const existing = givenAt.get(normalized);
-        if (!existing || (dateGiven && dateGiven < existing)) {
-          givenAt.set(normalized, dateGiven);
-        }
-      } else if (extraIndicatorsByNormalizedName.has(normalized)) {
+      if (EPI_INFANT_SCHEDULE.includes(normalized)) continue;
+      if (extraIndicatorsByNormalizedName.has(normalized)) {
         extrasGiven.add(extraIndicatorsByNormalizedName.get(normalized));
       }
     }
@@ -618,10 +698,16 @@ function buildEpiEntry(patient, records) {
       { label: "Doses", value: `${givenCount} of ${totalCount} applicable doses recorded`, type: "text" },
     ],
     lastVisit: hasHistory ? getRecordDateValue(latest) : "",
-    nextVisit: "",
+    nextVisit: resolveProgramNextVisit({
+      key: "epi",
+      label: "EPI / Immunization",
+      followUpTasks,
+      latestRecord: latest,
+    }),
     flags,
     action: null,
     records: epiRecords,
+    doseProgress: doseRows,
   };
 }
 
@@ -639,7 +725,7 @@ function closureEnrollmentDate(nutritionCare) {
   return last?.enrolledOn || last?.enrolled_on || "";
 }
 
-export function buildNutritionEntry(patient, records, today, { nutritionCare } = {}) {
+export function buildNutritionEntry(patient, records, today, { nutritionCare, followUpTasks = [] } = {}) {
   const state = resolveNutritionCare(records, nutritionCare);
   const age = calculateAgeInYears(patientBirthDate(patient), today);
   const history = state.fromApi
@@ -655,6 +741,8 @@ export function buildNutritionEntry(patient, records, today, { nutritionCare } =
   const enrolledOn = state.fromApi
     ? (state.enrolledOn || closureEnrollmentDate(nutritionCare) || state.episodeStartedOn)
     : state.episodeStartedOn;
+  const episodeRecords = state.episodeRecords || [];
+  const latestRecord = sortRecordsByDateAsc(episodeRecords).at(-1) || null;
 
   return {
     key: "nutrition",
@@ -663,10 +751,15 @@ export function buildNutritionEntry(patient, records, today, { nutritionCare } =
     statusTone: state.enrolled ? "success" : "neutral",
     facts: nutritionCareFacts({ enrolledOn, ...readings }),
     lastVisit: history.length ? history[history.length - 1].dateRecorded : "",
-    nextVisit: "",
+    nextVisit: resolveProgramNextVisit({
+      key: "nutrition",
+      label: "Nutrition Care",
+      followUpTasks,
+      latestRecord,
+    }),
     flags: [],
     action: state.enrolled ? { type: "close-nutrition-care", label: "Close Nutrition Care" } : null,
-    records: state.episodeRecords,
+    records: episodeRecords,
     measurementHistory: history,
   };
 }
@@ -687,7 +780,7 @@ export function getCareTracking(patient = {}, records = [], today = new Date(), 
   return [
     buildMaternalEntry(patient, list, today),
     buildFamilyPlanningEntry(patient, list, today),
-    buildEpiEntry(patient, list),
+    buildEpiEntry(patient, list, { followUpTasks }),
     buildNcdEntry({
       key: "hypertension",
       label: "Hypertension",
@@ -704,7 +797,10 @@ export function getCareTracking(patient = {}, records = [], today = new Date(), 
       measurementFact: latestFbsFact,
       followUpTasks,
     }),
-    buildTbEntry(list, today, conditionByIdentity(conditions, "tuberculosis")),
-    buildNutritionEntry(patient, list, today, { nutritionCare: options.nutritionCare }),
+    buildTbEntry(list, today, conditionByIdentity(conditions, "tuberculosis"), { followUpTasks }),
+    buildNutritionEntry(patient, list, today, {
+      nutritionCare: options.nutritionCare,
+      followUpTasks,
+    }),
   ].filter(Boolean);
 }

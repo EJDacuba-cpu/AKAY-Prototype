@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getCareTracking, maternalCareCardStatus } from "./careTracking.js";
+import {
+  epiDoseProgress,
+  getCareTracking,
+  maternalCareCardStatus,
+  resolveProgramNextVisit,
+} from "./careTracking.js";
 import { EPI_INFANT_SCHEDULE } from "./careTrackingConfig.js";
 
 function woman(birthdate = "1995-01-01") {
@@ -458,4 +463,99 @@ test("a closed nutrition episode keeps its enrollment date and drops the close a
   assert.equal(nutrition.action, null);
   assert.equal(nutrition.facts.find((fact) => fact.label === "Enrollment Date").value, "2026-10-01");
   assert.match(nutrition.facts.find((fact) => fact.label === "Latest BMI").value, /Normal/);
+});
+
+// ---------------------------------------------------------------------------
+// Program next visit (EPI / TB / Nutrition)
+// ---------------------------------------------------------------------------
+
+test("EPI next visit uses the earliest matching open follow-up task", () => {
+  const records = [{
+    id: 1,
+    dateOfVisit: "2026-01-01",
+    selectedPrograms: ["EPI"],
+    immunizationData: { vaccineEntries: [{ vaccineName: "BCG", dateGiven: "2026-01-01" }] },
+  }];
+  const followUpTasks = [
+    { id: 1, purposeKey: "service:epi", purpose: "Next vaccination", dueDate: "2026-03-01", state: "fulfilled" },
+    { id: 2, purpose: "Immunization return", dueDate: "2026-02-20", state: "pending" },
+    { id: 3, purposeKey: "service:epi", purpose: "EPI follow-up", dueDate: "2026-02-10", state: "no_show" },
+    { id: 4, purpose: "General checkup", dueDate: "2026-01-15", state: "pending" },
+  ];
+  const epi = entry(getCareTracking(child("2025-12-01"), records, new Date("2026-01-15"), { followUpTasks }), "epi");
+  assert.equal(epi.nextVisit, "2026-02-10");
+});
+
+test("EPI next visit falls back to monitoring followUpSchedules on the latest record", () => {
+  const records = [{
+    id: 1,
+    dateOfVisit: "2026-01-01",
+    selectedPrograms: ["EPI"],
+    immunizationData: { vaccineEntries: [{ vaccineName: "BCG", dateGiven: "2026-01-01" }] },
+    monitoringData: {
+      followUpSchedules: [
+        { purposeKey: "service:epi", purpose: "Next vaccination", date: "2026-02-14" },
+        { purposeKey: "visit", purpose: "BHC follow-up", date: "2026-01-20" },
+      ],
+    },
+  }];
+  const epi = entry(getCareTracking(child("2025-12-01"), records, new Date("2026-01-15")), "epi");
+  assert.equal(epi.nextVisit, "2026-02-14");
+});
+
+test("TB next visit prefers open follow-up tasks over record schedules", () => {
+  const records = [{
+    id: 1,
+    dateOfVisit: "2026-08-01",
+    tbData: { diagnosis: { tbCaseNumber: "TB-1" }, phases: { intensiveStart: "2026-08-02" } },
+    monitoringData: {
+      followUpSchedules: [{ purposeKey: "service:tb", purpose: "DOTS return", date: "2026-09-30" }],
+    },
+  }];
+  const followUpTasks = [
+    { id: 9, purposeKey: "service:tb", purpose: "TB DOTS follow-up", dueDate: "2026-09-05", state: "pending" },
+  ];
+  const tb = entry(getCareTracking(woman(), records, new Date("2026-09-01"), { followUpTasks }), "tb");
+  assert.equal(tb.nextVisit, "2026-09-05");
+});
+
+test("Nutrition next visit resolves from service:nutrition follow-up tasks", () => {
+  const records = [
+    { id: 2, dateOfVisit: "2026-10-01", selectedPrograms: ["Nutrition"], vitalSigns: { weight: "18", height: "110" } },
+  ];
+  const followUpTasks = [
+    { id: 1, purposeKey: "service:nutrition", purpose: "Nutrition recheck", dueDate: "2026-10-20", state: "pending" },
+  ];
+  const nutrition = entry(getCareTracking(child("2020-01-01"), records, new Date("2026-10-05"), { followUpTasks }), "nutrition");
+  assert.equal(nutrition.nextVisit, "2026-10-20");
+});
+
+test("resolveProgramNextVisit returns empty when no matching task or schedule exists", () => {
+  assert.equal(resolveProgramNextVisit({
+    key: "epi",
+    label: "EPI / Immunization",
+    followUpTasks: [{ id: 1, purpose: "General checkup", dueDate: "2026-02-01", state: "pending" }],
+    latestRecord: { monitoringData: { followUpSchedules: [{ purposeKey: "visit", date: "2026-02-01" }] } },
+  }), "");
+});
+
+test("epiDoseProgress marks schedule antigens given vs pending", () => {
+  const rows = epiDoseProgress([{
+    id: 1,
+    dateOfVisit: "2026-01-01",
+    selectedPrograms: ["EPI"],
+    immunizationData: {
+      vaccineEntries: [
+        { vaccineName: "BCG", dateGiven: "2026-01-01" },
+        { vaccineName: "PENTA 1", dateGiven: "2026-01-01" },
+        { vaccineName: "HPV", dateGiven: "2026-01-01" },
+      ],
+    },
+  }]);
+  assert.equal(rows.length, EPI_INFANT_SCHEDULE.length);
+  assert.equal(rows.filter((row) => row.given).length, 2);
+  assert.ok(rows.find((row) => row.name === "BCG")?.given);
+  assert.ok(rows.find((row) => row.name === "PENTA 1")?.given);
+  assert.equal(rows.find((row) => row.name === "OPV 1")?.given, false);
+  assert.equal(rows.some((row) => row.name === "HPV"), false);
 });

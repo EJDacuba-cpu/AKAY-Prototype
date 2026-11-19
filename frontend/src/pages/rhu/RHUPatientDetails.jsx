@@ -26,7 +26,6 @@ import PatientRecordsTab from "../../components/features/patients/profile/Patien
 import CareAndProgramsTab from "../../components/features/patients/profile/CareAndProgramsTab";
 import ProfileTabs, { LockedOverviewPlaceholder } from "../../components/features/patients/profile/ProfileTabs";
 import PatientReferralsTab from "../../components/features/patients/profile/PatientReferralsTab";
-import SpecializedRecordsTab from "../../components/features/records/SpecializedRecordsTab";
 import { getRhuPatientProfileQueries } from "../../services/patientProfileQueries";
 import { updatePatient } from "../../services/patientService";
 import { buildPatientRecordDetailsState, getProfileReturnPath } from "../../utils/profileNavigation";
@@ -150,6 +149,7 @@ function LiveRHUPatientDetails() {
       ),
     [followUpTasksData, patientId],
   );
+  // Overview labels only — program tracking UI lives under Care & Programs (no specialized tabs).
   const specializedRecordPrograms = useMemo(
     () => getSpecializedRecordPrograms(records),
     [records],
@@ -188,12 +188,6 @@ function LiveRHUPatientDetails() {
             count: careTracking.filter(isActiveCareTrackingEntry).length,
           },
           { key: "records", label: "Health Records", count: recordsLoading ? null : records.length },
-          ...specializedRecordPrograms.map(({ key, label, count }) => ({
-            key: `specialized:${key}`,
-            label,
-            count,
-            program: key,
-          })),
           { key: "referrals", label: "Referrals", count: referralsLoading ? null : referrals.length },
         ]
       : []),
@@ -201,7 +195,6 @@ function LiveRHUPatientDetails() {
 
   const requestedTab = searchParams.get("tab") || "overview";
   const activeTab = tabs.some((tab) => tab.key === requestedTab) ? requestedTab : "overview";
-  const activeSpecializedProgram = tabs.find((tab) => tab.key === activeTab)?.program || "";
 
   function setActiveTab(tab) {
     const next = new URLSearchParams(searchParams);
@@ -512,15 +505,6 @@ function LiveRHUPatientDetails() {
                     detailsState={detailsState}
                     role="rhu"
                     basePath={BASE_PATH}
-                  />
-                )}
-
-                {activeSpecializedProgram && canViewHistory && (
-                  <SpecializedRecordsTab
-                    records={records}
-                    patient={patient}
-                    basePath={BASE_PATH}
-                    program={activeSpecializedProgram}
                   />
                 )}
 
