@@ -510,8 +510,9 @@ test("General Consultation print uses the B&W A4 layout without dense clinical e
   );
 
   assert.match(BHC_HEALTH_RECORD_PRINT_PAGE_STYLES, /size:\s*A4/);
-  assert.match(BHC_HEALTH_RECORD_PRINT_PAGE_STYLES, /margin:\s*18mm/);
+  assert.match(BHC_HEALTH_RECORD_PRINT_PAGE_STYLES, /margin:\s*10mm/);
   assert.match(html, /data-print-layout="general-consultation"/);
+  assert.match(html, /data-print-meds="dispensed"/);
   assert.match(html, /gc-print-vitals/);
   assert.match(html, /AKAY/);
   assert.doesNotMatch(html, /Medical EHR and Referral System/);
@@ -533,11 +534,13 @@ test("General Consultation print uses the B&W A4 layout without dense clinical e
   assert.match(html, /Warm to touch/);
   assert.match(html, /Diagnosis/);
   assert.match(html, /Acute febrile illness/);
-  assert.doesNotMatch(html, /Medications/);
-  assert.doesNotMatch(html, /Prescribed/);
-  assert.doesNotMatch(html, /Paracetamol/);
-  assert.doesNotMatch(html, /Instructions/);
-  assert.doesNotMatch(html, /Every 6 hours/);
+  assert.match(html, /Medicines Dispensed/);
+  assert.match(html, /Paracetamol/);
+  assert.match(html, /Every 6 hours/);
+  assert.doesNotMatch(html, />Prescribed</);
+  assert.doesNotMatch(html, />Instructions</);
+  assert.match(html, /Action Taken/);
+  assert.match(html, /Gave paracetamol/);
   assert.match(html, /BP \(mmHg\)/);
   assert.match(html, /Recorded by/);
   assert.match(html, /Midwife Santos/);
@@ -626,17 +629,25 @@ test("GC print Diagnosis matches details rules for RHU and BHC v2", () => {
   assert.match(rhu, /Acute febrile illness; Allergic rhinitis/);
   assert.match(rhu, /Cetirizine 10 mg/);
   assert.match(rhu, /Take at bedtime/);
+  assert.match(rhu, /data-print-meds="prescribed"/);
   for (const label of ["Medications", "Prescribed", "Instructions", "Physician Signature"]) {
     assert.ok(rhu.includes(label), label);
   }
+  assert.doesNotMatch(rhu, /Medicines Dispensed/);
   assert.match(bhcWithDiagnosis, /Barangay Health Center San Francisco/);
   assert.match(bhcWithDiagnosis, /Diagnosis/);
   assert.match(bhcWithDiagnosis, /Acute febrile illness/);
+  assert.match(bhcWithDiagnosis, /Medicines Dispensed/);
+  assert.match(bhcWithDiagnosis, /data-print-meds="dispensed"/);
+  assert.doesNotMatch(bhcWithDiagnosis, />Prescribed</);
+  assert.match(bhcWithDiagnosis, /Action Taken/);
   assert.match(bhcV2Blank, /Chief Complaint/);
-  assert.doesNotMatch(bhcV2Blank, />Diagnosis</);
+  assert.match(bhcV2Blank, /Diagnosis/);
+  assert.match(bhcV2Blank, /None/);
+  assert.doesNotMatch(bhcV2Blank, /Reported fever/);
 });
 
-test("BHC print document groups program sections and keeps shared treatment once", () => {
+test("BHC print document groups program sections without duplicating shared consultation content", () => {
   const html = wrap(
     createElement(BhcHealthRecordPrintDocument, {
       record: {
@@ -673,8 +684,14 @@ test("BHC print document groups program sections and keeps shared treatment once
   assert.match(html, /BCG/);
   assert.match(html, /Maternal \/ Prenatal/);
   assert.match(html, /Gravida/);
-  assert.equal((html.match(/Dispensed medicines/g) || []).length, 1);
-  assert.equal((html.match(/Treatment &amp; dispensed medicines/g) || []).length, 1);
+  assert.match(html, /Medicines Dispensed/);
+  assert.match(html, /Paracetamol/);
+  assert.match(html, /Action Taken/);
+  assert.match(html, /Gave paracetamol/);
+  assert.equal((html.match(/Action Taken/g) || []).length, 1);
+  assert.doesNotMatch(html, />Prescribed</);
+  assert.doesNotMatch(html, /Treatment &amp; dispensed medicines/);
+  assert.doesNotMatch(html, /Patient History at This Visit/);
 });
 
 test("BHC and RHU use the shared print layout for Family Planning and Nutrition", () => {
@@ -688,6 +705,10 @@ test("BHC and RHU use the shared print layout for Family Planning and Nutrition"
           methodUsed: "MSTR/NSV — Male Sterilization / No-Scalpel Vasectomy",
         },
         fbs: 105,
+        monitoringData: {
+          nutritionIntent: "enroll",
+          selectedPrograms: ["Family Planning", "Nutrition"],
+        },
       },
       recordId: "77",
       serviceType: "Family Planning",
@@ -699,9 +720,129 @@ test("BHC and RHU use the shared print layout for Family Planning and Nutrition"
     assert.match(html, /CON — Condom/);
     assert.match(html, /Method Used \/ Accepted/);
     assert.match(html, /Nutrition Care/);
+    assert.match(html, /Enrollment on this visit/);
+    assert.match(html, /Enroll/);
     assert.match(html, />105 mg\/dL</);
+    assert.match(html, /Action Taken/);
+    if (documentRole === "rhu") {
+      assert.match(html, /Medications/);
+      assert.match(html, /Prescribed/);
+      assert.doesNotMatch(html, /Medicines Dispensed/);
+    } else {
+      assert.match(html, /Medicines Dispensed/);
+      assert.doesNotMatch(html, />Prescribed</);
+    }
     assert.equal(html.includes("Physician Signature"), documentRole === "rhu");
   }
+});
+
+test("print shows None for empty RHU prescriptions and BHC dispensed medicines", () => {
+  const rhu = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: {
+      id: 101,
+      patientClassification: "General Consultation",
+      chiefComplaint: "Check-up",
+      physicalExam: "",
+      diagnosis: "",
+      dispensedMedicines: [],
+      rural_health_unit_id: 1,
+      rural_health_unit: { name: "Rural Health Unit Bulakan" },
+    },
+    recordId: "101",
+    patientName: "Juan Dela Cruz",
+    patient: { age: 40, sex: "Male" },
+    serviceType: "General Consultation",
+    documentRole: "rhu",
+    displayDate: "November 14, 2026",
+    practitioner: "Dr. Reyes",
+  }));
+  assert.match(rhu, /Medications/);
+  assert.match(rhu, /Prescribed/);
+  assert.match(rhu, /Instructions/);
+  assert.match(rhu, /Action Taken/);
+  assert.match(rhu, /Diagnosis/);
+  assert.match(rhu, /Physician Signature/);
+  assert.doesNotMatch(rhu, /Medicines Dispensed/);
+  assert.equal((rhu.match(/>None</g) || []).length >= 4, true);
+  assert.doesNotMatch(rhu, /Not recorded/);
+
+  const bhc = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: {
+      id: 102,
+      patientClassification: "General Consultation",
+      chiefComplaint: "Check-up",
+      diagnosis: "",
+      dispensedMedicines: [],
+      barangay_health_center_id: 11,
+      barangay_health_center: { name: "Bagumbayan Health Center" },
+    },
+    recordId: "102",
+    patientName: "Ana Cruz",
+    serviceType: "General Consultation",
+    documentRole: "bhc",
+    practitioner: "Midwife Santos",
+  }));
+  assert.match(bhc, /Medicines Dispensed/);
+  assert.match(bhc, /Dispensed/);
+  assert.doesNotMatch(bhc, />Prescribed</);
+  assert.doesNotMatch(bhc, />Instructions</);
+  assert.match(bhc, /None/);
+});
+
+test("print includes recorded care plan and service usages without inventing action text", () => {
+  const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: {
+      id: 102,
+      patientClassification: "General Consultation",
+      chiefComplaint: "Prenatal visit",
+      diagnosis: "Pregnancy",
+      selectedPrograms: ["Maternal"],
+      maternalData: { lmp: "2026-03-01", gravida: "1", para: "0" },
+      diagnoses: [
+        { id: "dx-1", name: "Pregnancy", carePlan: "monitor", includeInSurveillance: false },
+      ],
+      monitoringData: {
+        selectedPrograms: ["Maternal"],
+        serviceUsages: [
+          {
+            id: "su-1",
+            serviceProgram: "Maternal",
+            itemDescription: "Iron tablets",
+            quantity: 30,
+            unit: "tablets",
+            usedAt: "2026-11-01",
+            note: "Started today",
+          },
+          {
+            id: "su-2",
+            serviceProgram: "Maternal",
+            itemDescription: "TT1",
+            quantity: 1,
+            unit: "dose",
+            usedAt: "2026-11-01",
+          },
+        ],
+        followUpSchedules: [
+          { id: "fu-1", purposeKey: "service:Maternal", purpose: "Prenatal follow-up", date: "2026-12-01", time: "10:00" },
+        ],
+      },
+    },
+    recordId: "102",
+    patientName: "Ana Cruz",
+    serviceType: "Maternal / Prenatal",
+    documentRole: "rhu",
+    practitioner: "Dr. Reyes",
+  }));
+  assert.match(html, /Maternal \/ Prenatal/);
+  assert.match(html, /Care plan &amp; services|Care plan & services/);
+  assert.match(html, /Selected services/);
+  assert.match(html, /Iron tablets/);
+  assert.match(html, /TT1/);
+  assert.match(html, /Started today/);
+  assert.match(html, /Follow-up/);
+  assert.match(html, /Prenatal follow-up/);
+  assert.match(html, /Action Taken/);
+  assert.doesNotMatch(html, /Actions and interventions<\/p><p class="gc-print-prose">Pregnancy/);
 });
 
 test("BHC TB print layout keeps recorded TB fields without form controls", () => {
@@ -1196,29 +1337,60 @@ test("BhcHealthRecordWorkspace: follow-up shows this visit's values without prev
   assert.doesNotMatch(html, /Dust/);
 });
 
-for (const View of [BhcHealthRecordWorkspace, BhcHealthRecordPrintDocument]) {
-  test(`${View.name}: includes obstetric history only when the snapshot has it`, () => {
-    const html = wrap(createElement(View, {
-      record: historyRecord({
-        historySnapshot: {
-          sections: {
-            ...generalHistorySnapshot.sections,
-            obstetric: { obstetric: { menarcheAge: 13, menstrualStatus: "menstruating" } },
-          },
-          changes: [],
+test("BhcHealthRecordWorkspace: includes obstetric history only when the snapshot has it", () => {
+  const html = wrap(createElement(BhcHealthRecordWorkspace, {
+    record: historyRecord({
+      historySnapshot: {
+        sections: {
+          ...generalHistorySnapshot.sections,
+          obstetric: { obstetric: { menarcheAge: 13, menstrualStatus: "menstruating" } },
         },
-        monitoringData: { selectedPrograms: ["Maternal", "EPI"] },
-      }),
-      serviceType: "Maternal / Prenatal",
-      title: "Maternal Record",
-      recordId: "92",
-      patientName: "Ana Cruz",
-      onBack() {},
-      onPrint() {},
-    }));
-    assertFrozenHistory(html, { obstetric: true });
-  });
-}
+        changes: [],
+      },
+      monitoringData: { selectedPrograms: ["Maternal", "EPI"] },
+    }),
+    serviceType: "Maternal / Prenatal",
+    title: "Maternal Record",
+    recordId: "92",
+    patientName: "Ana Cruz",
+    onBack() {},
+    onPrint() {},
+  }));
+  assertFrozenHistory(html, { obstetric: true });
+});
+
+test("program print keeps maternal/EPI form data and omits frozen visit-history dump", () => {
+  const html = wrap(createElement(BhcHealthRecordPrintDocument, {
+    record: historyRecord({
+      historySnapshot: {
+        sections: {
+          ...generalHistorySnapshot.sections,
+          obstetric: { obstetric: { menarcheAge: 13, menstrualStatus: "menstruating" } },
+        },
+        changes: [],
+      },
+      monitoringData: { selectedPrograms: ["Maternal", "EPI"] },
+      maternalData: { lmp: "2026-01-15", gravida: "1", para: "0" },
+      immunizationData: {
+        vaccineEntries: [{ vaccineName: "Pentavalent", dateGiven: "2026-10-01" }],
+      },
+    }),
+    serviceType: "Maternal / Prenatal",
+    title: "Maternal Record",
+    recordId: "92",
+    patientName: "Ana Cruz",
+  }));
+  assert.match(html, /data-print-layout="general-consultation"/);
+  assert.match(html, /Maternal \/ Prenatal/);
+  assert.match(html, /Child Health \/ EPI/);
+  assert.match(html, /Pentavalent/);
+  assert.match(html, /Gravida/);
+  assert.match(html, /Informant/);
+  assert.match(html, /Mother · Ana Cruz/);
+  assert.doesNotMatch(html, /Patient History at This Visit/);
+  assert.doesNotMatch(html, /Family Conditions|Past Medical History|Never smoked/);
+  assert.doesNotMatch(html, /Menarche at 13/);
+});
 
 test("BhcHealthRecordWorkspace: legacy records say history is unavailable instead of using live background", () => {
   const html = wrap(createElement(BhcHealthRecordWorkspace, {

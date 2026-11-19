@@ -194,7 +194,9 @@ test("BHC Interview mounts Family then Past Medical then Social, and keeps no Hi
   const recordWorkspace = readFileSync(join(here, "../components/features/health-records/BhcHealthRecordWorkspace.jsx"), "utf8");
   assert.match(recordWorkspace, /VisitHistorySnapshot/);
   const printDocument = readFileSync(join(here, "../components/features/health-records/BhcHealthRecordPrintDocument.jsx"), "utf8");
-  assert.match(printDocument, /VisitHistorySnapshot/);
+  assert.doesNotMatch(printDocument, /VisitHistorySnapshot/);
+  assert.match(printDocument, /Action Taken/);
+  assert.match(printDocument, /Care plan & services|Follow-up/);
 });
 
 test("BHC Patients module adds Monitoring Requests only for role bhc", () => {

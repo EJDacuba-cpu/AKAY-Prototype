@@ -1,7 +1,5 @@
-import { HealthConcernsAndCareOutcomes } from "./RecordDetailsSections";
-import { recordedVitalItems } from "./recordDetailsPresentation";
+import { recordedVitalItems, historicalFollowUpSchedules } from "./recordDetailsPresentation";
 import { BodyFindingHistoryView, thisRecordBodyFindingHistory } from "./BodyFindingReassessment";
-import VisitHistorySnapshot from "./VisitHistorySnapshot";
 import {
   PROGRAM_CLASSIFICATIONS,
   getConsultationPrograms,
@@ -10,18 +8,16 @@ import {
   VISIT_SERVICES,
   TEENAGE_PREGNANCY_MESSAGE,
 } from "../../../utils/visitPurpose";
-import {
-  earlierDraftContinuedNotes,
-  earlierDraftNotes,
-  isBhcGeneralV2,
-} from "../../../utils/consultationWorkflow";
+import { isBhcGeneralV2 } from "../../../utils/consultationWorkflow";
 import { joinDiagnosisNames } from "../../../utils/diagnoses";
+import { diagnosisCarePlanItems } from "../../../utils/recordCarePlan";
 import { savedPrescriptionRows } from "../../../utils/prescriptionPrint";
 import { formatPrescriptionLine } from "../../../utils/rhuPrescriptions";
 import { visitHistoryInformantLine } from "../../../utils/visitHistorySnapshot";
 import { isTbRecord } from "../../../utils/tbRecords";
+import { carePlanServiceLabel, selectedCarePlanServices } from "../../../utils/serviceNextActions";
+import { diagnosisNextAction, RHU_NEXT_ACTIONS } from "../../../utils/rhuCarePlan";
 import {
-  formatDisplayValue,
   formatFacilityName,
   formatLongDate,
 } from "../../../utils/formatters";
@@ -46,10 +42,8 @@ import {
   getRecordChiefComplaint,
   getRecordSummary,
   getRecordNotes,
-  getCompletedRecordMedicalNotes,
   getRecordTreatmentNotes,
   isDistinctRecordedValue,
-  getRecordInitialActions,
   getMaternalValue,
   getPreviousPregnancyHistory,
   getSelectedMaternalRiskLabels,
@@ -77,7 +71,7 @@ import {
 export const BHC_HEALTH_RECORD_PRINT_PAGE_STYLES = `
   @page {
     size: A4;
-    margin: 18mm;
+    margin: 10mm;
   }
   @media print {
     html, body, #root {
@@ -116,17 +110,64 @@ const TB_LAB_TESTS = [
   { key: "tst", label: "Tuberculin Skin Test" },
 ];
 
-function recorded(value, empty = "Not recorded") {
+function blankText(value) {
   const text = String(value ?? "").trim();
   if (
     !text ||
     text.toLowerCase() === "not recorded" ||
-    text.toLowerCase() === "no follow-up date recorded." ||
+    text.toLowerCase() === "facility not recorded" ||
+    text.toLowerCase() === "none" ||
     text === "—"
   ) {
-    return empty;
+    return "";
   }
   return text;
+}
+
+function recorded(value, empty = "None") {
+  const text = blankText(value);
+  return text || empty;
+}
+
+/** Action Taken from saved notes — never invents text from diagnosis names. */
+function printActionTaken(record) {
+  const direct = getRecordValue(
+    record,
+    [
+      "initialActionsTaken",
+      "initialActionTaken",
+      "initial_actions_taken",
+      "initial_action_taken",
+    ],
+    "",
+  );
+  if (blankText(direct)) return blankText(direct);
+  return blankText(getRecordTreatmentNotes(record, ""));
+}
+
+function monitoringBag(record = {}) {
+  return record.monitoringData || record.monitoring_data || {};
+}
+
+function printServiceUsages(record = {}) {
+  const md = monitoringBag(record);
+  const rows = md.serviceUsages || md.service_usages || record.serviceUsages || [];
+  return Array.isArray(rows) ? rows.filter((row) => row && String(row.itemDescription || row.item_description || "").trim()) : [];
+}
+
+function printServiceHandoffs(record = {}) {
+  const md = monitoringBag(record);
+  const care = md.carePlan || md.care_plan || {};
+  const rows = care.service_handoffs || care.serviceHandoffs || md.serviceHandoffs || md.service_handoffs || [];
+  return Array.isArray(rows) ? rows.filter((row) => row && row.program) : [];
+}
+
+function printNutritionEnrollment(record = {}) {
+  const md = monitoringBag(record);
+  const intent = String(md.nutritionIntent || md.nutrition_intent || "").trim().toLowerCase();
+  if (intent === "enroll") return "Enroll";
+  if (intent === "continue") return "Continue";
+  return "";
 }
 
 function optionLabel(options, value) {
@@ -212,7 +253,7 @@ function PrintTable({ columns, rows }) {
         {rows.map((row) => (
           <tr key={row.key}>
             {row.cells.map((cell, index) => (
-              <td key={`${row.key}-${index}`}>{cell || "—"}</td>
+              <td key={`${row.key}-${index}`}>{cell || "None"}</td>
             ))}
           </tr>
         ))}
@@ -235,19 +276,6 @@ function isGeneralConsultationService(serviceType, record) {
     serviceType || record?.patientClassification || record?.category || "",
   ).trim();
   return label === "General Consultation";
-}
-
-function blankText(value) {
-  const text = String(value ?? "").trim();
-  if (
-    !text ||
-    text.toLowerCase() === "not recorded" ||
-    text.toLowerCase() === "facility not recorded" ||
-    text === "—"
-  ) {
-    return "";
-  }
-  return text;
 }
 
 /** Strip unit suffixes when the vitals table header already names the unit. */
@@ -279,40 +307,42 @@ function vitalCellMap(record, patient) {
   };
 }
 
-/** Label + value in a fixed label column. Empty → writing line when allowBlankLine. */
-function GcField({ label, value, allowBlankLine = false }) {
+/** Label + value in a fixed label column. Applicable empty fields print "None". */
+function GcField({ label, value, showWhenEmpty = false, emptyText = "None" }) {
   const text = blankText(value);
-  if (!text && !allowBlankLine) return null;
+  if (!text && !showWhenEmpty) return null;
   return (
     <div className="gc-print-field-row">
       <p className="gc-print-field-label">{label}</p>
-      {text ? (
-        <p className="gc-print-prose">{text}</p>
-      ) : (
-        <span className="gc-print-writing-line" aria-hidden="true" />
-      )}
+      <p className="gc-print-prose">{text || emptyText}</p>
     </div>
   );
 }
 
-function gcMedicationLines(record) {
+/** RHU only: prescribed medicines + instructions from finalized prescriptions. */
+function rhuPrescriptionLines(record) {
   const prescriptions = savedPrescriptionRows(record);
-  if (prescriptions.length) {
-    return {
-      prescribed: prescriptions.map((row) => formatPrescriptionLine({ ...row, instructions: "" })).filter(Boolean).join("\n"),
-      instructions: prescriptions
-        .filter((row) => blankText(row.instructions))
-        .map((row) => {
-          const medicine = [row.medicineName, row.strength].map(blankText).filter(Boolean).join(" ");
-          return [medicine, blankText(row.instructions)].filter(Boolean).join(": ");
-        })
-        .join("\n"),
-    };
-  }
+  if (!prescriptions.length) return { prescribed: "", instructions: "" };
+  return {
+    prescribed: prescriptions
+      .map((row) => formatPrescriptionLine({ ...row, instructions: "" }))
+      .filter(Boolean)
+      .join("\n"),
+    instructions: prescriptions
+      .filter((row) => blankText(row.instructions))
+      .map((row) => {
+        const medicine = [row.medicineName, row.strength].map(blankText).filter(Boolean).join(" ");
+        return [medicine, blankText(row.instructions)].filter(Boolean).join(": ");
+      })
+      .join("\n"),
+  };
+}
 
+/** BHC only: actual dispensed medicine names, quantities, and remarks. */
+function bhcDispensedMedicineLines(record) {
   const medicines = getDispensedMedicines(record);
-  if (!medicines.length) return { prescribed: "", instructions: "" };
-  const prescribed = medicines
+  if (!medicines.length) return "";
+  return medicines
     .map((medicine) => {
       const name =
         medicine.medicineName ||
@@ -320,15 +350,11 @@ function gcMedicationLines(record) {
         medicine.medicine_name ||
         "";
       const qty = [medicine.quantity, medicine.unit].filter(Boolean).join(" ");
-      return [blankText(name), blankText(qty)].filter(Boolean).join(" · ");
+      const remarks = blankText(medicine.remarks);
+      return [blankText(name), blankText(qty), remarks].filter(Boolean).join(" · ");
     })
     .filter(Boolean)
-    .join("; ");
-  const instructions = medicines
-    .map((medicine) => blankText(medicine.remarks))
-    .filter(Boolean)
-    .join("; ");
-  return { prescribed, instructions };
+    .join("\n");
 }
 
 function ConsultationPrintDocument({
@@ -349,8 +375,9 @@ function ConsultationPrintDocument({
   bodyFindings,
   children,
 }) {
-  const isRhu = sourceRole === "rhu";
-  const medications = documentRole === "rhu" ? gcMedicationLines(record) : null;
+  const isRhuPrint = documentRole === "rhu";
+  const rhuMeds = isRhuPrint ? rhuPrescriptionLines(record) : null;
+  const bhcDispensed = isRhuPrint ? "" : bhcDispensedMedicineLines(record);
   const hasAge = patient?.age !== undefined && patient?.age !== null && String(patient.age).trim() !== "";
   const patientCode =
     patient?.patientId ||
@@ -376,6 +403,7 @@ function ConsultationPrintDocument({
   const generalExamFindings = blankText(getRecordPhysicalExam(record, ""));
   const structuredDiagnosis = isBhcGeneralV2(record) ? "" : joinDiagnosisNames(record.diagnoses);
   const diagnosisText = structuredDiagnosis || blankText(getRecordDiagnosis(record, ""));
+  const actionTaken = printActionTaken(record);
   const hpiFieldLabel = isFollowUpVisit
     ? "Changes since last visit"
     : "Present illness";
@@ -391,6 +419,7 @@ function ConsultationPrintDocument({
       data-print-key={recordId}
       data-print-state={printState}
       data-print-layout="general-consultation"
+      data-print-meds={isRhuPrint ? "prescribed" : "dispensed"}
       className={children ? "gc-record-print gc-record-print-with-sections" : "gc-record-print"}
     >
       <style>{generalConsultationPrintStyles + (children ? programSectionPrintStyles : "")}</style>
@@ -477,23 +506,33 @@ function ConsultationPrintDocument({
           <GcField
             label="General exam findings"
             value={generalExamFindings}
-            allowBlankLine
+            showWhenEmpty
           />
           <GcField
             label="Diagnosis"
             value={diagnosisText}
-            allowBlankLine={isRhu}
+            showWhenEmpty
           />
           {bodyFindings && <BodyFindingHistoryView {...bodyFindings} print />}
         </section>
 
-        {medications && (
+        {isRhuPrint ? (
           <section className="gc-print-section">
             <h2>Medications</h2>
-            <GcField label="Prescribed" value={medications.prescribed} allowBlankLine />
-            <GcField label="Instructions" value={medications.instructions} allowBlankLine />
+            <GcField label="Prescribed" value={rhuMeds.prescribed} showWhenEmpty />
+            <GcField label="Instructions" value={rhuMeds.instructions} showWhenEmpty />
+          </section>
+        ) : (
+          <section className="gc-print-section">
+            <h2>Medicines Dispensed</h2>
+            <GcField label="Dispensed" value={bhcDispensed} showWhenEmpty />
           </section>
         )}
+
+        <section className="gc-print-section">
+          <h2>Action Taken</h2>
+          <GcField label="Actions and interventions" value={actionTaken} showWhenEmpty />
+        </section>
         {children}
       </div>
 
@@ -506,7 +545,7 @@ function ConsultationPrintDocument({
           </div>
           <p className="gc-print-sig-caption">Recorded by</p>
         </div>
-        {documentRole === "rhu" && (
+        {isRhuPrint && (
           <div className="gc-print-sig">
             <div className="gc-print-sig-line" />
             <p className="gc-print-sig-caption">Physician Signature</p>
@@ -564,33 +603,59 @@ export default function BhcHealthRecordPrintDocument({
     recordId, patientName, displayDate, displayTime, practitioner,
     sourceRole, documentRole, facility, printState,
   };
-  const includeAdditionalSections = programs.length > 0 || tbRecord || immunization ||
-    maternal || postpartumOnly || familyPlanning || !isGeneralConsultationService(serviceType, record);
 
-  if (!includeAdditionalSections) return <ConsultationPrintDocument {...printProps} />;
-
-  const status = normalizeHealthRecordStatus(
-    record.followUpStatus || record.status || "Consultation",
-  );
-  const isFollowUp = getRecordVisitTypeValue(record) === "follow_up_visit";
-  const summary = getRecordSummary(record, "");
   const monitoringNotes = getRecordValue(
     record,
     ["monitoringNotes", "monitoring_notes"],
     "",
   );
-  const medicalNotes =
-    status === "Completed"
-      ? getCompletedRecordMedicalNotes(record, monitoringNotes, "")
-      : getRecordNotes(record, "");
-  const treatmentAction = getRecordInitialActions(record, "");
-  const treatmentNotes = getRecordTreatmentNotes(record, "");
-  const medicines = getDispensedMedicines(record);
-  const draftNotes = earlierDraftNotes(record);
   const bodyFindings = thisRecordBodyFindingHistory(record);
-  const continuedNotes = earlierDraftContinuedNotes(record);
   const fpDetails = getFamilyPlanningDetails(record);
   const maternalData = getMaternalData(record);
+  const followUpSchedules = historicalFollowUpSchedules(record);
+  const serviceUsages = printServiceUsages(record);
+  const serviceHandoffs = printServiceHandoffs(record);
+  const carePlanServices = selectedCarePlanServices(programs);
+  const bhcCarePlanItems = diagnosisCarePlanItems(record.diagnoses);
+  const rhuDiagnosisPlans = (Array.isArray(record.diagnoses) ? record.diagnoses : [])
+    .filter((entry) => entry && String(entry.name || "").trim())
+    .map((entry, index) => {
+      const action = diagnosisNextAction(entry);
+      return {
+        key: String(entry.id || `dx-${index}`),
+        name: String(entry.name).trim(),
+        plan: RHU_NEXT_ACTIONS[action] || "",
+      };
+    })
+    .filter((item) => item.plan);
+  const hasCarePlanOrServices = Boolean(
+    bhcCarePlanItems.length
+      || rhuDiagnosisPlans.length
+      || carePlanServices.length
+      || serviceUsages.length
+      || serviceHandoffs.length
+      || blankText(monitoringNotes),
+  );
+  const fpNextAppointment = familyPlanning
+    ? blankText(fpDetail(fpDetails, "Next Appointment Date"))
+    : "";
+  const hasFollowUp = followUpSchedules.length > 0 || Boolean(fpNextAppointment);
+  const hasProgramSections = programs.length > 0 || tbRecord || immunization ||
+    maternal || postpartumOnly || familyPlanning || !isGeneralConsultationService(serviceType, record);
+  const includeAdditionalSections = hasProgramSections
+    || hasCarePlanOrServices
+    || hasFollowUp
+    || laboratoryEntries.length > 0
+    || Boolean(bodyFindings.originals.length || bodyFindings.events.length);
+
+  if (!includeAdditionalSections) return <ConsultationPrintDocument {...printProps} />;
+
+  const sharedActionTaken = printActionTaken(record);
+  const fpActionTaken = fpDetail(fpDetails, "Action Taken");
+  const showFpActionTaken = Boolean(
+    blankText(fpActionTaken) && isDistinctRecordedValue(fpActionTaken, sharedActionTaken),
+  );
+
   return (
     <ConsultationPrintDocument
       {...printProps}
@@ -599,11 +664,11 @@ export default function BhcHealthRecordPrintDocument({
       bodyFindings={bodyFindings.originals.length || bodyFindings.events.length ? bodyFindings : null}
     >
       {purpose && (
-        <Section title="Purpose of visit" avoidBreak>
+        <Section title="Purpose of visit">
           <p className="bhc-print-prose">
             {(purpose.services || [])
               .map((key) => VISIT_SERVICES[key] || key)
-              .join(" + ")}
+              .join(" + ") || "None"}
           </p>
           {purpose.overrideReason && (
             <p className="bhc-print-prose">
@@ -621,8 +686,6 @@ export default function BhcHealthRecordPrintDocument({
         </Section>
       )}
 
-      <VisitHistorySnapshot record={record} print />
-
       {immunization && <EpiPrintSection record={record} />}
       {(maternal || postpartumOnly) && (
         <MaternalPrintSection
@@ -631,7 +694,15 @@ export default function BhcHealthRecordPrintDocument({
           postpartumOnly={postpartumOnly}
         />
       )}
-      {familyPlanning && <FamilyPlanningPrintSection details={fpDetails} />}
+      {familyPlanning && (
+        <FamilyPlanningPrintSection
+          details={fpDetails}
+          showActionTaken={showFpActionTaken}
+        />
+      )}
+      {programs.includes("Nutrition") && (
+        <NutritionPrintSection enrollment={printNutritionEnrollment(record)} />
+      )}
       {tbRecord && <TbPrintSection record={record} />}
 
       {laboratoryEntries.length > 0 && <Section title="Laboratory & diagnostic tests">
@@ -658,100 +729,86 @@ export default function BhcHealthRecordPrintDocument({
         </div>)}
       </Section>}
 
-      <Section title="Health concerns & care outcomes">
-        <HealthConcernsAndCareOutcomes
-          record={record}
-          linkedReferral={linkedReferral}
-          monitoringNotes={monitoringNotes}
-          nextAppointmentDate={fpDetail(fpDetails, "Next Appointment Date")}
-          print
-        />
-      </Section>
-
-      <Section title="Treatment & dispensed medicines">
-        {!tbRecord && (
-          <>
+      {hasCarePlanOrServices && (
+        <Section title="Care plan & services">
+          {bhcCarePlanItems.map((item) => (
             <Narrative
-              label="Treatment / action taken"
-              value={
-                getMaternalValue(maternalData, record, ["treatment"], "") ||
-                treatmentAction
-              }
+              key={item.key}
+              label={item.name}
+              value={[item.plan, item.inSurveillance ? "Included in surveillance" : ""].filter(Boolean).join(" · ")}
             />
-            {isDistinctRecordedValue(
-              treatmentNotes,
-              treatmentAction,
-              getMaternalValue(maternalData, record, ["treatment"], ""),
-            ) && <Narrative label="Treatment notes" value={treatmentNotes} />}
-            {isFollowUp &&
-              isDistinctRecordedValue(
-                medicalNotes,
-                treatmentAction,
-                treatmentNotes,
-              ) && <Narrative label="Follow-up notes" value={medicalNotes} />}
-            {!isFollowUp &&
-              isDistinctRecordedValue(
-                medicalNotes,
-                treatmentAction,
-                treatmentNotes,
-                summary,
-              ) && <Narrative label="Medical notes" value={medicalNotes} />}
-            {familyPlanning && (
-              <>
-                <Narrative
-                  label="Advice given"
-                  value={fpDetail(fpDetails, "Advice Given")}
-                />
-                <Narrative
-                  label="Action taken"
-                  value={fpDetail(fpDetails, "Action Taken")}
-                />
-                <Narrative
-                  label="Remarks"
-                  value={fpDetail(fpDetails, "Remarks / Notes")}
-                />
-              </>
-            )}
-          </>
-        )}
-        <p className="bhc-print-k">Dispensed medicines</p>
-        {medicines.length > 0 ? (
-          <PrintTable
-            columns={["Medicine / supply", "Quantity", "Remarks", "Date dispensed"]}
-            rows={medicines.map((medicine, index) => ({
-              key: medicine.id || `${medicine.medicineId || "medicine"}-${index}`,
-              cells: [
-                [
-                  medicine.medicineName ||
-                    medicine.medicine_name_snapshot ||
-                    "Medicine",
-                  medicine.category || medicine.category_snapshot || "",
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-                `${formatDisplayValue(medicine.quantity, "Not recorded")} ${formatDisplayValue(medicine.unit, "")}`.trim(),
-                formatDisplayValue(medicine.remarks, "—"),
-                formatLongDate(
-                  medicine.dateDispensed ||
-                    medicine.created_at ||
-                    medicine.createdAt,
-                  "—",
-                ),
-              ],
-            }))}
-          />
-        ) : (
-          <p className="bhc-print-muted">
-            No medicines or supplies were dispensed during this visit.
-          </p>
-        )}
-      </Section>
-      {(draftNotes || continuedNotes) && <Section title="Earlier draft notes">
-        {draftNotes && <Narrative label="Earlier draft notes" value={draftNotes} />}
-        {continuedNotes && <Narrative label="Earlier draft notes (continued)" value={continuedNotes} />}
-      </Section>}
+          ))}
+          {rhuDiagnosisPlans.map((item) => (
+            <Narrative key={item.key} label={item.name} value={item.plan} />
+          ))}
+          {carePlanServices.length > 0 && (
+            <Narrative
+              label="Selected services"
+              value={carePlanServices.map((program) => carePlanServiceLabel(program)).join(", ")}
+            />
+          )}
+          {serviceHandoffs.map((handoff, index) => (
+            <Narrative
+              key={`handoff-${handoff.program || index}`}
+              label={`${carePlanServiceLabel(handoff.program)} · Manage to BHC`}
+              value={handoff.monitoringRecommendation || handoff.monitoring_recommendation || "None"}
+            />
+          ))}
+          {serviceUsages.length > 0 ? (
+            <PrintTable
+              columns={["Service", "Item", "Quantity", "Date used", "Note"]}
+              rows={serviceUsages.map((usage, index) => ({
+                key: usage.id || `usage-${index}`,
+                cells: [
+                  carePlanServiceLabel(usage.serviceProgram || usage.service_program || ""),
+                  usage.itemDescription || usage.item_description || "None",
+                  [usage.quantity, usage.unit].filter((part) => part !== null && part !== undefined && String(part).trim() !== "").join(" ") || "None",
+                  formatLongDate(usage.usedAt || usage.used_at, "None"),
+                  usage.note || "None",
+                ],
+              }))}
+            />
+          ) : null}
+          {blankText(monitoringNotes) ? (
+            <Narrative label="Monitoring notes" value={monitoringNotes} />
+          ) : null}
+        </Section>
+      )}
+
+      {hasFollowUp && (
+        <Section title="Follow-up">
+          {followUpSchedules.length > 0 ? (
+            <PrintTable
+              columns={["Purpose", "Date", "Time"]}
+              rows={followUpSchedules.map((row) => ({
+                key: row.id,
+                cells: [
+                  row.reason || "Follow-up",
+                  formatLongDate(row.date, "None"),
+                  row.time || "None",
+                ],
+              }))}
+            />
+          ) : null}
+          {fpNextAppointment ? (
+            <Narrative label="Next appointment" value={fpNextAppointment} />
+          ) : null}
+        </Section>
+      )}
 
     </ConsultationPrintDocument>
+  );
+}
+
+function NutritionPrintSection({ enrollment }) {
+  return (
+    <Section title="Nutrition Care">
+      <InlineGrid
+        items={[
+          { label: "Enrollment on this visit", value: enrollment || "None" },
+        ]}
+      />
+    </Section>
   );
 }
 
@@ -781,7 +838,7 @@ function EpiPrintSection({ record }) {
               entry.vaccineName,
               formatLongDate(
                 entry.dateGiven || getRecordDateValue(record),
-                "Not recorded",
+                "None",
               ),
               formatMeasurement(entry.weight || record.weight, "kg"),
               formatMeasurement(entry.height || record.height, "cm"),
@@ -794,15 +851,13 @@ function EpiPrintSection({ record }) {
           }))}
         />
       ) : (
-        <p className="bhc-print-muted">
-          No vaccines were recorded during this visit.
-        </p>
+        <p className="bhc-print-prose">None</p>
       )}
       <p className="bhc-print-k">Breastfeeding monitoring</p>
       <p className="bhc-print-prose">
         {breastfeeding.length > 0
           ? breastfeeding.join(", ")
-          : "No breastfeeding monitoring recorded for this visit."}
+          : "None"}
       </p>
       {remarks ? <Narrative label="Remarks" value={remarks} /> : null}
     </Section>
@@ -810,7 +865,7 @@ function EpiPrintSection({ record }) {
 }
 
 function MaternalPrintSection({ record, maternal, postpartumOnly }) {
-  const EMPTY = "Not recorded";
+  const EMPTY = "None";
   const term = getMaternalValue(maternal, record, ["term"], "");
   const preterm = getMaternalValue(maternal, record, ["preterm"], "");
   const abortion = getMaternalValue(maternal, record, ["abortion"], "");
@@ -846,103 +901,109 @@ function MaternalPrintSection({ record, maternal, postpartumOnly }) {
     )
     .join("\n\n");
 
+  const coreItems = [
+    {
+      label: "LMP",
+      value: formatLongDate(getMaternalValue(maternal, record, ["lmp"], ""), EMPTY),
+      always: true,
+    },
+    {
+      label: "PMP",
+      value: formatLongDate(getMaternalValue(maternal, record, ["pmp"], ""), ""),
+    },
+    {
+      label: "EDC",
+      value: formatLongDate(
+        getMaternalValue(
+          maternal,
+          record,
+          ["expectedDeliveryDate", "expected_delivery_date", "edc", "edd"],
+          "",
+        ),
+        EMPTY,
+      ),
+      always: true,
+    },
+    {
+      label: "AOG",
+      value: getMaternalValue(
+        maternal,
+        record,
+        ["aog", "ageOfGestation", "age_of_gestation"],
+        "",
+      ),
+      always: true,
+    },
+    {
+      label: "Gravida",
+      value: getMaternalValue(maternal, record, ["gravida"], ""),
+      always: true,
+    },
+    {
+      label: "Para",
+      value: getMaternalValue(maternal, record, ["para"], ""),
+      always: true,
+    },
+    { label: "Term", value: term },
+    { label: "Preterm", value: preterm },
+    { label: "Abortion", value: abortion },
+    { label: "Living", value: living },
+    { label: "OB score / TPAL", value: tpal },
+    { label: "Previous FP method", value: previousFp },
+  ].filter((item) => item.always || blankText(item.value));
+
   return (
     <Section title={postpartumOnly ? "Postpartum record" : "Maternal / Prenatal"}>
       <InlineGrid
-        items={[
-          {
-            label: "LMP",
-            value: formatLongDate(
-              getMaternalValue(maternal, record, ["lmp"], ""),
-              EMPTY,
-            ),
-          },
-          {
-            label: "PMP",
-            value: formatLongDate(
-              getMaternalValue(maternal, record, ["pmp"], ""),
-              EMPTY,
-            ),
-          },
-          {
-            label: "EDC",
-            value: formatLongDate(
-              getMaternalValue(
-                maternal,
-                record,
-                ["expectedDeliveryDate", "expected_delivery_date", "edc", "edd"],
-                "",
-              ),
-              EMPTY,
-            ),
-          },
-          {
-            label: "AOG",
-            value: getMaternalValue(
-              maternal,
-              record,
-              ["aog", "ageOfGestation", "age_of_gestation"],
-              "",
-            ),
-          },
-          {
-            label: "Gravida",
-            value: getMaternalValue(maternal, record, ["gravida"], ""),
-          },
-          {
-            label: "Para",
-            value: getMaternalValue(maternal, record, ["para"], ""),
-          },
-          { label: "Term", value: term },
-          { label: "Preterm", value: preterm },
-          { label: "Abortion", value: abortion },
-          { label: "Living", value: living },
-          { label: "OB score / TPAL", value: tpal },
-          { label: "Previous FP method", value: previousFp },
-        ]}
+        items={coreItems.map(({ label, value, always }) => ({
+          label,
+          value: always ? (blankText(value) || EMPTY) : value,
+        }))}
       />
       {notesFindings ? (
         <Narrative label="Findings / notes" value={notesFindings} />
       ) : null}
-      <p className="bhc-print-k">Pregnancy history</p>
       {history.length > 0 ? (
-        <PrintTable
-          columns={["Pregnancy no.", "Place of delivery", "Year", "Notes"]}
-          rows={history.map((row, index) => ({
-            key: `${row.pregnancyNo || row.pregnancy_no || "pregnancy"}-${index}`,
-            cells: [
-              row.pregnancyNo || row.pregnancy_no,
-              row.placeOfDelivery || row.place_of_delivery,
-              row.year,
-              row.notes,
-            ],
-          }))}
-        />
-      ) : (
-        <p className="bhc-print-muted">No previous pregnancy history recorded.</p>
-      )}
-      <p className="bhc-print-k">Medical history / risk codes</p>
-      <p className="bhc-print-prose">
-        {riskLabels.length > 0
-          ? riskLabels.join("; ")
-          : "No risk codes recorded."}
-      </p>
-      <p className="bhc-print-k">Laboratory results</p>
+        <>
+          <p className="bhc-print-k">Pregnancy history</p>
+          <PrintTable
+            columns={["Pregnancy no.", "Place of delivery", "Year", "Notes"]}
+            rows={history.map((row, index) => ({
+              key: `${row.pregnancyNo || row.pregnancy_no || "pregnancy"}-${index}`,
+              cells: [
+                row.pregnancyNo || row.pregnancy_no || "None",
+                row.placeOfDelivery || row.place_of_delivery || "None",
+                row.year || "None",
+                row.notes || "None",
+              ],
+            }))}
+          />
+        </>
+      ) : null}
+      {riskLabels.length > 0 ? (
+        <>
+          <p className="bhc-print-k">Medical history / risk codes</p>
+          <p className="bhc-print-prose">{riskLabels.join("; ")}</p>
+        </>
+      ) : null}
       {labs.some((item) => item.value) ? (
-        <InlineGrid
-          items={labs.map((item) => ({
-            label: item.label,
-            value: item.date
-              ? `${item.value || EMPTY} · ${formatLongDate(item.date, EMPTY)}`
-              : item.value || EMPTY,
-          }))}
-        />
-      ) : (
-        <p className="bhc-print-muted">No laboratory results recorded.</p>
-      )}
-      <p className="bhc-print-k">Ultrasound</p>
+        <>
+          <p className="bhc-print-k">Laboratory results</p>
+          <InlineGrid
+            items={labs
+              .filter((item) => item.value)
+              .map((item) => ({
+                label: item.label,
+                value: item.date
+                  ? `${item.value || EMPTY} · ${formatLongDate(item.date, EMPTY)}`
+                  : item.value || EMPTY,
+              }))}
+          />
+        </>
+      ) : null}
       {ultrasoundResult || ultrasoundDate || ultrasoundRemarks ? (
         <>
+          <p className="bhc-print-k">Ultrasound</p>
           <InlineGrid
             columns={2}
             items={[
@@ -958,11 +1019,7 @@ function MaternalPrintSection({ record, maternal, postpartumOnly }) {
           />
           <Narrative label="Remarks" value={ultrasoundRemarks} />
         </>
-      ) : (
-        <p className="bhc-print-muted">
-          No ultrasound result recorded for this visit.
-        </p>
-      )}
+      ) : null}
       <p className="bhc-print-k">TT / Td recorded this visit</p>
       {tetanus.length > 0 ? (
         <PrintTable
@@ -973,15 +1030,14 @@ function MaternalPrintSection({ record, maternal, postpartumOnly }) {
           }))}
         />
       ) : (
-        <p className="bhc-print-muted">
-          No tetanus toxoid / Td dose was recorded for this visit.
-        </p>
+        <p className="bhc-print-prose">None</p>
       )}
     </Section>
   );
 }
 
-function FamilyPlanningPrintSection({ details }) {
+function FamilyPlanningPrintSection({ details, showActionTaken = false }) {
+  const alwaysClient = new Set(["Method Used / Accepted", "Previous Method"]);
   const clientLabels = [
     "Client Type",
     "Method Used / Accepted",
@@ -991,24 +1047,36 @@ function FamilyPlanningPrintSection({ details }) {
     "Date Registered",
     "Date of Visit",
   ];
-  const client = details.filter((item) => clientLabels.includes(item.label));
+  const client = details
+    .filter((item) => clientLabels.includes(item.label))
+    .filter((item) => alwaysClient.has(item.label) || blankText(item.value));
+
+  const concern = fpDetail(details, "Concern / Complaint");
+  const findings = fpDetail(details, "Findings / Notes");
+  const advice = fpDetail(details, "Advice Given");
+  const remarks = fpDetail(details, "Remarks / Notes");
 
   return (
     <Section title="Family planning">
       <InlineGrid
         items={client.map((item) => ({
           label: item.label,
-          value: item.value,
+          value: alwaysClient.has(item.label) ? (blankText(item.value) || "None") : item.value,
         }))}
       />
-      <Narrative
-        label="Concern / complaint"
-        value={fpDetail(details, "Concern / Complaint")}
-      />
-      <Narrative
-        label="Findings / notes"
-        value={fpDetail(details, "Findings / Notes")}
-      />
+      {blankText(concern) ? (
+        <Narrative label="Concern / complaint" value={concern} />
+      ) : null}
+      {blankText(findings) ? (
+        <Narrative label="Findings / notes" value={findings} />
+      ) : null}
+      <Narrative label="Advice given" value={advice} />
+      {showActionTaken ? (
+        <Narrative label="Action taken" value={fpDetail(details, "Action Taken")} />
+      ) : null}
+      {blankText(remarks) ? (
+        <Narrative label="Remarks" value={remarks} />
+      ) : null}
     </Section>
   );
 }
@@ -1337,70 +1405,65 @@ const generalConsultationPrintStyles = `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  .gc-record-print {
+    font-size: 9pt;
+    line-height: 1.25;
+  }
   .gc-print-body {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
-    gap: 14px;
+    gap: 7px;
   }
   .gc-print-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 16px;
-    padding-bottom: 10px;
+    gap: 12px;
+    padding-bottom: 6px;
     border-bottom: 1px solid #000;
-    break-after: avoid;
   }
   .gc-print-brand {
     margin: 0;
-    font-size: 18pt;
+    font-size: 14pt;
     font-weight: 700;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
-  .gc-print-docmeta { text-align: right; }
+  .gc-print-docmeta { text-align: right; font-size: 8.5pt; }
   .gc-print-docmeta p { margin: 0; }
   .gc-print-doctype { font-weight: 700; }
   .gc-print-patient-row {
     display: grid;
     grid-template-columns: 1.5fr 0.8fr 0.9fr 1.2fr;
-    gap: 10px 16px;
-    padding: 10px 0 12px;
+    gap: 4px 12px;
+    padding: 6px 0 7px;
     border-bottom: 1px solid #000;
-    break-inside: avoid;
   }
   .gc-print-patient-field { min-width: 0; margin: 0; }
-  .gc-print-k { font-size: 9.5pt; font-weight: 700; }
+  .gc-print-k { font-size: 8.5pt; font-weight: 700; }
   .gc-print-v { font-weight: 600; }
-  .gc-print-section {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
   .gc-print-section h2,
   .bhc-print-section h2 {
-    margin: 0 0 10px;
-    padding: 0 0 4px;
+    margin: 0 0 4px;
+    padding: 0 0 2px;
     border-bottom: 1px solid #000;
-    font-size: 9pt;
+    font-size: 8pt;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    break-after: avoid;
-    page-break-after: avoid;
   }
   .gc-print-field-row {
     display: grid;
-    grid-template-columns: 35mm 1fr;
-    gap: 8px 12px;
+    grid-template-columns: 32mm 1fr;
+    gap: 2px 8px;
     align-items: start;
-    margin: 0 0 10px;
-    min-height: 18px;
+    margin: 0 0 3px;
   }
   .gc-print-field-row:last-child { margin-bottom: 0; }
   .gc-print-field-label {
     margin: 0;
-    font-size: 9.5pt;
+    font-size: 8.5pt;
     font-weight: 700;
   }
   .gc-print-prose {
@@ -1411,7 +1474,7 @@ const generalConsultationPrintStyles = `
   }
   .gc-print-writing-line {
     display: block;
-    min-height: 18px;
+    min-height: 12px;
     border-bottom: 1px solid #000;
   }
   .gc-print-vitals {
@@ -1422,27 +1485,27 @@ const generalConsultationPrintStyles = `
   .gc-print-vitals th,
   .gc-print-vitals td {
     border: 1px solid #000;
-    padding: 10px 8px;
+    padding: 4px 4px;
     text-align: center;
     vertical-align: middle;
     overflow-wrap: anywhere;
   }
   .gc-print-vitals th {
-    font-size: 8pt;
+    font-size: 7pt;
     font-weight: 700;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
   }
   .gc-print-vitals td {
     font-weight: 600;
-    min-height: 1.6em;
+    font-size: 8.5pt;
   }
   .gc-print-signatures {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 32px;
-    margin-top: auto;
-    padding-top: 20px;
+    gap: 20px;
+    margin-top: 8px;
+    padding-top: 8px;
     border-top: 1px solid #000;
     break-inside: avoid;
     page-break-inside: avoid;
@@ -1450,56 +1513,59 @@ const generalConsultationPrintStyles = `
   .gc-print-sig {
     display: flex;
     flex-direction: column;
-    min-height: 72px;
+    min-height: 42px;
   }
   .gc-print-sig-line {
     position: relative;
-    min-height: 28px;
+    min-height: 18px;
     border-bottom: 1px solid #000;
   }
   .gc-print-sig-line-name {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 4px;
+    bottom: 2px;
     margin: 0;
-    font-size: 10.5pt;
+    font-size: 9pt;
     font-weight: 600;
   }
   .gc-print-sig-caption {
-    margin: 6px 0 0;
-    font-size: 9pt;
+    margin: 3px 0 0;
+    font-size: 8pt;
     font-weight: 700;
   }
   @media print {
-    .gc-record-print { min-height: 261mm; }
-    .gc-print-section { break-inside: avoid; page-break-inside: avoid; }
-    .gc-print-header { break-after: avoid; }
+    .gc-record-print { min-height: 0; }
+    .gc-print-header,
+    .gc-print-patient-row,
+    .gc-print-vitals,
+    .gc-print-signatures { break-inside: avoid; page-break-inside: avoid; }
   }
 `;
 
 const programSectionPrintStyles = `
   .bhc-print-subh {
-    margin: 8px 0 2px;
+    margin: 4px 0 1px;
     color: var(--color-text);
-    font-size: 10px;
+    font-size: 8px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
   .bhc-print-grid {
     display: grid;
-    gap: 3px 14px;
+    gap: 1px 10px;
   }
   .bhc-print-grid-2 { grid-template-columns: 1fr 1fr; }
   .bhc-print-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
   .bhc-print-inline {
     margin: 0;
     min-width: 0;
+    font-size: 8.5pt;
   }
   .bhc-print-k {
     color: var(--color-text-muted);
-    font-size: 9pt;
+    font-size: 7.5pt;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1509,38 +1575,40 @@ const programSectionPrintStyles = `
     font-weight: 600;
   }
   .bhc-print-narrative {
-    margin: 6px 0 0;
+    margin: 3px 0 0;
   }
   .bhc-print-prose {
-    margin: 2px 0 0;
+    margin: 1px 0 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    font-size: 8.5pt;
   }
   .bhc-print-muted {
-    margin: 2px 0 0;
+    margin: 1px 0 0;
     color: var(--color-text-muted);
   }
   .bhc-print-list {
-    margin: 4px 0 0;
-    padding-left: 16px;
+    margin: 2px 0 0;
+    padding-left: 14px;
   }
   .bhc-print-table {
     width: 100%;
-    margin-top: 4px;
+    margin-top: 2px;
     border-collapse: collapse;
     table-layout: auto;
+    font-size: 8pt;
   }
   .bhc-print-table th,
   .bhc-print-table td {
     border-bottom: 1px solid #000;
-    padding: 4px 6px;
+    padding: 2px 4px;
     text-align: left;
     vertical-align: top;
     overflow-wrap: anywhere;
   }
   .bhc-print-table th {
     color: var(--color-text-muted);
-    font-size: 9pt;
+    font-size: 7.5pt;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1550,12 +1618,9 @@ const programSectionPrintStyles = `
     .gc-record-print-with-sections .gc-print-body {
       display: block;
     }
-    .gc-record-print-with-sections .gc-print-body > * + * { margin-top: 14px; }
-    .gc-record-print-with-sections .gc-print-signatures { margin-top: 14px; }
-    .bhc-print-keep { break-inside: avoid; }
+    .gc-record-print-with-sections .gc-print-body > * + * { margin-top: 7px; }
+    .gc-record-print-with-sections .gc-print-signatures { margin-top: 8px; }
     .bhc-print-table thead { display: table-header-group; }
     .bhc-print-section h2 { break-after: avoid; }
-    .bhc-print-table tr { break-inside: avoid; }
-    .bhc-print-narrative, .bhc-print-prose { break-inside: auto; }
   }
 `;
